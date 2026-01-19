@@ -1,8 +1,8 @@
-# API Server Reliability Analysis
+# REST Server Reliability Analysis
 
 ## Executive Summary
 
-The API server experiences intermittent unavailability due to **blocking operations in async code paths**. The fundamental issue is that Python's asyncio event loop is being blocked by synchronous operations, causing the entire server to become unresponsive.
+The REST server experiences intermittent unavailability due to **blocking operations in async code paths**. The fundamental issue is that Python's asyncio event loop is being blocked by synchronous operations, causing the entire server to become unresponsive.
 
 ## Critical Findings
 
@@ -30,7 +30,7 @@ subprocess.run(
 result = await asyncio.to_thread(_blocking_function)
 ```
 
-### 2. Blocking psutil Calls in API Endpoints
+### 2. Blocking psutil Calls in REST Endpoints
 
 **Location:** `teleclaude/core/command_handlers.py:493`
 
@@ -131,7 +131,7 @@ ab -n 100 -c 10 http+unix:///tmp/teleclaude-api.sock/health
 ## Related Files
 
 - `teleclaude/api_server.py` - API server implementation
-- `teleclaude/core/command_handlers.py` - Command handlers called by API
+- `teleclaude/core/command_handlers.py` - Command handlers called by REST
 - `teleclaude/core/next_machine.py` - Work orchestration with subprocess calls
 - `teleclaude/core/db.py` - Database operations
 - `teleclaude/core/session_cleanup.py` - GOOD EXAMPLE of proper async subprocess usage

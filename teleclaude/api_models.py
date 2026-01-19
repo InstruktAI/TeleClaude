@@ -1,4 +1,4 @@
-"""API request/response models for the API server."""
+"""API request/response models for API server."""
 
 from typing import TYPE_CHECKING, Literal
 

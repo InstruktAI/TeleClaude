@@ -452,7 +452,6 @@ async def test_local_session_lifecycle_to_websocket(
 
     # Wire up real AdapterClient (not mock) to handle events
     real_client = AdapterClient()
-    real_client.register_adapter("api", api_server)
     db_instance.set_client(real_client)
 
     # Wire API server to use real client
@@ -542,9 +541,6 @@ async def test_api_server_cache_wired_post_init(
     # CRITICAL: Construct APIServer WITHOUT cache (production init pattern)
     adapter = APIServer(client, cache=None)
     assert adapter.cache is None
-
-    # Register adapter with client
-    client.register_adapter("api", adapter)
 
     # Set up WebSocket client
     mock_ws = create_mock_websocket()

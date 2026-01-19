@@ -2,7 +2,6 @@
 
 # type: ignore[explicit-any, unused-ignore] - test uses mocked adapters and dynamic types
 
-import shlex
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,6 +17,7 @@ def mock_adapter_client():  # type: ignore[explicit-any, unused-ignore]
     """Create mock AdapterClient."""
     client = MagicMock()
     client.handle_event = AsyncMock()
+    client.handle_internal_command = AsyncMock()
     return client
 
 
@@ -155,160 +155,156 @@ def test_list_sessions_without_cache(mock_adapter_client):  # type: ignore[expli
 @pytest.mark.asyncio
 async def test_refresh_remote_cache_notifies_projects(api_server, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Initial refresh should notify clients to refresh projects."""
-    redis_transport = MagicMock(spec=RedisTransport)
-    redis_transport.refresh_remote_snapshot = AsyncMock()
-    mock_adapter_client.adapters = {"redis": redis_transport}
+    redis_adapter = MagicMock(spec=RedisTransport)
+    redis_adapter.refresh_remote_snapshot = AsyncMock()
+    mock_adapter_client.adapters = {"redis": redis_adapter}
     api_server._on_cache_change = MagicMock()
 
     await api_server._refresh_remote_cache_and_notify()
 
-    redis_transport.refresh_remote_snapshot.assert_awaited_once()
+    redis_adapter.refresh_remote_snapshot.assert_awaited_once()
     api_server._on_cache_change.assert_called_once_with("projects_updated", {"computer": None})
 
 
 def test_create_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test create_session endpoint."""
-    mock_adapter_client.handle_event.return_value = {
+    mock_adapter_client.handle_internal_command.return_value = {
         "status": "success",
-        "data": {
-            "session_id": "new-sess",
-            "tmux_session_name": "tc_new",
-        },
+        "data": {"session_id": "sess-123", "tmux_session_name": "tc_test"},
     }
 
     response = test_client.post(
         "/sessions",
         json={
+            "project_path": "/home/user/project",
             "computer": "local",
-            "project_path": "/path/to/project",
             "agent": "claude",
             "thinking_mode": "slow",
             "title": "Test Session",
             "message": "Hello",
         },
     )
-    if response.status_code != 200:
-        print(f"Validation error: {response.json()}")
     assert response.status_code == 200
     data = response.json()
-    assert data["session_id"] == "new-sess"
-    assert data["tmux_session_name"] == "tc_new"
+    assert data["status"] == "success"
+    assert data["session_id"] == "sess-123"
+
+    # Verify handle_internal_command was called
+    call_args = mock_adapter_client.handle_internal_command.call_args
+    cmd = call_args[0][0]
+    assert cmd.project_path == "/home/user/project"
+    assert cmd.title == "Test Session"
+
+
+def test_create_session_derives_title_from_message(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test that create_session derives title from message if not provided."""
+    mock_adapter_client.handle_internal_command.return_value = {
+        "status": "success",
+        "data": {"session_id": "sess-123"},
+    }
+
+    response = test_client.post(
+        "/sessions",
+        json={
+            "project_path": "/home/user/project",
+            "computer": "local",
+            "message": "/claude",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
     assert data["status"] == "success"
 
-    call_args = mock_adapter_client.handle_event.call_args
-    assert call_args.kwargs["payload"]["args"] == ["Test Session"]
-    assert call_args.kwargs["metadata"].auto_command == "agent_then_message claude slow Hello"
+    # Verify title was derived
+    call_args = mock_adapter_client.handle_internal_command.call_args
+    cmd = call_args[0][0]
+    assert cmd.title == "/claude"
 
 
-def test_create_session_derives_title_from_message(  # type: ignore[explicit-any, unused-ignore]
-    test_client, mock_adapter_client
-):
-    """Test create_session derives title from command message."""
-    mock_adapter_client.handle_event.return_value = {"status": "success", "data": {"session_id": "sess"}}
+def test_create_session_defaults_title_to_untitled(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test that create_session defaults title to 'Untitled'."""
+    mock_adapter_client.handle_internal_command.return_value = {
+        "status": "success",
+        "data": {"session_id": "sess-123"},
+    }
+
+    response = test_client.post(
+        "/sessions",
+        json={"project_path": "/home/user/project", "computer": "local"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+
+    # Verify title is 'Untitled'
+    call_args = mock_adapter_client.handle_internal_command.call_args
+    cmd = call_args[0][0]
+    assert cmd.title == "Untitled"
+
+
+def test_create_session_uses_auto_command_override(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test that create_session uses auto_command override if provided."""
+    mock_adapter_client.handle_internal_command.return_value = {
+        "status": "success",
+        "data": {"session_id": "sess-123"},
+    }
 
     response = test_client.post(
         "/sessions",
         json={
+            "project_path": "/home/user/project",
             "computer": "local",
-            "project_path": "/path",
-            "message": "/next-work feature-123",
+            "auto_command": "custom_cmd",
         },
     )
     assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
 
-    # Verify handle_event was called with title from message
-    call_args = mock_adapter_client.handle_event.call_args
-    assert call_args.kwargs["metadata"].title == "/next-work feature-123"
-    expected_message = shlex.quote("/next-work feature-123")
-    assert call_args.kwargs["metadata"].auto_command == f"agent_then_message claude slow {expected_message}"
+    # Verify auto_command in metadata
+    call_args = mock_adapter_client.handle_internal_command.call_args
+    metadata = call_args[1].get("metadata")
+    assert metadata is not None
+    assert metadata.auto_command == "custom_cmd"
 
 
-def test_create_session_defaults_title_to_untitled(  # type: ignore[explicit-any, unused-ignore]
-    test_client, mock_adapter_client
-):
-    """Test create_session defaults to 'Untitled' when no title/message."""
-    mock_adapter_client.handle_event.return_value = {"status": "success", "data": {"session_id": "sess"}}
+def test_create_session_populates_tmux_session_name(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test that create_session populates tmux_session_name in response."""
+    mock_adapter_client.handle_internal_command.return_value = {
+        "status": "success",
+        "data": {"session_id": "sess-123", "tmux_session_name": "tc_test"},
+    }
 
     response = test_client.post(
         "/sessions",
-        json={
-            "computer": "local",
-            "project_path": "/path",
-        },
+        json={"project_path": "/home/user/project", "computer": "local"},
     )
     assert response.status_code == 200
-
-    call_args = mock_adapter_client.handle_event.call_args
-    assert call_args.kwargs["metadata"].title == "Untitled"
-    assert call_args.kwargs["payload"]["args"] == ["Untitled"]
-    assert call_args.kwargs["metadata"].auto_command == "agent claude slow"
-
-
-def test_create_session_uses_auto_command_override(  # type: ignore[explicit-any, unused-ignore]
-    test_client, mock_adapter_client
-):
-    """Test create_session uses explicit auto_command when provided."""
-    mock_adapter_client.handle_event.return_value = {"status": "success", "data": {"session_id": "sess"}}
-
-    response = test_client.post(
-        "/sessions",
-        json={
-            "computer": "local",
-            "project_path": "/path",
-            "auto_command": "agent gemini med",
-            "message": "ignored",
-        },
-    )
-    assert response.status_code == 200
-
-    call_args = mock_adapter_client.handle_event.call_args
-    assert call_args.kwargs["metadata"].auto_command == "agent gemini med"
-
-
-def test_create_session_populates_tmux_session_name(  # type: ignore[explicit-any, unused-ignore]
-    test_client, mock_adapter_client
-):
-    """Test create_session fills tmux_session_name when handler omits it."""
-    mock_adapter_client.handle_event.return_value = {"status": "success", "data": {"session_id": "sess-1"}}
-
-    class _Session:
-        tmux_session_name = "tc_1234"
-
-    with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = _Session()
-
-        response = test_client.post(
-            "/sessions",
-            json={
-                "computer": "local",
-                "project_path": "/path",
-            },
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["tmux_session_name"] == "tc_1234"
+    data = response.json()
+    assert data["tmux_session_name"] == "tc_test"
 
 
 def test_end_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test end_session endpoint calls command handler."""
-    with patch("teleclaude.api_server.command_handlers.handle_end_session", new_callable=AsyncMock) as mock_handler:
-        mock_handler.return_value = {"status": "success", "message": "Session ended"}
+    mock_adapter_client.handle_internal_command.return_value = {"status": "success", "data": {"ok": True}}
 
-        response = test_client.delete("/sessions/sess-123?computer=local")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
+    response = test_client.delete("/sessions/sess-123?computer=local")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
 
-        # Verify handler was called with session_id and client
-        mock_handler.assert_called_once()
-        call_args = mock_handler.call_args
-        assert call_args.args[0] == "sess-123"
-        assert call_args.args[1] == mock_adapter_client
+    # Verify internal command dispatch
+    call_args = mock_adapter_client.handle_internal_command.call_args
+    cmd = call_args[0][0]
+    assert cmd.session_id == "sess-123"
 
 
 def test_send_message_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test send_message endpoint."""
-    mock_adapter_client.handle_event.return_value = {"result": "Message sent"}
+    mock_adapter_client.handle_internal_command.return_value = {
+        "status": "success",
+        "data": "Message sent",
+    }
 
     response = test_client.post(
         "/sessions/sess-123/message?computer=local",
@@ -317,13 +313,13 @@ def test_send_message_success(test_client, mock_adapter_client):  # type: ignore
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert data["result"]["result"] == "Message sent"
+    assert data["result"]["data"] == "Message sent"
 
-    # Verify handle_event was called
-    call_args = mock_adapter_client.handle_event.call_args
-    assert call_args.kwargs["event"] == "message"
-    assert call_args.kwargs["payload"]["session_id"] == "sess-123"
-    assert call_args.kwargs["payload"]["text"] == "Hello AI"
+    # Verify handle_internal_command was called
+    call_args = mock_adapter_client.handle_internal_command.call_args
+    cmd = call_args[0][0]
+    assert cmd.session_id == "sess-123"
+    assert cmd.text == "Hello AI"
 
 
 def test_get_transcript_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -560,13 +556,6 @@ async def test_adapter_lifecycle(api_server):  # type: ignore[explicit-any, unus
     assert api_server.server.should_exit is True
 
 
-def test_adapter_key():  # type: ignore[explicit-any, unused-ignore]
-    """Test adapter key is 'api'."""
-    from teleclaude.api_server import APIServer
-
-    assert APIServer.ADAPTER_KEY == "api"
-
-
 @pytest.mark.asyncio
 async def test_handle_session_created_updates_cache(api_server, mock_cache):
     """Test _handle_session_created_event updates cache."""
@@ -667,27 +656,33 @@ def test_list_sessions_handler_exception(test_client):  # type: ignore[explicit-
 
 
 def test_create_session_handler_exception(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test create_session returns 500 when handler raises exception."""
-    mock_adapter_client.handle_event.side_effect = Exception("Session creation failed")
+    """Test create_session endpoint with handler exception."""
+    mock_adapter_client.handle_internal_command.return_value = {
+        "status": "error",
+        "error": "Failed to create session",
+    }
 
     response = test_client.post(
         "/sessions",
-        json={"computer": "local", "project_path": "/path/to/project"},
+        json={"project_path": "/home/user/project", "computer": "local"},
     )
-    assert response.status_code == 500
-    assert "Failed to create session" in response.json()["detail"]
+    # The route returns CreateSessionResponseDTO with status="error"
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["error"] == "Failed to create session"
 
 
 def test_send_message_handler_exception(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test send_message returns 500 when handler raises exception."""
-    mock_adapter_client.handle_event.side_effect = Exception("Message delivery failed")
+    """Test send_message endpoint with handler exception."""
+    mock_adapter_client.handle_internal_command.side_effect = Exception("Internal error")
 
     response = test_client.post(
-        "/sessions/sess-123/message",
-        json={"message": "Hello"},
+        "/sessions/sess-123/message?computer=local",
+        json={"message": "Hello AI"},
     )
     assert response.status_code == 500
-    assert "Failed to send message" in response.json()["detail"]
+    assert "Internal error" in response.json()["detail"]
 
 
 def test_get_transcript_handler_exception(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -721,14 +716,13 @@ def test_list_projects_handler_exception(test_client):  # type: ignore[explicit-
         assert "Failed to list projects" in response.json()["detail"]
 
 
-def test_end_session_handler_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
+def test_end_session_handler_exception(test_client, api_server):  # type: ignore[explicit-any, unused-ignore]
     """Test end_session returns 500 when command handler raises exception."""
-    with patch("teleclaude.api_server.command_handlers.handle_end_session", new_callable=AsyncMock) as mock_handler:
-        mock_handler.side_effect = Exception("Session not found")
+    api_server.client.handle_internal_command = AsyncMock(side_effect=Exception("Session not found"))
 
-        response = test_client.delete("/sessions/sess-123?computer=local")
-        assert response.status_code == 500
-        assert "Failed to end session" in response.json()["detail"]
+    response = test_client.delete("/sessions/sess-123?computer=local")
+    assert response.status_code == 500
+    assert "Failed to end session" in response.json()["detail"]
 
 
 def test_get_agent_availability_db_exception(test_client):  # type: ignore[explicit-any, unused-ignore]

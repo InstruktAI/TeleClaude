@@ -12,7 +12,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_server import APIServer
 from teleclaude.config import config
-from teleclaude.constants import ComputerStatus, ResultStatus
 from teleclaude.core.db import db
 from teleclaude.core.models import SessionSummary
 from teleclaude.transport.redis_transport import RedisTransport
@@ -27,7 +26,7 @@ logger = get_logger(__name__)
 
 
 class DaemonLifecycle:
-    """Own startup/shutdown ordering and API restart policy."""
+    """Own startup/shutdown ordering and API server restart policy."""
 
     def __init__(
         self,
@@ -42,9 +41,9 @@ class DaemonLifecycle:
         mcp_watch_factory: Callable[[], asyncio.Task[object]],
         set_last_mcp_restart_at: Callable[[float], None],
         init_voice_handler: Callable[[], None],
-        api_restart_max: int,
-        api_restart_window_s: float,
-        api_restart_backoff_s: float,
+        rest_restart_max: int,
+        rest_restart_window_s: float,
+        rest_restart_backoff_s: float,
     ) -> None:
         self.client = client
         self.cache = cache
@@ -60,13 +59,14 @@ class DaemonLifecycle:
         self.mcp_task: asyncio.Task[object] | None = None
         self.mcp_watch_task: asyncio.Task[object] | None = None
 
-        self._api_restart_lock = asyncio.Lock()
-        self._api_restart_attempts = 0
-        self._api_restart_window_start = 0.0
-        self._api_restart_max = api_restart_max
-        self._api_restart_window_s = api_restart_window_s
-        self._api_restart_backoff_s = api_restart_backoff_s
+        self._rest_restart_lock = asyncio.Lock()
+        self._rest_restart_attempts = 0
+        self._rest_restart_window_start = 0.0
+        self._rest_restart_max = rest_restart_max
+        self._rest_restart_window_s = rest_restart_window_s
+        self._rest_restart_backoff_s = rest_restart_backoff_s
         self._started = False
+        self.api_server: APIServer | None = None
 
     async def startup(self) -> None:
         """Start core components in a defined order."""
@@ -81,18 +81,19 @@ class DaemonLifecycle:
 
         await self.client.start()
 
-        api_server = self.client.adapters.get("api")
-        if isinstance(api_server, APIServer):
-            api_server.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]
-            api_server.set_on_server_exit(self.handle_api_server_exit)
-            logger.info("Wired cache to API adapter")
-        else:
-            logger.warning("API adapter not available for cache wiring")
+        self.api_server = APIServer(
+            self.client,
+            cache=self.cache,
+            task_registry=self.task_registry,
+        )
+        await self.api_server.start()
+        self.api_server.set_on_server_exit(self.handle_api_server_exit)
+        logger.info("API server started and cache wired")
 
         redis_transport_cache = self.client.adapters.get("redis")
         if redis_transport_cache and hasattr(redis_transport_cache, "cache"):
             redis_transport_cache.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]
-            logger.info("Wired cache to Redis adapter")
+            logger.info("Wired cache to Redis transport")
 
         self._init_voice_handler()
         logger.info("Voice handler initialized")
@@ -106,16 +107,10 @@ class DaemonLifecycle:
                 if status_data:
                     try:
                         status_raw: object = json.loads(status_data.decode("utf-8"))  # type: ignore[misc]
-                        if isinstance(status_raw, dict) and status_raw.get("status") == ComputerStatus.RESTARTING.value:  # type: ignore[misc]
+                        if isinstance(status_raw, dict) and status_raw.get("status") == "restarting":  # type: ignore[misc]
                             await redis_transport.redis.set(
                                 status_key,
-                                json.dumps(
-                                    {
-                                        "status": ResultStatus.DEPLOYED.value,
-                                        "timestamp": time.time(),
-                                        "pid": os.getpid(),
-                                    }  # type: ignore[misc]
-                                ),
+                                json.dumps({"status": "deployed", "timestamp": time.time(), "pid": os.getpid()}),  # type: ignore[misc]
                             )
                             logger.info("Deployment complete, daemon restarted successfully (PID: %s)", os.getpid())
                     except (json.JSONDecodeError, Exception) as e:
@@ -175,6 +170,8 @@ class DaemonLifecycle:
         for adapter_name, adapter in self.client.adapters.items():
             logger.info("Stopping %s adapter...", adapter_name)
             await adapter.stop()
+        if self.api_server:
+            await self.api_server.stop()
 
         await db.close()
 
@@ -196,7 +193,7 @@ class DaemonLifecycle:
                 socket=socket_exists,
             )
             return
-        reason = "api_task_crash" if exc else "api_task_done"
+        reason = "rest_task_crash" if exc else "rest_task_done"
         logger.warning(
             "API server exit detected; scheduling restart",
             reason=reason,
@@ -217,40 +214,40 @@ class DaemonLifecycle:
         loop.create_task(self._restart_api_server(reason))
 
     async def _restart_api_server(self, reason: str) -> bool:
-        async with self._api_restart_lock:
+        async with self._rest_restart_lock:
             if self.shutdown_event.is_set():
                 return False
             now = asyncio.get_running_loop().time()
             if (
-                self._api_restart_window_start == 0.0
-                or (now - self._api_restart_window_start) > self._api_restart_window_s
+                self._rest_restart_window_start == 0.0
+                or (now - self._rest_restart_window_start) > self._rest_restart_window_s
             ):
-                self._api_restart_window_start = now
-                self._api_restart_attempts = 0
+                self._rest_restart_window_start = now
+                self._rest_restart_attempts = 0
 
-            self._api_restart_attempts += 1
-            if self._api_restart_attempts > self._api_restart_max:
+            self._rest_restart_attempts += 1
+            if self._rest_restart_attempts > self._rest_restart_max:
                 logger.error(
-                    "API restart limit exceeded; leaving server down",
+                    "API server restart limit exceeded; leaving server down",
                     reason=reason,
-                    attempts=self._api_restart_attempts,
+                    attempts=self._rest_restart_attempts,
                 )
                 return False
 
             logger.warning(
                 "Restarting API server",
                 reason=reason,
-                attempt=self._api_restart_attempts,
-                window_s=self._api_restart_window_s,
+                attempt=self._rest_restart_attempts,
+                window_s=self._rest_restart_window_s,
             )
-            await asyncio.sleep(self._api_restart_backoff_s)
-            api_server = self.client.adapters.get("api")
-            if not isinstance(api_server, APIServer):
-                logger.error("API adapter not available; cannot restart")
+            await asyncio.sleep(self._rest_restart_backoff_s)
+            api_server = self.api_server
+            if not api_server:
+                logger.error("API server not available; cannot restart")
                 return False
             try:
                 await api_server.restart_server()
                 return True
             except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.error("API restart failed: %s", exc, exc_info=True)
+                logger.error("API server restart failed: %s", exc, exc_info=True)
                 return False

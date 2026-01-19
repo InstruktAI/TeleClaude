@@ -20,12 +20,11 @@ from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import ComputerStatus, ResultStatus
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import normalize_agent_name
 from teleclaude.core.db import db
-from teleclaude.core.events import CommandEventContext, TeleClaudeEvents
-from teleclaude.core.models import MessageMetadata, ThinkingMode, TranscriptFormat
+from teleclaude.core.events import TeleClaudeEvents
+from teleclaude.core.models import MessageMetadata, ThinkingMode
 from teleclaude.core.next_machine import (
     detect_circular_dependency,
     has_uncommitted_changes,
@@ -50,6 +49,11 @@ from teleclaude.mcp.types import (
 )
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types import SystemStats
+from teleclaude.types.commands import (
+    CreateSessionCommand,
+    SendMessageCommand,
+    StartAgentCommand,
+)
 from teleclaude.utils.markdown import telegramify_markdown
 
 if TYPE_CHECKING:
@@ -162,7 +166,7 @@ class MCPHandlersMixin:
     async def _list_remote_projects(self, computer: str) -> list[dict[str, str]]:
         """List projects from remote computer via Redis."""
         peers = await self.client.discover_peers()
-        if not any(p["name"] == computer and p["status"] == ComputerStatus.ONLINE.value for p in peers):
+        if not any(p["name"] == computer and p["status"] == "online" for p in peers):
             logger.warning("Computer %s not online, skipping list_projects", computer)
             return []
 
@@ -242,7 +246,7 @@ class MCPHandlersMixin:
         # Validate peer is online unless caller explicitly skips (e.g., TUI already validated)
         if not skip_peer_check:
             peers = await self.client.discover_peers()
-            if not any(p["name"] == computer and p["status"] == ComputerStatus.ONLINE.value for p in peers):
+            if not any(p["name"] == computer and p["status"] == "online" for p in peers):
                 logger.warning("Computer %s not online, skipping list_todos", computer)
                 return []
 
@@ -296,7 +300,7 @@ class MCPHandlersMixin:
         agent: str = "claude",
         thinking_mode: ThinkingMode = ThinkingMode.SLOW,
     ) -> StartSessionResult:
-        """Create session on local computer directly via handle_event."""
+        """Create session on local computer directly via handle_internal_command."""
         initiator_agent, initiator_mode = await self._get_caller_agent_info(caller_session_id)
 
         channel_metadata: dict[str, object] = {"target_computer": self.computer_name}  # guard: loose-dict
@@ -307,46 +311,53 @@ class MCPHandlersMixin:
         if caller_session_id:
             channel_metadata["initiator_session_id"] = caller_session_id
 
-        result: object = await self.client.handle_event(
-            TeleClaudeEvents.NEW_SESSION,
-            {"session_id": "", "args": [title]},
-            MessageMetadata(
-                adapter_type="redis",
-                project_path=project_path,
-                title=title,
-                channel_metadata=channel_metadata,
-            ),
+        cmd = CreateSessionCommand(
+            project_path=project_path,
+            title=title,
+            adapter_type="redis",  # MCP calls are often treated like Redis for tracking
+            channel_metadata=channel_metadata,
+            initiator_session_id=caller_session_id,
         )
+
+        metadata = MessageMetadata(
+            adapter_type="redis",
+            project_path=project_path,
+            title=title,
+            channel_metadata=channel_metadata,
+        )
+
+        result: object = await self.client.handle_internal_command(cmd, metadata=metadata)
 
         session_id = self._extract_session_id(result)
         tmux_session_name = self._extract_tmux_session_name(result)
         if not session_id:
-            error_msg = result.get("error", "Unknown error") if isinstance(result, dict) else "Session creation failed"
-            return {"status": ResultStatus.ERROR.value, "message": f"Local session creation failed: {error_msg}"}
+            error_msg = "Session creation failed"
+            if isinstance(result, dict):
+                error_msg = str(result.get("error", "Unknown error"))
+            return {"status": "error", "message": f"Local session creation failed: {error_msg}"}
 
         logger.info("Local session created: %s", session_id[:8])
         await self._register_listener_if_present(session_id, caller_session_id)
 
         # Start agent in background if message provided (None = skip agent start entirely)
         if message is not None:
-            # Build args: [agent, mode] or [agent, mode, prompt] if prompt non-empty
-            agent_args: list[str] = [agent, thinking_mode.value]
-            if message:
-                agent_args.append(message)
+            agent_args: list[str] = [message] if message else []
 
             async def _run_agent_start() -> None:
                 try:
-                    await self.client.handle_event(
-                        TeleClaudeEvents.AGENT_START,
-                        {"session_id": session_id, "args": agent_args},
-                        MessageMetadata(adapter_type="redis"),
+                    start_cmd = StartAgentCommand(
+                        session_id=session_id,
+                        agent_name=agent,
+                        thinking_mode=thinking_mode.value,
+                        args=[thinking_mode.value] + agent_args,
                     )
+                    await self.client.handle_internal_command(start_cmd, metadata=MessageMetadata(adapter_type="redis"))
                 except Exception as exc:
-                    logger.error("Failed to dispatch AGENT_START for session %s: %s", session_id[:8], exc)
+                    logger.error("Failed to dispatch StartAgentCommand for session %s: %s", session_id[:8], exc)
 
             self._track_background_task(asyncio.create_task(_run_agent_start()), f"agent_start:{session_id[:8]}")
 
-        return {"session_id": session_id, "tmux_session_name": tmux_session_name, "status": ResultStatus.SUCCESS.value}
+        return {"session_id": session_id, "tmux_session_name": tmux_session_name, "status": "success"}
 
     async def _start_remote_session(
         self,
@@ -360,7 +371,7 @@ class MCPHandlersMixin:
     ) -> StartSessionResult:
         """Create session on remote computer via Redis transport."""
         if not await self._is_computer_online(computer):
-            return {"status": ResultStatus.ERROR.value, "message": f"Computer '{computer}' is offline"}
+            return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
         metadata = MessageMetadata(project_path=project_path, title=title)
         message_id = await self.client.send_request(computer_name=computer, command="/new_session", metadata=metadata)
@@ -369,9 +380,9 @@ class MCPHandlersMixin:
             response_data = await self.client.read_response(message_id, timeout=5.0)
             envelope = json.loads(response_data.strip())
 
-            if envelope.get("status") == ResultStatus.ERROR.value:
+            if envelope.get("status") == "error":
                 return {
-                    "status": ResultStatus.ERROR.value,
+                    "status": "error",
                     "message": f"Remote session creation failed: {envelope.get('error', 'Unknown')}",
                 }
 
@@ -379,7 +390,7 @@ class MCPHandlersMixin:
             remote_session_id = data.get("session_id") if isinstance(data, dict) else None
 
             if not remote_session_id:
-                return {"status": ResultStatus.ERROR.value, "message": "Remote did not return session_id"}
+                return {"status": "error", "message": "Remote did not return session_id"}
 
             logger.info("Remote session created: %s on %s", remote_session_id[:8], computer)
 
@@ -406,13 +417,13 @@ class MCPHandlersMixin:
                     session_id=str(remote_session_id),
                 )
 
-            return {"session_id": str(remote_session_id), "status": ResultStatus.SUCCESS.value}
+            return {"session_id": str(remote_session_id), "status": "success"}
 
         except TimeoutError:
-            return {"status": ResultStatus.ERROR.value, "message": "Timeout waiting for remote session creation"}
+            return {"status": "error", "message": "Timeout waiting for remote session creation"}
         except Exception as e:
             logger.error("Failed to create remote session: %s", e)
-            return {"status": ResultStatus.ERROR.value, "message": f"Failed to create remote session: {str(e)}"}
+            return {"status": "error", "message": f"Failed to create remote session: {str(e)}"}
 
     async def teleclaude__list_sessions(self, computer: Optional[str] = "local") -> list[SessionInfo]:
         """List sessions from local or remote computer(s)."""
@@ -474,11 +485,8 @@ class MCPHandlersMixin:
             await self._register_listener_if_present(session_id, caller_session_id)
 
             if self._is_local_computer(computer):
-                await self.client.handle_event(
-                    TeleClaudeEvents.MESSAGE,
-                    {"session_id": session_id, "args": [], "text": message},
-                    MessageMetadata(adapter_type="mcp"),
-                )
+                cmd = SendMessageCommand(session_id=session_id, text=message)
+                await self.client.handle_internal_command(cmd, metadata=MessageMetadata(adapter_type="mcp"))
             else:
                 await self.client.send_request(
                     computer_name=computer,
@@ -517,10 +525,10 @@ class MCPHandlersMixin:
                 chunk
                 async for chunk in self.teleclaude__send_message(computer, session_id, full_command, caller_session_id)
             ]
-            return {"status": ResultStatus.SENT.value, "session_id": session_id, "message": "".join(chunks)}
+            return {"status": "sent", "session_id": session_id, "message": "".join(chunks)}
 
         if not project:
-            return {"status": ResultStatus.ERROR.value, "message": "project required when session_id not provided"}
+            return {"status": "error", "message": "project required when session_id not provided"}
 
         title = full_command
         quoted_command = shlex.quote(full_command)
@@ -566,26 +574,37 @@ class MCPHandlersMixin:
         if caller_session_id:
             channel_metadata["initiator_session_id"] = caller_session_id
 
-        result: object = await self.client.handle_event(
-            TeleClaudeEvents.NEW_SESSION,
-            {"session_id": "", "args": [title]},
-            MessageMetadata(
-                adapter_type="redis",
-                project_path=project_path,
-                title=title,
-                channel_metadata=channel_metadata,
-                auto_command=auto_command,
-            ),
+        cmd = CreateSessionCommand(
+            project_path=project_path,
+            title=title,
+            subdir=subfolder,
+            working_slug=working_slug,
+            initiator_session_id=caller_session_id,
+            adapter_type="redis",
+            channel_metadata=channel_metadata,
+            auto_command=auto_command,
         )
+
+        metadata = MessageMetadata(
+            adapter_type="redis",
+            project_path=project_path,
+            title=title,
+            channel_metadata=channel_metadata,
+            auto_command=auto_command,
+        )
+
+        result: object = await self.client.handle_internal_command(cmd, metadata=metadata)
 
         session_id = self._extract_session_id(result)
         tmux_session_name = self._extract_tmux_session_name(result)
         if not session_id:
-            error_msg = result.get("error", "Unknown error") if isinstance(result, dict) else "Session creation failed"
-            return {"status": ResultStatus.ERROR.value, "message": f"Local session creation failed: {error_msg}"}
+            error_msg = "Session creation failed"
+            if isinstance(result, dict):
+                error_msg = str(result.get("error", "Unknown error"))
+            return {"status": "error", "message": f"Local session creation failed: {error_msg}"}
 
         await self._register_listener_if_present(session_id, caller_session_id)
-        return {"session_id": session_id, "tmux_session_name": tmux_session_name, "status": ResultStatus.SUCCESS.value}
+        return {"session_id": session_id, "tmux_session_name": tmux_session_name, "status": "success"}
 
     async def _start_remote_session_with_auto_command(
         self,
@@ -599,7 +618,7 @@ class MCPHandlersMixin:
     ) -> RunAgentCommandResult:
         """Create remote session and run auto_command via daemon."""
         if not await self._is_computer_online(computer):
-            return {"status": ResultStatus.ERROR.value, "message": f"Computer '{computer}' is offline"}
+            return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
         initiator_agent, initiator_mode = await self._get_caller_agent_info(caller_session_id)
 
@@ -628,9 +647,9 @@ class MCPHandlersMixin:
             response_data = await self.client.read_response(message_id, timeout=5.0)
             envelope = json.loads(response_data.strip())
 
-            if envelope.get("status") == ResultStatus.ERROR.value:
+            if envelope.get("status") == "error":
                 return {
-                    "status": ResultStatus.ERROR.value,
+                    "status": "error",
                     "message": f"Remote session creation failed: {envelope.get('error', 'Unknown')}",
                 }
 
@@ -638,16 +657,16 @@ class MCPHandlersMixin:
             remote_session_id = data.get("session_id") if isinstance(data, dict) else None
 
             if not remote_session_id:
-                return {"status": ResultStatus.ERROR.value, "message": "Remote did not return session_id"}
+                return {"status": "error", "message": "Remote did not return session_id"}
 
             await self._register_listener_if_present(str(remote_session_id), caller_session_id)
-            return {"session_id": remote_session_id, "status": ResultStatus.SUCCESS.value}
+            return {"session_id": remote_session_id, "status": "success"}
 
         except TimeoutError:
-            return {"status": ResultStatus.ERROR.value, "message": "Timeout waiting for remote session creation"}
+            return {"status": "error", "message": "Timeout waiting for remote session creation"}
         except Exception as e:
             logger.error("Failed to create remote session: %s", e)
-            return {"status": ResultStatus.ERROR.value, "message": f"Failed to create remote session: {str(e)}"}
+            return {"status": "error", "message": f"Failed to create remote session: {str(e)}"}
 
     async def teleclaude__get_session_data(
         self,
@@ -672,7 +691,7 @@ class MCPHandlersMixin:
                 computer, session_id, since_timestamp, until_timestamp, tail_chars
             )
 
-        if result.get("status") != ResultStatus.SUCCESS.value:
+        if result.get("status") != "success":
             return result
 
         messages = result.get("messages")
@@ -709,8 +728,9 @@ class MCPHandlersMixin:
         tail_chars: int = 2000,
     ) -> SessionDataResult:
         """Get session data from local computer directly."""
-        context = CommandEventContext(session_id=session_id, args=[])
-        payload = await command_handlers.handle_get_session_data(context, since_timestamp, until_timestamp, tail_chars)
+        payload = await command_handlers.handle_get_session_data(
+            session_id, since_timestamp, until_timestamp, tail_chars
+        )
         return cast(SessionDataResult, payload)
 
     async def _get_remote_session_data(
@@ -732,9 +752,9 @@ class MCPHandlersMixin:
             data = envelope.get("data")
             if isinstance(data, dict):
                 return cast(SessionDataResult, data)
-            return {"status": ResultStatus.ERROR.value, "error": "Invalid response data format"}
+            return {"status": "error", "error": "Invalid response data format"}
         except RemoteRequestError as e:
-            return {"status": ResultStatus.ERROR.value, "error": e.message}
+            return {"status": "error", "error": e.message}
 
     async def teleclaude__stop_notifications(
         self,
@@ -744,26 +764,21 @@ class MCPHandlersMixin:
     ) -> StopNotificationsResult:
         """Stop receiving notifications from a session without ending it."""
         if not caller_session_id:
-            return {"status": ResultStatus.ERROR.value, "message": "caller_session_id required"}
+            return {"status": "error", "message": "caller_session_id required"}
 
         if self._is_local_computer(computer):
             success = unregister_listener(target_session_id=session_id, caller_session_id=caller_session_id)
             if success:
-                return {
-                    "status": ResultStatus.SUCCESS.value,
-                    "message": f"Stopped notifications from session {session_id[:8]}",
-                }
-            return {"status": ResultStatus.ERROR.value, "message": f"No listener found for session {session_id[:8]}"}
+                return {"status": "success", "message": f"Stopped notifications from session {session_id[:8]}"}
+            return {"status": "error", "message": f"No listener found for session {session_id[:8]}"}
 
         try:
             envelope = await self._send_remote_request(
                 computer, f"stop_notifications {session_id} {caller_session_id}", timeout=3.0
             )
-            return cast(
-                StopNotificationsResult, envelope.get("data", {"status": ResultStatus.SUCCESS.value, "message": "OK"})
-            )
+            return cast(StopNotificationsResult, envelope.get("data", {"status": "success", "message": "OK"}))
         except RemoteRequestError as e:
-            return {"status": ResultStatus.ERROR.value, "message": e.message}
+            return {"status": "error", "message": e.message}
 
     async def teleclaude__end_session(self, computer: str, session_id: str) -> EndSessionResult:
         """End a session gracefully (kill tmux, delete session, clean up resources)."""
@@ -772,9 +787,9 @@ class MCPHandlersMixin:
 
         try:
             envelope = await self._send_remote_request(computer, f"end_session {session_id}", timeout=5.0)
-            return cast(EndSessionResult, envelope.get("data", {"status": ResultStatus.SUCCESS.value, "message": "OK"}))
+            return cast(EndSessionResult, envelope.get("data", {"status": "success", "message": "OK"}))
         except RemoteRequestError as e:
-            return {"status": ResultStatus.ERROR.value, "message": e.message}
+            return {"status": "error", "message": e.message}
 
     # =========================================================================
     # Deploy Tool
@@ -784,7 +799,7 @@ class MCPHandlersMixin:
         """Deploy latest code to remote computers via Redis."""
         redis_transport = self._get_redis_transport()
         if not redis_transport:
-            return {"_error": {"status": ResultStatus.ERROR.value, "message": "Redis adapter not available"}}
+            return {"_error": {"status": "error", "message": "Redis adapter not available"}}
 
         all_peers = await redis_transport.discover_peers()
         available = [peer.name for peer in all_peers if peer.name != self.computer_name]
@@ -802,12 +817,12 @@ class MCPHandlersMixin:
         if requested:
             for name in requested:
                 if name == self.computer_name:
-                    results[name] = {"status": ResultStatus.SKIPPED.value, "message": "Skipping self deployment"}
+                    results[name] = {"status": "skipped", "message": "Skipping self deployment"}
                 elif name not in available_set:
-                    results[name] = {"status": ResultStatus.ERROR.value, "message": "Unknown or offline computer"}
+                    results[name] = {"status": "error", "message": "Unknown or offline computer"}
 
         if not targets:
-            return {"_message": {"status": ResultStatus.SUCCESS.value, "message": "No remote computers to deploy to"}}
+            return {"_message": {"status": "success", "message": "No remote computers to deploy to"}}
 
         logger.info("Deploying to computers: %s", targets)
 
@@ -819,16 +834,13 @@ class MCPHandlersMixin:
         for computer in targets:
             for _ in range(60):
                 status = await redis_transport.get_system_command_status(computer_name=computer, command="deploy")
-                status_str = str(status.get("status", ResultStatus.UNKNOWN.value))
-                if status_str in (ResultStatus.DEPLOYED.value, ResultStatus.ERROR.value):
+                status_str = str(status.get("status", "unknown"))
+                if status_str in ("deployed", "error"):
                     results[computer] = cast(DeployComputerResult, status)
                     break
                 await asyncio.sleep(1)
             else:
-                results[computer] = {
-                    "status": ResultStatus.TIMEOUT.value,
-                    "message": "Deployment timed out after 60 seconds",
-                }
+                results[computer] = {"status": "timeout", "message": "Deployment timed out after 60 seconds"}
 
         return results
 
@@ -856,22 +868,17 @@ class MCPHandlersMixin:
             return f"Error sending file: {e}"
 
     async def teleclaude__send_result(
-        self, session_id: str, content: str, output_format: str = TranscriptFormat.MARKDOWN.value
+        self, session_id: str, content: str, output_format: str = "markdown"
     ) -> SendResultResult:
         """Send formatted result to user as separate message."""
         if not content or not content.strip():
-            return {"status": ResultStatus.ERROR.value, "message": "Content cannot be empty"}
+            return {"status": "error", "message": "Content cannot be empty"}
 
         session = await db.get_session(session_id)
         if not session:
-            return {"status": ResultStatus.ERROR.value, "message": f"Session {session_id} not found"}
+            return {"status": "error", "message": f"Session {session_id} not found"}
 
-        try:
-            format_enum = TranscriptFormat(output_format)
-        except ValueError:
-            return {"status": ResultStatus.ERROR.value, "message": f"Invalid output_format: {output_format}"}
-
-        if format_enum is TranscriptFormat.HTML:
+        if output_format == "html":
             formatted_content = content
             parse_mode = "HTML"
         else:
@@ -886,25 +893,22 @@ class MCPHandlersMixin:
         try:
             # MCP send_result creates persistent messages (AI responses to user)
             message_id = await self.client.send_message(
-                session=session, message=formatted_content, metadata=metadata, ephemeral=False
+                session=session, text=formatted_content, metadata=metadata, ephemeral=False
             )
-            return {"status": ResultStatus.SUCCESS.value, "message_id": message_id}
+            return {"status": "success", "message_id": message_id}
         except Exception as e:
             logger.warning("MarkdownV2 send failed, falling back to plain text: %s", e)
             try:
                 message_id = await self.client.send_message(
-                    session=session,
-                    message=content[:4096],
-                    metadata=MessageMetadata(parse_mode=""),
-                    ephemeral=False,
+                    session=session, text=content[:4096], metadata=MessageMetadata(parse_mode=""), ephemeral=False
                 )
                 return {
-                    "status": ResultStatus.SUCCESS.value,
+                    "status": "success",
                     "message_id": message_id,
                     "warning": "Sent as plain text due to formatting error",
                 }
             except Exception as fallback_error:
-                return {"status": ResultStatus.ERROR.value, "message": f"Failed to send result: {fallback_error}"}
+                return {"status": "error", "message": f"Failed to send result: {fallback_error}"}
 
     # =========================================================================
     # Workflow Tools (Next Machine)
@@ -1026,7 +1030,7 @@ class MCPHandlersMixin:
 
     def _extract_session_id(self, result: object) -> str | None:
         """Extract session_id from handle_event result."""
-        if not isinstance(result, dict) or result.get("status") != ResultStatus.SUCCESS.value:
+        if not isinstance(result, dict) or result.get("status") != "success":
             return None
         data: object = result.get("data", {})
         if not isinstance(data, dict):
@@ -1036,7 +1040,7 @@ class MCPHandlersMixin:
 
     def _extract_tmux_session_name(self, result: object) -> str | None:
         """Extract tmux_session_name from handle_event result."""
-        if not isinstance(result, dict) or result.get("status") != ResultStatus.SUCCESS.value:
+        if not isinstance(result, dict) or result.get("status") != "success":
             return None
         data: object = result.get("data", {})
         if not isinstance(data, dict):
@@ -1047,14 +1051,14 @@ class MCPHandlersMixin:
     async def _is_computer_online(self, computer: str) -> bool:
         """Check if a remote computer is online."""
         peers = await self.client.discover_peers()
-        return any(p["name"] == computer and p["status"] == ComputerStatus.ONLINE.value for p in peers)
+        return any(p["name"] == computer and p["status"] == "online" for p in peers)
 
     def _get_redis_transport(self) -> RedisTransport | None:
-        """Get Redis adapter if available."""
+        """Get Redis transport if available."""
         redis_transport_base = self.client.adapters.get("redis")
         if redis_transport_base and isinstance(redis_transport_base, RedisTransport):
             return redis_transport_base
-        logger.warning("Redis adapter not available")
+        logger.warning("Redis transport not available")
         return None
 
     async def _register_remote_listener(self, remote_session_id: str, caller_session_id: str | None) -> None:

@@ -11,17 +11,12 @@ flowchart LR
     end
 
     subgraph ServiceInterfaces["Service Interfaces"]
-        APIServer["API Server (HTTP + WS)"]
+        RESTServer["API Server"]
         MCPServer["MCP Server"]
-        TGAdapter["Telegram Adapter (UI)"]
-    end
-
-    subgraph Transport
-        RedisTransport["Redis Transport (optional)"]
+        TGAdapter["Telegram Adapter"]
     end
 
     subgraph Core["Core (Command Pipeline)"]
-        AdapterClient["AdapterClient"]
         Ingress["Command Ingress"]
         Queue["Command Queue (SQLite)"]
         Worker["Command Worker"]
@@ -30,6 +25,7 @@ flowchart LR
         Hooks["Hook Receiver (AgentCoordinator)"]
         Events["Domain Events"]
         Cache["Read Cache (Snapshots)"]
+        RedisIngress["Redis Transport Listener"]
         NextMachine["Next Machine (Orchestrator)"]
     end
 
@@ -40,16 +36,14 @@ flowchart LR
         FS["Filesystem / Artifacts"]
     end
 
-    TelecCLI --> APIServer
+    TelecCLI --> RESTServer
     MCPClient --> MCPServer
     TGUser --> TGAdapter
 
-    APIServer --> AdapterClient
-    MCPServer --> AdapterClient
-    TGAdapter --> AdapterClient
-    RedisTransport --> AdapterClient
-
-    AdapterClient --> Ingress
+    RESTServer --> Ingress
+    MCPServer --> Ingress
+    TGAdapter --> Ingress
+    RedisIngress --> Ingress
 
     Ingress --> Queue
     Queue --> Worker
@@ -58,28 +52,19 @@ flowchart LR
     Worker --> TMUX
     Worker --> Poller
     Worker --> FS
-    Poller --> AdapterClient
 
     Poller --> Events
     Hooks --> Events
     Sessions --> Events
     Events --> Cache
 
-    Cache --> APIServer
-    Cache --> MCPServer
-
     Sessions --> SQLite
     Queue --> SQLite
     Hooks --> SQLite
     Cache --> SQLite
 
-    RedisTransport --> Redis
-    Redis --> RedisTransport
-
-    Note["UI delivery scope:\n- origin_only (default)\n- all_ui (optional)\nFeedback is origin-only\nAI-to-AI skips feedback\nNo user input echo"]:::note
-    AdapterClient -.-> Note
-
-    classDef note fill:#f6f6f6,stroke:#888,color:#333,stroke-width:1px;
+    RedisIngress --> Redis
+    Redis --> RedisIngress
 ```
 
 ## Protocol-Based Capabilities
@@ -94,20 +79,20 @@ Adapters that implement `RemoteExecutionProtocol` are responsible for cross-comp
 ### UI Adapters
 Adapters that implement `UiAdapter` (via `teleclaude/adapters/ui_adapter.py`) manage human-facing interactions.
 - **TelegramAdapter**: Normalizes chat interactions.
-- **APIAdapter**: Provides a resource-first API for TUIs and web clients.
+- **APIServer**: Provides a resource-first API for TUIs and web clients.
 - **MCPServer**: Specialized adapter for AI agent integration.
 
 ## Durable Execution (Outbox Pattern)
 
 The system uses an Outbox pattern in SQLite to ensure reliable event delivery and command processing across restarts.
 
-- **api_outbox**: Stores commands originating from durable local clients (like the `telec` CLI). Ensures that commands are delivered to the daemon exactly once and responses are captured.
+- **rest_outbox**: Stores commands originating from durable local clients (like the `telec` CLI). Ensures that commands are delivered to the daemon exactly once and responses are captured.
 - **hook_outbox**: Captures agent lifecycle events (from `mcp-wrapper` hooks) and ensures they are processed by the daemon even if it was offline during the event emission.
 
 ## Boundaries
 
 ### Clients
-- Issue requests and receive responses. TUIs (Telec) use the API/WS interface.
+- Issue requests and receive responses. TUIs (Telec) use the HTTP/WS interface.
 
 ### Service Interfaces
 - API and MCP are first-class service boundaries.

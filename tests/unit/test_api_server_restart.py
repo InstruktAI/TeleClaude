@@ -1,4 +1,4 @@
-"""Unit tests for API server server exit handling."""
+"""Unit tests for API server exit handling."""
 
 from __future__ import annotations
 
@@ -19,43 +19,8 @@ class _DummyTask:
         return None
 
 
-class _TestAPIServer(APIServer):
-    async def create_channel(self, *_args, **_kwargs):  # type: ignore[override]
-        return ""
-
-    async def update_channel_title(self, *_args, **_kwargs):  # type: ignore[override]
-        return True
-
-    async def close_channel(self, *_args, **_kwargs):  # type: ignore[override]
-        return True
-
-    async def reopen_channel(self, *_args, **_kwargs):  # type: ignore[override]
-        return True
-
-    async def delete_channel(self, *_args, **_kwargs):  # type: ignore[override]
-        return True
-
-    async def send_message(self, *_args, **_kwargs):  # type: ignore[override]
-        return None
-
-    async def edit_message(self, *_args, **_kwargs):  # type: ignore[override]
-        return None
-
-    async def delete_message(self, *_args, **_kwargs):  # type: ignore[override]
-        return True
-
-    async def send_file(self, *_args, **_kwargs):  # type: ignore[override]
-        return None
-
-    async def poll_output_stream(self, *_args, **_kwargs):  # type: ignore[override]
-        return None
-
-    async def discover_peers(self, *_args, **_kwargs):  # type: ignore[override]
-        return []
-
-
-def test_api_server_done_calls_exit_handler_when_running() -> None:
-    adapter = _TestAPIServer(_DummyClient())
+def test_rest_server_done_calls_exit_handler_when_running() -> None:
+    adapter = APIServer(_DummyClient())
     adapter._running = True
 
     class _Server:
@@ -77,8 +42,8 @@ def test_api_server_done_calls_exit_handler_when_running() -> None:
     assert isinstance(socket_exists, bool)
 
 
-def test_api_server_done_noop_when_stopped() -> None:
-    adapter = _TestAPIServer(_DummyClient())
+def test_rest_server_done_noop_when_stopped() -> None:
+    adapter = APIServer(_DummyClient())
     adapter._running = False
     handler = MagicMock()
     adapter.set_on_server_exit(handler)
@@ -90,7 +55,7 @@ def test_api_server_done_noop_when_stopped() -> None:
 
 @pytest.mark.asyncio
 async def test_stop_server_sets_should_exit_when_started() -> None:
-    adapter = _TestAPIServer(_DummyClient())
+    adapter = APIServer(_DummyClient())
 
     class _Server:
         def __init__(self) -> None:
@@ -122,7 +87,7 @@ async def test_start_configures_ws_keepalive(monkeypatch) -> None:
 
     monkeypatch.setattr("teleclaude.api_server.uvicorn.Config", fake_config)
     monkeypatch.setattr("teleclaude.api_server.uvicorn.Server", _FakeServer)
-    adapter = _TestAPIServer(_DummyClient())
+    adapter = APIServer(_DummyClient())
 
     monkeypatch.setattr(adapter, "_cleanup_socket", lambda _reason: None)
     await adapter._start_server()

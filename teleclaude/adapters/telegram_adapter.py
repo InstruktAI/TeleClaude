@@ -230,16 +230,23 @@ class TelegramAdapter(
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.handle_event(
+        # Normalize via mapper
+        from teleclaude.core.command_mapper import CommandMapper
+
+        args = context.args or []
+        metadata = self._metadata()
+        # MessageMetadata from _metadata() doesn't have project_path yet,
+        # but _handle_simple_command is for session-specific commands.
+
+        cmd = CommandMapper.map_telegram_input(
             event=event,
-            payload={
-                "command": self._event_to_command(event),
-                "args": context.args or [],
-                "session_id": session.session_id,
-                "message_id": str(update.effective_message.message_id),
-            },
-            metadata=self._metadata(),
+            args=args,
+            metadata=metadata,
+            session_id=session.session_id,
         )
+        cmd.request_id = str(update.effective_message.message_id)
+
+        await self.client.handle_internal_command(cmd, metadata=metadata)
 
     def _ensure_started(self) -> None:
         """Ensure adapter is started."""

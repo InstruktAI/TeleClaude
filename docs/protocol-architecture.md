@@ -15,7 +15,7 @@ TeleClaude uses Python's `Protocol` pattern to distinguish between two types of 
 
 This separation enables clean architecture where:
 
-- **UI delivery** is scoped (origin-only by default; optional all-UI broadcast)
+- **Message broadcasting** uses all adapters with `has_ui=True`
 - **Cross-computer orchestration** uses only transport adapters implementing `RemoteExecutionProtocol`
 
 ---
@@ -81,9 +81,9 @@ class RemoteExecutionProtocol(Protocol):
 
 ### Two Types of Operations
 
-#### 1. UI Delivery (Local Sessions)
+#### 1. Message Broadcasting (Local Sessions)
 
-Delivers UI updates to the initiating adapter by default, with optional broadcast to all UI adapters.
+Distributes tmux output to all connected clients.
 
 ```python
 # Used by: Daemon, OutputPoller
@@ -92,11 +92,9 @@ await adapter_client.send_message(session_id, "Tmux output here")
 
 **Behavior:**
 
-- **Origin-only by default** (`ui_delivery.scope: origin_only`)
-- **Optional broadcast** (`ui_delivery.scope: all_ui`)
-- **Feedback messages** are always origin-only
-- **AI-to-AI sessions** skip feedback messages (listeners already deliver)
-- **User input echo** is disabled (edit/output updates convey interaction)
+- Sends to **origin adapter** (CRITICAL - failure throws exception)
+- Broadcasts to **observer adapters** with `has_ui=True` (best-effort)
+- RedisTransport skipped (has_ui=False, pure transport)
 
 #### 2. Cross-Computer Orchestration (Remote Sessions)
 
@@ -134,13 +132,13 @@ The MCP server exposes tools for Agent to interact with remote computers.
 
 ```python
 class TeleClaudeMCPServer:
-    def __init__(self, redis_transport, adapter_client, ...):
-        self.redis_transport = redis_transport  # ❌ Direct reference
+    def __init__(self, redis_adapter, adapter_client, ...):
+        self.redis_adapter = redis_adapter  # ❌ Direct reference
 
     async def list_projects(self, computer: str):
         # ❌ Bypasses AdapterClient
-        await self.redis_transport.send_request(...)
-        response = await self.redis_transport.read_response(...)
+        await self.redis_adapter.send_request(...)
+        response = await self.redis_adapter.read_response(...)
 ```
 
 ### After Refactoring ✅
@@ -238,7 +236,7 @@ Test Protocol implementation and AdapterClient routing:
 
 ```python
 # tests/unit/test_protocols.py
-def test_redis_transport_implements_protocol():
+def test_redis_adapter_implements_protocol():
     """Verify RedisTransport implements RemoteExecutionProtocol."""
     assert issubclass(RedisTransport, RemoteExecutionProtocol)
 

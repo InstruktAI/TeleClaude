@@ -42,8 +42,8 @@ async def test_start_session_extracts_tmux_name_from_event_result():
     """Test that teleclaude__start_session correctly extracts and returns tmux_session_name."""
     handler = DummyHandlers()
 
-    # Mock handle_event to return a successful result with tmux name
-    handler.client.handle_event.return_value = {
+    # Mock handle_internal_command to return a successful result with tmux name
+    handler.client.handle_internal_command.return_value = {
         "status": "success",
         "data": {"session_id": "sess-123", "tmux_session_name": "tmux-123"},
     }
@@ -66,7 +66,7 @@ async def test_start_session_handles_missing_tmux_name():
     handler = DummyHandlers()
 
     # Success but missing tmux name (or malformed data)
-    handler.client.handle_event.return_value = {
+    handler.client.handle_internal_command.return_value = {
         "status": "success",
         "data": {"session_id": "sess-123"},
     }

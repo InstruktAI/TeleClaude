@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal, Optional, Union
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionLaunchIntent
+    from teleclaude.types.commands import InternalCommand
 
 # Type alias for valid event names - provides compile-time type checking
 EventType = Literal[
@@ -39,6 +40,8 @@ EventType = Literal[
     "agent",
     "agent_restart",
     "agent_resume",
+    "exit",
+    "exit",
     "message",
     "voice",
     "file",
@@ -78,6 +81,7 @@ CommandEventType = Literal[
     "agent",
     "agent_restart",
     "agent_resume",
+    "exit",
 ]
 
 # Agent hook event types (payload event_type values from agents)
@@ -375,6 +379,7 @@ class CommandEventContext:  # pylint: disable=too-many-instance-attributes  # Ev
     channel_metadata: Optional[dict[str, object]] = None  # noqa: loose-dict - Adapter communication metadata
     auto_command: Optional[str] = None  # Legacy adapter boundary (deprecated)
     launch_intent: Optional["SessionLaunchIntent"] = None
+    internal_command: Optional["InternalCommand"] = None
 
 
 @dataclass
@@ -447,4 +452,5 @@ COMMAND_EVENTS: set[EventType] = {
     "agent",
     "agent_restart",
     "agent_resume",
+    "exit",
 }

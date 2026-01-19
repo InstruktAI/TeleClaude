@@ -1,7 +1,7 @@
 """API server for HTTP/Unix socket access.
 
 This server provides HTTP endpoints for local clients (telec CLI, etc.)
-and routes all requests through AdapterClient like other ingress paths.
+and routes write requests through AdapterClient.
 """
 
 from __future__ import annotations
@@ -10,13 +10,12 @@ import asyncio
 import json
 import os
 import shlex
-from typing import TYPE_CHECKING, AsyncIterator, Callable, Literal
+from typing import TYPE_CHECKING, Callable, Literal
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.api_models import (
     AgentAvailabilityDTO,
     ComputerDTO,
@@ -38,34 +37,17 @@ from teleclaude.api_models import (
     TodoDTO,
 )
 from teleclaude.config import config
-from teleclaude.constants import (
-    API_SOCKET_PATH,
-    DATA_TYPE_PREPARATION,
-    DATA_TYPE_PROJECTS,
-    DATA_TYPE_SESSIONS,
-    DATA_TYPE_TODOS,
-    LOCAL_COMPUTER,
-    CacheEvent,
-    ResultStatus,
-    WsAction,
-)
+from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core import command_handlers
-from teleclaude.core.agents import AgentName
+from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
 from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
-from teleclaude.core.models import (
-    ChannelMetadata,
-    MessageMetadata,
-    SessionLaunchIntent,
-    SessionLaunchKind,
-    SessionSummary,
-)
+from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSummary
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
-    from teleclaude.core.models import PeerInfo, Session
     from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
@@ -75,13 +57,11 @@ API_WS_PING_TIMEOUT_S = 20.0
 API_TIMEOUT_KEEP_ALIVE_S = 5
 API_STOP_TIMEOUT_S = 5.0
 
-RestServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
+ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 
 
-class APIServer(BaseAdapter):
-    """API server exposing HTTP API on Unix socket."""
-
-    ADAPTER_KEY = "api"
+class APIServer:
+    """HTTP API server on Unix socket."""
 
     def __init__(
         self,
@@ -105,7 +85,7 @@ class APIServer(BaseAdapter):
         self.server_task: asyncio.Task[object] | None = None
         self._metrics_task: asyncio.Task[object] | None = None
         self._running = False
-        self._on_server_exit: RestServerExitHandler | None = None
+        self._on_server_exit: ServerExitHandler | None = None
         # WebSocket state
         self._ws_clients: set[WebSocket] = set()
         # Per-computer subscriptions: {websocket: {computer: {data_types}}}
@@ -132,6 +112,10 @@ class APIServer(BaseAdapter):
 
         # Set cache through property to trigger subscription
         self.cache = cache
+
+    def _metadata(self, **kwargs: object) -> MessageMetadata:
+        """Build API boundary metadata."""
+        return MessageMetadata(adapter_type="api", **kwargs)
 
     @property
     def cache(self) -> "DaemonCache | None":
@@ -210,14 +194,14 @@ class APIServer(BaseAdapter):
 
                 # No cache: serve local sessions only (respect computer filter)
                 if not self.cache:
-                    if computer and computer not in (LOCAL_COMPUTER, config.computer.name):
+                    if computer and computer not in ("local", config.computer.name):
                         return []
                     return [SessionSummaryDTO.from_core(s, computer=s.computer) for s in local_sessions]
 
                 # With cache, merge local + cached sessions
                 if computer:
                     cached_filtered = self.cache.get_sessions(computer)
-                    if computer in (LOCAL_COMPUTER, config.computer.name):
+                    if computer in ("local", config.computer.name):
                         by_id = {s.session_id: s for s in local_sessions}
                         for s in cached_filtered:
                             by_id.setdefault(s.session_id, s)
@@ -241,24 +225,28 @@ class APIServer(BaseAdapter):
             request: CreateSessionRequest,
         ) -> CreateSessionResponseDTO:
             """Create new session (local or remote)."""
-            # Derive title from message if not provided
+            # Normalize request into internal command.
+
+            metadata = self._metadata(
+                title=request.title or "Untitled",
+                project_path=request.project_path,
+                subdir=request.subdir,
+                # launch_intent and auto_command logic will be simplified or moved
+            )
+
+            # Extract title from message if not provided (legacy behavior)
             title = request.title
             if not title and request.message and request.message.startswith("/"):
                 title = request.message
             title = title or "Untitled"
 
-            args = [title] if title else []
-
-            auto_command = request.auto_command
-            message_text = request.message if request.message else None
-
             effective_agent = request.agent or "claude"
             effective_thinking_mode = request.thinking_mode or "slow"
 
             launch_intent = None
-            if not auto_command:
+            if not request.auto_command:
                 launch_kind = SessionLaunchKind(request.launch_kind)
-                if launch_kind == SessionLaunchKind.AGENT and message_text is not None:
+                if launch_kind == SessionLaunchKind.AGENT and request.message:
                     launch_kind = SessionLaunchKind.AGENT_THEN_MESSAGE
 
                 if launch_kind == SessionLaunchKind.EMPTY:
@@ -272,13 +260,13 @@ class APIServer(BaseAdapter):
                         native_session_id=request.native_session_id,
                     )
                 elif launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
-                    if message_text is None:
+                    if request.message is None:
                         raise HTTPException(status_code=400, detail="message required for agent_then_message")
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
                         agent=effective_agent,
                         thinking_mode=effective_thinking_mode,
-                        message=message_text,
+                        message=request.message,
                     )
                 else:
                     launch_intent = SessionLaunchIntent(
@@ -287,6 +275,7 @@ class APIServer(BaseAdapter):
                         thinking_mode=effective_thinking_mode,
                     )
 
+            auto_command = request.auto_command
             if not auto_command and launch_intent:
                 if launch_intent.kind == SessionLaunchKind.AGENT:
                     auto_command = f"agent {launch_intent.agent} {launch_intent.thinking_mode}"
@@ -301,28 +290,23 @@ class APIServer(BaseAdapter):
                     else:
                         auto_command = f"agent_resume {launch_intent.agent}"
 
+            # Update metadata with derived fields
+            metadata.title = title
+            metadata.launch_intent = launch_intent
+            metadata.auto_command = auto_command
+            cmd = CommandMapper.map_rest_input("new_session", {}, metadata)
+
             try:
-                envelope = await self.client.handle_event(
-                    event="new_session",
-                    payload={
-                        "session_id": "",  # Will be created
-                        "args": args,
-                    },
-                    metadata=self._metadata(
-                        title=title,
-                        project_path=request.project_path,
-                        subdir=request.subdir,
-                        launch_intent=launch_intent,
-                        auto_command=auto_command,
-                    ),
-                )
+                # Use the new handle_internal_command entry point
+                envelope = await self.client.handle_internal_command(cmd, metadata=metadata)
+
                 if not isinstance(envelope, dict):
                     raise HTTPException(status_code=500, detail="Invalid session creation response")
 
-                status = str(envelope.get("status", ResultStatus.ERROR.value))
-                if status != ResultStatus.SUCCESS.value:
+                status = str(envelope.get("status", "error"))
+                if status != "success":
                     error_msg = str(envelope.get("error", "Session creation failed"))
-                    return CreateSessionResponseDTO(status=ResultStatus.ERROR.value, error=error_msg)
+                    return CreateSessionResponseDTO(status="error", error=error_msg)
 
                 data = envelope.get("data")
                 if not isinstance(data, dict):
@@ -340,7 +324,7 @@ class APIServer(BaseAdapter):
                         tmux_session_name = session.tmux_session_name
 
                 return CreateSessionResponseDTO(
-                    status=ResultStatus.SUCCESS.value,
+                    status="success",
                     session_id=str(session_id) if session_id else None,
                     tmux_session_name=str(tmux_session_name) if tmux_session_name else None,
                 )
@@ -357,9 +341,14 @@ class APIServer(BaseAdapter):
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """End session - local sessions only (remote session management via MCP tools)."""
             try:
-                # Use command handler directly - only supports LOCAL sessions
-                result = await command_handlers.handle_end_session(session_id, self.client)
-                return dict(result)
+                metadata = self._metadata()
+                cmd = CommandMapper.map_rest_input(
+                    "end_session",
+                    {"session_id": session_id},
+                    metadata,
+                )
+                result = await self.client.handle_internal_command(cmd, metadata=metadata)
+                return {"status": "success", "result": result}
             except Exception as e:
                 logger.error("Failed to end session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e
@@ -370,23 +359,16 @@ class APIServer(BaseAdapter):
             request: SendMessageRequest,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
-            """Send message to session.
-
-            Args:
-                session_id: Session ID (unique across computers)
-                request: Message request
-                computer: Optional computer name (for API consistency, not used)
-            """
+            """Send message to session."""
             try:
-                result = await self.client.handle_event(
-                    event="message",
-                    payload={
-                        "session_id": session_id,
-                        "text": request.message,
-                    },
-                    metadata=self._metadata(),
+                metadata = self._metadata()
+                cmd = CommandMapper.map_rest_input(
+                    "message",
+                    {"session_id": session_id, "text": request.message},
+                    metadata,
                 )
-                return {"status": ResultStatus.SUCCESS.value, "result": result}
+                result = await self.client.handle_internal_command(cmd, metadata=metadata)
+                return {"status": "success", "result": result}
             except Exception as e:
                 logger.error("send_message failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
@@ -397,11 +379,14 @@ class APIServer(BaseAdapter):
         ) -> dict[str, str]:
             """Restart agent in session (preserves conversation via --resume)."""
             try:
-                await self.client.handle_event(
-                    event="agent_restart",
-                    payload={"args": [], "session_id": session_id},
-                    metadata=self._metadata(),
+                # Normalize command through mapper before dispatching
+                metadata = self._metadata()
+                cmd = CommandMapper.map_rest_input(
+                    "agent_restart",
+                    {"session_id": session_id, "args": []},
+                    metadata,
                 )
+                await self.client.handle_internal_command(cmd, metadata=metadata)
                 return {"status": "ok"}
             except Exception as e:
                 logger.error("agent_restart failed for session %s: %s", session_id, e, exc_info=True)
@@ -423,15 +408,19 @@ class APIServer(BaseAdapter):
             try:
                 result = await self.client.handle_event(
                     event="get_session_data",
-                    payload={
-                        "session_id": session_id,
-                        "args": [str(tail_chars)],
-                    },
+                    payload={"session_id": session_id, "args": [str(tail_chars)]},
                     metadata=self._metadata(),
                 )
                 if not isinstance(result, dict):
                     raise HTTPException(status_code=500, detail="Invalid transcript response")
-                return SessionDataDTO.model_validate(result)
+                if result.get("status") == "error":
+                    raise HTTPException(status_code=500, detail=str(result.get("error", "Invalid transcript response")))
+                data = result.get("data")
+                if isinstance(data, dict):
+                    return SessionDataDTO.model_validate(data)
+                if data is None:
+                    return SessionDataDTO(status="success", session_id=session_id)
+                raise HTTPException(status_code=500, detail="Invalid transcript response")
             except Exception as e:
                 logger.error("get_transcript failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to get transcript: {e}") from e
@@ -530,7 +519,7 @@ class APIServer(BaseAdapter):
             """Get agent availability."""
             from teleclaude.core.db import db
 
-            agents: tuple[str, ...] = AgentName.choices()
+            agents: list[Literal["claude", "gemini", "codex"]] = ["claude", "gemini", "codex"]
             result: dict[str, AgentAvailabilityDTO] = {}
 
             for agent in agents:
@@ -574,7 +563,7 @@ class APIServer(BaseAdapter):
             """
             try:
                 if not self.cache:
-                    if project and (computer in (None, LOCAL_COMPUTER)):
+                    if project and (computer in (None, "local")):
                         raw_todos = await command_handlers.handle_list_todos(project)
                         return [
                             TodoDTO(
@@ -657,15 +646,15 @@ class APIServer(BaseAdapter):
                 data: dict[str, object] = data_raw  # guard: loose-dict - WebSocket message
 
                 # Handle subscription messages
-                if WsAction.SUBSCRIBE.value in data:
-                    subscribe_data = data[WsAction.SUBSCRIBE.value]
+                if "subscribe" in data:
+                    subscribe_data = data["subscribe"]
 
                     # Support both old format (string) and new format (dict)
                     if isinstance(subscribe_data, str):
                         # Old format: {"subscribe": "sessions"}
                         # Treat as subscription to "local" computer for backward compatibility
                         topic = subscribe_data
-                        computer = LOCAL_COMPUTER
+                        computer = "local"
                         if computer not in self._client_subscriptions[websocket]:
                             self._client_subscriptions[websocket][computer] = set()
                         self._client_subscriptions[websocket][computer].add(topic)
@@ -708,8 +697,8 @@ class APIServer(BaseAdapter):
                         self._update_cache_interest()
 
                 # Handle unsubscribe messages
-                elif WsAction.UNSUBSCRIBE.value in data:
-                    unsubscribe_data = data[WsAction.UNSUBSCRIBE.value]
+                elif "unsubscribe" in data:
+                    unsubscribe_data = data["unsubscribe"]
 
                     if isinstance(unsubscribe_data, dict):
                         # New format: {"unsubscribe": {"computer": "raspi"}}
@@ -811,16 +800,16 @@ class APIServer(BaseAdapter):
 
     async def _pull_remote_on_interest(self, computer: str, data_type: str) -> None:
         """Pull remote data immediately after subscription."""
-        if computer == LOCAL_COMPUTER:
+        if computer == "local":
             return
         adapter = self.client.adapters.get("redis")
         if not isinstance(adapter, RedisTransport):
             return
 
         await adapter.refresh_peers_from_heartbeats()
-        if data_type in (DATA_TYPE_PROJECTS, DATA_TYPE_PREPARATION):
+        if data_type in ("projects", "preparation"):
             await adapter.pull_remote_projects_with_todos(computer)
-        elif data_type == DATA_TYPE_SESSIONS:
+        elif data_type == "sessions":
             await adapter.pull_interested_sessions()
 
     def _refresh_stale_projects(self, computers: set[str]) -> None:
@@ -832,7 +821,7 @@ class APIServer(BaseAdapter):
             return
 
         for computer in sorted(computers):
-            if computer == LOCAL_COMPUTER:
+            if computer == "local":
                 continue
             coro = adapter.pull_remote_projects_with_todos(computer)
             if self.task_registry:
@@ -842,7 +831,7 @@ class APIServer(BaseAdapter):
 
     def _refresh_stale_todos(self, computer: str, project_path: str) -> None:
         """Trigger background refresh for stale todo cache entries."""
-        if not self.cache or not project_path or computer == LOCAL_COMPUTER:
+        if not self.cache or not project_path or computer == "local":
             return
         cache_key = f"{computer}:{project_path}"
         if not self.cache.is_stale(cache_key, 300):
@@ -865,17 +854,17 @@ class APIServer(BaseAdapter):
             computer: Computer name to filter data by
         """
         try:
-            if data_type == DATA_TYPE_SESSIONS:
+            if data_type == "sessions":
                 # Send current sessions from cache for this computer
                 if self.cache:
                     cached_sessions = self.cache.get_sessions(computer)
                     sessions = [SessionSummaryDTO.from_core(s, computer=s.computer) for s in cached_sessions]
                     event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions, computer=computer))
                     await websocket.send_json(event.model_dump(exclude_none=True))
-            elif data_type in (DATA_TYPE_PREPARATION, DATA_TYPE_PROJECTS):
+            elif data_type in ("preparation", "projects"):
                 # Send current projects from cache for this computer
                 if self.cache:
-                    cached_projects = self.cache.get_projects(computer if computer != LOCAL_COMPUTER else None)
+                    cached_projects = self.cache.get_projects(computer if computer != "local" else None)
                     projects: list[ProjectDTO] = []
                     for proj in cached_projects:
                         projects.append(
@@ -888,13 +877,11 @@ class APIServer(BaseAdapter):
                         )
 
                     event = ProjectsInitialEventDTO(
-                        event=CacheEvent.PROJECTS_INITIAL.value
-                        if data_type == DATA_TYPE_PROJECTS
-                        else CacheEvent.PREPARATION_INITIAL.value,
+                        event="projects_initial" if data_type == "projects" else "preparation_initial",
                         data=ProjectsInitialDataDTO(projects=projects, computer=computer),
                     )
                     await websocket.send_json(event.model_dump(exclude_none=True))
-            elif data_type == DATA_TYPE_TODOS:
+            elif data_type == "todos":
                 # Todos are project-specific, can't send initial state without project context
                 logger.debug("Skipping initial state for todos (project-specific)")
         except Exception as e:
@@ -907,11 +894,11 @@ class APIServer(BaseAdapter):
             event: Event type (e.g., "session_updated", "computer_updated")
             data: Event data
         """
-        if event == CacheEvent.SESSION_UPDATED.value:
+        if event == "session_updated":
             return
         # Convert to DTO payload if necessary
         payload: dict[str, object]  # guard: loose-dict - WebSocket payload assembly
-        if event == CacheEvent.SESSION_CREATED.value:
+        if event == "session_created":
             if isinstance(data, SessionSummary):
                 dto = SessionSummaryDTO.from_core(data, computer=data.computer)
                 # Proper cast for Mypy Literal
@@ -924,7 +911,7 @@ class APIServer(BaseAdapter):
                 payload = {"event": event, "data": data}
             else:
                 payload = {"event": event, "data": data}
-        elif event == CacheEvent.SESSION_REMOVED.value:
+        elif event == "session_removed":
             if isinstance(data, dict):
                 payload = SessionRemovedEventDTO(
                     data=SessionRemovedDataDTO(session_id=str(data.get("session_id", "")))
@@ -932,12 +919,12 @@ class APIServer(BaseAdapter):
             else:
                 payload = {"event": event, "data": data}
         elif event in (
-            CacheEvent.COMPUTER_UPDATED.value,
-            CacheEvent.PROJECT_UPDATED.value,
-            CacheEvent.PROJECTS_UPDATED.value,
-            CacheEvent.TODOS_UPDATED.value,
-            CacheEvent.PROJECTS_SNAPSHOT.value,
-            CacheEvent.TODOS_SNAPSHOT.value,
+            "computer_updated",
+            "project_updated",
+            "projects_updated",
+            "todos_updated",
+            "projects_snapshot",
+            "todos_snapshot",
         ):
             computer: str | None = None
             project_path: str | None = None
@@ -957,16 +944,16 @@ class APIServer(BaseAdapter):
                     path_val = getattr(data, "path")
                     if isinstance(path_val, str):
                         project_path = path_val
-                if event == CacheEvent.COMPUTER_UPDATED.value and computer is None and hasattr(data, "name"):
+                if event == "computer_updated" and computer is None and hasattr(data, "name"):
                     name_val = getattr(data, "name")
                     if isinstance(name_val, str):
                         computer = name_val
 
             normalized_event: Literal["computer_updated", "project_updated", "projects_updated", "todos_updated"]
-            if event == CacheEvent.PROJECTS_SNAPSHOT.value:
-                normalized_event = CacheEvent.PROJECTS_UPDATED.value
-            elif event == CacheEvent.TODOS_SNAPSHOT.value:
-                normalized_event = CacheEvent.TODOS_UPDATED.value
+            if event == "projects_snapshot":
+                normalized_event = "projects_updated"
+            elif event == "todos_snapshot":
+                normalized_event = "todos_updated"
             else:
                 normalized_event = event
 
@@ -1035,16 +1022,16 @@ class APIServer(BaseAdapter):
             pass
 
     async def start(self) -> None:
-        """Start the API API server on Unix socket."""
+        """Start the API server on Unix socket."""
         self._running = True
-        logger.info("API API server starting")
+        logger.info("API server starting")
         await self._start_server()
         self._start_metrics_task()
 
     async def stop(self) -> None:
-        """Stop the API API server."""
+        """Stop the API server."""
         self._running = False
-        logger.info("API API server stopping")
+        logger.info("API server stopping")
         await self._stop_metrics_task()
         # Unsubscribe from cache changes
         if self.cache:
@@ -1065,7 +1052,7 @@ class APIServer(BaseAdapter):
         await self._stop_server()
         self._cleanup_socket("stop")
 
-        logger.info("API API server stopped")
+        logger.info("API server stopped")
 
     async def _start_server(self) -> None:
         """Start uvicorn server and attach restart handler."""
@@ -1103,22 +1090,22 @@ class APIServer(BaseAdapter):
                 break
             if self.server_task.done():
                 exc = self.server_task.exception()
-                raise RuntimeError("API API server exited during startup") from exc
+                raise RuntimeError("API server exited during startup") from exc
             await asyncio.sleep(0.1)
         if not server.started:
-            raise TimeoutError("API API server failed to start within timeout")
+            raise TimeoutError("API server failed to start within timeout")
 
-        logger.info("API API server listening on %s", API_SOCKET_PATH)
+        logger.info("API server listening on %s", API_SOCKET_PATH)
 
     async def restart_server(self) -> None:
-        """Restart uvicorn server without tearing down adapter state."""
+        """Restart uvicorn server without tearing down server state."""
         await self._stop_server()
         if self.server_task and not self.server_task.done():
             logger.error("API server stop incomplete; aborting restart")
             return
         await self._start_server()
 
-    def set_on_server_exit(self, handler: RestServerExitHandler | None) -> None:
+    def set_on_server_exit(self, handler: ServerExitHandler | None) -> None:
         """Set callback invoked when the uvicorn server task exits."""
         self._on_server_exit = handler
 
@@ -1157,7 +1144,7 @@ class APIServer(BaseAdapter):
                 logger.debug("Error during server shutdown: %s", e)
 
     def _start_metrics_task(self) -> None:
-        """Start periodic API metrics logging."""
+        """Start periodic API server metrics logging."""
         if self._metrics_task and not self._metrics_task.done():
             return
         coro = self._metrics_loop()
@@ -1167,7 +1154,7 @@ class APIServer(BaseAdapter):
             self._metrics_task = asyncio.create_task(coro)
 
     async def _stop_metrics_task(self) -> None:
-        """Stop periodic API metrics logging."""
+        """Stop periodic API server metrics logging."""
         if not self._metrics_task:
             return
         if not self._metrics_task.done():
@@ -1189,7 +1176,7 @@ class APIServer(BaseAdapter):
             server_should_exit = getattr(server, "should_exit", None) if server else None
             server_task_done = self.server_task.done() if self.server_task else None
             logger.info(
-                "API metrics: fds=%d ws=%d tasks=%d started=%s should_exit=%s task_done=%s",
+                "API server metrics: fds=%d ws=%d tasks=%d started=%s should_exit=%s task_done=%s",
                 fd_count,
                 ws_count,
                 task_count,
@@ -1200,18 +1187,18 @@ class APIServer(BaseAdapter):
             await asyncio.sleep(60)
 
     def _cleanup_socket(self, reason: str) -> None:
-        """Remove API socket file if present."""
+        """Remove API server socket file if present."""
         if not os.path.exists(API_SOCKET_PATH):
             return
         try:
             logger.warning(
-                "Removing API socket (reason=%s): %s",
+                "Removing API server socket (reason=%s): %s",
                 reason,
                 API_SOCKET_PATH,
             )
             os.unlink(API_SOCKET_PATH)
         except OSError as e:
-            logger.warning("Failed to remove API socket %s: %s", API_SOCKET_PATH, e)
+            logger.warning("Failed to remove API server socket %s: %s", API_SOCKET_PATH, e)
 
     def _on_server_task_done(
         self,
@@ -1229,7 +1216,7 @@ class APIServer(BaseAdapter):
         try:
             exc = task.exception()
         except asyncio.CancelledError:
-            logger.debug("API API server task cancelled")
+            logger.debug("API server task cancelled")
             return
 
         server_ref = server or self.server
@@ -1239,7 +1226,7 @@ class APIServer(BaseAdapter):
 
         if exc:
             logger.error(
-                "API API server task crashed: %s (started=%s should_exit=%s socket=%s)",
+                "API server task crashed: %s (started=%s should_exit=%s socket=%s)",
                 exc,
                 server_started,
                 server_should_exit,
@@ -1248,14 +1235,14 @@ class APIServer(BaseAdapter):
             )
         elif not server_should_exit:
             logger.error(
-                "API API server task exited unexpectedly (started=%s should_exit=%s socket=%s)",
+                "API server task exited unexpectedly (started=%s should_exit=%s socket=%s)",
                 server_started,
                 server_should_exit,
                 socket_exists,
             )
         else:
             logger.debug(
-                "API API server task exited cleanly (started=%s should_exit=%s socket=%s)",
+                "API server task exited cleanly (started=%s should_exit=%s socket=%s)",
                 server_started,
                 server_should_exit,
                 socket_exists,
@@ -1263,96 +1250,6 @@ class APIServer(BaseAdapter):
 
         if self._on_server_exit:
             self._on_server_exit(exc, server_started, server_should_exit, socket_exists)
-
-    # ==================== BaseAdapter abstract methods (mostly no-ops) ====================
-
-    async def create_channel(
-        self,
-        session: Session,
-        title: str,
-        metadata: ChannelMetadata,
-    ) -> str:
-        """No-op for API server (no channels)."""
-        _ = (session, title, metadata)
-        return ""
-
-    async def update_channel_title(self, session: Session, title: str) -> bool:
-        """No-op for API server."""
-        _ = (session, title)
-        return True
-
-    async def close_channel(self, session: Session) -> bool:
-        """No-op for API server."""
-        _ = session
-        return True
-
-    async def reopen_channel(self, session: Session) -> bool:
-        """No-op for API server."""
-        _ = session
-        return True
-
-    async def delete_channel(self, session: Session) -> bool:
-        """No-op for API server."""
-        _ = session
-        return True
-
-    async def send_message(
-        self,
-        session: Session,
-        text: str,
-        *,
-        metadata: MessageMetadata | None = None,
-    ) -> str:
-        """No-op for API server (clients poll for output)."""
-        _ = (session, text, metadata)
-        return ""
-
-    async def edit_message(
-        self,
-        session: Session,
-        message_id: str,
-        text: str,
-        *,
-        metadata: MessageMetadata | None = None,
-    ) -> bool:
-        """No-op for API server."""
-        _ = (session, message_id, text, metadata)
-        return True
-
-    async def delete_message(self, session: Session, message_id: str) -> bool:
-        """No-op for API server."""
-        _ = (session, message_id)
-        return True
-
-    async def send_file(
-        self,
-        session: Session,
-        file_path: str,
-        *,
-        caption: str | None = None,
-        metadata: MessageMetadata | None = None,
-    ) -> str:
-        """No-op for API server."""
-        _ = (session, file_path, caption, metadata)
-        return ""
-
-    async def discover_peers(self) -> list[PeerInfo]:
-        """API server doesn't discover peers."""
-        return []
-
-    async def poll_output_stream(
-        self,
-        session: Session,
-        timeout: float = 300.0,
-    ) -> AsyncIterator[str]:
-        """No-op for API server."""
-        _ = (session, timeout)
-
-        async def _empty() -> AsyncIterator[str]:
-            if False:
-                yield ""
-
-        return _empty()
 
 
 def _get_fd_count() -> int:

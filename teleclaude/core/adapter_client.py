@@ -6,7 +6,6 @@ a clean, unified interface for the daemon and MCP server.
 
 import asyncio
 import os
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Literal, Optional, cast, overload
 
@@ -15,9 +14,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.api_server import APIServer
 from teleclaude.config import config
-from teleclaude.constants import AdapterKey, AdapterOp, UiScope
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     COMMAND_EVENTS,
@@ -44,7 +41,6 @@ from teleclaude.core.events import (
     VoiceEventContext,
 )
 from teleclaude.core.models import (
-    AdapterType,
     ChannelMetadata,
     CleanupTrigger,
     MessageMetadata,
@@ -53,6 +49,7 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.transport.redis_transport import RedisTransport
+from teleclaude.types.commands import InternalCommand, SystemCommand
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -92,13 +89,13 @@ EventHandler = (
 class AdapterClient:
     """Unified interface for multi-adapter operations.
 
-    Manages multiple adapters (Telegram, Redis, etc.) and provides a clean,
-    adapter-agnostic API. Owns the complete adapter lifecycle.
+    Manages UI adapters (Telegram) and transport services (Redis), and provides
+    a clean, boundary-agnostic API. Owns the lifecycle of registered components.
 
     Key responsibilities:
-    - Adapter creation and registration
-    - Adapter lifecycle management
-    - Peer discovery aggregation from all adapters
+    - Component creation and registration
+    - Component lifecycle management
+    - Peer discovery aggregation from transports
     - (Future) Session-aware routing
     - (Future) Parallel broadcasting to multiple adapters
     """
@@ -131,34 +128,9 @@ class AdapterClient:
         self.adapters[adapter_type] = adapter
         logger.info("Registered adapter: %s", adapter_type)
 
-    @dataclass(frozen=True)
-    class _UiDeliveryPlan:
-        origin_type: str | None
-        origin: UiAdapter | None
-        observers: list[tuple[str, UiAdapter]]
-        all_ui: list[tuple[str, UiAdapter]]
-
-    def _ui_delivery_plan(self, session: "Session") -> "_UiDeliveryPlan":
-        """Compute UI delivery plan once (origin + observers)."""
-        all_ui = self._ui_adapters()
-        origin_type = session.origin_adapter
-        origin: UiAdapter | None = None
-        observers: list[tuple[str, UiAdapter]] = []
-        for adapter_type, adapter in all_ui:
-            if adapter_type == origin_type:
-                origin = adapter
-            else:
-                observers.append((adapter_type, adapter))
-        return self._UiDeliveryPlan(
-            origin_type=origin_type,
-            origin=origin,
-            observers=observers,
-            all_ui=all_ui,
-        )
-
-    def _ui_broadcast_enabled(self) -> bool:
-        """Return True when UI updates should broadcast to all UI adapters."""
-        return config.ui_delivery.scope == UiScope.ALL.value
+    def _origin_ui_adapter(self, session: "Session") -> UiAdapter | None:
+        adapter = self.adapters.get(session.origin_adapter)
+        return adapter if isinstance(adapter, UiAdapter) else None
 
     def _ui_adapters(self) -> list[tuple[str, UiAdapter]]:
         return [
@@ -192,7 +164,7 @@ class AdapterClient:
                     session.session_id[:8],
                     result,
                 )
-                if adapter_type == AdapterType.TELEGRAM.value and self._is_missing_thread_error(result):
+                if adapter_type == "telegram" and self._is_missing_thread_error(result):
                     missing_thread_error = result
                     telegram_index = index
             output.append((adapter_type, result))
@@ -200,7 +172,7 @@ class AdapterClient:
         if missing_thread_error:
             updated_session = await self._handle_missing_telegram_thread(session, missing_thread_error)
             telegram_adapter = next(
-                (adapter for adapter_type, adapter in ui_adapters if adapter_type == AdapterType.TELEGRAM.value),
+                (adapter for adapter_type, adapter in ui_adapters if adapter_type == "telegram"),
                 None,
             )
             if telegram_adapter:
@@ -210,9 +182,9 @@ class AdapterClient:
                         session.title = updated_session.title
                     retry_result = await task_factory(telegram_adapter)
                     if telegram_index is not None:
-                        output[telegram_index] = (AdapterType.TELEGRAM.value, retry_result)
+                        output[telegram_index] = ("telegram", retry_result)
                     else:
-                        output.append((AdapterType.TELEGRAM.value, retry_result))
+                        output.append(("telegram", retry_result))
                 except Exception as exc:
                     logger.warning(
                         "UI adapter telegram failed %s retry for session %s: %s",
@@ -237,27 +209,22 @@ class AdapterClient:
             Exception: If adapter start() fails (daemon crashes - this is intentional)
             ValueError: If no adapters started
         """
-        # API adapter (local HTTP API)
-        api_server = APIServer(self, task_registry=self.task_registry)
-        await api_server.start()
-        self.adapters[AdapterKey.API.value] = api_server
-
         # Telegram adapter
         if os.getenv("TELEGRAM_BOT_TOKEN"):
             telegram = TelegramAdapter(self)
             await telegram.start()  # Raises if fails → daemon crashes
-            self.adapters[AdapterType.TELEGRAM.value] = telegram  # Register ONLY after success
+            self.adapters["telegram"] = telegram  # Register ONLY after success
             logger.info("Started telegram adapter")
 
         # Redis adapter
         if config.redis.enabled:
             redis = RedisTransport(self, task_registry=self.task_registry)
             await redis.start()  # Raises if fails → daemon crashes
-            self.adapters[AdapterType.REDIS.value] = redis  # Register ONLY after success
-            logger.info("Started redis adapter")
+            self.adapters["redis"] = redis  # Register ONLY after success
+            logger.info("Started redis transport")
 
         # Validate at least one adapter started
-        if len(self.adapters) == 1 and AdapterKey.API.value in self.adapters:
+        if not self.adapters:
             raise ValueError("No adapters started - check config.yml and .env")
 
         logger.info("Started %d adapter(s): %s", len(self.adapters), list(self.adapters.keys()))
@@ -282,7 +249,6 @@ class AdapterClient:
     async def _broadcast_to_observers(
         self,
         session: "Session",
-        observers: list[tuple[str, UiAdapter]],
         operation: str,
         task_factory: Callable[[UiAdapter], Awaitable[object]],
     ) -> None:
@@ -296,17 +262,12 @@ class AdapterClient:
             operation: Operation name for logging
             task_factory: Function that takes adapter and returns awaitable
         """
-        observer_tasks: list[tuple[str, Awaitable[object]]] = [
-            (adapter_type, task_factory(adapter)) for adapter_type, adapter in observers
-        ]
-
-        if operation == AdapterOp.DELETE_MESSAGE.value:
-            logger.debug(
-                "Broadcast delete to observers: session=%s origin=%s observers=%s",
-                session.session_id[:8],
-                session.origin_adapter,
-                [t for t, _ in observer_tasks],
-            )
+        observer_tasks: list[tuple[str, Awaitable[object]]] = []
+        for adapter_type, adapter in self.adapters.items():
+            if adapter_type == session.origin_adapter:
+                continue
+            if isinstance(adapter, UiAdapter):
+                observer_tasks.append((adapter_type, task_factory(adapter)))
 
         if observer_tasks:
             results = await asyncio.gather(*[task for _, task in observer_tasks], return_exceptions=True)
@@ -330,7 +291,6 @@ class AdapterClient:
         session: "Session",
         method: str,
         *args: object,
-        broadcast: Optional[bool] = None,
         **kwargs: object,
     ) -> object:
         """Route operation to origin UI adapter + broadcast to observers.
@@ -347,13 +307,12 @@ class AdapterClient:
         Returns:
             First truthy result, or None if no truthy results
         """
-        plan = self._ui_delivery_plan(session)
-        do_broadcast = self._ui_broadcast_enabled() if broadcast is None else broadcast
+        origin_ui = self._origin_ui_adapter(session)
 
         def make_task(adapter: UiAdapter) -> Awaitable[object]:
             return cast(Awaitable[object], getattr(adapter, method)(session, *args, **kwargs))
 
-        if not plan.origin:
+        if not origin_ui:
             results = await self._broadcast_to_ui_adapters(session, method, make_task)
             for _, result in results:
                 if isinstance(result, Exception):
@@ -363,28 +322,27 @@ class AdapterClient:
             return None
 
         # Call origin (let exceptions propagate)
-        result = await cast(Awaitable[object], getattr(plan.origin, method)(session, *args, **kwargs))
+        result = await cast(Awaitable[object], getattr(origin_ui, method)(session, *args, **kwargs))
 
         # Broadcast to observers (best-effort)
-        if do_broadcast:
-            await self._broadcast_to_observers(session, plan.observers, method, make_task)
+        await self._broadcast_to_observers(session, method, make_task)
 
         return result
 
     async def send_message(
         self,
         session: "Session",
-        message: str,
+        text: str,
         *,
         metadata: MessageMetadata | None = None,
         cleanup_trigger: CleanupTrigger = CleanupTrigger.NEXT_NOTICE,
         ephemeral: bool = True,
     ) -> str | None:
-        """Send a UI message (origin-only).
+        """Send message to ALL UiAdapters (origin + observers).
 
         Args:
             session: Session object (daemon already fetched it)
-            message: Message text
+            text: Message text
             metadata: Adapter-specific metadata
             cleanup_trigger: When this message should be removed.
                 - CleanupTrigger.NEXT_NOTICE: removed on next notice message
@@ -395,21 +353,15 @@ class AdapterClient:
         Returns:
             message_id from origin adapter, or None if send failed
         """
-        notice_mode = cleanup_trigger == CleanupTrigger.NEXT_NOTICE
+        # Convert cleanup_trigger enum to feedback boolean (internal implementation)
+        feedback = cleanup_trigger == CleanupTrigger.NEXT_NOTICE
 
-        # Skip feedback for AI-to-AI sessions (listeners already deliver)
-        if notice_mode and session.initiator_session_id:
-            return None
-
-        plan = self._ui_delivery_plan(session)
-        broadcast = False
-
-        # Notice mode: delete old notices before sending new (origin only)
-        if notice_mode and ephemeral:
+        # Feedback mode: delete old feedback before sending new
+        if feedback:
             pending = await db.get_pending_deletions(session.session_id, deletion_type="feedback")
             if pending:
                 logger.debug(
-                    "Notice cleanup: session=%s pending_count=%d",
+                    "Feedback cleanup: session=%s pending_count=%d",
                     session.session_id[:8],
                     len(pending),
                 )
@@ -417,43 +369,34 @@ class AdapterClient:
             failed = 0
             for msg_id in pending:
                 try:
-                    if plan.origin:
-                        ok = await cast(Awaitable[object], plan.origin.delete_message(session, msg_id))
-                    else:
-                        ok = await self.delete_message(session, msg_id)
+                    ok = await self.delete_message(session, msg_id)
                     if ok:
                         deleted += 1
                     else:
                         failed += 1
                 except Exception as e:
-                    logger.debug("Best-effort notice deletion failed: %s", e)
+                    logger.debug("Best-effort feedback deletion failed: %s", e)
                     failed += 1
             if pending:
                 logger.debug(
-                    "Notice cleanup result: session=%s deleted=%d failed=%d",
+                    "Feedback cleanup result: session=%s deleted=%d failed=%d",
                     session.session_id[:8],
                     deleted,
                     failed,
                 )
                 await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
 
-        # Send message (origin-only for feedback; otherwise obey broadcast scope)
-        result = await self._route_to_ui(
-            session,
-            "send_message",
-            message,
-            metadata=metadata,
-            broadcast=broadcast,
-        )
+        # Send message
+        result = await self._route_to_ui(session, "send_message", text, metadata=metadata)
         message_id = str(result) if result else None
 
         # Track for deletion if ephemeral
         if ephemeral and message_id:
-            deletion_type: Literal["user_input", "feedback"] = "feedback" if notice_mode else "user_input"
+            deletion_type: Literal["user_input", "feedback"] = "feedback" if feedback else "user_input"
             await db.add_pending_deletion(session.session_id, message_id, deletion_type=deletion_type)
-            if notice_mode:
+            if feedback:
                 logger.debug(
-                    "Notice tracked for deletion: session=%s message_id=%s",
+                    "Feedback tracked for deletion: session=%s message_id=%s",
                     session.session_id[:8],
                     message_id,
                 )
@@ -471,13 +414,7 @@ class AdapterClient:
         Returns:
             True if origin edit succeeded
         """
-        result = await self._route_to_ui(
-            session,
-            "edit_message",
-            message_id,
-            text,
-            broadcast=self._ui_broadcast_enabled(),
-        )
+        result = await self._route_to_ui(session, "edit_message", message_id, text)
         return bool(result)
 
     async def delete_message(self, session: "Session", message_id: str) -> bool:
@@ -490,12 +427,7 @@ class AdapterClient:
         Returns:
             True if origin deletion succeeded
         """
-        result = await self._route_to_ui(
-            session,
-            AdapterOp.DELETE_MESSAGE.value,
-            message_id,
-            broadcast=self._ui_broadcast_enabled(),
-        )
+        result = await self._route_to_ui(session, "delete_message", message_id)
         return bool(result)
 
     async def send_file(
@@ -515,13 +447,7 @@ class AdapterClient:
         Returns:
             message_id from origin adapter
         """
-        result = await self._route_to_ui(
-            session,
-            "send_file",
-            file_path,
-            caption=caption,
-            broadcast=self._ui_broadcast_enabled(),
-        )
+        result = await self._route_to_ui(session, "send_file", file_path, caption=caption)
         return str(result) if result else ""
 
     async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -565,30 +491,24 @@ class AdapterClient:
                     exc,
                 )
 
-        # Send output updates based on UI delivery scope
-        plan = self._ui_delivery_plan(session_to_send)
-        broadcast = self._ui_broadcast_enabled()
-        if broadcast or not plan.origin:
-            targets = plan.all_ui
-        else:
-            targets = [(plan.origin_type or "", plan.origin)]
-
-        tasks: list[tuple[str, Awaitable[object]]] = []
-        for adapter_type, adapter in targets:
-            tasks.append(
-                (
-                    adapter_type,
-                    adapter.send_output_update(
-                        session_to_send,
-                        output,
-                        started_at,
-                        last_output_changed_at,
-                        is_final,
-                        exit_code,
-                        render_markdown,
-                    ),
+        # Broadcast to ALL UI adapters
+        tasks = []
+        for adapter_type, adapter in self.adapters.items():
+            if isinstance(adapter, UiAdapter):
+                tasks.append(
+                    (
+                        adapter_type,
+                        adapter.send_output_update(
+                            session_to_send,
+                            output,
+                            started_at,
+                            last_output_changed_at,
+                            is_final,
+                            exit_code,
+                            render_markdown,
+                        ),
+                    )
                 )
-            )
 
         if not tasks:
             logger.warning("No UI adapters available for session %s", session.session_id[:8])
@@ -608,7 +528,7 @@ class AdapterClient:
                     session_to_send.session_id[:8],
                     result,
                 )
-                if adapter_type == AdapterType.TELEGRAM.value and self._is_missing_thread_error(result):
+                if adapter_type == "telegram" and self._is_missing_thread_error(result):
                     missing_thread_error = result
             elif isinstance(result, str) and not first_success:
                 first_success = result
@@ -616,7 +536,7 @@ class AdapterClient:
 
         if missing_thread_error:
             updated_session = await self._handle_missing_telegram_thread(session_to_send, missing_thread_error)
-            telegram_adapter = self.adapters.get(AdapterType.TELEGRAM.value)
+            telegram_adapter = self.adapters.get("telegram")
             if isinstance(telegram_adapter, UiAdapter):
                 try:
                     retry_session = updated_session or session_to_send
@@ -657,7 +577,7 @@ class AdapterClient:
         return text[:200]
 
     def _needs_ui_channel(self, session: "Session") -> bool:
-        telegram_adapter = self.adapters.get(AdapterType.TELEGRAM.value)
+        telegram_adapter = self.adapters.get("telegram")
         if isinstance(telegram_adapter, UiAdapter):
             telegram_meta = session.adapter_metadata.telegram
             if not telegram_meta or not telegram_meta.topic_id:
@@ -666,10 +586,6 @@ class AdapterClient:
 
     @staticmethod
     def _is_missing_thread_error(error: Exception) -> bool:
-        """Return True if Telegram indicates the topic/thread is missing.
-
-        guard: allow-string-compare
-        """
         error_text = str(error).lower()
         return (
             "message thread not found" in error_text or "topic_deleted" in error_text or "topic deleted" in error_text
@@ -740,21 +656,8 @@ class AdapterClient:
         Returns:
             True if origin deletion succeeded
         """
-        plan = self._ui_delivery_plan(session)
-        origin_ok = False
-        for adapter_type, adapter in plan.all_ui:
-            try:
-                ok = await adapter.delete_channel(session)
-                if adapter_type == plan.origin_type and ok:
-                    origin_ok = True
-            except Exception as exc:
-                logger.warning(
-                    "UI adapter %s failed delete_channel for session %s: %s",
-                    adapter_type,
-                    session.session_id[:8],
-                    exc,
-                )
-        return origin_ok
+        result = await self._route_to_ui(session, "delete_channel")
+        return bool(result)
 
     async def discover_peers(self, redis_enabled: bool | None = None) -> list[dict[str, object]]:  # noqa: loose-dict - Adapter peer data
         """Discover peers from all registered adapters.
@@ -876,6 +779,48 @@ class AdapterClient:
         self._handlers[event].append(cast(Callable[[EventType, EventContext], Awaitable[object]], handler))
         logger.trace("Registered handler for event: %s (total: %d)", event, len(self._handlers[event]))
 
+    async def handle_internal_command(
+        self,
+        command: InternalCommand,
+        metadata: Optional[MessageMetadata] = None,
+    ) -> object:
+        """Handle normalized internal command.
+
+        Converts internal command to event dispatch.
+        This is the new entry point for transport-normalized inputs.
+        """
+        if isinstance(command, SystemCommand) and command.command == "agent_event" and command.data:
+            payload = command.data
+            return await self.handle_event(
+                TeleClaudeEvents.AGENT_EVENT,
+                payload,
+                metadata or MessageMetadata(adapter_type="internal"),
+            )
+
+        # For SystemCommand, use the command name for known command events.
+        if isinstance(command, SystemCommand):
+            if command.command in COMMAND_EVENTS:
+                event_type = cast(EventType, command.command)  # pyright: ignore[reportUnnecessaryCast]
+            else:
+                event_type = TeleClaudeEvents.SYSTEM_COMMAND
+        else:
+            event_type = cast(EventType, command.command_type.value)
+
+        payload = command.to_payload()
+
+        if metadata is None:
+            metadata = MessageMetadata(adapter_type="internal")
+
+        if "message_id" not in payload and metadata.channel_metadata:
+            message_id = metadata.channel_metadata.get("message_id")
+            if message_id is not None:
+                payload["message_id"] = str(message_id)
+
+        # Inject command into payload for context builder
+        payload["internal_command"] = command
+
+        return await self.handle_event(event_type, payload, metadata)
+
     async def handle_event(
         self,
         event: EventType,
@@ -911,7 +856,11 @@ class AdapterClient:
         session = await db.get_session(str(session_id)) if session_id else None
 
         # 3.5 Track last input adapter and message for routing feedback
-        if session and metadata.adapter_type and metadata.adapter_type in self.adapters:
+        if (
+            session
+            and metadata.adapter_type
+            and (metadata.adapter_type in self.adapters or metadata.adapter_type == "rest")
+        ):
             if event in COMMAND_EVENTS or event in (
                 TeleClaudeEvents.MESSAGE,
                 TeleClaudeEvents.VOICE,
@@ -1046,6 +995,7 @@ class AdapterClient:
                 channel_metadata=metadata.channel_metadata,
                 auto_command=metadata.auto_command,
                 launch_intent=metadata.launch_intent,
+                internal_command=cast(Optional[InternalCommand], payload.get("internal_command")),
             )
 
         # Fallback - should not happen with EventType literal
@@ -1113,8 +1063,7 @@ class AdapterClient:
         Uses source adapter (where message came from) rather than origin adapter,
         so AI-to-AI sessions can still have UI cleanup on Telegram.
         """
-        plan = self._ui_delivery_plan(session)
-        adapter_type = source_adapter or plan.origin_type
+        adapter_type = source_adapter or session.origin_adapter
         adapter = self.adapters.get(adapter_type)
         if not adapter or not isinstance(adapter, UiAdapter):
             return
@@ -1177,8 +1126,7 @@ class AdapterClient:
         Uses source adapter (where message came from) rather than origin adapter,
         so AI-to-AI sessions can still have UI state tracking on Telegram.
         """
-        plan = self._ui_delivery_plan(session)
-        adapter_type = source_adapter or plan.origin_type
+        adapter_type = source_adapter or session.origin_adapter
         adapter = self.adapters.get(adapter_type)
         if not adapter or not isinstance(adapter, UiAdapter):
             return
@@ -1204,16 +1152,16 @@ class AdapterClient:
         Skips both the origin adapter and the source adapter (where message came from)
         to prevent echoing messages back to the sender.
         """
-        # User input echoing is disabled; edit/output updates already convey interaction.
-        return
-
         action_text = self._format_event_for_observers(event, payload)
         if not action_text:
             return
 
-        plan = self._ui_delivery_plan(session)
-        for adapter_type, adapter in plan.observers:
+        for adapter_type, adapter in self.adapters.items():
+            if adapter_type == session.origin_adapter:
+                continue
             if adapter_type == source_adapter:
+                continue
+            if not isinstance(adapter, UiAdapter):
                 continue
 
             try:
@@ -1272,6 +1220,7 @@ class AdapterClient:
         self,
         session: "Session",
         title: str,
+        origin_adapter: str,
         target_computer: Optional[str] = None,
     ) -> str:
         """Create channels in ALL adapters for new session.
@@ -1295,10 +1244,9 @@ class AdapterClient:
         """
         session_id = session.session_id
 
-        plan = self._ui_delivery_plan(session)
-        channel_origin_adapter = plan.origin_type
-        if not channel_origin_adapter or channel_origin_adapter not in self.adapters:
-            raise ValueError(f"Origin adapter {channel_origin_adapter} not found")
+        channel_origin_adapter = origin_adapter
+        if origin_adapter not in self.adapters:
+            raise ValueError(f"Origin adapter {origin_adapter} not found")
 
         origin_adapter_instance = self.adapters.get(channel_origin_adapter)
         origin_requires_channel = isinstance(origin_adapter_instance, UiAdapter)
@@ -1335,7 +1283,7 @@ class AdapterClient:
                     origin_channel_id = channel_id
 
         if origin_requires_channel and not origin_channel_id:
-            raise ValueError(f"Origin adapter {channel_origin_adapter} not found or did not return channel_id")
+            raise ValueError(f"Origin adapter {origin_adapter} not found or did not return channel_id")
         if not origin_channel_id:
             origin_channel_id = ""
 
@@ -1346,18 +1294,18 @@ class AdapterClient:
             for adapter_type, channel_id in all_channel_ids.items():
                 adapter_meta: object = getattr(updated_session.adapter_metadata, adapter_type, None)
                 if not adapter_meta:
-                    if adapter_type == AdapterType.TELEGRAM.value:
+                    if adapter_type == "telegram":
                         adapter_meta = TelegramAdapterMetadata()
-                    elif adapter_type == AdapterType.REDIS.value:
+                    elif adapter_type == "redis":
                         adapter_meta = RedisTransportMetadata()
                     else:
                         continue
                     setattr(updated_session.adapter_metadata, adapter_type, adapter_meta)
 
                 # Store channel_id - telegram uses topic_id, redis uses channel_id
-                if adapter_type == AdapterType.TELEGRAM.value and isinstance(adapter_meta, TelegramAdapterMetadata):
+                if adapter_type == "telegram" and isinstance(adapter_meta, TelegramAdapterMetadata):
                     adapter_meta.topic_id = int(channel_id)
-                elif adapter_type == AdapterType.REDIS.value and isinstance(adapter_meta, RedisTransportMetadata):
+                elif adapter_type == "redis" and isinstance(adapter_meta, RedisTransportMetadata):
                     adapter_meta.channel_id = channel_id
 
             await db.update_session(session_id, adapter_metadata=updated_session.adapter_metadata)
@@ -1377,7 +1325,7 @@ class AdapterClient:
 
         pending: list[tuple[str, UiAdapter]] = []
         for adapter_type, adapter in ui_adapters:
-            if adapter_type == AdapterType.TELEGRAM.value:
+            if adapter_type == "telegram":
                 telegram_meta = session.adapter_metadata.telegram
                 if telegram_meta and telegram_meta.topic_id:
                     continue
@@ -1413,13 +1361,13 @@ class AdapterClient:
         for adapter_type, channel_id in channel_ids.items():
             adapter_meta: object = getattr(updated_session.adapter_metadata, adapter_type, None)
             if not adapter_meta:
-                if adapter_type == AdapterType.TELEGRAM.value:
+                if adapter_type == "telegram":
                     adapter_meta = TelegramAdapterMetadata()
                     setattr(updated_session.adapter_metadata, adapter_type, adapter_meta)
                 else:
                     continue
 
-            if adapter_type == AdapterType.TELEGRAM.value and isinstance(adapter_meta, TelegramAdapterMetadata):
+            if adapter_type == "telegram" and isinstance(adapter_meta, TelegramAdapterMetadata):
                 adapter_meta.topic_id = int(channel_id)
 
         await db.update_session(session.session_id, adapter_metadata=updated_session.adapter_metadata)

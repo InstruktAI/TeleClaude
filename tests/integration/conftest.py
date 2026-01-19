@@ -137,9 +137,9 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     temp_db_path = str(tmp_path / "test_teleclaude.db")
     monkeypatch.setenv("TELECLAUDE_DB_PATH", temp_db_path)
 
-    # CRITICAL: Set unique API socket path for parallel execution
+    # CRITICAL: Set unique REST socket path for parallel execution
     # Keep path short to avoid AF_UNIX length limits on macOS
-    temp_api_socket = f"/tmp/teleclaude-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
+    temp_rest_socket = f"/tmp/teleclaude-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
 
     # NOW import teleclaude modules (after env var is set)
     from teleclaude import api_server as api_server_module
@@ -153,8 +153,8 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
 
     # CRITICAL: Patch API_SOCKET_PATH to use unique path per test
     # Also patch api_server module-level constant to avoid stale import values
-    monkeypatch.setattr(constants_module, "API_SOCKET_PATH", temp_api_socket)
-    monkeypatch.setattr(api_server_module, "API_SOCKET_PATH", temp_api_socket)
+    monkeypatch.setattr(constants_module, "API_SOCKET_PATH", temp_rest_socket)
+    monkeypatch.setattr(api_server_module, "API_SOCKET_PATH", temp_rest_socket)
 
     # CRITICAL: Mock config exhaustively - ALL sections (no sensitive data)
     class MockDatabase:
@@ -194,9 +194,6 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         is_master = False
         trusted_bots: list[str] = []
 
-    class MockUiDelivery:
-        scope = "origin_only"
-
     test_config = type(
         "Config",
         (),
@@ -206,7 +203,6 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             "polling": MockPolling(),
             "redis": MockRedis(),
             "telegram": MockTelegram(),
-            "ui_delivery": MockUiDelivery(),
             "agents": {
                 "claude": config_module.AgentConfig(
                     command="mock_claude_command --arg",
@@ -257,9 +253,9 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
 
     monkeypatch.setattr(config_module.config.redis, "url", "redis://localhost:6379")
 
-    api_socket_path = f"/tmp/teleclaude-api-{os.getpid()}-{uuid.uuid4().hex[:6]}.sock"
-    monkeypatch.setattr(constants_module, "API_SOCKET_PATH", api_socket_path)
-    monkeypatch.setattr(api_server_module, "API_SOCKET_PATH", api_socket_path)
+    rest_socket_path = f"/tmp/teleclaude-api-{os.getpid()}-{uuid.uuid4().hex[:6]}.sock"
+    monkeypatch.setattr(constants_module, "API_SOCKET_PATH", rest_socket_path)
+    monkeypatch.setattr(api_server_module, "API_SOCKET_PATH", rest_socket_path)
 
     # CRITICAL: Reinitialize db singleton with test database path
     # This ensures each test gets isolated database even in parallel execution
@@ -393,11 +389,11 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     daemon.db = db_module.db
 
     # Mock Redis adapter messaging methods (used by client.send_message for redis-originated sessions)
-    redis_transport = daemon.client.adapters.get("redis")
-    if redis_transport:
-        monkeypatch.setattr(redis_transport, "send_message", AsyncMock(return_value="redis-msg-123"))
-        monkeypatch.setattr(redis_transport, "edit_message", AsyncMock(return_value=True))
-        monkeypatch.setattr(redis_transport, "delete_message", AsyncMock())
+    redis_adapter = daemon.client.adapters.get("redis")
+    if redis_adapter:
+        monkeypatch.setattr(redis_adapter, "send_message", AsyncMock(return_value="redis-msg-123"))
+        monkeypatch.setattr(redis_adapter, "edit_message", AsyncMock(return_value=True))
+        monkeypatch.setattr(redis_adapter, "delete_message", AsyncMock())
 
     # Replace Telegram adapter methods with trackable AsyncMocks
     telegram_adapter = daemon.client.adapters.get("telegram")
@@ -412,6 +408,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         telegram_adapter.update_channel_title = AsyncMock(return_value=True)  # type: ignore[method-assign]
         telegram_adapter.delete_channel = AsyncMock(return_value=True)  # type: ignore[method-assign]
         telegram_adapter.send_general_message = AsyncMock(return_value="msg-456")  # type: ignore[method-assign]
+        telegram_adapter.send_feedback = AsyncMock(return_value="feedback-123")  # type: ignore[method-assign]
         telegram_adapter.send_output_update = AsyncMock(return_value="output-msg-123")  # type: ignore[method-assign]
         telegram_adapter._cleanup_pending_deletions = AsyncMock()  # type: ignore[method-assign]
 
