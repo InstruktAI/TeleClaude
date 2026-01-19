@@ -271,19 +271,6 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     )
 
     if success:
-        welcome = f"""Session created!
-
-Computer: {computer_name}
-Working directory: {working_dir}
-
-You can now send commands to this session.
-"""
-
-        try:
-            await client.send_message(session, welcome, ephemeral=False)
-        except Exception as exc:
-            logger.error("Failed to send welcome message for %s: %s", session_id[:8], exc)
-
         logger.info("Created session: %s", session.session_id)
         return {"session_id": session_id, "tmux_session_name": tmux_name}
 

@@ -273,8 +273,13 @@ async def test_handle_cd_changes_directory(mock_initialized_db, tmp_path):
     new_dir = tmp_path / "next"
     new_dir.mkdir()
 
-    with patch.object(command_handlers, "db") as mock_db:
+    with (
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers, "config") as mock_config,
+    ):
         mock_db.update_session = mock_initialized_db.update_session
+        # Return empty trusted dirs so path isn't split
+        mock_config.computer.get_all_trusted_dirs.return_value = []
 
         await command_handlers.handle_cd_session.__wrapped__(
             session, mock_context, [str(new_dir)], mock_client, mock_execute

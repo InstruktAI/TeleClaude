@@ -291,6 +291,7 @@ class AdapterClient:
         session: "Session",
         method: str,
         *args: object,
+        broadcast: bool = True,
         **kwargs: object,
     ) -> object:
         """Route operation to origin UI adapter + broadcast to observers.
@@ -302,6 +303,7 @@ class AdapterClient:
             session: Session object
             method: Method name to call on adapters
             *args: Positional args to pass to method (after session)
+            broadcast: If False, only send to origin (no observers). Default: True.
             **kwargs: Keyword args to pass to method
 
         Returns:
@@ -324,8 +326,9 @@ class AdapterClient:
         # Call origin (let exceptions propagate)
         result = await cast(Awaitable[object], getattr(origin_ui, method)(session, *args, **kwargs))
 
-        # Broadcast to observers (best-effort)
-        await self._broadcast_to_observers(session, method, make_task)
+        # Broadcast to observers (best-effort) unless disabled
+        if broadcast:
+            await self._broadcast_to_observers(session, method, make_task)
 
         return result
 
@@ -355,6 +358,10 @@ class AdapterClient:
         """
         # Convert cleanup_trigger enum to feedback boolean (internal implementation)
         feedback = cleanup_trigger == CleanupTrigger.NEXT_NOTICE
+
+        # Skip feedback for AI-to-AI sessions (listeners already deliver)
+        if feedback and session.initiator_session_id:
+            return None
 
         # Feedback mode: delete old feedback before sending new
         if feedback:
@@ -386,8 +393,8 @@ class AdapterClient:
                 )
                 await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
 
-        # Send message
-        result = await self._route_to_ui(session, "send_message", text, metadata=metadata)
+        # Send message (feedback/notice mode is origin-only, no broadcast to observers)
+        result = await self._route_to_ui(session, "send_message", text, broadcast=not feedback, metadata=metadata)
         message_id = str(result) if result else None
 
         # Track for deletion if ephemeral

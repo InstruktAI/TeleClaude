@@ -278,7 +278,8 @@ async def test_route_to_ui_skips_exceptions_without_origin():
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=1)),
     )
 
-    result = await client.send_message(session, "hello", ephemeral=False)
+    with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
+        result = await client.send_message(session, "hello", ephemeral=False)
     assert result == "123"
 
 

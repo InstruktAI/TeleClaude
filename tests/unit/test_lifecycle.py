@@ -27,9 +27,9 @@ async def test_warm_local_sessions_cache_seeds_cache(monkeypatch: pytest.MonkeyP
         mcp_watch_factory=lambda: asyncio.create_task(asyncio.sleep(0)),
         set_last_mcp_restart_at=lambda _val: None,
         init_voice_handler=lambda: None,
-        api_restart_max=1,
-        api_restart_window_s=1.0,
-        api_restart_backoff_s=0.1,
+        rest_restart_max=1,
+        rest_restart_window_s=1.0,
+        rest_restart_backoff_s=0.1,
     )
 
     mock_session = MagicMock()

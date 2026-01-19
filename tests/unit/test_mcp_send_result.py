@@ -91,7 +91,7 @@ async def test_send_result_converts_bold_to_telegram_format(mock_mcp_server):
         await server.teleclaude__send_result("test-session-123", "**bold text**")
 
     call_args = server.client.send_message.call_args
-    sent_text = call_args.kwargs["message"]
+    sent_text = call_args.kwargs["text"]
     # telegramify-markdown converts **bold** to *bold*
     assert "*bold text*" in sent_text
     assert "**" not in sent_text
@@ -110,7 +110,7 @@ async def test_send_result_converts_headers(mock_mcp_server):
         await server.teleclaude__send_result("test-session-123", "# Header Title")
 
     call_args = server.client.send_message.call_args
-    sent_text = call_args.kwargs["message"]
+    sent_text = call_args.kwargs["text"]
     # telegramify-markdown converts headers to bold with emoji prefix
     assert "Header Title" in sent_text
     # Header should be bold (starts with *)
@@ -131,7 +131,7 @@ async def test_send_result_adds_md_language_to_plain_code_blocks(mock_mcp_server
         await server.teleclaude__send_result("test-session-123", "| A | B |\n|---|---|\n| 1 | 2 |")
 
     call_args = server.client.send_message.call_args
-    sent_text = call_args.kwargs["message"]
+    sent_text = call_args.kwargs["text"]
     # Plain code blocks should have 'md' language added
     assert "```md\n" in sent_text
     # Should not have plain ``` without language
@@ -153,7 +153,7 @@ async def test_send_result_truncates_long_content(mock_mcp_server):
         await server.teleclaude__send_result("test-session-123", long_content)
 
     call_args = server.client.send_message.call_args
-    sent_text = call_args.kwargs["message"]
+    sent_text = call_args.kwargs["text"]
     assert len(sent_text) <= 4096
     assert sent_text.endswith("...")
 
@@ -231,7 +231,7 @@ async def test_send_result_handles_nested_backticks_in_code_blocks(mock_mcp_serv
         await server.teleclaude__send_result("test-session-123", content)
 
     call_args = server.client.send_message.call_args
-    sent_text = call_args.kwargs["message"]
+    sent_text = call_args.kwargs["text"]
     # Library escapes backticks inside code blocks as \` - verify they're escaped
     # The raw ``` should NOT appear inside the code block (would break markdown)
     # Instead it should be escaped as \`\`\` or `\u200b``
@@ -257,7 +257,7 @@ async def test_send_result_html_mode_uses_html_parse_mode(mock_mcp_server):
         await server.teleclaude__send_result("test-session-123", content, "html")
 
     call_args = server.client.send_message.call_args
-    sent_text = call_args.kwargs["message"]
+    sent_text = call_args.kwargs["text"]
     metadata = call_args.kwargs["metadata"]
     # HTML content should be sent as-is
     assert sent_text == content
