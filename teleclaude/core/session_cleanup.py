@@ -22,6 +22,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge
 from teleclaude.core.db import db
+from teleclaude.core.dates import ensure_utc
 from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_listeners
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 
@@ -155,7 +156,7 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
 
     # Don't flag sessions that are still being created (race condition guard)
     if session.created_at:
-        session_age = (datetime.now(timezone.utc) - session.created_at).total_seconds()
+        session_age = (datetime.now(timezone.utc) - ensure_utc(session.created_at)).total_seconds()
         if session_age < 10.0:
             logger.debug("Session %s is too young (%.1fs), skipping stale check", session_id[:8], session_age)
             return False

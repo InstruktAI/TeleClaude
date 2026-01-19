@@ -5,6 +5,7 @@ from datetime import datetime
 
 import pytest
 
+from teleclaude.core.dates import ensure_utc
 from teleclaude.core.models import Recording, RunAgentCommandArgs, Session, StartSessionArgs
 
 
@@ -72,8 +73,8 @@ class TestSession:
         session = Session.from_dict(data)
 
         # Should handle datetime objects gracefully
-        assert session.created_at == now
-        assert session.last_activity == now
+        assert session.created_at == ensure_utc(now)
+        assert session.last_activity == ensure_utc(now)
 
     def test_session_roundtrip(self):
         """Test session to_dict -> from_dict roundtrip."""
@@ -169,7 +170,7 @@ class TestRecording:
         recording = Recording.from_dict(data)
 
         # Should handle datetime object gracefully
-        assert recording.timestamp == now
+        assert recording.timestamp == ensure_utc(now)
 
     def test_recording_roundtrip(self):
         """Test recording to_dict -> from_dict roundtrip."""

@@ -12,6 +12,7 @@ from teleclaude.config import config
 from teleclaude.core.agent_parsers import CodexParser
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db, db
+from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.events import AgentHookEvents, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
 
@@ -187,7 +188,8 @@ class CodexWatcher:
                     continue
                 payload = cast(dict[str, object], data[JSON_PAYLOAD_KEY])  # noqa: loose-dict - External JSONL payload
                 timestamp = payload["timestamp"]
-                ts_value = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00")).timestamp()
+                parsed = parse_iso_datetime(str(timestamp))
+                ts_value = parsed.timestamp() if parsed else 0.0
                 self._log_timestamps[file_path] = ts_value
                 return ts_value
 

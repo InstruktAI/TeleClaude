@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -62,3 +62,30 @@ async def test_topic_closed_ignores_new_session() -> None:
         await handlers._handle_topic_closed(update, None)
 
     handlers.client.handle_event.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_topic_closed_handles_naive_created_at() -> None:
+    """Topic_closed should handle naive created_at timestamps."""
+    handlers = DummyHandlers()
+
+    utc_naive = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=30)
+    session = Session(
+        session_id="sess-456",
+        computer_name="test",
+        tmux_session_name="tc_sess_456",
+        origin_adapter="telegram",
+        title="Test",
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=789)),
+        created_at=utc_naive,
+    )
+
+    update = SimpleNamespace(message=SimpleNamespace(message_thread_id=789))
+
+    with patch(
+        "teleclaude.adapters.telegram.input_handlers.db.get_sessions_by_adapter_metadata",
+        new=AsyncMock(return_value=[session]),
+    ):
+        await handlers._handle_topic_closed(update, None)
+
+    handlers.client.handle_event.assert_called_once()

@@ -7,6 +7,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, cast
 
 from teleclaude.constants import FIELD_ADAPTER_METADATA, FIELD_COMMAND, FIELD_COMPUTER
+from teleclaude.core.dates import ensure_utc, parse_iso_datetime
 from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
@@ -362,26 +363,24 @@ class Session:  # pylint: disable=too-many-instance-attributes
         """Create session from dictionary (from database/JSON)."""
 
         created_at_raw = data.get("created_at")
-        created_at = datetime.fromisoformat(created_at_raw) if isinstance(created_at_raw, str) else created_at_raw
+        created_at = parse_iso_datetime(created_at_raw) if isinstance(created_at_raw, str) else created_at_raw
 
         last_activity_raw = data.get("last_activity")
-        last_activity = (
-            datetime.fromisoformat(last_activity_raw) if isinstance(last_activity_raw, str) else last_activity_raw
-        )
+        last_activity = parse_iso_datetime(last_activity_raw) if isinstance(last_activity_raw, str) else last_activity_raw
 
         closed_at_raw = data.get("closed_at")
-        closed_at = datetime.fromisoformat(closed_at_raw) if isinstance(closed_at_raw, str) else closed_at_raw
+        closed_at = parse_iso_datetime(closed_at_raw) if isinstance(closed_at_raw, str) else closed_at_raw
 
         last_message_sent_at_raw = data.get("last_message_sent_at")
         last_message_sent_at = (
-            datetime.fromisoformat(last_message_sent_at_raw)
+            parse_iso_datetime(last_message_sent_at_raw)
             if isinstance(last_message_sent_at_raw, str)
             else last_message_sent_at_raw
         )
 
         last_feedback_received_at_raw = data.get("last_feedback_received_at")
         last_feedback_received_at = (
-            datetime.fromisoformat(last_feedback_received_at_raw)
+            parse_iso_datetime(last_feedback_received_at_raw)
             if isinstance(last_feedback_received_at_raw, str)
             else last_feedback_received_at_raw
         )
@@ -416,9 +415,9 @@ class Session:  # pylint: disable=too-many-instance-attributes
             origin_adapter=_get_required_str("origin_adapter"),
             title=_get_required_str("title"),
             adapter_metadata=adapter_metadata,
-            created_at=created_at if isinstance(created_at, datetime) else None,
-            last_activity=last_activity if isinstance(last_activity, datetime) else None,
-            closed_at=closed_at if isinstance(closed_at, datetime) else None,
+            created_at=ensure_utc(created_at) if isinstance(created_at, datetime) else None,
+            last_activity=ensure_utc(last_activity) if isinstance(last_activity, datetime) else None,
+            closed_at=ensure_utc(closed_at) if isinstance(closed_at, datetime) else None,
             project_path=_get_optional_str("project_path"),
             subdir=_get_optional_str("subdir"),
             description=_get_optional_str("description"),
@@ -434,9 +433,11 @@ class Session:  # pylint: disable=too-many-instance-attributes
             tui_log_file=_get_optional_str("tui_log_file"),
             tui_capture_started=tui_capture_started,
             last_message_sent=_get_optional_str("last_message_sent"),
-            last_message_sent_at=last_message_sent_at if isinstance(last_message_sent_at, datetime) else None,
+            last_message_sent_at=ensure_utc(last_message_sent_at)
+            if isinstance(last_message_sent_at, datetime)
+            else None,
             last_feedback_received=_get_optional_str("last_feedback_received"),
-            last_feedback_received_at=last_feedback_received_at
+            last_feedback_received_at=ensure_utc(last_feedback_received_at)
             if isinstance(last_feedback_received_at, datetime)
             else None,
             working_slug=_get_optional_str("working_slug"),
@@ -465,9 +466,9 @@ class Recording:
         """Create recording from dictionary (from database/JSON)."""
         timestamp_raw = data.get("timestamp")
         if isinstance(timestamp_raw, str):
-            timestamp = datetime.fromisoformat(timestamp_raw)
+            timestamp = parse_iso_datetime(timestamp_raw)
         elif isinstance(timestamp_raw, datetime):
-            timestamp = timestamp_raw
+            timestamp = ensure_utc(timestamp_raw)
         else:
             timestamp = None
         return cls(

@@ -19,6 +19,7 @@ from teleclaude.constants import DB_IN_MEMORY
 
 from . import db_models
 from .api_events import ApiOutboxMetadata, ApiOutboxPayload
+from .dates import ensure_utc, parse_iso_datetime
 from .events import TeleClaudeEvents
 from .models import MessageMetadata, Session, SessionAdapterMetadata, SessionField
 from .voice_assignment import VoiceConfig
@@ -69,10 +70,8 @@ class Db:
         if value is None:
             return None
         if isinstance(value, datetime):
-            if value.tzinfo is None:
-                return value.replace(tzinfo=timezone.utc)
-            return value
-        return Db._parse_iso_datetime(value)
+            return ensure_utc(value)
+        return parse_iso_datetime(value)
 
     @staticmethod
     def _to_core_session(row: db_models.Session) -> Session:
@@ -923,15 +922,10 @@ class Db:
     @staticmethod
     def _parse_iso_datetime(value: str) -> datetime | None:
         """Parse ISO datetime with support for trailing 'Z'."""
-        try:
-            normalized = value.replace("Z", "+00:00")
-            parsed = datetime.fromisoformat(normalized)
-            if parsed.tzinfo is None:
-                return parsed.replace(tzinfo=timezone.utc)
-            return parsed
-        except ValueError:
+        parsed = parse_iso_datetime(value)
+        if parsed is None:
             logger.warning("Failed to parse unavailable_until value: %s", value)
-            return None
+        return parsed
 
     async def mark_agent_unavailable(self, agent: str, unavailable_until: str, reason: str) -> None:
         """Mark an agent as unavailable until a specified time.

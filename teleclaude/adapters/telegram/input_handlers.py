@@ -19,6 +19,7 @@ from telegram import Document, Message, PhotoSize, Update
 from telegram.ext import ContextTypes
 
 from teleclaude.core.db import db
+from teleclaude.core.dates import ensure_utc
 from teleclaude.core.events import TeleClaudeEvents, UiCommands
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
 from teleclaude.core.session_utils import get_session_output_dir
@@ -414,7 +415,8 @@ Usage:
 
         session = sessions[0]
         if session.created_at:
-            session_age = (datetime.now(timezone.utc) - session.created_at).total_seconds()
+            created_at = ensure_utc(session.created_at)
+            session_age = (datetime.now(timezone.utc) - created_at).total_seconds()
             if session_age < 10.0:
                 logger.warning(
                     "Ignoring topic_closed for new session %s (age=%.1fs)",

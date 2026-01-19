@@ -27,6 +27,7 @@ from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
+from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.events import (
     SessionLifecycleContext,
     SessionUpdatedContext,
@@ -813,10 +814,13 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                     info: dict[str, object] = info_obj
 
                     last_seen_str: object = info.get("last_seen", "")
-                    try:
-                        last_seen_dt = datetime.fromisoformat(str(last_seen_str))
-                    except (ValueError, TypeError) as e:
-                        logger.warning("Invalid timestamp for %s, using now: %s", info.get("computer_name"), e)
+                    last_seen_dt = parse_iso_datetime(str(last_seen_str))
+                    if last_seen_dt is None:
+                        logger.warning(
+                            "Invalid timestamp for %s, using now: %s",
+                            info.get("computer_name"),
+                            last_seen_str,
+                        )
                         last_seen_dt = datetime.now(timezone.utc)
 
                     computer_name: str = str(info["computer_name"])
