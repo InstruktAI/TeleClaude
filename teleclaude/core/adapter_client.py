@@ -16,6 +16,7 @@ from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import EventBus
 from teleclaude.core.events import (
     COMMAND_EVENTS,
     AgentEventContext,
@@ -110,7 +111,7 @@ class AdapterClient:
         Daemon subscribes to events via client.on(event, handler).
         """
         self.task_registry = task_registry
-        self._handlers: dict[EventType, list[Callable[[EventType, EventContext], Awaitable[object]]]] = {}
+        self.event_bus = EventBus()
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
         self.is_shutting_down = False
 
@@ -781,10 +782,7 @@ class AdapterClient:
             handler: Async handler function(event, context) -> Awaitable[object]
                     context is a typed dataclass (CommandEventContext, MessageEventContext, etc.)
         """
-        if event not in self._handlers:
-            self._handlers[event] = []
-        self._handlers[event].append(cast(Callable[[EventType, EventContext], Awaitable[object]], handler))
-        logger.trace("Registered handler for event: %s (total: %d)", event, len(self._handlers[event]))
+        self.event_bus.subscribe(event, cast(Callable[[EventType, EventContext], Awaitable[object]], handler))
 
     async def handle_internal_command(
         self,
@@ -1080,46 +1078,7 @@ class AdapterClient:
 
     async def _dispatch(self, event: EventType, context: EventContext) -> dict[str, object]:  # noqa: loose-dict - Event dispatch result
         """Dispatch event to registered handler(s)."""
-        logger.trace("Dispatching event: %s, handlers registered: %s", event, event in self._handlers)
-
-        handlers = self._handlers.get(event)
-        if not handlers:
-            logger.warning("No handler registered for event: %s", event)
-            return {"status": "error", "error": f"No handler registered for event: {event}", "code": "NO_HANDLER"}
-
-        # Execute all handlers in parallel
-        tasks = [handler(event, context) for handler in handlers]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        success_results: list[object] = []
-        errors: list[Exception] = []
-
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error("Handler %d failed for event %s: %s", i, event, result, exc_info=True)
-                errors.append(result)
-            else:
-                success_results.append(result)
-
-        # If we have at least one success, consider it a success
-        # Return the first non-None result (or just the first result if all are None)
-        # This maintains backward compatibility for command handlers which return a value,
-        # while allowing notification handlers (which return None) to coexist.
-        if success_results:
-            logger.debug(
-                "Dispatch completed for event: %s (%d success, %d failed)", event, len(success_results), len(errors)
-            )
-            # meaningful_result = next((r for r in success_results if r is not None), success_results[0])
-            # Actually, for commands there should ideally be only one handler returning a value.
-            # We return the first one.
-            return {"status": "success", "data": success_results[0]}
-
-        # If all failed, raise the first error
-        if errors:
-            raise errors[0]
-
-        # Should be unreachable if handlers list was not empty and we handled exceptions
-        return {"status": "success", "data": None}
+        return await self.event_bus.emit(event, context)
 
     async def _call_post_handler(
         self, session: "Session", event: EventType, message_id: str, source_adapter: str | None = None
