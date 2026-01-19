@@ -41,9 +41,9 @@ class DaemonLifecycle:
         mcp_watch_factory: Callable[[], asyncio.Task[object]],
         set_last_mcp_restart_at: Callable[[float], None],
         init_voice_handler: Callable[[], None],
-        rest_restart_max: int,
-        rest_restart_window_s: float,
-        rest_restart_backoff_s: float,
+        api_restart_max: int,
+        api_restart_window_s: float,
+        api_restart_backoff_s: float,
     ) -> None:
         self.client = client
         self.cache = cache
@@ -59,12 +59,12 @@ class DaemonLifecycle:
         self.mcp_task: asyncio.Task[object] | None = None
         self.mcp_watch_task: asyncio.Task[object] | None = None
 
-        self._rest_restart_lock = asyncio.Lock()
-        self._rest_restart_attempts = 0
-        self._rest_restart_window_start = 0.0
-        self._rest_restart_max = rest_restart_max
-        self._rest_restart_window_s = rest_restart_window_s
-        self._rest_restart_backoff_s = rest_restart_backoff_s
+        self._api_restart_lock = asyncio.Lock()
+        self._api_restart_attempts = 0
+        self._api_restart_window_start = 0.0
+        self._api_restart_max = api_restart_max
+        self._api_restart_window_s = api_restart_window_s
+        self._api_restart_backoff_s = api_restart_backoff_s
         self._started = False
         self.api_server: APIServer | None = None
 
@@ -193,7 +193,7 @@ class DaemonLifecycle:
                 socket=socket_exists,
             )
             return
-        reason = "rest_task_crash" if exc else "rest_task_done"
+        reason = "api_task_crash" if exc else "api_task_done"
         logger.warning(
             "API server exit detected; scheduling restart",
             reason=reason,
@@ -214,33 +214,33 @@ class DaemonLifecycle:
         loop.create_task(self._restart_api_server(reason))
 
     async def _restart_api_server(self, reason: str) -> bool:
-        async with self._rest_restart_lock:
+        async with self._api_restart_lock:
             if self.shutdown_event.is_set():
                 return False
             now = asyncio.get_running_loop().time()
             if (
-                self._rest_restart_window_start == 0.0
-                or (now - self._rest_restart_window_start) > self._rest_restart_window_s
+                self._api_restart_window_start == 0.0
+                or (now - self._api_restart_window_start) > self._api_restart_window_s
             ):
-                self._rest_restart_window_start = now
-                self._rest_restart_attempts = 0
+                self._api_restart_window_start = now
+                self._api_restart_attempts = 0
 
-            self._rest_restart_attempts += 1
-            if self._rest_restart_attempts > self._rest_restart_max:
+            self._api_restart_attempts += 1
+            if self._api_restart_attempts > self._api_restart_max:
                 logger.error(
                     "API server restart limit exceeded; leaving server down",
                     reason=reason,
-                    attempts=self._rest_restart_attempts,
+                    attempts=self._api_restart_attempts,
                 )
                 return False
 
             logger.warning(
                 "Restarting API server",
                 reason=reason,
-                attempt=self._rest_restart_attempts,
-                window_s=self._rest_restart_window_s,
+                attempt=self._api_restart_attempts,
+                window_s=self._api_restart_window_s,
             )
-            await asyncio.sleep(self._rest_restart_backoff_s)
+            await asyncio.sleep(self._api_restart_backoff_s)
             api_server = self.api_server
             if not api_server:
                 logger.error("API server not available; cannot restart")

@@ -132,7 +132,7 @@ async def test_get_session_data_parses_tail_chars_without_placeholders():
             TeleClaudeEvents.GET_SESSION_DATA,
             ["2000"],
             context,
-            MessageMetadata(adapter_type="redis"),
+            MessageMetadata(origin="redis"),
         )
 
         # Verify call to handler
@@ -156,7 +156,7 @@ async def test_get_session_data_supports_dash_placeholders():
             TeleClaudeEvents.GET_SESSION_DATA,
             ["-", "2026-01-01T00:00:00Z", "2000"],
             context,
-            MessageMetadata(adapter_type="redis"),
+            MessageMetadata(origin="redis"),
         )
 
         # Verify call to handler
@@ -191,7 +191,7 @@ async def test_handle_voice_forwards_message_without_message_id() -> None:
             duration=None,
             message_id="321",
             message_thread_id=123,
-            adapter_type="telegram",
+            origin="telegram",
         )
 
         await daemon._handle_voice("voice", context)
@@ -295,11 +295,11 @@ async def test_new_session_auto_command_agent_then_message():
 
         create_cmd = CreateSessionCommand(
             project_path="/tmp",
-            adapter_type="redis",
+            origin="redis",
             auto_command="agent_then_message codex slow /prompts:next-review next-machine",
         )
         context = CommandEventContext(session_id="sess-ctx", args=[], internal_command=create_cmd)
-        metadata = MessageMetadata(adapter_type="redis")
+        metadata = MessageMetadata(origin="redis")
 
         result = await daemon.handle_command(
             TeleClaudeEvents.NEW_SESSION,

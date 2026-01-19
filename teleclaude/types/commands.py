@@ -41,7 +41,7 @@ class CreateSessionCommand(InternalCommand):
     subdir: Optional[str] = None
     working_slug: Optional[str] = None
     initiator_session_id: Optional[str] = None
-    adapter_type: str = "unknown"
+    origin: str = "unknown"
     channel_metadata: Optional[Dict[str, object]] = None
     launch_intent: Optional["SessionLaunchIntent"] = None
     auto_command: Optional[str] = None
@@ -54,7 +54,7 @@ class CreateSessionCommand(InternalCommand):
         subdir: Optional[str] = None,
         working_slug: Optional[str] = None,
         initiator_session_id: Optional[str] = None,
-        adapter_type: str = "unknown",
+        origin: str = "unknown",
         channel_metadata: Optional[Dict[str, object]] = None,
         launch_intent: Optional["SessionLaunchIntent"] = None,
         auto_command: Optional[str] = None,
@@ -66,7 +66,7 @@ class CreateSessionCommand(InternalCommand):
         self.subdir = subdir
         self.working_slug = working_slug
         self.initiator_session_id = initiator_session_id
-        self.adapter_type = adapter_type
+        self.origin = origin
         self.channel_metadata = channel_metadata
         self.launch_intent = launch_intent
         self.auto_command = auto_command
@@ -209,7 +209,6 @@ class SystemCommand(InternalCommand):
     args: List[str] = field(default_factory=list)
     data: Optional[Dict[str, object]] = None
     session_id: Optional[str] = None
-    session_id: Optional[str] = None  # For session-specific system commands like agent_restart
 
     def __init__(
         self,
@@ -225,13 +224,10 @@ class SystemCommand(InternalCommand):
         self.args = args or []
         self.data = data
         self.session_id = session_id
-        self.session_id = session_id
 
     def to_payload(self) -> Dict[str, object]:
         payload: Dict[str, object] = {"command": self.command, "args": self.args}
         if self.session_id is not None:
-            payload["session_id"] = self.session_id
-        if self.session_id:
             payload["session_id"] = self.session_id
         if self.data is not None:
             payload["data"] = self.data

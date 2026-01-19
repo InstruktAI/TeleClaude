@@ -242,7 +242,7 @@ class CodexWatcher:
                     "session_id": session.session_id,
                     "data": {"session_id": native_id, "transcript_path": str(file_path)},
                 },
-                MessageMetadata(adapter_type="watcher"),
+                MessageMetadata(origin="watcher"),
             )
 
     async def _tail_files(self) -> None:
@@ -313,7 +313,7 @@ class CodexWatcher:
                                     "session_id": session.session_id,
                                     "data": payload_data,
                                 },
-                                MessageMetadata(adapter_type="watcher"),
+                                MessageMetadata(origin="watcher"),
                             )
                             emitted += 1
                     except json.JSONDecodeError:

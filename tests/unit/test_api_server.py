@@ -2,6 +2,7 @@
 
 # type: ignore[explicit-any, unused-ignore] - test uses mocked adapters and dynamic types
 
+import uuid
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
@@ -37,7 +38,8 @@ def mock_cache():  # type: ignore[explicit-any, unused-ignore]
 @pytest.fixture
 def api_server(mock_adapter_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
     """Create APIServer instance with mocked client and cache."""
-    adapter = APIServer(client=mock_adapter_client, cache=mock_cache)
+    socket_path = f"/tmp/teleclaude-api-test-{uuid.uuid4().hex}.sock"
+    adapter = APIServer(client=mock_adapter_client, cache=mock_cache, socket_path=socket_path)
     return adapter
 
 

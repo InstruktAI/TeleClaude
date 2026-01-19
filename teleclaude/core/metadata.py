@@ -16,7 +16,7 @@ class AdapterMetadata(BaseModel):  # type: ignore[explicit-any]
     """
 
     # Required fields
-    adapter_type: str = Field(..., description="Adapter type (telegram, redis, etc.)")
+    origin: str = Field(..., description="Origin (telegram, discord, api, mcp, etc.)")
 
     # Optional common fields
     user_id: Optional[str] = Field(None, description="Platform user ID (if human)")

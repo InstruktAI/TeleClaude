@@ -68,6 +68,7 @@ class APIServer:
         client: AdapterClient,
         cache: "DaemonCache | None" = None,
         task_registry: "TaskRegistry | None" = None,
+        socket_path: str | None = None,
     ) -> None:
         """Initialize API server.
 
@@ -75,12 +76,14 @@ class APIServer:
             client: AdapterClient instance for routing events
             cache: Optional DaemonCache for remote data (None = local-only mode)
             task_registry: Optional TaskRegistry for tracking background tasks
+            socket_path: Optional override for API Unix socket path
         """
         self.client = client
         self._cache: "DaemonCache | None" = None  # Initialize private variable
         self.task_registry = task_registry
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._setup_routes()
+        self.socket_path = socket_path or API_SOCKET_PATH
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None
         self._metrics_task: asyncio.Task[object] | None = None
@@ -115,7 +118,7 @@ class APIServer:
 
     def _metadata(self, **kwargs: object) -> MessageMetadata:
         """Build API boundary metadata."""
-        return MessageMetadata(adapter_type="api", **kwargs)
+        return MessageMetadata(origin="api", **kwargs)
 
     @property
     def cache(self) -> "DaemonCache | None":
@@ -294,7 +297,7 @@ class APIServer:
             metadata.title = title
             metadata.launch_intent = launch_intent
             metadata.auto_command = auto_command
-            cmd = CommandMapper.map_rest_input("new_session", {}, metadata)
+            cmd = CommandMapper.map_api_input("new_session", {}, metadata)
 
             try:
                 # Use the new handle_internal_command entry point
@@ -342,7 +345,7 @@ class APIServer:
             """End session - local sessions only (remote session management via MCP tools)."""
             try:
                 metadata = self._metadata()
-                cmd = CommandMapper.map_rest_input(
+                cmd = CommandMapper.map_api_input(
                     "end_session",
                     {"session_id": session_id},
                     metadata,
@@ -362,7 +365,7 @@ class APIServer:
             """Send message to session."""
             try:
                 metadata = self._metadata()
-                cmd = CommandMapper.map_rest_input(
+                cmd = CommandMapper.map_api_input(
                     "message",
                     {"session_id": session_id, "text": request.message},
                     metadata,
@@ -381,7 +384,7 @@ class APIServer:
             try:
                 # Normalize command through mapper before dispatching
                 metadata = self._metadata()
-                cmd = CommandMapper.map_rest_input(
+                cmd = CommandMapper.map_api_input(
                     "agent_restart",
                     {"session_id": session_id, "args": []},
                     metadata,
@@ -1064,7 +1067,7 @@ class APIServer:
 
         config = uvicorn.Config(
             self.app,
-            uds=API_SOCKET_PATH,
+            uds=self.socket_path,
             log_level="warning",
             ws_ping_interval=API_WS_PING_INTERVAL_S,
             ws_ping_timeout=API_WS_PING_TIMEOUT_S,
@@ -1095,7 +1098,7 @@ class APIServer:
         if not server.started:
             raise TimeoutError("API server failed to start within timeout")
 
-        logger.info("API server listening on %s", API_SOCKET_PATH)
+        logger.info("API server listening on %s", self.socket_path)
 
     async def restart_server(self) -> None:
         """Restart uvicorn server without tearing down server state."""
@@ -1149,7 +1152,7 @@ class APIServer:
             return
         coro = self._metrics_loop()
         if self.task_registry:
-            self._metrics_task = self.task_registry.spawn(coro, name="rest-metrics")
+            self._metrics_task = self.task_registry.spawn(coro, name="api-metrics")
         else:
             self._metrics_task = asyncio.create_task(coro)
 
@@ -1188,17 +1191,17 @@ class APIServer:
 
     def _cleanup_socket(self, reason: str) -> None:
         """Remove API server socket file if present."""
-        if not os.path.exists(API_SOCKET_PATH):
+        if not os.path.exists(self.socket_path):
             return
         try:
             logger.warning(
                 "Removing API server socket (reason=%s): %s",
                 reason,
-                API_SOCKET_PATH,
+                self.socket_path,
             )
-            os.unlink(API_SOCKET_PATH)
+            os.unlink(self.socket_path)
         except OSError as e:
-            logger.warning("Failed to remove API server socket %s: %s", API_SOCKET_PATH, e)
+            logger.warning("Failed to remove API server socket %s: %s", self.socket_path, e)
 
     def _on_server_task_done(
         self,
@@ -1222,7 +1225,7 @@ class APIServer:
         server_ref = server or self.server
         server_started = getattr(server_ref, "started", None) if server_ref else None
         server_should_exit = getattr(server_ref, "should_exit", None) if server_ref else None
-        socket_exists = os.path.exists(API_SOCKET_PATH)
+        socket_exists = os.path.exists(self.socket_path)
 
         if exc:
             logger.error(

@@ -225,7 +225,7 @@ class MessageMetadata:
     parse_mode: str = ""
     message_thread_id: Optional[int] = None
     raw_format: bool = False
-    adapter_type: Optional[str] = None
+    origin: Optional[str] = None
     channel_id: Optional[str] = None
     title: Optional[str] = None
     project_path: Optional[str] = None

@@ -339,7 +339,7 @@ class VoiceEventContext:
     duration: Optional[float] = None
     message_id: Optional[str] = None
     message_thread_id: Optional[int] = None
-    adapter_type: Optional[str] = None
+    origin: Optional[str] = None
 
 
 @dataclass
@@ -372,7 +372,7 @@ class CommandEventContext:  # pylint: disable=too-many-instance-attributes  # Ev
     session_id: str
     args: list[str] = field(default_factory=list)
     # Metadata fields
-    adapter_type: Optional[str] = None
+    origin: Optional[str] = None
     message_thread_id: Optional[int] = None
     title: Optional[str] = None
     project_path: Optional[str] = None

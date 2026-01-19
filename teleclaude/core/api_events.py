@@ -13,7 +13,7 @@ class ApiOutboxPayload(TypedDict, total=False):
 
 
 class ApiOutboxMetadata(TypedDict, total=False):
-    adapter_type: str
+    origin: str
     project_path: str
     subdir: str
     channel_metadata: Mapping[str, object]

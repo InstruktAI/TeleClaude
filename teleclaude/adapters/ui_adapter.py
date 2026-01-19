@@ -513,6 +513,6 @@ class UiAdapter(BaseAdapter):
                 await self.client.send_message(
                     session,
                     summary,
-                    metadata=MessageMetadata(adapter_type="internal"),
+                    metadata=MessageMetadata(origin="internal"),
                     cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
                 )

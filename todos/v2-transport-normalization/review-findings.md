@@ -45,7 +45,7 @@
   - Suggested fix: Route these handlers through `CommandMapper.map_telegram_input()` (or add normalized models) and dispatch via `handle_internal_command`.
 
 - [code] `teleclaude/adapters/rest_adapter.py:350` - REST `end_session` and `get_transcript` still call core handlers/`handle_event` directly, bypassing normalization and violating the REST-as-transport requirement.
-  - Suggested fix: Map these endpoints via `CommandMapper.map_rest_input()` and dispatch with `handle_internal_command` (or add explicit internal commands where needed).
+  - Suggested fix: Map these endpoints via `CommandMapper.map_api_input()` and dispatch with `handle_internal_command` (or add explicit internal commands where needed).
 
 ## Important Issues (should fix)
 

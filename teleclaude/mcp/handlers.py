@@ -314,13 +314,13 @@ class MCPHandlersMixin:
         cmd = CreateSessionCommand(
             project_path=project_path,
             title=title,
-            adapter_type="redis",  # MCP calls are often treated like Redis for tracking
+            origin="mcp",
             channel_metadata=channel_metadata,
             initiator_session_id=caller_session_id,
         )
 
         metadata = MessageMetadata(
-            adapter_type="redis",
+            origin="mcp",
             project_path=project_path,
             title=title,
             channel_metadata=channel_metadata,
@@ -351,7 +351,7 @@ class MCPHandlersMixin:
                         thinking_mode=thinking_mode.value,
                         args=[thinking_mode.value] + agent_args,
                     )
-                    await self.client.handle_internal_command(start_cmd, metadata=MessageMetadata(adapter_type="redis"))
+                    await self.client.handle_internal_command(start_cmd, metadata=MessageMetadata(origin="mcp"))
                 except Exception as exc:
                     logger.error("Failed to dispatch StartAgentCommand for session %s: %s", session_id[:8], exc)
 
@@ -486,7 +486,7 @@ class MCPHandlersMixin:
 
             if self._is_local_computer(computer):
                 cmd = SendMessageCommand(session_id=session_id, text=message)
-                await self.client.handle_internal_command(cmd, metadata=MessageMetadata(adapter_type="mcp"))
+                await self.client.handle_internal_command(cmd, metadata=MessageMetadata(origin="mcp"))
             else:
                 await self.client.send_request(
                     computer_name=computer,
@@ -580,13 +580,13 @@ class MCPHandlersMixin:
             subdir=subfolder,
             working_slug=working_slug,
             initiator_session_id=caller_session_id,
-            adapter_type="redis",
+            origin="mcp",
             channel_metadata=channel_metadata,
             auto_command=auto_command,
         )
 
         metadata = MessageMetadata(
-            adapter_type="redis",
+            origin="mcp",
             project_path=project_path,
             title=title,
             channel_metadata=channel_metadata,

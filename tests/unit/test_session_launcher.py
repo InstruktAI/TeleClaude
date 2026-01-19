@@ -26,7 +26,7 @@ async def test_create_session_runs_auto_command_after_create(monkeypatch):
 
     monkeypatch.setattr(session_launcher, "handle_create_session", _fake_create_session)
 
-    metadata = MessageMetadata(adapter_type="telegram")
+    metadata = MessageMetadata(origin="telegram")
     metadata.launch_intent = SessionLaunchIntent(
         kind=SessionLaunchKind.AGENT,
         agent="claude",
@@ -35,7 +35,7 @@ async def test_create_session_runs_auto_command_after_create(monkeypatch):
 
     from teleclaude.types.commands import CreateSessionCommand
 
-    cmd = CreateSessionCommand(project_path=".", adapter_type="telegram", launch_intent=metadata.launch_intent)
+    cmd = CreateSessionCommand(project_path=".", origin="telegram", launch_intent=metadata.launch_intent)
 
     result = await session_launcher.create_session(
         cmd=cmd,

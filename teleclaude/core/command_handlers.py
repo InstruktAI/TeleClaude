@@ -142,10 +142,10 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     Returns:
         Minimal session payload with session_id
     """
-    # Get adapter_type from command
-    adapter_type = cmd.adapter_type
-    if not adapter_type:
-        raise ValueError("Command missing adapter_type")
+    # Get origin from command
+    origin = cmd.origin
+    if not origin:
+        raise ValueError("Command missing origin")
 
     computer_name = config.computer.name
     # Generate tmux session name with prefix for TeleClaude ownership
@@ -233,7 +233,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     session = await db.create_session(
         computer_name=computer_name,
         tmux_session_name=tmux_name,
-        origin_adapter=str(adapter_type),
+        origin_adapter=str(origin),
         title=title,
         project_path=project_path,
         subdir=subfolder,
@@ -246,7 +246,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     await client.create_channel(
         session=session,
         title=title,
-        origin_adapter=str(adapter_type),
+        origin_adapter=str(origin),
         target_computer=str(initiator) if initiator else None,
     )
 

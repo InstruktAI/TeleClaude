@@ -121,7 +121,7 @@ async def test_api_outbox_enqueue_and_fetch(tmp_path):
             request_id="req-123",
             event_type="new_session",
             payload={"session_id": "", "args": ["Test"]},
-            metadata={"adapter_type": "api"},
+            metadata={"origin": "api"},
         )
 
         now_iso = datetime.now(timezone.utc).isoformat()

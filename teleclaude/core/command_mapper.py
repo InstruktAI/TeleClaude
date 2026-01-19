@@ -32,7 +32,7 @@ class CommandMapper:
                 project_path=metadata.project_path or "",
                 title=metadata.title or (args[0] if args else None),
                 subdir=metadata.subdir,
-                adapter_type="telegram",
+                origin="telegram",
                 channel_metadata=metadata.channel_metadata,
                 auto_command=metadata.auto_command,
                 working_slug=cast(Optional[str], metadata.channel_metadata.get("working_slug"))
@@ -220,7 +220,7 @@ class CommandMapper:
             return CreateSessionCommand(
                 project_path=project_path or "",
                 title=title or (" ".join(args) if args else None),
-                adapter_type="redis",
+                origin="redis",
                 channel_metadata=channel_metadata,
                 launch_intent=launch_intent_obj,
             )
@@ -254,12 +254,12 @@ class CommandMapper:
         return SystemCommand(command=cmd_name or "unknown", args=args)
 
     @staticmethod
-    def map_rest_input(
+    def map_api_input(
         event: str,
         payload: Dict[str, object],
         metadata: MessageMetadata,
     ) -> InternalCommand:
-        """Map REST API input to internal command."""
+        """Map API input to internal command."""
         session_id = str(payload.get("session_id", ""))
 
         if event == "new_session":
@@ -267,7 +267,7 @@ class CommandMapper:
                 project_path=metadata.project_path or "",
                 title=metadata.title,
                 subdir=metadata.subdir,
-                adapter_type="rest",
+                origin="api",
                 channel_metadata=metadata.channel_metadata,
                 launch_intent=metadata.launch_intent,
                 auto_command=metadata.auto_command,

@@ -69,15 +69,15 @@ class BaseAdapter(ABC):
     ADAPTER_KEY: str  # Subclasses must define this constant
 
     def _metadata(self, **kwargs: object) -> MessageMetadata:
-        """Create MessageMetadata with adapter_type pre-set.
+        """Create MessageMetadata with origin pre-set.
 
         Args:
             **kwargs: Additional metadata fields (message_thread_id, title, etc.)
 
         Returns:
-            MessageMetadata with adapter_type set to this adapter's ADAPTER_KEY
+            MessageMetadata with origin set to this adapter's ADAPTER_KEY
         """
-        return MessageMetadata(adapter_type=self.ADAPTER_KEY, **kwargs)  # pyright: ignore[reportArgumentType]
+        return MessageMetadata(origin=self.ADAPTER_KEY, **kwargs)  # pyright: ignore[reportArgumentType]
 
     async def _get_session(self, session_id: str) -> "Session":
         """Get session from database, raise if not found.

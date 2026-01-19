@@ -801,7 +801,7 @@ class AdapterClient:
             return await self.handle_event(
                 TeleClaudeEvents.AGENT_EVENT,
                 payload,
-                metadata or MessageMetadata(adapter_type="internal"),
+                metadata or MessageMetadata(origin="internal"),
             )
 
         # For SystemCommand, use the command name for known command events.
@@ -816,7 +816,7 @@ class AdapterClient:
         payload = command.to_payload()
 
         if metadata is None:
-            metadata = MessageMetadata(adapter_type="internal")
+            metadata = MessageMetadata(origin="internal")
 
         if "message_id" not in payload and metadata.channel_metadata:
             message_id = metadata.channel_metadata.get("message_id")
@@ -847,7 +847,7 @@ class AdapterClient:
         Args:
             event: Type-checked event name (from EventType literal)
             payload: Event payload data
-            metadata: Event metadata (adapter_type, topic_id, user_id, etc.)
+            metadata: Event metadata (origin, topic_id, user_id, etc.)
 
         Returns:
             Result envelope: {"status": "success", "data": ...} or {"status": "error", ...}
@@ -863,18 +863,14 @@ class AdapterClient:
         session = await db.get_session(str(session_id)) if session_id else None
 
         # 3.5 Track last input adapter and message for routing feedback
-        if (
-            session
-            and metadata.adapter_type
-            and (metadata.adapter_type in self.adapters or metadata.adapter_type == "rest")
-        ):
+        if session and metadata.origin and metadata.origin in self.adapters:
             if event in COMMAND_EVENTS or event in (
                 TeleClaudeEvents.MESSAGE,
                 TeleClaudeEvents.VOICE,
                 TeleClaudeEvents.FILE,
             ):
                 # Track adapter for routing
-                await db.update_session(session.session_id, last_input_adapter=metadata.adapter_type)
+                await db.update_session(session.session_id, last_input_adapter=metadata.origin)
                 # Track last user input text for TUI display
                 user_text = payload.get("text") or payload.get("command")
                 if user_text is not None:
@@ -893,18 +889,18 @@ class AdapterClient:
             event,
         )
         if session and message_id:
-            await self._call_pre_handler(session, event, metadata.adapter_type)
+            await self._call_pre_handler(session, event, metadata.origin)
 
         # 5. Dispatch to registered handler
         response = await self._dispatch(event, context)
 
         # 6. Post-handler (UI state tracking after processing)
         if session and message_id:
-            await self._call_post_handler(session, event, str(message_id), metadata.adapter_type)
+            await self._call_post_handler(session, event, str(message_id), metadata.origin)
 
         # 7. Broadcast to observers (user actions)
         if session:
-            await self._broadcast_action(session, event, payload, metadata.adapter_type)
+            await self._broadcast_action(session, event, payload, metadata.origin)
 
         return response
 
@@ -919,14 +915,14 @@ class AdapterClient:
         """
         topic_id = metadata.message_thread_id
         channel_id = metadata.channel_id
-        adapter_type = metadata.adapter_type
+        origin = metadata.origin
 
-        if topic_id and adapter_type:
-            sessions = await db.get_sessions_by_adapter_metadata(adapter_type, "topic_id", topic_id)
+        if topic_id and origin:
+            sessions = await db.get_sessions_by_adapter_metadata(origin, "topic_id", topic_id)
             if sessions:
                 payload["session_id"] = sessions[0].session_id
-        elif channel_id and adapter_type:
-            sessions = await db.get_sessions_by_adapter_metadata(adapter_type, "channel_id", channel_id)
+        elif channel_id and origin:
+            sessions = await db.get_sessions_by_adapter_metadata(origin, "channel_id", channel_id)
             if sessions:
                 payload["session_id"] = sessions[0].session_id
 
@@ -965,7 +961,7 @@ class AdapterClient:
                 file_path=cast(str, payload.get("file_path", "")),
                 message_id=cast(str | None, payload.get("message_id")),
                 message_thread_id=cast(int | None, payload.get("message_thread_id")),
-                adapter_type=metadata.adapter_type,
+                origin=metadata.origin,
             ),
             TeleClaudeEvents.FILE: lambda: FileEventContext(
                 session_id=str(payload.get("session_id")),
@@ -995,7 +991,7 @@ class AdapterClient:
             return CommandEventContext(
                 session_id=str(payload.get("session_id")),
                 args=cast(list[str], payload.get("args", [])),
-                adapter_type=metadata.adapter_type,
+                origin=metadata.origin,
                 message_thread_id=metadata.message_thread_id,
                 title=metadata.title,
                 project_path=metadata.project_path,
@@ -1253,7 +1249,8 @@ class AdapterClient:
 
         channel_origin_adapter = origin_adapter
         if origin_adapter not in self.adapters:
-            raise ValueError(f"Origin adapter {origin_adapter} not found")
+            logger.debug("Origin %s not a registered adapter; treating as originless", origin_adapter)
+            channel_origin_adapter = ""
 
         origin_adapter_instance = self.adapters.get(channel_origin_adapter)
         origin_requires_channel = isinstance(origin_adapter_instance, UiAdapter)
@@ -1261,7 +1258,7 @@ class AdapterClient:
         tasks = []
         adapter_types = []
         for adapter_type, adapter in self.adapters.items():
-            is_origin = adapter_type == channel_origin_adapter
+            is_origin = bool(channel_origin_adapter) and adapter_type == channel_origin_adapter
             adapter_types.append((adapter_type, is_origin))
             tasks.append(
                 adapter.create_channel(

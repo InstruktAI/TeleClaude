@@ -86,7 +86,7 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
     mock_client.send_message = AsyncMock()
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        MessageMetadata(adapter_type="telegram", project_path=tmpdir)
+        MessageMetadata(origin="telegram", project_path=tmpdir)
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
@@ -103,7 +103,7 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
             mock_tb.get_pane_pid = AsyncMock(return_value=None)
             mock_unique.return_value = "$TestComputer[user] - Test Title"
 
-            cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", adapter_type="telegram")
+            cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", origin="telegram")
             result = await command_handlers.handle_create_session(cmd, mock_client)
 
     assert result["session_id"]
@@ -138,7 +138,7 @@ async def test_handle_create_session_does_not_send_welcome(mock_initialized_db, 
     mock_client.adapters = {}
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        MessageMetadata(adapter_type="telegram", project_path=tmpdir)
+        MessageMetadata(origin="telegram", project_path=tmpdir)
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
@@ -155,7 +155,7 @@ async def test_handle_create_session_does_not_send_welcome(mock_initialized_db, 
             mock_tb.get_pane_pid = AsyncMock(return_value=None)
             mock_unique.return_value = "$TestComputer[user] - Test Title"
 
-            cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", adapter_type="telegram")
+            cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", origin="telegram")
             await command_handlers.handle_create_session(cmd, mock_client)
 
     assert order == []
@@ -173,7 +173,7 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
 
     with tempfile.TemporaryDirectory() as tmpdir:
         MessageMetadata(
-            adapter_type="terminal",
+            origin="terminal",
             project_path=tmpdir,
             channel_metadata={
                 "terminal": {
@@ -200,7 +200,7 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
             cmd = CreateSessionCommand(
                 project_path=tmpdir,
                 title="Test",
-                adapter_type="terminal",
+                origin="terminal",
                 channel_metadata={
                     "terminal": {
                         "tty_path": "/dev/pts/7",
@@ -222,7 +222,7 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
     invalid_path.write_text("nope", encoding="utf-8")
 
     MagicMock(spec=EventContext)
-    MessageMetadata(adapter_type="telegram", project_path=str(invalid_path))
+    MessageMetadata(origin="telegram", project_path=str(invalid_path))
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
@@ -246,7 +246,7 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
         mock_tb.get_pane_pid = AsyncMock(return_value=None)
         mock_unique.return_value = "$TestComputer[user] - Untitled"
 
-        cmd = CreateSessionCommand(project_path="/nonexistent", adapter_type="telegram")
+        cmd = CreateSessionCommand(project_path="/nonexistent", origin="telegram")
         with pytest.raises(ValueError, match="Working directory does not exist"):
             await command_handlers.handle_create_session(cmd, mock_client)
     assert await mock_initialized_db.count_sessions() == 0

@@ -318,7 +318,7 @@ class Db:
             await client.handle_event(
                 TeleClaudeEvents.SESSION_CREATED,
                 {"session_id": session_id},
-                MessageMetadata(adapter_type=session.origin_adapter),
+                MessageMetadata(origin=session.origin_adapter),
             )
 
         return session
@@ -484,7 +484,7 @@ class Db:
                         await client.handle_event(
                             TeleClaudeEvents.SESSION_UPDATED,
                             {"session_id": session_id, "updated_fields": updates},
-                            MessageMetadata(adapter_type=session.origin_adapter),
+                            MessageMetadata(origin=session.origin_adapter),
                         )
                 except Exception as exc:
                     logger.error("Failed to dispatch SESSION_UPDATED for %s: %s", session_id[:8], exc)
@@ -505,7 +505,7 @@ class Db:
                 await self._client.handle_event(
                     TeleClaudeEvents.SESSION_REMOVED,
                     {"session_id": session_id},
-                    MessageMetadata(adapter_type=session.origin_adapter),
+                    MessageMetadata(origin=session.origin_adapter),
                 )
             except Exception as exc:
                 logger.error("Failed to dispatch SESSION_REMOVED for %s: %s", session_id[:8], exc)
@@ -634,7 +634,7 @@ class Db:
                 await self._client.handle_event(
                     TeleClaudeEvents.SESSION_REMOVED,
                     {"session_id": session_id},
-                    MessageMetadata(adapter_type=session.origin_adapter),
+                    MessageMetadata(origin=session.origin_adapter),
                 )
             except Exception as exc:
                 logger.error("Failed to dispatch SESSION_REMOVED for %s: %s", session_id[:8], exc)

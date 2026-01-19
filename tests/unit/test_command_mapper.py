@@ -10,12 +10,12 @@ from teleclaude.types.commands import (
 
 
 def test_map_telegram_new_session():
-    metadata = MessageMetadata(project_path="/path/to/project", title="Test Session", adapter_type="telegram")
+    metadata = MessageMetadata(project_path="/path/to/project", title="Test Session", origin="telegram")
     cmd = CommandMapper.map_telegram_input("new_session", [], metadata)
     assert isinstance(cmd, CreateSessionCommand)
     assert cmd.project_path == "/path/to/project"
     assert cmd.title == "Test Session"
-    assert cmd.adapter_type == "telegram"
+    assert cmd.origin == "telegram"
 
 
 def test_map_telegram_message():
@@ -46,7 +46,7 @@ def test_map_redis_agent_start():
 
 def test_map_rest_message():
     payload = {"session_id": "sess_789", "text": "REST message"}
-    cmd = CommandMapper.map_rest_input("message", payload, MessageMetadata())
+    cmd = CommandMapper.map_api_input("message", payload, MessageMetadata())
     assert isinstance(cmd, SendMessageCommand)
     assert cmd.session_id == "sess_789"
     assert cmd.text == "REST message"

@@ -29,11 +29,11 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
 
     # Create a test session
     project_path = "/tmp"
-    create_cmd = CreateSessionCommand(project_path=project_path, adapter_type="telegram", title="Short Test")
+    create_cmd = CreateSessionCommand(project_path=project_path, origin="telegram", title="Short Test")
     context = CommandEventContext(
         session_id="sess-ctx",
         args=[],
-        adapter_type="telegram",
+        origin="telegram",
         project_path=project_path,
         internal_command=create_cmd,
     )
@@ -41,7 +41,7 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
         "new_session",
         ["Short", "Test"],
         context,
-        MessageMetadata(adapter_type="telegram", project_path=project_path),
+        MessageMetadata(origin="telegram", project_path=project_path),
     )
 
     sessions = await daemon.db.list_sessions()
@@ -92,11 +92,11 @@ async def test_long_running_command(daemon_with_mocked_telegram):
 
     # Create a test session
     project_path = "/tmp"
-    create_cmd = CreateSessionCommand(project_path=project_path, adapter_type="telegram", title="Long Test")
+    create_cmd = CreateSessionCommand(project_path=project_path, origin="telegram", title="Long Test")
     context = CommandEventContext(
         session_id="sess-ctx",
         args=[],
-        adapter_type="telegram",
+        origin="telegram",
         project_path=project_path,
         internal_command=create_cmd,
     )
@@ -104,7 +104,7 @@ async def test_long_running_command(daemon_with_mocked_telegram):
         "new_session",
         ["Long", "Test"],
         context,
-        MessageMetadata(adapter_type="telegram", project_path=project_path),
+        MessageMetadata(origin="telegram", project_path=project_path),
     )
 
     sessions = await daemon.db.list_sessions()

@@ -63,7 +63,7 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
             event=TeleClaudeEvents.MESSAGE,
             payload={"text": "hello", "message_id": "user-msg-123"},
             metadata=MessageMetadata(
-                adapter_type="telegram",
+                origin="telegram",
                 message_thread_id=67890,
             ),
         )

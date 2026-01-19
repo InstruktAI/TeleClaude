@@ -1019,7 +1019,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             if isinstance(parsed.launch_intent, dict):
                 launch_intent_obj = SessionLaunchIntent.from_dict(parsed.launch_intent)
             metadata = MessageMetadata(
-                adapter_type="redis",
+                origin="redis",
                 channel_metadata=parsed.channel_metadata,
                 project_path=parsed.project_path,
                 title=parsed.title,
@@ -1141,7 +1141,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             data={"from_computer": from_computer, "raw_args": args_obj},
         )
 
-        await self.client.handle_internal_command(cmd, metadata=MessageMetadata(adapter_type="redis"))
+        await self.client.handle_internal_command(cmd, metadata=MessageMetadata(origin="redis"))
 
     async def _heartbeat_loop(self) -> None:
         """Background task: Send heartbeat every N seconds."""
