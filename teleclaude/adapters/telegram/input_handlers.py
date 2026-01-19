@@ -18,8 +18,8 @@ from instrukt_ai_logging import get_logger
 from telegram import Document, Message, PhotoSize, Update
 from telegram.ext import ContextTypes
 
-from teleclaude.core.db import db
 from teleclaude.core.dates import ensure_utc
+from teleclaude.core.db import db
 from teleclaude.core.events import TeleClaudeEvents, UiCommands
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
 from teleclaude.core.session_utils import get_session_output_dir

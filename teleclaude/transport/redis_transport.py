@@ -26,8 +26,8 @@ from redis.asyncio import Redis
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.command_mapper import CommandMapper
-from teleclaude.core.db import db
 from teleclaude.core.dates import parse_iso_datetime
+from teleclaude.core.db import db
 from teleclaude.core.events import (
     SessionLifecycleContext,
     SessionUpdatedContext,

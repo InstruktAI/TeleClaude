@@ -21,8 +21,8 @@ from typing import TYPE_CHECKING, Optional
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge
-from teleclaude.core.db import db
 from teleclaude.core.dates import ensure_utc
+from teleclaude.core.db import db
 from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_listeners
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 

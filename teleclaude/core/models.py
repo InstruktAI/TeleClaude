@@ -366,7 +366,9 @@ class Session:  # pylint: disable=too-many-instance-attributes
         created_at = parse_iso_datetime(created_at_raw) if isinstance(created_at_raw, str) else created_at_raw
 
         last_activity_raw = data.get("last_activity")
-        last_activity = parse_iso_datetime(last_activity_raw) if isinstance(last_activity_raw, str) else last_activity_raw
+        last_activity = (
+            parse_iso_datetime(last_activity_raw) if isinstance(last_activity_raw, str) else last_activity_raw
+        )
 
         closed_at_raw = data.get("closed_at")
         closed_at = parse_iso_datetime(closed_at_raw) if isinstance(closed_at_raw, str) else closed_at_raw
