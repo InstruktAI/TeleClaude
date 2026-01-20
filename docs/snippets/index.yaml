@@ -1,4 +1,5 @@
 project_root: /Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude
+snippets_root: /Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude/docs/snippets
 snippets:
 - id: architecture/cache-system
   description: Event-driven read-cache architecture using SQLite snapshots.

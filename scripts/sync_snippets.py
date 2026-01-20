@@ -9,7 +9,7 @@ import frontmatter
 import yaml
 
 from instrukt_ai_logging import get_logger
-from scripts.build_snippet_index import build_index_payload
+from scripts.build_snippet_index import _iter_snippet_roots, build_index_payload
 
 logger = get_logger(__name__)
 
@@ -25,6 +25,7 @@ class SnippetEntry(TypedDict):
 
 class IndexPayload(TypedDict):
     project_root: str
+    snippets_root: str
     snippets: list[SnippetEntry]
 
 
@@ -73,14 +74,16 @@ def _normalize_payload(payload: Mapping[str, object]) -> IndexPayload:
         )
     normalized_snippets.sort(key=lambda entry: entry["id"])
     project_root = payload.get("project_root", "")
+    snippets_root = payload.get("snippets_root", "")
     payload_root = project_root if isinstance(project_root, str) else ""
-    return {"project_root": payload_root, "snippets": normalized_snippets}
+    payload_snippets_root = snippets_root if isinstance(snippets_root, str) else ""
+    return {"project_root": payload_root, "snippets_root": payload_snippets_root, "snippets": normalized_snippets}
 
 
-def validate_index(project_root: Path, index_path: Path) -> list[str]:
+def validate_index(project_root: Path, snippets_root: Path, index_path: Path) -> list[str]:
     errors: list[str] = []
     yaml_payload = _normalize_payload(_load_index_yaml(index_path))
-    rebuilt_payload = _normalize_payload(build_index_payload(project_root))
+    rebuilt_payload = _normalize_payload(build_index_payload(project_root, snippets_root))
 
     yaml_snippets = {entry["id"]: entry for entry in yaml_payload["snippets"]}
     rebuilt_snippets = {entry["id"]: entry for entry in rebuilt_payload["snippets"]}
@@ -118,22 +121,33 @@ def validate_index(project_root: Path, index_path: Path) -> list[str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Validate docs/index.yaml against docs/snippets.")
+    parser = argparse.ArgumentParser(description="Validate snippet indexes for docs/snippets and docs/global-snippets.")
     parser.add_argument("--project-root", default=str(Path.cwd()), help="Project root (default: cwd)")
-    parser.add_argument("--index", default=None, help="Index path (default: <project-root>/docs/index.yaml)")
     args = parser.parse_args()
 
     project_root = Path(args.project_root).expanduser().resolve()
-    index_path = Path(args.index).expanduser().resolve() if args.index else project_root / "docs" / "index.yaml"
+    roots = _iter_snippet_roots(project_root)
+    if not roots:
+        logger.info("no_snippet_roots", project_root=str(project_root))
+        return
 
-    errors = validate_index(project_root, index_path)
-    if errors:
-        for error in errors:
+    all_errors: list[str] = []
+    for snippets_root in roots:
+        index_path = snippets_root / "index.yaml"
+        if not index_path.exists():
+            all_errors.append(f"Missing snippet index: {index_path}")
+            continue
+        errors = validate_index(project_root, snippets_root, index_path)
+        all_errors.extend(errors)
+
+    if all_errors:
+        for error in all_errors:
             print(error)
         raise SystemExit(1)
 
     print("index.yaml OK")
-    logger.info("index_ok", path=str(index_path))
+    for snippets_root in roots:
+        logger.info("index_ok", path=str(snippets_root / "index.yaml"))
 
 
 if __name__ == "__main__":

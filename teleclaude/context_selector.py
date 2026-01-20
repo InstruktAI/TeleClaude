@@ -23,7 +23,7 @@ class SnippetMeta:
     snippet_type: str
     scope: str
     path: Path
-    requires: list[Path]
+    requires: list[str]
 
 
 class SessionState(TypedDict):
@@ -77,7 +77,7 @@ def _save_state(state: ContextState) -> None:
         logger.exception("context_state_save_failed", error=str(exc))
 
 
-_INLINE_REF_RE = re.compile(r"@([\\w./~\\-]+\\.md)")
+_INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 
 
 def _split_frontmatter(content: str) -> tuple[str, str]:
@@ -96,7 +96,7 @@ def _split_frontmatter(content: str) -> tuple[str, str]:
     return "", content
 
 
-def _resolve_inline_refs(content: str, *, snippet_path: Path) -> str:
+def _resolve_inline_refs(content: str, *, snippet_path: Path, root_path: Path) -> str:
     """Expand @<path>.md references to absolute paths for tool consumption."""
     head, body = _split_frontmatter(content)
 
@@ -106,7 +106,10 @@ def _resolve_inline_refs(content: str, *, snippet_path: Path) -> str:
             return match.group(0)
         candidate = Path(ref).expanduser()
         if not candidate.is_absolute():
-            candidate = (snippet_path.parent / candidate).resolve()
+            if str(candidate).startswith("docs/"):
+                candidate = (root_path / candidate).resolve()
+            else:
+                candidate = (snippet_path.parent / candidate).resolve()
         else:
             candidate = candidate.resolve()
         return f"@{candidate}"
@@ -147,11 +150,11 @@ def _parse_snippets(snippets_dir: Path, default_scope: str) -> list[SnippetMeta]
             continue
         requires_raw = metadata.get("requires", [])
         requires_list = requires_raw if isinstance(requires_raw, list) else []
-        resolved_requires: list[Path] = []
+        resolved_requires: list[str] = []
         for req in requires_list:
             if not isinstance(req, str):
                 continue
-            resolved_requires.append((path.parent / req).resolve())
+            resolved_requires.append(req)
         snippets.append(
             SnippetMeta(
                 snippet_id=snippet_id,
@@ -248,7 +251,12 @@ def _resolve_requires(selected_ids: Iterable[str], snippets: list[SnippetMeta]) 
         seen.add(str(current.path))
         resolved.append(current)
         for req in current.requires:
-            req_snippet = snippets_by_path.get(str(req))
+            req_snippet = snippets_by_id.get(req)
+            if not req_snippet:
+                req_snippet = snippets_by_path.get(str(req))
+            if not req_snippet and req.endswith(".md"):
+                req_path = (current.path.parent / req).resolve()
+                req_snippet = snippets_by_path.get(str(req_path))
             if req_snippet and str(req_snippet.path) not in seen:
                 stack.append(req_snippet)
 
@@ -315,7 +323,10 @@ def build_context_output(
     for snippet in new_snippets:
         try:
             raw = snippet.path.read_text(encoding="utf-8")
-            content = _resolve_inline_refs(raw, snippet_path=snippet.path)
+            root_path = project_root
+            if GLOBAL_SNIPPETS_DIR in snippet.path.parents:
+                root_path = GLOBAL_SNIPPETS_DIR.parent.parent
+            content = _resolve_inline_refs(raw, snippet_path=snippet.path, root_path=root_path)
         except Exception as exc:
             logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))
             continue

@@ -2,7 +2,7 @@
 description: How to author TeleClaude snippets and choose taxonomy-appropriate structure.
 id: teleclaude/snippets/authoring
 requires:
-- principles/priming
+- ai-collaboration/principles/priming
 scope: project
 type: guide
 ---
@@ -16,7 +16,7 @@ Purpose
 
 Principles
 
-- **Priming focus**: see @../principles/priming.md.
+- **Priming focus**: see ai-collaboration/principles/priming.
 - **Truth over completeness**: reflect the real system, not idealized intent.
 - **Explain the why**: capture guarantees, invariants, and boundaries that guide usage.
 - **Concrete over generic**: use real component names/events where it clarifies behavior.
@@ -55,7 +55,14 @@ Frontmatter heuristics
 - **Type**: pick the taxonomy that matches the snippet’s purpose.
 - **Scope**: choose the true applicability (`project`, `domain`, `global`).
 - **Requires**: list snippet IDs (from `docs/index.yaml`) that are mandatory reading to interpret this snippet correctly.
-- **Description**: one sentence that states what the snippet is and where it applies.
+- **Description**: a concise semantic summary of the snippet’s content.
+
+Description heuristics
+
+- **Match the content**: summarize what the snippet actually says.
+- **Disambiguate**: if a term has multiple meanings, specify which one this is.
+- **Non-procedural**: don’t describe steps; summarize the concept.
+- **Concise**: one sentence, focused on meaning.
 
 Frontmatter examples
 
@@ -146,5 +153,5 @@ FAQ
 
 References
 
-- `requires` should list snippet IDs; inline `@...` references can stay relative.
+- `requires` should list snippet IDs; inline `@...` references should be root-relative (e.g., `@docs/snippets/...`).
 - References prime context; the snippet body still needs to explain the concept on its own.

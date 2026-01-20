@@ -43,8 +43,8 @@ def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.M
         "role",
         "project",
         "Role description",
-        "Role content.",
-        ["../standards/base.md"],
+        "Role content. @docs/snippets/software-development/standards/base.md",
+        ["software-development/standards/base"],
     )
 
     _write(project_root / "docs" / "snippets" / "software-development" / "standards" / "base.md", base)
@@ -68,6 +68,8 @@ def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.M
     assert "Role content." in output
     assert "Base content." in output
     assert "scope: project" in output
+    expected_inline = project_root / "docs" / "snippets" / "software-development" / "standards" / "base.md"
+    assert f"@{expected_inline}" in output
 
     second = context_selector.build_context_output(
         corpus="Need role guidance",
