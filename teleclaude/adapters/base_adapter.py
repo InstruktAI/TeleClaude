@@ -311,11 +311,8 @@ class BaseAdapter(ABC):
     ) -> AsyncIterator[str]:
         """Poll for output chunks from remote session.
 
-        Used for bidirectional AI-to-AI communication.
-
-        Implementations:
-        - RedisTransport: XREAD output:{session_id} stream
-        - TelegramAdapter: Not applicable (no AI-to-AI support)
+        Note: current MCP usage polls session output via get_session_data; output
+        streaming is disabled in RedisTransport.
 
         Args:
             session: Session object

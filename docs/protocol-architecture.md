@@ -57,7 +57,7 @@ class RemoteExecutionProtocol(Protocol):
         request_id: str,
         timeout: float = 300.0,
     ) -> AsyncIterator[str]:
-        """Stream response for a request."""
+        """Optional streaming for a request (not used by MCP; use get_session_data polling)."""
 ```
 
 ### Who Implements This Protocol?
@@ -108,10 +108,6 @@ message_id = await adapter_client.send_request(computer_name, command, metadata,
 # Read single response (ephemeral requests)
 response = await adapter_client.read_response(message_id, timeout=3.0)
 
-# Or stream session output (continuous streaming)
-async for chunk in adapter_client.stream_session_output(session_id):
-    yield chunk
-
 # Send response to ephemeral request
 await adapter_client.send_response(message_id, json_data)
 ```
@@ -120,7 +116,7 @@ await adapter_client.send_response(message_id, json_data)
 
 - Routes to **first adapter implementing RemoteExecutionProtocol**
 - Raises `RuntimeError` if no transport adapter available
-- Two patterns: request/response (ephemeral) vs streaming (session output)
+- Current pattern: request/response (ephemeral) plus get_session_data polling for session output
 
 ---
 
@@ -195,7 +191,7 @@ class PostgresAdapter(BaseAdapter, RemoteExecutionProtocol):
         # Implementation...
 
     def poll_output_stream(self, request_id: str, timeout: float) -> AsyncIterator[str]:
-        """Stream response via LISTEN."""
+        """Optional streaming (not used by MCP; use get_session_data polling)."""
         # Implementation...
 ```
 

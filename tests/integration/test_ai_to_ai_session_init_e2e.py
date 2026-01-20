@@ -20,7 +20,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
 
     Verifies that when a remote computer receives a create_session command:
     1. Session is created with proper metadata
-    2. Output stream listener is started for bidirectional communication
+    2. Response is returned to the initiator
     """
     daemon = daemon_with_mocked_telegram
 
@@ -41,7 +41,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
         project_path = str(project_path)
         channel_metadata = {
             "telegram": {"channel_id": "12345"},
-            "redis": {"channel_id": "test-channel", "output_stream": "output:initiator-session-456"},
+            "redis": {"channel_id": "test-channel"},
         }
 
         initiator_computer = "WorkstationA"
@@ -61,29 +61,22 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
 
         redis_transport.send_response = mock_send_response
 
-        # Mock _start_output_stream_listener to verify it's called
-        listener_started = []
+        # Simulate incoming /new_session message through Redis stream
+        # This is the standardized flow after refactoring
+        message_data = {
+            b"request_id": request_id.encode("utf-8"),
+            b"session_id": request_id.encode("utf-8"),  # Used as request_id in protocol
+            b"command": b"/new_session Test AI-to-AI Session",  # Title passed as command arg
+            b"project_path": project_path.encode("utf-8"),
+            b"initiator": initiator_computer.encode("utf-8"),
+            b"channel_metadata": json.dumps(channel_metadata).encode("utf-8"),
+        }
 
-        def mock_start_listener(session_id):
-            listener_started.append(session_id)
+        # Call _handle_incoming_message (the real entry point for Redis messages)
+        await redis_transport._handle_incoming_message(request_id, message_data)
 
-        with patch.object(redis_transport, "_start_output_stream_listener", side_effect=mock_start_listener):
-            # Simulate incoming /new_session message through Redis stream
-            # This is the standardized flow after refactoring
-            message_data = {
-                b"request_id": request_id.encode("utf-8"),
-                b"session_id": request_id.encode("utf-8"),  # Used as request_id in protocol
-                b"command": b"/new_session Test AI-to-AI Session",  # Title passed as command arg
-                b"project_path": project_path.encode("utf-8"),
-                b"initiator": initiator_computer.encode("utf-8"),
-                b"channel_metadata": json.dumps(channel_metadata).encode("utf-8"),
-            }
-
-            # Call _handle_incoming_message (the real entry point for Redis messages)
-            await redis_transport._handle_incoming_message(request_id, message_data)
-
-            # Wait for async operations to complete
-            await asyncio.sleep(0.01)
+        # Wait for async operations to complete
+        await asyncio.sleep(0.01)
 
     # Verify session was created
     sessions = await daemon.db.list_sessions()
@@ -107,9 +100,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
     assert envelope.get("data") is not None, f"Response should have data, got envelope: {envelope}"
     assert envelope["data"]["session_id"] == session.session_id
 
-    # Verify output stream listener was started
-    assert len(listener_started) == 1, "Should have started output stream listener"
-    assert listener_started[0] == session.session_id, "Listener should be started for correct session"
+    # Output streaming is not used; MCP retrieves output via get_session_data polling.
 
 
 @pytest.mark.asyncio

@@ -247,7 +247,7 @@ async def test_heartbeat_includes_required_fields(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_send_message_adds_to_stream():
-    """Test that send_message adds message to Redis stream."""
+    """Test that send_message is a no-op for RedisTransport."""
     from teleclaude.core.models import (
         RedisTransportMetadata,
         Session,
@@ -284,11 +284,11 @@ async def test_send_message_adds_to_stream():
     )
 
     # Send message
-    await adapter.send_message(session, "Hello world")
+    result = await adapter.send_message(session, "Hello world")
 
-    # Verify xadd was called with correct stream
-    assert len(captured_calls) == 1
-    assert captured_calls[0]["stream"] == "session:test-session-123:output"
+    # Verify no Redis stream writes occur
+    assert result == ""
+    assert captured_calls == []
 
 
 @pytest.mark.asyncio

@@ -14,7 +14,6 @@ import base64
 import hashlib
 import json
 import os
-import re
 import ssl
 import time
 from datetime import datetime, timezone
@@ -53,7 +52,6 @@ from teleclaude.core.models import (
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.core.redis_utils import scan_keys
 from teleclaude.types import SystemStats
-from teleclaude.types.commands import CommandType, SendMessageCommand
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -72,12 +70,12 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
     Architecture:
     - Each computer polls its message stream: messages:{computer_name}
-    - Each session has an output stream: output:{session_id}
+    - Request/response replies are sent on output:{message_id} streams
     - Computer registry uses Redis keys with TTL for heartbeats
 
     Message flow:
     - Comp1 → XADD messages:comp2 → Comp2 polls → executes message
-    - Comp2 → XADD output:session_id → Comp1 polls → streams to MCP
+    - Comp2 → XADD output:{message_id} → Comp1 reads response for request/response
     """
 
     def __init__(self, adapter_client: "AdapterClient", task_registry: "TaskRegistry | None" = None):
@@ -107,7 +105,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         self._session_events_poll_task: Optional[asyncio.Task[object]] = None
         self._peer_refresh_task: Optional[asyncio.Task[object]] = None
         self._connection_task: Optional[asyncio.Task[object]] = None
-        self._output_stream_listeners: dict[str, asyncio.Task[object]] = {}  # session_id -> listener task
         self._running = False
 
         # Extract Redis configuration from global config
@@ -450,15 +447,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             except asyncio.CancelledError:
                 pass
 
-        # Cancel all output stream listeners
-        for _, task in list(self._output_stream_listeners.items()):
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-        self._output_stream_listeners.clear()
-
         # Close Redis connection
         if self.redis:
             await self.redis.aclose()
@@ -491,104 +479,37 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             logger.error("Failed to persist last processed message ID: %s", e)
 
     async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
-        """Send message chunk to Redis output stream.
-
-        Args:
-            session: Session object
-            text: Message text (output chunk)
-            metadata: Optional metadata (ignored for Redis)
-
-        Returns:
-            Redis stream entry ID as message_id
-        """
-
-        # Trust contract: create_channel already set up metadata
-        redis_meta = session.adapter_metadata.redis
-        if not redis_meta or not redis_meta.channel_id:
-            raise ValueError(f"Session {session.session_id} has no Redis channel_id")
-        output_stream: str = redis_meta.channel_id
-
-        # Send to Redis stream
-        redis_client = self._require_redis()
-        message_id_bytes: bytes = await redis_client.xadd(
-            output_stream,
-            {
-                b"chunk": text.encode("utf-8"),
-                b"timestamp": str(time.time()).encode("utf-8"),
-                b"session_id": session.session_id.encode("utf-8"),
-            },
-            maxlen=self.output_stream_maxlen,
+        """Redis transport does not stream session output; noop for compatibility."""
+        logger.debug(
+            "send_message ignored for RedisTransport (session output streaming disabled): %s",
+            session.session_id[:8],
         )
-
-        logger.debug("Sent to Redis stream %s: %s", output_stream, message_id_bytes)
-        return message_id_bytes.decode("utf-8")
+        return ""
 
     async def edit_message(
         self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
     ) -> bool:
-        """Redis streams don't support editing - send new message instead.
-
-        Args:
-            session: Session object
-            message_id: Message ID (ignored)
-            text: New text
-            metadata: Optional metadata
-
-        Returns:
-            True (always succeeds by sending new message)
-        """
-        await self.send_message(session, text, metadata=metadata)
+        """No-op for Redis transport."""
+        logger.debug(
+            "edit_message ignored for RedisTransport (session output streaming disabled): %s",
+            session.session_id[:8],
+        )
         return True
 
     async def delete_message(self, session: Session, message_id: str) -> bool:
-        """Delete message from Redis stream.
-
-        Args:
-            session: Session object
-            message_id: Redis stream entry ID
-
-        Returns:
-            True if successful
-        """
-
-        # Trust contract: create_channel already set up metadata
-        redis_meta = session.adapter_metadata.redis
-        if not redis_meta or not redis_meta.output_stream:
-            raise ValueError(f"Session {session.session_id} has no Redis output_stream")
-        output_stream: str = redis_meta.output_stream
-
-        try:
-            redis_client = self._require_redis()
-            await redis_client.xdel(output_stream, message_id)
-            return True
-        except Exception as e:
-            logger.error("Failed to delete message %s: %s", message_id, e)
-            return False
+        """No-op for Redis transport."""
+        logger.debug(
+            "delete_message ignored for RedisTransport (session output streaming disabled): %s",
+            session.session_id[:8],
+        )
+        return True
 
     async def send_error_feedback(self, session_id: str, error_message: str) -> None:
-        """Send error envelope to Redis output stream.
-
-        Args:
-            session_id: Session that encountered error
-            error_message: Human-readable error description
-        """
-
-        try:
-            output_stream = f"output:{session_id}"
-            redis_client = self._require_redis()
-            await redis_client.xadd(
-                output_stream,
-                {
-                    b"type": b"error",
-                    b"error": error_message.encode("utf-8"),
-                    b"timestamp": str(time.time()).encode("utf-8"),
-                    b"session_id": session_id.encode("utf-8"),
-                },
-                maxlen=self.output_stream_maxlen,
-            )
-            logger.debug("Sent error to Redis stream %s: %s", output_stream, error_message)
-        except Exception as e:
-            logger.error("Failed to send error feedback for session %s: %s", session_id, e)
+        """No-op for Redis transport (errors surface via request/response)."""
+        logger.debug(
+            "send_error_feedback ignored for RedisTransport (session output streaming disabled): %s",
+            session_id[:8],
+        )
 
     async def send_file(
         self,
@@ -628,50 +549,23 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         return ""
 
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
-        """Create Redis streams for session.
+        """Record transport metadata for AI-to-AI sessions (no Redis output streams)."""
 
-        For AI-to-AI sessions (with target_computer): Creates command + output streams.
-        For local sessions (no target_computer): Creates only output stream.
-
-        Args:
-            session: Session object
-            title: Channel title
-            metadata: Optional ChannelMetadata (may contain target_computer for AI-to-AI sessions)
-
-        Returns:
-            Output stream name as channel_id
-        """
-
-        output_stream = f"output:{session.session_id}"
-
-        # Get or create redis metadata in adapter namespace
         redis_meta = session.adapter_metadata.redis
         if not redis_meta:
             redis_meta = RedisTransportMetadata()
             session.adapter_metadata.redis = redis_meta
 
-        redis_meta.channel_id = output_stream
-        redis_meta.output_stream = output_stream
-
-        # Store target computer from metadata if present
         if metadata.target_computer:
             redis_meta.target_computer = metadata.target_computer
             logger.info(
-                "Created Redis streams for AI-to-AI session %s: target=%s, output=%s",
+                "Recorded Redis target for AI-to-AI session %s: target=%s",
                 session.session_id[:8],
                 metadata.target_computer,
-                output_stream,
-            )
-        else:
-            logger.debug(
-                "Created Redis output stream for local session %s: %s (no target computer)",
-                session.session_id[:8],
-                output_stream,
             )
 
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-
-        return output_stream
+        return ""
 
     async def update_channel_title(self, session: Session, title: str) -> bool:
         """Update channel title (no-op for Redis).
@@ -708,28 +602,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         return True
 
     async def delete_channel(self, session: Session) -> bool:
-        """Delete Redis stream.
-
-        Args:
-            session: Session object
-
-        Returns:
-            True if successful
-        """
-
-        # Trust contract: create_channel already set up metadata
-        redis_meta = session.adapter_metadata.redis
-        if not redis_meta or not redis_meta.output_stream:
-            raise ValueError(f"Session {session.session_id} has no Redis output_stream")
-        output_stream: str = redis_meta.output_stream
-        redis_client = self._require_redis()
-
-        try:
-            await redis_client.delete(output_stream)
-            return True
-        except Exception as e:
-            logger.error("Failed to delete stream %s: %s", output_stream, e)
-            return False
+        """No-op: Redis transport does not create per-session output streams."""
+        return True
 
     async def _get_online_computers(self) -> list[str]:
         """Get list of online computer names from Redis heartbeat keys.
@@ -1048,19 +922,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             logger.info(">>> About to call handle_internal_command for: %s", command.command_type)
             result = await self.client.handle_internal_command(command, metadata=metadata)
             logger.info(">>> handle_internal_command completed for: %s", command.command_type)
-
-            # Start output stream listener for new AI-to-AI sessions
-            if (
-                command.command_type == CommandType.CREATE_SESSION
-                and isinstance(result, dict)
-                and result.get("status") == "success"
-            ):
-                result_data = result.get("data")
-                if isinstance(result_data, dict):
-                    new_session_id = result_data.get("session_id")
-                    if new_session_id:
-                        self._start_output_stream_listener(str(new_session_id))
-                        logger.debug("Started output stream listener for session: %s", new_session_id)
 
             # Result is always envelope: {"status": "success/error", "data": ..., "error": ...}
             response_json = json.dumps(result)
@@ -1806,92 +1667,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         logger.info("Stopped session events polling")
 
-    # === AI-to-AI Session Output Stream Listeners ===
-
-    def _start_output_stream_listener(self, session_id: str) -> None:
-        """Start background task to poll output stream for incoming messages from initiator.
-
-        Args:
-            session_id: Session ID to listen for
-        """
-        if session_id in self._output_stream_listeners:
-            logger.warning("Output stream listener already running for session %s", session_id[:8])
-            return
-
-        if self.task_registry:
-            task = self.task_registry.spawn(
-                self._poll_output_stream_for_messages(session_id), name=f"redis-output-{session_id[:8]}"
-            )
-        else:
-            task = asyncio.create_task(self._poll_output_stream_for_messages(session_id))
-            task.add_done_callback(self._log_task_exception)
-        self._output_stream_listeners[session_id] = task
-        logger.info("Started output stream listener for AI-to-AI session %s", session_id[:8])
-
-    async def _poll_output_stream_for_messages(self, session_id: str) -> None:
-        """Poll output stream for incoming messages from session initiator.
-
-        This enables bidirectional communication in AI-to-AI sessions where
-        the output stream is shared between initiator and remote.
-
-        Args:
-            session_id: Session ID to poll
-        """
-
-        output_stream = f"output:{session_id}"
-        last_id = b"$"  # Start from current position
-        logger.info("Starting output stream message polling for session %s", session_id[:8])
-
-        try:
-            while self._running:
-                # Check if session still exists
-                session = await db.get_session(session_id)
-                if not session:
-                    logger.info("Session %s missing, stopping output stream listener", session_id[:8])
-                    break
-
-                # Read from output stream
-                redis_client = self._require_redis()
-                messages = await redis_client.xread({output_stream.encode("utf-8"): last_id}, block=1000, count=5)
-
-                if not messages:
-                    continue
-
-                # Process incoming messages from initiator
-                for _stream_name, stream_messages in messages:
-                    for message_id, data in stream_messages:
-                        last_id = message_id
-
-                        # Check if this is a message FROM the initiator (not our own output)
-                        chunk_bytes: bytes = data.get(b"chunk", b"")
-                        chunk = chunk_bytes.decode("utf-8")
-
-                        if not chunk:
-                            continue
-
-                        # Skip system messages
-                        if chunk.startswith("[") or "⏳" in chunk:
-                            continue
-
-                        # This is a message from the initiator - trigger MESSAGE event
-                        logger.info("Received message from initiator for session %s: %s", session_id[:8], chunk[:50])
-                        cmd = SendMessageCommand(session_id=session_id, text=chunk.strip())
-                        await self.client.handle_internal_command(
-                            cmd,
-                            metadata=MessageMetadata(origin="redis"),
-                        )
-
-        except asyncio.CancelledError:
-            logger.debug("Output stream listener cancelled for session %s", session_id[:8])
-        except Exception as e:
-            logger.error("Output stream listener error for session %s: %s", session_id[:8], e)
-            await self._reconnect_with_backoff()
-        finally:
-            # Cleanup
-            if session_id in self._output_stream_listeners:
-                del self._output_stream_listeners[session_id]
-            logger.info("Stopped output stream listener for session %s", session_id[:8])
-
     # === Session Observation (Interest Window) ===
 
     async def signal_observation(
@@ -2183,105 +1958,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         return result
 
     async def poll_output_stream(self, session_id: str, timeout: float = 300.0) -> AsyncIterator[str]:  # pyright: ignore[reportIncompatibleMethodOverride]
-        """Poll output stream and yield chunks as they arrive.
-
-        Used by MCP server to stream output from remote sessions.
-
-        Args:
-            session_id: Session ID
-            timeout: Max seconds to wait for output
-
-        Yields:
-            Output chunks as they arrive
-        """
-
-        output_stream = f"output:{session_id}"
-        last_id = b"$"  # Start from current position (only read new chunks)
-        start_time = time.time()
-        last_yield_time = time.time()
-        idle_count = 0
-        max_idle_polls = 120  # 120 * 0.5s = 60s max idle
-        heartbeat_interval = 60  # Send heartbeat every 60s if no output
-
-        logger.info("Starting output stream poll for session %s", session_id[:8])
-
-        try:
-            while True:
-                # Check overall timeout
-                if time.time() - start_time > timeout:
-                    yield "\n[Timeout: Session exceeded time limit]"
-                    return
-
-                # Read from stream (blocking with 500ms timeout)
-                try:
-                    redis_client = self._require_redis()
-                    messages = await redis_client.xread({output_stream.encode("utf-8"): last_id}, block=500, count=10)
-
-                    if not messages:
-                        # No messages - increment idle counter
-                        idle_count += 1
-
-                        # Send heartbeat if no output for a while
-                        if time.time() - last_yield_time > heartbeat_interval:
-                            yield "[⏳ Waiting for response...]\n"
-                            last_yield_time = time.time()
-
-                        # Timeout if idle too long
-                        if idle_count >= max_idle_polls:
-                            yield "\n[Timeout: No response for 60 seconds]"
-                            return
-
-                        continue
-
-                    # Got messages - reset idle counter
-                    idle_count = 0
-
-                    # Process messages
-                    for _stream_name, stream_messages in messages:
-                        for message_id, data in stream_messages:
-                            chunk = data.get(b"chunk", b"").decode("utf-8")
-
-                            if not chunk:
-                                continue
-
-                            # Check for completion marker
-                            if "[Output Complete]" in chunk:
-                                logger.info("Received completion marker for session %s", session_id[:8])
-                                return
-
-                            # Yield chunk content
-                            content = self._extract_chunk_content(chunk)
-                            if content:
-                                yield content
-                                last_yield_time = time.time()
-
-                            # Update last ID
-                            last_id = message_id
-
-                except Exception as e:
-                    logger.error("Error polling output stream: %s", e)
-                    await self._reconnect_with_backoff()
-
-        except asyncio.CancelledError:
-            logger.info("Output stream polling cancelled for session %s", session_id[:8])
-            raise
-
-    def _extract_chunk_content(self, chunk_text: str) -> str:
-        """Extract actual output from chunk message.
-
-        Strips markdown code fences and chunk markers.
-
-        Args:
-            chunk_text: Raw chunk text from Redis
-
-        Returns:
-            Extracted content without formatting
-        """
-        if not chunk_text:
-            return ""
-
-        # Remove markdown code fences
-        content = chunk_text.replace("```sh", "").replace("```", "")
-        # Remove chunk markers
-        content = re.sub(r"\[Chunk \d+/\d+\]", "", content)
-        return content.strip()
+        """Redis transport does not stream session output; use get_session_data polling."""
+        _ = (session_id, timeout)
+        raise NotImplementedError("Redis output streaming is disabled; use get_session_data polling.")
