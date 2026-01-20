@@ -9,10 +9,10 @@ requires:
 ---
 
 Purpose
-- Centralize adapter lifecycle and provide a uniform interface for message routing.
+- Centralize adapter lifecycle, event routing, and cross-computer requests.
 
 Inputs/Outputs
-- Inputs: adapter events (commands, lifecycle, agent events, errors).
+- Inputs: adapter events (lifecycle, agent events, errors, voice/file, system commands).
 - Outputs: UI broadcasts, transport requests, and event dispatch to daemon handlers.
 
 Primary flows

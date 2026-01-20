@@ -12,7 +12,7 @@ Purpose
 - Provide a mental model of TeleClaude's major components and boundaries.
 
 Components
-- Daemon core: command handling, tmux orchestration, output polling, event routing.
+- Daemon core: command execution, tmux orchestration, output polling, event routing.
 - AdapterClient: unified interface to UI adapters and transport adapters.
 - UI adapters: Telegram messaging and topic management.
 - Transport adapters: Redis Streams for cross-computer request/response.
@@ -22,7 +22,7 @@ Components
 - Cache: snapshot layer for computers/projects/todos/sessions.
 
 Primary flows
-- Ingress from Telegram/MCP/API -> AdapterClient -> daemon command pipeline -> tmux -> output polling -> AdapterClient -> UI.
+- Ingress from Telegram/MCP/API -> command mappers -> CommandService -> tmux -> output polling -> AdapterClient -> UI.
 - Remote requests use transport adapters; output retrieval is via MCP get_session_data polling.
 
 Failure modes

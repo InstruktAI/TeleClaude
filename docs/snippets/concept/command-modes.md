@@ -15,4 +15,4 @@ Modes
 - Hybrid: returns identifiers immediately; completion signaled via events.
 
 Signals
-- session_created, session_updated, session_removed, and agent_event are the primary completion signals.
+- session_started, session_updated, session_closed, and agent_event are the primary completion signals.

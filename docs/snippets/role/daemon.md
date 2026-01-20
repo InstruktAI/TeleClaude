@@ -9,7 +9,7 @@ requires:
 
 Responsibilities
 - Initialize adapters, cache, and core services.
-- Handle command events and route to command handlers.
+- Execute command objects via CommandService.
 - Manage output polling and session cleanup.
 - Run background workers (outbox processing, resource snapshots, MCP/APIs).
 

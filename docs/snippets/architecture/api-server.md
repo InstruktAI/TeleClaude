@@ -18,7 +18,7 @@ Inputs/Outputs
 
 Primary flows
 - Read endpoints return cached data immediately (local-only if cache is absent).
-- Write endpoints map to command handlers through AdapterClient.
+- Write endpoints map to explicit command objects via CommandService.
 - WebSocket subscriptions drive cache interest tracking and refresh pushes.
 
 Invariants
