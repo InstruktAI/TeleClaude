@@ -125,8 +125,8 @@ def test_receiver_recovers_from_native_session_id(monkeypatch, tmp_path):
     assert event_type == "stop"
 
 
-def test_receiver_maps_gemini_after_agent_to_stop(monkeypatch, tmp_path):
-    """Test that gemini after_agent is mapped to stop before enqueue."""
+def test_receiver_accepts_gemini_stop_event(monkeypatch, tmp_path):
+    """Test that gemini stop events are forwarded as-is."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -138,7 +138,7 @@ def test_receiver_maps_gemini_after_agent_to_stop(monkeypatch, tmp_path):
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: fake_normalize)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="after_agent"))
+    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="stop"))
     tmpdir = tmp_path / "tmp-gemini"
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-1")

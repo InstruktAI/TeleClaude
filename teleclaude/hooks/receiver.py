@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,7 +30,6 @@ from teleclaude.core.agents import AgentName  # noqa: E402
 from teleclaude.core import db_models  # noqa: E402
 from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS  # noqa: E402
 from teleclaude.hooks.adapters.models import NormalizedHookPayload  # noqa: E402
-from teleclaude.core.events import AgentHookEvents  # noqa: E402
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -187,33 +185,6 @@ def _get_adapter(agent: str) -> NormalizeFn:
     raise ValueError(f"Unknown agent '{agent}'")
 
 
-def _normalize_event_type(agent: str, event_type: str | None) -> str | None:
-    """Normalize raw hook event types to snake_case.
-
-    guard: allow-string-compare
-    """
-    if event_type is None:
-        return None
-
-    raw = event_type.strip()
-    # Convert CamelCase / PascalCase to snake_case, then normalize dashes.
-    s1 = re.sub("(.)([A-Z][a-z]+)", r"\\1_\\2", raw)
-    s2 = re.sub("([a-z0-9])([A-Z])", r"\\1_\\2", s1)
-    normalized = s2.replace("-", "_").lower()
-
-    if agent == AgentName.GEMINI.value:
-        if normalized == "after_agent":
-            return AgentHookEvents.AGENT_STOP
-        if normalized == "before_agent":
-            return AgentHookEvents.AGENT_PROMPT
-
-    if agent == AgentName.CLAUDE.value:
-        if normalized == "user_prompt_submit":
-            return AgentHookEvents.AGENT_PROMPT
-
-    return normalized
-
-
 def main() -> None:
     args = _parse_args()
 
@@ -240,7 +211,7 @@ def main() -> None:
         event_type = "stop"
     else:
         # Claude/Gemini pass event_type as arg, JSON on stdin
-        event_type = _normalize_event_type(args.agent, cast(str, args.event_type))
+        event_type = cast(str, args.event_type)
         raw_input, raw_data = _read_stdin()
 
     # log_raw = os.getenv("TELECLAUDE_HOOK_LOG_RAW") == "1"
