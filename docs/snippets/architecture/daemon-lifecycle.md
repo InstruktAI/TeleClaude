@@ -16,7 +16,7 @@ Primary flows
 - Initialize AdapterClient, cache, agent coordinator, and output poller.
 - Start adapters, API server, and MCP server tasks.
 - Watch MCP socket health and restart MCP server on failure.
-- Run background workers for outbox processing and resource snapshots.
+- Run background workers for hook outbox processing and resource snapshots.
 
 Invariants
 - Background tasks are tracked and logged on failure.

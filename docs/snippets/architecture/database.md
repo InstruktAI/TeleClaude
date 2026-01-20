@@ -2,7 +2,7 @@
 id: teleclaude/architecture/database
 type: architecture
 scope: project
-description: SQLite persistence for sessions, outboxes, UX state, and agent metadata.
+description: SQLite persistence for sessions, hook outbox, UX state, and agent metadata.
 requires: []
 ---
 
@@ -11,7 +11,7 @@ Purpose
 
 Stored data
 - Sessions and their metadata (title, status, agent info, tmux name).
-- Outbox tables for API commands and hook events.
+- Hook outbox rows for agent events.
 - UX state for message cleanup and registry message IDs.
 - Agent assignments and voice mappings.
 

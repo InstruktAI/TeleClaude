@@ -18,7 +18,7 @@ Components
 - Transport adapters: Redis Streams for cross-computer request/response.
 - MCP server + wrapper: AI tool interface over a local UNIX socket with resilience.
 - API server: local HTTP/WS interface for TUI and CLI.
-- SQLite database: sessions, outbox records, UX state, agent data.
+- SQLite database: sessions, hook outbox records, UX state, agent data.
 - Cache: snapshot layer for computers/projects/todos/sessions.
 
 Primary flows

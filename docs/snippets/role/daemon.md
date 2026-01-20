@@ -11,7 +11,7 @@ Responsibilities
 - Initialize adapters, cache, and core services.
 - Execute command objects via CommandService.
 - Manage output polling and session cleanup.
-- Run background workers (outbox processing, resource snapshots, MCP/APIs).
+- Run background workers (hook outbox processing, resource snapshots, MCP/APIs).
 
 Boundaries
 - Uses AdapterClient for all adapter interactions.

@@ -51,7 +51,7 @@ snippets:
   - docs/snippets/architecture/mcp-layer.md
   - docs/snippets/architecture/api-server.md
 - id: teleclaude/architecture/database
-  description: SQLite persistence for sessions, outboxes, UX state, and agent metadata.
+  description: SQLite persistence for sessions, hook outbox, UX state, and agent metadata.
   type: architecture
   scope: project
   path: docs/snippets/architecture/database.md
@@ -76,7 +76,7 @@ snippets:
   requires:
   - docs/snippets/concept/session-types.md
 - id: teleclaude/architecture/outbox
-  description: Durable outbox tables for API commands and agent hook events.
+  description: Durable outbox table for agent hook events.
   type: architecture
   scope: project
   path: docs/snippets/architecture/outbox.md
