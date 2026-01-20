@@ -153,7 +153,6 @@ async def test_stop_notification_emits_agent_stop_event():
     from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    mock_client.commands = MagicMock()
     adapter = RedisTransport(mock_client)
 
     adapter.send_response = AsyncMock()

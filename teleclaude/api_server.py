@@ -41,6 +41,7 @@ from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.command_mapper import CommandMapper
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
@@ -293,7 +294,7 @@ class APIServer:
             cmd = CommandMapper.map_api_input("new_session", {}, metadata)
 
             try:
-                data = await self.client.commands.create_session(cmd)
+                data = await get_command_service().create_session(cmd)
 
                 session_id = data.get("session_id")
                 tmux_session_name = data.get("tmux_session_name")
@@ -330,7 +331,7 @@ class APIServer:
                     {"session_id": session_id},
                     metadata,
                 )
-                result = await self.client.commands.end_session(cmd)
+                result = await get_command_service().end_session(cmd)
                 return {"status": "success", "result": result}
             except Exception as e:
                 logger.error("Failed to end session %s: %s", session_id, e, exc_info=True)
@@ -350,7 +351,7 @@ class APIServer:
                     {"session_id": session_id, "text": request.message},
                     metadata,
                 )
-                await self.client.commands.send_message(cmd)
+                await get_command_service().send_message(cmd)
                 return {"status": "success"}
             except Exception as e:
                 logger.error("send_message failed (session=%s): %s", session_id, e, exc_info=True)
@@ -376,7 +377,7 @@ class APIServer:
                     },
                     metadata,
                 )
-                await self.client.commands.handle_voice(cmd)
+                await get_command_service().handle_voice(cmd)
                 return {"status": "success"}
             except Exception as e:
                 logger.error("send_voice failed (session=%s): %s", session_id, e, exc_info=True)
@@ -402,7 +403,7 @@ class APIServer:
                     },
                     metadata,
                 )
-                await self.client.commands.handle_file(cmd)
+                await get_command_service().handle_file(cmd)
                 return {"status": "success"}
             except Exception as e:
                 logger.error("send_file failed (session=%s): %s", session_id, e, exc_info=True)
@@ -421,7 +422,7 @@ class APIServer:
                     {"session_id": session_id, "args": []},
                     metadata,
                 )
-                await self.client.commands.restart_agent(cmd)
+                await get_command_service().restart_agent(cmd)
                 return {"status": "ok"}
             except Exception as e:
                 logger.error("agent_restart failed for session %s: %s", session_id, e, exc_info=True)

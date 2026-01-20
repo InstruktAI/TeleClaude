@@ -26,7 +26,6 @@ from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
-    from teleclaude.core.command_service import CommandService
     from teleclaude.core.models import Session
     from teleclaude.core.task_registry import TaskRegistry
 
@@ -62,7 +61,6 @@ class AdapterClient:
         self.task_registry = task_registry
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
         self.is_shutting_down = False
-        self.commands: "CommandService | None" = None
 
     def mark_shutting_down(self) -> None:
         """Mark client as shutting down to suppress adapter restarts."""

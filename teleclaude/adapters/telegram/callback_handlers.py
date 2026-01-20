@@ -17,6 +17,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.ext import ContextTypes, ExtBot
 
 from teleclaude.core.agents import AgentName
+from teleclaude.core.command_mapper import CommandMapper
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata
 from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
@@ -367,14 +369,12 @@ class CallbackHandlersMixin:
         # Normalize create-session intent
         logger.info("_handle_session_start: creating session with project_path=%s", project_path)
         metadata = self._metadata(project_path=project_path)
-        from teleclaude.core.command_mapper import CommandMapper
-
         cmd = CommandMapper.map_telegram_input(
             event="new_session",
             args=[],
             metadata=metadata,
         )
-        await self.client.commands.create_session(cmd)
+        await get_command_service().create_session(cmd)
 
     async def _handle_agent_start(self, query: object, action: str, args: list[str]) -> None:
         """Handle agent start callbacks (c, cr, g, gr, cx, cxr)."""
@@ -425,11 +425,9 @@ class CallbackHandlersMixin:
             auto_command,
         )
         metadata = self._metadata(project_path=project_path, auto_command=auto_command)
-        from teleclaude.core.command_mapper import CommandMapper
-
         cmd = CommandMapper.map_telegram_input(
             event="new_session",
             args=[],
             metadata=metadata,
         )
-        await self.client.commands.create_session(cmd)
+        await get_command_service().create_session(cmd)

@@ -40,6 +40,8 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 
 from teleclaude.config import config
+from teleclaude.core.command_mapper import CommandMapper
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.events import UiCommands
 from teleclaude.core.models import (
@@ -223,8 +225,7 @@ class TelegramAdapter(
         metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
 
         # Normalize via mapper
-        from teleclaude.core.command_mapper import CommandMapper
-
+        cmds = get_command_service()
         cmd = CommandMapper.map_telegram_input(
             event=event,
             args=args,
@@ -239,7 +240,7 @@ class TelegramAdapter(
                 metadata,
                 cmd.key,
                 cmd.to_payload(),
-                lambda: self.client.commands.keys(cmd),
+                lambda: cmds.keys(cmd),
             )
             return
 
@@ -250,7 +251,7 @@ class TelegramAdapter(
                 metadata,
                 "close_session",
                 cmd.to_payload(),
-                lambda: self.client.commands.close_session(cmd),
+                lambda: cmds.close_session(cmd),
             )
             return
 

@@ -26,6 +26,7 @@ from redis.asyncio import Redis
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.command_mapper import CommandMapper
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -1033,32 +1034,33 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
     async def _execute_command(self, command: object) -> dict[str, object]:
         """Execute a command via command service and return an envelope."""
         try:
+            cmds = get_command_service()
             if isinstance(command, CreateSessionCommand):
-                data = await self.client.commands.create_session(command)
+                data = await cmds.create_session(command)
                 return {"status": "success", "data": data}
             if isinstance(command, SendMessageCommand):
-                await self.client.commands.send_message(command)
+                await cmds.send_message(command)
                 return {"status": "success", "data": None}
             if isinstance(command, KeysCommand):
-                await self.client.commands.keys(command)
+                await cmds.keys(command)
                 return {"status": "success", "data": None}
             if isinstance(command, StartAgentCommand):
-                await self.client.commands.start_agent(command)
+                await cmds.start_agent(command)
                 return {"status": "success", "data": None}
             if isinstance(command, ResumeAgentCommand):
-                await self.client.commands.resume_agent(command)
+                await cmds.resume_agent(command)
                 return {"status": "success", "data": None}
             if isinstance(command, RestartAgentCommand):
-                await self.client.commands.restart_agent(command)
+                await cmds.restart_agent(command)
                 return {"status": "success", "data": None}
             if isinstance(command, RunAgentCommand):
-                await self.client.commands.run_agent_command(command)
+                await cmds.run_agent_command(command)
                 return {"status": "success", "data": None}
             if isinstance(command, GetSessionDataCommand):
-                data = await self.client.commands.get_session_data(command)
+                data = await cmds.get_session_data(command)
                 return {"status": "success", "data": data}
             if isinstance(command, CloseSessionCommand):
-                await self.client.commands.close_session(command)
+                await cmds.close_session(command)
                 return {"status": "success", "data": None}
             raise ValueError(f"Unsupported command type: {type(command).__name__}")
         except Exception as exc:

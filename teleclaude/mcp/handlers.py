@@ -23,6 +23,7 @@ from teleclaude.config import config
 from teleclaude.context_selector import build_context_output
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import normalize_agent_name
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, ThinkingMode
 from teleclaude.core.next_machine import (
@@ -305,6 +306,7 @@ class MCPHandlersMixin:
         thinking_mode: ThinkingMode = ThinkingMode.SLOW,
     ) -> StartSessionResult:
         """Create session on local computer directly via command service."""
+        cmds = get_command_service()
         initiator_agent, initiator_mode = await self._get_caller_agent_info(caller_session_id)
 
         channel_metadata: dict[str, object] = {"target_computer": self.computer_name}  # guard: loose-dict
@@ -323,7 +325,7 @@ class MCPHandlersMixin:
             initiator_session_id=caller_session_id,
         )
 
-        result = await self.client.commands.create_session(cmd)
+        result = await cmds.create_session(cmd)
 
         session_id = self._extract_session_id(result)
         tmux_session_name = self._extract_tmux_session_name(result)
@@ -347,7 +349,7 @@ class MCPHandlersMixin:
                         thinking_mode=thinking_mode.value,
                         args=[thinking_mode.value] + agent_args,
                     )
-                    await self.client.commands.start_agent(start_cmd)
+                    await cmds.start_agent(start_cmd)
                 except Exception as exc:
                     logger.error("Failed to dispatch StartAgentCommand for session %s: %s", session_id[:8], exc)
 
@@ -474,7 +476,7 @@ class MCPHandlersMixin:
 
             if self._is_local_computer(computer):
                 cmd = SendMessageCommand(session_id=session_id, text=message)
-                await self.client.commands.send_message(cmd)
+                await get_command_service().send_message(cmd)
             else:
                 await self.client.send_request(
                     computer_name=computer,
@@ -573,7 +575,7 @@ class MCPHandlersMixin:
             auto_command=auto_command,
         )
 
-        result = await self.client.commands.create_session(cmd)
+        result = await get_command_service().create_session(cmd)
 
         session_id = self._extract_session_id(result)
         tmux_session_name = self._extract_tmux_session_name(result)
@@ -713,7 +715,7 @@ class MCPHandlersMixin:
             until_timestamp=until_timestamp,
             tail_chars=tail_chars,
         )
-        payload = await self.client.commands.get_session_data(cmd)
+        payload = await get_command_service().get_session_data(cmd)
         return cast(SessionDataResult, payload)
 
     async def _get_remote_session_data(

@@ -6,6 +6,7 @@ from typing import Callable
 
 import pytest
 
+from teleclaude.core.command_registry import reset_command_service
 from teleclaude.core.event_bus import event_bus
 
 try:
@@ -34,8 +35,10 @@ def pytest_collection_modifyitems(config, items):
 def _reset_event_bus():
     """Ensure global event bus handlers do not leak across tests."""
     event_bus.clear()
+    reset_command_service()
     yield
     event_bus.clear()
+    reset_command_service()
 
 
 # TUI Test Fixtures

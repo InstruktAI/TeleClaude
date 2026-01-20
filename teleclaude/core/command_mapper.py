@@ -235,14 +235,14 @@ class CommandMapper:
 
     @staticmethod
     def map_api_input(
-        event: str,
+        command_name: str,
         payload: Dict[str, object],
         metadata: MessageMetadata,
     ) -> InternalCommand:
         """Map API input to internal command."""
         session_id = str(payload.get("session_id", ""))
 
-        if event == "new_session":
+        if command_name == "new_session":
             return CreateSessionCommand(
                 project_path=metadata.project_path or "",
                 title=metadata.title,
@@ -253,13 +253,13 @@ class CommandMapper:
                 auto_command=metadata.auto_command,
             )
 
-        if event == "message":
+        if command_name == "message":
             return SendMessageCommand(
                 session_id=session_id,
                 text=str(payload.get("text", "")),
             )
 
-        if event == "handle_voice":
+        if command_name == "handle_voice":
             return HandleVoiceCommand(
                 session_id=session_id,
                 file_path=str(payload.get("file_path", "")),
@@ -269,7 +269,7 @@ class CommandMapper:
                 origin=metadata.origin,
             )
 
-        if event == "handle_file":
+        if command_name == "handle_file":
             return HandleFileCommand(
                 session_id=session_id,
                 file_path=str(payload.get("file_path", "")),
@@ -278,7 +278,7 @@ class CommandMapper:
                 file_size=cast(int, payload.get("file_size", 0)),
             )
 
-        if event == "agent":
+        if command_name == "agent":
             args = cast(List[str], payload.get("args", []))
             agent_name = args[0] if args else "claude"
             return StartAgentCommand(
@@ -287,7 +287,7 @@ class CommandMapper:
                 args=args[1:] if len(args) > 1 else [],
             )
 
-        if event == "agent_restart":
+        if command_name == "agent_restart":
             args = cast(List[str], payload.get("args", []))
             agent_name = args[0] if args else None
             return RestartAgentCommand(
@@ -295,7 +295,7 @@ class CommandMapper:
                 agent_name=agent_name,
             )
 
-        if event == "end_session":
+        if command_name == "end_session":
             return CloseSessionCommand(session_id=session_id)
 
-        raise ValueError(f"Unknown api command: {event}")
+        raise ValueError(f"Unknown api command: {command_name}")

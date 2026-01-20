@@ -19,6 +19,7 @@ from instrukt_ai_logging import get_logger
 from telegram import Document, Message, PhotoSize, Update
 from telegram.ext import ContextTypes
 
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -253,7 +254,7 @@ Usage:
             metadata,
             "send_message",
             cmd.to_payload(),
-            lambda: self.client.commands.send_message(cmd),
+            lambda: get_command_service().send_message(cmd),
         )
 
     async def _handle_voice_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -312,7 +313,7 @@ Usage:
             await voice_file.download_to_drive(temp_file_path)
             logger.info("Downloaded voice message to: %s", temp_file_path)
 
-            await self.client.commands.handle_voice(
+            await get_command_service().handle_voice(
                 HandleVoiceCommand(
                     session_id=session.session_id,
                     file_path=str(temp_file_path),
@@ -378,7 +379,7 @@ Usage:
             await telegram_file.download_to_drive(file_path)
             logger.info("Downloaded %s to: %s", file_type, file_path)
 
-            await self.client.commands.handle_file(
+            await get_command_service().handle_file(
                 HandleFileCommand(
                     session_id=session.session_id,
                     file_path=str(file_path),

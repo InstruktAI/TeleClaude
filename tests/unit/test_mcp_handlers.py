@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -17,10 +17,6 @@ class DummyHandlers(MCPHandlersMixin):
 
     def __init__(self):
         self.client = AsyncMock()
-        self.client.commands = AsyncMock()
-        self.client.commands.create_session = AsyncMock()
-        self.client.commands.start_agent = AsyncMock()
-        self.client.commands.send_message = AsyncMock()
         self.computer_name = "local"
 
     def _is_local_computer(self, computer: str) -> bool:
@@ -45,19 +41,22 @@ class DummyHandlers(MCPHandlersMixin):
 async def test_start_session_extracts_tmux_name_from_event_result():
     """Test that teleclaude__start_session correctly extracts and returns tmux_session_name."""
     handler = DummyHandlers()
+    mock_commands = MagicMock()
+    mock_commands.create_session = AsyncMock()
 
     # Mock create_session to return a successful result with tmux name
-    handler.client.commands.create_session.return_value = {
+    mock_commands.create_session.return_value = {
         "session_id": "sess-123",
         "tmux_session_name": "tmux-123",
     }
 
-    result = await handler.teleclaude__start_session(
-        computer="local",
-        project_path="/tmp",
-        title="Test Session",
-        message=None,  # skip agent start for simplicity
-    )
+    with patch("teleclaude.mcp.handlers.get_command_service", return_value=mock_commands):
+        result = await handler.teleclaude__start_session(
+            computer="local",
+            project_path="/tmp",
+            title="Test Session",
+            message=None,  # skip agent start for simplicity
+        )
 
     assert result["status"] == "success"
     assert result["session_id"] == "sess-123"
@@ -68,13 +67,16 @@ async def test_start_session_extracts_tmux_name_from_event_result():
 async def test_start_session_handles_missing_tmux_name():
     """Test that teleclaude__start_session handles results where tmux_name is missing."""
     handler = DummyHandlers()
+    mock_commands = MagicMock()
+    mock_commands.create_session = AsyncMock()
 
     # Success but missing tmux name (or malformed data)
-    handler.client.commands.create_session.return_value = {"session_id": "sess-123"}
+    mock_commands.create_session.return_value = {"session_id": "sess-123"}
 
-    result = await handler.teleclaude__start_session(
-        computer="local", project_path="/tmp", title="Test Session", message=None
-    )
+    with patch("teleclaude.mcp.handlers.get_command_service", return_value=mock_commands):
+        result = await handler.teleclaude__start_session(
+            computer="local", project_path="/tmp", title="Test Session", message=None
+        )
 
     assert result["status"] == "success"
     assert result.get("tmux_session_name") is None

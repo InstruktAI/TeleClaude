@@ -112,20 +112,21 @@ class TestSimpleCommandHandlers:
         context = MagicMock()
         context.args = []
 
-        telegram_adapter.client.commands = MagicMock()
-        telegram_adapter.client.commands.keys = AsyncMock()
+        mock_commands = MagicMock()
+        mock_commands.keys = AsyncMock()
 
         with (
             patch("teleclaude.adapters.telegram_adapter.db") as mock_db,
             patch("teleclaude.adapters.ui_adapter.db") as mock_ui_db,
+            patch("teleclaude.adapters.telegram_adapter.get_command_service", return_value=mock_commands),
         ):
             mock_db.get_sessions_by_adapter_metadata = AsyncMock(return_value=[session])
             mock_ui_db.update_session = AsyncMock()
 
             await telegram_adapter._handle_simple_command(update, context, "cancel")
 
-        assert telegram_adapter.client.commands.keys.call_count == 1
-        args, _kwargs = telegram_adapter.client.commands.keys.call_args
+        assert mock_commands.keys.call_count == 1
+        args, _kwargs = mock_commands.keys.call_args
         cmd = args[0]
         assert isinstance(cmd, KeysCommand)
         assert cmd.session_id == "session-123"

@@ -38,6 +38,7 @@ from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.api_events import ApiOutboxMetadata, ApiOutboxPayload, ApiOutboxResponse
 from teleclaude.core.cache import DaemonCache
 from teleclaude.core.codex_watcher import CodexWatcher
+from teleclaude.core.command_registry import init_command_service
 from teleclaude.core.command_service import CommandService
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -241,14 +242,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient(task_registry=self.task_registry)
-        self.command_service = CommandService(
-            client=self.client,
-            start_polling=self._start_polling_for_session,
-            execute_terminal_command=self._execute_terminal_command,
-            execute_auto_command=self._execute_auto_command,
-            queue_background_task=self._queue_background_task,
+        self.command_service = init_command_service(
+            CommandService(
+                client=self.client,
+                start_polling=self._start_polling_for_session,
+                execute_terminal_command=self._execute_terminal_command,
+                execute_auto_command=self._execute_auto_command,
+                queue_background_task=self._queue_background_task,
+            )
         )
-        self.client.commands = self.command_service
 
         # Initialize cache for remote data
         self.cache = DaemonCache()
