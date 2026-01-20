@@ -23,6 +23,12 @@ async def up(db: aiosqlite.Connection) -> None:
     if not renamed:
         logger.info("No legacy outbox table found to rename")
 
+    cursor = await db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='api_outbox'")
+    row = await cursor.fetchone()
+    if not row:
+        logger.info("api_outbox table not present; skipping index setup")
+        return
+
     await db.execute("DROP INDEX IF EXISTS idx_api_outbox_pending")
     await db.execute("DROP INDEX IF EXISTS idx_api_outbox_request")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_api_outbox_pending ON api_outbox(delivered_at, next_attempt_at)")

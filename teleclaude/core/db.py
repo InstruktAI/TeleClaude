@@ -19,7 +19,6 @@ from teleclaude.constants import DB_IN_MEMORY
 from teleclaude.core.event_bus import event_bus
 
 from . import db_models
-from .api_events import ApiOutboxMetadata, ApiOutboxPayload
 from .dates import ensure_utc, parse_iso_datetime
 from .events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
 from .models import Session, SessionAdapterMetadata, SessionField
@@ -36,15 +35,6 @@ class HookOutboxRow(TypedDict):
     session_id: str
     event_type: str
     payload: str
-    attempt_count: int
-
-
-class ApiOutboxRow(TypedDict):
-    id: int
-    request_id: str
-    event_type: str
-    payload: str
-    metadata: str
     attempt_count: int
 
 
@@ -1070,121 +1060,6 @@ class Db:
 
         stmt = text(
             "UPDATE hook_outbox SET attempt_count = :attempt, next_attempt_at = :next_attempt, "
-            "last_error = :error, locked_at = NULL WHERE id = :row_id"
-        ).bindparams(
-            attempt=attempt_count,
-            next_attempt=next_attempt_at,
-            error=error,
-            row_id=row_id,
-        )
-        async with self._session() as db_session:
-            await db_session.exec(stmt)
-            await db_session.commit()
-
-    async def enqueue_api_event(
-        self,
-        request_id: str,
-        event_type: str,
-        payload: ApiOutboxPayload,
-        metadata: ApiOutboxMetadata,
-    ) -> int:
-        """Persist a API-origin event in the outbox for durable delivery."""
-        now = datetime.now(timezone.utc).isoformat()
-        payload_json = json.dumps(payload)
-        metadata_json = json.dumps(metadata)
-        async with self._session() as db_session:
-            row = db_models.ApiOutbox(
-                request_id=request_id,
-                event_type=event_type,
-                payload=payload_json,
-                meta_json=metadata_json,
-                created_at=now,
-                next_attempt_at=now,
-                attempt_count=0,
-            )
-            db_session.add(row)
-            await db_session.commit()
-            await db_session.refresh(row)
-            if row.id is None:
-                raise RuntimeError("Failed to insert API outbox row")
-            return int(row.id)
-
-    async def fetch_api_outbox_batch(
-        self,
-        now_iso: str,
-        limit: int,
-        lock_cutoff_iso: str,
-    ) -> list[ApiOutboxRow]:
-        """Fetch a batch of due API outbox events."""
-        from sqlmodel import select
-
-        stmt = (
-            select(db_models.ApiOutbox)
-            .where(db_models.ApiOutbox.delivered_at.is_(None))
-            .where(db_models.ApiOutbox.next_attempt_at <= now_iso)
-            .where((db_models.ApiOutbox.locked_at.is_(None)) | (db_models.ApiOutbox.locked_at <= lock_cutoff_iso))
-            .order_by(db_models.ApiOutbox.created_at)
-            .limit(limit)
-        )
-        async with self._session() as db_session:
-            result = await db_session.exec(stmt)
-            rows = result.all()
-            return [
-                ApiOutboxRow(
-                    id=row.id or 0,
-                    request_id=row.request_id,
-                    event_type=row.event_type,
-                    payload=row.payload,
-                    metadata=row.meta_json,
-                    attempt_count=row.attempt_count or 0,
-                )
-                for row in rows
-            ]
-
-    async def claim_api_outbox(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
-        """Claim a API outbox row for processing."""
-        from sqlalchemy import text
-
-        stmt = text(
-            "UPDATE api_outbox SET locked_at = :now "
-            "WHERE id = :row_id AND delivered_at IS NULL "
-            "AND (locked_at IS NULL OR locked_at <= :cutoff)"
-        ).bindparams(now=now_iso, row_id=row_id, cutoff=lock_cutoff_iso)
-        async with self._session() as db_session:
-            result = await db_session.exec(stmt)
-            await db_session.commit()
-            return (result.rowcount or 0) == 1
-
-    async def mark_api_outbox_delivered(
-        self,
-        row_id: int,
-        response_json: str,
-        error: str | None = None,
-    ) -> None:
-        """Mark a API outbox row delivered with response payload."""
-        now = datetime.now(timezone.utc).isoformat()
-        from sqlalchemy import text
-
-        stmt = text(
-            "UPDATE api_outbox SET delivered_at = :now, last_error = :error, "
-            "locked_at = NULL, response = :response WHERE id = :row_id"
-        ).bindparams(now=now, error=error, response=response_json, row_id=row_id)
-        async with self._session() as db_session:
-            await db_session.exec(stmt)
-            await db_session.commit()
-
-    async def mark_api_outbox_failed(
-        self,
-        row_id: int,
-        attempt_count: int,
-        next_attempt_at: str,
-        error: str,
-    ) -> None:
-        """Record a API outbox failure and schedule a retry."""
-        from sqlalchemy import text
-
-        stmt = text(
-            "UPDATE api_outbox SET attempt_count = :attempt, next_attempt_at = :next_attempt, "
             "last_error = :error, locked_at = NULL WHERE id = :row_id"
         ).bindparams(
             attempt=attempt_count,

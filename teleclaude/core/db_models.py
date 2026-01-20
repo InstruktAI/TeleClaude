@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Text, UniqueConstraint
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -115,23 +115,3 @@ class HookOutbox(SQLModel, table=True):
     last_error: Optional[str] = None
     delivered_at: Optional[str] = None
     locked_at: Optional[str] = None
-
-
-class ApiOutbox(SQLModel, table=True):
-    """api_outbox table."""
-
-    __tablename__ = "api_outbox"
-    __table_args__ = {"extend_existing": True}
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    request_id: str
-    event_type: str
-    payload: str
-    meta_json: str = Field(sa_column=Column("metadata", Text))
-    created_at: Optional[str] = None
-    next_attempt_at: Optional[str] = None
-    attempt_count: Optional[int] = 0
-    last_error: Optional[str] = None
-    delivered_at: Optional[str] = None
-    locked_at: Optional[str] = None
-    response: Optional[str] = None

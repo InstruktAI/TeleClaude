@@ -35,7 +35,6 @@ from teleclaude.core import (
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.agents import AgentName, get_agent_command
-from teleclaude.core.api_events import ApiOutboxMetadata, ApiOutboxPayload, ApiOutboxResponse
 from teleclaude.core.cache import DaemonCache
 from teleclaude.core.codex_watcher import CodexWatcher
 from teleclaude.core.command_registry import init_command_service
@@ -51,14 +50,13 @@ from teleclaude.core.events import (
     ErrorEventContext,
     EventType,
     SessionLifecycleContext,
-    SessionUpdatedContext,
     SystemCommandContext,
     TeleClaudeEvents,
     build_agent_payload,
     parse_command_string,
 )
 from teleclaude.core.lifecycle import DaemonLifecycle
-from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent
+from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file, parse_session_title, resolve_working_dir
 from teleclaude.core.summarizer import summarize
@@ -157,13 +155,6 @@ def _get_rss_kb() -> int | None:
         return int(rss / 1024)
     return rss
 
-
-# Tmux outbox worker (telec)
-API_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("API_OUTBOX_POLL_INTERVAL_S", "0.5"))
-API_OUTBOX_BATCH_SIZE: int = int(os.getenv("API_OUTBOX_BATCH_SIZE", "25"))
-API_OUTBOX_LOCK_TTL_S: float = float(os.getenv("API_OUTBOX_LOCK_TTL_S", "30"))
-API_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("API_OUTBOX_BASE_BACKOFF_S", "1"))
-API_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("API_OUTBOX_MAX_BACKOFF_S", "60"))
 
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
@@ -318,7 +309,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._last_mcp_probe_ok: bool | None = None
         self._last_mcp_restart_at = 0.0
         self.hook_outbox_task: asyncio.Task[object] | None = None
-        self.api_outbox_task: asyncio.Task[object] | None = None
 
         self.lifecycle = DaemonLifecycle(
             client=self.client,
@@ -670,103 +660,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return False
         return True
 
-    def _api_outbox_backoff(self, attempt: int) -> float:
-        """Compute exponential backoff for API outbox retries."""
-        safe_attempt = max(1, attempt)
-        delay: float = float(API_OUTBOX_BASE_BACKOFF_S) * (2.0 ** (safe_attempt - 1))
-        return min(delay, float(API_OUTBOX_MAX_BACKOFF_S))
-
-    def _is_retryable_api_error(self, exc: Exception) -> bool:
-        """Return True if API dispatch errors should be retried."""
-        if isinstance(exc, ValueError) and "not found" in str(exc):
-            return False
-        return True
-
-    def _coerce_message_metadata(self, metadata: ApiOutboxMetadata) -> MessageMetadata:
-        """Build MessageMetadata from outbox metadata payload."""
-        origin = metadata.get("origin")
-        message_thread_id = metadata.get("message_thread_id")
-        parse_mode = metadata.get("parse_mode")
-        raw_format = metadata.get("raw_format", False)
-        channel_id = metadata.get("channel_id")
-        title = metadata.get("title")
-        project_path = metadata.get("project_path")
-        subdir = metadata.get("subdir")
-        channel_metadata = metadata.get("channel_metadata")
-        launch_intent_raw = metadata.get("launch_intent")
-        launch_intent = (
-            SessionLaunchIntent.from_dict(
-                launch_intent_raw  # guard: loose-dict - Launch intent payload
-            )
-            if isinstance(launch_intent_raw, dict)
-            else None
-        )
-
-        return MessageMetadata(
-            origin=str(origin) if origin is not None else None,
-            message_thread_id=int(message_thread_id) if isinstance(message_thread_id, int) else None,
-            parse_mode=str(parse_mode) if parse_mode else "",
-            raw_format=bool(raw_format),
-            channel_id=str(channel_id) if channel_id is not None else None,
-            title=str(title) if title is not None else None,
-            project_path=str(project_path) if project_path is not None else None,
-            subdir=str(subdir) if subdir is not None else None,
-            channel_metadata=cast(
-                dict[str, object] | None,  # guard: loose-dict - MessageMetadata contract
-                channel_metadata,
-            ),
-            auto_command=None,
-            launch_intent=launch_intent,
-        )
-
-    async def _dispatch_api_event(
-        self,
-        event_type: str,
-        payload: ApiOutboxPayload,
-        metadata: MessageMetadata,
-    ) -> ApiOutboxResponse:
-        """Dispatch an API-origin event via the global event bus."""
-        event_name = cast(EventType, event_type)
-
-        if event_name == TeleClaudeEvents.SESSION_STARTED:
-            context = SessionLifecycleContext(session_id=str(payload.get("session_id")))
-        elif event_name == TeleClaudeEvents.SESSION_CLOSED:
-            context = SessionLifecycleContext(session_id=str(payload.get("session_id")))
-        elif event_name == TeleClaudeEvents.SESSION_UPDATED:
-            context = SessionUpdatedContext(
-                session_id=str(payload.get("session_id")),
-                updated_fields=cast(
-                    dict[str, object],  # guard: loose-dict - API payload
-                    payload.get("updated_fields", {}),
-                ),
-            )
-        elif event_name == TeleClaudeEvents.AGENT_EVENT:
-            event_data = cast(dict[str, object], payload.get("data", {}))  # guard: loose-dict - API payload
-            hook_type = cast(str, payload.get("event_type", "notification"))
-            context = AgentEventContext(
-                session_id=str(payload.get("session_id")),
-                event_type=cast(AgentHookEvents, hook_type),
-                data=build_agent_payload(cast(AgentHookEvents, hook_type), event_data),
-            )
-        elif event_name == TeleClaudeEvents.ERROR:
-            context = ErrorEventContext(
-                session_id=str(payload.get("session_id", "")),
-                message=str(payload.get("message", "")),
-                source=cast(str | None, payload.get("source")),
-                details=cast(dict[str, object] | None, payload.get("details")),  # guard: loose-dict - API payload
-            )
-        elif event_name == "system_command":
-            context = SystemCommandContext(
-                command=str(payload.get("command", "")),
-                from_computer=str(payload.get("from_computer", "unknown")),
-                args=cast(DeployArgs, payload.get("args", DeployArgs())),
-            )
-        else:
-            raise ValueError(f"Unsupported API event type: {event_type}")
-
-        response = await event_bus.emit(event_name, context)
-        return cast(ApiOutboxResponse, response)
-
     async def _dispatch_hook_event(
         self,
         session_id: str,
@@ -863,71 +756,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                         error=error_str,
                     )
                     await db.mark_hook_outbox_failed(row["id"], attempt, next_attempt, error_str)
-
-    async def _api_outbox_worker(self) -> None:
-        """Drain API outbox for API client commands with responses."""
-        while not self.shutdown_event.is_set():
-            now = datetime.now(timezone.utc)
-            now_iso = now.isoformat()
-            lock_cutoff = (now - timedelta(seconds=API_OUTBOX_LOCK_TTL_S)).isoformat()
-            rows = await db.fetch_api_outbox_batch(now_iso, API_OUTBOX_BATCH_SIZE, lock_cutoff)
-
-            if not rows:
-                await asyncio.sleep(API_OUTBOX_POLL_INTERVAL_S)
-                continue
-
-            for row in rows:
-                if self.shutdown_event.is_set():
-                    break
-                claimed = await db.claim_api_outbox(row["id"], now_iso, lock_cutoff)
-                if not claimed:
-                    continue
-
-                try:
-                    payload = cast(ApiOutboxPayload, json.loads(row["payload"]))
-                except json.JSONDecodeError as exc:
-                    error_str = f"Invalid payload JSON: {exc}"
-                    error_payload: dict[str, str] = {"status": "error", "error": ""}
-                    error_payload["error"] = error_str
-                    response_json = json.dumps(error_payload)
-                    await db.mark_api_outbox_delivered(row["id"], response_json, error_str)
-                    continue
-
-                try:
-                    metadata_raw = cast(ApiOutboxMetadata, json.loads(row["metadata"]))
-                    metadata = self._coerce_message_metadata(metadata_raw)
-                    if not metadata.origin:
-                        metadata.origin = "api"
-                except Exception as exc:  # pylint: disable=broad-exception-caught
-                    error_str: str = f"Invalid metadata JSON: {exc}"
-                    error_payload: dict[str, str] = {"status": "error", "error": error_str}  # type: ignore[misc]
-                    response_json = json.dumps(error_payload)
-                    await db.mark_api_outbox_delivered(row["id"], response_json, error_str)
-                    continue
-
-                try:
-                    response = await self._dispatch_api_event(row["event_type"], payload, metadata)
-                    response_json = json.dumps(response)
-                    await db.mark_api_outbox_delivered(row["id"], response_json)
-                except Exception as exc:  # pylint: disable=broad-exception-caught
-                    attempt = int(row.get("attempt_count", 0)) + 1
-                    error_str: str = str(exc)
-                    if not self._is_retryable_api_error(exc):
-                        error_payload: dict[str, str] = {"status": "error", "error": error_str}  # type: ignore[misc]
-                        response_json = json.dumps(error_payload)
-                        await db.mark_api_outbox_delivered(row["id"], response_json, error_str)
-                        continue
-
-                    delay = self._api_outbox_backoff(attempt)
-                    next_attempt = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
-                    logger.error(
-                        "API outbox dispatch failed (retrying)",
-                        row_id=row["id"],
-                        attempt=attempt,
-                        next_attempt_in_s=round(delay, 2),
-                        error=error_str,
-                    )
-                    await db.mark_api_outbox_failed(row["id"], attempt, next_attempt, error_str)
 
     def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None:
         """Create and track a background task."""
@@ -1756,10 +1584,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
         logger.info("Hook outbox worker started")
 
-        self.api_outbox_task = asyncio.create_task(self._api_outbox_worker())
-        self.api_outbox_task.add_done_callback(self._log_background_task_exception("api_outbox"))
-        logger.info("API outbox worker started")
-
         self.resource_monitor_task = asyncio.create_task(self._resource_monitor_loop())
         self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
         logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
@@ -1806,14 +1630,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Hook outbox worker stopped")
-
-        if self.api_outbox_task:
-            self.api_outbox_task.cancel()
-            try:
-                await self.api_outbox_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("API outbox worker stopped")
 
         if self.resource_monitor_task:
             self.resource_monitor_task.cancel()

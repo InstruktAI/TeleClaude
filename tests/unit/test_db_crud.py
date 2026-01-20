@@ -106,41 +106,5 @@ async def test_session_manager_with_metadata():
             os.remove(db_path)
 
 
-@pytest.mark.unit
-async def test_api_outbox_enqueue_and_fetch(tmp_path):
-    """Test API outbox enqueue, fetch, and deliver flow."""
-    from datetime import datetime, timezone
-
-    db_path = tmp_path / "teleclaude_test_api_outbox.db"
-    session_mgr = Db(str(db_path))
-
-    try:
-        await session_mgr.initialize()
-
-        row_id = await session_mgr.enqueue_api_event(
-            request_id="req-123",
-            event_type="new_session",
-            payload={"session_id": "", "args": ["Test"]},
-            metadata={"origin": "api"},
-        )
-
-        now_iso = datetime.now(timezone.utc).isoformat()
-        rows = await session_mgr.fetch_api_outbox_batch(now_iso, 10, now_iso)
-        assert len(rows) == 1
-        assert rows[0]["id"] == row_id
-        assert rows[0]["request_id"] == "req-123"
-
-        claimed = await session_mgr.claim_api_outbox(row_id, now_iso, now_iso)
-        assert claimed is True
-
-        await session_mgr.mark_api_outbox_delivered(row_id, '{"status":"success"}')
-
-        rows_after = await session_mgr.fetch_api_outbox_batch(now_iso, 10, now_iso)
-        assert rows_after == []
-
-    finally:
-        await session_mgr.close()
-
-
 if __name__ == MAIN_MODULE:
     pytest.main([__file__, "-v"])
