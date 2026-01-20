@@ -94,8 +94,8 @@ snippets:
   - docs/snippets/architecture/tmux-management.md
   - docs/snippets/architecture/adapter-client.md
 - id: teleclaude/architecture/redis-transport
-  description: Redis Streams transport for cross-computer requests, responses, and
-    output streaming.
+  description: Redis Streams transport for cross-computer request/response and peer
+    discovery.
   type: architecture
   scope: project
   path: docs/snippets/architecture/redis-transport.md
@@ -357,7 +357,8 @@ snippets:
   requires:
   - docs/snippets/architecture/system-overview.md
 - id: teleclaude/role/transport-adapter
-  description: Transport adapters handle cross-computer request/response and streaming.
+  description: Transport adapters handle cross-computer request/response and peer
+    discovery.
   type: role
   scope: project
   path: docs/snippets/role/transport-adapter.md

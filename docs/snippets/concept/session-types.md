@@ -20,4 +20,4 @@ Location modes
 
 Outputs
 - All sessions surface in Telegram topics via UI adapters.
-- AI-to-AI sessions stream output back to the initiator via transport + MCP.
+- AI-to-AI sessions rely on MCP tool calls and get_session_data polling for output retrieval.

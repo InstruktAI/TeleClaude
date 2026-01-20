@@ -20,7 +20,7 @@ Components
 Primary flows
 - Client connects over stdio -> wrapper -> UNIX socket -> MCP server.
 - Tool calls are routed to local command handlers or remote transport requests.
-- Session output streaming is delivered via Redis output streams.
+- Session output is retrieved via teleclaude__get_session_data polling.
 
 Invariants
 - Wrapper responds to initialize even when backend restarts.

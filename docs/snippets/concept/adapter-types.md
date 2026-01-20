@@ -12,7 +12,7 @@ Purpose
 
 Concept
 - UI adapters handle human-facing messaging, topics, and UX rules.
-- Transport adapters provide cross-computer request/response and streaming semantics.
+- Transport adapters provide cross-computer request/response for remote execution.
 
 Invariants
 - UI adapters do not implement cross-computer execution.
