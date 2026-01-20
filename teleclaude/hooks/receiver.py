@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -187,14 +188,18 @@ def _get_adapter(agent: str) -> NormalizeFn:
 
 
 def _normalize_event_type(agent: str, event_type: str | None) -> str | None:
-    """Normalize raw hook event types.
+    """Normalize raw hook event types to snake_case.
 
     guard: allow-string-compare
     """
     if event_type is None:
         return None
 
-    normalized = event_type.strip().lower().replace("-", "_")
+    raw = event_type.strip()
+    # Convert CamelCase / PascalCase to snake_case, then normalize dashes.
+    s1 = re.sub("(.)([A-Z][a-z]+)", r"\\1_\\2", raw)
+    s2 = re.sub("([a-z0-9])([A-Z])", r"\\1_\\2", s1)
+    normalized = s2.replace("-", "_").lower()
 
     if agent == AgentName.GEMINI.value:
         if normalized == "after_agent":
@@ -206,7 +211,7 @@ def _normalize_event_type(agent: str, event_type: str | None) -> str | None:
         if normalized == "user_prompt_submit":
             return AgentHookEvents.AGENT_PROMPT
 
-    return event_type
+    return normalized
 
 
 def main() -> None:
