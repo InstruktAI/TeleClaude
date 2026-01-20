@@ -8,6 +8,13 @@ snippets:
   path: docs/snippets/principles/architecture/boundary-purity.md
   requires:
   - docs/architecture.md
+- id: principles/priming
+  description: Snippets are a priming tool that should elevate expert reasoning, not
+    mirror average patterns.
+  type: principles
+  scope: project
+  path: docs/snippets/principles/priming.md
+  requires: []
 - id: teleclaude/architecture/adapter-client
   description: AdapterClient centralizes adapter lifecycle, UI/transport routing,
     and cross-computer requests.
@@ -406,7 +413,8 @@ snippets:
   type: guide
   scope: project
   path: docs/snippets/guide/snippet-authoring.md
-  requires: []
+  requires:
+  - docs/snippets/principles/priming.md
 - id: teleclaude/standard/cache-contract
   description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
   type: standard
