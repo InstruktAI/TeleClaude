@@ -201,7 +201,7 @@ class MessageOperationsMixin:
 
         # Extract reply_markup + parse_mode from metadata
         reply_markup = metadata.reply_markup
-        parse_mode = metadata.parse_mode or "Markdown"
+        parse_mode = metadata.parse_mode
 
         # CRITICAL FIX: Remove pending edit optimization - it causes race conditions where
         # subsequent updates return True without actually sending, leading to stuck messages.

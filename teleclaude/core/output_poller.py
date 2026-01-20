@@ -1,6 +1,6 @@
 """Tmux output polling - pure poller with no I/O side effects.
 
-Reads raw tmux output logs (tmux pipe-pane) and yields output events.
+Polls tmux pane output and yields output events.
 Daemon handles all message sending.
 """
 
@@ -73,7 +73,7 @@ class OutputPoller:
         Args:
             session_id: Session ID
             tmux_session_name: tmux session name
-            output_file: Path to output file
+            output_file: Reserved for future file-based polling; currently unused.
 
         Yields:
             OutputEvent subclasses (OutputChanged, ProcessExited, DirectoryChanged)

@@ -82,6 +82,51 @@ class TestCommandHandlerFilters:
         assert telegram_adapter._get_command_handler_update_filter() == filters.UpdateType.MESSAGE
 
 
+class TestSimpleCommandHandlers:
+    """Tests for simple command handling metadata propagation."""
+
+    @pytest.mark.asyncio
+    async def test_simple_command_propagates_message_id(self, telegram_adapter):
+        """Simple commands should include message_id for UI cleanup tracking."""
+        from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
+
+        session = Session(
+            session_id="session-123",
+            computer_name="test",
+            tmux_session_name="tmux-123",
+            origin_adapter="telegram",
+            title="Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=999)),
+        )
+
+        update = MagicMock()
+        update.effective_user = MagicMock()
+        update.effective_user.id = 12345
+        update.effective_message = MagicMock()
+        update.effective_message.message_id = 456
+        update.effective_message.message_thread_id = 999
+
+        context = MagicMock()
+        context.args = []
+
+        telegram_adapter.client.handle_event = AsyncMock()
+
+        with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
+            mock_db.get_sessions_by_adapter_metadata = AsyncMock(return_value=[session])
+
+            await telegram_adapter._handle_simple_command(update, context, "cancel")
+
+        assert telegram_adapter.client.handle_event.call_count == 1
+        args, _ = telegram_adapter.client.handle_event.call_args
+        event, payload, metadata = args
+        assert isinstance(metadata, MessageMetadata)
+        assert metadata.channel_metadata is not None
+        assert metadata.channel_metadata.get("message_id") == "456"
+        assert event == "command"
+        assert isinstance(payload, dict)
+        assert payload.get("message_id") == "456"
+
+
 class TestMessaging:
     """Tests for message sending/editing methods."""
 
