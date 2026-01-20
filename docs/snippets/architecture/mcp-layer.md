@@ -1,32 +1,27 @@
 ---
-id: teleclaude/architecture/mcp-layer
+id: architecture/mcp-layer
 type: architecture
-scope: project
-description: Two-layer MCP interface (wrapper + server) that exposes TeleClaude tools with zero-downtime restarts.
-requires:
-  - ../architecture/adapter-client.md
-  - ../architecture/redis-transport.md
-  - ../architecture/session-lifecycle.md
-  - ../architecture/context-selection.md
+scope: global
+description: Resilient two-layer MCP architecture for AI-to-AI communication.
 ---
 
-Purpose
-- Expose TeleClaude operations to AI agents through MCP tools.
+# MCP Layer Architecture
 
-Components
-- mcp-wrapper (bin/mcp-wrapper.py): resilient proxy with cached handshake and auto-reconnect.
-- MCP server (teleclaude/mcp_server.py): tool implementation backed by AdapterClient.
+## Layers
+1. **Resilient Proxy (`bin/mcp-wrapper.py`)**:
+   - Runs as the stdio entrypoint for MCP clients.
+   - Connects to the daemon via Unix socket.
+   - Provides cached handshakes and auto-reconnection.
+   - Injects `caller_session_id` into tool calls.
+2. **Backend Server (`teleclaude/mcp_server.py`)**:
+   - Actual tool implementations using the `mcp` SDK.
+   - Integrated into the main daemon process.
+   - Shares the database and Redis transport.
 
-Primary flows
-- Client connects over stdio -> wrapper -> UNIX socket -> MCP server.
-- Tool calls are routed to local command handlers or remote transport requests.
-- Session output is retrieved via teleclaude__get_session_data polling.
+## Data Flow
+```
+MCP Client (Claude) <-> Stdio Wrapper <-> Unix Socket <-> Daemon Backend <-> Command Pipeline
+```
 
-Invariants
-- Wrapper responds to initialize even when backend restarts.
-- Tool list is cached on disk and served only while backend is down.
-- caller_session_id is injected into tool calls when available.
-
-Failure modes
-- If backend is down, wrapper serves cached handshake and waits for reconnect.
-- Remote requests time out when target computer is offline.
+## Resilience Pattern
+If the daemon restarts (`make restart`), the wrapper stays alive and buffers requests until the socket is available again, ensuring zero-downtime for the AI client.

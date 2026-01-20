@@ -1,17 +1,21 @@
 ---
-id: teleclaude/faq/common-issues
+id: faq/common-issues
 type: faq
-scope: project
-description: Common operational questions and quick fixes.
-requires: []
+scope: global
+description: Frequently asked questions and common troubleshooting steps.
 ---
 
-FAQ
-Q: The daemon will not start or crashes immediately. What should I do?
-A: Disable auto-restart temporarily, kill stale processes, run a short foreground test, then re-enable the service and run make status.
+# Common Issues (FAQ)
 
-Q: Telegram commands do not respond.
-A: Ensure the bot is admin in the supergroup, the user is whitelisted, and the bot token matches the .env configuration.
+## Q: Why isn't my bot responding in the supergroup?
+- **A**: Ensure the bot is an **admin**. Non-admin bots cannot manage topics or read all messages in some group configurations.
+- **A**: Verify your Telegram User ID is in the `TELEGRAM_USER_IDS` whitelist in `.env`.
 
-Q: Cross-computer MCP requests time out.
-A: Check Redis connectivity, verify the target computer is online, and inspect recent logs for transport errors.
+## Q: "Another daemon instance is already running" error?
+- **A**: This usually means a stale `teleclaude.pid` file. If `make status` shows no running process, `rm teleclaude.pid` and try again.
+
+## Q: Why do I see duplicate bot commands in the menu?
+- **A**: More than one bot has `telegram.is_master: true`. Only one should be master.
+
+## Q: My tmux session died, is the session lost?
+- **A**: TeleClaude will try to reconnect, but if the tmux process is gone, you must start a `/new-session`. Commands in progress are lost if tmux crashes.

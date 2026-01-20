@@ -1,18 +1,16 @@
 ---
-id: teleclaude/checklist/multi-computer-readiness
+id: checklist/multi-computer-readiness
 type: checklist
-scope: project
-description: Readiness checklist for multi-computer TeleClaude deployments.
-requires:
-  - ../guide/multi-computer-setup.md
+scope: global
+description: Verification steps before enabling multi-computer orchestration.
 ---
 
-Checklist
-- Each computer has a unique bot token and computer name.
-- All bots are in the same supergroup with Topics enabled.
-- All bots have Manage Topics permissions.
-- trusted_bots list includes every bot on every computer.
-- Exactly one bot is configured as telegram.is_master.
-- make status shows each daemon running.
-- teleclaude__list_computers returns all online machines.
-- If using MCP across computers, Redis is configured and reachable on all hosts.
+# Multi-Computer Readiness Checklist
+
+- [ ] **Unique Computer Names**: Each computer has a distinct `computer_name` in `config.yml`.
+- [ ] **Bot Tokens**: Each computer uses its own unique bot token (shared tokens cause polling collisions).
+- [ ] **Supergroup Access**: All bots are members and admins of the same Telegram supergroup.
+- [ ] **Redis Connection**: (If using AI-to-AI) All computers can reach the same Redis instance.
+- [ ] **Master Designation**: Exactly ONE computer has `telegram.is_master: true`.
+- [ ] **SSH Agent**: `keychain` is configured and keys are unlocked on all remote machines.
+- [ ] **Trust**: Project directories are added to `trusted_dirs` for MCP visibility.

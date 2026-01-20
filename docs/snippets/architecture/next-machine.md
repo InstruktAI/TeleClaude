@@ -1,24 +1,25 @@
 ---
-id: teleclaude/architecture/next-machine
+id: architecture/next-machine
 type: architecture
-scope: project
-description: Stateless workflow engine that orchestrates prepare/build/review phases from project files.
-requires:
-  - ../concept/session-types.md
+scope: global
+description: Stateless state machine for orchestrating multi-phase project workflows.
 ---
 
-Purpose
-- Orchestrate structured work items using file-based state.
+# Next Machine Architecture
 
-Inputs/Outputs
-- Inputs: roadmap, requirements, plans, and state.json within a worktree.
-- Outputs: textual instructions for orchestrator tools and agent dispatch.
+## Purpose
+The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phase B: Build/Review/Fix) without maintaining internal state.
 
-Primary flows
-- next_prepare (Phase A) emits HITL instructions for architecting work.
-- next_work (Phase B) emits deterministic build/review/fix cycles.
-- Dependency gating prevents blocked work items from being claimed.
+## Design
+1. **Statelessness**: It derives all work status from project artifacts:
+   - `roadmap.md` (item discovery)
+   - `requirements.md` and `implementation-plan.md` (preparation check)
+   - `state.json` (build/review phase tracking)
+2. **Phases**:
+   - **Phase A (Prepare)**: HITL-heavy preparation of work items.
+   - **Phase B (Work)**: Deterministic, autonomous implementation and verification.
+3. **Execution**: It returns explicit instructions or tool calls for the calling AI to execute.
 
-Invariants
-- Next Machine is stateless; it derives state from project files.
-- Worktree scripts must run in repo context to ensure file availability.
+## Invariants
+- Blocks claiming items with incomplete dependencies.
+- Requires project files to be tracked by git for worktree accessibility.

@@ -1,5 +1,141 @@
 project_root: /Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude
 snippets:
+- id: architecture/cache-system
+  description: Event-driven read-cache architecture using SQLite snapshots.
+  type: architecture
+  scope: project
+  path: docs/snippets/architecture/cache-system.md
+  requires: []
+- id: architecture/mcp-layer
+  description: Resilient two-layer MCP architecture for AI-to-AI communication.
+  type: architecture
+  scope: global
+  path: docs/snippets/architecture/mcp-layer.md
+  requires: []
+- id: architecture/next-machine
+  description: Stateless state machine for orchestrating multi-phase project workflows.
+  type: architecture
+  scope: global
+  path: docs/snippets/architecture/next-machine.md
+  requires: []
+- id: architecture/output-polling
+  description: Mechanism for real-time terminal output capture and streaming.
+  type: architecture
+  scope: project
+  path: docs/snippets/architecture/output-polling.md
+  requires: []
+- id: architecture/session-lifecycle
+  description: Complete lifecycle of a terminal session from creation to cleanup.
+  type: architecture
+  scope: project
+  path: docs/snippets/architecture/session-lifecycle.md
+  requires: []
+- id: architecture/system-overview
+  description: High-level architectural blueprint of TeleClaude components and data
+    flow.
+  type: architecture
+  scope: global
+  path: docs/snippets/architecture/system-overview.md
+  requires: []
+- id: checklist/multi-computer-readiness
+  description: Verification steps before enabling multi-computer orchestration.
+  type: checklist
+  scope: global
+  path: docs/snippets/checklist/multi-computer-readiness.md
+  requires: []
+- id: concept/durable-execution
+  description: Reliability mechanism using the Outbox pattern in SQLite.
+  type: concept
+  scope: global
+  path: docs/snippets/concept/durable-execution.md
+  requires: []
+- id: concept/git-worktrees
+  description: Use of git worktrees for isolated agent development and testing.
+  type: concept
+  scope: project
+  path: docs/snippets/concept/git-worktrees.md
+  requires: []
+- id: concept/multi-computer-addressing
+  description: How computers and sessions are addressed in a distributed TeleClaude
+    network.
+  type: concept
+  scope: global
+  path: docs/snippets/concept/multi-computer-addressing.md
+  requires: []
+- id: concept/session-types
+  description: Classification of terminal sessions in TeleClaude.
+  type: concept
+  scope: global
+  path: docs/snippets/concept/session-types.md
+  requires: []
+- id: decision/exit-marker-removal
+  description: Architectural decision to move from file-based exit markers to hook-based
+    events.
+  type: decision
+  scope: project
+  path: docs/snippets/decision/exit-marker-removal.md
+  requires: []
+- id: example/ai-to-ai-delegation
+  description: Code example of a Master AI delegating a task to a Worker AI.
+  type: example
+  scope: global
+  path: docs/snippets/example/ai-to-ai-delegation.md
+  requires: []
+- id: faq/common-issues
+  description: Frequently asked questions and common troubleshooting steps.
+  type: faq
+  scope: global
+  path: docs/snippets/faq/common-issues.md
+  requires: []
+- id: guide/multi-computer-setup
+  description: Step-by-step guide for setting up a distributed TeleClaude network.
+  type: guide
+  scope: global
+  path: docs/snippets/guide/multi-computer-setup.md
+  requires: []
+- id: guide/troubleshooting
+  description: Diagnostic steps for common TeleClaude operational issues.
+  type: guide
+  scope: global
+  path: docs/snippets/guide/troubleshooting.md
+  requires: []
+- id: incident/api-reliability-blocking
+  description: Analysis of how third-party API rate limits can block the daemon.
+  type: incident
+  scope: global
+  path: docs/snippets/incident/api-reliability-blocking.md
+  requires: []
+- id: policy/adapter-boundaries
+  description: Strict separation between UI/Transport adapters and core logic.
+  type: policy
+  scope: project
+  path: docs/snippets/policy/adapter-boundaries.md
+  requires: []
+- id: policy/master-bot-registration
+  description: Policy for Telegram command registration in multi-computer setups.
+  type: policy
+  scope: global
+  path: docs/snippets/policy/master-bot-registration.md
+  requires: []
+- id: policy/mcp-connection-resilience
+  description: Architecture policy for MCP connection handling and zero-downtime restarts.
+  type: policy
+  scope: global
+  path: docs/snippets/policy/mcp-connection-resilience.md
+  requires: []
+- id: policy/single-database
+  description: Guaranteed single database file usage for the daemon to prevent data
+    fragmentation.
+  type: policy
+  scope: project
+  path: docs/snippets/policy/single-database.md
+  requires: []
+- id: policy/ux-message-cleanup
+  description: Automatic cleanup of Telegram message clutter for a clean UI.
+  type: policy
+  scope: project
+  path: docs/snippets/policy/ux-message-cleanup.md
+  requires: []
 - id: principles/architecture/boundary-purity
   description: Preserve domain intent at system boundaries by isolating transport
     and UI concerns from core logic.
@@ -14,6 +150,54 @@ snippets:
   type: principles
   scope: project
   path: docs/snippets/principles/priming.md
+  requires: []
+- id: procedure/rsync-development
+  description: High-speed iteration workflow using rsync instead of git push/pull.
+  type: procedure
+  scope: project
+  path: docs/snippets/procedure/rsync-development.md
+  requires: []
+- id: procedure/service-management
+  description: Standard commands for managing the TeleClaude daemon service.
+  type: procedure
+  scope: project
+  path: docs/snippets/procedure/service-management.md
+  requires: []
+- id: procedure/ssh-agent-keychain
+  description: Procedure for configuring persistent SSH agent access for the daemon.
+  type: procedure
+  scope: global
+  path: docs/snippets/procedure/ssh-agent-keychain.md
+  requires: []
+- id: reference/mcp-tools
+  description: Complete catalog of available MCP tools for AI agents.
+  type: reference
+  scope: global
+  path: docs/snippets/reference/mcp-tools.md
+  requires: []
+- id: role/ai-worker
+  description: The role of an AI agent session in the TeleClaude network.
+  type: role
+  scope: global
+  path: docs/snippets/role/ai-worker.md
+  requires: []
+- id: role/master-bot
+  description: The role of the master bot in a multi-computer Telegram supergroup.
+  type: role
+  scope: global
+  path: docs/snippets/role/master-bot.md
+  requires: []
+- id: standard/definition-of-done
+  description: Quality gates and verification steps required for completing code changes.
+  type: standard
+  scope: project
+  path: docs/snippets/standard/definition-of-done.md
+  requires: []
+- id: standard/modeling-policy
+  description: Standards for data modeling, validation, and resource representation.
+  type: standard
+  scope: project
+  path: docs/snippets/standard/modeling-policy.md
   requires: []
 - id: teleclaude/architecture/adapter-client
   description: AdapterClient centralizes adapter lifecycle, UI/transport routing,
@@ -78,25 +262,6 @@ snippets:
   scope: project
   path: docs/snippets/architecture/database.md
   requires: []
-- id: teleclaude/architecture/mcp-layer
-  description: Two-layer MCP interface (wrapper + server) that exposes TeleClaude
-    tools with zero-downtime restarts.
-  type: architecture
-  scope: project
-  path: docs/snippets/architecture/mcp-layer.md
-  requires:
-  - docs/snippets/architecture/adapter-client.md
-  - docs/snippets/architecture/redis-transport.md
-  - docs/snippets/architecture/session-lifecycle.md
-  - docs/snippets/architecture/context-selection.md
-- id: teleclaude/architecture/next-machine
-  description: Stateless workflow engine that orchestrates prepare/build/review phases
-    from project files.
-  type: architecture
-  scope: project
-  path: docs/snippets/architecture/next-machine.md
-  requires:
-  - docs/snippets/concept/session-types.md
 - id: teleclaude/architecture/outbox
   description: Durable outbox table for agent hook events.
   type: architecture
@@ -105,15 +270,6 @@ snippets:
   requires:
   - docs/snippets/architecture/database.md
   - docs/snippets/reference/event-types.md
-- id: teleclaude/architecture/output-polling
-  description: Output polling pipeline that captures tmux output and streams updates
-    to adapters.
-  type: architecture
-  scope: project
-  path: docs/snippets/architecture/output-polling.md
-  requires:
-  - docs/snippets/architecture/tmux-management.md
-  - docs/snippets/architecture/adapter-client.md
 - id: teleclaude/architecture/redis-transport
   description: Redis Streams transport for cross-computer request/response and peer
     discovery.
@@ -124,16 +280,6 @@ snippets:
   - docs/snippets/architecture/adapter-client.md
   - docs/snippets/architecture/cache.md
   - docs/snippets/reference/event-types.md
-- id: teleclaude/architecture/session-lifecycle
-  description: Session creation, agent launch, message handling, and cleanup lifecycle.
-  type: architecture
-  scope: project
-  path: docs/snippets/architecture/session-lifecycle.md
-  requires:
-  - docs/snippets/architecture/database.md
-  - docs/snippets/architecture/tmux-management.md
-  - docs/snippets/architecture/output-polling.md
-  - docs/snippets/architecture/adapter-client.md
 - id: teleclaude/architecture/session-listeners
   description: In-memory listener registry that notifies callers when target sessions
     stop.
@@ -142,15 +288,6 @@ snippets:
   path: docs/snippets/architecture/session-listeners.md
   requires:
   - docs/snippets/concept/session-types.md
-- id: teleclaude/architecture/system-overview
-  description: High-level component map of TeleClaude daemon, adapters, transport,
-    and storage.
-  type: architecture
-  scope: project
-  path: docs/snippets/architecture/system-overview.md
-  requires:
-  - docs/snippets/concept/adapter-types.md
-  - docs/snippets/concept/resource-models.md
 - id: teleclaude/architecture/telegram-adapter
   description: Telegram UI adapter that maps topics to sessions and enforces UX cleanup
     rules.
@@ -174,13 +311,6 @@ snippets:
   path: docs/snippets/architecture/ux-message-cleanup.md
   requires:
   - docs/snippets/architecture/database.md
-- id: teleclaude/checklist/multi-computer-readiness
-  description: Readiness checklist for multi-computer TeleClaude deployments.
-  type: checklist
-  scope: project
-  path: docs/snippets/checklist/multi-computer-readiness.md
-  requires:
-  - docs/snippets/guide/multi-computer-setup.md
 - id: teleclaude/concept/adapter-types
   description: Distinction between UI adapters and transport adapters in TeleClaude.
   type: concept
@@ -210,27 +340,12 @@ snippets:
   path: docs/snippets/concept/resource-models.md
   requires:
   - docs/snippets/concept/glossary.md
-- id: teleclaude/concept/session-types
-  description: Human vs AI-to-AI session types and local vs remote execution modes.
-  type: concept
-  scope: project
-  path: docs/snippets/concept/session-types.md
-  requires:
-  - docs/snippets/concept/glossary.md
 - id: teleclaude/concept/shell-readiness
   description: How TeleClaude detects command completion without explicit exit markers.
   type: concept
   scope: project
   path: docs/snippets/concept/shell-readiness.md
   requires: []
-- id: teleclaude/decision/exit-marker-removal
-  description: Decision to detect command completion via shell readiness instead of
-    exit markers.
-  type: decision
-  scope: project
-  path: docs/snippets/decision/exit-marker-removal.md
-  requires:
-  - docs/snippets/concept/shell-readiness.md
 - id: teleclaude/decision/protocol-adapter-client
   description: Decision to route all adapter operations through AdapterClient and
     protocol-based transport.
@@ -239,20 +354,6 @@ snippets:
   path: docs/snippets/decision/protocol-adapter-client.md
   requires:
   - docs/snippets/architecture/adapter-client.md
-- id: teleclaude/example/ai-to-ai-delegation
-  description: Example MCP flow to delegate a task to a remote computer.
-  type: example
-  scope: project
-  path: docs/snippets/example/ai-to-ai-delegation.md
-  requires:
-  - docs/snippets/reference/mcp-tools.md
-  - docs/snippets/concept/session-types.md
-- id: teleclaude/faq/common-issues
-  description: Common operational questions and quick fixes.
-  type: faq
-  scope: project
-  path: docs/snippets/faq/common-issues.md
-  requires: []
 - id: teleclaude/guide/ai-to-ai-operations
   description: Recommended flow for delegating work using TeleClaude MCP tools.
   type: guide
@@ -261,61 +362,18 @@ snippets:
   requires:
   - docs/snippets/reference/mcp-tools.md
   - docs/snippets/concept/session-types.md
-- id: teleclaude/guide/multi-computer-setup
-  description: Steps and guardrails for running TeleClaude across multiple computers
-    in one Telegram supergroup.
-  type: guide
-  scope: project
-  path: docs/snippets/guide/multi-computer-setup.md
-  requires:
-  - docs/snippets/policy/telegram-command-registration.md
 - id: teleclaude/guide/ssh-agent-deployments
   description: Configure SSH agent access for automated git operations and deployments.
   type: guide
   scope: project
   path: docs/snippets/guide/ssh-agent-deployments.md
   requires: []
-- id: teleclaude/guide/troubleshooting
-  description: High-level troubleshooting workflow for daemon and adapter issues.
-  type: guide
-  scope: project
-  path: docs/snippets/guide/troubleshooting.md
-  requires: []
-- id: teleclaude/incident/api-reliability-blocking
-  description: Reliability analysis identifying async blocking risks in the REST server
-    path.
-  type: incident
-  scope: project
-  path: docs/snippets/incident/api-reliability-blocking.md
-  requires: []
-- id: teleclaude/policy/adapter-boundaries
-  description: Adapter boundaries and transport metadata must not drive domain intent.
-  type: policy
-  scope: project
-  path: docs/snippets/policy/adapter-boundaries.md
-  requires:
-  - docs/snippets/concept/adapter-types.md
 - id: teleclaude/policy/daemon-availability
   description: The TeleClaude daemon must stay up; restarts must be brief and verified.
   type: policy
   scope: project
   path: docs/snippets/policy/daemon-availability.md
   requires: []
-- id: teleclaude/policy/mcp-connection-resilience
-  description: MCP wrapper provides zero-downtime restarts and clients should not
-    require reconnects.
-  type: policy
-  scope: project
-  path: docs/snippets/policy/mcp-connection-resilience.md
-  requires:
-  - docs/snippets/architecture/mcp-layer.md
-- id: teleclaude/policy/single-database
-  description: The daemon uses a single SQLite database file at the project root.
-  type: policy
-  scope: project
-  path: docs/snippets/policy/single-database.md
-  requires:
-  - docs/snippets/architecture/database.md
 - id: teleclaude/policy/telegram-command-registration
   description: Only the master bot registers Telegram commands, and command names
     include trailing spaces.
@@ -352,13 +410,6 @@ snippets:
   path: docs/snippets/procedure/restart-daemon.md
   requires:
   - docs/snippets/policy/daemon-availability.md
-- id: teleclaude/procedure/rsync-development
-  description: Fast iteration workflow using bin/rsync.sh and remote daemon restarts.
-  type: procedure
-  scope: project
-  path: docs/snippets/procedure/rsync-development.md
-  requires:
-  - docs/snippets/policy/daemon-availability.md
 - id: teleclaude/reference/cache-ttl-matrix
   description: TTL and scope matrix for cache refresh behavior.
   type: reference
@@ -378,12 +429,6 @@ snippets:
   type: reference
   scope: project
   path: docs/snippets/reference/event-types.md
-  requires: []
-- id: teleclaude/reference/mcp-tools
-  description: MCP tool surface exposed by TeleClaude.
-  type: reference
-  scope: project
-  path: docs/snippets/reference/mcp-tools.md
   requires: []
 - id: teleclaude/reference/ui-commands
   description: Telegram slash commands registered from UiCommands.
@@ -422,20 +467,6 @@ snippets:
   path: docs/snippets/standard/cache-contract.md
   requires:
   - docs/snippets/architecture/cache.md
-- id: teleclaude/standard/definition-of-done
-  description: Quality bar for TeleClaude changes covering tests, config, UX, and
-    deployment.
-  type: standard
-  scope: project
-  path: docs/snippets/standard/definition-of-done.md
-  requires: []
-- id: teleclaude/standard/modeling-policy
-  description: Data modeling policy for core dataclasses and boundary DTOs.
-  type: standard
-  scope: project
-  path: docs/snippets/standard/modeling-policy.md
-  requires:
-  - docs/snippets/concept/resource-models.md
 - id: teleclaude/timeline/protocol-refactor-2025-01-08
   description: Timeline entry for the protocol-based adapter refactor completed on
     2025-01-08.
@@ -444,3 +475,10 @@ snippets:
   path: docs/snippets/timeline/protocol-refactor-2025-01-08.md
   requires:
   - docs/snippets/decision/protocol-adapter-client.md
+- id: timeline/protocol-refactor-2025-01
+  description: Major architectural refactor moving to Protocol-based adapters and
+    Redis transport.
+  type: timeline
+  scope: project
+  path: docs/snippets/timeline/protocol-refactor-2025-01.md
+  requires: []

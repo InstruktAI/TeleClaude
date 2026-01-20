@@ -1,22 +1,20 @@
 ---
-id: teleclaude/incident/api-reliability-blocking
+id: incident/api-reliability-blocking
 type: incident
-scope: project
-description: Reliability analysis identifying async blocking risks in the REST server path.
-requires: []
+scope: global
+description: Analysis of how third-party API rate limits can block the daemon.
 ---
 
-Incident summary
-- The REST server can become intermittently unresponsive due to blocking operations inside async paths.
+# Incident Analysis: API Blocking
 
-Key findings
-- Blocking subprocess.run in next_machine workflow preparation.
-- Blocking psutil.cpu_percent calls inside async handlers.
-- Synchronous file I/O in async orchestration code.
-- Missing SQLite busy_timeout in async DB connections.
+## Symptom
+The TeleClaude daemon becomes unresponsive or slow when many AI sessions are running.
 
-Impact
-- Event loop stalls under load, causing temporary API unavailability.
+## Root Cause
+Synchronous calls to third-party APIs (Telegram, OpenAI) in the main event loop or command handlers.
 
-Status
-- Documented as a reliability risk; mitigation requires async-friendly I/O wrappers.
+## Mitigation
+1. **Async Everywhere**: All I/O must use `aiohttp`, `httpx`, or `aiosqlite`.
+2. **Timeouts**: Every external call must have a strict timeout.
+3. **Out-of-Process**: Heavy tasks (like voice transcription) should be offloaded or handled with careful concurrency limits.
+4. **Availability Marking**: Use `teleclaude__mark_agent_unavailable` to proactively skip rate-limited agents.

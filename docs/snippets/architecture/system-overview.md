@@ -1,30 +1,32 @@
 ---
-id: teleclaude/architecture/system-overview
+id: architecture/system-overview
 type: architecture
-scope: project
-description: High-level component map of TeleClaude daemon, adapters, transport, and storage.
-requires:
-  - ../concept/adapter-types.md
-  - ../concept/resource-models.md
+scope: global
+description: High-level architectural blueprint of TeleClaude components and data flow.
 ---
 
-Purpose
-- Provide a mental model of TeleClaude's major components and boundaries.
+# System Overview
 
-Components
-- Daemon core: command execution, tmux orchestration, output polling, event handling.
-- AdapterClient: unified interface to UI adapters and transport adapters.
-- UI adapters: Telegram messaging and topic management.
-- Transport adapters: Redis Streams for cross-computer request/response.
-- MCP server + wrapper: AI tool interface over a local UNIX socket with resilience.
-- API server: local HTTP/WS interface for TUI and CLI.
-- SQLite database: sessions, hook outbox records, UX state, agent data.
-- Cache: snapshot layer for computers/projects/todos/sessions.
+## Purpose
+TeleClaude acts as a "dumb pipe" terminal bridge between UI adapters (Telegram, TUI, MCP) and tmux execution environments.
 
-Primary flows
-- Ingress from Telegram/MCP/API -> command mappers -> CommandService -> tmux -> output polling -> AdapterClient -> UI.
-- Remote requests use transport adapters; output retrieval is via MCP get_session_data polling.
+## Component Layers
+1. **Service Interfaces**:
+   - **Telegram Adapter**: Normalizes chat interactions.
+   - **MCP Server**: Stdio-based interface for AI agents.
+   - **API Server**: Resource-first REST/WS interface for TUIs.
+2. **Core Pipeline**:
+   - **Command Ingress**: Normalizes all inputs into Command objects.
+   - **Command Queue**: SQLite-backed durable execution.
+   - **Session Manager**: Manages tmux lifecycles and process mapping.
+3. **Execution Layer**:
+   - **tmux**: The runtime for all terminal sessions.
+   - **Output Poller**: Streams real-time updates from tmux to domain events.
+4. **Orchestration**:
+   - **Next Machine**: Stateless state machine for complex project-based workflows.
+   - **Agent Coordinator**: Single source of truth for routing agent lifecycle hooks.
 
-Failure modes
-- Adapter startup failures prevent daemon boot.
-- Transport outages degrade cross-computer features but local sessions continue.
+## Key Invariants
+- Core is decoupled from adapter specifics via Python Protocols.
+- All state changes are event-driven.
+- Durable execution via Outbox pattern (hook_outbox, rest_outbox).

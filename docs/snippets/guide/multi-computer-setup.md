@@ -1,16 +1,29 @@
 ---
-id: teleclaude/guide/multi-computer-setup
+id: guide/multi-computer-setup
 type: guide
-scope: project
-description: Steps and guardrails for running TeleClaude across multiple computers in one Telegram supergroup.
-requires:
-  - ../policy/telegram-command-registration.md
+scope: global
+description: Step-by-step guide for setting up a distributed TeleClaude network.
 ---
 
-Guide
-- Install TeleClaude on each computer with a unique bot token and computer name.
-- Add all bots to the same Telegram supergroup and grant Manage Topics permissions.
-- Configure each bot with the same supergroup ID and a shared trusted_bots list.
-- Set telegram.is_master true on exactly one computer to register commands.
-- Each bot polls Telegram independently; there is no cross-bot routing layer.
-- Enable Redis only if you need AI-to-AI collaboration via MCP tools.
+# Multi-Computer Setup Guide
+
+## Phase 1: Preparation
+1. **Provision Bots**: Create a unique Telegram bot for each computer via [@BotFather](https://t.me/botfather).
+2. **Supergroup**: Create a Telegram supergroup, enable Topics, and add all bots as admins.
+3. **Redis**: Ensure a Redis instance is accessible from all computers (required for AI-to-AI).
+
+## Phase 2: Installation
+1. **Clone & Install**: `make install && make init` on each machine.
+2. **Config**:
+   - `computer_name`: Set a unique shorthand (e.g., `macbook`).
+   - `is_master`: Set to `true` on EXACTLY one computer.
+   - `redis_url`: Point to your shared Redis instance.
+   - `trusted_dirs`: Add paths you want agents to be able to access.
+
+## Phase 3: SSH Configuration
+1. **Keychain**: Set up `keychain` as described in `procedure/ssh-agent-keychain`.
+2. **Key Exchange**: Ensure the master can SSH into remotes via agent forwarding.
+
+## Phase 4: Verification
+1. **Status**: `make status` on all nodes.
+2. **Discovery**: In any AI session, call `teleclaude__list_computers()` to see the full network.

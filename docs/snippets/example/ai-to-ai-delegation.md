@@ -1,20 +1,34 @@
 ---
-id: teleclaude/example/ai-to-ai-delegation
+id: example/ai-to-ai-delegation
 type: example
-scope: project
-description: Example MCP flow to delegate a task to a remote computer.
-requires:
-  - ../reference/mcp-tools.md
-  - ../concept/session-types.md
+scope: global
+description: Code example of a Master AI delegating a task to a Worker AI.
 ---
 
-Example
-- List online computers.
-- Start a session on a remote computer.
-- Send a follow-up message and read the transcript.
+# Example: AI-to-AI Delegation
 
-Sample
-- teleclaude__list_computers()
-- teleclaude__start_session(computer="workstation", project="/home/user/app", title="Run tests", message="Run the test suite")
-- teleclaude__send_message(computer="workstation", session_id="<id>", message="Report failures")
-- teleclaude__get_session_data(computer="workstation", session_id="<id>")
+## Scenario
+A Master AI on a laptop wants a Worker AI on a server to run a test suite.
+
+## Tool Calls
+```python
+# 1. Discover the server
+teleclaude__list_computers()
+# -> [{"name": "server1", "status": "online"}]
+
+# 2. Start the worker session
+teleclaude__start_session(
+    computer="server1",
+    project_path="/home/user/apps/TeleClaude",
+    title="Verification run",
+    message="Please run 'make test' and summarize failures.",
+    agent="claude"
+)
+# -> Returns session_id: "test-abc-123"
+
+# 3. Wait for notification...
+# Master receives TurnCompleted event with summary
+
+# 4. Review and cleanup
+teleclaude__end_session(computer="server1", session_id="test-abc-123")
+```

@@ -1,29 +1,33 @@
 ---
-id: teleclaude/architecture/session-lifecycle
+id: architecture/session-lifecycle
 type: architecture
 scope: project
-description: Session creation, agent launch, message handling, and cleanup lifecycle.
-requires:
-  - database.md
-  - tmux-management.md
-  - output-polling.md
-  - adapter-client.md
+description: Complete lifecycle of a terminal session from creation to cleanup.
 ---
 
-Purpose
-- Describe how TeleClaude creates, runs, and tears down sessions.
+# Session Lifecycle
 
-Primary flows
-- Create session: allocate session_id, tmux session, and DB record.
-- Optional agent launch: inject agent command and update session metadata.
-- Message handling: send keys to tmux and start output polling.
-- Cleanup: terminate tmux and mark session closed, removing listeners.
+## 1. Creation
+- **Ingress**: A `/new-session` command arrives via an adapter.
+- **Queueing**: Command is persisted in the SQLite queue.
+- **Execution**: The `SessionLauncher` starts a new `tmux` session.
+- **Persistence**: Session metadata is saved in the `sessions` table.
+- **Announcement**: The originating adapter announces the session (e.g., creates a Telegram topic).
 
-Invariants
-- session_id is generated once and returned immediately.
-- tmux session names use a stable prefix with the session_id.
-- Closed sessions stop polling and are removed from cache snapshots.
+## 2. Active Operation
+- **Input**: Commands are sent to the `tmux` pane via `tmux_io`.
+- **Output**: The `OutputPoller` reads from `tmux` and emits `OutputEvent`s.
+- **Summarization**: Periodic AI-summarization updates the Telegram topic.
+- **Clutter Control**: User inputs and feedback are cleaned up based on session state.
 
-Failure modes
-- Invalid working directories prevent session creation.
-- Missing tmux sessions trigger cleanup and session termination.
+## 3. Termination
+- **Close Command**: User calls `/close-session` or AI calls `end_session`.
+- **Cleanup**:
+  - `tmux` process is killed.
+  - SQLite record is marked as closed.
+  - Final summary is posted.
+  - Topic is archived or marked inactive.
+
+## Invariants
+- `session_id` is stable throughout the lifecycle.
+- `tmux` session name format: `tc_{session_id[:8]}`.

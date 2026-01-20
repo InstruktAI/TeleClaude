@@ -1,28 +1,28 @@
 ---
-id: teleclaude/architecture/output-polling
+id: architecture/output-polling
 type: architecture
 scope: project
-description: Output polling pipeline that captures tmux output and streams updates to adapters.
-requires:
-  - tmux-management.md
-  - adapter-client.md
+description: Mechanism for real-time terminal output capture and streaming.
 ---
 
-Purpose
-- Stream tmux output to UI adapters while maintaining process lifecycle signals.
+# Output Polling Architecture
 
-Inputs/Outputs
-- Inputs: tmux pane capture snapshots and session metadata.
-- Outputs: OutputChanged, ProcessExited, and DirectoryChanged events routed to adapters.
+## Purpose
+Captured and streams real-time output from tmux panes to UI adapters without blocking the main event loop.
 
-Primary flows
-- OutputPoller compares successive captures and emits change events.
-- Polling coordinator sends output updates through AdapterClient.
-- Process exit triggers a final output update and optional session cleanup.
+## Components
+1. **OutputPoller**: A per-session worker that reads from the tmux output buffer.
+2. **PollingCoordinator**: Manages the collection of pollers and ensures they start/stop with the session lifecycle.
+3. **Dual Mode**:
+   - **Human Mode**: Raw output streaming for manual sessions.
+   - **AI Mode**: Smart output capture for agent-to-agent sessions, detecting turn completion.
 
-Invariants
-- Output polling stops when the tmux session no longer exists.
-- Output updates are edited into a single persistent message per UI session.
+## Flow
+1. **Read**: Poller executes `tmux capture-pane`.
+2. **Diff**: Only new lines since the last read are captured.
+3. **Emit**: `OutputEvent` is sent to the `EventBus`.
+4. **Broadcast**: `AdapterClient` routes the event to all active observers (Telegram, WS, MCP).
 
-Failure modes
-- Missing sessions abort polling and log a warning.
+## Invariants
+- Pollers MUST NOT run for closed sessions.
+- Polling frequency is dynamically adjusted based on session activity.

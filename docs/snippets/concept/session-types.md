@@ -1,23 +1,23 @@
 ---
-id: teleclaude/concept/session-types
+id: concept/session-types
 type: concept
-scope: project
-description: Human vs AI-to-AI session types and local vs remote execution modes.
-requires:
-  - glossary.md
+scope: global
+description: Classification of terminal sessions in TeleClaude.
 ---
 
-Purpose
-- Explain how TeleClaude distinguishes sessions by initiator and location.
+# Session Types
 
-Session types
-- Human session: created from Telegram or local UI interactions.
-- AI-to-AI session: created via MCP tools and can be chained across computers.
+## 1. Human Session
+- **Initiator**: A human user via Telegram or `telec` CLI.
+- **Interaction**: Direct command input, live terminal output.
+- **Clutter Control**: Active cleanup of inputs and feedback messages.
 
-Location modes
-- Local: computer="local" or the local computer name; executes without transport.
-- Remote: computer set to another online computer; uses transport adapters.
+## 2. AI-to-AI Session
+- **Initiator**: An AI agent via MCP tools (`teleclaude__start_session`).
+- **Interaction**: Programmatic message passing, stop events with summaries.
+- **Identification**: Annotated in Telegram (e.g., `macbook/claude -> workstation/claude`).
+- **Clutter Control**: Skips feedback messages (listeners receive summaries directly).
 
-Outputs
-- All sessions surface in Telegram topics via UI adapters.
-- AI-to-AI sessions rely on MCP tool calls and get_session_data polling for output retrieval.
+## 3. Worktree Session
+- **Initiator**: Agents working on specific todos using git worktrees.
+- **Isolation**: Uses a separate `teleclaude.db` and dedicated project directory to avoid polluting main state.
