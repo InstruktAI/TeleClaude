@@ -1,30 +1,23 @@
 ---
-id: architecture/ux-message-cleanup
-description: Ephemeral message cleanup using pending_message_deletions for clean UI history.
+id: teleclaude/architecture/ux-message-cleanup
 type: architecture
 scope: project
+description: Message deletion tracking for clean Telegram UX (user input and feedback).
 requires:
   - database.md
 ---
 
-# UX Message Cleanup
+Purpose
+- Keep Telegram topics clean by deleting transient messages at the right times.
 
-## Purpose
-- Keep UI threads clean by deleting ephemeral messages on defined triggers.
+Mechanism
+- User input messages are queued for deletion on the next user input.
+- Feedback messages are queued for deletion before new feedback is sent.
+- Message IDs are persisted in session UX state for restart resilience.
 
-## Inputs/Outputs
-- Inputs: send_message calls with cleanup_trigger/ephemeral flags; user input events.
-- Outputs: delete_message calls and pending_message_deletions rows.
+Invariants
+- Output messages are edited in place and never deleted.
+- AI-to-AI sessions do not receive feedback messages.
 
-## Invariants
-- Feedback messages are deleted before sending the next feedback message.
-- User input messages are deleted on the next user input.
-- Persistent messages (ephemeral=False) are never tracked for deletion.
-
-## Primary Flows
-- AdapterClient.send_message tracks ephemerals in pending_message_deletions.
-- Telegram UI pre-handler deletes pending user_input messages and clears the queue.
-- Feedback cleanup deletes pending feedback messages before new feedback is sent.
-
-## Failure Modes
-- Deletion failures are logged and treated as best-effort; queues are still cleared.
+Failure modes
+- Missing UX state falls back to creating new feedback messages and re-seeding state.

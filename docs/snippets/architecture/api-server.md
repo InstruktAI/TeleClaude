@@ -1,33 +1,30 @@
 ---
-id: architecture/api-server
-description: Local HTTP and WebSocket API for session control and status updates.
+id: teleclaude/architecture/api-server
 type: architecture
 scope: project
+description: Local HTTP and WebSocket API that reads from cache and routes writes through the command pipeline.
 requires:
-  - adapter-client.md
-  - cache.md
-  - event-model.md
+  - ../architecture/cache.md
+  - ../concept/resource-models.md
+  - ../reference/event-types.md
 ---
 
-# API Server
+Purpose
+- Provide a resource-first API for TUI and CLI clients.
 
-## Purpose
-- Provide a local Unix-socket HTTP/WS API for TeleClaude control and status.
+Inputs/Outputs
+- Inputs: HTTP requests and WebSocket subscriptions.
+- Outputs: cached resource snapshots and event-driven updates.
 
-## Inputs/Outputs
-- Inputs: REST calls for sessions/projects/todos, WebSocket subscriptions, create/send commands.
-- Outputs: JSON responses, WebSocket events for session start/close/update.
+Primary flows
+- Read endpoints return cached data immediately (local-only if cache is absent).
+- Write endpoints map to command handlers through AdapterClient.
+- WebSocket subscriptions drive cache interest tracking and refresh pushes.
 
-## Invariants
-- If cache is available, responses merge local DB sessions with cached remote sessions.
-- WebSocket clients can subscribe to per-computer data types (sessions/projects/todos/computers).
-- API server registers for session update events to keep cache in sync.
+Invariants
+- API handlers do not fetch remote data directly; cache owns refresh.
+- Session updates are merged from local DB and cached remote summaries.
 
-## Primary Flows
-- Start: mount FastAPI routes and begin serving on Unix socket.
-- REST: list sessions/projects/todos, create sessions, send messages via AdapterClient.
-- WS: push debounced refresh events and session lifecycle updates.
-
-## Failure Modes
-- Cache unavailable → API serves local-only data.
-- Unexpected exits are detected by lifecycle and trigger restart with backoff.
+Failure modes
+- Without cache, API serves local data only.
+- WebSocket disconnects clean up subscription state.

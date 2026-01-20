@@ -1,29 +1,27 @@
 ---
-id: architecture/cache
-description: DaemonCache for remote computers, sessions, projects, and todos with TTL and subscriptions.
+id: teleclaude/architecture/cache
 type: architecture
 scope: project
-requires: []
+description: DaemonCache snapshot layer for computers, projects, todos, sessions, and agent availability.
+requires:
+  - ../concept/resource-models.md
 ---
 
-# Daemon Cache
+Purpose
+- Provide instant, cached reads for API and remote data views.
 
-## Purpose
-- Provide a TTL-based cache for remote data and a notification channel for updates.
+Inputs/Outputs
+- Inputs: cache updates from adapters and daemon events.
+- Outputs: snapshot reads plus update notifications to subscribers.
 
-## Inputs/Outputs
-- Inputs: cache updates from transports or API server; interest subscriptions.
-- Outputs: cached session/project/todo/computer data; subscriber callbacks.
+Primary flows
+- Serve cached data immediately; schedule refresh when TTL expires.
+- Use per-computer digest/version fields to trigger refresh for projects and todos.
+- Sessions are updated by events rather than TTL polling.
 
-## Invariants
-- Computers expire after ~60s; projects and todos after ~5 minutes; sessions are non-expiring.
-- Cache keys include computer names to support cross-computer filtering.
-- Subscribers are notified on cache updates (used by API server and transports).
+Invariants
+- Cache is read-only and not the source of truth.
+- Stale data can be served to keep APIs responsive.
 
-## Primary Flows
-- Update cache from remote heartbeats and data fetches.
-- Serve API requests from cache with optional stale filtering.
-- Track interest per data type to throttle remote refreshes.
-
-## Failure Modes
-- Stale entries are silently dropped on access; missing entries trigger refresh upstream.
+Failure modes
+- Missing cache entries return empty lists until refresh completes.

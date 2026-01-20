@@ -1,8 +1,8 @@
 ---
-id: architecture/session-lifecycle
-description: How TeleClaude creates, runs, and cleans up tmux-backed sessions.
+id: teleclaude/architecture/session-lifecycle
 type: architecture
 scope: project
+description: Session creation, agent launch, message handling, and cleanup lifecycle.
 requires:
   - database.md
   - tmux-management.md
@@ -10,27 +10,20 @@ requires:
   - adapter-client.md
 ---
 
-# Session Lifecycle
+Purpose
+- Describe how TeleClaude creates, runs, and tears down sessions.
 
-## Purpose
-- Manage tmux-backed sessions from creation through cleanup and stale recovery.
+Primary flows
+- Create session: allocate session_id, tmux session, and DB record.
+- Optional agent launch: inject agent command and update session metadata.
+- Message handling: send keys to tmux and start output polling.
+- Cleanup: terminate tmux and mark session closed, removing listeners.
 
-## Inputs/Outputs
-- Inputs: CreateSessionCommand, tmux status, adapter events, poller exit events.
-- Outputs: DB session rows, tmux sessions, UI channels, session summaries.
+Invariants
+- session_id is generated once and returned immediately.
+- tmux session names use a stable prefix with the session_id.
+- Closed sessions stop polling and are removed from cache snapshots.
 
-## Invariants
-- Session IDs are UUIDs; tmux session names are prefixed with `tc_`.
-- Working directory must exist and be absolute; invalid paths fail session creation.
-- DB session rows are created before channels/topics so metadata can be persisted.
-- Cleanup removes listeners and workspace output directory; closed sessions are marked in DB.
-
-## Primary Flows
-- Create: validate working dir → create DB session → create UI channel/topic → start tmux session → start polling.
-- Update: session field changes trigger title updates and cache refreshes.
-- Close: terminate tmux (if needed) → delete channels/topics → mark closed or delete DB row.
-- Stale cleanup: if tmux session is missing, terminate session and remove DB row.
-
-## Failure Modes
-- External tmux termination triggers cleanup and closed session marking.
-- Race conditions for very new sessions are guarded (skip stale cleanup for young sessions).
+Failure modes
+- Invalid working directories prevent session creation.
+- Missing tmux sessions trigger cleanup and session termination.

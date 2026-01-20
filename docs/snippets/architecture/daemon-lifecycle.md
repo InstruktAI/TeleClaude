@@ -1,38 +1,27 @@
 ---
-id: architecture/daemon-lifecycle
-description: TeleClaude daemon startup/shutdown order and the background loops that keep the service running.
+id: teleclaude/architecture/daemon-lifecycle
 type: architecture
 scope: project
+description: Daemon startup, background task orchestration, and graceful shutdown behavior.
 requires:
-  - adapter-client.md
+  - system-overview.md
+  - mcp-layer.md
   - api-server.md
-  - mcp-server.md
-  - output-polling.md
-  - agent-hooks-outbox.md
 ---
 
-# Daemon Lifecycle
+Purpose
+- Describe how the daemon starts, monitors, and shuts down core services.
 
-## Purpose
-- Owns daemon startup/shutdown ordering and keeps critical background loops running.
-- Coordinates adapters, API server, MCP server, polling, and outbox delivery.
+Primary flows
+- Initialize AdapterClient, cache, agent coordinator, and output poller.
+- Start adapters, API server, and MCP server tasks.
+- Watch MCP socket health and restart MCP server on failure.
+- Run background workers for outbox processing and resource snapshots.
 
-## Inputs/Outputs
-- Inputs: adapter events (commands/messages), hook outbox rows, API outbox rows, system signals.
-- Outputs: adapter-client actions (send/edit/delete), tmux execution, API/MCP server health and restarts.
+Invariants
+- Background tasks are tracked and logged on failure.
+- MCP restarts are rate-limited to avoid restart storms.
 
-## Invariants
-- Database initializes before adapters start.
-- API server starts after adapters and is wired to cache; MCP server starts in background if configured.
-- Background loops (poller watch, cleanup, outbox workers, resource monitor) run until shutdown.
-- Restart policies limit repeated MCP/API restarts within configured windows.
-
-## Primary Flows
-- Startup: DB init → seed cache → start adapters → start API server → optional MCP server + health watch.
-- Event handling: commands route to command handlers; messages/voice/file events route to tmux or handlers.
-- Shutdown: cancel background tasks → stop adapters → stop API/MCP servers → close DB.
-
-## Failure Modes
-- MCP server health checks trigger limited restarts and fallback logging.
-- API server crashes schedule restart with backoff; persistent failures surface in logs.
-- Outbox delivery errors are retried with backoff and lock timeouts.
+Failure modes
+- Adapter startup failure prevents daemon boot.
+- MCP server failures trigger automatic restart attempts.

@@ -1,31 +1,20 @@
 ---
-id: architecture/database
-description: SQLite persistence for sessions, outboxes, UX state, and agent availability.
+id: teleclaude/architecture/database
 type: architecture
 scope: project
+description: SQLite persistence for sessions, outboxes, UX state, and agent metadata.
 requires: []
 ---
 
-# Database
+Purpose
+- Persist daemon state for sessions, command durability, and UX continuity.
 
-## Purpose
-- Persist sessions, message cleanup state, and outbox delivery for hooks/API.
+Stored data
+- Sessions and their metadata (title, status, agent info, tmux name).
+- Outbox tables for API commands and hook events.
+- UX state for message cleanup and registry message IDs.
+- Agent assignments and voice mappings.
 
-## Inputs/Outputs
-- Inputs: database path from config or `TELECLAUDE_DB_PATH` override; schema + migrations.
-- Outputs: async session store, outbox queues, and UX/system settings.
-
-## Invariants
-- SQLite is configured with WAL mode, NORMAL synchronous, and busy_timeout.
-- Tables include: sessions, pending_message_deletions, hook_outbox, api_outbox, system_settings,
-  agent_availability, voice_assignments.
-- In-memory database mode uses a temporary file for runtime compatibility.
-- Adapter metadata is normalized on startup (e.g., numeric topic IDs).
-
-## Primary Flows
-- Initialize: create schema, run migrations, create async engine.
-- CRUD: create/update/close sessions; enqueue/dequeue outbox rows; track pending deletions.
-
-## Failure Modes
-- JSON parsing errors in adapter metadata are skipped; normalization is best-effort.
-- Operational errors in legacy tables are logged and bypassed.
+Invariants
+- The daemon uses a single SQLite file at teleclaude.db in the project root.
+- Schema migrations run on startup to keep tables current.

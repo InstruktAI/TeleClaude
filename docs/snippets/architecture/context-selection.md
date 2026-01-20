@@ -1,30 +1,24 @@
 ---
-id: architecture/context-selection
-description: Select and emit relevant snippets using local LLM ranking with session-level dedupe.
+id: teleclaude/architecture/context-selection
 type: architecture
 scope: project
+description: Context selection pipeline that picks relevant snippets for MCP get_context.
 requires:
   - context-index.md
 ---
 
-# Context Selection
+Purpose
+- Select relevant documentation snippets for a given request.
 
-## Purpose
-- Select relevant snippets for a request and emit only new snippets per session.
+Inputs/Outputs
+- Inputs: user corpus and snippet metadata (id, description, type, scope).
+- Outputs: ordered snippet list with resolved requires dependencies.
 
-## Inputs/Outputs
-- Inputs: user corpus, optional area filters, project root, session_id.
-- Outputs: formatted payload with already-provided snippet IDs and new snippet contents.
+Primary flows
+- Build snippet metadata from docs/snippets and global snippets.
+- Call the local LLM selector to choose snippet IDs.
+- Resolve requires dependencies and order by scope priority (global -> domain -> project).
+- Persist selected IDs per session to avoid repeated context churn.
 
-## Invariants
-- Snippets are loaded from global snippets and project `docs/snippets`.
-- Selection uses a local LLM endpoint and returns a JSON list of snippet IDs.
-- Session state is persisted in `logs/context_selector_state.json` to avoid repeats.
-
-## Primary Flows
-- Parse snippet metadata (id/description/type) and send to selector.
-- Resolve dependencies via `requires`, filter already-sent IDs, and emit new snippet bodies.
-
-## Failure Modes
-- LLM failures or invalid JSON responses result in no new snippets.
-- Unreadable snippet files are skipped with logged errors.
+Failure modes
+- If selection fails, returns an empty snippet list rather than partial output.

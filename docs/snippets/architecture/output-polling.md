@@ -1,32 +1,28 @@
 ---
-id: architecture/output-polling
-description: Output polling pipeline that captures tmux output and streams updates to UI adapters.
+id: teleclaude/architecture/output-polling
 type: architecture
 scope: project
+description: Output polling pipeline that captures tmux output and streams updates to adapters.
 requires:
   - tmux-management.md
   - adapter-client.md
 ---
 
-# Output Polling
+Purpose
+- Stream tmux output to UI adapters while maintaining process lifecycle signals.
 
-## Purpose
-- Continuously capture tmux output and deliver updates to UI adapters.
+Inputs/Outputs
+- Inputs: tmux pane capture snapshots and session metadata.
+- Outputs: OutputChanged, ProcessExited, and DirectoryChanged events routed to adapters.
 
-## Inputs/Outputs
-- Inputs: tmux session name, output file path, poll interval, directory check interval.
-- Outputs: OutputChanged, ProcessExited, and DirectoryChanged events; UI output updates.
+Primary flows
+- OutputPoller compares successive captures and emits change events.
+- Polling coordinator sends output updates through AdapterClient.
+- Process exit triggers a final output update and optional session cleanup.
 
-## Invariants
-- Only one poller per session is active at a time (guarded in-memory).
-- Output updates are emitted only when content changes, but at least once before exit.
-- Directory changes update session project/subdir and can trigger title updates.
+Invariants
+- Output polling stops when the tmux session no longer exists.
+- Output updates are edited into a single persistent message per UI session.
 
-## Primary Flows
-- Poller reads pane output, detects changes, and writes latest output to file.
-- Coordinator consumes events and calls adapter_client.send_output_update.
-- Process exit results in final output update and session cleanup as needed.
-
-## Failure Modes
-- Disappearing tmux sessions emit exit events; coordinator handles cleanup.
-- Output file write failures are logged but do not stop polling.
+Failure modes
+- Missing sessions abort polling and log a warning.
