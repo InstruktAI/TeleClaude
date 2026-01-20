@@ -78,28 +78,6 @@ async def test_send_request_no_transport_fails(adapter_client_without_transport)
         await adapter_client_without_transport.send_request(computer_name="comp1", command="ls -la", metadata=metadata)
 
 
-@pytest.mark.asyncio
-async def test_stream_session_output_success(adapter_client_with_transport):
-    """Test streaming session output from remote request."""
-    # Execute
-    chunks = []
-    async for chunk in adapter_client_with_transport.stream_session_output("req_123", timeout=60.0):
-        chunks.append(chunk)
-
-    # Verify
-    assert chunks == ["chunk1", "chunk2"]
-
-
-@pytest.mark.asyncio
-async def test_stream_session_output_no_transport_fails(adapter_client_without_transport):
-    """Test streaming session output fails when no transport adapter available."""
-    with pytest.raises(RuntimeError, match="No transport adapter available"):
-        stream = adapter_client_without_transport.stream_session_output("req_123")
-        # Trigger the exception by starting iteration
-        async for _ in stream:
-            pass
-
-
 def test_get_transport_adapter_returns_first_match(adapter_client_with_transport, mock_transport_adapter):
     """Test _get_transport_adapter returns first adapter implementing protocol."""
     # Execute

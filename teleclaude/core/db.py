@@ -315,7 +315,7 @@ class Db:
         client = self._client
         if client:
             await client.handle_event(
-                TeleClaudeEvents.SESSION_CREATED,
+                TeleClaudeEvents.SESSION_STARTED,
                 {"session_id": session_id},
                 MessageMetadata(origin=session.origin_adapter),
             )
@@ -502,12 +502,12 @@ class Db:
         if self._client:
             try:
                 await self._client.handle_event(
-                    TeleClaudeEvents.SESSION_REMOVED,
+                    TeleClaudeEvents.SESSION_CLOSED,
                     {"session_id": session_id},
                     MessageMetadata(origin=session.origin_adapter),
                 )
             except Exception as exc:
-                logger.error("Failed to dispatch SESSION_REMOVED for %s: %s", session_id[:8], exc)
+                logger.error("Failed to dispatch SESSION_CLOSED for %s: %s", session_id[:8], exc)
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
@@ -631,12 +631,12 @@ class Db:
         if session and self._client:
             try:
                 await self._client.handle_event(
-                    TeleClaudeEvents.SESSION_REMOVED,
+                    TeleClaudeEvents.SESSION_CLOSED,
                     {"session_id": session_id},
                     MessageMetadata(origin=session.origin_adapter),
                 )
             except Exception as exc:
-                logger.error("Failed to dispatch SESSION_REMOVED for %s: %s", session_id[:8], exc)
+                logger.error("Failed to dispatch SESSION_CLOSED for %s: %s", session_id[:8], exc)
 
     async def count_sessions(self, computer_name: Optional[str] = None) -> int:
         """Count sessions with optional filters.

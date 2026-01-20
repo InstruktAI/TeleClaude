@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Literal, TypedDict
 
 from instrukt_ai_logging import get_logger
 
@@ -12,6 +12,13 @@ from teleclaude.core.events import EventContext, EventType
 logger = get_logger(__name__)
 
 EventHandler = Callable[[EventType, EventContext], Awaitable[object]]
+
+
+class DispatchEnvelope(TypedDict, total=False):
+    status: Literal["success", "error"]
+    data: object | None
+    error: str
+    code: str
 
 
 class EventBus:
@@ -27,12 +34,16 @@ class EventBus:
         self._handlers[event].append(handler)
         logger.trace("Subscribed handler for event: %s (total: %d)", event, len(self._handlers[event]))
 
-    async def emit(self, event: EventType, context: EventContext) -> dict[str, object]:
+    async def emit(self, event: EventType, context: EventContext) -> DispatchEnvelope:
         """Emit an event to all handlers."""
         handlers = self._handlers.get(event)
         if not handlers:
             logger.warning("No handler registered for event: %s", event)
-            return {"status": "error", "error": f"No handler registered for event: {event}", "code": "NO_HANDLER"}
+            return DispatchEnvelope(
+                status="error",
+                error=f"No handler registered for event: {event}",
+                code="NO_HANDLER",
+            )
 
         tasks = [handler(event, context) for handler in handlers]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -51,9 +62,9 @@ class EventBus:
             logger.debug(
                 "Dispatch completed for event: %s (%d success, %d failed)", event, len(success_results), len(errors)
             )
-            return {"status": "success", "data": success_results[0]}
+            return DispatchEnvelope(status="success", data=success_results[0])
 
         if errors:
             raise errors[0]
 
-        return {"status": "success", "data": None}
+        return DispatchEnvelope(status="success", data=None)

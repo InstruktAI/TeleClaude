@@ -14,6 +14,20 @@ import tomllib
 from pathlib import Path
 from typing import Any, Dict
 
+from teleclaude.constants import MAIN_MODULE
+
+PY_EXTENSION = ".py"
+RECEIVER_TOKEN = "receiver"
+RECEIVER_FILE = "receiver.py"
+RECEIVER_CLAUDE_FILE = "receiver_claude.py"
+RECEIVER_GEMINI_FILE = "receiver_gemini.py"
+MATCHER_KEY = "matcher"
+MATCHER_ALL = "*"
+NOTIFY_KEY = "notify"
+AGENT_FLAG = "--agent"
+CODEX_AGENT = "codex"
+CODEX_NOTIFY_SUFFIX = [AGENT_FLAG, CODEX_AGENT]
+
 
 def _load_json_settings(path: Path, *, label: str) -> dict[str, object] | None:  # noqa: loose-dict - settings are dynamic JSON
     if not path.exists():
@@ -33,14 +47,14 @@ def _extract_receiver_script(command: str) -> str | None:
     except ValueError:
         return None
     for part in parts:
-        if part.endswith(".py") and "receiver" in part:
+        if part.endswith(PY_EXTENSION) and RECEIVER_TOKEN in part:
             # Normalize legacy receiver_claude/receiver_gemini to receiver.py family
             if (
-                part.endswith("receiver.py")
-                or part.endswith("receiver_claude.py")
-                or part.endswith("receiver_gemini.py")
+                part.endswith(RECEIVER_FILE)
+                or part.endswith(RECEIVER_CLAUDE_FILE)
+                or part.endswith(RECEIVER_GEMINI_FILE)
             ):
-                return "receiver"
+                return RECEIVER_TOKEN
             return part
     return None
 
@@ -60,12 +74,12 @@ def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Di
 
         target_block = None
         for block in event_hooks:
-            if block.get("matcher") == "*":
+            if block.get(MATCHER_KEY) == MATCHER_ALL:
                 target_block = block
                 break
 
         if not target_block:
-            target_block = {"matcher": "*", "hooks": []}
+            target_block = {MATCHER_KEY: MATCHER_ALL, "hooks": []}
             event_hooks.append(target_block)
 
         # Update specific hook within the block
@@ -164,7 +178,7 @@ def _prune_claude_hooks(existing_hooks: Dict[str, Any]) -> Dict[str, Any]:
                         filtered_hooks.append(hook)
                         continue
                     cmd = hook.get("command", "")
-                    if _extract_receiver_script(cmd) == "receiver":
+                    if _extract_receiver_script(cmd) == RECEIVER_TOKEN:
                         continue
                     filtered_hooks.append(hook)
 
@@ -258,7 +272,7 @@ def _prune_gemini_hooks(existing_hooks: Dict[str, Any]) -> Dict[str, Any]:
                         filtered_hooks.append(hook)
                         continue
                     cmd = hook.get("command", "")
-                    if _extract_receiver_script(cmd) == "receiver":
+                    if _extract_receiver_script(cmd) == RECEIVER_TOKEN:
                         continue
                     filtered_hooks.append(hook)
 
@@ -367,7 +381,7 @@ def configure_codex(repo_root: Path) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     python_exe = _resolve_hook_python(repo_root)
-    notify_value = [str(python_exe), str(receiver_script), "--agent", "codex"]
+    notify_value = [str(python_exe), str(receiver_script), AGENT_FLAG, CODEX_AGENT]
 
     if config_path.exists():
         content = config_path.read_text()
@@ -377,7 +391,7 @@ def configure_codex(repo_root: Path) -> None:
             print(f"Warning: Failed to parse Codex config: {e}")
             return
 
-        existing_notify = config.get("notify")
+        existing_notify = config.get(NOTIFY_KEY)
         skip_notify_update = False
         if existing_notify == notify_value:
             print(f"Codex notify hook already configured in {config_path}")
@@ -385,31 +399,36 @@ def configure_codex(repo_root: Path) -> None:
 
         if not skip_notify_update:
             # Update or add notify line using text manipulation to preserve formatting
-            notify_line = f'notify = {json.dumps(notify_value)}'
-            if "notify" in config:
+            notify_line = f"{NOTIFY_KEY} = {json.dumps(notify_value)}"
+            if NOTIFY_KEY in config:
                 # Check if existing notify is our hook (contains receiver.py and --agent codex)
-                is_our_hook = (
-                    isinstance(existing_notify, list)
-                    and len(existing_notify) >= 4
-                    and "receiver.py" in str(existing_notify[1])
-                    and existing_notify[2:4] == ["--agent", "codex"]
-                )
+                is_our_hook = False
+                if isinstance(existing_notify, list):
+                    joined = " ".join(str(part) for part in existing_notify)
+                    has_receiver = RECEIVER_FILE in joined
+                    has_codex_agent = AGENT_FLAG in existing_notify and CODEX_AGENT in existing_notify
+                    is_our_hook = has_receiver and has_codex_agent
                 if not is_our_hook:
                     print(f"Warning: Existing notify hook in {config_path} is not ours, skipping")
                     print(f"  Existing: {existing_notify}")
                     skip_notify_update = True
                 else:
                     # Replace our existing notify line with updated paths
-                    content = re.sub(
-                        r'^notify\s*=\s*\[.*?\]',
-                        notify_line,
-                        content,
-                        count=1,
-                        flags=re.MULTILINE,
-                    )
-            if not skip_notify_update and "notify" not in config:
+                    cleaned_lines: list[str] = []
+                    for line in content.splitlines():
+                        if re.match(rf"^\s*{NOTIFY_KEY}\s*=", line):
+                            continue
+                        cleaned_lines.append(line)
+                    content = "\n".join(cleaned_lines).rstrip()
+                    first_section = re.search(r"^\[", content, re.MULTILINE)
+                    if first_section:
+                        insert_pos = first_section.start()
+                        content = content[:insert_pos] + notify_line + "\n\n" + content[insert_pos:]
+                    else:
+                        content = content + "\n" + notify_line + "\n"
+            if not skip_notify_update and NOTIFY_KEY not in config:
                 # Add notify after any comments at the top, before first section
-                first_section = re.search(r'^\[', content, re.MULTILINE)
+                first_section = re.search(r"^\[", content, re.MULTILINE)
                 if first_section:
                     insert_pos = first_section.start()
                     content = content[:insert_pos] + notify_line + "\n\n" + content[insert_pos:]
@@ -417,7 +436,7 @@ def configure_codex(repo_root: Path) -> None:
                     content = content.rstrip() + "\n\n" + notify_line + "\n"
     else:
         # Create new config with just the notify hook
-        notify_line = f'notify = {json.dumps(notify_value)}'
+        notify_line = f"{NOTIFY_KEY} = {json.dumps(notify_value)}"
         content = f"# Codex CLI configuration\n\n{notify_line}\n"
 
     content = ensure_codex_mcp_config(content, repo_root)
@@ -433,9 +452,9 @@ def ensure_codex_mcp_config(content: str, repo_root: Path) -> str:
     desired_block = (
         "# TeleClaude MCP Server\n"
         "[mcp_servers.teleclaude]\n"
-        "type = \"stdio\"\n"
-        f"command = \"{venv_python}\"\n"
-        f"args = [\"{wrapper_path}\"]\n"
+        'type = "stdio"\n'
+        f'command = "{venv_python}"\n'
+        f'args = ["{wrapper_path}"]\n'
     )
 
     section_name = "mcp_servers.teleclaude"
@@ -458,5 +477,5 @@ def main() -> None:
     configure_codex(repo_root)
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     main()

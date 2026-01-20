@@ -18,7 +18,6 @@ from telegram.ext import ContextTypes, ExtBot
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
-from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
 from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
 
@@ -36,7 +35,6 @@ class CallbackAction(str, Enum):
 
     DOWNLOAD_FULL = "download_full"
     SESSION_SELECT = "ssel"
-    CHANGE_DIR = "cd"
     CLAUDE_SELECT = "csel"
     CLAUDE_RESUME_SELECT = "crsel"
     GEMINI_SELECT = "gsel"
@@ -149,8 +147,6 @@ class CallbackHandlersMixin:
             await self._handle_download_full(query, args)
         elif action is CallbackAction.SESSION_SELECT:
             await self._handle_session_select(query)
-        elif action is CallbackAction.CHANGE_DIR:
-            await self._handle_cd_callback(query, args)
         elif action in AGENT_SELECT_ACTIONS:
             await self._handle_agent_select(query, action.value)
         elif action is CallbackAction.CANCEL:
@@ -275,50 +271,6 @@ class CallbackHandlersMixin:
             reply_markup=reply_markup,
             parse_mode="Markdown",
         )
-
-    async def _handle_cd_callback(self, query: object, args: list[str]) -> None:
-        """Handle cd callback to change directory in session."""
-        from telegram import CallbackQuery
-
-        if not isinstance(query, CallbackQuery):
-            return
-
-        msg = query.message
-        if not msg or not isinstance(msg, Message) or not query.from_user:
-            return
-        thread_id = msg.message_thread_id
-        if not thread_id:
-            return
-        sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", thread_id)
-
-        if not sessions:
-            return
-
-        session = sessions[0]
-
-        # Get project by index (callbacks are now index-based for 64-byte limit)
-        try:
-            project_idx = int(args[0]) if args else -1
-            if project_idx < 0 or project_idx >= len(self.trusted_dirs):
-                await query.answer("❌ Invalid directory", show_alert=True)
-                return
-            dir_path = self.trusted_dirs[project_idx].path
-        except (ValueError, IndexError):
-            await query.answer("❌ Invalid directory selection", show_alert=True)
-            return
-
-        # Emit cd command
-        await self.client.handle_event(
-            event=TeleClaudeEvents.CD,
-            payload={
-                "args": [dir_path],
-                "session_id": session.session_id,
-            },
-            metadata=self._metadata(),
-        )
-
-        # Update the message to show what was selected
-        await query.edit_message_text(f"Changing directory to: `{dir_path}`", parse_mode="Markdown")
 
     async def _handle_agent_select(self, query: object, action: str) -> None:
         """Handle agent selection callbacks (csel, crsel, gsel, grsel, cxsel, cxrsel)."""

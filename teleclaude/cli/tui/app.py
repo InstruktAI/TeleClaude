@@ -17,10 +17,10 @@ from teleclaude.cli.models import (
     ProjectInfo,
     ProjectsInitialEvent,
     ProjectWithTodosInfo,
+    SessionClosedEvent,
     SessionInfo,
-    SessionRemovedEvent,
     SessionsInitialEvent,
-    SessionUpdateEvent,
+    SessionStartedEvent,
     TodoInfo,
     WsEvent,
 )
@@ -354,10 +354,10 @@ class TelecApp:
                 self._update_preparation_view(event.data.projects)
 
             # Handle incremental update events
-            elif isinstance(event, SessionUpdateEvent):
+            elif isinstance(event, SessionStartedEvent):
                 asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
-            elif isinstance(event, SessionRemovedEvent):
+            elif isinstance(event, SessionClosedEvent):
                 asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
             else:

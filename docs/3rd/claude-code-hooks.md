@@ -1,8 +1,61 @@
 # Claude Code Hooks — Input/Output Shapes
 
-Source: Claude Code Hook SDK (community reference).  
-Origin: context7.com/mizunashi-mana/claude-code-hook-sdk/llms.txt  
-Last Updated: 2026-01-15
+Source: Claude Code official docs (hooks reference).  
+Origin: docs.anthropic.com/en/docs/claude-code/hooks  
+Last Updated: 2026-01-19
+
+## Configuration (Official)
+
+Hooks are configured in settings files:
+
+- `~/.claude/settings.json` (user)
+- `.claude/settings.json` (project)
+- `.claude/settings.local.json` (local project)
+
+Structure (per event, with matchers for tool events):
+
+```json
+{
+  "hooks": {
+    "EventName": [
+      {
+        "matcher": "ToolPattern",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "your-command-here"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Notes:
+- `matcher` is only applicable for `PreToolUse` and `PostToolUse`.
+- Matchers are case‑sensitive tool name patterns.
+
+## Command‑Scoped Hooks (Slash Command Frontmatter)
+
+Claude Code slash command files can define hooks directly in frontmatter.
+These hooks are scoped to the command’s execution and cleaned up after the command finishes.
+Supported hook keys in command frontmatter include `PreToolUse`, `PostToolUse`, and `Stop`.
+
+Example (command‑scoped hook):
+
+```yaml
+---
+description: Deploy to staging with validation
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "./scripts/validate-deploy.sh"
+          once: true
+---
+```
 
 ## Hook Input (Base)
 
@@ -82,4 +135,4 @@ All hook outputs may include:
 
 ## Note
 
-This is a community SDK reference for hook payload shapes. Confirm any provider‑specific details against official CLI docs when available.
+This file reflects the official Claude Code hook reference. Confirm event names and fields against upstream docs if CLI versions change.

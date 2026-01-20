@@ -11,77 +11,14 @@ if TYPE_CHECKING:
     from teleclaude.core.models import SessionLaunchIntent
     from teleclaude.types.commands import InternalCommand
 
-# Type alias for valid event names - provides compile-time type checking
+# Event bus only carries core events (facts) plus a single "command" channel.
 EventType = Literal[
-    "new_session",
-    "create_session",
-    "list_sessions",
-    "get_session_data",
-    "list_projects",
-    "list_projects_with_todos",
-    "list_todos",
-    "get_computer_info",
-    "cd",
-    "kill",
-    "cancel",
-    "cancel2x",
-    "escape",
-    "escape2x",
-    "ctrl",
-    "tab",
-    "shift_tab",
-    "backspace",
-    "enter",
-    "key_up",
-    "key_down",
-    "key_left",
-    "key_right",
-    "rename",
-    "agent",
-    "agent_restart",
-    "agent_resume",
-    "exit",
-    "exit",
-    "message",
-    "voice",
-    "file",
-    "session_created",
-    "session_removed",
-    "system_command",
+    "command",
+    "session_started",
+    "session_closed",
+    "session_updated",
     "agent_event",
     "error",
-    "session_updated",
-]
-
-# Command events that use CommandEventContext (type alias for static typing).
-CommandEventType = Literal[
-    "new_session",
-    "list_sessions",
-    "get_session_data",
-    "list_projects",
-    "list_projects_with_todos",
-    "list_todos",
-    "get_computer_info",
-    "cd",
-    "kill",
-    "cancel",
-    "cancel2x",
-    "escape",
-    "escape2x",
-    "ctrl",
-    "tab",
-    "shift_tab",
-    "backspace",
-    "enter",
-    "key_up",
-    "key_down",
-    "key_left",
-    "key_right",
-    "rename",
-    "agent",
-    "agent_restart",
-    "agent_resume",
-    "exit",
 ]
 
 # Agent hook event types (payload event_type values from agents)
@@ -171,7 +108,6 @@ AgentEventPayload = Union[
 # UI commands mapping (intentionally lowercase - not a constant despite dict type)
 # pylint: disable=invalid-name  # UiCommands is a module-level mapping, not a constant
 UiCommands = {
-    "cd": "Change directory or list trusted directories",
     "agent_restart": "Restart generic agent session",
     "agent_resume": "Resume an AI agent session",
     "claude": "Start Claude (alias for /agent claude)",
@@ -192,8 +128,6 @@ UiCommands = {
     "key_up": "Send UP arrow key (optional repeat count)",
     "kill": "Force kill current process (SIGKILL)",
     "new_session": "Create a new tmux session",
-    "rename": "Rename current session",
-    "resize": "Resize tmux window",
     "shift_tab": "Send SHIFT+TAB key (optional count)",
     "tab": "Send TAB key",
 }
@@ -203,69 +137,15 @@ class TeleClaudeEvents:
     """Standard TeleClaude events that daemon handles.
 
     These events are emitted by adapters and handled by the daemon.
-    Adapter-specific events (like 'resize', 'help') are NOT included here.
+    Adapter-specific events (like 'help') are NOT included here.
     """
 
-    # Session lifecycle
-    NEW_SESSION: Literal["new_session"] = "new_session"
-    CREATE_SESSION: Literal["create_session"] = "create_session"
-    LIST_SESSIONS: Literal["list_sessions"] = "list_sessions"
-    GET_SESSION_DATA: Literal["get_session_data"] = "get_session_data"
-    SESSION_CREATED: Literal["session_created"] = "session_created"
-    SESSION_REMOVED: Literal["session_removed"] = "session_removed"
-
-    # Project management
-    LIST_PROJECTS: Literal["list_projects"] = "list_projects"
-    LIST_PROJECTS_WITH_TODOS: Literal["list_projects_with_todos"] = "list_projects_with_todos"
-    LIST_TODOS: Literal["list_todos"] = "list_todos"
-    GET_COMPUTER_INFO: Literal["get_computer_info"] = "get_computer_info"
-    CD: Literal["cd"] = "cd"
-
-    # Process control
-    KILL: Literal["kill"] = "kill"
-    CANCEL: Literal["cancel"] = "cancel"
-    CANCEL_2X: Literal["cancel2x"] = "cancel2x"
-
-    # Tmux control
-    ESCAPE: Literal["escape"] = "escape"
-    ESCAPE_2X: Literal["escape2x"] = "escape2x"
-    CTRL: Literal["ctrl"] = "ctrl"
-    TAB: Literal["tab"] = "tab"
-    SHIFT_TAB: Literal["shift_tab"] = "shift_tab"
-    BACKSPACE: Literal["backspace"] = "backspace"
-    ENTER: Literal["enter"] = "enter"
-    KEY_UP: Literal["key_up"] = "key_up"
-    KEY_DOWN: Literal["key_down"] = "key_down"
-    KEY_LEFT: Literal["key_left"] = "key_left"
-    KEY_RIGHT: Literal["key_right"] = "key_right"
-
-    # Session management
-    RENAME: Literal["rename"] = "rename"
-    AGENT_RESTART: Literal["agent_restart"] = "agent_restart"
-
-    # AI commands
-    AGENT_START: Literal["agent"] = "agent"
-    AGENT_APIART: Literal["agent_restart"] = "agent_restart"
-    AGENT_RESUME: Literal["agent_resume"] = "agent_resume"
-
-    # User input
-    MESSAGE: Literal["message"] = "message"  # Messages to long-running processes
-
-    # Media and events
-    VOICE: Literal["voice"] = "voice"  # Voice message received
-    FILE: Literal["file"] = "file"  # File or photo uploaded
-
-    # System commands
-    SYSTEM_COMMAND: Literal["system_command"] = "system_command"  # System-level commands (deploy, etc.)
-
-    # Agent events (from hooks)
-    AGENT_EVENT: Literal["agent_event"] = "agent_event"  # Agent events (title change, etc.)
-
-    # Error events (from hooks or internal validation)
-    ERROR: Literal["error"] = "error"
-
-    # Internal events
+    # Events (facts)
+    SESSION_STARTED: Literal["session_started"] = "session_started"
+    SESSION_CLOSED: Literal["session_closed"] = "session_closed"
     SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB
+    AGENT_EVENT: Literal["agent_event"] = "agent_event"  # Agent events (title change, etc.)
+    ERROR: Literal["error"] = "error"
 
 
 def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
@@ -275,15 +155,15 @@ def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
     Telegram adapter doesn't need this - python-telegram-bot parses for us.
 
     Args:
-        command_str: Raw command string (e.g., "/cd /path" or "cd /path")
+        command_str: Raw command string (e.g., "/new_session My Project")
 
     Returns:
         Tuple of (event_name, args_list)
         Returns (None, []) if command is empty
 
     Examples:
-        >>> parse_command_string("/cd /home/user")
-        ("cd", ["/home/user"])
+        >>> parse_command_string("/new_session My Project")
+        ("new_session", ["My", "Project"])
         >>> parse_command_string("/claude -m 'Hello'")
         ("claude", ["-m", "Hello"])
         >>> parse_command_string("new_session My Project")
@@ -367,10 +247,13 @@ class SystemCommandContext:
 
 @dataclass
 class CommandEventContext:  # pylint: disable=too-many-instance-attributes  # Event context requires many metadata fields
-    """Context for command events (new_session, cd, kill, etc.)."""
+    """Context for command dispatch."""
 
+    command: str
     session_id: str
     args: list[str] = field(default_factory=list)
+    payload: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Raw command payload
+    message_id: Optional[str] = None
     # Metadata fields
     origin: Optional[str] = None
     message_thread_id: Optional[int] = None
@@ -421,36 +304,3 @@ EventContext = (
     | ErrorEventContext
     | SessionUpdatedContext
 )
-
-# Command events that use CommandEventContext and route through _handle_command_event
-# Note: agent_event and session_updated are NOT included - they have their own contexts
-# and handlers in ui_adapter.py
-COMMAND_EVENTS: set[EventType] = {
-    "new_session",
-    "list_sessions",
-    "get_session_data",
-    "list_projects",
-    "list_projects_with_todos",
-    "list_todos",
-    "get_computer_info",
-    "cd",
-    "kill",
-    "cancel",
-    "cancel2x",
-    "escape",
-    "escape2x",
-    "ctrl",
-    "tab",
-    "shift_tab",
-    "backspace",
-    "enter",
-    "key_up",
-    "key_down",
-    "key_left",
-    "key_right",
-    "rename",
-    "agent",
-    "agent_restart",
-    "agent_resume",
-    "exit",
-}

@@ -29,7 +29,7 @@ Map component interactions covered by each e2e test to identify:
 **Interactions Covered:**
 - Redis → AdapterClient → Command Handlers → Database (create session)
 - Redis → AdapterClient → Tmux Bridge (session creation)
-- Command Handlers → Tmux Bridge (/cd, /claude commands)
+- Command Handlers → Tmux Bridge (/agent commands)
 
 **Mocks:** Telegram (all), Redis (connection), Tmux (send_keys, tmux)
 **Focus:** AI-to-AI session initialization flow

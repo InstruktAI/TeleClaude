@@ -20,10 +20,10 @@ from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.context_selector import build_context_output
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import normalize_agent_name
 from teleclaude.core.db import db
-from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, ThinkingMode
 from teleclaude.core.next_machine import (
     detect_circular_dependency,
@@ -113,7 +113,7 @@ class MCPHandlersMixin:
         logger.debug("teleclaude__list_computers() called")
 
         # local_info is ComputerInfo dataclass
-        local_info = await command_handlers.handle_get_computer_info()
+        local_info = await command_handlers.get_computer_info()
         local_computer: ComputerInfo = {
             "name": self.computer_name,
             "status": "local",
@@ -156,7 +156,7 @@ class MCPHandlersMixin:
             return await self._list_all_projects()
         if self._is_local_computer(computer):
             # returns ProjectInfo dataclasses
-            projects = await command_handlers.handle_list_projects()
+            projects = await command_handlers.list_projects()
             return [
                 {"name": p.name, "desc": p.description or "", "path": p.path, "computer": self.computer_name}
                 for p in projects
@@ -184,7 +184,7 @@ class MCPHandlersMixin:
     async def _list_all_projects(self) -> list[dict[str, str]]:
         """List projects from ALL computers (local + online remotes)."""
         # Get local projects
-        projects = await command_handlers.handle_list_projects()
+        projects = await command_handlers.list_projects()
         local_projects = [
             {"name": p.name, "desc": p.description or "", "path": p.path, "computer": self.computer_name}
             for p in projects
@@ -224,7 +224,7 @@ class MCPHandlersMixin:
         """
         if self._is_local_computer(computer):
             # returns TodoInfo dataclasses
-            todos = await command_handlers.handle_list_todos(project_path)
+            todos = await command_handlers.list_todos(project_path)
             return [t.to_dict() for t in todos]
         return await self._list_remote_todos(computer, project_path, skip_peer_check=skip_peer_check)
 
@@ -394,20 +394,12 @@ class MCPHandlersMixin:
 
             logger.info("Remote session created: %s on %s", remote_session_id[:8], computer)
 
-            if project_path:
-                await self.client.send_request(
-                    computer_name=computer,
-                    command=f"/cd {project_path}",
-                    metadata=MessageMetadata(),
-                    session_id=str(remote_session_id),
-                )
-
             await self._register_remote_listener(str(remote_session_id), caller_session_id)
 
             # Start agent if message provided (None = skip agent start entirely)
             if message is not None:
                 # Build command: /agent_start agent mode [prompt]
-                cmd_parts = [f"/{TeleClaudeEvents.AGENT_START}", agent, thinking_mode.value]
+                cmd_parts = ["/agent", agent, thinking_mode.value]
                 if message:
                     cmd_parts.append(shlex.quote(message))
                 await self.client.send_request(
@@ -436,7 +428,7 @@ class MCPHandlersMixin:
     async def _list_local_sessions(self) -> list[SessionInfo]:
         """List sessions from local database directly."""
         # returns SessionSummary dataclasses
-        sessions = await command_handlers.handle_list_sessions()
+        sessions = await command_handlers.list_sessions()
         result: list[SessionInfo] = []
         for s in sessions:
             data = s.to_dict()
@@ -728,9 +720,7 @@ class MCPHandlersMixin:
         tail_chars: int = 2000,
     ) -> SessionDataResult:
         """Get session data from local computer directly."""
-        payload = await command_handlers.handle_get_session_data(
-            session_id, since_timestamp, until_timestamp, tail_chars
-        )
+        payload = await command_handlers.get_session_data(session_id, since_timestamp, until_timestamp, tail_chars)
         return cast(SessionDataResult, payload)
 
     async def _get_remote_session_data(
@@ -783,7 +773,7 @@ class MCPHandlersMixin:
     async def teleclaude__end_session(self, computer: str, session_id: str) -> EndSessionResult:
         """End a session gracefully (kill tmux, delete session, clean up resources)."""
         if self._is_local_computer(computer):
-            return await command_handlers.handle_end_session(session_id, self.client)
+            return await command_handlers.end_session(session_id, self.client)
 
         try:
             envelope = await self._send_remote_request(computer, f"end_session {session_id}", timeout=5.0)
@@ -909,6 +899,24 @@ class MCPHandlersMixin:
                 }
             except Exception as fallback_error:
                 return {"status": "error", "message": f"Failed to send result: {fallback_error}"}
+
+    async def teleclaude__get_context(
+        self,
+        corpus: str,
+        areas: list[str] | None = None,
+        cwd: str | None = None,
+        caller_session_id: str | None = None,
+    ) -> str:
+        """Select and return relevant snippet context for the current session."""
+        if not cwd:
+            cwd = str(config.computer.default_working_dir)
+        project_root = Path(cwd)
+        return build_context_output(
+            corpus=corpus,
+            areas=areas,
+            project_root=project_root,
+            session_id=caller_session_id,
+        )
 
     # =========================================================================
     # Workflow Tools (Next Machine)

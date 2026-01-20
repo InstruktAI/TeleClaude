@@ -16,7 +16,7 @@ from collections.abc import Callable, Coroutine
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.core.command_handlers import handle_create_session
+from teleclaude.core.command_handlers import create_session as create_tmux_session
 from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
 from teleclaude.types.commands import CreateSessionCommand
 
@@ -31,7 +31,7 @@ async def create_empty_session(
     client: AdapterClient,
 ) -> dict[str, str]:
     """Create a session without auto commands."""
-    return await handle_create_session(cmd, client)
+    return await create_tmux_session(cmd, client)
 
 
 async def create_agent_session(
@@ -91,7 +91,7 @@ async def _create_session_with_intent(
     execute_auto_command: ExecuteAuto,
     queue_background_task: QueueTask,
 ) -> dict[str, str]:
-    result = await handle_create_session(cmd, client)
+    result = await create_tmux_session(cmd, client)
 
     intent = cmd.launch_intent
     # Priority: explicit auto_command > intent-derived auto_command

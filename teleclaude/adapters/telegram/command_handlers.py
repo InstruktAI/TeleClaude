@@ -1,6 +1,6 @@
 """Command handlers mixin for Telegram adapter.
 
-Handles slash commands like /new_session, /claude, /rename, /cd.
+Handles slash commands like /new_session, /claude.
 """
 
 from __future__ import annotations
@@ -11,9 +11,7 @@ from instrukt_ai_logging import get_logger
 from telegram import InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from teleclaude.core.db import db
-from teleclaude.core.events import EventType, TeleClaudeEvents
-from teleclaude.core.models import CleanupTrigger, MessageMetadata
+from teleclaude.core.models import MessageMetadata
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -107,91 +105,13 @@ class CommandHandlersMixin:
     async def _handle_claude_plan(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /claude_plan command - alias for /shift_tab 3 (navigate to Claude Code plan mode)."""
         context.args = ["3"]
-        await self._handle_simple_command(update, context, TeleClaudeEvents.SHIFT_TAB)
+        await self._handle_simple_command(update, context, "shift_tab")
 
     if TYPE_CHECKING:
 
-        async def _handle_simple_command(
-            self, update: Update, context: ContextTypes.DEFAULT_TYPE, event: EventType
-        ) -> None:
+        async def _handle_simple_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, event: str) -> None:
             """Handle simple command - stub for type checking."""
             ...
-
-    async def _handle_rename(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /rename command - rename session."""
-        logger.info("_handle_rename called with args: %s", context.args)
-        session = await self._get_session_from_topic(update)
-        if not session:
-            logger.warning("_handle_rename: No session found")
-            return
-
-        # After successful session fetch, effective_user and effective_message are guaranteed non-None
-        assert update.effective_user is not None
-        assert update.effective_message is not None
-
-        # Check if name argument provided
-        if not context.args:
-            # Track command message for deletion
-            await self._pre_handle_user_input(session)
-            await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
-            await self.client.send_message(
-                session,
-                "Usage: /rename <new name>",
-                metadata=self._metadata(),
-                cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
-            )
-            return
-
-        metadata = self._metadata()
-        metadata.channel_metadata = metadata.channel_metadata or {}
-        metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
-        from teleclaude.core.command_mapper import CommandMapper
-
-        cmd = CommandMapper.map_telegram_input(
-            event="rename",
-            args=context.args or [],
-            metadata=metadata,
-            session_id=session.session_id,
-        )
-        await self.client.handle_internal_command(cmd, metadata=metadata)
-
-    async def _handle_cd(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /cd command - change directory or list trusted directories."""
-        session = await self._get_session_from_topic(update)
-
-        if not session:
-            return
-
-        # After successful session fetch, effective_user and effective_message are guaranteed non-None
-        assert update.effective_user is not None
-        assert update.effective_message is not None
-
-        # If args provided, change to that directory
-        if context.args:
-            metadata = self._metadata()
-            metadata.channel_metadata = metadata.channel_metadata or {}
-            metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
-            from teleclaude.core.command_mapper import CommandMapper
-
-            cmd = CommandMapper.map_telegram_input(
-                event="cd",
-                args=context.args or [],
-                metadata=metadata,
-                session_id=session.session_id,
-            )
-            await self.client.handle_internal_command(cmd, metadata=metadata)
-            return
-
-        # No args - show trusted directories as buttons (track command message for deletion)
-        await self._pre_handle_user_input(session)
-        await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
-        reply_markup = self._build_project_keyboard("cd")
-        await self.client.send_message(
-            session,
-            "**Select a directory:**",
-            metadata=MessageMetadata(reply_markup=reply_markup, parse_mode="Markdown"),
-            cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
-        )
 
     async def _handle_agent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, agent_name: str) -> None:
         """Generic handler for agent start commands."""

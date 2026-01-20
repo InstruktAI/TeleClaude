@@ -122,12 +122,3 @@ kill:
 
 status:
 	@./bin/daemon-control.sh status
-
-# Worktree management
-worktree-prepare:
-	@if [ -z "$(SLUG)" ]; then \
-		echo "Error: SLUG parameter required"; \
-		echo "Usage: make worktree-prepare SLUG=<slug>"; \
-		exit 1; \
-	fi
-	@./bin/worktree-prepare.sh $(SLUG)

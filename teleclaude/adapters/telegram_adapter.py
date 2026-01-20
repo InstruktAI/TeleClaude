@@ -41,7 +41,7 @@ from telegram.request import HTTPXRequest
 
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.events import EventType, TeleClaudeEvents, UiCommands
+from teleclaude.core.events import UiCommands
 from teleclaude.core.models import (
     MessageMetadata,
     PeerInfo,
@@ -115,22 +115,22 @@ class TelegramAdapter(
 
     # Simple commands that just emit an event with session_id, args, and message_id.
     # These are generated dynamically via _handle_simple_command template.
-    # Format: list of event constants from TeleClaudeEvents (event value = command name)
-    SIMPLE_COMMAND_EVENTS: list[EventType] = [
-        TeleClaudeEvents.CANCEL,
-        TeleClaudeEvents.CANCEL_2X,
-        TeleClaudeEvents.KILL,
-        TeleClaudeEvents.TAB,
-        TeleClaudeEvents.ENTER,
-        TeleClaudeEvents.ESCAPE,
-        TeleClaudeEvents.ESCAPE_2X,
-        TeleClaudeEvents.CTRL,
-        TeleClaudeEvents.SHIFT_TAB,
-        TeleClaudeEvents.BACKSPACE,
-        TeleClaudeEvents.KEY_UP,
-        TeleClaudeEvents.KEY_DOWN,
-        TeleClaudeEvents.KEY_LEFT,
-        TeleClaudeEvents.KEY_RIGHT,
+    # Format: list of command names (string)
+    SIMPLE_COMMAND_EVENTS: list[str] = [
+        "cancel",
+        "cancel2x",
+        "kill",
+        "tab",
+        "enter",
+        "escape",
+        "escape2x",
+        "ctrl",
+        "shift_tab",
+        "backspace",
+        "key_up",
+        "key_down",
+        "key_left",
+        "key_right",
     ]
 
     def __init__(self, client: "AdapterClient") -> None:
@@ -197,7 +197,7 @@ class TelegramAdapter(
 
             # Create a closure that captures the event value
             def make_handler(
-                evt: EventType,
+                evt: str,
             ) -> Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]:
                 async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     await self._handle_simple_command(update, context, evt)
@@ -216,9 +216,7 @@ class TelegramAdapter(
             session_obj = session
         return await MessageOperationsMixin.delete_message(self, session_obj, message_id)
 
-    async def _handle_simple_command(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE, event: EventType
-    ) -> None:
+    async def _handle_simple_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, event: str) -> None:
         """Template method for simple session commands.
 
         Handles commands that just emit an event with session_id, args, and message_id.
@@ -590,7 +588,7 @@ class TelegramAdapter(
         Uses index-based callbacks to stay under Telegram's 64-byte limit.
 
         Args:
-            callback_prefix: Prefix for callback_data (e.g., "cd", "c", "cr")
+            callback_prefix: Prefix for callback_data (e.g., "c", "cr")
 
         Returns:
             InlineKeyboardMarkup with buttons for each trusted directory

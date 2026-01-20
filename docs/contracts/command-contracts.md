@@ -55,12 +55,3 @@
 - `cancel2x`: Sends `SIGINT` twice.
 
 ---
-
-## cd
-
-**Required:** `session_id`  
-**Optional:** `args` (path)
-
-**Behavior:**
-- No args: Returns list of trusted directories.
-- With path: Injects `cd <path>` and updates session's `project_path`/`subdir`.

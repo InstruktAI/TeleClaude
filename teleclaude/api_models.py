@@ -91,22 +91,6 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
         )
 
 
-class SessionDataDTO(BaseModel):  # type: ignore[explicit-any]
-    """DTO for session transcript data."""
-
-    model_config = ConfigDict(frozen=True)
-
-    status: str
-    session_id: str | None = None
-    transcript: str | None = None
-    messages: str | None = None  # Alias for transcript in some contexts
-    last_activity: str | None = None
-    project_path: str | None = None
-    subdir: str | None = None
-    created_at: str | None = None
-    error: str | None = None
-
-
 class ComputerDTO(BaseModel):  # type: ignore[explicit-any]
     """DTO for computer info."""
 
@@ -206,30 +190,30 @@ class ProjectsInitialEventDTO(BaseModel):  # type: ignore[explicit-any]
     data: ProjectsInitialDataDTO
 
 
-class SessionUpdateEventDTO(BaseModel):  # type: ignore[explicit-any]
-    """WebSocket event for session updates."""
+class SessionStartedEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for session creation."""
 
     model_config = ConfigDict(frozen=True)
 
-    event: Literal["session_created"]
+    event: Literal["session_started"]
     data: SessionSummaryDTO
 
 
-class SessionRemovedDataDTO(BaseModel):  # type: ignore[explicit-any]
-    """Data for session_removed event."""
+class SessionClosedDataDTO(BaseModel):  # type: ignore[explicit-any]
+    """Data for session_closed event."""
 
     model_config = ConfigDict(frozen=True)
 
     session_id: str
 
 
-class SessionRemovedEventDTO(BaseModel):  # type: ignore[explicit-any]
-    """WebSocket event for session removal."""
+class SessionClosedEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for session closure."""
 
     model_config = ConfigDict(frozen=True)
 
-    event: Literal["session_removed"] = "session_removed"
-    data: SessionRemovedDataDTO
+    event: Literal["session_closed"] = "session_closed"
+    data: SessionClosedDataDTO
 
 
 class RefreshDataDTO(BaseModel):  # type: ignore[explicit-any]

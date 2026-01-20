@@ -88,7 +88,7 @@ async def test_teleclaude_list_sessions(mcp_server, daemon_with_mocked_telegram)
     result = await mcp_server.teleclaude__list_sessions()
     assert len(result) >= 2
 
-    # Verify session structure (fields returned by handle_list_sessions)
+    # Verify session structure (fields returned by list_sessions)
     for session in result:
         assert "session_id" in session
         assert "origin_adapter" in session
@@ -134,23 +134,19 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
                 # Verify mocks were called
                 mock_discover.assert_called_once()
 
-                # Should send 3 commands: /new_session, /cd, /claude
-                assert mock_send.call_count == 3, "Should send /new_session, /cd, and /claude commands"
+                # Should send 2 commands: /new_session, /agent
+                assert mock_send.call_count == 2, "Should send /new_session and /agent commands"
 
                 # Verify /new_session call
                 assert mock_send.call_args_list[0][1]["command"] == "/new_session"
                 assert mock_send.call_args_list[0][1]["computer_name"] == "workstation"
 
-                # Verify /cd call
-                assert mock_send.call_args_list[1][1]["command"] == "/cd /home/user/project"
-                assert mock_send.call_args_list[1][1]["session_id"] == "remote-uuid-123"
-
                 # Verify /agent claude call with message (no AI prefix anymore)
-                claude_cmd = mock_send.call_args_list[2][1]["command"]
+                claude_cmd = mock_send.call_args_list[1][1]["command"]
                 assert claude_cmd.startswith("/agent claude slow '")
                 assert "| ls -la'" not in claude_cmd  # message is passed raw
                 assert claude_cmd.endswith("ls -la'")
-                assert mock_send.call_args_list[2][1]["session_id"] == "remote-uuid-123"
+                assert mock_send.call_args_list[1][1]["session_id"] == "remote-uuid-123"
 
                 mock_read.assert_called_once()  # Wait for response
 

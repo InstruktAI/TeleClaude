@@ -399,28 +399,6 @@ class TelecAPIClient:
         )
         return resp.status_code == 200
 
-    async def get_transcript(self, session_id: str, computer: str, tail_chars: int = 5000) -> str:
-        """Get session transcript.
-
-        Args:
-            session_id: Session ID
-            computer: Computer name where session is running
-            tail_chars: Number of characters to retrieve from end
-
-        Returns:
-            Transcript text
-
-        Raises:
-            APIError: If request fails
-        """
-        resp = await self._request(
-            "GET",
-            f"/sessions/{session_id}/transcript",
-            params={"computer": computer, "tail_chars": str(tail_chars)},
-        )
-        result = TypeAdapter(dict[str, str | None]).validate_json(resp.text)
-        return result.get("transcript") or ""
-
     async def get_agent_availability(self) -> dict[str, AgentAvailabilityInfo]:
         """Get agent availability status.
 

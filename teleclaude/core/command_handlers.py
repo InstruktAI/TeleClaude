@@ -26,7 +26,6 @@ from teleclaude.core.events import EventContext
 from teleclaude.core.models import (
     AgentResumeArgs,
     AgentStartArgs,
-    CdArgs,
     ComputerInfo,
     MessageMetadata,
     ProjectInfo,
@@ -41,7 +40,6 @@ from teleclaude.core.session_utils import (
     ensure_unique_title,
     get_short_project_name,
     resolve_working_dir,
-    split_project_path_and_subdir,
     update_title_with_agent,
 )
 from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
@@ -55,17 +53,17 @@ from teleclaude.utils.transcript import get_transcript_parser_info, parse_sessio
 logger = get_logger(__name__)
 
 
-# Result from handle_end_session
+# Result from end_session
 class EndSessionHandlerResult(TypedDict):
-    """Result from handle_end_session."""
+    """Result from end_session."""
 
     status: str
     message: str
 
 
-# Session data payload returned by handle_get_session_data
+# Session data payload returned by get_session_data
 class SessionDataPayload(TypedDict, total=False):
-    """Session data payload returned by handle_get_session_data."""
+    """Session data payload returned by get_session_data."""
 
     status: str  # Required - always present
     session_id: str
@@ -129,7 +127,7 @@ async def _execute_control_key(
     return await tmux_action(session, *tmux_args)
 
 
-async def handle_create_session(  # pylint: disable=too-many-locals  # Session creation requires many variables
+async def create_session(  # pylint: disable=too-many-locals  # Session creation requires many variables
     cmd: CreateSessionCommand,
     client: "AdapterClient",
 ) -> dict[str, str]:
@@ -287,7 +285,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     raise RuntimeError("Failed to create tmux session")
 
 
-async def handle_list_sessions() -> list[SessionSummary]:
+async def list_sessions() -> list[SessionSummary]:
     """List all active sessions from local database.
 
     Ephemeral request/response for MCP/Redis only - no DB session required.
@@ -326,7 +324,7 @@ async def handle_list_sessions() -> list[SessionSummary]:
     return summaries
 
 
-async def handle_list_projects() -> list[ProjectInfo]:
+async def list_projects() -> list[ProjectInfo]:
     """List trusted project directories.
 
     Ephemeral request/response - no DB session required.
@@ -354,15 +352,15 @@ async def handle_list_projects() -> list[ProjectInfo]:
     return dirs_data
 
 
-async def handle_list_projects_with_todos() -> list[ProjectInfo]:
+async def list_projects_with_todos() -> list[ProjectInfo]:
     """List projects with their todos included (local only)."""
-    raw_projects = await handle_list_projects()
+    raw_projects = await list_projects()
     projects_with_todos: list[ProjectInfo] = []
 
     for project in raw_projects:
         todos: list[TodoInfo] = []
         if project.path:
-            todos = await handle_list_todos(project.path)
+            todos = await list_todos(project.path)
 
         project.todos = todos
         projects_with_todos.append(project)
@@ -370,7 +368,7 @@ async def handle_list_projects_with_todos() -> list[ProjectInfo]:
     return projects_with_todos
 
 
-async def handle_list_todos(project_path: str) -> list[TodoInfo]:
+async def list_todos(project_path: str) -> list[TodoInfo]:
     """List todos from roadmap.md for a project.
 
     Ephemeral request/response - no DB session required.
@@ -435,7 +433,7 @@ async def handle_list_todos(project_path: str) -> list[TodoInfo]:
     return todos
 
 
-async def handle_get_computer_info() -> ComputerInfo:
+async def get_computer_info() -> ComputerInfo:
     """Return computer info including system stats.
 
     Ephemeral request/response - no DB session required.
@@ -443,7 +441,7 @@ async def handle_get_computer_info() -> ComputerInfo:
     Returns:
         ComputerInfo object.
     """
-    logger.debug("handle_get_computer_info() called")
+    logger.debug("get_computer_info() called")
 
     # Build info from config - design by contract: these fields are required
     if not config.computer.user or not config.computer.role or not config.computer.host:
@@ -485,11 +483,11 @@ async def handle_get_computer_info() -> ComputerInfo:
         tmux_binary=config.computer.tmux_binary,
     )
 
-    logger.debug("handle_get_computer_info() returning info: %s", info)
+    logger.debug("get_computer_info() returning info: %s", info)
     return info
 
 
-async def handle_get_session_data(
+async def get_session_data(
     session_id: str,
     since_timestamp: Optional[str] = None,
     until_timestamp: Optional[str] = None,
@@ -572,7 +570,7 @@ async def handle_get_session_data(
 
 
 @with_session
-async def handle_cancel_command(
+async def cancel_command(
     session: Session,
     _context: EventContext,
     _client: "AdapterClient",
@@ -615,7 +613,7 @@ async def handle_cancel_command(
 
 
 @with_session
-async def handle_kill_command(
+async def kill_command(
     session: Session,
     _context: EventContext,
     _client: "AdapterClient",
@@ -643,7 +641,7 @@ async def handle_kill_command(
 
 
 @with_session
-async def handle_escape_command(
+async def escape_command(
     session: Session,
     _context: EventContext,
     args: list[str],
@@ -745,7 +743,7 @@ async def handle_escape_command(
 
 
 @with_session
-async def handle_ctrl_command(
+async def ctrl_command(
     session: Session,
     context: EventContext,
     args: list[str],
@@ -801,7 +799,7 @@ async def handle_ctrl_command(
 
 
 @with_session
-async def handle_tab_command(
+async def tab_command(
     session: Session,
     _context: EventContext,
     _client: "AdapterClient",
@@ -827,7 +825,7 @@ async def handle_tab_command(
 
 
 @with_session
-async def handle_shift_tab_command(
+async def shift_tab_command(
     session: Session,
     _context: EventContext,
     args: list[str],
@@ -868,7 +866,7 @@ async def handle_shift_tab_command(
 
 
 @with_session
-async def handle_backspace_command(
+async def backspace_command(
     session: Session,
     _context: EventContext,
     args: list[str],
@@ -909,7 +907,7 @@ async def handle_backspace_command(
 
 
 @with_session
-async def handle_enter_command(
+async def enter_command(
     session: Session,
     _context: EventContext,
     _client: "AdapterClient",
@@ -936,7 +934,7 @@ async def handle_enter_command(
 
 
 @with_session
-async def handle_arrow_key_command(
+async def arrow_key_command(
     session: Session,
     _context: EventContext,
     args: list[str],
@@ -990,103 +988,12 @@ async def handle_arrow_key_command(
 
 
 @with_session
-async def handle_rename_session(
-    session: Session,
-    _context: EventContext,
-    args: list[str],
-    client: "AdapterClient",
-) -> None:
-    """Rename session.
-
-    Args:
-        session: Session object (injected by @with_session)
-        context: Command context
-        args: Command arguments (new name)
-        client: AdapterClient for message operations
-    """
-    if not args:
-        logger.warning("No name argument provided to rename command")
-        return
-
-    # Build new title with computer name prefix
-    computer_name = config.computer.name
-    new_title = f"[{computer_name}] {' '.join(args)}"
-
-    # Update in database
-    await db.update_session(session.session_id, title=new_title)
-
-    logger.info("Renamed session %s to '%s'", session.session_id[:8], new_title)
-
-
-@with_session
-async def handle_cd_session(
-    session: Session,
-    context: EventContext,
-    args: list[str],
-    client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
-) -> None:
-    """Change directory in session or list trusted directories.
-
-    Args:
-        context: Command context with session_id and message_id
-        args: Command arguments (directory path or empty to list)
-        client: AdapterClient for message operations
-        execute_terminal_command: Function to execute tmux command
-    """
-
-    # Normalize args to a single path or None
-    normalized = " ".join([arg.strip() for arg in args if arg.strip()])
-    cd_args = CdArgs(path=normalized or None)
-
-    # If no args, list trusted directories
-    if not cd_args.path:
-        # Get all trusted dirs (includes TC WORKDIR from get_all_trusted_dirs)
-        all_trusted_dirs = config.computer.get_all_trusted_dirs()
-
-        lines = ["**Trusted Directories:**\n"]
-        for idx, trusted_dir in enumerate(all_trusted_dirs, 1):
-            # Show name - desc (if desc available)
-            display_text = f"{trusted_dir.name} - {trusted_dir.desc}" if trusted_dir.desc else trusted_dir.name
-            lines.append(f"{idx}. {display_text}")
-
-        response = "\n".join(lines)
-        await client.send_message(session, response)
-        # Note: Help message auto-tracked by send_message(ephemeral=True)
-        return
-
-    # Change to specified directory
-    target_dir = cd_args.path
-
-    # Handle TC WORKDIR special case
-    if target_dir == "TC WORKDIR":
-        target_dir = os.path.expanduser(config.computer.default_working_dir)
-    cd_command = f"cd {shlex.quote(target_dir)}"
-
-    # Execute command WITHOUT polling (cd is instant)
-    message_id = str(getattr(context, "message_id", ""))
-    success = await execute_terminal_command(session.session_id, cd_command, message_id, False)
-
-    # Save working directory to DB if successful
-    if success:
-        resolved_target = os.path.expanduser(os.path.expandvars(target_dir))
-        trusted_dirs = [d.path for d in config.computer.get_all_trusted_dirs()]
-        project_path, subdir = split_project_path_and_subdir(resolved_target, trusted_dirs)
-        await db.update_session(session.session_id, project_path=project_path, subdir=subdir)
-        logger.debug(
-            "Updated project_path for session %s: %s",
-            session.session_id[:8],
-            project_path,
-        )
-
-
-@with_session
-async def handle_exit_session(
+async def close_session(
     session: Session,
     _context: EventContext,
     client: "AdapterClient",
 ) -> None:
-    """Exit session - kill tmux, delete DB record, clean up resources.
+    """Close session - kill tmux, delete DB record, clean up resources.
 
     Args:
         session: Session object (injected by @with_session)
@@ -1096,18 +1003,18 @@ async def handle_exit_session(
     await terminate_session(
         session.session_id,
         client,
-        reason="exit",
+        reason="close_session",
         session=session,
     )
 
 
-async def handle_end_session(
+async def end_session(
     session_id: str,
     client: "AdapterClient",
 ) -> EndSessionHandlerResult:
     """End a session - graceful termination for MCP tool.
 
-    Similar to handle_exit_session but designed for MCP tool calls.
+    Similar to close_session but designed for MCP tool calls.
     Kills tmux, deletes the session, cleans up resources.
 
     Args:
@@ -1139,7 +1046,7 @@ async def handle_end_session(
 
 
 @with_session
-async def handle_agent_start(
+async def start_agent(
     session: Session,
     context: EventContext,
     agent_name: str,
@@ -1158,7 +1065,7 @@ async def handle_agent_start(
         execute_terminal_command: Function to execute tmux command
     """
     logger.debug(
-        "handle_agent_start: session=%s agent_name=%r args=%s config_agents=%s",
+        "agent_start: session=%s agent_name=%r args=%s config_agents=%s",
         session.session_id[:8],
         agent_name,
         args,
@@ -1248,7 +1155,7 @@ async def handle_agent_start(
 
 
 @with_session
-async def handle_agent_resume(
+async def resume_agent(
     session: Session,
     context: EventContext,
     agent_name: str,
@@ -1316,7 +1223,7 @@ async def handle_agent_resume(
 
 
 @with_session
-async def handle_agent_restart(
+async def agent_restart(
     session: Session,
     context: EventContext,
     agent_name: str,
@@ -1385,7 +1292,29 @@ async def handle_agent_restart(
 
 
 @with_session
-async def handle_claude_session(
+async def send_agent_command(
+    session: Session,
+    context: EventContext,
+    command: str,
+    args: str,
+    _client: "AdapterClient",
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
+) -> None:
+    """Send a slash command directly to the running agent."""
+    if not command:
+        logger.warning("send_agent_command called without a command")
+        return
+
+    message_id = cast(Optional[str], getattr(context, "message_id", None))
+    cmd = f"/{command}".strip()
+    if args:
+        cmd = f"{cmd} {args}".strip()
+
+    await execute_terminal_command(session.session_id, cmd, message_id, True)
+
+
+@with_session
+async def claude_session(
     session: Session,
     context: EventContext,
     args: list[str],
@@ -1401,11 +1330,11 @@ async def handle_claude_session(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
-    await handle_agent_start(session, context, "claude", args, client, execute_terminal_command)
+    await start_agent(session, context, "claude", args, client, execute_terminal_command)
 
 
 @with_session
-async def handle_claude_resume_session(
+async def claude_resume_session(
     session: Session,
     context: EventContext,
     client: "AdapterClient",
@@ -1419,11 +1348,11 @@ async def handle_claude_resume_session(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
-    await handle_agent_resume(session, context, "claude", [], client, execute_terminal_command)
+    await resume_agent(session, context, "claude", [], client, execute_terminal_command)
 
 
 @with_session
-async def handle_gemini_session(
+async def gemini_session(
     session: Session,
     context: EventContext,
     args: list[str],
@@ -1439,11 +1368,11 @@ async def handle_gemini_session(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
-    await handle_agent_start(session, context, "gemini", args, client, execute_terminal_command)
+    await start_agent(session, context, "gemini", args, client, execute_terminal_command)
 
 
 @with_session
-async def handle_gemini_resume_session(
+async def gemini_resume_session(
     session: Session,
     context: EventContext,
     client: "AdapterClient",
@@ -1457,11 +1386,11 @@ async def handle_gemini_resume_session(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
-    await handle_agent_resume(session, context, "gemini", [], client, execute_terminal_command)
+    await resume_agent(session, context, "gemini", [], client, execute_terminal_command)
 
 
 @with_session
-async def handle_codex_session(
+async def codex_session(
     session: Session,
     context: EventContext,
     args: list[str],
@@ -1477,11 +1406,11 @@ async def handle_codex_session(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
-    await handle_agent_start(session, context, "codex", args, client, execute_terminal_command)
+    await start_agent(session, context, "codex", args, client, execute_terminal_command)
 
 
 @with_session
-async def handle_codex_resume_session(
+async def codex_resume_session(
     session: Session,
     context: EventContext,
     client: "AdapterClient",
@@ -1495,4 +1424,4 @@ async def handle_codex_resume_session(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
-    await handle_agent_resume(session, context, "codex", [], client, execute_terminal_command)
+    await resume_agent(session, context, "codex", [], client, execute_terminal_command)

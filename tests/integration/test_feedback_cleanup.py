@@ -12,7 +12,7 @@ import pytest
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import tmux_bridge
-from teleclaude.core.events import TeleClaudeEvents
+from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.models import (
     MessageMetadata,
     SessionAdapterMetadata,
@@ -59,14 +59,18 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
 
     with patch.object(tmux_bridge, "session_exists", mock_session_exists):
         # Simulate user input - this triggers pre-handler cleanup
-        await daemon.client.handle_event(
-            event=TeleClaudeEvents.MESSAGE,
-            payload={"text": "hello", "message_id": "user-msg-123"},
-            metadata=MessageMetadata(
-                origin="telegram",
-                message_thread_id=67890,
-            ),
+        metadata = MessageMetadata(
+            origin="telegram",
+            message_thread_id=67890,
+            channel_metadata={"message_id": "user-msg-123"},
         )
+        cmd = CommandMapper.map_telegram_input(
+            event="message",
+            args=["hello"],
+            metadata=metadata,
+            session_id=session.session_id,
+        )
+        await daemon.client.handle_internal_command(cmd, metadata=metadata)
 
     # System boundary: verify the adapter attempted deletes for the tracked message ids.
     telegram_adapter.delete_message.assert_has_calls(

@@ -80,9 +80,9 @@ MARKDOWN_INLINE_CODE = "`"
 
 # Cache/event names
 class CacheEvent(str, Enum):
-    SESSION_CREATED = "session_created"
+    SESSION_STARTED = "session_started"
     SESSION_UPDATED = "session_updated"
-    SESSION_REMOVED = "session_removed"
+    SESSION_CLOSED = "session_closed"
     PROJECTS_SNAPSHOT = "projects_snapshot"
     TODOS_SNAPSHOT = "todos_snapshot"
     PROJECTS_INITIAL = "projects_initial"

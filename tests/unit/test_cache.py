@@ -140,7 +140,7 @@ def test_update_session_notifies_subscribers():
     )
     cache.update_session(session)
 
-    callback.assert_called_once_with("session_created", session)
+    callback.assert_called_once_with("session_started", session)
 
     # Update same session again should emit session_updated
     callback.reset_mock()
@@ -171,7 +171,7 @@ def test_remove_session_notifies_subscribers():
 
     cache.remove_session("sess-123")
 
-    callback.assert_called_once_with("session_removed", {"session_id": "sess-123"})
+    callback.assert_called_once_with("session_closed", {"session_id": "sess-123"})
 
 
 def test_apply_projects_snapshot_dedupes_notifications():

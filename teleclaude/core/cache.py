@@ -307,7 +307,7 @@ class DaemonCache:
             is_new,
             session.title,
         )
-        self._notify("session_created" if is_new else "session_updated", session)
+        self._notify("session_started" if is_new else "session_updated", session)
 
     def remove_session(self, session_id: str) -> None:
         """Remove session from cache.
@@ -318,7 +318,7 @@ class DaemonCache:
         if session_id in self._sessions:
             self._sessions.pop(session_id)
             logger.debug("Removed session from cache: %s", session_id[:8])
-            self._notify("session_removed", {"session_id": session_id})
+            self._notify("session_closed", {"session_id": session_id})
 
     def set_projects(self, computer: str, projects: list[ProjectInfo]) -> None:
         """Set projects for a computer.

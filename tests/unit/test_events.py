@@ -15,20 +15,20 @@ def test_parse_command_string_with_arguments():
     """Test that parse_command_string extracts arguments."""
     from teleclaude.core.events import parse_command_string
 
-    cmd, args = parse_command_string("cd /home/user")
+    cmd, args = parse_command_string("new_session My Project")
 
-    assert cmd == "cd"
-    assert args == ["/home/user"]
+    assert cmd == "new_session"
+    assert args == ["My", "Project"]
 
 
 def test_parse_command_string_strips_leading_slash():
     """Test that parse_command_string removes leading slash."""
     from teleclaude.core.events import parse_command_string
 
-    cmd, args = parse_command_string("/cd /path")
+    cmd, args = parse_command_string("/new_session My Project")
 
-    assert cmd == "cd"
-    assert args == ["/path"]
+    assert cmd == "new_session"
+    assert args == ["My", "Project"]
 
 
 def test_parse_command_string_handles_quoted_arguments():

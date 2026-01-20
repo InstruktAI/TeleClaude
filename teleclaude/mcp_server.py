@@ -40,6 +40,7 @@ MCP_TOOLS_CHANGED_WINDOW_S = float(os.getenv("MCP_TOOLS_CHANGED_WINDOW_S", "30.0
 
 class ToolName(str, Enum):
     HELP = "teleclaude__help"
+    GET_CONTEXT = "teleclaude__get_context"
     LIST_COMPUTERS = "teleclaude__list_computers"
     LIST_PROJECTS = "teleclaude__list_projects"
     LIST_SESSIONS = "teleclaude__list_sessions"
@@ -365,6 +366,18 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 )
                 return [TextContent(type="text", text=text)]
 
+            async def _handle_get_context() -> list[TextContent]:
+                areas_obj = arguments.get("areas") if arguments else None
+                areas = [a for a in areas_obj if isinstance(a, str)] if isinstance(areas_obj, list) else None
+                cwd = self._str_arg(arguments, "cwd") or None
+                text = await self.teleclaude__get_context(
+                    self._str_arg(arguments, "corpus"),
+                    areas,
+                    cwd,
+                    caller_session_id,
+                )
+                return [TextContent(type="text", text=text)]
+
             async def _handle_list_computers() -> list[TextContent]:
                 return self._json_response(await self.teleclaude__list_computers())
 
@@ -506,6 +519,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
 
             tool_handlers: dict[ToolName, Callable[[], Awaitable[list[TextContent]]]] = {
                 ToolName.HELP: _handle_help,
+                ToolName.GET_CONTEXT: _handle_get_context,
                 ToolName.LIST_COMPUTERS: _handle_list_computers,
                 ToolName.LIST_PROJECTS: _handle_list_projects,
                 ToolName.LIST_SESSIONS: _handle_list_sessions,

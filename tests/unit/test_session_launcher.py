@@ -24,7 +24,7 @@ async def test_create_session_runs_auto_command_after_create(monkeypatch):
         order.append("queue")
         coro.close()
 
-    monkeypatch.setattr(session_launcher, "handle_create_session", _fake_create_session)
+    monkeypatch.setattr(session_launcher, "create_tmux_session", _fake_create_session)
 
     metadata = MessageMetadata(origin="telegram")
     metadata.launch_intent = SessionLaunchIntent(

@@ -27,6 +27,48 @@ def get_tool_definitions() -> list[Tool]:
     """
     return [
         Tool(
+            name="teleclaude__get_context",
+            title="TeleClaude: Get Context",
+            description=(
+                "Select and return relevant documentation snippets based on a selector corpus. "
+                "Use when you need policy/procedure/role/checklist/reference context beyond what you already have. "
+                "Provide a short corpus describing the task and the perspectives you need."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "corpus": {
+                        "type": "string",
+                        "description": "Selector corpus: short, focused text describing the task and needed context.",
+                    },
+                    "areas": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "policy",
+                                "procedure",
+                                "role",
+                                "checklist",
+                                "reference",
+                                "concept",
+                                "decision",
+                                "example",
+                                "incident",
+                                "timeline",
+                                "faq",
+                                "system",
+                                "command",
+                                "dataset",
+                            ],
+                        },
+                        "description": "Optional taxonomy types to prioritize (leave empty for all).",
+                    },
+                },
+                "required": ["corpus"],
+            },
+        ),
+        Tool(
             name="teleclaude__help",
             title="TeleClaude: Help",
             description="Return a short, human-readable description of TeleClaude capabilities and local helper scripts.",

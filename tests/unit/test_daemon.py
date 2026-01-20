@@ -26,7 +26,7 @@ from teleclaude.core.models import (
     SessionAdapterMetadata,
     TelegramAdapterMetadata,
 )
-from teleclaude.daemon import COMMAND_EVENTS, TeleClaudeDaemon
+from teleclaude.daemon import TeleClaudeDaemon
 from teleclaude.types.commands import CreateSessionCommand
 
 
@@ -124,12 +124,12 @@ def mock_daemon():
 async def test_get_session_data_parses_tail_chars_without_placeholders():
     """get_session_data should parse numeric tail_chars directly."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    context = CommandEventContext(session_id="sess-123", args=[])
+    context = CommandEventContext(command="get_session_data", session_id="sess-123", args=[])
 
-    with patch("teleclaude.daemon.command_handlers.handle_get_session_data", new_callable=AsyncMock) as mock_handler:
+    with patch("teleclaude.daemon.command_handlers.get_session_data", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = {"status": "success"}
         await daemon.handle_command(
-            TeleClaudeEvents.GET_SESSION_DATA,
+            "get_session_data",
             ["2000"],
             context,
             MessageMetadata(origin="redis"),
@@ -148,12 +148,12 @@ async def test_get_session_data_parses_tail_chars_without_placeholders():
 async def test_get_session_data_supports_dash_placeholders():
     """GET_SESSION_DATA should treat '-' as an explicit empty placeholder."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    context = CommandEventContext(session_id="sess-123", args=[])
+    context = CommandEventContext(command="get_session_data", session_id="sess-123", args=[])
 
-    with patch("teleclaude.daemon.command_handlers.handle_get_session_data", new_callable=AsyncMock) as mock_handler:
+    with patch("teleclaude.daemon.command_handlers.get_session_data", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = {"status": "success"}
         await daemon.handle_command(
-            TeleClaudeEvents.GET_SESSION_DATA,
+            "get_session_data",
             ["-", "2026-01-01T00:00:00Z", "2000"],
             context,
             MessageMetadata(origin="redis"),
@@ -174,6 +174,7 @@ async def test_handle_voice_forwards_message_without_message_id() -> None:
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
     daemon.client.handle_event = AsyncMock()
+    daemon.client.handle_internal_command = AsyncMock()
     daemon.client.delete_message = AsyncMock()
     daemon._send_status_callback = AsyncMock()
 
@@ -196,11 +197,11 @@ async def test_handle_voice_forwards_message_without_message_id() -> None:
 
         await daemon._handle_voice("voice", context)
 
-        daemon.client.handle_event.assert_called_once()
+        daemon.client.handle_internal_command.assert_called_once()
         daemon.client.delete_message.assert_called_once_with(session, "321")
-        call_kwargs = daemon.client.handle_event.call_args.kwargs
-        assert call_kwargs["event"] == TeleClaudeEvents.MESSAGE
-        assert call_kwargs["payload"].get("message_id") is None
+        call_kwargs = daemon.client.handle_internal_command.call_args.kwargs
+        metadata = call_kwargs["metadata"]
+        assert metadata.message_thread_id == 123
 
 
 @pytest.mark.asyncio
@@ -290,19 +291,21 @@ async def test_new_session_auto_command_agent_then_message():
     daemon._execute_auto_command = AsyncMock(return_value={"status": "success"})
     daemon._queue_background_task = MagicMock(side_effect=lambda coro, _label: coro.close())
 
-    with patch("teleclaude.core.session_launcher.handle_create_session", new_callable=AsyncMock) as mock_create:
-        mock_create.return_value = {"session_id": "sess-123"}
+    with patch("teleclaude.core.session_launcher.create_session", new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = {"session_id": "sess-123", "auto_command_status": "queued"}
 
         create_cmd = CreateSessionCommand(
             project_path="/tmp",
             origin="redis",
             auto_command="agent_then_message codex slow /prompts:next-review next-machine",
         )
-        context = CommandEventContext(session_id="sess-ctx", args=[], internal_command=create_cmd)
+        context = CommandEventContext(
+            command="create_session", session_id="sess-ctx", args=[], internal_command=create_cmd
+        )
         metadata = MessageMetadata(origin="redis")
 
         result = await daemon.handle_command(
-            TeleClaudeEvents.NEW_SESSION,
+            "create_session",
             [],
             context,
             metadata,
@@ -335,7 +338,7 @@ async def test_agent_then_message_waits_for_stabilization():
         return True
 
     with (
-        patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
+        patch("teleclaude.daemon.command_handlers.start_agent", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock) as mock_running,
         patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock) as mock_send,
@@ -386,7 +389,7 @@ async def test_agent_then_message_applies_gemini_delay():
         return True
 
     with (
-        patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
+        patch("teleclaude.daemon.command_handlers.start_agent", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock, return_value=True),
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock, return_value=True),
@@ -419,7 +422,7 @@ async def test_execute_auto_command_updates_last_message_sent():
     daemon._execute_terminal_command = AsyncMock()
 
     with (
-        patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
+        patch("teleclaude.daemon.command_handlers.start_agent", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
     ):
         mock_db.update_session = AsyncMock()
@@ -447,7 +450,7 @@ async def test_agent_then_message_proceeds_after_stabilization_timeout():
         return True
 
     with (
-        patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
+        patch("teleclaude.daemon.command_handlers.start_agent", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock) as mock_running,
         patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock) as mock_send,
@@ -490,7 +493,7 @@ async def test_agent_then_message_fails_on_command_acceptance_timeout():
         return False  # Simulate timeout
 
     with (
-        patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
+        patch("teleclaude.daemon.command_handlers.start_agent", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock) as mock_running,
         patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock) as mock_send,
@@ -1090,8 +1093,7 @@ async def test_ensure_output_polling_uses_tmux():
 def test_all_events_have_handlers():
     """Test that every event in TeleClaudeEvents has a registered handler.
 
-    This prevents bugs where new events are added but not registered in COMMAND_EVENTS
-    or don't have a specific handler method.
+    This prevents bugs where new events are added without a specific handler method.
     """
 
     # Get all events from TeleClaudeEvents
@@ -1104,23 +1106,12 @@ def test_all_events_have_handlers():
             all_events.append(event_value)
 
     # Check each event has a handler
-    # Redis-only events (handled in Redis adapter, not daemon)
-    REDIS_ONLY_EVENTS = {"create_session"}
-    # UI adapter events (handled in UI adapters like TelegramAdapter, not daemon)
-    UI_ADAPTER_EVENTS = {"session_updated", "claude_event"}
+    # Events that don't require explicit daemon handlers
+    SKIP_HANDLERS = {"session_updated"}
 
     missing_handlers = []
     for event in all_events:
-        # Command events have generic handler
-        if event in COMMAND_EVENTS:
-            continue
-
-        # Redis-only events handled in Redis adapter
-        if event in REDIS_ONLY_EVENTS:
-            continue
-
-        # UI adapter events handled in UI adapters
-        if event in UI_ADAPTER_EVENTS:
+        if event in SKIP_HANDLERS:
             continue
 
         # Non-command events need specific handler method
@@ -1130,7 +1121,7 @@ def test_all_events_have_handlers():
 
     # Report missing handlers
     assert not missing_handlers, (
-        f"Events missing handlers: {missing_handlers}\nAdd to COMMAND_EVENTS in daemon.py or create handler method"
+        f"Events missing handlers: {missing_handlers}\nAdd handler method on TeleClaudeDaemon or mark as skipped."
     )
 
 

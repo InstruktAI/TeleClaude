@@ -11,12 +11,14 @@ if TYPE_CHECKING:
 class CommandType(str, Enum):
     """Internal command types."""
 
-    CREATE_SESSION = "new_session"
-    START_AGENT = "agent"
-    RESUME_AGENT = "agent_resume"
-    SEND_MESSAGE = "message"
+    CREATE_SESSION = "create_session"
+    START_AGENT = "start_agent"
+    RESUME_AGENT = "resume_agent"
+    SEND_MESSAGE = "send_message"
     SEND_AGENT_COMMAND = "send_agent_command"
-    CLOSE_SESSION = "exit"
+    RESTART_AGENT = "restart_agent"
+    GET_SESSION_DATA = "get_session_data"
+    CLOSE_SESSION = "close_session"
     SYSTEM = "system_command"
 
 
@@ -94,7 +96,7 @@ class StartAgentCommand(InternalCommand):
         args: Optional[List[str]] = None,
         request_id: Optional[str] = None,
     ):
-        super().__init__(command_type=CommandType.START_AGENT, request_id=request_id)
+        super().__init__(command_type=CommandType.RESTART_AGENT, request_id=request_id)
         self.session_id = session_id
         self.agent_name = agent_name
         self.thinking_mode = thinking_mode
@@ -180,6 +182,65 @@ class SendAgentCommand(InternalCommand):
 
     def to_payload(self) -> Dict[str, object]:
         return {"session_id": self.session_id, "command": self.command, "args": self.args}
+
+
+@dataclass(kw_only=True)
+class RestartAgentCommand(InternalCommand):
+    """Intent to restart an agent in the session."""
+
+    session_id: str
+    agent_name: Optional[str] = None
+
+    def __init__(
+        self,
+        *,
+        session_id: str,
+        agent_name: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ):
+        super().__init__(command_type=CommandType.START_AGENT, request_id=request_id)
+        self.session_id = session_id
+        self.agent_name = agent_name
+
+    def to_payload(self) -> Dict[str, object]:
+        args: List[str] = []
+        if self.agent_name:
+            args.append(self.agent_name)
+        return {"session_id": self.session_id, "args": args}
+
+
+@dataclass(kw_only=True)
+class GetSessionDataCommand(InternalCommand):
+    """Intent to fetch session transcript data."""
+
+    session_id: str
+    since_timestamp: Optional[str] = None
+    until_timestamp: Optional[str] = None
+    tail_chars: int = 5000
+
+    def __init__(
+        self,
+        *,
+        session_id: str,
+        since_timestamp: Optional[str] = None,
+        until_timestamp: Optional[str] = None,
+        tail_chars: int = 5000,
+        request_id: Optional[str] = None,
+    ):
+        super().__init__(command_type=CommandType.GET_SESSION_DATA, request_id=request_id)
+        self.session_id = session_id
+        self.since_timestamp = since_timestamp
+        self.until_timestamp = until_timestamp
+        self.tail_chars = tail_chars
+
+    def to_payload(self) -> Dict[str, object]:
+        payload: Dict[str, object] = {"session_id": self.session_id}
+        if self.since_timestamp is not None:
+            payload["since_timestamp"] = self.since_timestamp
+        if self.until_timestamp is not None:
+            payload["until_timestamp"] = self.until_timestamp
+        payload["tail_chars"] = self.tail_chars
+        return payload
 
 
 @dataclass(kw_only=True)

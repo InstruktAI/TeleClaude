@@ -1,0 +1,29 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from teleclaude.context_index import build_snippet_index
+
+
+def _write(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def test_build_snippet_index_resolves_requires(tmp_path: Path) -> None:
+    project_root = tmp_path
+    snippets_root = project_root / "docs" / "snippets"
+
+    base = "---\nid: domain/base\ndescription: Base snippet\n---\nBase content\n"
+    child = "---\nid: domain/child\ndescription: Child snippet\nrequires:\n  - ./base.md\n---\nChild content\n"
+
+    _write(snippets_root / "domain" / "base.md", base)
+    _write(snippets_root / "domain" / "child.md", child)
+    _write(snippets_root / "baseline" / "identity.md", "# Baseline\n")
+
+    entries = build_snippet_index(project_root)
+    ids = [entry.snippet_id for entry in entries]
+
+    assert ids == ["domain/base", "domain/child"]
+    child_entry = next(entry for entry in entries if entry.snippet_id == "domain/child")
+    assert child_entry.requires == ["docs/snippets/domain/base.md"]

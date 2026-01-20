@@ -53,9 +53,9 @@ async def test_teleclaude_list_computers_returns_online_computers(mock_mcp_serve
     """Test that list_computers returns online computers from heartbeat."""
     server = mock_mcp_server
 
-    # Mock handle_get_computer_info for local computer
+    # Mock get_computer_info for local computer
     with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
-        mock_handlers.handle_get_computer_info = AsyncMock(
+        mock_handlers.get_computer_info = AsyncMock(
             return_value=ComputerInfo(
                 name="TestComputer",
                 status="online",
@@ -97,7 +97,7 @@ async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
     server = mock_mcp_server
 
     with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
-        mock_handlers.handle_list_sessions = AsyncMock(
+        mock_handlers.list_sessions = AsyncMock(
             return_value=[
                 SessionSummary(
                     session_id="test-session-123",
@@ -205,7 +205,7 @@ async def test_teleclaude_get_session_data_formats_transcript(mock_mcp_server):
 
     # Mock command handler
     with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
-        mock_handlers.handle_get_session_data = AsyncMock(
+        mock_handlers.get_session_data = AsyncMock(
             return_value={
                 "status": "success",
                 "session_id": "test-session-123",
@@ -233,7 +233,7 @@ async def test_teleclaude_get_session_data_caps_large_transcripts(mock_mcp_serve
 
     # Mock command handler
     with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
-        mock_handlers.handle_get_session_data = AsyncMock(
+        mock_handlers.get_session_data = AsyncMock(
             return_value={
                 "status": "success",
                 "session_id": "test-session-123",
@@ -301,7 +301,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
 
     # Mock handle_internal_command
     async def mock_handle_cmd(cmd, **kwargs):
-        if cmd.command_type == "new_session":
+        if cmd.command_type == "create_session":
             sid = "agent-test-123"
             if "Gemini" in cmd.title:
                 sid = "agent-test-123"

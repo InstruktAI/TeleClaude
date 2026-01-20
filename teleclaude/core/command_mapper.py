@@ -1,18 +1,18 @@
 """Mapper module to normalize transport inputs into internal command models."""
 
-import base64
 from typing import Dict, List, Optional, cast
 
-from teleclaude.core.events import AgentHookEvents, parse_command_string
+from teleclaude.core.events import parse_command_string
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent
 from teleclaude.types.commands import (
     CloseSessionCommand,
     CreateSessionCommand,
+    GetSessionDataCommand,
     InternalCommand,
+    RestartAgentCommand,
     ResumeAgentCommand,
     SendMessageCommand,
     StartAgentCommand,
-    SystemCommand,
 )
 
 
@@ -66,17 +66,16 @@ class CommandMapper:
             )
 
         if event == "agent_restart":
-            return SystemCommand(
-                command="agent_restart",
-                args=args,
-                session_id=session_id,
+            agent_name = args[0] if args else None
+            return RestartAgentCommand(
+                session_id=session_id or "",
+                agent_name=agent_name,
             )
 
         if event == "exit":
             return CloseSessionCommand(session_id=session_id or "")
 
-        # Fallback for other commands
-        return SystemCommand(command=event, args=args, session_id=session_id)
+        raise ValueError(f"Unknown telegram command: {event}")
 
     @staticmethod
     def map_redis_input(
@@ -94,90 +93,6 @@ class CommandMapper:
             launch_intent_obj = SessionLaunchIntent.from_dict(launch_intent)
         elif isinstance(launch_intent, SessionLaunchIntent):
             launch_intent_obj = launch_intent
-
-        if cmd_name == "stop_notification":
-            # Validate minimum required arguments
-            if len(args) < 2:
-                from instrukt_ai_logging import get_logger
-
-                logger = get_logger(__name__)
-                logger.warning(
-                    "stop_notification requires at least 2 args (session_id, source_computer), got %d", len(args)
-                )
-                # Return no-op SystemCommand for invalid input
-                return SystemCommand(command="noop", args=[])
-
-            target_session_id = args[0]
-            source_computer = args[1]
-            title_b64 = args[2] if len(args) > 2 else None
-            resolved_title = None
-
-            if title_b64:
-                try:
-                    resolved_title = base64.b64decode(title_b64).decode()
-                except Exception as e:
-                    from instrukt_ai_logging import get_logger
-
-                    logger = get_logger(__name__)
-                    logger.warning("Failed to decode stop_notification title: %s", e)
-
-            # Map to AGENT_EVENT stop
-            event_data = {
-                "session_id": target_session_id,
-                "source_computer": source_computer,
-            }
-            if resolved_title:
-                event_data["title"] = resolved_title
-
-            return SystemCommand(
-                command="agent_event",
-                args=[],
-                data={
-                    "session_id": target_session_id,
-                    "event_type": AgentHookEvents.AGENT_STOP,
-                    "data": event_data,
-                },
-            )
-
-        if cmd_name == "input_notification":
-            # Validate minimum required arguments
-            if len(args) < 3:
-                from instrukt_ai_logging import get_logger
-
-                logger = get_logger(__name__)
-                logger.warning(
-                    "input_notification requires 3 args (session_id, source_computer, message_b64), got %d", len(args)
-                )
-                # Return no-op SystemCommand for invalid input
-                return SystemCommand(command="noop", args=[])
-
-            target_session_id = args[0]
-            source_computer = args[1]
-            message_b64 = args[2]
-            message = ""
-
-            try:
-                message = base64.b64decode(message_b64).decode()
-            except Exception as e:
-                from instrukt_ai_logging import get_logger
-
-                logger = get_logger(__name__)
-                logger.warning("Failed to decode input_notification message: %s", e)
-                # Continue with empty message rather than failing completely
-
-            return SystemCommand(
-                command="agent_event",
-                args=[],
-                data={
-                    "session_id": target_session_id,
-                    "event_type": AgentHookEvents.AGENT_NOTIFICATION,
-                    "data": {
-                        "session_id": target_session_id,
-                        "source_computer": source_computer,
-                        "message": message,
-                    },
-                },
-            )
 
         if cmd_name == "message":
             return SendMessageCommand(
@@ -245,13 +160,33 @@ class CommandMapper:
                 agent_name=agent_name,
             )
 
+        if cmd_name == "agent_restart":
+            agent_name = args[0] if args else None
+            return RestartAgentCommand(
+                session_id=session_id or "",
+                agent_name=agent_name,
+            )
+
         if cmd_name == "end_session":
             return CloseSessionCommand(session_id=session_id or "")
 
-        # Query/list commands don't have specific InternalCommand types
-        # They use SystemCommand but with the proper command name
-        # The command name will map to the correct TeleClaudeEvent in handle_command
-        return SystemCommand(command=cmd_name or "unknown", args=args)
+        if cmd_name == "get_session_data":
+            since = args[0] if len(args) > 0 else None
+            until = args[1] if len(args) > 1 else None
+            tail_chars = 5000
+            if len(args) > 2:
+                try:
+                    tail_chars = int(args[2])
+                except ValueError:
+                    tail_chars = 5000
+            return GetSessionDataCommand(
+                session_id=session_id or "",
+                since_timestamp=since if since not in ("", "-") else None,
+                until_timestamp=until if until not in ("", "-") else None,
+                tail_chars=tail_chars,
+            )
+
+        raise ValueError(f"Unknown redis command: {cmd_name}")
 
     @staticmethod
     def map_api_input(
@@ -289,20 +224,14 @@ class CommandMapper:
             )
 
         if event == "agent_restart":
-            return SystemCommand(
-                command="agent_restart",
-                args=cast(List[str], payload.get("args", [])),
+            args = cast(List[str], payload.get("args", []))
+            agent_name = args[0] if args else None
+            return RestartAgentCommand(
                 session_id=session_id,
+                agent_name=agent_name,
             )
 
         if event == "end_session":
             return CloseSessionCommand(session_id=session_id)
 
-        if event == "get_session_data":
-            return SystemCommand(
-                command="get_session_data",
-                args=cast(List[str], payload.get("args", [])),
-                session_id=session_id,
-            )
-
-        return SystemCommand(command=event, args=cast(List[str], payload.get("args", [])))
+        raise ValueError(f"Unknown api command: {event}")

@@ -102,7 +102,7 @@ When adding a new command to the Telegram bot, you MUST follow ALL these steps:
 
 ### Using Inline Keyboards for User Selections
 
-Pattern for creating clickable button menus (like `/cd` directory selection):
+Pattern for creating clickable button menus (like project selection):
 
 1. **Create inline keyboard**:
 
@@ -138,10 +138,10 @@ When constructing shell commands that include user input or file paths:
 import shlex
 
 # CORRECT:
-cd_command = f"cd {shlex.quote(user_path)}"
+cmd = f"some_command {shlex.quote(user_input)}"
 
 # WRONG (vulnerable to spaces, injection):
-cd_command = f"cd {user_path}"
+cmd = f"some_command {user_input}"
 ```
 
 This handles:

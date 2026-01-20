@@ -149,6 +149,7 @@ async def test_discover_peers_handles_invalid_json():
 @pytest.mark.asyncio
 async def test_stop_notification_emits_agent_stop_event():
     """stop_notification should emit agent stop event with minimal payload."""
+    from teleclaude.core.events import TeleClaudeEvents
     from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
@@ -166,12 +167,12 @@ async def test_stop_notification_emits_agent_stop_event():
 
     await adapter._handle_incoming_message("msg-1", data)
 
-    assert mock_client.handle_internal_command.await_count == 1
-    call_args = mock_client.handle_internal_command.call_args
-    command = call_args[0][0]
-    assert command.command_type == "system_command"
-    assert command.command == "agent_event"
-    assert command.data["event_type"] == "stop"
+    assert mock_client.handle_internal_command.await_count == 0
+    assert mock_client.handle_event.await_count == 1
+    call_args = mock_client.handle_event.call_args
+    assert call_args.args[0] == TeleClaudeEvents.AGENT_EVENT
+    payload = call_args.args[1]
+    assert payload["event_type"] == "stop"
 
 
 @pytest.mark.asyncio

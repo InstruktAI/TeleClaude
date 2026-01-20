@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E2E test for AI-to-AI session initialization with /cd and /claude commands."""
+"""E2E test for AI-to-AI session initialization via Redis transport."""
 
 import asyncio
 import json
@@ -12,8 +12,6 @@ from teleclaude.constants import MAIN_MODULE
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-from teleclaude.core import tmux_bridge
-
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -22,9 +20,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
 
     Verifies that when a remote computer receives a create_session command:
     1. Session is created with proper metadata
-    2. /cd command is sent to change to project directory
-    3. /claude command is sent to start Claude Code
-    4. Output stream listener is started for bidirectional communication
+    2. Output stream listener is started for bidirectional communication
     """
     daemon = daemon_with_mocked_telegram
 
@@ -37,15 +33,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
     mock_redis = AsyncMock()
     redis_transport.redis = mock_redis
 
-    # Track handle_event calls to verify /cd and /claude were called
-    original_handle_event = daemon.client.handle_event
-    handle_event_calls = []
-
-    async def track_handle_event(event, payload, metadata):
-        handle_event_calls.append({"event": event, "payload": payload, "metadata": metadata})
-        return await original_handle_event(event, payload, metadata)
-
-    with patch.object(daemon.client, "handle_event", side_effect=track_handle_event):
+    with patch.object(daemon.client, "handle_event", side_effect=daemon.client.handle_event):
         # Simulate incoming create_session command from initiator (MozBook)
         request_id = "test-request-123"
         project_path = tmp_path / "apps" / "TeleClaude"
@@ -109,9 +97,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
     assert "Test AI-to-AI Session" in session.title
     # Description is optional, just verify session was created
 
-    # NOTE: /cd and /claude commands are NOT auto-called by the handler anymore
-    # The MCP client (teleclaude__start_session) is responsible for orchestrating those commands
-    # This test only verifies session creation, not command orchestration
+    # NOTE: Command orchestration (agent start, etc.) is handled by MCP client flow.
 
     # Verify response was sent with session_id
     assert response_sent is not None, "Should have sent response"
@@ -128,15 +114,8 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_ai_to_ai_session_without_project_path(daemon_with_mocked_telegram):
-    """Test AI-to-AI session initialization without project directory.
-
-    Verifies that when project_path is not provided:
-    1. Session is created successfully
-    2. /cd command is NOT called
-    3. /claude command is still called
-    4. Output stream listener is started
-    """
+async def test_ai_to_ai_session_without_project_path_rejected(daemon_with_mocked_telegram):
+    """Test AI-to-AI session initialization without project directory is rejected."""
     daemon = daemon_with_mocked_telegram
 
     redis_transport = daemon.client.adapters.get("redis")
@@ -146,16 +125,8 @@ async def test_ai_to_ai_session_without_project_path(daemon_with_mocked_telegram
     mock_redis = AsyncMock()
     redis_transport.redis = mock_redis
 
-    # Track handle_event calls
-    handle_event_calls = []
-    original_handle_event = daemon.client.handle_event
-
-    async def track_handle_event(event, payload, metadata):
-        handle_event_calls.append({"event": event, "payload": payload, "metadata": metadata})
-        return await original_handle_event(event, payload, metadata)
-
-    with patch.object(daemon.client, "handle_event", side_effect=track_handle_event):
-        # Simulate create_session command WITH project_path
+    with patch.object(daemon.client, "handle_event", side_effect=daemon.client.handle_event):
+        # Simulate create_session command WITHOUT project_path
         request_id = "test-request-456"
 
         response_sent = None
@@ -172,7 +143,7 @@ async def test_ai_to_ai_session_without_project_path(daemon_with_mocked_telegram
             b"session_id": request_id.encode("utf-8"),
             b"command": b"/new_session",
             b"title": b"Test Session No Project",
-            b"project_path": b"/tmp",
+            b"project_path": b"",
             b"initiator": b"WorkStation",
             b"channel_metadata": b"{}",
         }
@@ -181,98 +152,14 @@ async def test_ai_to_ai_session_without_project_path(daemon_with_mocked_telegram
 
         await asyncio.sleep(0.01)
 
-    # Verify session was created
+    # Verify no session was created
     sessions = await daemon.db.list_sessions()
-    assert len(sessions) == 1, "Should have created exactly one session"
-
-    session = sessions[0]
-    assert session.origin_adapter == "redis"
-
-    # NOTE: /cd and /claude commands are NOT auto-called by the handler anymore
-    # The MCP client (teleclaude__start_session) is responsible for orchestrating those commands
-    # This test only verifies session creation with explicit project_path
+    assert len(sessions) == 0, "Should not create session without project_path"
 
     # Verify response was sent
     assert response_sent is not None
     envelope = json.loads(response_sent["data"])
-    assert envelope["status"] == "success", f"Response should have success status, got: {envelope}"
-    # Response data should contain session_id if handler succeeded
-    if envelope["data"]:
-        assert "session_id" in envelope["data"], f"session_id should be in data, got: {envelope['data']}"
-        assert envelope["data"]["session_id"] == session.session_id
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocked_telegram):
-    """Test that /cd and /claude commands actually execute in tmux session.
-
-    This test verifies the complete flow from handle_event to tmux execution:
-    1. Commands are dispatched to command handlers
-    2. Commands execute in the correct tmux session
-    3. Tmux shows expected output
-    """
-    daemon = daemon_with_mocked_telegram
-
-    redis_transport = daemon.client.adapters.get("redis")
-    if not redis_transport:
-        pytest.skip("Redis adapter not configured")
-
-    mock_redis = AsyncMock()
-    redis_transport.redis = mock_redis
-
-    # Create session
-    request_id = "test-request-789"
-    project_path = "/tmp/test-project"
-    os.makedirs(project_path, exist_ok=True)
-    {
-        b"title": b"Test Tmux Execution",
-        b"project_path": project_path.encode("utf-8"),
-        b"initiator": b"TestComputer",
-        b"channel_metadata": b"{}",
-    }
-
-    response_sent = None
-
-    async def mock_send_response(req_id, response_data):
-        nonlocal response_sent
-        response_sent = {"request_id": req_id, "data": response_data}
-
-    redis_transport.send_response = mock_send_response
-
-    # Simulate incoming /new_session message through Redis stream
-    message_data = {
-        b"request_id": request_id.encode("utf-8"),
-        b"session_id": request_id.encode("utf-8"),
-        b"command": b"/new_session",
-        b"title": b"Test Tmux Execution",
-        b"project_path": project_path.encode("utf-8"),
-        b"initiator": b"TestComputer",
-        b"channel_metadata": b"{}",
-    }
-
-    await redis_transport._handle_incoming_message(request_id, message_data)
-
-    # Get created session
-    sessions = await daemon.db.list_sessions()
-    assert len(sessions) == 1
-    session = sessions[0]
-
-    # Wait for commands to execute
-    await asyncio.sleep(0.01)
-
-    # Capture tmux output
-    output = await tmux_bridge.capture_pane(session.tmux_session_name)
-    assert output is not None, "Should have tmux output"
-
-    # Verify /cd executed (should see directory change)
-    # Note: actual directory change might not be visible, but command should have been sent
-    # We can verify by checking session still exists and tmux session is alive
-    assert await tmux_bridge.session_exists(session.tmux_session_name), "Tmux session should exist"
-
-    # Verify /claude was executed (should see "Starting Claude Code..." or similar)
-    # Since we're testing with real tmux but mocked Claude startup, we verify the command was sent
-    # The actual Claude startup is tested in test_claude_command_e2e.py
+    assert envelope["status"] == "error", f"Response should have error status, got: {envelope}"
 
 
 if __name__ == MAIN_MODULE:

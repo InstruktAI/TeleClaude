@@ -27,13 +27,12 @@ from teleclaude.api_models import (
     RefreshDataDTO,
     RefreshEventDTO,
     SendMessageRequest,
-    SessionDataDTO,
-    SessionRemovedDataDTO,
-    SessionRemovedEventDTO,
+    SessionClosedDataDTO,
+    SessionClosedEventDTO,
     SessionsInitialDataDTO,
     SessionsInitialEventDTO,
+    SessionStartedEventDTO,
     SessionSummaryDTO,
-    SessionUpdateEventDTO,
     TodoDTO,
 )
 from teleclaude.config import config
@@ -105,12 +104,12 @@ class APIServer:
             self._handle_session_updated_event,
         )
         self.client.on(
-            TeleClaudeEvents.SESSION_CREATED,
-            self._handle_session_created_event,
+            TeleClaudeEvents.SESSION_STARTED,
+            self._handle_session_started_event,
         )
         self.client.on(
-            TeleClaudeEvents.SESSION_REMOVED,
-            self._handle_session_removed_event,
+            TeleClaudeEvents.SESSION_CLOSED,
+            self._handle_session_closed_event,
         )
 
         # Set cache through property to trigger subscription
@@ -153,7 +152,7 @@ class APIServer:
         summary = SessionSummary.from_db_session(session, computer=config.computer.name)
         self.cache.update_session(summary)
 
-    async def _handle_session_created_event(
+    async def _handle_session_started_event(
         self,
         _event: str,
         context: SessionLifecycleContext,
@@ -168,7 +167,7 @@ class APIServer:
         summary = SessionSummary.from_db_session(session, computer=config.computer.name)
         self.cache.update_session(summary)
 
-    async def _handle_session_removed_event(
+    async def _handle_session_closed_event(
         self,
         _event: str,
         context: SessionLifecycleContext,
@@ -193,7 +192,7 @@ class APIServer:
         ) -> list[SessionSummaryDTO]:
             """List sessions from cache (includes local and remote)."""
             try:
-                local_sessions = await command_handlers.handle_list_sessions()
+                local_sessions = await command_handlers.list_sessions()
 
                 # No cache: serve local sessions only (respect computer filter)
                 if not self.cache:
@@ -395,45 +394,12 @@ class APIServer:
                 logger.error("agent_restart failed for session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to restart agent: {e}") from e
 
-        @self.app.get("/sessions/{session_id}/transcript")
-        async def get_transcript(  # pyright: ignore
-            session_id: str,
-            computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
-            tail_chars: int = Query(5000),
-        ) -> SessionDataDTO:
-            """Get session transcript.
-
-            Args:
-                session_id: Session ID (unique across computers)
-                computer: Optional computer name (for API consistency, not used)
-                tail_chars: Number of characters from end of transcript
-            """
-            try:
-                result = await self.client.handle_event(
-                    event="get_session_data",
-                    payload={"session_id": session_id, "args": [str(tail_chars)]},
-                    metadata=self._metadata(),
-                )
-                if not isinstance(result, dict):
-                    raise HTTPException(status_code=500, detail="Invalid transcript response")
-                if result.get("status") == "error":
-                    raise HTTPException(status_code=500, detail=str(result.get("error", "Invalid transcript response")))
-                data = result.get("data")
-                if isinstance(data, dict):
-                    return SessionDataDTO.model_validate(data)
-                if data is None:
-                    return SessionDataDTO(status="success", session_id=session_id)
-                raise HTTPException(status_code=500, detail="Invalid transcript response")
-            except Exception as e:
-                logger.error("get_transcript failed (session=%s): %s", session_id, e, exc_info=True)
-                raise HTTPException(status_code=500, detail=f"Failed to get transcript: {e}") from e
-
         @self.app.get("/computers")
         async def list_computers() -> list[ComputerDTO]:  # pyright: ignore
             """List available computers (local + cached remote computers)."""
             try:
                 # Local computer
-                info = await command_handlers.handle_get_computer_info()
+                info = await command_handlers.get_computer_info()
                 result: list[ComputerDTO] = [
                     ComputerDTO(
                         name=config.computer.name,
@@ -474,7 +440,7 @@ class APIServer:
             """
             try:
                 # Get LOCAL projects from command handler
-                raw_projects = await command_handlers.handle_list_projects()
+                raw_projects = await command_handlers.list_projects()
                 computer_name = config.computer.name
                 result: list[ProjectDTO] = []
 
@@ -567,7 +533,7 @@ class APIServer:
             try:
                 if not self.cache:
                     if project and (computer in (None, "local")):
-                        raw_todos = await command_handlers.handle_list_todos(project)
+                        raw_todos = await command_handlers.list_todos(project)
                         return [
                             TodoDTO(
                                 slug=t.slug,
@@ -901,11 +867,11 @@ class APIServer:
             return
         # Convert to DTO payload if necessary
         payload: dict[str, object]  # guard: loose-dict - WebSocket payload assembly
-        if event == "session_created":
+        if event == "session_started":
             if isinstance(data, SessionSummary):
                 dto = SessionSummaryDTO.from_core(data, computer=data.computer)
                 # Proper cast for Mypy Literal
-                payload = SessionUpdateEventDTO(
+                payload = SessionStartedEventDTO(
                     event=event,
                     data=dto,
                 ).model_dump(exclude_none=True)
@@ -914,10 +880,10 @@ class APIServer:
                 payload = {"event": event, "data": data}
             else:
                 payload = {"event": event, "data": data}
-        elif event == "session_removed":
+        elif event == "session_closed":
             if isinstance(data, dict):
-                payload = SessionRemovedEventDTO(
-                    data=SessionRemovedDataDTO(session_id=str(data.get("session_id", "")))
+                payload = SessionClosedEventDTO(
+                    data=SessionClosedDataDTO(session_id=str(data.get("session_id", "")))
                 ).model_dump(exclude_none=True)
             else:
                 payload = {"event": event, "data": data}

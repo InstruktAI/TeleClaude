@@ -31,6 +31,7 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
     project_path = "/tmp"
     create_cmd = CreateSessionCommand(project_path=project_path, origin="telegram", title="Short Test")
     context = CommandEventContext(
+        command="create_session",
         session_id="sess-ctx",
         args=[],
         origin="telegram",
@@ -38,7 +39,7 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
         internal_command=create_cmd,
     )
     await daemon.handle_command(
-        "new_session",
+        "create_session",
         ["Short", "Test"],
         context,
         MessageMetadata(origin="telegram", project_path=project_path),
@@ -94,6 +95,7 @@ async def test_long_running_command(daemon_with_mocked_telegram):
     project_path = "/tmp"
     create_cmd = CreateSessionCommand(project_path=project_path, origin="telegram", title="Long Test")
     context = CommandEventContext(
+        command="create_session",
         session_id="sess-ctx",
         args=[],
         origin="telegram",
@@ -101,7 +103,7 @@ async def test_long_running_command(daemon_with_mocked_telegram):
         internal_command=create_cmd,
     )
     await daemon.handle_command(
-        "new_session",
+        "create_session",
         ["Long", "Test"],
         context,
         MessageMetadata(origin="telegram", project_path=project_path),

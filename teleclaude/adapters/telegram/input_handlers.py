@@ -20,7 +20,7 @@ from telegram.ext import ContextTypes
 
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
-from teleclaude.core.events import TeleClaudeEvents, UiCommands
+from teleclaude.core.events import UiCommands
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
 from teleclaude.core.session_utils import get_session_output_dir
 
@@ -220,15 +220,19 @@ Usage:
             text = "/" + text[2:]
             logger.debug("Stripped leading // from user input (raw mode), result: %s", text[:50])
 
-        await self.client.handle_event(
-            event=TeleClaudeEvents.MESSAGE,
-            payload={
-                "session_id": session.session_id,
-                "text": text,
-                "message_id": str(update.effective_message.message_id),
-            },
-            metadata=self._metadata(),
+        from teleclaude.core.command_mapper import CommandMapper
+
+        metadata = self._metadata()
+        metadata.channel_metadata = metadata.channel_metadata or {}
+        metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
+
+        cmd = CommandMapper.map_telegram_input(
+            event="message",
+            args=[text],
+            metadata=metadata,
+            session_id=session.session_id,
         )
+        await self.client.handle_internal_command(cmd, metadata=metadata)
 
     async def _handle_voice_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle voice messages in topics - both new and edited messages."""
@@ -288,7 +292,7 @@ Usage:
 
             # Emit voice event to daemon
             await self.client.handle_event(
-                event=TeleClaudeEvents.VOICE,
+                event="voice",
                 payload={
                     "session_id": session.session_id,
                     "file_path": str(temp_file_path),
@@ -356,7 +360,7 @@ Usage:
 
             # Emit file event to daemon (with optional caption)
             await self.client.handle_event(
-                event=TeleClaudeEvents.FILE,
+                event="file",
                 payload={
                     "session_id": session.session_id,
                     "file_path": str(file_path),
@@ -430,9 +434,9 @@ Usage:
             session.session_id[:8],
         )
 
-        # Emit session_removed event to daemon for cleanup
+        # Emit session_closed event to daemon for cleanup
         await self.client.handle_event(
-            event="session_removed",
+            event="session_closed",
             payload={"session_id": session.session_id},
             metadata=self._metadata(),
         )

@@ -702,13 +702,6 @@ class AgentResumeArgs:
 
 
 @dataclass
-class CdArgs:
-    """Typed arguments for cd command."""
-
-    path: Optional[str] = None
-
-
-@dataclass
 class KillArgs:
     """Typed arguments for kill command."""
 
