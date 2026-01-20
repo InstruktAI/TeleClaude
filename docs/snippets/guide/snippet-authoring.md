@@ -63,6 +63,7 @@ Architecture / Concept
 - Invariants
 - Primary flows
 - Failure modes
+- If structure or integrations are central, include a small Mermaid diagram.
 
 Policy / Standard
 
@@ -87,12 +88,29 @@ Reference / Example
 - Allowed values
 - Known caveats
 
-Decision / Incident / Timeline / FAQ
+Decision
 
-- Decision: context, options, choice, consequences
-- Incident: impact, root cause, fix, prevention
-- Timeline: date, event, outcome
-- FAQ: question, answer
+- Use when a choice between alternatives is made and needs to be remembered.
+- Include: context, options considered, chosen approach, consequences or tradeoffs.
+- Exclude: routine changes or implementation steps.
+
+Incident
+
+- Use for postmortems of real failures with enduring learning value.
+- Include: impact, root cause, fix, prevention or guardrails.
+- Exclude: minor bugs, transient errors, or routine outages.
+
+Timeline
+
+- Use for ordered milestones that explain evolution or major shifts.
+- Include: date, event, outcome.
+- Exclude: daily logs or running status updates.
+
+FAQ
+
+- Use for recurring questions that would otherwise be answered repeatedly.
+- Include: question, answer.
+- Exclude: one-off clarifications or internal notes.
 
 References
 
