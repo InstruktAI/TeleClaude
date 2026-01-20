@@ -21,6 +21,8 @@ def mock_adapter_client():  # type: ignore[explicit-any, unused-ignore]
     client.commands.create_session = AsyncMock()
     client.commands.end_session = AsyncMock()
     client.commands.send_message = AsyncMock()
+    client.commands.handle_voice = AsyncMock()
+    client.commands.handle_file = AsyncMock()
     client.commands.restart_agent = AsyncMock()
     return client
 
@@ -637,6 +639,28 @@ def test_send_message_handler_exception(test_client, mock_adapter_client):  # ty
     )
     assert response.status_code == 500
     assert "Internal error" in response.json()["detail"]
+
+
+def test_send_voice_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test voice endpoint dispatches handle_voice."""
+    response = test_client.post(
+        "/sessions/sess-123/voice?computer=local",
+        json={"file_path": "/tmp/voice.ogg", "duration": 1.2},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    mock_adapter_client.commands.handle_voice.assert_called_once()
+
+
+def test_send_file_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test file endpoint dispatches handle_file."""
+    response = test_client.post(
+        "/sessions/sess-123/file?computer=local",
+        json={"file_path": "/tmp/file.txt", "filename": "file.txt", "caption": "hi", "file_size": 5},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    mock_adapter_client.commands.handle_file.assert_called_once()
 
 
 def test_list_computers_handler_exception(test_client):  # type: ignore[explicit-any, unused-ignore]

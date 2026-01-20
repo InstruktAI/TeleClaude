@@ -44,6 +44,28 @@ class SendMessageRequest(BaseModel):  # type: ignore[explicit-any]
     message: str = Field(..., min_length=1)
 
 
+class VoiceInputRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to send a voice input to a session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    file_path: str = Field(..., min_length=1)
+    duration: float | None = None
+    message_id: str | None = None
+    message_thread_id: int | None = None
+
+
+class FileUploadRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to send a file input to a session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    file_path: str = Field(..., min_length=1)
+    filename: str = Field(..., min_length=1)
+    caption: str | None = None
+    file_size: int = 0
+
+
 class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
     """DTO for session summary in lists."""
 

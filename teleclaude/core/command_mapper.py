@@ -8,6 +8,8 @@ from teleclaude.types.commands import (
     CloseSessionCommand,
     CreateSessionCommand,
     GetSessionDataCommand,
+    HandleFileCommand,
+    HandleVoiceCommand,
     InternalCommand,
     KeysCommand,
     RestartAgentCommand,
@@ -255,6 +257,25 @@ class CommandMapper:
             return SendMessageCommand(
                 session_id=session_id,
                 text=str(payload.get("text", "")),
+            )
+
+        if event == "handle_voice":
+            return HandleVoiceCommand(
+                session_id=session_id,
+                file_path=str(payload.get("file_path", "")),
+                duration=cast(float | None, payload.get("duration")),
+                message_id=cast(str | None, payload.get("message_id")),
+                message_thread_id=cast(int | None, payload.get("message_thread_id")),
+                origin=metadata.origin,
+            )
+
+        if event == "handle_file":
+            return HandleFileCommand(
+                session_id=session_id,
+                file_path=str(payload.get("file_path", "")),
+                filename=str(payload.get("filename", "")),
+                caption=cast(str | None, payload.get("caption")),
+                file_size=cast(int, payload.get("file_size", 0)),
             )
 
         if event == "agent":

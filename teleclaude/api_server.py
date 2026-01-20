@@ -21,6 +21,7 @@ from teleclaude.api_models import (
     ComputerDTO,
     CreateSessionRequest,
     CreateSessionResponseDTO,
+    FileUploadRequest,
     ProjectDTO,
     ProjectsInitialDataDTO,
     ProjectsInitialEventDTO,
@@ -34,6 +35,7 @@ from teleclaude.api_models import (
     SessionStartedEventDTO,
     SessionSummaryDTO,
     TodoDTO,
+    VoiceInputRequest,
 )
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
@@ -353,6 +355,58 @@ class APIServer:
             except Exception as e:
                 logger.error("send_message failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
+
+        @self.app.post("/sessions/{session_id}/voice")
+        async def send_voice_endpoint(  # pyright: ignore
+            session_id: str,
+            request: VoiceInputRequest,
+            computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
+        ) -> dict[str, object]:  # guard: loose-dict - API boundary
+            """Send voice input to session."""
+            try:
+                metadata = self._metadata()
+                cmd = CommandMapper.map_api_input(
+                    "handle_voice",
+                    {
+                        "session_id": session_id,
+                        "file_path": request.file_path,
+                        "duration": request.duration,
+                        "message_id": request.message_id,
+                        "message_thread_id": request.message_thread_id,
+                    },
+                    metadata,
+                )
+                await self.client.commands.handle_voice(cmd)
+                return {"status": "success"}
+            except Exception as e:
+                logger.error("send_voice failed (session=%s): %s", session_id, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to send voice: {e}") from e
+
+        @self.app.post("/sessions/{session_id}/file")
+        async def send_file_endpoint(  # pyright: ignore
+            session_id: str,
+            request: FileUploadRequest,
+            computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
+        ) -> dict[str, object]:  # guard: loose-dict - API boundary
+            """Send file input to session."""
+            try:
+                metadata = self._metadata()
+                cmd = CommandMapper.map_api_input(
+                    "handle_file",
+                    {
+                        "session_id": session_id,
+                        "file_path": request.file_path,
+                        "filename": request.filename,
+                        "caption": request.caption,
+                        "file_size": request.file_size,
+                    },
+                    metadata,
+                )
+                await self.client.commands.handle_file(cmd)
+                return {"status": "success"}
+            except Exception as e:
+                logger.error("send_file failed (session=%s): %s", session_id, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to send file: {e}") from e
 
         @self.app.post("/sessions/{session_id}/agent-restart")
         async def agent_restart(  # pyright: ignore
