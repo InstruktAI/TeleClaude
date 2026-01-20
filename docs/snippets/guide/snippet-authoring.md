@@ -1,0 +1,86 @@
+---
+id: teleclaude/snippets/authoring
+type: guide
+scope: project
+description: How to author TeleClaude snippets and choose taxonomy-appropriate structure.
+---
+
+Purpose
+- Make snippets the authoritative, reusable source for AI context selection.
+- Capture intent, boundaries, and guarantees without drifting from code and docs.
+
+Principles
+- **Truth over completeness**: reflect the real system, not idealized intent.
+- **Explain the why**: capture guarantees, invariants, and boundaries that guide usage.
+- **Concrete over generic**: use real component names/events where it clarifies behavior.
+- **Self-contained**: a snippet should stand on its own without requiring external prose.
+- **Reusability**: split only when the parts are independently useful.
+
+Taxonomy
+- **policy**: rules, constraints, non-negotiables.
+- **standard**: enforced conventions or quality bars.
+- **guide**: recommended approach or best practice.
+- **procedure**: ordered steps with outputs.
+- **principles**: high-level governing ideas that shape design and judgment.
+- **role**: identity, responsibilities, boundaries.
+- **checklist**: verification or readiness criteria.
+- **reference**: static facts or lookup tables.
+- **concept**: definitions or framing.
+- **architecture**: system structure, components, and relationships.
+- **decision**: rationale for a chosen approach.
+- **example**: concrete usage or pattern.
+- **incident**: postmortems and lessons learned.
+- **timeline**: time-ordered events.
+- **faq**: recurring questions and answers.
+
+Frontmatter
+- `id`: stable path-like identifier for selection.
+- `type`: one taxonomy value.
+- `scope`: `global`, `domain`, or `project`.
+- `description`: concise semantic summary.
+- `requires`: optional list of supporting snippets or docs.
+
+Schemas by taxonomy
+
+Principles
+- Principle statement
+- Rationale
+- Implications for design and decision-making
+- Tensions or tradeoffs
+
+Architecture / Concept
+- Purpose
+- Boundaries or inputs/outputs
+- Invariants
+- Primary flows
+- Failure modes
+
+Policy / Standard
+- Rule
+- Rationale
+- Scope
+- Enforcement or checks
+- Exceptions or edge cases
+
+Procedure / Checklist / Guide
+- Goal
+- Preconditions
+- Steps or checks
+- Outputs or verification
+- Recovery or stop conditions
+
+Reference / Example
+- What it is
+- Canonical fields or shape
+- Allowed values
+- Known caveats
+
+Decision / Incident / Timeline / FAQ
+- Decision: context, options, choice, consequences
+- Incident: impact, root cause, fix, prevention
+- Timeline: date, event, outcome
+- FAQ: question, answer
+
+References
+- Keep `requires` and inline `@...` references relative to the snippet when possible.
+- References prime context; the snippet body still needs to explain the concept on its own.

@@ -1,5 +1,13 @@
 project_root: /Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude
 snippets:
+- id: principles/architecture/boundary-purity
+  description: Preserve domain intent at system boundaries by isolating transport
+    and UI concerns from core logic.
+  type: principles
+  scope: project
+  path: docs/snippets/principles/architecture/boundary-purity.md
+  requires:
+  - docs/architecture.md
 - id: teleclaude/architecture/adapter-client
   description: AdapterClient centralizes adapter lifecycle, UI/transport routing,
     and cross-computer requests.
@@ -393,6 +401,12 @@ snippets:
   requires:
   - docs/snippets/concept/adapter-types.md
   - docs/snippets/architecture/ux-message-cleanup.md
+- id: teleclaude/snippets/authoring
+  description: How to author TeleClaude snippets and choose taxonomy-appropriate structure.
+  type: guide
+  scope: project
+  path: docs/snippets/guide/snippet-authoring.md
+  requires: []
 - id: teleclaude/standard/cache-contract
   description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
   type: standard
