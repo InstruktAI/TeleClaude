@@ -12,6 +12,4 @@ Reference
 - session_closed: session closed and cleaned up.
 - agent_event: agent lifecycle wrapper with payload types (session_start, prompt, stop, notification, session_end, error).
 - error: system failure or unexpected adapter error.
-- voice: voice attachment received (file_path + metadata).
-- file: file attachment received (file_path + metadata).
 - system_command: internal system command event (e.g., deploy).

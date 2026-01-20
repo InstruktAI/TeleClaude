@@ -2,23 +2,22 @@
 id: teleclaude/architecture/adapter-client
 type: architecture
 scope: project
-description: AdapterClient centralizes adapter lifecycle, event routing, and cross-computer requests.
+description: AdapterClient centralizes adapter lifecycle, UI/transport routing, and cross-computer requests.
 requires:
   - ../concept/adapter-types.md
-  - ../reference/event-types.md
 ---
 
 Purpose
-- Centralize adapter lifecycle, event routing, and cross-computer requests.
+- Centralize adapter lifecycle, UI/transport routing, and cross-computer requests.
 
 Inputs/Outputs
-- Inputs: adapter events (lifecycle, agent events, errors, voice/file, system commands).
-- Outputs: UI broadcasts, transport requests, and event dispatch to daemon handlers.
+- Inputs: direct calls from command handlers and daemon orchestration logic.
+- Outputs: UI broadcasts, transport requests, and adapter-side lifecycle operations.
 
 Primary flows
-- Emits events through an internal event bus; daemon subscribes via client.on.
 - Broadcasts output updates to the origin UI adapter plus other UI adapters.
 - Routes remote requests to the first transport adapter implementing RemoteExecutionProtocol.
+- Manages UI cleanup hooks (pre/post handlers) and observer broadcasts for user commands.
 
 Invariants
 - Only successfully started adapters are registered.

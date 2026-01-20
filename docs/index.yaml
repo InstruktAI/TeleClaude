@@ -1,14 +1,13 @@
 project_root: /Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude
 snippets:
 - id: teleclaude/architecture/adapter-client
-  description: AdapterClient centralizes adapter lifecycle, event routing, and cross-computer
-    requests.
+  description: AdapterClient centralizes adapter lifecycle, UI/transport routing,
+    and cross-computer requests.
   type: architecture
   scope: project
   path: docs/snippets/architecture/adapter-client.md
   requires:
   - docs/snippets/concept/adapter-types.md
-  - docs/snippets/reference/event-types.md
 - id: teleclaude/architecture/api-server
   description: Local HTTP and WebSocket API that reads from cache and routes writes
     through the command pipeline.

@@ -12,7 +12,7 @@ Purpose
 - Provide a mental model of TeleClaude's major components and boundaries.
 
 Components
-- Daemon core: command execution, tmux orchestration, output polling, event routing.
+- Daemon core: command execution, tmux orchestration, output polling, event handling.
 - AdapterClient: unified interface to UI adapters and transport adapters.
 - UI adapters: Telegram messaging and topic management.
 - Transport adapters: Redis Streams for cross-computer request/response.

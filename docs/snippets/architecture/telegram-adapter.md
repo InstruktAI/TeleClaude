@@ -16,7 +16,7 @@ Inputs/Outputs
 - Outputs: edited output messages, temporary feedback messages, topic creation/updates, registry heartbeats.
 
 Primary flows
-- Commands map to explicit command objects and dispatch via CommandService.
+- Commands, voice inputs, and file uploads map to explicit command objects and dispatch via CommandService.
 - Session topics are created per session and named with the computer prefix.
 - Output is streamed by editing a single persistent message per session.
 - Heartbeats update a shared registry topic for peer discovery.
