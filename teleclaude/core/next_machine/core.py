@@ -33,6 +33,8 @@ logger = get_logger(__name__)
 class PhaseName(str, Enum):
     BUILD = "build"
     REVIEW = "review"
+    DOCSTRINGS = "docstrings"
+    SNIPPETS = "snippets"
 
 
 class PhaseStatus(str, Enum):
@@ -106,6 +108,11 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
         (AgentName.GEMINI.value, ThinkingMode.MED.value),
         (AgentName.CODEX.value, ThinkingMode.MED.value),
     ],
+    "docs": [
+        (AgentName.CODEX.value, ThinkingMode.MED.value),
+        (AgentName.CLAUDE.value, ThinkingMode.MED.value),
+        (AgentName.GEMINI.value, ThinkingMode.MED.value),
+    ],
 }
 
 # Post-completion instructions for each command (used in format_tool_call)
@@ -162,6 +169,18 @@ POST_COMPLETION: dict[str, str] = {
    - Call {next_call}
 3. If failed:
    - Keep session alive and help resolve""",
+    "sync-docstrings": """WHEN WORKER COMPLETES:
+1. Verify docstrings updated and accurate
+2. teleclaude__mark_phase(slug="{args}", phase="docstrings", status="complete")
+3. teleclaude__end_session(computer="local", session_id="<session_id>")
+4. Call {next_call}
+""",
+    "sync-snippets": """WHEN WORKER COMPLETES:
+1. Verify snippets and docs/index.yaml updated correctly
+2. teleclaude__mark_phase(slug="{args}", phase="snippets", status="complete")
+3. teleclaude__end_session(computer="local", session_id="<session_id>")
+4. Call {next_call}
+""",
 }
 
 REVIEW_DIFF_NOTE = (
@@ -184,6 +203,7 @@ def format_tool_call(
     subfolder: str,
     note: str = "",
     next_call: str = "",
+    completion_args: str | None = None,
 ) -> str:
     """Format a literal tool call for the orchestrator to execute."""
     # Codex requires /prompts: prefix for custom commands
@@ -196,8 +216,9 @@ def format_tool_call(
         next_call_display = next_call.strip()
         if next_call_display and PAREN_OPEN not in next_call_display:
             next_call_display = f"{next_call_display}()"
+        completion_value = completion_args if completion_args is not None else args
         # Substitute {args} and {next_call} placeholders
-        post_completion = post_completion.format(args=args, next_call=next_call_display)
+        post_completion = post_completion.format(args=completion_value, next_call=next_call_display)
 
     result = f"""Before running the command below, read ~/.agents/commands/{command}.md if you haven't already.
 
@@ -427,7 +448,7 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str | 
     Args:
         cwd: Worktree directory (not main repo)
         slug: Work item slug
-        phase: Phase to update (build, review)
+        phase: Phase to update (build, review, docstrings, snippets)
         status: New status (pending, complete, approved, changes_requested)
 
     Returns:
@@ -486,6 +507,20 @@ def is_review_changes_requested(cwd: str, slug: str) -> bool:
     state = read_phase_state(cwd, slug)
     review = state.get(PhaseName.REVIEW.value)
     return isinstance(review, str) and review == PhaseStatus.CHANGES_REQUESTED.value
+
+
+def is_docstrings_complete(cwd: str, slug: str) -> bool:
+    """Check if docstrings phase is complete."""
+    state = read_phase_state(cwd, slug)
+    value = state.get(PhaseName.DOCSTRINGS.value)
+    return isinstance(value, str) and value == PhaseStatus.COMPLETE.value
+
+
+def is_snippets_complete(cwd: str, slug: str) -> bool:
+    """Check if snippets phase is complete."""
+    state = read_phase_state(cwd, slug)
+    value = state.get(PhaseName.SNIPPETS.value)
+    return isinstance(value, str) and value == PhaseStatus.COMPLETE.value
 
 
 def has_pending_deferrals(cwd: str, slug: str) -> bool:
@@ -1580,6 +1615,31 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
         )
 
+    if not await asyncio.to_thread(is_docstrings_complete, worktree_cwd, resolved_slug):
+        agent, mode = await get_available_agent(db, "docs", WORK_FALLBACK)
+        return format_tool_call(
+            command="sync-docstrings",
+            args="",
+            completion_args=resolved_slug,
+            project=cwd,
+            agent=agent,
+            thinking_mode=mode,
+            subfolder=f"trees/{resolved_slug}",
+            next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+        )
+
+    if not await asyncio.to_thread(is_snippets_complete, worktree_cwd, resolved_slug):
+        agent, mode = await get_available_agent(db, "docs", WORK_FALLBACK)
+        return format_tool_call(
+            command="sync-snippets",
+            args="",
+            completion_args=resolved_slug,
+            project=cwd,
+            agent=agent,
+            thinking_mode=mode,
+            subfolder=f"trees/{resolved_slug}",
+            next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+        )
     # 9. Review approved - dispatch finalize
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)

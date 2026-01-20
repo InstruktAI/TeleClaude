@@ -548,6 +548,15 @@ def get_tool_definitions() -> list[Tool]:
             },
         ),
         Tool(
+            name="teleclaude__next_maintain",
+            title="TeleClaude: Next Maintain",
+            description=("Phase D state machine: Maintenance stub. Returns a message until procedures are defined."),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        Tool(
             name="teleclaude__mark_phase",
             title="TeleClaude: Mark Phase",
             description=(
@@ -564,7 +573,7 @@ def get_tool_definitions() -> list[Tool]:
                     },
                     "phase": {
                         "type": "string",
-                        "enum": ["build", "review"],
+                        "enum": ["build", "review", "docstrings", "snippets"],
                         "description": "Phase to update",
                     },
                     "status": {

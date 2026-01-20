@@ -26,11 +26,14 @@ from teleclaude.core.agents import normalize_agent_name
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, ThinkingMode
 from teleclaude.core.next_machine import (
+    next_maintain,
+    next_prepare,
+    next_work,
+)
+from teleclaude.core.next_machine.core import (
     detect_circular_dependency,
     has_uncommitted_changes,
     mark_phase,
-    next_prepare,
-    next_work,
     read_dependencies,
     write_dependencies,
 )
@@ -934,12 +937,18 @@ class MCPHandlersMixin:
             return "ERROR: NO_CWD\nWorking directory not provided. This should be auto-injected by MCP wrapper."
         return await next_work(db, slug, cwd)
 
+    async def teleclaude__next_maintain(self, cwd: str | None = None) -> str:
+        """Phase D: Execute maintenance steps (stub)."""
+        if not cwd:
+            return "ERROR: NO_CWD\nWorking directory not provided. This should be auto-injected by MCP wrapper."
+        return await next_maintain(db, cwd)
+
     async def teleclaude__mark_phase(self, slug: str, phase: str, status: str, cwd: str | None = None) -> str:
         """Mark a work phase as complete/approved in state.json."""
         if not cwd:
             return "ERROR: NO_CWD\nWorking directory not provided."
-        if phase not in ("build", "review"):
-            return f"ERROR: Invalid phase '{phase}'. Must be 'build' or 'review'."
+        if phase not in ("build", "review", "docstrings", "snippets"):
+            return f"ERROR: Invalid phase '{phase}'. Must be 'build', 'review', 'docstrings', or 'snippets'."
         if status not in ("pending", "complete", "approved", "changes_requested"):
             return (
                 f"ERROR: Invalid status '{status}'. Must be 'pending', 'complete', 'approved', or 'changes_requested'."

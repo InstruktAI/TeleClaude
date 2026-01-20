@@ -129,6 +129,13 @@ class NextWorkResult(TypedDict):
     message: str
 
 
+class NextMaintainResult(TypedDict):
+    """Result from next_maintain."""
+
+    status: str
+    message: str
+
+
 class MarkPhaseResult(TypedDict):
     """Result from mark_phase."""
 

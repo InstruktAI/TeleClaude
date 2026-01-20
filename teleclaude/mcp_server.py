@@ -55,6 +55,7 @@ class ToolName(str, Enum):
     END_SESSION = "teleclaude__end_session"
     NEXT_PREPARE = "teleclaude__next_prepare"
     NEXT_WORK = "teleclaude__next_work"
+    NEXT_MAINTAIN = "teleclaude__next_maintain"
     MARK_PHASE = "teleclaude__mark_phase"
     SET_DEPENDENCIES = "teleclaude__set_dependencies"
     MARK_AGENT_UNAVAILABLE = "teleclaude__mark_agent_unavailable"
@@ -477,6 +478,10 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 cwd = self._str_arg(arguments, "cwd") or None
                 return [TextContent(type="text", text=await self.teleclaude__next_work(slug, cwd))]
 
+            async def _handle_next_maintain() -> list[TextContent]:
+                cwd = self._str_arg(arguments, "cwd") or None
+                return [TextContent(type="text", text=await self.teleclaude__next_maintain(cwd))]
+
             async def _handle_mark_phase() -> list[TextContent]:
                 cwd = self._str_arg(arguments, "cwd") or None
                 return [
@@ -534,6 +539,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 ToolName.END_SESSION: _handle_end_session,
                 ToolName.NEXT_PREPARE: _handle_next_prepare,
                 ToolName.NEXT_WORK: _handle_next_work,
+                ToolName.NEXT_MAINTAIN: _handle_next_maintain,
                 ToolName.MARK_PHASE: _handle_mark_phase,
                 ToolName.SET_DEPENDENCIES: _handle_set_dependencies,
                 ToolName.MARK_AGENT_UNAVAILABLE: _handle_mark_agent_unavailable,
