@@ -711,7 +711,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             title=str(title) if title is not None else None,
             project_path=str(project_path) if project_path is not None else None,
             subdir=str(subdir) if subdir is not None else None,
-            channel_metadata=cast(dict[str, object] | None, channel_metadata),  # noqa: loose-dict - MessageMetadata contract
+            channel_metadata=cast(
+                dict[str, object] | None,  # guard: loose-dict - MessageMetadata contract
+                channel_metadata,
+            ),
             auto_command=None,
             launch_intent=launch_intent,
         )
@@ -732,10 +735,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         elif event_name == TeleClaudeEvents.SESSION_UPDATED:
             context = SessionUpdatedContext(
                 session_id=str(payload.get("session_id")),
-                updated_fields=cast(dict[str, object], payload.get("updated_fields", {})),  # noqa: loose-dict - API payload
+                updated_fields=cast(
+                    dict[str, object],  # guard: loose-dict - API payload
+                    payload.get("updated_fields", {}),
+                ),
             )
         elif event_name == TeleClaudeEvents.AGENT_EVENT:
-            event_data = cast(dict[str, object], payload.get("data", {}))  # noqa: loose-dict - API payload
+            event_data = cast(dict[str, object], payload.get("data", {}))  # guard: loose-dict - API payload
             hook_type = cast(str, payload.get("event_type", "notification"))
             context = AgentEventContext(
                 session_id=str(payload.get("session_id")),
@@ -747,7 +753,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 session_id=str(payload.get("session_id", "")),
                 message=str(payload.get("message", "")),
                 source=cast(str | None, payload.get("source")),
-                details=cast(dict[str, object] | None, payload.get("details")),  # noqa: loose-dict - API payload
+                details=cast(dict[str, object] | None, payload.get("details")),  # guard: loose-dict - API payload
             )
         elif event_name == "system_command":
             context = SystemCommandContext(
@@ -765,7 +771,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self,
         session_id: str,
         event_type: str,
-        data: dict[str, object],  # noqa: loose-dict - Hook payload is dynamic JSON
+        data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
     ) -> None:
         """Dispatch a hook event directly via AdapterClient."""
         session = await db.get_session(session_id)
@@ -822,7 +828,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     continue
 
                 try:
-                    payload = cast(dict[str, object], json.loads(row["payload"]))  # noqa: loose-dict - Hook payload JSON
+                    payload = cast(
+                        dict[str, object],  # guard: loose-dict - Hook payload JSON
+                        json.loads(row["payload"]),
+                    )
                 except json.JSONDecodeError as exc:
                     logger.error("Hook outbox payload invalid", row_id=row["id"], error=str(exc))
                     await db.mark_hook_outbox_delivered(row["id"], error=str(exc))

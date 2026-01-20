@@ -684,7 +684,8 @@ class Db:
         async with self._session() as db_session:
             from sqlalchemy import text
 
-            result = await db_session.execute(text(base_query), params)
+            stmt = text(base_query).bindparams(**params)
+            result = await db_session.exec(stmt)
             rows = result.mappings().all()
             return [Session.from_dict(dict(row)) for row in rows]
 
@@ -853,9 +854,11 @@ class Db:
         """
         from sqlalchemy import text
 
-        stmt = text("DELETE FROM voice_assignments WHERE assigned_at < datetime('now', :delta || ' days')")
+        stmt = text("DELETE FROM voice_assignments WHERE assigned_at < datetime('now', :delta || ' days')").bindparams(
+            delta=f"-{max_age_days}"
+        )
         async with self._session() as db_session:
-            result = await db_session.execute(stmt, {"delta": f"-{max_age_days}"})
+            result = await db_session.exec(stmt)
             await db_session.commit()
             deleted = result.rowcount or 0
         if deleted > 0:
@@ -964,9 +967,9 @@ class Db:
         stmt = text(
             "UPDATE agent_availability SET available = 1, unavailable_until = NULL, reason = NULL "
             "WHERE unavailable_until IS NOT NULL AND unavailable_until < :now"
-        )
+        ).bindparams(now=now)
         async with self._session() as db_session:
-            result = await db_session.execute(stmt, {"now": now})
+            result = await db_session.exec(stmt)
             await db_session.commit()
             cleared = result.rowcount or 0
         if cleared > 0:
@@ -1037,12 +1040,9 @@ class Db:
             "UPDATE hook_outbox SET locked_at = :now "
             "WHERE id = :row_id AND delivered_at IS NULL "
             "AND (locked_at IS NULL OR locked_at <= :cutoff)"
-        )
+        ).bindparams(now=now_iso, row_id=row_id, cutoff=lock_cutoff_iso)
         async with self._session() as db_session:
-            result = await db_session.execute(
-                stmt,
-                {"now": now_iso, "row_id": row_id, "cutoff": lock_cutoff_iso},
-            )
+            result = await db_session.exec(stmt)
             await db_session.commit()
             return (result.rowcount or 0) == 1
 
@@ -1053,9 +1053,9 @@ class Db:
 
         stmt = text(
             "UPDATE hook_outbox SET delivered_at = :now, last_error = :error, locked_at = NULL WHERE id = :row_id"
-        )
+        ).bindparams(now=now, error=error, row_id=row_id)
         async with self._session() as db_session:
-            await db_session.execute(stmt, {"now": now, "error": error, "row_id": row_id})
+            await db_session.exec(stmt)
             await db_session.commit()
 
     async def mark_hook_outbox_failed(
@@ -1071,17 +1071,14 @@ class Db:
         stmt = text(
             "UPDATE hook_outbox SET attempt_count = :attempt, next_attempt_at = :next_attempt, "
             "last_error = :error, locked_at = NULL WHERE id = :row_id"
+        ).bindparams(
+            attempt=attempt_count,
+            next_attempt=next_attempt_at,
+            error=error,
+            row_id=row_id,
         )
         async with self._session() as db_session:
-            await db_session.execute(
-                stmt,
-                {
-                    "attempt": attempt_count,
-                    "next_attempt": next_attempt_at,
-                    "error": error,
-                    "row_id": row_id,
-                },
-            )
+            await db_session.exec(stmt)
             await db_session.commit()
 
     async def enqueue_api_event(
@@ -1152,12 +1149,9 @@ class Db:
             "UPDATE api_outbox SET locked_at = :now "
             "WHERE id = :row_id AND delivered_at IS NULL "
             "AND (locked_at IS NULL OR locked_at <= :cutoff)"
-        )
+        ).bindparams(now=now_iso, row_id=row_id, cutoff=lock_cutoff_iso)
         async with self._session() as db_session:
-            result = await db_session.execute(
-                stmt,
-                {"now": now_iso, "row_id": row_id, "cutoff": lock_cutoff_iso},
-            )
+            result = await db_session.exec(stmt)
             await db_session.commit()
             return (result.rowcount or 0) == 1
 
@@ -1174,17 +1168,9 @@ class Db:
         stmt = text(
             "UPDATE api_outbox SET delivered_at = :now, last_error = :error, "
             "locked_at = NULL, response = :response WHERE id = :row_id"
-        )
+        ).bindparams(now=now, error=error, response=response_json, row_id=row_id)
         async with self._session() as db_session:
-            await db_session.execute(
-                stmt,
-                {
-                    "now": now,
-                    "error": error,
-                    "response": response_json,
-                    "row_id": row_id,
-                },
-            )
+            await db_session.exec(stmt)
             await db_session.commit()
 
     async def mark_api_outbox_failed(
@@ -1200,17 +1186,14 @@ class Db:
         stmt = text(
             "UPDATE api_outbox SET attempt_count = :attempt, next_attempt_at = :next_attempt, "
             "last_error = :error, locked_at = NULL WHERE id = :row_id"
+        ).bindparams(
+            attempt=attempt_count,
+            next_attempt=next_attempt_at,
+            error=error,
+            row_id=row_id,
         )
         async with self._session() as db_session:
-            await db_session.execute(
-                stmt,
-                {
-                    "attempt": attempt_count,
-                    "next_attempt": next_attempt_at,
-                    "error": error,
-                    "row_id": row_id,
-                },
-            )
+            await db_session.exec(stmt)
             await db_session.commit()
 
 

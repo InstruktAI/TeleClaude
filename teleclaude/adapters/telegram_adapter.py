@@ -349,7 +349,7 @@ class TelegramAdapter(
         # Force IPv4 for Telegram API calls. Some networks advertise IPv6 (AAAA) without
         # providing a working IPv6 route, which can cause connect timeouts inside httpx.
         httpx_kwargs = cast(
-            dict[str, object],  # noqa: loose-dict - Telegram Bot API httpx kwargs
+            dict[str, object],  # guard: loose-dict - Telegram Bot API httpx kwargs
             {"transport": httpx.AsyncHTTPTransport(local_address="0.0.0.0")},
         )
         builder.request(HTTPXRequest(httpx_kwargs=httpx_kwargs))
