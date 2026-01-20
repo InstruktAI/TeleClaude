@@ -4,6 +4,7 @@ from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.types.commands import (
     CreateSessionCommand,
+    KeysCommand,
     SendMessageCommand,
     StartAgentCommand,
 )
@@ -25,6 +26,14 @@ def test_map_telegram_message():
     assert cmd.text == "Hello World"
 
 
+def test_map_telegram_keys():
+    cmd = CommandMapper.map_telegram_input("cancel", [], MessageMetadata(), session_id="sess_123")
+    assert isinstance(cmd, KeysCommand)
+    assert cmd.session_id == "sess_123"
+    assert cmd.key == "cancel"
+    assert cmd.args == []
+
+
 def test_map_redis_new_session():
     launch_intent = SessionLaunchIntent(kind=SessionLaunchKind.AGENT, agent="claude")
     cmd = CommandMapper.map_redis_input(
@@ -42,6 +51,14 @@ def test_map_redis_agent_start():
     assert cmd.session_id == "sess_456"
     assert cmd.agent_name == "claude"
     assert cmd.args == ["--slow"]
+
+
+def test_map_redis_keys():
+    cmd = CommandMapper.map_redis_input("key_up 3", session_id="sess_456")
+    assert isinstance(cmd, KeysCommand)
+    assert cmd.session_id == "sess_456"
+    assert cmd.key == "key_up"
+    assert cmd.args == ["3"]
 
 
 def test_map_rest_message():

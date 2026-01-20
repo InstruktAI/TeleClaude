@@ -101,6 +101,11 @@ class UiAdapter(BaseAdapter):
         typed_metadata: TelegramAdapterMetadata = metadata
         typed_metadata.output_message_id = message_id
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        logger.debug(
+            "Stored output_message_id: session=%s message_id=%s",
+            session.session_id[:8],
+            message_id,
+        )
 
     async def _clear_output_message_id(self, session: "Session") -> None:
         """Clear output_message_id from adapter namespace."""
@@ -114,6 +119,10 @@ class UiAdapter(BaseAdapter):
         typed_metadata: TelegramAdapterMetadata = metadata
         typed_metadata.output_message_id = None
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        logger.debug(
+            "Cleared output_message_id: session=%s",
+            session.session_id[:8],
+        )
 
     async def _try_edit_output_message(self, session: "Session", text: str, metadata: MessageMetadata) -> bool:
         """Try to edit existing output message, clear message_id if edit fails.

@@ -15,6 +15,7 @@ from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.config import TrustedDir
 from teleclaude.core.models import MessageMetadata
+from teleclaude.types.commands import KeysCommand
 
 
 @pytest.fixture
@@ -109,22 +110,23 @@ class TestSimpleCommandHandlers:
         context = MagicMock()
         context.args = []
 
-        telegram_adapter.client.handle_event = AsyncMock()
+        telegram_adapter.client.handle_internal_command = AsyncMock()
 
         with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
             mock_db.get_sessions_by_adapter_metadata = AsyncMock(return_value=[session])
 
             await telegram_adapter._handle_simple_command(update, context, "cancel")
 
-        assert telegram_adapter.client.handle_event.call_count == 1
-        args, _ = telegram_adapter.client.handle_event.call_args
-        event, payload, metadata = args
+        assert telegram_adapter.client.handle_internal_command.call_count == 1
+        args, kwargs = telegram_adapter.client.handle_internal_command.call_args
+        cmd = args[0]
+        metadata = kwargs.get("metadata")
         assert isinstance(metadata, MessageMetadata)
         assert metadata.channel_metadata is not None
         assert metadata.channel_metadata.get("message_id") == "456"
-        assert event == "command"
-        assert isinstance(payload, dict)
-        assert payload.get("message_id") == "456"
+        assert isinstance(cmd, KeysCommand)
+        assert cmd.session_id == "session-123"
+        assert cmd.key == "cancel"
 
 
 class TestMessaging:

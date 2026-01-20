@@ -235,14 +235,18 @@ class TelegramAdapter(
         metadata.channel_metadata = metadata.channel_metadata or {}
         metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
 
-        payload = {
-            "session_id": session.session_id,
-            "args": args,
-            "command_name": event,
-            "message_id": str(update.effective_message.message_id),
-        }
+        # Normalize via mapper
+        from teleclaude.core.command_mapper import CommandMapper
 
-        await self.client.handle_event("command", payload, metadata)
+        cmd = CommandMapper.map_telegram_input(
+            event=event,
+            args=args,
+            metadata=metadata,
+            session_id=session.session_id,
+        )
+        cmd.request_id = str(update.effective_message.message_id)
+
+        await self.client.handle_internal_command(cmd, metadata=metadata)
 
     def _ensure_started(self) -> None:
         """Ensure adapter is started."""
@@ -514,6 +518,11 @@ class TelegramAdapter(
         logger.info("PRE-HANDLER CALLED for session %s", session.session_id[:8])
         # Delete pending ephemeral messages from previous interaction
         pending = await db.get_pending_deletions(session.session_id)
+        logger.debug(
+            "Pre-handler pending deletions: session=%s count=%d",
+            session.session_id[:8],
+            len(pending),
+        )
         if pending:
             for msg_id in pending:
                 try:
@@ -539,7 +548,11 @@ class TelegramAdapter(
             message_id: Current message ID to track for deletion
         """
         await db.add_pending_deletion(session.session_id, message_id)
-        logger.debug("Tracked message %s for deletion on next input", message_id)
+        logger.debug(
+            "Tracked message %s for deletion on next input (session %s)",
+            message_id,
+            session.session_id[:8],
+        )
 
     # ==================== Platform-Specific Parameters ====================
 

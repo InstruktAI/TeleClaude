@@ -12,6 +12,7 @@ class CommandType(str, Enum):
     """Internal command types."""
 
     CREATE_SESSION = "create_session"
+    KEYS = "keys"
     START_AGENT = "start_agent"
     RESUME_AGENT = "resume_agent"
     SEND_MESSAGE = "send_message"
@@ -157,6 +158,31 @@ class SendMessageCommand(InternalCommand):
 
     def to_payload(self) -> Dict[str, object]:
         return {"session_id": self.session_id, "text": self.text}
+
+
+@dataclass(kw_only=True)
+class KeysCommand(InternalCommand):
+    """Intent to send key/control commands to a session."""
+
+    session_id: str
+    key: str
+    args: List[str] = field(default_factory=list)
+
+    def __init__(
+        self,
+        *,
+        session_id: str,
+        key: str,
+        args: Optional[List[str]] = None,
+        request_id: Optional[str] = None,
+    ):
+        super().__init__(command_type=CommandType.KEYS, request_id=request_id)
+        self.session_id = session_id
+        self.key = key
+        self.args = args or []
+
+    def to_payload(self) -> Dict[str, object]:
+        return {"session_id": self.session_id, "args": list(self.args)}
 
 
 @dataclass(kw_only=True)

@@ -9,11 +9,29 @@ from teleclaude.types.commands import (
     CreateSessionCommand,
     GetSessionDataCommand,
     InternalCommand,
+    KeysCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
     SendMessageCommand,
     StartAgentCommand,
 )
+
+_KEY_COMMANDS = {
+    "cancel",
+    "cancel2x",
+    "kill",
+    "tab",
+    "shift_tab",
+    "enter",
+    "escape",
+    "escape2x",
+    "backspace",
+    "key_up",
+    "key_down",
+    "key_left",
+    "key_right",
+    "ctrl",
+}
 
 
 class CommandMapper:
@@ -27,6 +45,13 @@ class CommandMapper:
         session_id: Optional[str] = None,
     ) -> InternalCommand:
         """Map Telegram adapter input to internal command."""
+        if event in _KEY_COMMANDS:
+            return KeysCommand(
+                session_id=session_id or "",
+                key=event,
+                args=args,
+            )
+
         if event == "new_session":
             return CreateSessionCommand(
                 project_path=metadata.project_path or "",
@@ -93,6 +118,13 @@ class CommandMapper:
             launch_intent_obj = SessionLaunchIntent.from_dict(launch_intent)
         elif isinstance(launch_intent, SessionLaunchIntent):
             launch_intent_obj = launch_intent
+
+        if cmd_name in _KEY_COMMANDS:
+            return KeysCommand(
+                session_id=session_id or "",
+                key=cmd_name,
+                args=args,
+            )
 
         if cmd_name == "message":
             return SendMessageCommand(

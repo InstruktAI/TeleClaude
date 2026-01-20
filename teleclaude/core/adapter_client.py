@@ -800,6 +800,24 @@ class AdapterClient:
             message_id = metadata.channel_metadata.get("message_id")
             if message_id is not None:
                 payload["message_id"] = str(message_id)
+                logger.debug(
+                    "Injected message_id from channel_metadata: command=%s session=%s message_id=%s",
+                    command_name,
+                    payload.get("session_id"),
+                    message_id,
+                )
+            else:
+                logger.debug(
+                    "No message_id in channel_metadata for command=%s session=%s",
+                    command_name,
+                    payload.get("session_id"),
+                )
+        elif "message_id" not in payload:
+            logger.debug(
+                "No message_id in payload or channel_metadata for command=%s session=%s",
+                command_name,
+                payload.get("session_id"),
+            )
 
         # Inject command into payload for context builder
         payload["internal_command"] = command
@@ -876,6 +894,12 @@ class AdapterClient:
             message_id,
             event,
         )
+        if session and not message_id:
+            logger.debug(
+                "Skipping pre/post handlers (missing message_id): session=%s event=%s",
+                session.session_id[:8],
+                event,
+            )
         if session and message_id:
             await self._call_pre_handler(session, normalized_event, metadata.origin)
 

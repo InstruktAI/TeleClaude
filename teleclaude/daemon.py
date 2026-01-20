@@ -74,6 +74,7 @@ from teleclaude.types.commands import (
     CreateSessionCommand,
     GetSessionDataCommand,
     InternalCommand,
+    KeysCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
     SendAgentCommand,
@@ -1995,50 +1996,64 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await command_handlers.list_todos(path)
         elif command == "get_computer_info":
             return await command_handlers.get_computer_info()
-        elif command == "cancel":
-            return await command_handlers.cancel_command(context, self.client, self._start_polling_for_session)
-        elif command == "cancel2x":
-            return await command_handlers.cancel_command(
-                context, self.client, self._start_polling_for_session, double=True
-            )
-        elif command == "kill":
-            return await command_handlers.kill_command(context, self.client, self._start_polling_for_session)
-        elif command == "escape":
-            return await command_handlers.escape_command(context, args, self.client, self._start_polling_for_session)
-        elif command == "escape2x":
-            return await command_handlers.escape_command(
-                context,
-                args,
-                self.client,
-                self._start_polling_for_session,
-                double=True,
-            )
-        elif command == "ctrl":
-            return await command_handlers.ctrl_command(context, args, self.client, self._start_polling_for_session)
-        elif command == "tab":
-            return await command_handlers.tab_command(context, self.client, self._start_polling_for_session)
-        elif command == "shift_tab":
-            return await command_handlers.shift_tab_command(context, args, self.client, self._start_polling_for_session)
-        elif command == "backspace":
-            return await command_handlers.backspace_command(context, args, self.client, self._start_polling_for_session)
-        elif command == "enter":
-            return await command_handlers.enter_command(context, self.client, self._start_polling_for_session)
-        elif command == "key_up":
-            return await command_handlers.arrow_key_command(
-                context, args, self.client, self._start_polling_for_session, "up"
-            )
-        elif command == "key_down":
-            return await command_handlers.arrow_key_command(
-                context, args, self.client, self._start_polling_for_session, "down"
-            )
-        elif command == "key_left":
-            return await command_handlers.arrow_key_command(
-                context, args, self.client, self._start_polling_for_session, "left"
-            )
-        elif command == "key_right":
-            return await command_handlers.arrow_key_command(
-                context, args, self.client, self._start_polling_for_session, "right"
-            )
+        elif command == "keys":
+            keys_cmd = internal_cmd if isinstance(internal_cmd, KeysCommand) else None
+            if not keys_cmd:
+                raise ValueError("Missing KeysCommand for keys")
+
+            key_name = keys_cmd.key
+            key_args = list(keys_cmd.args)
+
+            if key_name == "cancel":
+                return await command_handlers.cancel_command(context, self.client, self._start_polling_for_session)
+            if key_name == "cancel2x":
+                return await command_handlers.cancel_command(
+                    context, self.client, self._start_polling_for_session, double=True
+                )
+            if key_name == "kill":
+                return await command_handlers.kill_command(context, self.client, self._start_polling_for_session)
+            if key_name == "escape":
+                return await command_handlers.escape_command(
+                    context, key_args, self.client, self._start_polling_for_session
+                )
+            if key_name == "escape2x":
+                return await command_handlers.escape_command(
+                    context, key_args, self.client, self._start_polling_for_session, double=True
+                )
+            if key_name == "ctrl":
+                return await command_handlers.ctrl_command(
+                    context, key_args, self.client, self._start_polling_for_session
+                )
+            if key_name == "tab":
+                return await command_handlers.tab_command(context, self.client, self._start_polling_for_session)
+            if key_name == "shift_tab":
+                return await command_handlers.shift_tab_command(
+                    context, key_args, self.client, self._start_polling_for_session
+                )
+            if key_name == "backspace":
+                return await command_handlers.backspace_command(
+                    context, key_args, self.client, self._start_polling_for_session
+                )
+            if key_name == "enter":
+                return await command_handlers.enter_command(context, self.client, self._start_polling_for_session)
+            if key_name == "key_up":
+                return await command_handlers.arrow_key_command(
+                    context, key_args, self.client, self._start_polling_for_session, "up"
+                )
+            if key_name == "key_down":
+                return await command_handlers.arrow_key_command(
+                    context, key_args, self.client, self._start_polling_for_session, "down"
+                )
+            if key_name == "key_left":
+                return await command_handlers.arrow_key_command(
+                    context, key_args, self.client, self._start_polling_for_session, "left"
+                )
+            if key_name == "key_right":
+                return await command_handlers.arrow_key_command(
+                    context, key_args, self.client, self._start_polling_for_session, "right"
+                )
+
+            raise ValueError(f"Unknown keys command: {key_name}")
         elif command == "start_agent":
             start_cmd: StartAgentCommand
             if isinstance(internal_cmd, StartAgentCommand):
