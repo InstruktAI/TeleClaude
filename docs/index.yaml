@@ -1,0 +1,95 @@
+project_root: /Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude
+snippets:
+  - id: architecture/adapter-client
+    description: Unified adapter router for UI and transport components, plus event bus for daemon communication.
+    path: docs/snippets/architecture/adapter-client.md
+    requires:
+      - docs/snippets/architecture/event-model.md
+      - docs/snippets/architecture/ux-message-cleanup.md
+  - id: architecture/agent-hooks-outbox
+    description: Agent CLI hook ingestion via hook receiver and durable outbox delivery.
+    path: docs/snippets/architecture/agent-hooks-outbox.md
+    requires:
+      - docs/snippets/architecture/database.md
+      - docs/snippets/architecture/event-model.md
+  - id: architecture/api-server
+    description: Local HTTP and WebSocket API for session control and status updates.
+    path: docs/snippets/architecture/api-server.md
+    requires:
+      - docs/snippets/architecture/adapter-client.md
+      - docs/snippets/architecture/cache.md
+      - docs/snippets/architecture/event-model.md
+  - id: architecture/cache
+    description: DaemonCache for remote computers, sessions, projects, and todos with TTL and subscriptions.
+    path: docs/snippets/architecture/cache.md
+    requires: []
+  - id: architecture/context-index
+    description: Build docs/index.yaml from local snippets and resolve dependency paths.
+    path: docs/snippets/architecture/context-index.md
+    requires: []
+  - id: architecture/context-selection
+    description: Select and emit relevant snippets using local LLM ranking with session-level dedupe.
+    path: docs/snippets/architecture/context-selection.md
+    requires:
+      - docs/snippets/architecture/context-index.md
+  - id: architecture/daemon-lifecycle
+    description: TeleClaude daemon startup/shutdown order and the background loops that keep the service running.
+    path: docs/snippets/architecture/daemon-lifecycle.md
+    requires:
+      - docs/snippets/architecture/adapter-client.md
+      - docs/snippets/architecture/api-server.md
+      - docs/snippets/architecture/mcp-server.md
+      - docs/snippets/architecture/output-polling.md
+      - docs/snippets/architecture/agent-hooks-outbox.md
+  - id: architecture/database
+    description: SQLite persistence for sessions, outboxes, UX state, and agent availability.
+    path: docs/snippets/architecture/database.md
+    requires: []
+  - id: architecture/event-model
+    description: Typed event contract between adapters and the daemon (commands, lifecycle, agent events, errors).
+    path: docs/snippets/architecture/event-model.md
+    requires: []
+  - id: architecture/mcp-server
+    description: MCP tool server exposing TeleClaude operations over a local socket and remote relay.
+    path: docs/snippets/architecture/mcp-server.md
+    requires:
+      - docs/snippets/architecture/adapter-client.md
+      - docs/snippets/architecture/redis-transport.md
+      - docs/snippets/architecture/session-lifecycle.md
+  - id: architecture/output-polling
+    description: Output polling pipeline that captures tmux output and streams updates to UI adapters.
+    path: docs/snippets/architecture/output-polling.md
+    requires:
+      - docs/snippets/architecture/tmux-management.md
+      - docs/snippets/architecture/adapter-client.md
+  - id: architecture/redis-transport
+    description: Redis Streams transport for cross-computer AI-to-AI messaging and session output delivery.
+    path: docs/snippets/architecture/redis-transport.md
+    requires:
+      - docs/snippets/architecture/adapter-client.md
+      - docs/snippets/architecture/cache.md
+      - docs/snippets/architecture/event-model.md
+  - id: architecture/session-lifecycle
+    description: How TeleClaude creates, runs, and cleans up tmux-backed sessions.
+    path: docs/snippets/architecture/session-lifecycle.md
+    requires:
+      - docs/snippets/architecture/database.md
+      - docs/snippets/architecture/tmux-management.md
+      - docs/snippets/architecture/output-polling.md
+      - docs/snippets/architecture/adapter-client.md
+  - id: architecture/telegram-adapter
+    description: Telegram UI adapter for commands, topics, messaging, and peer heartbeat.
+    path: docs/snippets/architecture/telegram-adapter.md
+    requires:
+      - docs/snippets/architecture/adapter-client.md
+      - docs/snippets/architecture/ux-message-cleanup.md
+      - docs/snippets/architecture/session-lifecycle.md
+  - id: architecture/tmux-management
+    description: Tmux session orchestration, input injection, and per-session temporary directories.
+    path: docs/snippets/architecture/tmux-management.md
+    requires: []
+  - id: architecture/ux-message-cleanup
+    description: Ephemeral message cleanup using pending_message_deletions for clean UI history.
+    path: docs/snippets/architecture/ux-message-cleanup.md
+    requires:
+      - docs/snippets/architecture/database.md

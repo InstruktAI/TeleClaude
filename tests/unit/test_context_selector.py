@@ -12,7 +12,9 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _snippet(snippet_id: str, snippet_type: str, scope: str, description: str, body: str, requires: list[str] | None = None) -> str:
+def _snippet(
+    snippet_id: str, snippet_type: str, scope: str, description: str, body: str, requires: list[str] | None = None
+) -> str:
     requires = requires or []
     requires_block = "\n".join(f"  - {req}" for req in requires)
     return (
@@ -20,9 +22,7 @@ def _snippet(snippet_id: str, snippet_type: str, scope: str, description: str, b
         f"id: {snippet_id}\n"
         f"type: {snippet_type}\n"
         f"scope: {scope}\n"
-        f"description: {description}\n"
-        + ("requires:\n" + requires_block + "\n" if requires else "")
-        + "---\n"
+        f"description: {description}\n" + ("requires:\n" + requires_block + "\n" if requires else "") + "---\n"
         f"{body}\n"
     )
 
