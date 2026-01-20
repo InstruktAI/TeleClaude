@@ -15,3 +15,4 @@ Checklist
 - Exactly one bot is configured as telegram.is_master.
 - make status shows each daemon running.
 - teleclaude__list_computers returns all online machines.
+- If using MCP across computers, Redis is configured and reachable on all hosts.

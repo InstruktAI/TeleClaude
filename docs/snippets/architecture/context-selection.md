@@ -21,4 +21,4 @@ Primary flows
 - Persist selected IDs per session to avoid repeated context churn.
 
 Failure modes
-- If selection fails, returns an empty snippet list rather than partial output.
+- If selection fails or parsing is invalid, returns an empty snippet list.

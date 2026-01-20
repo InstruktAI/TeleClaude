@@ -280,6 +280,14 @@ snippets:
   scope: project
   path: docs/snippets/policy/daemon-availability.md
   requires: []
+- id: teleclaude/policy/mcp-connection-resilience
+  description: MCP wrapper provides zero-downtime restarts and clients should not
+    require reconnects.
+  type: policy
+  scope: project
+  path: docs/snippets/policy/mcp-connection-resilience.md
+  requires:
+  - docs/snippets/architecture/mcp-layer.md
 - id: teleclaude/policy/single-database
   description: The daemon uses a single SQLite database file at the project root.
   type: policy
@@ -309,11 +317,25 @@ snippets:
   path: docs/snippets/procedure/add-telegram-command.md
   requires:
   - docs/snippets/policy/telegram-command-registration.md
+- id: teleclaude/procedure/out-of-band-telegram-alerts
+  description: Send Telegram alerts when the daemon is down using standalone scripts.
+  type: procedure
+  scope: project
+  path: docs/snippets/procedure/out-of-band-telegram-alerts.md
+  requires:
+  - docs/snippets/policy/daemon-availability.md
 - id: teleclaude/procedure/restart-daemon
   description: Controlled daemon restart with verification and log checks.
   type: procedure
   scope: project
   path: docs/snippets/procedure/restart-daemon.md
+  requires:
+  - docs/snippets/policy/daemon-availability.md
+- id: teleclaude/procedure/rsync-development
+  description: Fast iteration workflow using bin/rsync.sh and remote daemon restarts.
+  type: procedure
+  scope: project
+  path: docs/snippets/procedure/rsync-development.md
   requires:
   - docs/snippets/policy/daemon-availability.md
 - id: teleclaude/reference/cache-ttl-matrix

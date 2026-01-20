@@ -7,10 +7,9 @@ requires: []
 ---
 
 Reference
-- command: adapter command ingress.
+- command: adapter command ingress for daemon handling.
 - session_started: session created and ready.
 - session_updated: session metadata updated.
 - session_closed: session closed and cleaned up.
-- agent_event: wrapper event for agent lifecycle (session_start, prompt, stop, notification, session_end).
+- agent_event: agent lifecycle wrapper with payload types (session_start, prompt, stop, notification, session_end, error).
 - error: command or system failure.
-- system_command: internal control events (deploy, health_check).

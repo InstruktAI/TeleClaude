@@ -8,6 +8,6 @@ requires:
 ---
 
 Policy
-- Exactly one bot (the master) registers Telegram commands in a multi-bot supergroup.
-- BotCommand definitions include trailing spaces to avoid /command@botname binding.
+- Exactly one bot registers commands in a multi-bot supergroup; set telegram.is_master true on the master only.
 - Non-master bots must not publish command lists.
+- BotCommand definitions include trailing spaces to avoid /command@botname binding.

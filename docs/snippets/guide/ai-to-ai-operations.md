@@ -13,4 +13,5 @@ Guide
 - List projects to choose a trusted project path on the target.
 - Start a session with a clear title and initial instruction.
 - Use send_message for follow-ups and get_session_data for status checks.
-- Stop notifications or end sessions when the work is complete.
+- Stop notifications when you no longer need updates; end sessions when work completes.
+- If a worker nears context limits, ask for a summary, then end and restart a fresh session.

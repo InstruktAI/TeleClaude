@@ -25,6 +25,7 @@ Primary flows
 Invariants
 - Transport adapter implements RemoteExecutionProtocol for request/response.
 - Transport adapter never performs UI messaging.
+- Redis is optional; Telegram multi-computer operation does not require it.
 
 Failure modes
 - Redis connectivity loss disables cross-computer operations but leaves local sessions intact.

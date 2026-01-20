@@ -23,6 +23,7 @@ Reference
 - teleclaude__end_session
 - teleclaude__next_prepare
 - teleclaude__next_work
+- teleclaude__next_maintain
 - teleclaude__mark_phase
 - teleclaude__set_dependencies
 - teleclaude__mark_agent_unavailable
