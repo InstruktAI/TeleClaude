@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, TypedDict
@@ -74,6 +75,43 @@ def _save_state(state: ContextState) -> None:
         CONTEXT_STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
     except Exception as exc:
         logger.exception("context_state_save_failed", error=str(exc))
+
+
+_INLINE_REF_RE = re.compile(r"@([\\w./~\\-]+\\.md)")
+
+
+def _split_frontmatter(content: str) -> tuple[str, str]:
+    """Split frontmatter header from body, preserving header verbatim."""
+    if not content.startswith("---"):
+        return "", content
+    lines = content.splitlines(keepends=True)
+    if not lines:
+        return "", content
+    # Find the closing frontmatter fence.
+    for idx in range(1, len(lines)):
+        if lines[idx].strip() == "---":
+            head = "".join(lines[: idx + 1])
+            body = "".join(lines[idx + 1 :])
+            return head, body
+    return "", content
+
+
+def _resolve_inline_refs(content: str, *, snippet_path: Path) -> str:
+    """Expand @<path>.md references to absolute paths for tool consumption."""
+    head, body = _split_frontmatter(content)
+
+    def _expand(match: re.Match[str]) -> str:
+        ref = match.group(1)
+        if "://" in ref:
+            return match.group(0)
+        candidate = Path(ref).expanduser()
+        if not candidate.is_absolute():
+            candidate = (snippet_path.parent / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+        return f"@{candidate}"
+
+    return f"{head}{_INLINE_REF_RE.sub(_expand, body)}"
 
 
 def _parse_snippets(snippets_dir: Path, default_scope: str) -> list[SnippetMeta]:
@@ -276,7 +314,8 @@ def build_context_output(
 
     for snippet in new_snippets:
         try:
-            content = snippet.path.read_text(encoding="utf-8")
+            raw = snippet.path.read_text(encoding="utf-8")
+            content = _resolve_inline_refs(raw, snippet_path=snippet.path)
         except Exception as exc:
             logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))
             continue

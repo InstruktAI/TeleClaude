@@ -40,6 +40,13 @@ snippets:
   path: docs/snippets/architecture/context-selection.md
   requires:
   - docs/snippets/architecture/context-index.md
+- id: teleclaude/architecture/daemon
+  description: Daemon orchestration responsibilities, boundaries, and background services.
+  type: architecture
+  scope: project
+  path: docs/snippets/architecture/daemon.md
+  requires:
+  - docs/snippets/architecture/system-overview.md
 - id: teleclaude/architecture/daemon-lifecycle
   description: Daemon startup, background task orchestration, and graceful shutdown
     behavior.
@@ -369,14 +376,6 @@ snippets:
   scope: project
   path: docs/snippets/reference/ui-commands.md
   requires: []
-- id: teleclaude/role/daemon
-  description: The daemon coordinates adapters, command handling, tmux execution,
-    and background tasks.
-  type: role
-  scope: project
-  path: docs/snippets/role/daemon.md
-  requires:
-  - docs/snippets/architecture/system-overview.md
 - id: teleclaude/role/transport-adapter
   description: Transport adapters handle cross-computer request/response and peer
     discovery.

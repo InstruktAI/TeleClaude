@@ -1,11 +1,14 @@
 ---
-id: teleclaude/role/daemon
-type: role
+id: teleclaude/architecture/daemon
+type: architecture
 scope: project
-description: The daemon coordinates adapters, command handling, tmux execution, and background tasks.
+description: Daemon orchestration responsibilities, boundaries, and background services.
 requires:
-  - ../architecture/system-overview.md
+  - system-overview.md
 ---
+
+Purpose
+- Coordinate adapters, command handling, tmux execution, and background tasks.
 
 Responsibilities
 - Initialize adapters, cache, and core services.
