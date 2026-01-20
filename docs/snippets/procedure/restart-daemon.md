@@ -1,10 +1,10 @@
 ---
-id: teleclaude/procedure/restart-daemon
-type: procedure
-scope: project
 description: Controlled daemon restart with verification and log checks.
+id: teleclaude/procedure/restart-daemon
 requires:
-  - ../policy/daemon-availability.md
+- teleclaude/policy/daemon-availability
+scope: project
+type: procedure
 ---
 
 Steps

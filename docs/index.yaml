@@ -136,14 +136,6 @@ snippets:
   scope: project
   path: docs/snippets/policy/ux-message-cleanup.md
   requires: []
-- id: principles/architecture/boundary-purity
-  description: Preserve domain intent at system boundaries by isolating transport
-    and UI concerns from core logic.
-  type: principles
-  scope: project
-  path: docs/snippets/principles/architecture/boundary-purity.md
-  requires:
-  - docs/architecture.md
 - id: principles/priming
   description: Snippets are a priming tool that should elevate expert reasoning, not
     mirror average patterns.
@@ -206,7 +198,7 @@ snippets:
   scope: project
   path: docs/snippets/architecture/adapter-client.md
   requires:
-  - docs/snippets/concept/adapter-types.md
+  - teleclaude/concept/adapter-types
 - id: teleclaude/architecture/api-server
   description: Local HTTP and WebSocket API that reads from cache and routes writes
     through the command pipeline.
@@ -214,9 +206,9 @@ snippets:
   scope: project
   path: docs/snippets/architecture/api-server.md
   requires:
-  - docs/snippets/architecture/cache.md
-  - docs/snippets/concept/resource-models.md
-  - docs/snippets/reference/event-types.md
+  - teleclaude/architecture/cache
+  - teleclaude/concept/resource-models
+  - teleclaude/reference/event-types
 - id: teleclaude/architecture/cache
   description: DaemonCache snapshot layer for computers, projects, todos, sessions,
     and agent availability.
@@ -224,7 +216,7 @@ snippets:
   scope: project
   path: docs/snippets/architecture/cache.md
   requires:
-  - docs/snippets/concept/resource-models.md
+  - teleclaude/concept/resource-models
 - id: teleclaude/architecture/context-index
   description: Snippet index generation that produces docs/index.yaml from snippet
     frontmatter.
@@ -238,14 +230,14 @@ snippets:
   scope: project
   path: docs/snippets/architecture/context-selection.md
   requires:
-  - docs/snippets/architecture/context-index.md
+  - teleclaude/architecture/context-index
 - id: teleclaude/architecture/daemon
   description: Daemon orchestration responsibilities, boundaries, and background services.
   type: architecture
   scope: project
   path: docs/snippets/architecture/daemon.md
   requires:
-  - docs/snippets/architecture/system-overview.md
+  - architecture/system-overview
 - id: teleclaude/architecture/daemon-lifecycle
   description: Daemon startup, background task orchestration, and graceful shutdown
     behavior.
@@ -253,9 +245,9 @@ snippets:
   scope: project
   path: docs/snippets/architecture/daemon-lifecycle.md
   requires:
-  - docs/snippets/architecture/system-overview.md
-  - docs/snippets/architecture/mcp-layer.md
-  - docs/snippets/architecture/api-server.md
+  - architecture/system-overview
+  - architecture/mcp-layer
+  - teleclaude/architecture/api-server
 - id: teleclaude/architecture/database
   description: SQLite persistence for sessions, hook outbox, UX state, and agent metadata.
   type: architecture
@@ -268,8 +260,8 @@ snippets:
   scope: project
   path: docs/snippets/architecture/outbox.md
   requires:
-  - docs/snippets/architecture/database.md
-  - docs/snippets/reference/event-types.md
+  - teleclaude/architecture/database
+  - teleclaude/reference/event-types
 - id: teleclaude/architecture/redis-transport
   description: Redis Streams transport for cross-computer request/response and peer
     discovery.
@@ -277,9 +269,9 @@ snippets:
   scope: project
   path: docs/snippets/architecture/redis-transport.md
   requires:
-  - docs/snippets/architecture/adapter-client.md
-  - docs/snippets/architecture/cache.md
-  - docs/snippets/reference/event-types.md
+  - teleclaude/architecture/adapter-client
+  - teleclaude/architecture/cache
+  - teleclaude/reference/event-types
 - id: teleclaude/architecture/session-listeners
   description: In-memory listener registry that notifies callers when target sessions
     stop.
@@ -287,7 +279,7 @@ snippets:
   scope: project
   path: docs/snippets/architecture/session-listeners.md
   requires:
-  - docs/snippets/concept/session-types.md
+  - concept/session-types
 - id: teleclaude/architecture/telegram-adapter
   description: Telegram UI adapter that maps topics to sessions and enforces UX cleanup
     rules.
@@ -295,29 +287,29 @@ snippets:
   scope: project
   path: docs/snippets/architecture/telegram-adapter.md
   requires:
-  - docs/snippets/architecture/ux-message-cleanup.md
-  - docs/snippets/architecture/session-lifecycle.md
+  - teleclaude/architecture/ux-message-cleanup
+  - architecture/session-lifecycle
 - id: teleclaude/architecture/tmux-management
   description: Tmux session orchestration, input injection, and per-session temp directories.
   type: architecture
   scope: project
   path: docs/snippets/architecture/tmux-management.md
   requires:
-  - docs/snippets/concept/shell-readiness.md
+  - teleclaude/concept/shell-readiness
 - id: teleclaude/architecture/ux-message-cleanup
   description: Message deletion tracking for clean Telegram UX (user input and feedback).
   type: architecture
   scope: project
   path: docs/snippets/architecture/ux-message-cleanup.md
   requires:
-  - docs/snippets/architecture/database.md
+  - teleclaude/architecture/database
 - id: teleclaude/concept/adapter-types
   description: Distinction between UI adapters and transport adapters in TeleClaude.
   type: concept
   scope: project
   path: docs/snippets/concept/adapter-types.md
   requires:
-  - docs/snippets/concept/glossary.md
+  - teleclaude/concept/glossary
 - id: teleclaude/concept/command-modes
   description: Sync, async, and hybrid command response modes used across TeleClaude
     interfaces.
@@ -339,7 +331,7 @@ snippets:
   scope: project
   path: docs/snippets/concept/resource-models.md
   requires:
-  - docs/snippets/concept/glossary.md
+  - teleclaude/concept/glossary
 - id: teleclaude/concept/shell-readiness
   description: How TeleClaude detects command completion without explicit exit markers.
   type: concept
@@ -353,15 +345,15 @@ snippets:
   scope: project
   path: docs/snippets/decision/protocol-adapter-client.md
   requires:
-  - docs/snippets/architecture/adapter-client.md
+  - teleclaude/architecture/adapter-client
 - id: teleclaude/guide/ai-to-ai-operations
   description: Recommended flow for delegating work using TeleClaude MCP tools.
   type: guide
   scope: project
   path: docs/snippets/guide/ai-to-ai-operations.md
   requires:
-  - docs/snippets/reference/mcp-tools.md
-  - docs/snippets/concept/session-types.md
+  - reference/mcp-tools
+  - concept/session-types
 - id: teleclaude/guide/ssh-agent-deployments
   description: Configure SSH agent access for automated git operations and deployments.
   type: guide
@@ -381,42 +373,42 @@ snippets:
   scope: project
   path: docs/snippets/policy/telegram-command-registration.md
   requires:
-  - docs/snippets/architecture/telegram-adapter.md
+  - teleclaude/architecture/telegram-adapter
 - id: teleclaude/procedure/add-adapter
   description: Steps to add a new adapter implementation and wire it into the daemon.
   type: procedure
   scope: project
   path: docs/snippets/procedure/add-adapter.md
   requires:
-  - docs/snippets/concept/adapter-types.md
+  - teleclaude/concept/adapter-types
 - id: teleclaude/procedure/add-telegram-command
   description: Steps to add a new Telegram command end-to-end.
   type: procedure
   scope: project
   path: docs/snippets/procedure/add-telegram-command.md
   requires:
-  - docs/snippets/policy/telegram-command-registration.md
+  - teleclaude/policy/telegram-command-registration
 - id: teleclaude/procedure/out-of-band-telegram-alerts
   description: Send Telegram alerts when the daemon is down using standalone scripts.
   type: procedure
   scope: project
   path: docs/snippets/procedure/out-of-band-telegram-alerts.md
   requires:
-  - docs/snippets/policy/daemon-availability.md
+  - teleclaude/policy/daemon-availability
 - id: teleclaude/procedure/restart-daemon
   description: Controlled daemon restart with verification and log checks.
   type: procedure
   scope: project
   path: docs/snippets/procedure/restart-daemon.md
   requires:
-  - docs/snippets/policy/daemon-availability.md
+  - teleclaude/policy/daemon-availability
 - id: teleclaude/reference/cache-ttl-matrix
   description: TTL and scope matrix for cache refresh behavior.
   type: reference
   scope: project
   path: docs/snippets/reference/cache-ttl-matrix.md
   requires:
-  - docs/snippets/architecture/cache.md
+  - teleclaude/architecture/cache
 - id: teleclaude/reference/command-contracts
   description: Command contract highlights for session creation, messaging, and agent
     control.
@@ -443,7 +435,7 @@ snippets:
   scope: project
   path: docs/snippets/role/transport-adapter.md
   requires:
-  - docs/snippets/concept/adapter-types.md
+  - teleclaude/concept/adapter-types
 - id: teleclaude/role/ui-adapter
   description: UI adapters translate human inputs into events and render outputs with
     UX rules.
@@ -451,22 +443,22 @@ snippets:
   scope: project
   path: docs/snippets/role/ui-adapter.md
   requires:
-  - docs/snippets/concept/adapter-types.md
-  - docs/snippets/architecture/ux-message-cleanup.md
+  - teleclaude/concept/adapter-types
+  - teleclaude/architecture/ux-message-cleanup
 - id: teleclaude/snippets/authoring
   description: How to author TeleClaude snippets and choose taxonomy-appropriate structure.
   type: guide
   scope: project
   path: docs/snippets/guide/snippet-authoring.md
   requires:
-  - docs/snippets/principles/priming.md
+  - principles/priming
 - id: teleclaude/standard/cache-contract
   description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
   type: standard
   scope: project
   path: docs/snippets/standard/cache-contract.md
   requires:
-  - docs/snippets/architecture/cache.md
+  - teleclaude/architecture/cache
 - id: teleclaude/timeline/protocol-refactor-2025-01-08
   description: Timeline entry for the protocol-based adapter refactor completed on
     2025-01-08.
@@ -474,7 +466,7 @@ snippets:
   scope: project
   path: docs/snippets/timeline/protocol-refactor-2025-01-08.md
   requires:
-  - docs/snippets/decision/protocol-adapter-client.md
+  - teleclaude/decision/protocol-adapter-client
 - id: timeline/protocol-refactor-2025-01
   description: Major architectural refactor moving to Protocol-based adapters and
     Redis transport.

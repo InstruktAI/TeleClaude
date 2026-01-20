@@ -1,11 +1,12 @@
 ---
+description: Telegram UI adapter that maps topics to sessions and enforces UX cleanup
+  rules.
 id: teleclaude/architecture/telegram-adapter
-type: architecture
-scope: project
-description: Telegram UI adapter that maps topics to sessions and enforces UX cleanup rules.
 requires:
-  - ../architecture/ux-message-cleanup.md
-  - ../architecture/session-lifecycle.md
+- teleclaude/architecture/ux-message-cleanup
+- architecture/session-lifecycle
+scope: project
+type: architecture
 ---
 
 Purpose

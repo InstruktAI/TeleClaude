@@ -1,11 +1,11 @@
 ---
-id: teleclaude/guide/ai-to-ai-operations
-type: guide
-scope: project
 description: Recommended flow for delegating work using TeleClaude MCP tools.
+id: teleclaude/guide/ai-to-ai-operations
 requires:
-  - ../reference/mcp-tools.md
-  - ../concept/session-types.md
+- reference/mcp-tools
+- concept/session-types
+scope: project
+type: guide
 ---
 
 Guide

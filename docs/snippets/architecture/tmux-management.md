@@ -1,10 +1,10 @@
 ---
-id: teleclaude/architecture/tmux-management
-type: architecture
-scope: project
 description: Tmux session orchestration, input injection, and per-session temp directories.
+id: teleclaude/architecture/tmux-management
 requires:
-  - ../concept/shell-readiness.md
+- teleclaude/concept/shell-readiness
+scope: project
+type: architecture
 ---
 
 Purpose

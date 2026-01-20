@@ -1,12 +1,13 @@
 ---
+description: Redis Streams transport for cross-computer request/response and peer
+  discovery.
 id: teleclaude/architecture/redis-transport
-type: architecture
-scope: project
-description: Redis Streams transport for cross-computer request/response and peer discovery.
 requires:
-  - ../architecture/adapter-client.md
-  - ../architecture/cache.md
-  - ../reference/event-types.md
+- teleclaude/architecture/adapter-client
+- teleclaude/architecture/cache
+- teleclaude/reference/event-types
+scope: project
+type: architecture
 ---
 
 Purpose

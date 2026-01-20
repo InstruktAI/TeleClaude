@@ -1,10 +1,11 @@
 ---
+description: DaemonCache snapshot layer for computers, projects, todos, sessions,
+  and agent availability.
 id: teleclaude/architecture/cache
-type: architecture
-scope: project
-description: DaemonCache snapshot layer for computers, projects, todos, sessions, and agent availability.
 requires:
-  - ../concept/resource-models.md
+- teleclaude/concept/resource-models
+scope: project
+type: architecture
 ---
 
 Purpose

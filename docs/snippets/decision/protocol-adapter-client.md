@@ -1,10 +1,11 @@
 ---
+description: Decision to route all adapter operations through AdapterClient and protocol-based
+  transport.
 id: teleclaude/decision/protocol-adapter-client
-type: decision
-scope: project
-description: Decision to route all adapter operations through AdapterClient and protocol-based transport.
 requires:
-  - ../architecture/adapter-client.md
+- teleclaude/architecture/adapter-client
+scope: project
+type: decision
 ---
 
 Decision

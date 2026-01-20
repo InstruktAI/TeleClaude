@@ -1,10 +1,10 @@
 ---
-id: teleclaude/concept/adapter-types
-type: concept
-scope: project
 description: Distinction between UI adapters and transport adapters in TeleClaude.
+id: teleclaude/concept/adapter-types
 requires:
-  - glossary.md
+- teleclaude/concept/glossary
+scope: project
+type: concept
 ---
 
 Purpose

@@ -1,10 +1,10 @@
 ---
-id: teleclaude/standard/cache-contract
-type: standard
-scope: project
 description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
+id: teleclaude/standard/cache-contract
 requires:
-  - ../architecture/cache.md
+- teleclaude/architecture/cache
+scope: project
+type: standard
 ---
 
 Standard

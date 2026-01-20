@@ -1,10 +1,10 @@
 ---
-id: teleclaude/procedure/add-telegram-command
-type: procedure
-scope: project
 description: Steps to add a new Telegram command end-to-end.
+id: teleclaude/procedure/add-telegram-command
 requires:
-  - ../policy/telegram-command-registration.md
+- teleclaude/policy/telegram-command-registration
+scope: project
+type: procedure
 ---
 
 Steps

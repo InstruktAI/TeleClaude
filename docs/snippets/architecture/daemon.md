@@ -1,10 +1,10 @@
 ---
-id: teleclaude/architecture/daemon
-type: architecture
-scope: project
 description: Daemon orchestration responsibilities, boundaries, and background services.
+id: teleclaude/architecture/daemon
 requires:
-  - system-overview.md
+- architecture/system-overview
+scope: project
+type: architecture
 ---
 
 Purpose

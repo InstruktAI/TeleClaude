@@ -1,10 +1,10 @@
 ---
-id: teleclaude/architecture/context-selection
-type: architecture
-scope: project
 description: Context selection pipeline that picks relevant snippets for MCP get_context.
+id: teleclaude/architecture/context-selection
 requires:
-  - context-index.md
+- teleclaude/architecture/context-index
+scope: project
+type: architecture
 ---
 
 Purpose

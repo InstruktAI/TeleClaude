@@ -1,10 +1,11 @@
 ---
+description: Core resource shapes for computers, projects, todos, sessions, and agent
+  availability.
 id: teleclaude/concept/resource-models
-type: concept
-scope: project
-description: Core resource shapes for computers, projects, todos, sessions, and agent availability.
 requires:
-  - glossary.md
+- teleclaude/concept/glossary
+scope: project
+type: concept
 ---
 
 Purpose

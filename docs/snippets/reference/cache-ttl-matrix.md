@@ -1,10 +1,10 @@
 ---
-id: teleclaude/reference/cache-ttl-matrix
-type: reference
-scope: project
 description: TTL and scope matrix for cache refresh behavior.
+id: teleclaude/reference/cache-ttl-matrix
 requires:
-  - ../architecture/cache.md
+- teleclaude/architecture/cache
+scope: project
+type: reference
 ---
 
 Reference

@@ -1,10 +1,10 @@
 ---
-id: teleclaude/snippets/authoring
-type: guide
-scope: project
 description: How to author TeleClaude snippets and choose taxonomy-appropriate structure.
+id: teleclaude/snippets/authoring
 requires:
-  - ../principles/priming.md
+- principles/priming
+scope: project
+type: guide
 ---
 
 Purpose
@@ -49,6 +49,14 @@ Frontmatter
 - `description`: concise semantic summary.
 - `requires`: optional list of supporting snippets or docs.
 
+Frontmatter heuristics
+
+- **ID**: write a path-shaped identifier following `domain/area/topic` (e.g. `teleclaude/architecture/daemon-lifecycle`).
+- **Type**: pick the taxonomy that matches the snippet’s purpose.
+- **Scope**: choose the true applicability (`project`, `domain`, `global`).
+- **Requires**: list snippet IDs (from `docs/index.yaml`) that are mandatory reading to interpret this snippet correctly.
+- **Description**: one sentence that states what the snippet is and where it applies.
+
 Frontmatter examples
 
 Minimal (no dependencies)
@@ -71,9 +79,8 @@ type: architecture
 scope: project
 description: High-level component map of TeleClaude daemon, adapters, transport, and storage.
 requires:
-  - ../concept/adapter-types.md
-  - ../concept/resource-models.md
-  - ../principles/priming.md
+  - teleclaude/concept/adapter-types
+  - teleclaude/concept/resource-models
 ---
 ```
 
@@ -89,39 +96,6 @@ Requires usage
   - **Risk of wrong action**: missing context would cause incorrect implementation or ops behavior.
   - **Intent inheritance**: the “why” is defined elsewhere and must shape interpretation.
   - **Layered reading**: this snippet is a leaf that relies on a parent explanation.
-- Keep paths relative to the snippet file.
-
-Frontmatter examples
-
-Minimal (no `requires`)
-
-```yaml
----
-id: principles/priming
-type: principles
-scope: project
-description: Snippets are a priming tool that should elevate expert reasoning.
----
-```
-
-Layered (with `requires`)
-
-```yaml
----
-id: teleclaude/architecture/system-overview
-type: architecture
-scope: project
-description: High-level component map of TeleClaude daemon, adapters, transport, and storage.
-requires:
-  - ../concept/adapter-types.md
-  - ../concept/resource-models.md
----
-```
-
-When to use `requires`
-- Include `requires` when a snippet builds on shared concepts or definitions.
-- Keep `requires` short and relevant; each entry should add immediate clarity.
-- Prefer relative paths within `docs/snippets/`.
 
 Schemas by taxonomy
 
@@ -172,5 +146,5 @@ FAQ
 
 References
 
-- Keep `requires` and inline `@...` references relative to the snippet when possible.
+- `requires` should list snippet IDs; inline `@...` references can stay relative.
 - References prime context; the snippet body still needs to explain the concept on its own.

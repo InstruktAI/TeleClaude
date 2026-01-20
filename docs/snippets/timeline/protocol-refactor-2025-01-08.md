@@ -1,10 +1,10 @@
 ---
-id: teleclaude/timeline/protocol-refactor-2025-01-08
-type: timeline
-scope: project
 description: Timeline entry for the protocol-based adapter refactor completed on 2025-01-08.
+id: teleclaude/timeline/protocol-refactor-2025-01-08
 requires:
-  - ../decision/protocol-adapter-client.md
+- teleclaude/decision/protocol-adapter-client
+scope: project
+type: timeline
 ---
 
 Timeline

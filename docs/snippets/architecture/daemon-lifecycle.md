@@ -1,12 +1,13 @@
 ---
+description: Daemon startup, background task orchestration, and graceful shutdown
+  behavior.
 id: teleclaude/architecture/daemon-lifecycle
-type: architecture
-scope: project
-description: Daemon startup, background task orchestration, and graceful shutdown behavior.
 requires:
-  - system-overview.md
-  - mcp-layer.md
-  - api-server.md
+- architecture/system-overview
+- architecture/mcp-layer
+- teleclaude/architecture/api-server
+scope: project
+type: architecture
 ---
 
 Purpose

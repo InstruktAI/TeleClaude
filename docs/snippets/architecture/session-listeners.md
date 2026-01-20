@@ -1,10 +1,11 @@
 ---
+description: In-memory listener registry that notifies callers when target sessions
+  stop.
 id: teleclaude/architecture/session-listeners
-type: architecture
-scope: project
-description: In-memory listener registry that notifies callers when target sessions stop.
 requires:
-  - ../concept/session-types.md
+- concept/session-types
+scope: project
+type: architecture
 ---
 
 Purpose

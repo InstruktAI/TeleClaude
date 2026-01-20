@@ -1,10 +1,10 @@
 ---
-id: teleclaude/procedure/add-adapter
-type: procedure
-scope: project
 description: Steps to add a new adapter implementation and wire it into the daemon.
+id: teleclaude/procedure/add-adapter
 requires:
-  - ../concept/adapter-types.md
+- teleclaude/concept/adapter-types
+scope: project
+type: procedure
 ---
 
 Steps

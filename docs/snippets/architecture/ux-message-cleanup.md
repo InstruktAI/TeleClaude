@@ -1,10 +1,10 @@
 ---
-id: teleclaude/architecture/ux-message-cleanup
-type: architecture
-scope: project
 description: Message deletion tracking for clean Telegram UX (user input and feedback).
+id: teleclaude/architecture/ux-message-cleanup
 requires:
-  - ../architecture/database.md
+- teleclaude/architecture/database
+scope: project
+type: architecture
 ---
 
 Purpose

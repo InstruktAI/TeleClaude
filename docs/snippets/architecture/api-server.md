@@ -1,12 +1,13 @@
 ---
+description: Local HTTP and WebSocket API that reads from cache and routes writes
+  through the command pipeline.
 id: teleclaude/architecture/api-server
-type: architecture
-scope: project
-description: Local HTTP and WebSocket API that reads from cache and routes writes through the command pipeline.
 requires:
-  - ../architecture/cache.md
-  - ../concept/resource-models.md
-  - ../reference/event-types.md
+- teleclaude/architecture/cache
+- teleclaude/concept/resource-models
+- teleclaude/reference/event-types
+scope: project
+type: architecture
 ---
 
 Purpose

@@ -1,10 +1,11 @@
 ---
+description: Only the master bot registers Telegram commands, and command names include
+  trailing spaces.
 id: teleclaude/policy/telegram-command-registration
-type: policy
-scope: project
-description: Only the master bot registers Telegram commands, and command names include trailing spaces.
 requires:
-  - ../architecture/telegram-adapter.md
+- teleclaude/architecture/telegram-adapter
+scope: project
+type: policy
 ---
 
 Policy

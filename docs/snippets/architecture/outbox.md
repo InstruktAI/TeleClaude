@@ -1,11 +1,11 @@
 ---
-id: teleclaude/architecture/outbox
-type: architecture
-scope: project
 description: Durable outbox table for agent hook events.
+id: teleclaude/architecture/outbox
 requires:
-  - database.md
-  - ../reference/event-types.md
+- teleclaude/architecture/database
+- teleclaude/reference/event-types
+scope: project
+type: architecture
 ---
 
 Purpose

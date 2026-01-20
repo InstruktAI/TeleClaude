@@ -1,10 +1,10 @@
 ---
-id: teleclaude/procedure/out-of-band-telegram-alerts
-type: procedure
-scope: project
 description: Send Telegram alerts when the daemon is down using standalone scripts.
+id: teleclaude/procedure/out-of-band-telegram-alerts
 requires:
-  - ../policy/daemon-availability.md
+- teleclaude/policy/daemon-availability
+scope: project
+type: procedure
 ---
 
 Steps

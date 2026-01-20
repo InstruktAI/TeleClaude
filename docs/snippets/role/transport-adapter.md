@@ -1,10 +1,10 @@
 ---
-id: teleclaude/role/transport-adapter
-type: role
-scope: project
 description: Transport adapters handle cross-computer request/response and peer discovery.
+id: teleclaude/role/transport-adapter
 requires:
-  - ../concept/adapter-types.md
+- teleclaude/concept/adapter-types
+scope: project
+type: role
 ---
 
 Responsibilities
