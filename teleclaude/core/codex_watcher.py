@@ -13,8 +13,8 @@ from teleclaude.core.agent_parsers import CodexParser
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import Db, db
-from teleclaude.core.events import AgentHookEvents, TeleClaudeEvents
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import AgentEventContext, AgentHookEvents, TeleClaudeEvents, build_agent_payload
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -237,15 +237,15 @@ class CodexWatcher:
         self._file_positions[file_path] = file_size - backfill
 
         if emit_start:
-            await self.client.handle_event(
-                TeleClaudeEvents.AGENT_EVENT,
-                {
-                    "event_type": AgentHookEvents.AGENT_SESSION_START,
-                    "session_id": session.session_id,
-                    "data": {"session_id": native_id, "transcript_path": str(file_path)},
-                },
-                MessageMetadata(origin="watcher"),
+            context = AgentEventContext(
+                session_id=session.session_id,
+                event_type=AgentHookEvents.AGENT_SESSION_START,
+                data=build_agent_payload(
+                    AgentHookEvents.AGENT_SESSION_START,
+                    {"session_id": native_id, "transcript_path": str(file_path)},
+                ),
             )
+            await event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
 
     async def _tail_files(self) -> None:
         """Read new content from watched files and dispatch events."""
@@ -308,15 +308,12 @@ class CodexWatcher:
                             payload_data["session_id"] = session.native_session_id
                             payload_data["transcript_path"] = str(file_path)
 
-                            await self.client.handle_event(
-                                TeleClaudeEvents.AGENT_EVENT,
-                                {
-                                    "event_type": event.event_type,
-                                    "session_id": session.session_id,
-                                    "data": payload_data,
-                                },
-                                MessageMetadata(origin="watcher"),
+                            context = AgentEventContext(
+                                session_id=session.session_id,
+                                event_type=event.event_type,
+                                data=build_agent_payload(event.event_type, payload_data),
                             )
+                            await event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
                             emitted += 1
                     except json.JSONDecodeError:
                         # Expected for partial lines after backfill seek

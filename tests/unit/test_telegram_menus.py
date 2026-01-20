@@ -1,6 +1,6 @@
 """Unit tests for Telegram menus and keyboards."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from telegram import InlineKeyboardMarkup
@@ -37,7 +37,6 @@ def mock_env(monkeypatch):
 def mock_adapter_client():
     """Mock AdapterClient."""
     client = MagicMock()
-    client.handle_event = AsyncMock()
     return client
 
 

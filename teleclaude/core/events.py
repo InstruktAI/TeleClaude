@@ -4,8 +4,9 @@ Provides type-safe event definitions for adapter-daemon communication.
 """
 
 import shlex
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Optional, Union
+from typing import TYPE_CHECKING, Literal, Optional, Union, cast
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionLaunchIntent
@@ -18,8 +19,6 @@ EventType = Literal[
     "session_updated",
     "agent_event",
     "error",
-    "voice",
-    "file",
     "system_command",
 ]
 
@@ -105,6 +104,55 @@ AgentEventPayload = Union[
     AgentNotificationPayload,
     AgentSessionEndPayload,
 ]
+
+
+def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, object]) -> AgentEventPayload:
+    """Build typed agent payload from normalized hook data."""
+    native_id = cast(str | None, data.get("session_id"))
+
+    if event_type == AgentHookEvents.AGENT_SESSION_START:
+        return AgentSessionStartPayload(
+            session_id=native_id,
+            transcript_path=cast(str | None, data.get("transcript_path")),
+            raw=data,
+        )
+
+    if event_type == AgentHookEvents.AGENT_PROMPT:
+        return AgentPromptPayload(
+            session_id=native_id,
+            transcript_path=cast(str | None, data.get("transcript_path")),
+            prompt=cast(str, data.get("prompt", "")),
+            raw=data,
+            source_computer=cast(str | None, data.get("source_computer")),
+        )
+
+    if event_type == AgentHookEvents.AGENT_STOP:
+        return AgentStopPayload(
+            session_id=native_id,
+            transcript_path=cast(str | None, data.get("transcript_path")),
+            summary=cast(str | None, data.get("summary")),
+            prompt=cast(str | None, data.get("prompt")),
+            title=cast(str | None, data.get("title")),
+            source_computer=cast(str | None, data.get("source_computer")),
+            raw=data,
+        )
+
+    if event_type == AgentHookEvents.AGENT_NOTIFICATION:
+        return AgentNotificationPayload(
+            message=cast(str, data.get("message", "")),
+            session_id=native_id,
+            transcript_path=cast(str | None, data.get("transcript_path")),
+            source_computer=cast(str | None, data.get("source_computer")),
+            raw=data,
+        )
+
+    if event_type == AgentHookEvents.AGENT_SESSION_END:
+        return AgentSessionEndPayload(
+            session_id=native_id,
+            raw=data,
+        )
+
+    raise ValueError(f"Unknown agent hook event_type '{event_type}'")
 
 
 # UI commands mapping (intentionally lowercase - not a constant despite dict type)
@@ -297,8 +345,6 @@ class ErrorEventContext:
 # Union of all event context types (for adapter_client handler signatures)
 EventContext = (
     MessageEventContext
-    | VoiceEventContext
-    | FileEventContext
     | SessionLifecycleContext
     | SystemCommandContext
     | AgentEventContext

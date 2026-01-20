@@ -17,7 +17,6 @@ from teleclaude.transport.redis_transport import RedisTransport
 def mock_adapter_client():  # type: ignore[explicit-any, unused-ignore]
     """Create mock AdapterClient."""
     client = MagicMock()
-    client.handle_event = AsyncMock()
     client.commands = MagicMock()
     client.commands.create_session = AsyncMock()
     client.commands.end_session = AsyncMock()
@@ -594,22 +593,13 @@ def test_api_server_subscriptions(mock_adapter_client, mock_cache):
     """Test APIServer subscribes to correct events using constants."""
     from teleclaude.core.events import TeleClaudeEvents
 
-    # Re-initialize to check calls
-    APIServer(client=mock_adapter_client, cache=mock_cache)
+    with patch("teleclaude.api_server.event_bus.subscribe") as mock_subscribe:
+        # Re-initialize to check calls
+        APIServer(client=mock_adapter_client, cache=mock_cache)
 
-    # Check subscriptions
-    mock_adapter_client.on.assert_any_call(
-        TeleClaudeEvents.SESSION_UPDATED,
-        ANY,
-    )
-    mock_adapter_client.on.assert_any_call(
-        TeleClaudeEvents.SESSION_STARTED,
-        ANY,
-    )
-    mock_adapter_client.on.assert_any_call(
-        TeleClaudeEvents.SESSION_CLOSED,
-        ANY,
-    )
+        mock_subscribe.assert_any_call(TeleClaudeEvents.SESSION_UPDATED, ANY)
+        mock_subscribe.assert_any_call(TeleClaudeEvents.SESSION_STARTED, ANY)
+        mock_subscribe.assert_any_call(TeleClaudeEvents.SESSION_CLOSED, ANY)
 
 
 # ==================== Error Path Tests ====================

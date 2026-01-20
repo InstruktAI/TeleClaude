@@ -21,9 +21,11 @@ from telegram.ext import ContextTypes
 
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
-from teleclaude.core.events import UiCommands
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import SessionLifecycleContext, UiCommands
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
 from teleclaude.core.session_utils import get_session_output_dir
+from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -310,16 +312,14 @@ Usage:
             await voice_file.download_to_drive(temp_file_path)
             logger.info("Downloaded voice message to: %s", temp_file_path)
 
-            # Emit voice event to daemon
-            await self.client.handle_event(
-                event="voice",
-                payload={
-                    "session_id": session.session_id,
-                    "file_path": str(temp_file_path),
-                    "message_id": str(message.message_id),
-                    "message_thread_id": message.message_thread_id,
-                },
-                metadata=self._metadata(),
+            await self.client.commands.handle_voice(
+                HandleVoiceCommand(
+                    session_id=session.session_id,
+                    file_path=str(temp_file_path),
+                    message_id=str(message.message_id),
+                    message_thread_id=message.message_thread_id,
+                    origin=self._metadata().origin,
+                )
             )
         except Exception as e:
             error_msg = str(e) if str(e).strip() else "Unknown error"
@@ -378,18 +378,14 @@ Usage:
             await telegram_file.download_to_drive(file_path)
             logger.info("Downloaded %s to: %s", file_type, file_path)
 
-            # Emit file event to daemon (with optional caption)
-            await self.client.handle_event(
-                event="file",
-                payload={
-                    "session_id": session.session_id,
-                    "file_path": str(file_path),
-                    "filename": file_name,
-                    "file_type": file_type,
-                    "file_size": (file_obj.file_size if hasattr(file_obj, "file_size") else 0),
-                    "caption": message.caption.strip() if message.caption else None,
-                },
-                metadata=self._metadata(),
+            await self.client.commands.handle_file(
+                HandleFileCommand(
+                    session_id=session.session_id,
+                    file_path=str(file_path),
+                    filename=file_name,
+                    caption=message.caption.strip() if message.caption else None,
+                    file_size=(file_obj.file_size if hasattr(file_obj, "file_size") else 0),
+                )
             )
         except Exception as e:
             # Log detailed error for debugging
@@ -455,10 +451,9 @@ Usage:
         )
 
         # Emit session_closed event to daemon for cleanup
-        await self.client.handle_event(
-            event="session_closed",
-            payload={"session_id": session.session_id},
-            metadata=self._metadata(),
+        await event_bus.emit(
+            "session_closed",
+            SessionLifecycleContext(session_id=session.session_id),
         )
 
     async def _log_all_updates(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:

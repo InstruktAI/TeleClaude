@@ -16,6 +16,8 @@ from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 from teleclaude.types.commands import (
     CreateSessionCommand,
     GetSessionDataCommand,
+    HandleFileCommand,
+    HandleVoiceCommand,
     KeysCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
@@ -891,3 +893,44 @@ async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized
 
     mock_client.send_message.assert_awaited_once()
     mock_execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_sends_transcribed_text() -> None:
+    """Voice input should forward transcribed text via send_message handler."""
+    mock_client = MagicMock()
+    mock_client.send_message = AsyncMock()
+    mock_client.delete_message = AsyncMock()
+
+    with (
+        patch.object(command_handlers.voice_message_handler, "handle_voice", new_callable=AsyncMock) as mock_handle,
+        patch.object(command_handlers, "send_message", new_callable=AsyncMock) as mock_send,
+    ):
+        mock_handle.return_value = "hello world"
+        cmd = HandleVoiceCommand(session_id="sess-123", file_path="/tmp/voice.ogg")
+        await command_handlers.handle_voice(cmd, mock_client, AsyncMock())
+
+    mock_send.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_file_invokes_file_handler() -> None:
+    """File input should delegate to file handler with typed context."""
+    mock_client = MagicMock()
+
+    with patch.object(command_handlers, "handle_file_upload", new_callable=AsyncMock) as mock_handle:
+        cmd = HandleFileCommand(
+            session_id="sess-456",
+            file_path="/tmp/file.txt",
+            filename="file.txt",
+            caption="hello",
+            file_size=123,
+        )
+        await command_handlers.handle_file(cmd, mock_client)
+
+    assert mock_handle.await_count == 1
+    call_kwargs = mock_handle.call_args.kwargs
+    context = call_kwargs["context"]
+    assert context.session_id == "sess-456"
+    assert context.file_path == "/tmp/file.txt"
+    assert context.filename == "file.txt"

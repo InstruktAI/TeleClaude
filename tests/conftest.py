@@ -6,6 +6,8 @@ from typing import Callable
 
 import pytest
 
+from teleclaude.core.event_bus import event_bus
+
 try:
     import instrukt_ai_logging
 
@@ -26,6 +28,14 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.timeout(1))
         elif "integration" in item.keywords:
             item.add_marker(pytest.mark.timeout(5))
+
+
+@pytest.fixture(autouse=True)
+def _reset_event_bus():
+    """Ensure global event bus handlers do not leak across tests."""
+    event_bus.clear()
+    yield
+    event_bus.clear()
 
 
 # TUI Test Fixtures

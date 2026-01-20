@@ -23,7 +23,6 @@ def mock_mcp_server():
     """Create MCP server with mocked dependencies."""
     mock_client = MagicMock()
     mock_client.discover_peers = AsyncMock(return_value=[])
-    mock_client.handle_event = AsyncMock(return_value={"status": "success", "data": {}})
     mock_client.commands = MagicMock()
     mock_client.commands.create_session = AsyncMock(return_value={"session_id": "test-session-123"})
     mock_client.commands.start_agent = AsyncMock()

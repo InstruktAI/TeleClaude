@@ -450,26 +450,19 @@ async def test_local_session_lifecycle_to_websocket(
     # The patched_config fixture already sets config.computer.name = "test-computer"
     monkeypatch.setattr(api_module, "config", patched_config)
 
-    # Wire up real AdapterClient (not mock) to handle events
+    # Wire up real AdapterClient (not mock) for adapter operations
     real_client = AdapterClient()
-    db_instance.set_client(real_client)
 
     # Wire API server to use real client
     api_server.client = real_client
 
-    # Re-register event handlers with real client
-    real_client.on(
-        "session_started",
-        api_server._handle_session_started_event,
-    )
-    real_client.on(
-        "session_updated",
-        api_server._handle_session_updated_event,
-    )
-    real_client.on(
-        "session_closed",
-        api_server._handle_session_closed_event,
-    )
+    # Re-register event handlers on global event bus
+    from teleclaude.core.event_bus import event_bus
+
+    event_bus.clear()
+    event_bus.subscribe("session_started", api_server._handle_session_started_event)
+    event_bus.subscribe("session_updated", api_server._handle_session_updated_event)
+    event_bus.subscribe("session_closed", api_server._handle_session_closed_event)
 
     # Set up WebSocket client
     mock_ws = create_mock_websocket()

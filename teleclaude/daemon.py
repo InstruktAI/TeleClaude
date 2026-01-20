@@ -40,6 +40,7 @@ from teleclaude.core.cache import DaemonCache
 from teleclaude.core.codex_watcher import CodexWatcher
 from teleclaude.core.command_service import CommandService
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
@@ -48,16 +49,15 @@ from teleclaude.core.events import (
     DeployArgs,
     ErrorEventContext,
     EventType,
-    FileEventContext,
     SessionLifecycleContext,
+    SessionUpdatedContext,
     SystemCommandContext,
     TeleClaudeEvents,
-    VoiceEventContext,
+    build_agent_payload,
     parse_command_string,
 )
-from teleclaude.core.file_handler import handle_file
 from teleclaude.core.lifecycle import DaemonLifecycle
-from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session, SessionLaunchIntent
+from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file, parse_session_title, resolve_working_dir
 from teleclaude.core.summarizer import summarize
@@ -68,7 +68,6 @@ from teleclaude.mcp_server import TeleClaudeMCPServer
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types.commands import (
     ResumeAgentCommand,
-    SendMessageCommand,
     StartAgentCommand,
 )
 
@@ -260,7 +259,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Initialize AgentCoordinator for agent events and cross-computer orchestration
         self.agent_coordinator = AgentCoordinator(self.client)
-        self.client.on(TeleClaudeEvents.AGENT_EVENT, self._handle_agent_event)
+        event_bus.subscribe(TeleClaudeEvents.AGENT_EVENT, self._handle_agent_event)
 
         # Debounce stop events (Gemini fires AfterAgent multiple times per turn)
         self._last_stop_time: dict[str, float] = {}
@@ -282,15 +281,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             handler = getattr(self, handler_name, None)  # type: ignore[misc]
 
             if handler and callable(handler):  # type: ignore[misc]
-                self.client.on(cast(EventType, event_value), handler)  # type: ignore[misc]
+                event_bus.subscribe(cast(EventType, event_value), handler)  # type: ignore[misc]
                 logger.debug("Auto-registered handler: %s → %s", event_value, handler_name)
             else:
                 logger.debug("No handler for event: %s (skipped)", event_value)
 
         # Register non-TeleClaudeEvents handlers
-        self.client.on("voice", self._handle_voice)
-        self.client.on("file", self._handle_file)
-        self.client.on("system_command", self._handle_system_command)
+        event_bus.subscribe("system_command", self._handle_system_command)
 
         # Note: Adapters are loaded in client.start(), not here
 
@@ -723,15 +720,44 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         payload: ApiOutboxPayload,
         metadata: MessageMetadata,
     ) -> ApiOutboxResponse:
-        """Dispatch an API-origin event directly via AdapterClient."""
-        response = await self.client.handle_event(
-            cast(EventType, event_type),
-            cast(dict[str, object], payload),  # noqa: loose-dict - AdapterClient expects loose dict
-            metadata,
-        )
-        if isinstance(response, dict):
-            return cast(ApiOutboxResponse, response)
-        return cast(ApiOutboxResponse, {"status": "success", "data": response})
+        """Dispatch an API-origin event via the global event bus."""
+        event_name = cast(EventType, event_type)
+
+        if event_name == TeleClaudeEvents.SESSION_STARTED:
+            context = SessionLifecycleContext(session_id=str(payload.get("session_id")))
+        elif event_name == TeleClaudeEvents.SESSION_CLOSED:
+            context = SessionLifecycleContext(session_id=str(payload.get("session_id")))
+        elif event_name == TeleClaudeEvents.SESSION_UPDATED:
+            context = SessionUpdatedContext(
+                session_id=str(payload.get("session_id")),
+                updated_fields=cast(dict[str, object], payload.get("updated_fields", {})),  # noqa: loose-dict - API payload
+            )
+        elif event_name == TeleClaudeEvents.AGENT_EVENT:
+            event_data = cast(dict[str, object], payload.get("data", {}))  # noqa: loose-dict - API payload
+            hook_type = cast(str, payload.get("event_type", "notification"))
+            context = AgentEventContext(
+                session_id=str(payload.get("session_id")),
+                event_type=cast(AgentHookEvents, hook_type),
+                data=build_agent_payload(cast(AgentHookEvents, hook_type), event_data),
+            )
+        elif event_name == TeleClaudeEvents.ERROR:
+            context = ErrorEventContext(
+                session_id=str(payload.get("session_id", "")),
+                message=str(payload.get("message", "")),
+                source=cast(str | None, payload.get("source")),
+                details=cast(dict[str, object] | None, payload.get("details")),  # noqa: loose-dict - API payload
+            )
+        elif event_name == "system_command":
+            context = SystemCommandContext(
+                command=str(payload.get("command", "")),
+                from_computer=str(payload.get("from_computer", "unknown")),
+                args=cast(DeployArgs, payload.get("args", DeployArgs())),
+            )
+        else:
+            raise ValueError(f"Unsupported API event type: {event_type}")
+
+        response = await event_bus.emit(event_name, context)
+        return cast(ApiOutboxResponse, response)
 
     async def _dispatch_hook_event(
         self,
@@ -754,35 +780,25 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.debug("Transcript capture event handled", event=event_type, session=session_id[:8])
             return
 
-        event_type_name: EventType
         if event_type == AgentHookEvents.AGENT_ERROR:
-            event_payload = cast(
-                dict[str, object],  # noqa: loose-dict - Hook payload is dynamic JSON
-                {
-                    "session_id": session_id,
-                    "message": str(data.get("message", "")),
-                    "source": str(data.get("source")) if "source" in data else None,
-                    "details": data.get("details") if isinstance(data.get("details"), dict) else None,
-                },
+            context = ErrorEventContext(
+                session_id=session_id,
+                message=str(data.get("message", "")),
+                source=str(data.get("source")) if "source" in data else None,
+                details=data.get("details") if isinstance(data.get("details"), dict) else None,
             )
-            event_type_name = TeleClaudeEvents.ERROR
+            response = await event_bus.emit(TeleClaudeEvents.ERROR, context)
         else:
-            event_payload = cast(
-                dict[str, object],  # noqa: loose-dict - Hook payload is dynamic JSON
-                {"session_id": session_id, "event_type": event_type, "data": data},
+            context = AgentEventContext(
+                session_id=session_id,
+                event_type=cast(AgentHookEvents, event_type),
+                data=build_agent_payload(cast(AgentHookEvents, event_type), data),
             )
-            event_type_name = TeleClaudeEvents.AGENT_EVENT
+            response = await event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
 
-        response = await self.client.handle_event(
-            event_type_name,
-            event_payload,
-            MessageMetadata(origin="internal"),
-        )
-        if isinstance(response, dict):
-            response_dict = cast(dict[str, object], response)  # noqa: loose-dict - Adapter response payload
-            status = response_dict.get("status")
-            if status == "error":
-                raise ValueError(str(response_dict.get("error")))
+        status = response.get("status")
+        if status == "error":
+            raise ValueError(str(response.get("error")))
 
     async def _hook_outbox_worker(self) -> None:
         """Drain hook outbox for durable, restart-safe delivery."""
@@ -907,31 +923,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         task = asyncio.create_task(coro)
         self._track_background_task(task, label)
 
-    async def _handle_voice(self, _event: str, context: VoiceEventContext) -> None:
-        """Handler for VOICE events - pure business logic (cleanup already done).
-
-        Args:
-            _event: Event type (always "voice") - unused but required by event handler signature
-            context: Voice event context (Pydantic)
-        """
-        # Handle voice message using utility function
-        transcribed = await voice_message_handler.handle_voice(
-            session_id=context.session_id,
-            audio_path=context.file_path,
-            context=context,
-            send_message=self._send_status_callback,
-            delete_message=self._delete_feedback_message,
-        )
-        if not transcribed:
-            return
-
-        if context.message_id:
-            session = await db.get_session(context.session_id)
-            if session:
-                await self.client.delete_message(session, str(context.message_id))
-
-        await self.command_service.send_message(SendMessageCommand(session_id=context.session_id, text=transcribed))
-
     async def _handle_session_closed(self, _event: str, context: SessionLifecycleContext) -> None:
         """Handler for session_closed events - user closed session.
 
@@ -952,21 +943,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.client,
             reason="topic_closed",
             session=session,
-        )
-
-    async def _handle_file(self, _event: str, context: FileEventContext) -> None:
-        """Handler for FILE events - pure business logic.
-
-        Args:
-            _event: Event type (always "file") - unused but required by event handler signature
-            context: File event context (Pydantic)
-        """
-        await handle_file(
-            session_id=context.session_id,
-            file_path=context.file_path,
-            filename=context.filename,
-            context=context,
-            send_message=self._send_message_callback,
         )
 
     async def _handle_session_started(self, _event: str, _context: SessionLifecycleContext) -> None:
@@ -1610,53 +1586,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     def _get_output_file_path(self, session_id: str) -> Path:
         """Get output file path for a session (delegates to session_utils)."""
         return get_output_file(session_id)
-
-    async def _send_message_callback(
-        self,
-        sid: str,
-        msg: str,
-        metadata: MessageMetadata | None = None,
-    ) -> Optional[str]:
-        """Callback for handlers that need to send feedback messages.
-
-        Uses send_feedback to delete old feedback before sending new.
-        Wraps AdapterClient.send_feedback to match handler signature.
-
-        Args:
-            sid: Session ID
-            msg: Message text
-            metadata: Optional message metadata
-
-        Returns:
-            message_id if sent, None otherwise
-        """
-        session = await db.get_session(sid)
-        if not session:
-            logger.warning("Session %s not found for message", sid[:8])
-            return None
-        return await self.client.send_message(
-            session, msg, metadata=metadata, cleanup_trigger=CleanupTrigger.NEXT_NOTICE
-        )
-
-    async def _send_status_callback(
-        self,
-        sid: str,
-        msg: str,
-        metadata: MessageMetadata | None = None,
-    ) -> Optional[str]:
-        """Callback for status updates that should survive feedback cycles."""
-        session = await db.get_session(sid)
-        if not session:
-            logger.warning("Session %s not found for message", sid[:8])
-            return None
-        return await self.client.send_message(session, msg, metadata=metadata, cleanup_trigger=CleanupTrigger.NEXT_TURN)
-
-    async def _delete_feedback_message(self, sid: str, message_id: str) -> None:
-        session = await db.get_session(sid)
-        if not session:
-            logger.warning("Session %s not found for delete", sid[:8])
-            return
-        await self.client.delete_message(session, str(message_id))
 
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.

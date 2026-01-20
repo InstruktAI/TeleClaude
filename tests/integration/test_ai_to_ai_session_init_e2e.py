@@ -33,7 +33,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
     mock_redis = AsyncMock()
     redis_transport.redis = mock_redis
 
-    with patch.object(daemon.client, "handle_event", side_effect=daemon.client.handle_event):
+    with patch("teleclaude.core.event_bus.event_bus.emit", new_callable=AsyncMock):
         # Simulate incoming create_session command from initiator (MozBook)
         request_id = "test-request-123"
         project_path = tmp_path / "apps" / "TeleClaude"
@@ -116,7 +116,7 @@ async def test_ai_to_ai_session_without_project_path_rejected(daemon_with_mocked
     mock_redis = AsyncMock()
     redis_transport.redis = mock_redis
 
-    with patch.object(daemon.client, "handle_event", side_effect=daemon.client.handle_event):
+    with patch("teleclaude.core.event_bus.event_bus.emit", new_callable=AsyncMock):
         # Simulate create_session command WITHOUT project_path
         request_id = "test-request-456"
 

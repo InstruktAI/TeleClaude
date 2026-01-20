@@ -19,7 +19,6 @@ from teleclaude.core.events import (
     AgentHookEvents,
     AgentStopPayload,
     TeleClaudeEvents,
-    VoiceEventContext,
 )
 from teleclaude.core.models import (
     Session,
@@ -140,40 +139,6 @@ async def test_get_session_data_supports_dash_placeholders():
     assert cmd.since_timestamp is None
     assert cmd.until_timestamp == "2026-01-01T00:00:00Z"
     assert cmd.tail_chars == 2000
-
-
-@pytest.mark.asyncio
-async def test_handle_voice_forwards_message_without_message_id() -> None:
-    """Voice transcription should forward message without triggering pre-handler cleanup."""
-    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    daemon.client = MagicMock()
-    daemon.client.handle_event = AsyncMock()
-    daemon.client.delete_message = AsyncMock()
-    daemon.command_service = MagicMock()
-    daemon.command_service.send_message = AsyncMock()
-    daemon._send_status_callback = AsyncMock()
-
-    with (
-        patch("teleclaude.daemon.voice_message_handler.handle_voice", new_callable=AsyncMock) as mock_handle,
-        patch("teleclaude.daemon.db") as mock_db,
-    ):
-        mock_handle.return_value = "hello world"
-        session = MagicMock()
-        mock_db.get_session = AsyncMock(return_value=session)
-
-        context = VoiceEventContext(
-            session_id="sess-123",
-            file_path="/tmp/voice.ogg",
-            duration=None,
-            message_id="321",
-            message_thread_id=123,
-            origin="telegram",
-        )
-
-        await daemon._handle_voice("voice", context)
-
-        daemon.command_service.send_message.assert_called_once()
-        daemon.client.delete_message.assert_called_once_with(session, "321")
 
 
 @pytest.mark.asyncio
@@ -1008,7 +973,6 @@ async def test_dispatch_hook_event_updates_tty_before_polling():
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
     daemon.client.create_channel = AsyncMock()
-    daemon.client.handle_event = AsyncMock(return_value=None)
     daemon._ensure_output_polling = AsyncMock()
 
     session = Session(
@@ -1033,11 +997,13 @@ async def test_dispatch_hook_event_updates_tty_before_polling():
         mock_db.get_session = AsyncMock(return_value=session)
         mock_db.update_session = AsyncMock(side_effect=record_update)
 
-        await daemon._dispatch_hook_event(
-            session_id="sess-tty",
-            event_type="stop",
-            data={"teleclaude_pid": 123, "teleclaude_tty": "/dev/ttys001", "transcript_path": "/tmp/x.json"},
-        )
+        with patch("teleclaude.daemon.event_bus.emit", new_callable=AsyncMock) as mock_emit:
+            mock_emit.return_value = {"status": "success"}
+            await daemon._dispatch_hook_event(
+                session_id="sess-tty",
+                event_type="stop",
+                data={"teleclaude_pid": 123, "teleclaude_tty": "/dev/ttys001", "transcript_path": "/tmp/x.json"},
+            )
 
     assert "poll" in call_order
     assert call_order.index("poll") > max(i for i, v in enumerate(call_order) if v == "update")

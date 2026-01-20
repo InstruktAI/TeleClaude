@@ -16,12 +16,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.config import config
 from teleclaude.constants import DB_IN_MEMORY
+from teleclaude.core.event_bus import event_bus
 
 from . import db_models
 from .api_events import ApiOutboxMetadata, ApiOutboxPayload
 from .dates import ensure_utc, parse_iso_datetime
-from .events import TeleClaudeEvents
-from .models import MessageMetadata, Session, SessionAdapterMetadata, SessionField
+from .events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
+from .models import Session, SessionAdapterMetadata, SessionField
 from .voice_assignment import VoiceConfig
 
 if TYPE_CHECKING:
@@ -120,7 +121,6 @@ class Db:
         self.db_path = db_path
         self._engine: Optional[AsyncEngine] = None
         self._sessionmaker: Optional[object] = None
-        self._client: Optional["AdapterClient"] = None
         self.conn: aiosqlite.Connection | None = None
         self._temp_db_path: str | None = None
 
@@ -223,12 +223,8 @@ class Db:
         return self._sessionmaker is not None
 
     def set_client(self, client: "AdapterClient") -> None:
-        """Wire database to AdapterClient for event emission.
-
-        Args:
-            client: AdapterClient instance to handle events through
-        """
-        self._client = client
+        """Deprecated no-op: events are emitted via the global event bus."""
+        _ = client
 
     async def close(self) -> None:
         """Close database connection."""
@@ -312,13 +308,10 @@ class Db:
             db_session.add(db_row)
             await db_session.commit()
 
-        client = self._client
-        if client:
-            await client.handle_event(
-                TeleClaudeEvents.SESSION_STARTED,
-                {"session_id": session_id},
-                MessageMetadata(origin=session.origin_adapter),
-            )
+        await event_bus.emit(
+            TeleClaudeEvents.SESSION_STARTED,
+            SessionLifecycleContext(session_id=session_id),
+        )
 
         return session
 
@@ -471,24 +464,16 @@ class Db:
             await db_session.commit()
 
         # Emit SESSION_UPDATED event (UI handlers will update channel titles)
-        # Only handle if client is set (tests and standalone tools don't set client)
-        client = self._client
-        if client:
-            # Fire and forget update event in background
-            async def _dispatch_update_event() -> None:
-                try:
-                    # Refresh to get latest state for dispatch
-                    session = await self.get_session(session_id)
-                    if session:
-                        await client.handle_event(
-                            TeleClaudeEvents.SESSION_UPDATED,
-                            {"session_id": session_id, "updated_fields": updates},
-                            MessageMetadata(origin=session.origin_adapter),
-                        )
-                except Exception as exc:
-                    logger.error("Failed to dispatch SESSION_UPDATED for %s: %s", session_id[:8], exc)
+        async def _dispatch_update_event() -> None:
+            try:
+                await event_bus.emit(
+                    TeleClaudeEvents.SESSION_UPDATED,
+                    SessionUpdatedContext(session_id=session_id, updated_fields=updates),
+                )
+            except Exception as exc:
+                logger.error("Failed to dispatch SESSION_UPDATED for %s: %s", session_id[:8], exc)
 
-            asyncio.create_task(_dispatch_update_event())
+        asyncio.create_task(_dispatch_update_event())
 
     async def close_session(self, session_id: str) -> None:
         """Mark a session as closed without deleting it."""
@@ -499,15 +484,13 @@ class Db:
         if session.closed_at:
             return
         await self.update_session(session_id, closed_at=datetime.now(timezone.utc))
-        if self._client:
-            try:
-                await self._client.handle_event(
-                    TeleClaudeEvents.SESSION_CLOSED,
-                    {"session_id": session_id},
-                    MessageMetadata(origin=session.origin_adapter),
-                )
-            except Exception as exc:
-                logger.error("Failed to dispatch SESSION_CLOSED for %s: %s", session_id[:8], exc)
+        try:
+            await event_bus.emit(
+                TeleClaudeEvents.SESSION_CLOSED,
+                SessionLifecycleContext(session_id=session_id),
+            )
+        except Exception as exc:
+            logger.error("Failed to dispatch SESSION_CLOSED for %s: %s", session_id[:8], exc)
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
@@ -628,12 +611,11 @@ class Db:
             await db_session.commit()
         logger.debug("Deleted session %s from database", session_id[:8])
 
-        if session and self._client:
+        if session:
             try:
-                await self._client.handle_event(
+                await event_bus.emit(
                     TeleClaudeEvents.SESSION_CLOSED,
-                    {"session_id": session_id},
-                    MessageMetadata(origin=session.origin_adapter),
+                    SessionLifecycleContext(session_id=session_id),
                 )
             except Exception as exc:
                 logger.error("Failed to dispatch SESSION_CLOSED for %s: %s", session_id[:8], exc)

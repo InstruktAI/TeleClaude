@@ -40,6 +40,7 @@ from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSummary
 from teleclaude.transport.redis_transport import RedisTransport
@@ -99,18 +100,9 @@ class APIServer:
         self._refresh_pending_payload: dict[str, object] | None = None  # guard: loose-dict - WS payload
 
         # Subscribe to local session updates
-        self.client.on(
-            TeleClaudeEvents.SESSION_UPDATED,
-            self._handle_session_updated_event,
-        )
-        self.client.on(
-            TeleClaudeEvents.SESSION_STARTED,
-            self._handle_session_started_event,
-        )
-        self.client.on(
-            TeleClaudeEvents.SESSION_CLOSED,
-            self._handle_session_closed_event,
-        )
+        event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated_event)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started_event)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed_event)
 
         # Set cache through property to trigger subscription
         self.cache = cache

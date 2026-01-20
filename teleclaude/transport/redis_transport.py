@@ -28,12 +28,16 @@ from teleclaude.config import config
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
+    AgentEventContext,
     AgentHookEvents,
     DeployArgs,
     SessionLifecycleContext,
     SessionUpdatedContext,
+    SystemCommandContext,
     TeleClaudeEvents,
+    build_agent_payload,
     parse_command_string,
 )
 from teleclaude.core.models import (
@@ -101,9 +105,9 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         # Store client reference (ONLY interface to daemon)
         self.client = adapter_client
-        self.client.on(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
-        self.client.on(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started)
-        self.client.on(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed)
 
         # Task registry for tracked background tasks
         self.task_registry = task_registry
@@ -985,16 +989,12 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             if resolved_title:
                 event_data["title"] = resolved_title
 
-            payload = {
-                "session_id": target_session_id,
-                "event_type": AgentHookEvents.AGENT_STOP,
-                "data": event_data,
-            }
-            result = await self.client.handle_event(
-                TeleClaudeEvents.AGENT_EVENT,
-                payload,
-                MessageMetadata(origin="redis"),
+            context = AgentEventContext(
+                session_id=target_session_id,
+                event_type=AgentHookEvents.AGENT_STOP,
+                data=build_agent_payload(AgentHookEvents.AGENT_STOP, event_data),
             )
+            result = await event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
             return {"status": "success", "data": result}
 
         if cmd_name == "input_notification":
@@ -1015,20 +1015,17 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             except Exception as e:
                 logger.warning("Failed to decode input_notification message: %s", e)
 
-            payload = {
+            event_data = {
                 "session_id": target_session_id,
-                "event_type": AgentHookEvents.AGENT_NOTIFICATION,
-                "data": {
-                    "session_id": target_session_id,
-                    "source_computer": source_computer,
-                    "message": message,
-                },
+                "source_computer": source_computer,
+                "message": message,
             }
-            result = await self.client.handle_event(
-                TeleClaudeEvents.AGENT_EVENT,
-                payload,
-                MessageMetadata(origin="redis"),
+            context = AgentEventContext(
+                session_id=target_session_id,
+                event_type=AgentHookEvents.AGENT_NOTIFICATION,
+                data=build_agent_payload(AgentHookEvents.AGENT_NOTIFICATION, event_data),
             )
+            result = await event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
             return {"status": "success", "data": result}
 
         return {"status": "error", "error": f"unsupported agent notification: {cmd_name}"}
@@ -1139,14 +1136,13 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             except Exception:
                 deploy_args.verify_health = True
 
-        await self.client.handle_event(
+        await event_bus.emit(
             "system_command",
-            {
-                "command": command,
-                "from_computer": from_computer,
-                "args": deploy_args,
-            },
-            MessageMetadata(origin="redis"),
+            SystemCommandContext(
+                command=command,
+                from_computer=from_computer or "unknown",
+                args=deploy_args,
+            ),
         )
 
     async def _heartbeat_loop(self) -> None:

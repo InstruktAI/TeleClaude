@@ -18,13 +18,16 @@ import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.core import tmux_bridge, tmux_io
+from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.db import db
+from teleclaude.core.events import FileEventContext, VoiceEventContext
+from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.models import (
     AgentResumeArgs,
     AgentStartArgs,
+    CleanupTrigger,
     ComputerInfo,
     MessageMetadata,
     ProjectInfo,
@@ -47,6 +50,8 @@ from teleclaude.types.commands import (
     CloseSessionCommand,
     CreateSessionCommand,
     GetSessionDataCommand,
+    HandleFileCommand,
+    HandleVoiceCommand,
     KeysCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
@@ -563,6 +568,106 @@ async def get_session_data(
         "created_at": session.created_at.isoformat() if session.created_at else None,
         "last_activity": (session.last_activity.isoformat() if session.last_activity else None),
     }
+
+
+async def handle_voice(
+    cmd: HandleVoiceCommand,
+    client: "AdapterClient",
+    start_polling: StartPollingFunc,
+) -> None:
+    """Handle voice input for a session."""
+
+    async def _send_status(
+        session_id: str,
+        message: str,
+        metadata: MessageMetadata,
+    ) -> Optional[str]:
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Session %s not found for voice status", session_id[:8])
+            return None
+        return await client.send_message(
+            session,
+            message,
+            metadata=metadata,
+            cleanup_trigger=CleanupTrigger.NEXT_TURN,
+        )
+
+    async def _delete_feedback(session_id: str, message_id: str) -> None:
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Session %s not found for voice delete", session_id[:8])
+            return
+        await client.delete_message(session, str(message_id))
+
+    context = VoiceEventContext(
+        session_id=cmd.session_id,
+        file_path=cmd.file_path,
+        duration=cmd.duration,
+        message_id=cmd.message_id,
+        message_thread_id=cmd.message_thread_id,
+        origin=cmd.origin,
+    )
+
+    transcribed = await voice_message_handler.handle_voice(
+        session_id=cmd.session_id,
+        audio_path=cmd.file_path,
+        context=context,
+        send_message=_send_status,
+        delete_message=_delete_feedback,
+    )
+    if not transcribed:
+        return
+
+    if cmd.message_id:
+        session = await db.get_session(cmd.session_id)
+        if session:
+            await client.delete_message(session, str(cmd.message_id))
+
+    await send_message(
+        SendMessageCommand(session_id=cmd.session_id, text=transcribed),
+        client,
+        start_polling,
+    )
+
+
+async def handle_file(
+    cmd: HandleFileCommand,
+    client: "AdapterClient",
+) -> None:
+    """Handle file upload for a session."""
+
+    async def _send_notice(
+        session_id: str,
+        message: str,
+        metadata: MessageMetadata,
+    ) -> Optional[str]:
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Session %s not found for file notice", session_id[:8])
+            return None
+        return await client.send_message(
+            session,
+            message,
+            metadata=metadata,
+            cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
+        )
+
+    context = FileEventContext(
+        session_id=cmd.session_id,
+        file_path=cmd.file_path,
+        filename=cmd.filename,
+        caption=cmd.caption,
+        file_size=cmd.file_size,
+    )
+
+    await handle_file_upload(
+        session_id=cmd.session_id,
+        file_path=cmd.file_path,
+        filename=cmd.filename,
+        context=context,
+        send_message=_send_notice,
+    )
 
 
 async def send_message(

@@ -81,7 +81,6 @@ async def test_discover_peers_returns_empty():
 
     # Mock AdapterClient
     mock_client = Mock()
-    mock_client.handle_event = AsyncMock()
 
     # Set environment variables
     with patch.dict(
@@ -104,7 +103,6 @@ async def test_heartbeat_edit_same_message():
 
     # Mock AdapterClient
     mock_client = Mock()
-    mock_client.handle_event = AsyncMock()
 
     # Set environment variables
     with patch.dict(
@@ -154,7 +152,6 @@ async def test_peer_data_format():
 
     # Mock AdapterClient
     mock_client = Mock()
-    mock_client.handle_event = AsyncMock()
 
     # Set environment variables
     with patch.dict(

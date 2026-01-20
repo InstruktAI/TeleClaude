@@ -21,6 +21,7 @@ from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents, UiCommands
 from teleclaude.core.models import (
     AdapterType,
@@ -73,7 +74,7 @@ class UiAdapter(BaseAdapter):
         self.client = client
 
         # Register event listeners
-        self.client.on(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
 
     # === Adapter Metadata Helpers ===
 

@@ -17,7 +17,6 @@ from teleclaude.core.models import Session
 async def test_codex_watcher_does_not_adopt_old_logs(tmp_path: Path) -> None:
     """Test that CodexWatcher ignores stale log files during scans."""
     client = MagicMock()
-    client.handle_event = AsyncMock()
     watcher = CodexWatcher(client=client, db_handle=MagicMock())
 
     session = Session(
@@ -61,7 +60,6 @@ async def test_codex_watcher_does_not_adopt_old_logs(tmp_path: Path) -> None:
 async def test_rehydrate_watcher_attaches_existing_log(tmp_path: Path) -> None:
     """Test that CodexWatcher rehydrates and tracks existing log files."""
     client = MagicMock()
-    client.handle_event = AsyncMock()
     watcher = CodexWatcher(client=client, db_handle=MagicMock())
 
     session = Session(

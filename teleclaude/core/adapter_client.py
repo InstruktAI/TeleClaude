@@ -6,7 +6,7 @@ a clean, unified interface for the daemon and MCP server.
 
 import asyncio
 import os
-from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional, cast, overload
+from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -15,28 +15,6 @@ from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import DispatchEnvelope, EventBus
-from teleclaude.core.events import (
-    AgentEventContext,
-    AgentEventPayload,
-    AgentHookEvents,
-    AgentHookEventType,
-    AgentNotificationPayload,
-    AgentPromptPayload,
-    AgentSessionEndPayload,
-    AgentSessionStartPayload,
-    AgentStopPayload,
-    DeployArgs,
-    ErrorEventContext,
-    EventContext,
-    EventType,
-    FileEventContext,
-    SessionLifecycleContext,
-    SessionUpdatedContext,
-    SystemCommandContext,
-    TeleClaudeEvents,
-    VoiceEventContext,
-)
 from teleclaude.core.models import (
     ChannelMetadata,
     CleanupTrigger,
@@ -57,28 +35,6 @@ logger = get_logger(__name__)
 
 _OUTPUT_SUMMARY_MIN_INTERVAL_S = 2.0
 _OUTPUT_SUMMARY_IDLE_THRESHOLD_S = 2.0
-
-SessionLifecycleEventHandler = Callable[
-    [Literal["session_started", "session_closed"], SessionLifecycleContext], Awaitable[object]
-]
-AgentEventHandler = Callable[[Literal["agent_event"], AgentEventContext], Awaitable[object]]
-ErrorEventHandler = Callable[[Literal["error"], ErrorEventContext], Awaitable[object]]
-SessionUpdatedEventHandler = Callable[[Literal["session_updated"], SessionUpdatedContext], Awaitable[object]]
-VoiceEventHandler = Callable[[Literal["voice"], VoiceEventContext], Awaitable[object]]
-FileEventHandler = Callable[[Literal["file"], FileEventContext], Awaitable[object]]
-SystemCommandEventHandler = Callable[[Literal["system_command"], SystemCommandContext], Awaitable[object]]
-GenericEventHandler = Callable[[EventType, EventContext], Awaitable[object]]
-
-EventHandler = (
-    SessionLifecycleEventHandler
-    | AgentEventHandler
-    | ErrorEventHandler
-    | SessionUpdatedEventHandler
-    | VoiceEventHandler
-    | FileEventHandler
-    | SystemCommandEventHandler
-    | GenericEventHandler
-)
 
 
 class AdapterClient:
@@ -101,11 +57,9 @@ class AdapterClient:
         Args:
             task_registry: Optional TaskRegistry for tracking background tasks
 
-        No daemon reference - uses observer pattern instead.
-        Daemon subscribes to events via client.on(event, handler).
+        No daemon reference - event dispatch uses the global event bus.
         """
         self.task_registry = task_registry
-        self.event_bus = EventBus()
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
         self.is_shutting_down = False
         self.commands: "CommandService | None" = None
@@ -736,247 +690,6 @@ class AdapterClient:
         logger.debug("Total discovered peers (deduplicated): %d", len(unique_peers))
         return unique_peers
 
-    @overload
-    def on(self, event: Literal["session_started"], handler: SessionLifecycleEventHandler) -> None: ...
-
-    @overload
-    def on(self, event: Literal["session_closed"], handler: SessionLifecycleEventHandler) -> None: ...
-
-    @overload
-    def on(self, event: Literal["agent_event"], handler: AgentEventHandler) -> None: ...
-
-    @overload
-    def on(self, event: Literal["error"], handler: ErrorEventHandler) -> None: ...
-
-    @overload
-    def on(self, event: Literal["session_updated"], handler: SessionUpdatedEventHandler) -> None: ...
-
-    @overload
-    def on(self, event: Literal["voice"], handler: VoiceEventHandler) -> None: ...
-
-    @overload
-    def on(self, event: Literal["file"], handler: FileEventHandler) -> None: ...
-
-    @overload
-    def on(self, event: Literal["system_command"], handler: SystemCommandEventHandler) -> None: ...
-
-    @overload
-    def on(self, event: EventType, handler: GenericEventHandler) -> None: ...
-
-    def on(self, event: EventType, handler: EventHandler) -> None:
-        """Subscribe to event (daemon registers handlers here).
-
-        Args:
-            event: Event type to subscribe to
-            handler: Async handler function(event, context) -> Awaitable[object]
-                    context is a typed dataclass (SessionLifecycleContext, AgentEventContext, etc.)
-        """
-        self.event_bus.subscribe(event, cast(Callable[[EventType, EventContext], Awaitable[object]], handler))
-
-    async def handle_event(
-        self,
-        event: EventType,
-        payload: dict[str, object],  # noqa: loose-dict - Event payload from/to adapters
-        metadata: MessageMetadata,
-    ) -> object:
-        """Handle incoming event by dispatching to registered handler.
-
-        Pure coordinator - delegates all concerns to private methods:
-        1. Resolve session_id from platform metadata
-        2. Build typed context for the event
-        3. Call pre-handler (UI cleanup)
-        4. Dispatch to registered handler
-        5. Call post-handler (UI state tracking)
-        6. Broadcast to observer adapters
-
-        Args:
-        event: Event name (core event)
-            payload: Event payload data
-            metadata: Event metadata (origin, topic_id, user_id, etc.)
-
-        Returns:
-            Result envelope: {"status": "success", "data": ...} or {"status": "error", ...}
-        """
-        # 1. Resolve session_id from platform metadata (mutates payload)
-        await self._resolve_session_id(payload, metadata)
-
-        # 2. Build typed context
-        session_id = cast(str | None, payload.get("session_id"))
-        context = self._build_context(event, payload, metadata)
-
-        # 3. Get session for adapter operations
-        session = await db.get_session(str(session_id)) if session_id else None
-
-        # 3.5 Track last input adapter and message for routing feedback
-        if session and metadata.origin and metadata.origin in self.adapters:
-            # Track adapter for routing
-            await db.update_session(session.session_id, last_input_adapter=metadata.origin)
-
-        # 4. Pre-handler (UI cleanup before processing)
-        message_id = cast(str | None, payload.get("message_id"))
-        logger.trace(
-            "Pre-handler check: session=%s, message_id=%s, event=%s",
-            session.session_id[:8] if session else None,
-            message_id,
-            event,
-        )
-        if session and not message_id:
-            logger.debug(
-                "Skipping pre/post handlers (missing message_id): session=%s event=%s",
-                session.session_id[:8],
-                event,
-            )
-        if session and message_id:
-            await self._call_pre_handler(session, event, metadata.origin)
-
-        # 5. Dispatch to registered handler
-        response = await self._dispatch(event, context)
-
-        # 6. Post-handler (UI state tracking after processing)
-        if session and message_id:
-            await self._call_post_handler(session, event, str(message_id), metadata.origin)
-
-        # 7. Broadcast to observers (user actions)
-        if session:
-            await self._broadcast_action(session, event, payload, metadata.origin)
-
-        return response
-
-    async def _resolve_session_id(
-        self,
-        payload: dict[str, object],  # noqa: loose-dict - Event payload from/to adapters
-        metadata: MessageMetadata,
-    ) -> None:
-        """Resolve session_id from platform metadata (topic_id or channel_id).
-
-        Mutates payload in-place to add session_id if found.
-        """
-        topic_id = metadata.message_thread_id
-        channel_id = metadata.channel_id
-        origin = metadata.origin
-
-        if topic_id and origin:
-            sessions = await db.get_sessions_by_adapter_metadata(origin, "topic_id", topic_id)
-            if sessions:
-                payload["session_id"] = sessions[0].session_id
-        elif channel_id and origin:
-            sessions = await db.get_sessions_by_adapter_metadata(origin, "channel_id", channel_id)
-            if sessions:
-                payload["session_id"] = sessions[0].session_id
-
-    def _build_context(
-        self,
-        event: EventType,
-        payload: dict[str, object],  # noqa: loose-dict - Event payload from/to adapters
-        metadata: MessageMetadata,
-    ) -> EventContext:
-        """Build typed context dataclass based on event type."""
-        context_builders: dict[str, Callable[[], EventContext]] = {
-            TeleClaudeEvents.AGENT_EVENT: lambda: AgentEventContext(
-                session_id=str(payload["session_id"]),
-                event_type=cast(AgentHookEventType, payload["event_type"]),
-                data=self._build_agent_payload(
-                    cast(AgentHookEventType, payload["event_type"]),
-                    cast(dict[str, object], payload["data"]),  # noqa: loose-dict - Event data from adapter
-                ),
-            ),
-            TeleClaudeEvents.SESSION_UPDATED: lambda: SessionUpdatedContext(
-                session_id=str(payload.get("session_id")),
-                updated_fields=cast(dict[str, object], payload.get("updated_fields", {})),  # noqa: loose-dict - Event fields
-            ),
-            TeleClaudeEvents.ERROR: lambda: ErrorEventContext(
-                session_id=str(payload.get("session_id")),
-                message=cast(str, payload.get("message", "")),
-                source=cast(str | None, payload.get("source")),
-                details=cast(dict[str, object] | None, payload.get("details")),  # noqa: loose-dict - Event detail boundary
-            ),
-            TeleClaudeEvents.SESSION_CLOSED: lambda: SessionLifecycleContext(session_id=str(payload.get("session_id"))),
-            TeleClaudeEvents.SESSION_STARTED: lambda: SessionLifecycleContext(
-                session_id=str(payload.get("session_id"))
-            ),
-            "voice": lambda: VoiceEventContext(
-                session_id=str(payload.get("session_id")),
-                file_path=cast(str, payload.get("file_path", "")),
-                duration=cast(float | None, payload.get("duration")),
-                message_id=cast(str | None, payload.get("message_id")),
-                message_thread_id=cast(int | None, payload.get("message_thread_id")),
-                origin=metadata.origin,
-            ),
-            "file": lambda: FileEventContext(
-                session_id=str(payload.get("session_id")),
-                file_path=cast(str, payload.get("file_path", "")),
-                filename=cast(str, payload.get("filename", "")),
-                caption=cast(str | None, payload.get("caption")),
-                file_size=cast(int, payload.get("file_size", 0)),
-            ),
-            "system_command": lambda: SystemCommandContext(
-                command=cast(str, payload.get("command", "")),
-                from_computer=cast(str, payload.get("from_computer", "unknown")),
-                args=cast(DeployArgs, payload.get("args", DeployArgs())),
-            ),
-        }
-
-        # Check specific event first
-        if event in context_builders:
-            return context_builders[event]()
-
-        # Fallback - should not happen with EventType literal
-        logger.warning("Unknown event type %s, using empty SessionLifecycleContext", event)
-        return SessionLifecycleContext(session_id=str(payload.get("session_id")))
-
-    def _build_agent_payload(
-        self,
-        event_type: AgentHookEventType,
-        data: dict[str, object],  # noqa: loose-dict - Event data to adapters
-    ) -> AgentEventPayload:
-        """Build typed agent payload from normalized hook data."""
-        native_id = cast(str | None, data.get("session_id"))
-
-        if event_type == AgentHookEvents.AGENT_SESSION_START:
-            return AgentSessionStartPayload(
-                session_id=native_id,
-                transcript_path=cast(str | None, data.get("transcript_path")),
-                raw=data,
-            )
-
-        if event_type == AgentHookEvents.AGENT_PROMPT:
-            return AgentPromptPayload(
-                session_id=native_id,
-                transcript_path=cast(str | None, data.get("transcript_path")),
-                prompt=cast(str, data.get("prompt", "")),
-                raw=data,
-                source_computer=cast(str | None, data.get("source_computer")),
-            )
-
-        if event_type == AgentHookEvents.AGENT_STOP:
-            return AgentStopPayload(
-                session_id=native_id,
-                transcript_path=cast(str | None, data.get("transcript_path")),
-                prompt=cast(str | None, data.get("prompt")),
-                raw=data,
-                summary=cast(str | None, data.get("summary")),
-                title=cast(str | None, data.get("title")),
-                source_computer=cast(str | None, data.get("source_computer")),
-            )
-
-        if event_type == AgentHookEvents.AGENT_NOTIFICATION:
-            return AgentNotificationPayload(
-                session_id=native_id,
-                transcript_path=cast(str | None, data.get("transcript_path")),
-                message=str(data.get("message", "")),
-                raw=data,
-            )
-
-        if event_type == AgentHookEvents.AGENT_SESSION_END:
-            return AgentSessionEndPayload(
-                session_id=native_id,
-                raw=data,
-            )
-
-        raise ValueError(f"Unknown agent hook event_type '{event_type}'")
-
-        raise ValueError(f"Unknown agent hook event_type '{event_type}'")
-
     async def _call_pre_handler(self, session: "Session", event: str, source_adapter: str | None = None) -> None:
         """Call source adapter's pre-handler for UI cleanup.
 
@@ -994,10 +707,6 @@ class AdapterClient:
 
         await pre_handler(session)
         logger.debug("Pre-handler executed for %s on event %s", adapter_type, event)
-
-    async def _dispatch(self, event: EventType, context: EventContext) -> DispatchEnvelope:
-        """Dispatch event to registered handler(s)."""
-        return await self.event_bus.emit(event, context)
 
     async def _call_post_handler(
         self, session: "Session", event: str, message_id: str, source_adapter: str | None = None

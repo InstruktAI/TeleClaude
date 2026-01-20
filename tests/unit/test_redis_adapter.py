@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -149,11 +149,10 @@ async def test_discover_peers_handles_invalid_json():
 @pytest.mark.asyncio
 async def test_stop_notification_emits_agent_stop_event():
     """stop_notification should emit agent stop event with minimal payload."""
-    from teleclaude.core.events import TeleClaudeEvents
+    from teleclaude.core.events import AgentHookEvents, TeleClaudeEvents
     from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    mock_client.handle_event = AsyncMock(return_value={"status": "success"})
     mock_client.commands = MagicMock()
     adapter = RedisTransport(mock_client)
 
@@ -165,13 +164,14 @@ async def test_stop_notification_emits_agent_stop_event():
         b"initiator": b"RemotePC",
     }
 
-    await adapter._handle_incoming_message("msg-1", data)
+    with patch("teleclaude.core.event_bus.event_bus.emit", new=AsyncMock()) as mock_emit:
+        await adapter._handle_incoming_message("msg-1", data)
 
-    assert mock_client.handle_event.await_count == 1
-    call_args = mock_client.handle_event.call_args
+    assert mock_emit.await_count == 1
+    call_args = mock_emit.call_args
     assert call_args.args[0] == TeleClaudeEvents.AGENT_EVENT
-    payload = call_args.args[1]
-    assert payload["event_type"] == "stop"
+    context = call_args.args[1]
+    assert context.event_type == AgentHookEvents.AGENT_STOP
 
 
 @pytest.mark.asyncio

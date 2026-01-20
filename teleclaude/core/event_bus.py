@@ -34,6 +34,10 @@ class EventBus:
         self._handlers[event].append(handler)
         logger.trace("Subscribed handler for event: %s (total: %d)", event, len(self._handlers[event]))
 
+    def clear(self) -> None:
+        """Clear all registered handlers (primarily for tests)."""
+        self._handlers.clear()
+
     async def emit(self, event: EventType, context: EventContext) -> DispatchEnvelope:
         """Emit an event to all handlers."""
         handlers = self._handlers.get(event)
@@ -68,3 +72,6 @@ class EventBus:
             raise errors[0]
 
         return DispatchEnvelope(status="success", data=None)
+
+
+event_bus = EventBus()

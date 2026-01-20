@@ -17,7 +17,6 @@ class DummyHandlers(InputHandlersMixin):
 
     def __init__(self) -> None:
         self.client = Mock()
-        self.client.handle_event = AsyncMock()
         self.user_whitelist = set()
         self._topic_message_cache = {}
         self._mcp_message_queues = {}
@@ -55,13 +54,16 @@ async def test_topic_closed_ignores_new_session() -> None:
 
     update = SimpleNamespace(message=SimpleNamespace(message_thread_id=456))
 
-    with patch(
-        "teleclaude.adapters.telegram.input_handlers.db.get_sessions_by_adapter_metadata",
-        new=AsyncMock(return_value=[session]),
+    with (
+        patch(
+            "teleclaude.adapters.telegram.input_handlers.db.get_sessions_by_adapter_metadata",
+            new=AsyncMock(return_value=[session]),
+        ),
+        patch("teleclaude.core.event_bus.event_bus.emit", new=AsyncMock()) as mock_emit,
     ):
         await handlers._handle_topic_closed(update, None)
 
-    handlers.client.handle_event.assert_not_called()
+    mock_emit.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -82,10 +84,13 @@ async def test_topic_closed_handles_naive_created_at() -> None:
 
     update = SimpleNamespace(message=SimpleNamespace(message_thread_id=789))
 
-    with patch(
-        "teleclaude.adapters.telegram.input_handlers.db.get_sessions_by_adapter_metadata",
-        new=AsyncMock(return_value=[session]),
+    with (
+        patch(
+            "teleclaude.adapters.telegram.input_handlers.db.get_sessions_by_adapter_metadata",
+            new=AsyncMock(return_value=[session]),
+        ),
+        patch("teleclaude.core.event_bus.event_bus.emit", new=AsyncMock()) as mock_emit,
     ):
         await handlers._handle_topic_closed(update, None)
 
-    handlers.client.handle_event.assert_called_once()
+    mock_emit.assert_called_once()

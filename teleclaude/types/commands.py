@@ -12,6 +12,8 @@ class CommandType(str, Enum):
     """Internal command types."""
 
     CREATE_SESSION = "create_session"
+    HANDLE_VOICE = "handle_voice"
+    HANDLE_FILE = "handle_file"
     KEYS = "keys"
     START_AGENT = "start_agent"
     RESUME_AGENT = "resume_agent"
@@ -158,6 +160,91 @@ class SendMessageCommand(InternalCommand):
 
     def to_payload(self) -> Dict[str, object]:
         return {"session_id": self.session_id, "text": self.text}
+
+
+@dataclass(kw_only=True)
+class HandleVoiceCommand(InternalCommand):
+    """Intent to handle a voice input for a session."""
+
+    session_id: str
+    file_path: str
+    duration: Optional[float] = None
+    message_id: Optional[str] = None
+    message_thread_id: Optional[int] = None
+    origin: Optional[str] = None
+
+    def __init__(
+        self,
+        *,
+        session_id: str,
+        file_path: str,
+        duration: Optional[float] = None,
+        message_id: Optional[str] = None,
+        message_thread_id: Optional[int] = None,
+        origin: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ):
+        super().__init__(command_type=CommandType.HANDLE_VOICE, request_id=request_id)
+        self.session_id = session_id
+        self.file_path = file_path
+        self.duration = duration
+        self.message_id = message_id
+        self.message_thread_id = message_thread_id
+        self.origin = origin
+
+    def to_payload(self) -> Dict[str, object]:
+        payload: Dict[str, object] = {
+            "session_id": self.session_id,
+            "file_path": self.file_path,
+        }
+        if self.duration is not None:
+            payload["duration"] = self.duration
+        if self.message_id is not None:
+            payload["message_id"] = self.message_id
+        if self.message_thread_id is not None:
+            payload["message_thread_id"] = self.message_thread_id
+        if self.origin is not None:
+            payload["origin"] = self.origin
+        return payload
+
+
+@dataclass(kw_only=True)
+class HandleFileCommand(InternalCommand):
+    """Intent to handle a file upload for a session."""
+
+    session_id: str
+    file_path: str
+    filename: str
+    caption: Optional[str] = None
+    file_size: int = 0
+
+    def __init__(
+        self,
+        *,
+        session_id: str,
+        file_path: str,
+        filename: str,
+        caption: Optional[str] = None,
+        file_size: int = 0,
+        request_id: Optional[str] = None,
+    ):
+        super().__init__(command_type=CommandType.HANDLE_FILE, request_id=request_id)
+        self.session_id = session_id
+        self.file_path = file_path
+        self.filename = filename
+        self.caption = caption
+        self.file_size = file_size
+
+    def to_payload(self) -> Dict[str, object]:
+        payload: Dict[str, object] = {
+            "session_id": self.session_id,
+            "file_path": self.file_path,
+            "filename": self.filename,
+            "file_size": self.file_size,
+        }
+        if self.caption is not None:
+            payload["caption"] = self.caption
+        return payload
 
 
 @dataclass(kw_only=True)

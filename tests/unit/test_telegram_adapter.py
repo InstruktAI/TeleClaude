@@ -46,7 +46,6 @@ def mock_env(monkeypatch):
 def mock_adapter_client():
     """Mock AdapterClient."""
     client = MagicMock()
-    client.handle_event = AsyncMock()
     client.pre_handle_command = AsyncMock()
     client.post_handle_command = AsyncMock()
     client.broadcast_command_action = AsyncMock()

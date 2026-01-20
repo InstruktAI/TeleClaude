@@ -15,6 +15,8 @@ from teleclaude.core.command_handlers import (
     close_session,
     end_session,
     get_session_data,
+    handle_file,
+    handle_voice,
     keys,
     resume_agent,
     run_agent_command,
@@ -27,6 +29,8 @@ from teleclaude.types.commands import (
     CloseSessionCommand,
     CreateSessionCommand,
     GetSessionDataCommand,
+    HandleFileCommand,
+    HandleVoiceCommand,
     KeysCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
@@ -73,6 +77,12 @@ class CommandService:
 
     async def send_message(self, cmd: SendMessageCommand) -> None:
         await send_message(cmd, self.client, self._start_polling)
+
+    async def handle_voice(self, cmd: HandleVoiceCommand) -> None:
+        await handle_voice(cmd, self.client, self._start_polling)
+
+    async def handle_file(self, cmd: HandleFileCommand) -> None:
+        await handle_file(cmd, self.client)
 
     async def keys(self, cmd: KeysCommand) -> None:
         await keys(cmd, self.client, self._start_polling)
