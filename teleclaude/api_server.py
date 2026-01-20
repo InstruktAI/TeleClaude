@@ -185,7 +185,14 @@ class APIServer:
         async def list_sessions(  # pyright: ignore
             computer: str | None = None,
         ) -> list[SessionSummaryDTO]:
-            """List sessions from cache (includes local and remote)."""
+            """List sessions from local storage and remote cache.
+
+            Args:
+                computer: Optional filter by computer name
+
+            Returns:
+                List of session summaries (merged local + cached remote)
+            """
             try:
                 local_sessions = await command_handlers.list_sessions()
 
@@ -221,7 +228,18 @@ class APIServer:
         async def create_session(  # pyright: ignore
             request: CreateSessionRequest,
         ) -> CreateSessionResponseDTO:
-            """Create new session (local or remote)."""
+            """Create new local session.
+
+            Note: Remote session creation via API is not yet implemented;
+            all sessions are created on the local machine regardless of
+            the computer field in the request.
+
+            Args:
+                request: CreateSessionRequest model
+
+            Returns:
+                CreateSessionResponseDTO
+            """
             # Normalize request into internal command.
 
             metadata = self._metadata(
