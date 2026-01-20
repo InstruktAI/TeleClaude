@@ -23,9 +23,9 @@ async def test_next_prepare_hitl_input_md_unassessed_breakdown():
         return "input.md" in relative_path
 
     with (
-        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.check_file_exists", side_effect=mock_check_file_exists),
-        patch("teleclaude.core.next_machine.read_breakdown_state", return_value=None),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
+        patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=None),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"Preparing: {slug}" in result
@@ -48,9 +48,9 @@ async def test_next_prepare_hitl_assessed_breakdown_with_todos_container():
         return "input.md" in relative_path
 
     with (
-        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.check_file_exists", side_effect=mock_check_file_exists),
-        patch("teleclaude.core.next_machine.read_breakdown_state", return_value=breakdown_state),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
+        patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=breakdown_state),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert "CONTAINER:" in result
@@ -77,9 +77,9 @@ async def test_next_prepare_hitl_assessed_breakdown_empty_todos_proceeds():
         return False
 
     with (
-        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.check_file_exists", side_effect=mock_check_file_exists),
-        patch("teleclaude.core.next_machine.read_breakdown_state", return_value=breakdown_state),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
+        patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=breakdown_state),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         # Should skip breakdown and proceed to requirements creation
@@ -102,9 +102,9 @@ async def test_next_prepare_autonomous_input_md_unassessed_breakdown():
         return "input.md" in relative_path
 
     with (
-        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.check_file_exists", side_effect=mock_check_file_exists),
-        patch("teleclaude.core.next_machine.read_breakdown_state", return_value=None),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
+        patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=None),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
         assert "teleclaude__run_agent_command" in result
@@ -155,7 +155,7 @@ def test_write_breakdown_state_creates_breakdown_section():
     with tempfile.TemporaryDirectory() as tmpdir:
         slug = "test-slug"
 
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             write_breakdown_state(tmpdir, slug, assessed=True, todos=["test-1", "test-2"])
 
         state_file = Path(tmpdir) / "todos" / slug / "state.json"
@@ -172,7 +172,7 @@ def test_write_breakdown_state_preserves_existing_state():
         state_dir.mkdir(parents=True)
         (state_dir / "state.json").write_text(json.dumps({"build": "complete", "review": "pending"}))
 
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             write_breakdown_state(tmpdir, slug, assessed=True, todos=[])
 
         content = json.loads((state_dir / "state.json").read_text())

@@ -6,8 +6,6 @@ a clean, unified interface for the daemon and MCP server.
 
 import asyncio
 import os
-import re
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional, cast, overload
 
 from instrukt_ai_logging import get_logger
@@ -28,13 +26,16 @@ from teleclaude.core.events import (
     AgentSessionEndPayload,
     AgentSessionStartPayload,
     AgentStopPayload,
-    CommandEventContext,
+    DeployArgs,
     ErrorEventContext,
     EventContext,
     EventType,
+    FileEventContext,
     SessionLifecycleContext,
     SessionUpdatedContext,
+    SystemCommandContext,
     TeleClaudeEvents,
+    VoiceEventContext,
 )
 from teleclaude.core.models import (
     ChannelMetadata,
@@ -45,46 +46,37 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.transport.redis_transport import RedisTransport
-from teleclaude.types.commands import InternalCommand, SystemCommand
 
 if TYPE_CHECKING:
+    from teleclaude.core.command_service import CommandService
     from teleclaude.core.models import Session
     from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
 
 
-_CAMEL_TO_SNAKE_1 = re.compile("(.)([A-Z][a-z]+)")
-_CAMEL_TO_SNAKE_2 = re.compile("([a-z0-9])([A-Z])")
-
-
-def _command_name_from_type(command: InternalCommand) -> str:
-    name = type(command).__name__
-    if name.endswith("Command"):
-        name = name[: -len("Command")]
-    name = _CAMEL_TO_SNAKE_1.sub(r"\1_\2", name)
-    name = _CAMEL_TO_SNAKE_2.sub(r"\1_\2", name)
-    return name.lower()
-
-
 _OUTPUT_SUMMARY_MIN_INTERVAL_S = 2.0
 _OUTPUT_SUMMARY_IDLE_THRESHOLD_S = 2.0
 
-CommandEventHandler = Callable[[Literal["command"], CommandEventContext], Awaitable[object]]
 SessionLifecycleEventHandler = Callable[
     [Literal["session_started", "session_closed"], SessionLifecycleContext], Awaitable[object]
 ]
 AgentEventHandler = Callable[[Literal["agent_event"], AgentEventContext], Awaitable[object]]
 ErrorEventHandler = Callable[[Literal["error"], ErrorEventContext], Awaitable[object]]
 SessionUpdatedEventHandler = Callable[[Literal["session_updated"], SessionUpdatedContext], Awaitable[object]]
+VoiceEventHandler = Callable[[Literal["voice"], VoiceEventContext], Awaitable[object]]
+FileEventHandler = Callable[[Literal["file"], FileEventContext], Awaitable[object]]
+SystemCommandEventHandler = Callable[[Literal["system_command"], SystemCommandContext], Awaitable[object]]
 GenericEventHandler = Callable[[EventType, EventContext], Awaitable[object]]
 
 EventHandler = (
-    CommandEventHandler
-    | SessionLifecycleEventHandler
+    SessionLifecycleEventHandler
     | AgentEventHandler
     | ErrorEventHandler
     | SessionUpdatedEventHandler
+    | VoiceEventHandler
+    | FileEventHandler
+    | SystemCommandEventHandler
     | GenericEventHandler
 )
 
@@ -116,6 +108,7 @@ class AdapterClient:
         self.event_bus = EventBus()
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
         self.is_shutting_down = False
+        self.commands: "CommandService | None" = None
 
     def mark_shutting_down(self) -> None:
         """Mark client as shutting down to suppress adapter restarts."""
@@ -744,9 +737,6 @@ class AdapterClient:
         return unique_peers
 
     @overload
-    def on(self, event: Literal["command"], handler: CommandEventHandler) -> None: ...
-
-    @overload
     def on(self, event: Literal["session_started"], handler: SessionLifecycleEventHandler) -> None: ...
 
     @overload
@@ -762,6 +752,15 @@ class AdapterClient:
     def on(self, event: Literal["session_updated"], handler: SessionUpdatedEventHandler) -> None: ...
 
     @overload
+    def on(self, event: Literal["voice"], handler: VoiceEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["file"], handler: FileEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["system_command"], handler: SystemCommandEventHandler) -> None: ...
+
+    @overload
     def on(self, event: EventType, handler: GenericEventHandler) -> None: ...
 
     def on(self, event: EventType, handler: EventHandler) -> None:
@@ -770,63 +769,13 @@ class AdapterClient:
         Args:
             event: Event type to subscribe to
             handler: Async handler function(event, context) -> Awaitable[object]
-                    context is a typed dataclass (CommandEventContext, MessageEventContext, etc.)
+                    context is a typed dataclass (SessionLifecycleContext, AgentEventContext, etc.)
         """
         self.event_bus.subscribe(event, cast(Callable[[EventType, EventContext], Awaitable[object]], handler))
 
-    async def handle_internal_command(
-        self,
-        command: InternalCommand,
-        metadata: Optional[MessageMetadata] = None,
-    ) -> object:
-        """Handle normalized internal command.
-
-        Converts internal command to event dispatch.
-        This is the new entry point for transport-normalized inputs.
-        """
-        event_type = cast(EventType, "command")
-
-        payload = command.to_payload()
-        if isinstance(command, SystemCommand):
-            command_name = command.command
-        else:
-            command_name = _command_name_from_type(command)
-        payload["command_name"] = command_name
-
-        if metadata is None:
-            metadata = MessageMetadata(origin="internal")
-
-        if "message_id" not in payload and metadata.channel_metadata:
-            message_id = metadata.channel_metadata.get("message_id")
-            if message_id is not None:
-                payload["message_id"] = str(message_id)
-                logger.debug(
-                    "Injected message_id from channel_metadata: command=%s session=%s message_id=%s",
-                    command_name,
-                    payload.get("session_id"),
-                    message_id,
-                )
-            else:
-                logger.debug(
-                    "No message_id in channel_metadata for command=%s session=%s",
-                    command_name,
-                    payload.get("session_id"),
-                )
-        elif "message_id" not in payload:
-            logger.debug(
-                "No message_id in payload or channel_metadata for command=%s session=%s",
-                command_name,
-                payload.get("session_id"),
-            )
-
-        # Inject command into payload for context builder
-        payload["internal_command"] = command
-
-        return await self.handle_event(event_type, payload, metadata)
-
     async def handle_event(
         self,
-        event: str,
+        event: EventType,
         payload: dict[str, object],  # noqa: loose-dict - Event payload from/to adapters
         metadata: MessageMetadata,
     ) -> object:
@@ -841,50 +790,27 @@ class AdapterClient:
         6. Broadcast to observer adapters
 
         Args:
-            event: Event name (core event or command name)
+        event: Event name (core event)
             payload: Event payload data
             metadata: Event metadata (origin, topic_id, user_id, etc.)
 
         Returns:
             Result envelope: {"status": "success", "data": ...} or {"status": "error", ...}
         """
-        # Normalize command events (any non-core event is treated as a command)
-        core_events = {
-            TeleClaudeEvents.SESSION_STARTED,
-            TeleClaudeEvents.SESSION_CLOSED,
-            TeleClaudeEvents.SESSION_UPDATED,
-            TeleClaudeEvents.AGENT_EVENT,
-            TeleClaudeEvents.ERROR,
-            "command",
-        }
-        if event not in core_events:
-            payload["command_name"] = event
-            event = "command"
-        normalized_event = cast(EventType, event)
-
         # 1. Resolve session_id from platform metadata (mutates payload)
         await self._resolve_session_id(payload, metadata)
 
         # 2. Build typed context
         session_id = cast(str | None, payload.get("session_id"))
-        context = self._build_context(normalized_event, payload, metadata)
+        context = self._build_context(event, payload, metadata)
 
         # 3. Get session for adapter operations
         session = await db.get_session(str(session_id)) if session_id else None
 
         # 3.5 Track last input adapter and message for routing feedback
         if session and metadata.origin and metadata.origin in self.adapters:
-            if event == "command":
-                # Track adapter for routing
-                await db.update_session(session.session_id, last_input_adapter=metadata.origin)
-                # Track last user input text for TUI display
-                user_text = payload.get("text") or payload.get("command")
-                if user_text is not None:
-                    await db.update_session(
-                        session.session_id,
-                        last_message_sent=str(user_text)[:200],
-                        last_message_sent_at=datetime.now(timezone.utc).isoformat(),
-                    )
+            # Track adapter for routing
+            await db.update_session(session.session_id, last_input_adapter=metadata.origin)
 
         # 4. Pre-handler (UI cleanup before processing)
         message_id = cast(str | None, payload.get("message_id"))
@@ -901,18 +827,18 @@ class AdapterClient:
                 event,
             )
         if session and message_id:
-            await self._call_pre_handler(session, normalized_event, metadata.origin)
+            await self._call_pre_handler(session, event, metadata.origin)
 
         # 5. Dispatch to registered handler
-        response = await self._dispatch(normalized_event, context)
+        response = await self._dispatch(event, context)
 
         # 6. Post-handler (UI state tracking after processing)
         if session and message_id:
-            await self._call_post_handler(session, normalized_event, str(message_id), metadata.origin)
+            await self._call_post_handler(session, event, str(message_id), metadata.origin)
 
         # 7. Broadcast to observers (user actions)
         if session:
-            await self._broadcast_action(session, normalized_event, payload, metadata.origin)
+            await self._broadcast_action(session, event, payload, metadata.origin)
 
         return response
 
@@ -968,36 +894,35 @@ class AdapterClient:
             TeleClaudeEvents.SESSION_STARTED: lambda: SessionLifecycleContext(
                 session_id=str(payload.get("session_id"))
             ),
+            "voice": lambda: VoiceEventContext(
+                session_id=str(payload.get("session_id")),
+                file_path=cast(str, payload.get("file_path", "")),
+                duration=cast(float | None, payload.get("duration")),
+                message_id=cast(str | None, payload.get("message_id")),
+                message_thread_id=cast(int | None, payload.get("message_thread_id")),
+                origin=metadata.origin,
+            ),
+            "file": lambda: FileEventContext(
+                session_id=str(payload.get("session_id")),
+                file_path=cast(str, payload.get("file_path", "")),
+                filename=cast(str, payload.get("filename", "")),
+                caption=cast(str | None, payload.get("caption")),
+                file_size=cast(int, payload.get("file_size", 0)),
+            ),
+            "system_command": lambda: SystemCommandContext(
+                command=cast(str, payload.get("command", "")),
+                from_computer=cast(str, payload.get("from_computer", "unknown")),
+                args=cast(DeployArgs, payload.get("args", DeployArgs())),
+            ),
         }
 
         # Check specific event first
         if event in context_builders:
             return context_builders[event]()
 
-        if event == "command":
-            return CommandEventContext(
-                command=str(payload.get("command_name", "")),
-                session_id=str(payload.get("session_id")),
-                args=cast(list[str], payload.get("args", [])),
-                payload=payload,
-                message_id=cast(str | None, payload.get("message_id")),
-                origin=metadata.origin,
-                message_thread_id=metadata.message_thread_id,
-                title=metadata.title,
-                project_path=metadata.project_path,
-                channel_metadata=metadata.channel_metadata,
-                auto_command=metadata.auto_command,
-                launch_intent=metadata.launch_intent,
-                internal_command=cast(Optional[InternalCommand], payload.get("internal_command")),
-            )
-
         # Fallback - should not happen with EventType literal
-        logger.warning("Unknown event type %s, using empty CommandEventContext", event)
-        return CommandEventContext(
-            command=str(payload.get("command_name", "")),
-            session_id=str(payload.get("session_id")),
-            args=cast(list[str], payload.get("args", [])),
-        )
+        logger.warning("Unknown event type %s, using empty SessionLifecycleContext", event)
+        return SessionLifecycleContext(session_id=str(payload.get("session_id")))
 
     def _build_agent_payload(
         self,
@@ -1052,7 +977,7 @@ class AdapterClient:
 
         raise ValueError(f"Unknown agent hook event_type '{event_type}'")
 
-    async def _call_pre_handler(self, session: "Session", event: EventType, source_adapter: str | None = None) -> None:
+    async def _call_pre_handler(self, session: "Session", event: str, source_adapter: str | None = None) -> None:
         """Call source adapter's pre-handler for UI cleanup.
 
         Uses source adapter (where message came from) rather than origin adapter,
@@ -1075,7 +1000,7 @@ class AdapterClient:
         return await self.event_bus.emit(event, context)
 
     async def _call_post_handler(
-        self, session: "Session", event: EventType, message_id: str, source_adapter: str | None = None
+        self, session: "Session", event: str, message_id: str, source_adapter: str | None = None
     ) -> None:
         """Call source adapter's post-handler for UI state tracking.
 
@@ -1096,10 +1021,30 @@ class AdapterClient:
         await post_handler(session, message_id)
         logger.debug("Post-handler executed for %s on event %s", adapter_type, event)
 
+    async def pre_handle_command(self, session: "Session", source_adapter: str | None = None) -> None:
+        """Run UI pre-handler before executing a user command."""
+        await self._call_pre_handler(session, "command", source_adapter)
+
+    async def post_handle_command(self, session: "Session", message_id: str, source_adapter: str | None = None) -> None:
+        """Run UI post-handler after executing a user command."""
+        await self._call_post_handler(session, "command", message_id, source_adapter)
+
+    async def broadcast_command_action(
+        self,
+        session: "Session",
+        command_name: str,
+        payload: dict[str, object],  # noqa: loose-dict - Command payload for observers
+        source_adapter: str | None = None,
+    ) -> None:
+        """Broadcast user command actions to UI observer adapters."""
+        command_payload = dict(payload)
+        command_payload["command_name"] = command_name
+        await self._broadcast_action(session, "command", command_payload, source_adapter)
+
     async def _broadcast_action(
         self,
         session: "Session",
-        event: EventType,
+        event: str,
         payload: dict[str, object],  # noqa: loose-dict - Event payload from/to adapters
         source_adapter: str | None = None,
     ) -> None:
@@ -1130,7 +1075,7 @@ class AdapterClient:
             except Exception as e:
                 logger.warning("Failed to broadcast %s to observer %s: %s", event, adapter_type, e)
 
-    def _format_event_for_observers(self, event: EventType, payload: dict[str, object]) -> Optional[str]:  # noqa: loose-dict - Event payload
+    def _format_event_for_observers(self, event: str, payload: dict[str, object]) -> Optional[str]:  # noqa: loose-dict - Event payload
         """Format event as human-readable text for observer adapters.
 
         Args:

@@ -80,16 +80,13 @@ When adding a new command to the Telegram bot, you MUST follow ALL these steps:
        # Your command logic here
    ```
 
-4. **Route command in daemon** (`daemon.py` `handle_command()`):
+4. **Dispatch command directly** from the adapter handler:
 
-   ```python
-   elif command == "command-name":
-       await self._command_name(context, args)
-   ```
+   - Build the typed command object (see `teleclaude/types/commands.py`)
+   - Call the explicit command service method (see `teleclaude/core/command_service.py`)
+   - Use `_dispatch_command(...)` to apply pre/post hooks and broadcast
 
-5. **Implement daemon handler** in `daemon.py`
-
-6. **Add to UiCommands** in `teleclaude/core/events.py`:
+5. **Add to UiCommands** in `teleclaude/core/events.py`:
 
    ```python
    UiCommands = {

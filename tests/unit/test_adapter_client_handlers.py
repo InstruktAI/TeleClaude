@@ -91,19 +91,20 @@ async def test_pre_post_handlers_run_with_message_id():
     client = AdapterClient()
     adapter = PrePostUiAdapter(client)
     client.register_adapter("telegram", adapter)
-    client.on("command", AsyncMock())
 
     session = _make_session()
 
     mock_db = AsyncMock()
-    mock_db.get_session = AsyncMock(return_value=session)
     mock_db.update_session = AsyncMock()
 
-    with patch("teleclaude.core.adapter_client.db", mock_db):
-        await client.handle_event(
-            "command",
-            {"session_id": session.session_id, "message_id": "123", "command_name": "send_message", "args": []},
+    with patch("teleclaude.adapters.ui_adapter.db", mock_db):
+        await adapter._dispatch_command(
+            session,
+            "123",
             MessageMetadata(origin="telegram"),
+            "send_message",
+            {"text": "hello"},
+            AsyncMock(),
         )
 
     assert adapter.pre_calls == [session.session_id]
@@ -116,19 +117,20 @@ async def test_pre_post_handlers_skip_without_message_id():
     client = AdapterClient()
     adapter = PrePostUiAdapter(client)
     client.register_adapter("telegram", adapter)
-    client.on("command", AsyncMock())
 
     session = _make_session()
 
     mock_db = AsyncMock()
-    mock_db.get_session = AsyncMock(return_value=session)
     mock_db.update_session = AsyncMock()
 
-    with patch("teleclaude.core.adapter_client.db", mock_db):
-        await client.handle_event(
-            "command",
-            {"session_id": session.session_id, "command_name": "send_message", "args": []},
+    with patch("teleclaude.adapters.ui_adapter.db", mock_db):
+        await adapter._dispatch_command(
+            session,
+            None,
             MessageMetadata(origin="telegram"),
+            "send_message",
+            {"text": "hello"},
+            AsyncMock(),
         )
 
     assert adapter.pre_calls == []

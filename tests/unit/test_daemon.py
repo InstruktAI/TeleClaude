@@ -12,22 +12,22 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude import config as config_module
 from teleclaude.core.agents import AgentName
+from teleclaude.core.command_mapper import CommandMapper
+from teleclaude.core.command_service import CommandService
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
     AgentStopPayload,
-    CommandEventContext,
     TeleClaudeEvents,
     VoiceEventContext,
 )
 from teleclaude.core.models import (
-    MessageMetadata,
     Session,
     SessionAdapterMetadata,
     TelegramAdapterMetadata,
 )
 from teleclaude.daemon import TeleClaudeDaemon
-from teleclaude.types.commands import CreateSessionCommand
+from teleclaude.types.commands import CreateSessionCommand, GetSessionDataCommand
 
 
 @pytest.fixture
@@ -123,49 +123,23 @@ def mock_daemon():
 @pytest.mark.asyncio
 async def test_get_session_data_parses_tail_chars_without_placeholders():
     """get_session_data should parse numeric tail_chars directly."""
-    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    context = CommandEventContext(command="get_session_data", session_id="sess-123", args=[])
-
-    with patch("teleclaude.daemon.command_handlers.get_session_data", new_callable=AsyncMock) as mock_handler:
-        mock_handler.return_value = {"status": "success"}
-        await daemon.handle_command(
-            "get_session_data",
-            ["2000"],
-            context,
-            MessageMetadata(origin="redis"),
-        )
-
-        # Verify call to handler
-        mock_handler.assert_called_once()
-        call_args = mock_handler.call_args[0]
-        assert call_args[0] == "sess-123"
-        assert call_args[1] is None
-        assert call_args[2] is None
-        assert call_args[3] == 2000
+    cmd = CommandMapper.map_redis_input("get_session_data 2000", session_id="sess-123")
+    assert isinstance(cmd, GetSessionDataCommand)
+    assert cmd.session_id == "sess-123"
+    assert cmd.since_timestamp is None
+    assert cmd.until_timestamp is None
+    assert cmd.tail_chars == 2000
 
 
 @pytest.mark.asyncio
 async def test_get_session_data_supports_dash_placeholders():
     """GET_SESSION_DATA should treat '-' as an explicit empty placeholder."""
-    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    context = CommandEventContext(command="get_session_data", session_id="sess-123", args=[])
-
-    with patch("teleclaude.daemon.command_handlers.get_session_data", new_callable=AsyncMock) as mock_handler:
-        mock_handler.return_value = {"status": "success"}
-        await daemon.handle_command(
-            "get_session_data",
-            ["-", "2026-01-01T00:00:00Z", "2000"],
-            context,
-            MessageMetadata(origin="redis"),
-        )
-
-        # Verify call to handler
-        mock_handler.assert_called_once()
-        call_args = mock_handler.call_args[0]
-        assert call_args[0] == "sess-123"
-        assert call_args[1] is None
-        assert call_args[2] == "2026-01-01T00:00:00Z"
-        assert call_args[3] == 2000
+    cmd = CommandMapper.map_redis_input("get_session_data - 2026-01-01T00:00:00Z 2000", session_id="sess-123")
+    assert isinstance(cmd, GetSessionDataCommand)
+    assert cmd.session_id == "sess-123"
+    assert cmd.since_timestamp is None
+    assert cmd.until_timestamp == "2026-01-01T00:00:00Z"
+    assert cmd.tail_chars == 2000
 
 
 @pytest.mark.asyncio
@@ -174,8 +148,9 @@ async def test_handle_voice_forwards_message_without_message_id() -> None:
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
     daemon.client.handle_event = AsyncMock()
-    daemon.client.handle_internal_command = AsyncMock()
     daemon.client.delete_message = AsyncMock()
+    daemon.command_service = MagicMock()
+    daemon.command_service.send_message = AsyncMock()
     daemon._send_status_callback = AsyncMock()
 
     with (
@@ -197,11 +172,8 @@ async def test_handle_voice_forwards_message_without_message_id() -> None:
 
         await daemon._handle_voice("voice", context)
 
-        daemon.client.handle_internal_command.assert_called_once()
+        daemon.command_service.send_message.assert_called_once()
         daemon.client.delete_message.assert_called_once_with(session, "321")
-        call_kwargs = daemon.client.handle_internal_command.call_args.kwargs
-        metadata = call_kwargs["metadata"]
-        assert metadata.message_thread_id == 123
 
 
 @pytest.mark.asyncio
@@ -288,10 +260,21 @@ async def test_new_session_auto_command_agent_then_message():
     daemon.client = MagicMock()
     daemon._execute_terminal_command = AsyncMock()
     daemon._poll_and_send_output = AsyncMock()
+    daemon.command_service = MagicMock()
+    daemon.command_service.start_agent = AsyncMock()
+    daemon.command_service = MagicMock()
+    daemon.command_service.start_agent = AsyncMock()
     daemon._execute_auto_command = AsyncMock(return_value={"status": "success"})
     daemon._queue_background_task = MagicMock(side_effect=lambda coro, _label: coro.close())
+    daemon.command_service = CommandService(
+        client=daemon.client,
+        start_polling=AsyncMock(),
+        execute_terminal_command=daemon._execute_terminal_command,
+        execute_auto_command=daemon._execute_auto_command,
+        queue_background_task=daemon._queue_background_task,
+    )
 
-    with patch("teleclaude.core.session_launcher.create_session", new_callable=AsyncMock) as mock_create:
+    with patch("teleclaude.core.command_service.create_session", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = {"session_id": "sess-123", "auto_command_status": "queued"}
 
         create_cmd = CreateSessionCommand(
@@ -299,17 +282,8 @@ async def test_new_session_auto_command_agent_then_message():
             origin="redis",
             auto_command="agent_then_message codex slow /prompts:next-review next-machine",
         )
-        context = CommandEventContext(
-            command="create_session", session_id="sess-ctx", args=[], internal_command=create_cmd
-        )
-        metadata = MessageMetadata(origin="redis")
 
-        result = await daemon.handle_command(
-            "create_session",
-            [],
-            context,
-            metadata,
-        )
+        result = await daemon.command_service.create_session(create_cmd)
 
         assert result["session_id"] == "sess-123"
         assert result["auto_command_status"] == "queued"
@@ -322,6 +296,8 @@ async def test_agent_then_message_waits_for_stabilization():
     daemon.client = MagicMock()
     daemon._execute_terminal_command = AsyncMock()
     daemon._poll_and_send_output = AsyncMock()
+    daemon.command_service = MagicMock()
+    daemon.command_service.start_agent = AsyncMock()
 
     call_order: list[str] = []
 
@@ -338,7 +314,6 @@ async def test_agent_then_message_waits_for_stabilization():
         return True
 
     with (
-        patch("teleclaude.daemon.command_handlers.start_agent", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock) as mock_running,
         patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock) as mock_send,
@@ -378,6 +353,8 @@ async def test_agent_then_message_applies_gemini_delay():
     daemon.client = MagicMock()
     daemon._execute_terminal_command = AsyncMock()
     daemon._poll_and_send_output = AsyncMock()
+    daemon.command_service = MagicMock()
+    daemon.command_service.start_agent = AsyncMock()
 
     captured_args = {}
 
@@ -389,7 +366,6 @@ async def test_agent_then_message_applies_gemini_delay():
         return True
 
     with (
-        patch("teleclaude.daemon.command_handlers.start_agent", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock, return_value=True),
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock, return_value=True),
@@ -420,9 +396,11 @@ async def test_execute_auto_command_updates_last_message_sent():
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
     daemon._execute_terminal_command = AsyncMock()
+    daemon.command_service = MagicMock()
+    daemon.command_service.start_agent = AsyncMock()
+    daemon.command_service.resume_agent = AsyncMock()
 
     with (
-        patch("teleclaude.daemon.command_handlers.start_agent", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
     ):
         mock_db.update_session = AsyncMock()
@@ -441,6 +419,8 @@ async def test_agent_then_message_proceeds_after_stabilization_timeout():
     daemon.client = MagicMock()
     daemon._execute_terminal_command = AsyncMock()
     daemon._poll_and_send_output = AsyncMock()
+    daemon.command_service = MagicMock()
+    daemon.command_service.start_agent = AsyncMock()
 
     async def mock_wait_stable(*_args: object, **_kwargs: object) -> tuple[bool, str]:
         # Simulate stabilization timeout
@@ -450,7 +430,6 @@ async def test_agent_then_message_proceeds_after_stabilization_timeout():
         return True
 
     with (
-        patch("teleclaude.daemon.command_handlers.start_agent", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock) as mock_running,
         patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock) as mock_send,
@@ -485,6 +464,8 @@ async def test_agent_then_message_fails_on_command_acceptance_timeout():
     daemon.client = MagicMock()
     daemon._execute_terminal_command = AsyncMock()
     daemon._poll_and_send_output = AsyncMock()
+    daemon.command_service = MagicMock()
+    daemon.command_service.start_agent = AsyncMock()
 
     async def mock_wait_stable(*_args: object, **_kwargs: object) -> tuple[bool, str]:
         return True, "stable output"
@@ -493,7 +474,6 @@ async def test_agent_then_message_fails_on_command_acceptance_timeout():
         return False  # Simulate timeout
 
     with (
-        patch("teleclaude.daemon.command_handlers.start_agent", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock) as mock_running,
         patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock) as mock_send,

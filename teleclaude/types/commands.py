@@ -16,7 +16,7 @@ class CommandType(str, Enum):
     START_AGENT = "start_agent"
     RESUME_AGENT = "resume_agent"
     SEND_MESSAGE = "send_message"
-    SEND_AGENT_COMMAND = "send_agent_command"
+    RUN_AGENT_COMMAND = "run_agent_command"
     RESTART_AGENT = "restart_agent"
     GET_SESSION_DATA = "get_session_data"
     CLOSE_SESSION = "close_session"
@@ -97,7 +97,7 @@ class StartAgentCommand(InternalCommand):
         args: Optional[List[str]] = None,
         request_id: Optional[str] = None,
     ):
-        super().__init__(command_type=CommandType.RESTART_AGENT, request_id=request_id)
+        super().__init__(command_type=CommandType.START_AGENT, request_id=request_id)
         self.session_id = session_id
         self.agent_name = agent_name
         self.thinking_mode = thinking_mode
@@ -186,8 +186,8 @@ class KeysCommand(InternalCommand):
 
 
 @dataclass(kw_only=True)
-class SendAgentCommand(InternalCommand):
-    """Intent to send a slash command to an agent."""
+class RunAgentCommand(InternalCommand):
+    """Intent to run a slash command inside an agent session."""
 
     session_id: str
     command: str
@@ -201,7 +201,7 @@ class SendAgentCommand(InternalCommand):
         args: str = "",
         request_id: Optional[str] = None,
     ):
-        super().__init__(command_type=CommandType.SEND_AGENT_COMMAND, request_id=request_id)
+        super().__init__(command_type=CommandType.RUN_AGENT_COMMAND, request_id=request_id)
         self.session_id = session_id
         self.command = command
         self.args = args
@@ -224,7 +224,7 @@ class RestartAgentCommand(InternalCommand):
         agent_name: Optional[str] = None,
         request_id: Optional[str] = None,
     ):
-        super().__init__(command_type=CommandType.START_AGENT, request_id=request_id)
+        super().__init__(command_type=CommandType.RESTART_AGENT, request_id=request_id)
         self.session_id = session_id
         self.agent_name = agent_name
 

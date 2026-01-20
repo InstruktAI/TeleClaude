@@ -7,7 +7,7 @@ import os
 import re
 from collections.abc import Callable, Coroutine
 from datetime import datetime
-from typing import TYPE_CHECKING, AsyncIterator, Optional, TypedDict, cast
+from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
 
 import httpx
 from instrukt_ai_logging import get_logger
@@ -51,6 +51,7 @@ from teleclaude.core.ux_state import (
     get_system_ux_state,
     update_system_ux_state,
 )
+from teleclaude.types.commands import CloseSessionCommand, KeysCommand
 
 from .base_adapter import AdapterError
 from .telegram.callback_handlers import CallbackHandlersMixin
@@ -69,20 +70,6 @@ STATUS_EMOJI = {
     "idle": "⏸️",
     "dead": "❌",
 }
-
-
-# TypedDicts for JSON/dict structures with known schemas
-class HandleEventResult(TypedDict, total=False):
-    """Result from client.handle_event() calls."""
-
-    status: str
-    data: dict[str, object]  # noqa: loose-dict - Nested data structure varies by event type
-
-
-class HandleEventData(TypedDict, total=False):
-    """Data nested inside HandleEventResult."""
-
-    session_id: str
 
 
 # Type alias for python-telegram-bot's default Application type.
@@ -219,7 +206,7 @@ class TelegramAdapter(
     async def _handle_simple_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, event: str) -> None:
         """Template method for simple session commands.
 
-        Handles commands that just emit an event with session_id, args, and message_id.
+        Handles commands that map to explicit command objects and dispatch via CommandService.
         """
         session = await self._get_session_from_topic(update)
         if not session:
@@ -245,8 +232,29 @@ class TelegramAdapter(
             session_id=session.session_id,
         )
         cmd.request_id = str(update.effective_message.message_id)
+        if isinstance(cmd, KeysCommand):
+            await self._dispatch_command(
+                session,
+                str(update.effective_message.message_id),
+                metadata,
+                cmd.key,
+                cmd.to_payload(),
+                lambda: self.client.commands.keys(cmd),
+            )
+            return
 
-        await self.client.handle_internal_command(cmd, metadata=metadata)
+        if isinstance(cmd, CloseSessionCommand):
+            await self._dispatch_command(
+                session,
+                str(update.effective_message.message_id),
+                metadata,
+                "close_session",
+                cmd.to_payload(),
+                lambda: self.client.commands.close_session(cmd),
+            )
+            return
+
+        raise ValueError(f"Unsupported simple command type: {type(cmd).__name__}")
 
     def _ensure_started(self) -> None:
         """Ensure adapter is started."""

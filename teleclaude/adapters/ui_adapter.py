@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 from zoneinfo import ZoneInfo
 
 from instrukt_ai_logging import get_logger
@@ -348,6 +348,39 @@ class UiAdapter(BaseAdapter):
         All tracked messages (feedback, user input) cleaned here.
         """
         # User input messages (pending_deletions) cleaned via event handler, not here
+
+    async def _dispatch_command(
+        self,
+        session: "Session",
+        message_id: str | None,
+        metadata: MessageMetadata,
+        command_name: str,
+        payload: dict[str, object],  # noqa: loose-dict - Command payload for observers
+        handler: Callable[[], Awaitable[object]],
+    ) -> object:
+        """Run command with UI pre/post handling and observer broadcast."""
+        if metadata.origin and metadata.origin in self.client.adapters:
+            await db.update_session(session.session_id, last_input_adapter=metadata.origin)
+
+        if message_id:
+            await self.client.pre_handle_command(session, metadata.origin)
+
+        result = await handler()
+
+        if command_name == "send_message":
+            text_obj = payload.get("text")
+            if text_obj is not None:
+                await db.update_session(
+                    session.session_id,
+                    last_message_sent=str(text_obj)[:200],
+                    last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+                )
+
+        if message_id:
+            await self.client.post_handle_command(session, message_id, metadata.origin)
+
+        await self.client.broadcast_command_action(session, command_name, payload, metadata.origin)
+        return result
 
     # ==================== Voice Support ====================
 

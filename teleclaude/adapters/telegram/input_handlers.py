@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import tempfile
 import traceback
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -78,6 +79,18 @@ class InputHandlersMixin:
 
         async def _get_session_from_topic(self, update: Update) -> "Session | None":
             """Get session from update's topic."""
+            ...
+
+        async def _dispatch_command(
+            self,
+            session: "Session",
+            message_id: str | None,
+            metadata: MessageMetadata,
+            command_name: str,
+            payload: Mapping[str, object],
+            handler: Callable[[], Awaitable[object]],
+        ) -> None:
+            """Dispatch command via UiAdapter hooks (type-check stub)."""
             ...
 
         def _topic_owned_by_this_bot(self, update: Update, topic_id: int) -> bool:
@@ -232,7 +245,14 @@ Usage:
             metadata=metadata,
             session_id=session.session_id,
         )
-        await self.client.handle_internal_command(cmd, metadata=metadata)
+        await self._dispatch_command(
+            session,
+            str(update.effective_message.message_id),
+            metadata,
+            "send_message",
+            cmd.to_payload(),
+            lambda: self.client.commands.send_message(cmd),
+        )
 
     async def _handle_voice_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle voice messages in topics - both new and edited messages."""

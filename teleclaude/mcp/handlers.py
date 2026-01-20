@@ -54,6 +54,7 @@ from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types import SystemStats
 from teleclaude.types.commands import (
     CreateSessionCommand,
+    GetSessionDataCommand,
     SendMessageCommand,
     StartAgentCommand,
 )
@@ -303,7 +304,7 @@ class MCPHandlersMixin:
         agent: str = "claude",
         thinking_mode: ThinkingMode = ThinkingMode.SLOW,
     ) -> StartSessionResult:
-        """Create session on local computer directly via handle_internal_command."""
+        """Create session on local computer directly via command service."""
         initiator_agent, initiator_mode = await self._get_caller_agent_info(caller_session_id)
 
         channel_metadata: dict[str, object] = {"target_computer": self.computer_name}  # guard: loose-dict
@@ -322,21 +323,13 @@ class MCPHandlersMixin:
             initiator_session_id=caller_session_id,
         )
 
-        metadata = MessageMetadata(
-            origin="mcp",
-            project_path=project_path,
-            title=title,
-            channel_metadata=channel_metadata,
-        )
-
-        result: object = await self.client.handle_internal_command(cmd, metadata=metadata)
+        result = await self.client.commands.create_session(cmd)
 
         session_id = self._extract_session_id(result)
         tmux_session_name = self._extract_tmux_session_name(result)
         if not session_id:
             error_msg = "Session creation failed"
-            if isinstance(result, dict):
-                error_msg = str(result.get("error", "Unknown error"))
+            error_msg = str(result.get("error", "Unknown error"))
             return {"status": "error", "message": f"Local session creation failed: {error_msg}"}
 
         logger.info("Local session created: %s", session_id[:8])
@@ -354,7 +347,7 @@ class MCPHandlersMixin:
                         thinking_mode=thinking_mode.value,
                         args=[thinking_mode.value] + agent_args,
                     )
-                    await self.client.handle_internal_command(start_cmd, metadata=MessageMetadata(origin="mcp"))
+                    await self.client.commands.start_agent(start_cmd)
                 except Exception as exc:
                     logger.error("Failed to dispatch StartAgentCommand for session %s: %s", session_id[:8], exc)
 
@@ -481,7 +474,7 @@ class MCPHandlersMixin:
 
             if self._is_local_computer(computer):
                 cmd = SendMessageCommand(session_id=session_id, text=message)
-                await self.client.handle_internal_command(cmd, metadata=MessageMetadata(origin="mcp"))
+                await self.client.commands.send_message(cmd)
             else:
                 await self.client.send_request(
                     computer_name=computer,
@@ -580,22 +573,13 @@ class MCPHandlersMixin:
             auto_command=auto_command,
         )
 
-        metadata = MessageMetadata(
-            origin="mcp",
-            project_path=project_path,
-            title=title,
-            channel_metadata=channel_metadata,
-            auto_command=auto_command,
-        )
-
-        result: object = await self.client.handle_internal_command(cmd, metadata=metadata)
+        result = await self.client.commands.create_session(cmd)
 
         session_id = self._extract_session_id(result)
         tmux_session_name = self._extract_tmux_session_name(result)
         if not session_id:
             error_msg = "Session creation failed"
-            if isinstance(result, dict):
-                error_msg = str(result.get("error", "Unknown error"))
+            error_msg = str(result.get("error", "Unknown error"))
             return {"status": "error", "message": f"Local session creation failed: {error_msg}"}
 
         await self._register_listener_if_present(session_id, caller_session_id)
@@ -723,7 +707,13 @@ class MCPHandlersMixin:
         tail_chars: int = 2000,
     ) -> SessionDataResult:
         """Get session data from local computer directly."""
-        payload = await command_handlers.get_session_data(session_id, since_timestamp, until_timestamp, tail_chars)
+        cmd = GetSessionDataCommand(
+            session_id=session_id,
+            since_timestamp=since_timestamp,
+            until_timestamp=until_timestamp,
+            tail_chars=tail_chars,
+        )
+        payload = await self.client.commands.get_session_data(cmd)
         return cast(SessionDataResult, payload)
 
     async def _get_remote_session_data(
@@ -1046,23 +1036,25 @@ class MCPHandlersMixin:
         return None, None
 
     def _extract_session_id(self, result: object) -> str | None:
-        """Extract session_id from handle_event result."""
-        if not isinstance(result, dict) or result.get("status") != "success":
+        """Extract session_id from command result envelope."""
+        if not isinstance(result, dict):
             return None
-        data: object = result.get("data", {})
-        if not isinstance(data, dict):
-            return None
-        session_id = data.get("session_id")
+        session_id = result.get("session_id")
+        if session_id is None and result.get("status") == "success":
+            data: object = result.get("data", {})
+            if isinstance(data, dict):
+                session_id = data.get("session_id")
         return str(session_id) if session_id is not None else None
 
     def _extract_tmux_session_name(self, result: object) -> str | None:
-        """Extract tmux_session_name from handle_event result."""
-        if not isinstance(result, dict) or result.get("status") != "success":
+        """Extract tmux_session_name from command result envelope."""
+        if not isinstance(result, dict):
             return None
-        data: object = result.get("data", {})
-        if not isinstance(data, dict):
-            return None
-        tmux_name = data.get("tmux_session_name")
+        tmux_name = result.get("tmux_session_name")
+        if tmux_name is None and result.get("status") == "success":
+            data: object = result.get("data", {})
+            if isinstance(data, dict):
+                tmux_name = data.get("tmux_session_name")
         return str(tmux_name) if tmux_name is not None else None
 
     async def _is_computer_online(self, computer: str) -> bool:

@@ -374,7 +374,7 @@ class CallbackHandlersMixin:
             args=[],
             metadata=metadata,
         )
-        await self.client.handle_internal_command(cmd, metadata=metadata)
+        await self.client.commands.create_session(cmd)
 
     async def _handle_agent_start(self, query: object, action: str, args: list[str]) -> None:
         """Handle agent start callbacks (c, cr, g, gr, cx, cxr)."""
@@ -432,4 +432,4 @@ class CallbackHandlersMixin:
             args=[],
             metadata=metadata,
         )
-        await self.client.handle_internal_command(cmd, metadata=metadata)
+        await self.client.commands.create_session(cmd)

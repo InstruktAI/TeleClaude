@@ -47,6 +47,9 @@ def mock_adapter_client():
     """Mock AdapterClient."""
     client = MagicMock()
     client.handle_event = AsyncMock()
+    client.pre_handle_command = AsyncMock()
+    client.post_handle_command = AsyncMock()
+    client.broadcast_command_action = AsyncMock()
     return client
 
 
@@ -110,20 +113,21 @@ class TestSimpleCommandHandlers:
         context = MagicMock()
         context.args = []
 
-        telegram_adapter.client.handle_internal_command = AsyncMock()
+        telegram_adapter.client.commands = MagicMock()
+        telegram_adapter.client.commands.keys = AsyncMock()
 
-        with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
+        with (
+            patch("teleclaude.adapters.telegram_adapter.db") as mock_db,
+            patch("teleclaude.adapters.ui_adapter.db") as mock_ui_db,
+        ):
             mock_db.get_sessions_by_adapter_metadata = AsyncMock(return_value=[session])
+            mock_ui_db.update_session = AsyncMock()
 
             await telegram_adapter._handle_simple_command(update, context, "cancel")
 
-        assert telegram_adapter.client.handle_internal_command.call_count == 1
-        args, kwargs = telegram_adapter.client.handle_internal_command.call_args
+        assert telegram_adapter.client.commands.keys.call_count == 1
+        args, _kwargs = telegram_adapter.client.commands.keys.call_args
         cmd = args[0]
-        metadata = kwargs.get("metadata")
-        assert isinstance(metadata, MessageMetadata)
-        assert metadata.channel_metadata is not None
-        assert metadata.channel_metadata.get("message_id") == "456"
         assert isinstance(cmd, KeysCommand)
         assert cmd.session_id == "session-123"
         assert cmd.key == "cancel"

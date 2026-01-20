@@ -22,7 +22,6 @@ from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.db import db
-from teleclaude.core.events import EventContext
 from teleclaude.core.models import (
     AgentResumeArgs,
     AgentStartArgs,
@@ -45,8 +44,15 @@ from teleclaude.core.session_utils import (
 from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import (
+    CloseSessionCommand,
     CreateSessionCommand,
-    InternalCommand,
+    GetSessionDataCommand,
+    KeysCommand,
+    RestartAgentCommand,
+    ResumeAgentCommand,
+    RunAgentCommand,
+    SendMessageCommand,
+    StartAgentCommand,
 )
 from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
 
@@ -84,24 +90,19 @@ StartPollingFunc = Callable[[str, str], Awaitable[None]]
 def with_session(
     func: Callable[..., Awaitable[None]],
 ) -> Callable[..., Awaitable[None]]:
-    """Decorator that extracts and injects session from context or command."""
+    """Decorator that extracts and injects session from a command object."""
 
     @functools.wraps(func)
-    async def wrapper(context_or_cmd: EventContext | InternalCommand, *args: object, **kwargs: object) -> None:
-        # Extract session_id
-        session_id: str
-        if hasattr(context_or_cmd, "session_id"):
-            session_id = str(getattr(context_or_cmd, "session_id"))
-        else:
-            raise ValueError(f"Object {type(context_or_cmd).__name__} missing session_id")
+    async def wrapper(cmd: object, *args: object, **kwargs: object) -> None:
+        if not hasattr(cmd, "session_id"):
+            raise ValueError(f"Object {type(cmd).__name__} missing session_id")
 
-        # Get session
+        session_id = str(getattr(cmd, "session_id"))
         session = await db.get_session(session_id)
         if session is None:
             raise RuntimeError(f"Session {session_id} not found - this should not happen")
 
-        # Call handler with session injected
-        await func(session, context_or_cmd, *args, **kwargs)
+        await func(session, cmd, *args, **kwargs)
 
     return wrapper
 
@@ -488,10 +489,7 @@ async def get_computer_info() -> ComputerInfo:
 
 
 async def get_session_data(
-    session_id: str,
-    since_timestamp: Optional[str] = None,
-    until_timestamp: Optional[str] = None,
-    tail_chars: int = 2000,
+    cmd: GetSessionDataCommand,
 ) -> SessionDataPayload:
     """Get session data from native_log_file.
 
@@ -500,16 +498,14 @@ async def get_session_data(
     Supports timestamp filtering and character limit.
 
     Args:
-        session_id: Session identifier
-        since_timestamp: Optional ISO 8601 UTC start filter
-        until_timestamp: Optional ISO 8601 UTC end filter
-        tail_chars: Max chars to return (default 2000, 0 for unlimited)
+        cmd: GetSessionDataCommand payload
 
     Returns:
         Dict with session data and markdown-formatted messages
     """
 
     # Get session from database
+    session_id = cmd.session_id
     session = await db.get_session(session_id)
     if not session:
         logger.error("Session %s not found", session_id[:8])
@@ -544,9 +540,9 @@ async def get_session_data(
             str(native_log_file),
             session.title,
             agent_name=agent_name,
-            since_timestamp=since_timestamp,
-            until_timestamp=until_timestamp,
-            tail_chars=tail_chars,
+            since_timestamp=cmd.since_timestamp,
+            until_timestamp=cmd.until_timestamp,
+            tail_chars=cmd.tail_chars if cmd.tail_chars > 0 else 2000,
         )
         logger.info(
             "Parsed %s transcript (%d bytes) for session %s",
@@ -569,11 +565,107 @@ async def get_session_data(
     }
 
 
+async def send_message(
+    cmd: SendMessageCommand,
+    client: "AdapterClient",
+    start_polling: StartPollingFunc,
+) -> None:
+    """Send a message to a session (tmux input)."""
+    session_id = cmd.session_id
+    message_text = cmd.text
+
+    logger.debug("Message for session %s: %s...", session_id[:8], message_text[:50])
+
+    session = await db.get_session(session_id)
+    if not session:
+        logger.warning("Session %s not found", session_id)
+        return
+
+    await db.update_session(
+        session_id,
+        last_message_sent=message_text[:200],
+        last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    active_agent = session.active_agent
+    sanitized_text = tmux_io.wrap_bracketed_paste(message_text)
+
+    working_dir = resolve_working_dir(session.project_path, session.subdir)
+    success = await tmux_io.send_text(
+        session,
+        sanitized_text,
+        working_dir=working_dir,
+        active_agent=active_agent,
+    )
+
+    if not success:
+        logger.error("Failed to send command to session %s", session_id[:8])
+        await client.send_message(session, "Failed to send command to tmux", metadata=MessageMetadata())
+        return
+
+    await db.update_last_activity(session_id)
+    await start_polling(session_id, session.tmux_session_name)
+    logger.debug("Started polling for session %s", session_id[:8])
+
+
+async def keys(
+    cmd: KeysCommand,
+    client: "AdapterClient",
+    start_polling: StartPollingFunc,
+) -> None:
+    """Handle key-based commands via a single KeysCommand."""
+    key_name = cmd.key
+
+    if key_name == "cancel":
+        await cancel_command(cmd, start_polling, double=False)
+        return
+    if key_name == "cancel2x":
+        await cancel_command(cmd, start_polling, double=True)
+        return
+    if key_name == "kill":
+        await kill_command(cmd, start_polling)
+        return
+    if key_name == "escape":
+        await escape_command(cmd, start_polling, double=False)
+        return
+    if key_name == "escape2x":
+        await escape_command(cmd, start_polling, double=True)
+        return
+    if key_name == "ctrl":
+        await ctrl_command(cmd, client, start_polling)
+        return
+    if key_name == "tab":
+        await tab_command(cmd, start_polling)
+        return
+    if key_name == "shift_tab":
+        await shift_tab_command(cmd, start_polling)
+        return
+    if key_name == "backspace":
+        await backspace_command(cmd, start_polling)
+        return
+    if key_name == "enter":
+        await enter_command(cmd, start_polling)
+        return
+    if key_name == "key_up":
+        await arrow_key_command(cmd, start_polling, "up")
+        return
+    if key_name == "key_down":
+        await arrow_key_command(cmd, start_polling, "down")
+        return
+    if key_name == "key_left":
+        await arrow_key_command(cmd, start_polling, "left")
+        return
+    if key_name == "key_right":
+        await arrow_key_command(cmd, start_polling, "right")
+        return
+
+    raise ValueError(f"Unknown keys command: {key_name}")
+
+
 @with_session
 async def cancel_command(
     session: Session,
-    _context: EventContext,
-    _client: "AdapterClient",
+    _cmd: KeysCommand,
     _start_polling: StartPollingFunc,
     double: bool = False,
 ) -> None:
@@ -615,8 +707,7 @@ async def cancel_command(
 @with_session
 async def kill_command(
     session: Session,
-    _context: EventContext,
-    _client: "AdapterClient",
+    _cmd: KeysCommand,
     _start_polling: StartPollingFunc,
 ) -> None:
     """Force kill foreground process with SIGKILL (guaranteed termination).
@@ -643,9 +734,7 @@ async def kill_command(
 @with_session
 async def escape_command(
     session: Session,
-    _context: EventContext,
-    args: list[str],
-    _client: "AdapterClient",
+    cmd: KeysCommand,
     start_polling: StartPollingFunc,
     double: bool = False,
 ) -> None:
@@ -661,8 +750,8 @@ async def escape_command(
     """
 
     # If text provided: send ESCAPE (once or twice) + text+ENTER
-    if args:
-        text = " ".join(args)
+    if cmd.args:
+        text = " ".join(cmd.args)
 
         # Send ESCAPE first
         success = await tmux_io.send_escape(session)
@@ -704,7 +793,7 @@ async def escape_command(
         # Update activity
         await db.update_last_activity(session.session_id)
 
-        # NOTE: Message cleanup now handled by AdapterClient.handle_event()
+        # NOTE: Message cleanup handled by UI adapter pre/post handlers
 
         # Start polling if needed
         if not is_process_running:
@@ -745,8 +834,7 @@ async def escape_command(
 @with_session
 async def ctrl_command(
     session: Session,
-    context: EventContext,
-    args: list[str],
+    cmd: KeysCommand,
     client: "AdapterClient",
     _start_polling: StartPollingFunc,
 ) -> None:
@@ -754,36 +842,21 @@ async def ctrl_command(
 
     Args:
         session: Session object (injected by @with_session)
-        context: Command context
-        args: Command arguments (key to send with CTRL)
+        cmd: KeysCommand payload
         client: AdapterClient for message operations
         start_polling: Function to start polling for a session
     """
-    if not args:
+    if not cmd.args:
         logger.warning("No key argument provided to ctrl command")
         await client.send_message(
             session,
             "Usage: /ctrl <key> (e.g., /ctrl d for CTRL+D)",
             metadata=MessageMetadata(),
         )
-
-        # Track both command message AND feedback message for deletion
-        # Track command message (e.g., /ctrl)
-        message_id = cast(Optional[str], getattr(context, "message_id", None))
-        if message_id:
-            await db.add_pending_deletion(session.session_id, str(message_id))
-            logger.debug(
-                "Tracked command message %s for deletion (session %s)",
-                message_id,
-                session.session_id[:8],
-            )
-
-        # Note: Feedback message auto-tracked by send_message(ephemeral=True)
-
         return
 
     # Get the key to send (first argument)
-    key = args[0]
+    key = cmd.args[0]
 
     # Send CTRL+key to the tmux session (TUI interaction, no polling)
     success = await _execute_control_key(
@@ -801,8 +874,7 @@ async def ctrl_command(
 @with_session
 async def tab_command(
     session: Session,
-    _context: EventContext,
-    _client: "AdapterClient",
+    _cmd: KeysCommand,
     _start_polling: StartPollingFunc,
 ) -> None:
     """Send TAB key to a session.
@@ -827,9 +899,7 @@ async def tab_command(
 @with_session
 async def shift_tab_command(
     session: Session,
-    _context: EventContext,
-    args: list[str],
-    _client: "AdapterClient",
+    cmd: KeysCommand,
     _start_polling: StartPollingFunc,
 ) -> None:
     """Send SHIFT+TAB key to a session with optional repeat count.
@@ -843,14 +913,14 @@ async def shift_tab_command(
     """
     # Parse repeat count from args (default: 1)
     count = 1
-    if args:
+    if cmd.args:
         try:
-            count = int(args[0])
+            count = int(cmd.args[0])
             if count < 1:
                 logger.warning("Invalid repeat count %d (must be >= 1), using 1", count)
                 count = 1
         except ValueError:
-            logger.warning("Invalid repeat count '%s', using 1", args[0])
+            logger.warning("Invalid repeat count '%s', using 1", cmd.args[0])
             count = 1
 
     success = await _execute_control_key(
@@ -868,9 +938,7 @@ async def shift_tab_command(
 @with_session
 async def backspace_command(
     session: Session,
-    _context: EventContext,
-    args: list[str],
-    _client: "AdapterClient",
+    cmd: KeysCommand,
     _start_polling: StartPollingFunc,
 ) -> None:
     """Send BACKSPACE key to a session with optional repeat count.
@@ -884,14 +952,14 @@ async def backspace_command(
     """
     # Parse repeat count from args (default: 1)
     count = 1
-    if args:
+    if cmd.args:
         try:
-            count = int(args[0])
+            count = int(cmd.args[0])
             if count < 1:
                 logger.warning("Invalid repeat count %d (must be >= 1), using 1", count)
                 count = 1
         except ValueError:
-            logger.warning("Invalid repeat count '%s', using 1", args[0])
+            logger.warning("Invalid repeat count '%s', using 1", cmd.args[0])
             count = 1
 
     success = await _execute_control_key(
@@ -909,8 +977,7 @@ async def backspace_command(
 @with_session
 async def enter_command(
     session: Session,
-    _context: EventContext,
-    _client: "AdapterClient",
+    _cmd: KeysCommand,
     _start_polling: StartPollingFunc,
 ) -> None:
     """Send ENTER key to a session.
@@ -936,9 +1003,7 @@ async def enter_command(
 @with_session
 async def arrow_key_command(
     session: Session,
-    _context: EventContext,
-    args: list[str],
-    _client: "AdapterClient",
+    cmd: KeysCommand,
     _start_polling: StartPollingFunc,
     direction: str,
 ) -> None:
@@ -955,14 +1020,14 @@ async def arrow_key_command(
 
     # Parse repeat count from args (default: 1)
     count = 1
-    if args:
+    if cmd.args:
         try:
-            count = int(args[0])
+            count = int(cmd.args[0])
             if count < 1:
                 logger.warning("Invalid repeat count %d (must be >= 1), using 1", count)
                 count = 1
         except ValueError:
-            logger.warning("Invalid repeat count '%s', using 1", args[0])
+            logger.warning("Invalid repeat count '%s', using 1", cmd.args[0])
             count = 1
 
     success = await _execute_control_key(
@@ -990,7 +1055,7 @@ async def arrow_key_command(
 @with_session
 async def close_session(
     session: Session,
-    _context: EventContext,
+    _cmd: CloseSessionCommand,
     client: "AdapterClient",
 ) -> None:
     """Close session - kill tmux, delete DB record, clean up resources.
@@ -1009,7 +1074,7 @@ async def close_session(
 
 
 async def end_session(
-    session_id: str,
+    cmd: CloseSessionCommand,
     client: "AdapterClient",
 ) -> EndSessionHandlerResult:
     """End a session - graceful termination for MCP tool.
@@ -1025,32 +1090,30 @@ async def end_session(
         dict with status and message
     """
     # Get session from DB
-    session = await db.get_session(session_id)
+    session = await db.get_session(cmd.session_id)
     if not session:
-        return {"status": "error", "message": f"Session {session_id[:8]} not found"}
+        return {"status": "error", "message": f"Session {cmd.session_id[:8]} not found"}
 
     terminated = await terminate_session(
-        session_id,
+        cmd.session_id,
         client,
         reason="end_session",
         session=session,
         delete_db=False,
     )
     if not terminated:
-        return {"status": "error", "message": f"Session {session_id[:8]} not found"}
+        return {"status": "error", "message": f"Session {cmd.session_id[:8]} not found"}
 
     return {
         "status": "success",
-        "message": f"Session {session_id[:8]} ended successfully",
+        "message": f"Session {cmd.session_id[:8]} ended successfully",
     }
 
 
 @with_session
 async def start_agent(
     session: Session,
-    context: EventContext,
-    agent_name: str,
-    args: list[str],
+    cmd: StartAgentCommand,
     client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
@@ -1058,12 +1121,12 @@ async def start_agent(
 
     Args:
         session: Session object (injected by @with_session)
-        context: Command context with message_id
-        agent_name: The name of the agent to start (e.g., "claude", "gemini")
-        args: Command arguments (passed to agent command)
+        cmd: StartAgentCommand payload
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
+    agent_name = cmd.agent_name
+    args = list(cmd.args)
     logger.debug(
         "agent_start: session=%s agent_name=%r args=%s config_agents=%s",
         session.session_id[:8],
@@ -1122,8 +1185,8 @@ async def start_agent(
         quoted_args = [shlex.quote(arg) for arg in start_args.user_args]
         cmd_parts.extend(quoted_args)
 
-    cmd = " ".join(cmd_parts)
-    logger.info("Executing agent start command for %s: %s", agent_name, cmd)
+    command_str = " ".join(cmd_parts)
+    logger.info("Executing agent start command for %s: %s", agent_name, command_str)
 
     # Batch all state updates into a single DB write to reduce contention.
     initial_prompt = " ".join(start_args.user_args) if start_args.user_args else None
@@ -1150,16 +1213,13 @@ async def start_agent(
     )
 
     # Execute command WITH polling (agents are long-running)
-    message_id = str(getattr(context, "message_id", ""))
-    await execute_terminal_command(session.session_id, cmd, message_id, True)
+    await execute_terminal_command(session.session_id, command_str, None, True)
 
 
 @with_session
 async def resume_agent(
     session: Session,
-    context: EventContext,
-    agent_name: str,
-    args: list[str],
+    cmd: ResumeAgentCommand,
     client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
@@ -1170,13 +1230,14 @@ async def resume_agent(
 
     Args:
         session: Session object (injected by @with_session)
-        context: Command context with message_id
-        agent_name: The name of the agent to resume (if empty, uses active_agent from UX state)
-        args: Command arguments (currently unused - session ID comes from database)
+        cmd: ResumeAgentCommand payload
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
     # If no agent_name provided, use active_agent from session
+    agent_name = cmd.agent_name or ""
+    args = [cmd.native_session_id] if cmd.native_session_id else []
+
     if not agent_name:
         active = session.active_agent
         if not active:
@@ -1201,7 +1262,7 @@ async def resume_agent(
         thinking_mode=ThinkingMode(thinking_raw),
     )
 
-    cmd = get_agent_command(
+    command_str = get_agent_command(
         agent=resume_args.agent_name,
         thinking_mode=resume_args.thinking_mode.value,
         exec=False,
@@ -1218,16 +1279,13 @@ async def resume_agent(
     await db.update_session(session.session_id, active_agent=agent_name)
 
     # Execute command WITH polling (agents are long-running)
-    message_id = str(getattr(context, "message_id", ""))
-    await execute_terminal_command(session.session_id, cmd, message_id, True)
+    await execute_terminal_command(session.session_id, command_str, None, True)
 
 
 @with_session
 async def agent_restart(
     session: Session,
-    context: EventContext,
-    agent_name: str,
-    args: list[str],
+    cmd: RestartAgentCommand,
     client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
@@ -1235,11 +1293,10 @@ async def agent_restart(
 
     Requires native_session_id to be present (fail fast otherwise).
     """
-    _ = args  # unused (kept for parity with other agent handlers)
     active_agent = session.active_agent
     native_session_id = session.native_session_id
 
-    target_agent = agent_name or active_agent
+    target_agent = cmd.agent_name or active_agent
     if not target_agent:
         await client.send_message(
             session,
@@ -1287,141 +1344,23 @@ async def agent_restart(
         native_session_id=native_session_id,
     )
 
-    message_id = str(getattr(context, "message_id", ""))
-    await execute_terminal_command(session.session_id, restart_cmd, message_id, True)
+    await execute_terminal_command(session.session_id, restart_cmd, None, True)
 
 
 @with_session
-async def send_agent_command(
+async def run_agent_command(
     session: Session,
-    context: EventContext,
-    command: str,
-    args: str,
+    cmd: RunAgentCommand,
     _client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Send a slash command directly to the running agent."""
-    if not command:
-        logger.warning("send_agent_command called without a command")
+    if not cmd.command:
+        logger.warning("run_agent_command called without a command")
         return
 
-    message_id = cast(Optional[str], getattr(context, "message_id", None))
-    cmd = f"/{command}".strip()
-    if args:
-        cmd = f"{cmd} {args}".strip()
+    command_text = f"/{cmd.command}".strip()
+    if cmd.args:
+        command_text = f"{command_text} {cmd.args}".strip()
 
-    await execute_terminal_command(session.session_id, cmd, message_id, True)
-
-
-@with_session
-async def claude_session(
-    session: Session,
-    context: EventContext,
-    args: list[str],
-    client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
-) -> None:
-    """Start Claude agent in session with optional arguments.
-
-    Args:
-        session: Session object (injected by @with_session)
-        context: Command context with message_id
-        args: Command arguments (passed to claude command)
-        client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute tmux command
-    """
-    await start_agent(session, context, "claude", args, client, execute_terminal_command)
-
-
-@with_session
-async def claude_resume_session(
-    session: Session,
-    context: EventContext,
-    client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
-) -> None:
-    """Resume Agent session using explicit session ID from metadata.
-
-    Args:
-        session: Session object (injected by @with_session)
-        context: Command context with message_id
-        client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute tmux command
-    """
-    await resume_agent(session, context, "claude", [], client, execute_terminal_command)
-
-
-@with_session
-async def gemini_session(
-    session: Session,
-    context: EventContext,
-    args: list[str],
-    client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
-) -> None:
-    """Start Gemini in session with optional arguments.
-
-    Args:
-        session: Session object (injected by @with_session)
-        context: Command context with message_id
-        args: Command arguments (passed to gemini command)
-        client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute tmux command
-    """
-    await start_agent(session, context, "gemini", args, client, execute_terminal_command)
-
-
-@with_session
-async def gemini_resume_session(
-    session: Session,
-    context: EventContext,
-    client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
-) -> None:
-    """Resume Gemini session.
-
-    Args:
-        session: Session object (injected by @with_session)
-        context: Command context with message_id
-        client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute tmux command
-    """
-    await resume_agent(session, context, "gemini", [], client, execute_terminal_command)
-
-
-@with_session
-async def codex_session(
-    session: Session,
-    context: EventContext,
-    args: list[str],
-    client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
-) -> None:
-    """Start Codex in session with optional arguments.
-
-    Args:
-        session: Session object (injected by @with_session)
-        context: Command context with message_id
-        args: Command arguments (passed to codex command)
-        client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute tmux command
-    """
-    await start_agent(session, context, "codex", args, client, execute_terminal_command)
-
-
-@with_session
-async def codex_resume_session(
-    session: Session,
-    context: EventContext,
-    client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
-) -> None:
-    """Resume Codex session.
-
-    Args:
-        session: Session object (injected by @with_session)
-        context: Command context with message_id
-        client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute tmux command
-    """
-    await resume_agent(session, context, "codex", [], client, execute_terminal_command)
+    await execute_terminal_command(session.session_id, command_text, None, True)

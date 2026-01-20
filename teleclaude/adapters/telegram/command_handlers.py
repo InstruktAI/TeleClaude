@@ -5,6 +5,7 @@ Handles slash commands like /new_session, /claude.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -69,6 +70,18 @@ class CommandHandlersMixin:
             """Pre-handle user input (delete old messages)."""
             ...
 
+        async def _dispatch_command(
+            self,
+            session: "Session",
+            message_id: str | None,
+            metadata: MessageMetadata,
+            command_name: str,
+            payload: Mapping[str, object],
+            handler: Callable[[], Awaitable[object]],
+        ) -> None:
+            """Dispatch command via UiAdapter hooks (type-check stub)."""
+            ...
+
     # =========================================================================
     # Command Handler Implementation
     # =========================================================================
@@ -100,7 +113,7 @@ class CommandHandlersMixin:
             args=context.args or [],
             metadata=metadata,
         )
-        await self.client.handle_internal_command(cmd, metadata=metadata)
+        await self.client.commands.create_session(cmd)
 
     async def _handle_claude_plan(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /claude_plan command - alias for /shift_tab 3 (navigate to Claude Code plan mode)."""
@@ -136,7 +149,14 @@ class CommandHandlersMixin:
             metadata=metadata,
             session_id=session.session_id,
         )
-        await self.client.handle_internal_command(cmd, metadata=metadata)
+        await self._dispatch_command(
+            session,
+            str(update.effective_message.message_id),
+            metadata,
+            "start_agent",
+            cmd.to_payload(),
+            lambda: self.client.commands.start_agent(cmd),
+        )
 
     async def _handle_agent_resume_command(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /agent_resume command - resume the last AI agent session.
@@ -164,7 +184,14 @@ class CommandHandlersMixin:
             metadata=metadata,
             session_id=session.session_id,
         )
-        await self.client.handle_internal_command(cmd, metadata=metadata)
+        await self._dispatch_command(
+            session,
+            str(update.effective_message.message_id),
+            metadata,
+            "resume_agent",
+            cmd.to_payload(),
+            lambda: self.client.commands.resume_agent(cmd),
+        )
 
     async def _handle_claude(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /claude command - start Claude agent."""
@@ -198,4 +225,11 @@ class CommandHandlersMixin:
             metadata=metadata,
             session_id=session.session_id,
         )
-        await self.client.handle_internal_command(cmd, metadata=metadata)
+        await self._dispatch_command(
+            session,
+            str(update.effective_message.message_id),
+            metadata,
+            "restart_agent",
+            cmd.to_payload(),
+            lambda: self.client.commands.restart_agent(cmd),
+        )

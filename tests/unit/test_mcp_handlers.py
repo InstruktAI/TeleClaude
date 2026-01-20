@@ -17,6 +17,10 @@ class DummyHandlers(MCPHandlersMixin):
 
     def __init__(self):
         self.client = AsyncMock()
+        self.client.commands = AsyncMock()
+        self.client.commands.create_session = AsyncMock()
+        self.client.commands.start_agent = AsyncMock()
+        self.client.commands.send_message = AsyncMock()
         self.computer_name = "local"
 
     def _is_local_computer(self, computer: str) -> bool:
@@ -42,10 +46,10 @@ async def test_start_session_extracts_tmux_name_from_event_result():
     """Test that teleclaude__start_session correctly extracts and returns tmux_session_name."""
     handler = DummyHandlers()
 
-    # Mock handle_internal_command to return a successful result with tmux name
-    handler.client.handle_internal_command.return_value = {
-        "status": "success",
-        "data": {"session_id": "sess-123", "tmux_session_name": "tmux-123"},
+    # Mock create_session to return a successful result with tmux name
+    handler.client.commands.create_session.return_value = {
+        "session_id": "sess-123",
+        "tmux_session_name": "tmux-123",
     }
 
     result = await handler.teleclaude__start_session(
@@ -66,10 +70,7 @@ async def test_start_session_handles_missing_tmux_name():
     handler = DummyHandlers()
 
     # Success but missing tmux name (or malformed data)
-    handler.client.handle_internal_command.return_value = {
-        "status": "success",
-        "data": {"session_id": "sess-123"},
-    }
+    handler.client.commands.create_session.return_value = {"session_id": "sess-123"}
 
     result = await handler.teleclaude__start_session(
         computer="local", project_path="/tmp", title="Test Session", message=None

@@ -203,14 +203,25 @@ class CommandMapper:
             return CloseSessionCommand(session_id=session_id or "")
 
         if cmd_name == "get_session_data":
-            since = args[0] if len(args) > 0 else None
-            until = args[1] if len(args) > 1 else None
+            since = None
+            until = None
             tail_chars = 5000
-            if len(args) > 2:
-                try:
-                    tail_chars = int(args[2])
-                except ValueError:
-                    tail_chars = 5000
+
+            if len(args) == 1:
+                candidate = args[0]
+                if candidate not in ("", "-"):
+                    try:
+                        tail_chars = int(candidate)
+                    except ValueError:
+                        since = candidate
+            elif len(args) >= 2:
+                since = args[0]
+                until = args[1]
+                if len(args) > 2:
+                    try:
+                        tail_chars = int(args[2])
+                    except ValueError:
+                        tail_chars = 5000
             return GetSessionDataCommand(
                 session_id=session_id or "",
                 since_timestamp=since if since not in ("", "-") else None,

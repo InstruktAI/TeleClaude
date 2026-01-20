@@ -97,7 +97,7 @@ The system uses an Outbox pattern in SQLite to ensure reliable event delivery an
 ### Service Interfaces
 - API and MCP are first-class service boundaries.
 - Telegram is a UI adapter boundary.
-- All inputs normalize into command ingress via `AdapterClient.handle_event`.
+- All inputs normalize into explicit command objects and flow through `CommandService` (commands do **not** use `AdapterClient.handle_event`).
 
 ### Core
 - Executes commands from queue/outbox.

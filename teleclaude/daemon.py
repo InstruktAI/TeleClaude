@@ -16,7 +16,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Awaitable, Callable, Coroutine, Literal, Optional, TextIO, TypedDict, cast
+from typing import Awaitable, Callable, Coroutine, Optional, TextIO, TypedDict, cast
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
@@ -26,10 +26,8 @@ from teleclaude.api_server import APIServer
 from teleclaude.config import config  # config.py loads .env at import time
 from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import (
-    command_handlers,
     polling_coordinator,
     session_cleanup,
-    session_launcher,
     tmux_bridge,
     tmux_io,
     voice_message_handler,
@@ -40,19 +38,17 @@ from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.api_events import ApiOutboxMetadata, ApiOutboxPayload, ApiOutboxResponse
 from teleclaude.core.cache import DaemonCache
 from teleclaude.core.codex_watcher import CodexWatcher
+from teleclaude.core.command_service import CommandService
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
     AgentPromptPayload,
     AgentStopPayload,
-    CommandEventContext,
     DeployArgs,
     ErrorEventContext,
-    EventContext,
     EventType,
     FileEventContext,
-    MessageEventContext,
     SessionLifecycleContext,
     SystemCommandContext,
     TeleClaudeEvents,
@@ -61,7 +57,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.file_handler import handle_file
 from teleclaude.core.lifecycle import DaemonLifecycle
-from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session, SessionLaunchIntent, ThinkingMode
+from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session, SessionLaunchIntent
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file, parse_session_title, resolve_working_dir
 from teleclaude.core.summarizer import summarize
@@ -71,13 +67,7 @@ from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types.commands import (
-    CreateSessionCommand,
-    GetSessionDataCommand,
-    InternalCommand,
-    KeysCommand,
-    RestartAgentCommand,
     ResumeAgentCommand,
-    SendAgentCommand,
     SendMessageCommand,
     StartAgentCommand,
 )
@@ -252,6 +242,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient(task_registry=self.task_registry)
+        self.command_service = CommandService(
+            client=self.client,
+            start_polling=self._start_polling_for_session,
+            execute_terminal_command=self._execute_terminal_command,
+            execute_auto_command=self._execute_auto_command,
+            queue_background_task=self._queue_background_task,
+        )
+        self.client.commands = self.command_service
 
         # Initialize cache for remote data
         self.cache = DaemonCache()
@@ -262,7 +260,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Initialize AgentCoordinator for agent events and cross-computer orchestration
         self.agent_coordinator = AgentCoordinator(self.client)
-        self.client.on(cast(EventType, TeleClaudeEvents.AGENT_EVENT), self._handle_agent_event)
+        self.client.on(TeleClaudeEvents.AGENT_EVENT, self._handle_agent_event)
 
         # Debounce stop events (Gemini fires AfterAgent multiple times per turn)
         self._last_stop_time: dict[str, float] = {}
@@ -270,9 +268,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # In-memory dedupe for stop summarization (session_id -> transcript fingerprint)
         self._last_summary_fingerprint: dict[str, str] = {}
-
-        # Register command handler
-        self.client.on("command", self._handle_command_event)
 
         # Auto-discover and register event handlers
         for attr_name in dir(TeleClaudeEvents):
@@ -291,6 +286,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 logger.debug("Auto-registered handler: %s → %s", event_value, handler_name)
             else:
                 logger.debug("No handler for event: %s (skipped)", event_value)
+
+        # Register non-TeleClaudeEvents handlers
+        self.client.on("voice", self._handle_voice)
+        self.client.on("file", self._handle_file)
+        self.client.on("system_command", self._handle_system_command)
 
         # Note: Adapters are loaded in client.start(), not here
 
@@ -907,45 +907,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         task = asyncio.create_task(coro)
         self._track_background_task(task, label)
 
-    async def _handle_command_event(self, event: Literal["command"], context: CommandEventContext) -> object:
-        """Generic handler for all command events.
-
-        All commands route to handle_command() with args from context.
-
-        Args:
-            event: Command event type (new_session, kill, etc.)
-            context: Typed command event context
-
-        Returns:
-            Result from command handler
-        """
-        # Extract args from typed context
-        args = context.args
-
-        # Extract metadata fields from context
-        metadata = MessageMetadata(
-            origin=context.origin,
-            message_thread_id=context.message_thread_id,
-            title=context.title,
-            project_path=context.project_path,
-            channel_metadata=context.channel_metadata,
-            auto_command=context.auto_command,
-            launch_intent=context.launch_intent,
-        )
-
-        return await self.handle_command(context.command, args, context, metadata)
-
-    async def _handle_message(self, _event: str, context: MessageEventContext) -> None:
-        """Handler for MESSAGE events - pure business logic (cleanup already done).
-
-        Args:
-            _event: Event type (always "message") - unused but required by event handler signature
-            context: Message event context (Pydantic)
-        """
-        # Map to internal command
-        cmd = SendMessageCommand(session_id=context.session_id, text=context.text)
-        await self.handle_message(cmd)
-
     async def _handle_voice(self, _event: str, context: VoiceEventContext) -> None:
         """Handler for VOICE events - pure business logic (cleanup already done).
 
@@ -969,14 +930,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if session:
                 await self.client.delete_message(session, str(context.message_id))
 
-        metadata = MessageMetadata(
-            origin=context.origin,
-            message_thread_id=context.message_thread_id,
-        )
-        await self.client.handle_internal_command(
-            SendMessageCommand(session_id=context.session_id, text=transcribed),
-            metadata=metadata,
-        )
+        await self.command_service.send_message(SendMessageCommand(session_id=context.session_id, text=transcribed))
 
     async def _handle_session_closed(self, _event: str, context: SessionLifecycleContext) -> None:
         """Handler for session_closed events - user closed session.
@@ -1039,15 +993,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         else:
             logger.warning("Unknown system command: %s", ctx.command)
 
-    async def _handle_agent_event(self, _event: str, context: EventContext) -> None:
+    async def _handle_agent_event(self, _event: str, context: AgentEventContext) -> None:
         """Central handler for AGENT_EVENT (formerly CLAUDE_EVENT).
 
         Orchestrates summarization, title updates, and coordination.
         """
-        # We know this is AgentEventContext because of the event type registration
-        if not isinstance(context, AgentEventContext):
-            return
-
         agent_event_type = context.event_type
 
         # Handle STOP event in background to prevent hook timeout during summarization
@@ -1228,7 +1178,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     async def _execute_auto_command(self, session_id: str, auto_command: str) -> dict[str, str]:
         """Execute a post-session auto_command and return status/message."""
-        auto_context = CommandEventContext(command="start_agent", session_id=session_id, args=[])
         cmd_name, auto_args = parse_command_string(auto_command)
 
         if cmd_name and auto_command:
@@ -1243,15 +1192,20 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         if cmd_name == "agent" and auto_args:
             agent_name = auto_args.pop(0)
-            await command_handlers.start_agent(
-                auto_context, agent_name, auto_args, self.client, self._execute_terminal_command
+            await self.command_service.start_agent(
+                StartAgentCommand(session_id=session_id, agent_name=agent_name, args=auto_args)
             )
             return {"status": "success"}
 
         if cmd_name == "agent_resume" and auto_args:
             agent_name = auto_args.pop(0)
-            await command_handlers.resume_agent(
-                auto_context, agent_name, auto_args, self.client, self._execute_terminal_command
+            native_session_id = auto_args[0] if auto_args else None
+            await self.command_service.resume_agent(
+                ResumeAgentCommand(
+                    session_id=session_id,
+                    agent_name=agent_name,
+                    native_session_id=native_session_id,
+                )
             )
             return {"status": "success"}
 
@@ -1279,17 +1233,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         )
 
         logger.debug("agent_then_message: agent=%s mode=%s msg=%s", agent_name, thinking_mode, message[:50])
-        auto_context = CommandEventContext(command="start_agent", session_id=session_id, args=[])
-        thinking_args: list[str] = [thinking_mode]
 
         # Fire-and-forget start command (don't wait for 1s driver sleep)
         t0 = time.time()
-        await command_handlers.start_agent(
-            auto_context,
-            agent_name,
-            thinking_args,
-            self.client,
-            self._execute_terminal_command,
+        await self.command_service.start_agent(
+            StartAgentCommand(
+                session_id=session_id,
+                agent_name=agent_name,
+                thinking_mode=thinking_mode,
+                args=[],
+            )
         )
         logger.debug("agent_then_message: agent_start took %.3fs", time.time() - t0)
 
@@ -1499,11 +1452,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 await asyncio.sleep(AGENT_START_CONFIRM_ENTER_DELAY_S)
         return False
 
-    async def _handle_error(self, _event: str, context: EventContext) -> None:
+    async def _handle_error(self, _event: str, context: ErrorEventContext) -> None:
         """Handle error events (fail-fast contract violations, hook issues)."""
-        if not isinstance(context, ErrorEventContext):
-            return
-
         session = await db.get_session(context.session_id)
         if not session:
             logger.error("Error event for unknown session %s: %s", context.session_id[:8], context.message)
@@ -1954,287 +1904,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         await self.lifecycle.shutdown()
 
         logger.info("Daemon stopped")
-
-    async def handle_command(
-        self, command: str, args: list[str], context: CommandEventContext, metadata: MessageMetadata
-    ) -> object:  # Handler return types vary  # pylint: disable=too-many-branches
-        """Handle bot commands.
-
-        Args:
-            command: Command name (e.g., "create_session", "list_projects")
-            args: Command arguments
-            context: Command context (session_id, args)
-            metadata: Message metadata (origin, message_thread_id, etc.)
-
-        Note: Handlers decorated with @with_session have modified signatures (decorator injects session parameter).
-        """
-        logger.debug("Command received: %s %s", command, args)
-
-        # Use normalized command if present in context
-        internal_cmd = cast(Optional[InternalCommand], getattr(context, "internal_command", None))
-
-        if command == "create_session":
-            if not isinstance(internal_cmd, CreateSessionCommand):
-                raise ValueError("Missing CreateSessionCommand for new_session")
-            create_cmd = internal_cmd
-
-            return await session_launcher.create_session(
-                create_cmd,
-                self.client,
-                self._execute_auto_command,
-                self._queue_background_task,
-            )
-        elif command == "list_sessions":
-            return await command_handlers.list_sessions()
-        elif command == "list_projects":
-            return await command_handlers.list_projects()
-        elif command == "list_projects_with_todos":
-            return await command_handlers.list_projects_with_todos()
-        elif command == "list_todos":
-            # First arg is project path
-            path = args[0] if args else ""
-            return await command_handlers.list_todos(path)
-        elif command == "get_computer_info":
-            return await command_handlers.get_computer_info()
-        elif command == "keys":
-            keys_cmd = internal_cmd if isinstance(internal_cmd, KeysCommand) else None
-            if not keys_cmd:
-                raise ValueError("Missing KeysCommand for keys")
-
-            key_name = keys_cmd.key
-            key_args = list(keys_cmd.args)
-
-            if key_name == "cancel":
-                return await command_handlers.cancel_command(context, self.client, self._start_polling_for_session)
-            if key_name == "cancel2x":
-                return await command_handlers.cancel_command(
-                    context, self.client, self._start_polling_for_session, double=True
-                )
-            if key_name == "kill":
-                return await command_handlers.kill_command(context, self.client, self._start_polling_for_session)
-            if key_name == "escape":
-                return await command_handlers.escape_command(
-                    context, key_args, self.client, self._start_polling_for_session
-                )
-            if key_name == "escape2x":
-                return await command_handlers.escape_command(
-                    context, key_args, self.client, self._start_polling_for_session, double=True
-                )
-            if key_name == "ctrl":
-                return await command_handlers.ctrl_command(
-                    context, key_args, self.client, self._start_polling_for_session
-                )
-            if key_name == "tab":
-                return await command_handlers.tab_command(context, self.client, self._start_polling_for_session)
-            if key_name == "shift_tab":
-                return await command_handlers.shift_tab_command(
-                    context, key_args, self.client, self._start_polling_for_session
-                )
-            if key_name == "backspace":
-                return await command_handlers.backspace_command(
-                    context, key_args, self.client, self._start_polling_for_session
-                )
-            if key_name == "enter":
-                return await command_handlers.enter_command(context, self.client, self._start_polling_for_session)
-            if key_name == "key_up":
-                return await command_handlers.arrow_key_command(
-                    context, key_args, self.client, self._start_polling_for_session, "up"
-                )
-            if key_name == "key_down":
-                return await command_handlers.arrow_key_command(
-                    context, key_args, self.client, self._start_polling_for_session, "down"
-                )
-            if key_name == "key_left":
-                return await command_handlers.arrow_key_command(
-                    context, key_args, self.client, self._start_polling_for_session, "left"
-                )
-            if key_name == "key_right":
-                return await command_handlers.arrow_key_command(
-                    context, key_args, self.client, self._start_polling_for_session, "right"
-                )
-
-            raise ValueError(f"Unknown keys command: {key_name}")
-        elif command == "start_agent":
-            start_cmd: StartAgentCommand
-            if isinstance(internal_cmd, StartAgentCommand):
-                start_cmd = internal_cmd
-            else:
-                agent_name = args.pop(0) if args else ""
-                start_cmd = StartAgentCommand(
-                    session_id=cast(str, getattr(context, "session_id", "")),
-                    agent_name=agent_name,
-                    args=args,
-                )
-
-            args_to_use: list[str] = list(start_cmd.args)
-            valid_modes = {mode.value for mode in ThinkingMode}
-            if start_cmd.thinking_mode and (not args_to_use or args_to_use[0] not in valid_modes):
-                args_to_use.insert(0, start_cmd.thinking_mode)
-
-            return await command_handlers.start_agent(
-                context,
-                start_cmd.agent_name,
-                args_to_use,
-                self.client,
-                self._execute_terminal_command,
-            )
-        elif command == "resume_agent":
-            resume_cmd: ResumeAgentCommand
-            if isinstance(internal_cmd, ResumeAgentCommand):
-                resume_cmd = internal_cmd
-            else:
-                agent_name = args.pop(0) if args else ""
-                resume_cmd = ResumeAgentCommand(
-                    session_id=cast(str, getattr(context, "session_id", "")),
-                    agent_name=agent_name,
-                )
-
-            resume_args = list(args)
-            if resume_cmd.native_session_id:
-                resume_args = [resume_cmd.native_session_id]
-            return await command_handlers.resume_agent(
-                context,
-                resume_cmd.agent_name or "",
-                resume_args,
-                self.client,
-                self._execute_terminal_command,
-            )
-        elif command == "agent_restart":
-            restart_cmd = internal_cmd if isinstance(internal_cmd, RestartAgentCommand) else None
-            agent_name = restart_cmd.agent_name if restart_cmd else (args.pop(0) if args else "")
-            return await command_handlers.agent_restart(
-                context, agent_name, args, self.client, self._execute_terminal_command
-            )
-        elif command == "get_session_data":
-            get_cmd = internal_cmd if isinstance(internal_cmd, GetSessionDataCommand) else None
-            since_timestamp = get_cmd.since_timestamp if get_cmd else None
-            until_timestamp = get_cmd.until_timestamp if get_cmd else None
-            tail_chars = get_cmd.tail_chars if get_cmd else 5000
-            if not get_cmd:
-                # Parse args: [since_timestamp] [until_timestamp] [tail_chars]
-                since_timestamp = None
-                until_timestamp = None
-                tail_chars = 5000
-
-                def _normalize_placeholder(value: str) -> Optional[str]:
-                    return None if value == "-" else value
-
-                if len(args) == 1:
-                    try:
-                        tail_chars = int(args[0])
-                    except ValueError:
-                        since_timestamp = _normalize_placeholder(args[0] or "")
-                elif len(args) == 2:
-                    try:
-                        tail_chars = int(args[1])
-                        since_timestamp = _normalize_placeholder(args[0] or "")
-                    except ValueError:
-                        since_timestamp = _normalize_placeholder(args[0] or "")
-                        until_timestamp = _normalize_placeholder(args[1] or "")
-                elif len(args) >= 3:
-                    since_timestamp = _normalize_placeholder(args[0] or "")
-                    until_timestamp = _normalize_placeholder(args[1] or "")
-                    try:
-                        tail_chars = int(args[2]) if args[2] else 5000
-                    except ValueError:
-                        tail_chars = 5000
-            session_id = cast(str, getattr(context, "session_id", ""))
-            return await command_handlers.get_session_data(session_id, since_timestamp, until_timestamp, tail_chars)
-        elif command == "send_agent_command":
-            send_cmd = internal_cmd if isinstance(internal_cmd, SendAgentCommand) else None
-            if send_cmd:
-                return await command_handlers.send_agent_command(
-                    context,
-                    send_cmd.command,
-                    send_cmd.args,
-                    self.client,
-                    self._execute_terminal_command,
-                )
-            return await command_handlers.send_agent_command(
-                context,
-                args.pop(0) if args else "",
-                " ".join(args),
-                self.client,
-                self._execute_terminal_command,
-            )
-        elif command == "send_message":
-            if isinstance(internal_cmd, SendMessageCommand):
-                text = internal_cmd.text
-            else:
-                text = str(context.payload.get("text") or " ".join(args))
-            return await self.handle_message(SendMessageCommand(session_id=context.session_id, text=text))
-        elif command == "voice":
-            return await self._handle_voice(
-                "voice",
-                VoiceEventContext(
-                    session_id=context.session_id,
-                    file_path=str(context.payload.get("file_path", "")),
-                    message_id=cast(str | None, context.payload.get("message_id")),
-                    origin=context.origin,
-                    message_thread_id=context.message_thread_id,
-                ),
-            )
-        elif command == "file":
-            return await self._handle_file(
-                "file",
-                FileEventContext(
-                    session_id=context.session_id,
-                    file_path=str(context.payload.get("file_path", "")),
-                    filename=str(context.payload.get("filename", "")),
-                    caption=cast(str | None, context.payload.get("caption")),
-                ),
-            )
-        elif command == "close_session":
-            return await command_handlers.close_session(context, self.client)
-        return None
-
-    async def handle_message(
-        self,
-        cmd_or_session_id: SendMessageCommand | str,
-        text: Optional[str] = None,
-        _context: Optional[EventContext] = None,
-    ) -> None:
-        """Handle incoming text messages (commands for tmux)."""
-        if isinstance(cmd_or_session_id, SendMessageCommand):
-            session_id = cmd_or_session_id.session_id
-            message_text = cmd_or_session_id.text
-        else:
-            session_id = cmd_or_session_id
-            message_text = text or ""
-
-        logger.debug("Message for session %s: %s...", session_id[:8], message_text[:50])
-
-        # Get session
-        session = await db.get_session(session_id)
-        if not session:
-            logger.warning("Session %s not found", session_id)
-            return
-
-        # Get active agent for agent-specific escaping
-        active_agent = session.active_agent
-
-        sanitized_text = tmux_io.wrap_bracketed_paste(message_text)
-
-        # Send command to tmux (will create fresh session if needed)
-        working_dir = resolve_working_dir(session.project_path, session.subdir)
-        success = await tmux_io.send_text(
-            session,
-            sanitized_text,
-            working_dir=working_dir,
-            active_agent=active_agent,
-        )
-
-        if not success:
-            logger.error("Failed to send command to session %s", session_id[:8])
-            await self.client.send_message(session, "Failed to send command to tmux", metadata=MessageMetadata())
-            return
-
-        # Update activity
-        await db.update_last_activity(session_id)
-
-        # Start polling for output updates
-        await self._start_polling_for_session(session_id, session.tmux_session_name)
-        logger.debug("Started polling for session %s", session_id[:8])
 
     async def _periodic_cleanup(self) -> None:
         """Periodically clean up inactive sessions (72h lifecycle) and orphaned tmux sessions."""

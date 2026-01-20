@@ -299,20 +299,7 @@ class APIServer:
             cmd = CommandMapper.map_api_input("new_session", {}, metadata)
 
             try:
-                # Use the new handle_internal_command entry point
-                envelope = await self.client.handle_internal_command(cmd, metadata=metadata)
-
-                if not isinstance(envelope, dict):
-                    raise HTTPException(status_code=500, detail="Invalid session creation response")
-
-                status = str(envelope.get("status", "error"))
-                if status != "success":
-                    error_msg = str(envelope.get("error", "Session creation failed"))
-                    return CreateSessionResponseDTO(status="error", error=error_msg)
-
-                data = envelope.get("data")
-                if not isinstance(data, dict):
-                    raise HTTPException(status_code=500, detail="Invalid session creation payload")
+                data = await self.client.commands.create_session(cmd)
 
                 session_id = data.get("session_id")
                 tmux_session_name = data.get("tmux_session_name")
@@ -349,7 +336,7 @@ class APIServer:
                     {"session_id": session_id},
                     metadata,
                 )
-                result = await self.client.handle_internal_command(cmd, metadata=metadata)
+                result = await self.client.commands.end_session(cmd)
                 return {"status": "success", "result": result}
             except Exception as e:
                 logger.error("Failed to end session %s: %s", session_id, e, exc_info=True)
@@ -369,8 +356,8 @@ class APIServer:
                     {"session_id": session_id, "text": request.message},
                     metadata,
                 )
-                result = await self.client.handle_internal_command(cmd, metadata=metadata)
-                return {"status": "success", "result": result}
+                await self.client.commands.send_message(cmd)
+                return {"status": "success"}
             except Exception as e:
                 logger.error("send_message failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
@@ -388,7 +375,7 @@ class APIServer:
                     {"session_id": session_id, "args": []},
                     metadata,
                 )
-                await self.client.handle_internal_command(cmd, metadata=metadata)
+                await self.client.commands.restart_agent(cmd)
                 return {"status": "ok"}
             except Exception as e:
                 logger.error("agent_restart failed for session %s: %s", session_id, e, exc_info=True)

@@ -13,7 +13,7 @@ from teleclaude.core.next_machine import _prepare_worktree, ensure_worktree
 class TestEnsureWorktreeAlwaysPrepares:
     """Tests for ensure_worktree always running preparation."""
 
-    @patch("teleclaude.core.next_machine._prepare_worktree")
+    @patch("teleclaude.core.next_machine.core._prepare_worktree")
     def test_always_runs_preparation_when_worktree_exists(self, mock_prepare: Mock, tmp_path: Path) -> None:
         """Test that preparation always runs when worktree exists (idempotent)."""
         # Setup - create worktree dir
@@ -31,7 +31,7 @@ class TestEnsureWorktreeAlwaysPrepares:
 class TestPrepareWorktreeMakefile:
     """Tests for _prepare_worktree with Makefile projects."""
 
-    @patch("teleclaude.core.next_machine.subprocess.run")
+    @patch("teleclaude.core.next_machine.core.subprocess.run")
     def test_calls_make_worktree_prepare_with_slug(self, mock_run: Mock, tmp_path: Path) -> None:
         """Test that make worktree-prepare is called with correct SLUG parameter."""
         # Setup
@@ -53,7 +53,7 @@ class TestPrepareWorktreeMakefile:
         assert actual_call[1]["cwd"] == str(tmp_path)
         assert actual_call[1]["check"] is True
 
-    @patch("teleclaude.core.next_machine.subprocess.run")
+    @patch("teleclaude.core.next_machine.core.subprocess.run")
     def test_raises_when_worktree_prepare_target_missing(self, mock_run: Mock, tmp_path: Path) -> None:
         """Test that RuntimeError is raised when worktree-prepare target doesn't exist."""
         # Setup
@@ -70,7 +70,7 @@ class TestPrepareWorktreeMakefile:
         ):
             _prepare_worktree(str(tmp_path), "test-slug")
 
-    @patch("teleclaude.core.next_machine.subprocess.run")
+    @patch("teleclaude.core.next_machine.core.subprocess.run")
     def test_raises_when_preparation_fails(self, mock_run: Mock, tmp_path: Path) -> None:
         """Test that RuntimeError is raised when worktree preparation fails."""
         # Setup
@@ -94,7 +94,7 @@ class TestPrepareWorktreeMakefile:
 class TestPrepareWorktreePackageJson:
     """Tests for _prepare_worktree with Node.js projects."""
 
-    @patch("teleclaude.core.next_machine.subprocess.run")
+    @patch("teleclaude.core.next_machine.core.subprocess.run")
     def test_calls_npm_run_worktree_prepare_with_slug(self, mock_run: Mock, tmp_path: Path) -> None:
         """Test that npm run worktree:prepare is called with slug parameter."""
         # Setup

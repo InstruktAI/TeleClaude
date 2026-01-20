@@ -27,7 +27,7 @@ async def test_next_prepare_hitl_no_slug():
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
 
-    with patch("teleclaude.core.next_machine.resolve_slug", return_value=(None, False, "")):
+    with patch("teleclaude.core.next_machine.core.resolve_slug", return_value=(None, False, "")):
         result = await next_prepare(db, slug=None, cwd=cwd, hitl=True)
         assert "Read todos/roadmap.md" in result
         assert "Before proceeding, read ~/.agents/commands/next-prepare.md" in result
@@ -41,8 +41,8 @@ async def test_next_prepare_hitl_missing_requirements():
     slug = "test-slug"
 
     with (
-        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"Preparing: {slug}" in result
@@ -63,8 +63,8 @@ async def test_next_prepare_hitl_missing_impl_plan():
         return False
 
     with (
-        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.check_file_exists", side_effect=mock_check_file_exists),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"Preparing: {slug}" in result
@@ -86,11 +86,11 @@ async def test_next_prepare_hitl_both_exist():
         return True  # requirements.md and implementation-plan.md exist
 
     with (
-        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.check_file_exists", side_effect=mock_check_file_exists),
-        patch("teleclaude.core.next_machine.read_breakdown_state", return_value=None),
-        patch("teleclaude.core.next_machine.get_roadmap_state", return_value=" "),
-        patch("teleclaude.core.next_machine.update_roadmap_state"),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
+        patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=None),
+        patch("teleclaude.core.next_machine.core.get_roadmap_state", return_value=" "),
+        patch("teleclaude.core.next_machine.core.update_roadmap_state"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"PREPARED: todos/{slug} is ready for work." in result
@@ -108,8 +108,8 @@ async def test_next_prepare_autonomous_dispatch():
     db.get_agent_availability.return_value = {"available": True}
 
     with (
-        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
         assert "teleclaude__run_agent_command" in result
@@ -125,8 +125,8 @@ async def test_next_prepare_hitl_slug_missing_from_roadmap():
     slug = "test-slug"
 
     with (
-        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=False),
-        patch("teleclaude.core.next_machine.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert "not in todos/roadmap.md" in result
@@ -145,8 +145,8 @@ async def test_next_prepare_autonomous_slug_missing_from_roadmap():
     db.get_agent_availability.return_value = {"available": True}
 
     with (
-        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=False),
-        patch("teleclaude.core.next_machine.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
         assert "teleclaude__run_agent_command" in result
@@ -162,8 +162,8 @@ async def test_next_prepare_hitl_slug_missing_from_roadmap_when_docs_exist():
     slug = "test-slug"
 
     with (
-        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=False),
-        patch("teleclaude.core.next_machine.check_file_exists", return_value=True),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=True),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert "not in todos/roadmap.md" in result
@@ -212,7 +212,7 @@ def test_write_phase_state_creates_file():
         slug = "test-slug"
         state = {"build": "complete", "review": "pending"}
 
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             write_phase_state(tmpdir, slug, state)
 
         state_file = Path(tmpdir) / "todos" / slug / "state.json"
@@ -226,7 +226,7 @@ def test_mark_phase_updates_state():
     with tempfile.TemporaryDirectory() as tmpdir:
         slug = "test-slug"
 
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             result = mark_phase(tmpdir, slug, "build", "complete")
 
         assert result["build"] == "complete"

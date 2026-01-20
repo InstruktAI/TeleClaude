@@ -35,7 +35,7 @@ async def test_workflow_pending_to_archived_with_dependencies():
 
         # Set up dependency: main-item depends on dep-item
         deps = {"main-item": ["dep-item"]}
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             write_dependencies(tmpdir, deps)
 
         # Step 1: Verify main-item cannot be marked ready (dependency unsatisfied)
@@ -43,17 +43,17 @@ async def test_workflow_pending_to_archived_with_dependencies():
         assert slug is None  # No ready items yet
 
         # Step 2: Mark dep-item as ready [.]
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             result = update_roadmap_state(tmpdir, "dep-item", ".")
         assert result is True
 
         # Step 3: Mark dep-item as in-progress [>]
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             result = update_roadmap_state(tmpdir, "dep-item", ">")
         assert result is True
 
         # Step 4: Mark dep-item as completed [x]
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             result = update_roadmap_state(tmpdir, "dep-item", "x")
         assert result is True
 
@@ -62,7 +62,7 @@ async def test_workflow_pending_to_archived_with_dependencies():
         assert satisfied is True
 
         # Step 6: Mark main-item as ready [.]
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             result = update_roadmap_state(tmpdir, "main-item", ".")
         assert result is True
 
@@ -95,7 +95,7 @@ async def test_next_work_dependency_blocking():
 
         # Set up dependency: blocked-feature depends on foundation
         deps = {"blocked-feature": ["foundation"], "independent-feature": []}
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             write_dependencies(tmpdir, deps)
 
         # Create required files for independent-feature
@@ -106,7 +106,10 @@ async def test_next_work_dependency_blocking():
         (item_dir / "state.json").write_text('{"build": "pending", "review": "pending"}')
 
         # Step 1: next_work should select independent-feature (no dependencies)
-        with patch("teleclaude.core.next_machine.Repo"), patch("teleclaude.core.next_machine._prepare_worktree"):
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+        ):
             result = await next_work(db, slug=None, cwd=tmpdir)
 
         assert "independent-feature" in result
@@ -118,7 +121,7 @@ async def test_next_work_dependency_blocking():
         assert "DEPS_UNSATISFIED" in result
 
         # Step 3: Complete foundation item
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             update_roadmap_state(tmpdir, "foundation", ".")
             update_roadmap_state(tmpdir, "foundation", ">")
             update_roadmap_state(tmpdir, "foundation", "x")
@@ -131,7 +134,10 @@ async def test_next_work_dependency_blocking():
         (blocked_dir / "state.json").write_text('{"build": "pending", "review": "pending"}')
 
         # Step 5: Now next_work can select blocked-feature (dependency satisfied)
-        with patch("teleclaude.core.next_machine.Repo"), patch("teleclaude.core.next_machine._prepare_worktree"):
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+        ):
             result = await next_work(db, slug="blocked-feature", cwd=tmpdir)
 
         # Should no longer be blocked - verify no errors
@@ -152,7 +158,7 @@ async def test_archived_dependency_satisfaction():
 
         # Set up dependency on archived item
         deps = {"new-feature": ["archived-foundation"]}
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             write_dependencies(tmpdir, deps)
 
         # Simulate archived dependency in done/ directory
@@ -167,7 +173,10 @@ async def test_archived_dependency_satisfaction():
         (item_dir / "state.json").write_text('{"build": "pending", "review": "pending"}')
 
         # Should be able to work on new-feature (archived dependency is satisfied)
-        with patch("teleclaude.core.next_machine.Repo"), patch("teleclaude.core.next_machine._prepare_worktree"):
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+        ):
             result = await next_work(db, slug="new-feature", cwd=tmpdir)
 
         # Should NOT be blocked

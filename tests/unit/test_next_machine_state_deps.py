@@ -40,7 +40,7 @@ def test_update_roadmap_state_pending_to_ready():
         roadmap_path.write_text("# Roadmap\n\n- [ ] test-item\nDescription here\n")
 
         # Mock git operations
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             result = update_roadmap_state(tmpdir, "test-item", ".")
 
         assert result is True
@@ -55,7 +55,7 @@ def test_update_roadmap_state_ready_to_in_progress():
         roadmap_path.parent.mkdir(parents=True, exist_ok=True)
         roadmap_path.write_text("# Roadmap\n\n- [.] test-item\nDescription here\n")
 
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             result = update_roadmap_state(tmpdir, "test-item", ">")
 
         assert result is True
@@ -70,7 +70,7 @@ def test_update_roadmap_state_slug_not_found():
         roadmap_path.parent.mkdir(parents=True, exist_ok=True)
         roadmap_path.write_text("# Roadmap\n\n- [ ] other-item\n")
 
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             result = update_roadmap_state(tmpdir, "nonexistent", ".")
 
         assert result is False
@@ -98,7 +98,7 @@ def test_write_and_read_dependencies():
         test_deps = {"item-a": ["item-b", "item-c"], "item-d": ["item-a"]}
 
         # Mock git operations
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             write_dependencies(tmpdir, test_deps)
 
         deps = read_dependencies(tmpdir)
@@ -231,7 +231,10 @@ async def test_next_work_no_bug_check():
         (item_dir / "state.json").write_text('{"build": "pending", "review": "pending"}')
 
         # Mock git operations
-        with patch("teleclaude.core.next_machine.Repo"), patch("teleclaude.core.next_machine._prepare_worktree"):
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+        ):
             result = await next_work(db, slug=None, cwd=tmpdir)
 
         # Should NOT dispatch to next-bugs
@@ -257,7 +260,7 @@ async def test_next_work_respects_dependencies():
 
         # Set up dependencies
         deps = {"blocked-item": ["dep-item"], "ready-item": []}
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.core.Repo"):
             write_dependencies(tmpdir, deps)
 
         # Create required files for ready-item
@@ -267,7 +270,10 @@ async def test_next_work_respects_dependencies():
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
         (item_dir / "state.json").write_text('{"build": "pending", "review": "pending"}')
 
-        with patch("teleclaude.core.next_machine.Repo"), patch("teleclaude.core.next_machine._prepare_worktree"):
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+        ):
             result = await next_work(db, slug=None, cwd=tmpdir)
 
         # Should select ready-item (no dependencies)
@@ -341,10 +347,10 @@ async def test_next_work_review_includes_merge_base_note():
         (state_dir / "state.json").write_text('{"build": "complete", "review": "pending"}')
 
         with (
-            patch("teleclaude.core.next_machine.Repo"),
-            patch("teleclaude.core.next_machine.has_uncommitted_changes", return_value=False),
-            patch("teleclaude.core.next_machine.is_main_ahead", return_value=False),
-            patch("teleclaude.core.next_machine._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core.is_main_ahead", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
@@ -373,10 +379,10 @@ async def test_next_work_blocks_review_when_main_ahead():
         (state_dir / "state.json").write_text('{"build": "complete", "review": "pending"}')
 
         with (
-            patch("teleclaude.core.next_machine.Repo"),
-            patch("teleclaude.core.next_machine.ensure_worktree", return_value=False),
-            patch("teleclaude.core.next_machine.has_uncommitted_changes", return_value=False),
-            patch("teleclaude.core.next_machine.is_main_ahead", return_value=True),
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.ensure_worktree", return_value=False),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core.is_main_ahead", return_value=True),
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
@@ -405,11 +411,13 @@ async def test_next_work_finalize_next_call_without_slug():
         (state_dir / "state.json").write_text('{"build": "complete", "review": "approved"}')
 
         with (
-            patch("teleclaude.core.next_machine.Repo"),
-            patch("teleclaude.core.next_machine.has_uncommitted_changes", return_value=False),
-            patch("teleclaude.core.next_machine._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.is_docstrings_complete", return_value=True),
+            patch("teleclaude.core.next_machine.core.is_snippets_complete", return_value=True),
             patch(
-                "teleclaude.core.next_machine.get_available_agent",
+                "teleclaude.core.next_machine.core.get_available_agent",
                 new=AsyncMock(return_value=("claude", "med")),
             ),
         ):

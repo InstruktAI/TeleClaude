@@ -70,7 +70,14 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
             metadata=metadata,
             session_id=session.session_id,
         )
-        await daemon.client.handle_internal_command(cmd, metadata=metadata)
+        await telegram_adapter._dispatch_command(
+            session,
+            "user-msg-123",
+            metadata,
+            "send_message",
+            cmd.to_payload(),
+            lambda: daemon.command_service.send_message(cmd),
+        )
 
     # System boundary: verify the adapter attempted deletes for the tracked message ids.
     telegram_adapter.delete_message.assert_has_calls(

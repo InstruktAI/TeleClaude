@@ -154,7 +154,7 @@ async def test_stop_notification_emits_agent_stop_event():
 
     mock_client = MagicMock()
     mock_client.handle_event = AsyncMock(return_value={"status": "success"})
-    mock_client.handle_internal_command = AsyncMock(return_value={"status": "success"})
+    mock_client.commands = MagicMock()
     adapter = RedisTransport(mock_client)
 
     adapter.send_response = AsyncMock()
@@ -167,7 +167,6 @@ async def test_stop_notification_emits_agent_stop_event():
 
     await adapter._handle_incoming_message("msg-1", data)
 
-    assert mock_client.handle_internal_command.await_count == 0
     assert mock_client.handle_event.await_count == 1
     call_args = mock_client.handle_event.call_args
     assert call_args.args[0] == TeleClaudeEvents.AGENT_EVENT

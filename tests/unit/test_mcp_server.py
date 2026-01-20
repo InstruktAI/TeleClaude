@@ -24,9 +24,12 @@ def mock_mcp_server():
     mock_client = MagicMock()
     mock_client.discover_peers = AsyncMock(return_value=[])
     mock_client.handle_event = AsyncMock(return_value={"status": "success", "data": {}})
-    mock_client.handle_internal_command = AsyncMock(
-        return_value={"status": "success", "data": {"session_id": "test-session-123"}}
-    )
+    mock_client.commands = MagicMock()
+    mock_client.commands.create_session = AsyncMock(return_value={"session_id": "test-session-123"})
+    mock_client.commands.start_agent = AsyncMock()
+    mock_client.commands.send_message = AsyncMock()
+    mock_client.commands.end_session = AsyncMock(return_value={"status": "success"})
+    mock_client.commands.get_session_data = AsyncMock(return_value={"status": "success", "messages": ""})
 
     mock_tmux_bridge = MagicMock()
 
@@ -124,10 +127,8 @@ async def test_teleclaude_start_session_creates_session(mock_mcp_server):
     """Test that start_session creates a new session."""
     server = mock_mcp_server
 
-    # Mock handle_internal_command to return success with session_id
-    server.client.handle_internal_command = AsyncMock(
-        return_value={"status": "success", "data": {"session_id": "new-session-456"}}
-    )
+    # Mock create_session to return success with session_id
+    server.client.commands.create_session = AsyncMock(return_value={"session_id": "new-session-456"})
 
     with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=None)
@@ -149,7 +150,7 @@ async def test_teleclaude_send_message_forwards_to_handler(mock_mcp_server):
     """Test that send_message forwards to command handler."""
     server = mock_mcp_server
 
-    server.client.handle_internal_command = AsyncMock(return_value={"status": "success"})
+    server.client.commands.send_message = AsyncMock(return_value=None)
 
     chunks = []
     async for chunk in server.teleclaude__send_message(
@@ -203,24 +204,22 @@ async def test_teleclaude_get_session_data_formats_transcript(mock_mcp_server):
     """Test that get_session_data returns transcript summary."""
     server = mock_mcp_server
 
-    # Mock command handler
-    with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
-        mock_handlers.get_session_data = AsyncMock(
-            return_value={
-                "status": "success",
-                "session_id": "test-session-123",
-                "messages": "Parsed transcript content",
-            }
-        )
+    server.client.commands.get_session_data = AsyncMock(
+        return_value={
+            "status": "success",
+            "session_id": "test-session-123",
+            "messages": "Parsed transcript content",
+        }
+    )
 
-        result = await server.teleclaude__get_session_data(
-            computer="local",
-            session_id="test-session-123",
-            caller_session_id=CALLER_SESSION_ID,
-        )
+    result = await server.teleclaude__get_session_data(
+        computer="local",
+        session_id="test-session-123",
+        caller_session_id=CALLER_SESSION_ID,
+    )
 
-        assert result["status"] == "success"
-        assert result["messages"] == "Parsed transcript content"
+    assert result["status"] == "success"
+    assert result["messages"] == "Parsed transcript content"
 
 
 @pytest.mark.asyncio
@@ -231,21 +230,19 @@ async def test_teleclaude_get_session_data_caps_large_transcripts(mock_mcp_serve
     # Create large transcript (> 48KB)
     large_transcript = "A" * (MCP_SESSION_DATA_MAX_CHARS + 1000)
 
-    # Mock command handler
-    with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
-        mock_handlers.get_session_data = AsyncMock(
-            return_value={
-                "status": "success",
-                "session_id": "test-session-123",
-                "messages": large_transcript,
-            }
-        )
+    server.client.commands.get_session_data = AsyncMock(
+        return_value={
+            "status": "success",
+            "session_id": "test-session-123",
+            "messages": large_transcript,
+        }
+    )
 
-        result = await server.teleclaude__get_session_data(
-            computer="local",
-            session_id="test-session-123",
-            caller_session_id=CALLER_SESSION_ID,
-        )
+    result = await server.teleclaude__get_session_data(
+        computer="local",
+        session_id="test-session-123",
+        caller_session_id=CALLER_SESSION_ID,
+    )
 
     assert result["status"] == "success"
     assert len(result["messages"]) <= MCP_SESSION_DATA_MAX_CHARS
@@ -299,22 +296,19 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     """Test that start_session dispatches correct agent event based on parameter."""
     server = mock_mcp_server
 
-    # Mock handle_internal_command
-    async def mock_handle_cmd(cmd, **kwargs):
-        if cmd.command_type == "create_session":
+    async def mock_create_session(cmd):
+        sid = "agent-test-123"
+        if "Gemini" in cmd.title:
             sid = "agent-test-123"
-            if "Gemini" in cmd.title:
-                sid = "agent-test-123"
-            elif "Codex" in cmd.title:
-                sid = "agent-test-456"
-            elif "Claude" in cmd.title:
-                sid = "agent-test-789"
-            if "Fast" in cmd.title:
-                sid = "agent-test-fast"
-            return {"status": "success", "data": {"session_id": sid}}
-        return {"status": "success"}
+        elif "Codex" in cmd.title:
+            sid = "agent-test-456"
+        elif "Claude" in cmd.title:
+            sid = "agent-test-789"
+        if "Fast" in cmd.title:
+            sid = "agent-test-fast"
+        return {"session_id": sid}
 
-    server.client.handle_internal_command = AsyncMock(side_effect=mock_handle_cmd)
+    server.client.commands.create_session = AsyncMock(side_effect=mock_create_session)
 
     with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=None)
@@ -373,9 +367,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
 async def test_run_agent_command_passes_mode_for_new_session(mock_mcp_server):
     """Test that run_agent_command passes thinking_mode for new sessions."""
     server = mock_mcp_server
-    server.client.handle_internal_command = AsyncMock(
-        return_value={"status": "success", "data": {"session_id": "sess-123"}}
-    )
+    server.client.commands.create_session = AsyncMock(return_value={"session_id": "sess-123"})
 
     result = await server.teleclaude__run_agent_command(
         computer="local",
@@ -388,13 +380,11 @@ async def test_run_agent_command_passes_mode_for_new_session(mock_mcp_server):
     )
 
     assert result["status"] == "success"
-    server.client.handle_internal_command.assert_awaited_once()
-    call_args = server.client.handle_internal_command.call_args
-    call_args[0][0]
-    metadata = call_args[1].get("metadata")
-    assert metadata is not None
-    assert "codex" in metadata.auto_command
-    assert "med" in metadata.auto_command
+    server.client.commands.create_session.assert_awaited_once()
+    call_args = server.client.commands.create_session.call_args
+    cmd = call_args.args[0]
+    assert "codex" in cmd.auto_command
+    assert "med" in cmd.auto_command
 
 
 @pytest.mark.asyncio
@@ -427,7 +417,13 @@ async def test_run_agent_command_ignores_mode_when_session_provided(mock_mcp_ser
 async def test_run_agent_command_normalizes_leading_slash(mock_mcp_server):
     """Test that run_agent_command strips leading / from command."""
     server = mock_mcp_server
-    server.client.handle_internal_command = AsyncMock(return_value={"status": "success"})
+    sent: dict[str, str] = {}
+
+    async def fake_send_message(_computer, _session_id, message, _caller_session_id=None):
+        sent["message"] = message
+        yield "sent"
+
+    server.teleclaude__send_message = fake_send_message
 
     # Call with leading slash - should be normalized
     result = await server.teleclaude__run_agent_command(
@@ -438,17 +434,20 @@ async def test_run_agent_command_normalizes_leading_slash(mock_mcp_server):
     )
 
     assert result["status"] == "sent"
-    # Verify the message sent was /compact (single slash)
-    call_args = server.client.handle_internal_command.call_args
-    command = call_args[0][0]
-    assert command.text == "/compact"
+    assert sent["message"] == "/compact"
 
 
 @pytest.mark.asyncio
 async def test_run_agent_command_without_leading_slash(mock_mcp_server):
     """Test that run_agent_command adds / to command without leading slash."""
     server = mock_mcp_server
-    server.client.handle_internal_command = AsyncMock(return_value={"status": "success"})
+    sent: dict[str, str] = {}
+
+    async def fake_send_message(_computer, _session_id, message, _caller_session_id=None):
+        sent["message"] = message
+        yield "sent"
+
+    server.teleclaude__send_message = fake_send_message
 
     result = await server.teleclaude__run_agent_command(
         computer="local",
@@ -458,16 +457,20 @@ async def test_run_agent_command_without_leading_slash(mock_mcp_server):
     )
 
     assert result["status"] == "sent"
-    call_args = server.client.handle_internal_command.call_args
-    command = call_args[0][0]
-    assert command.text == "/compact"
+    assert sent["message"] == "/compact"
 
 
 @pytest.mark.asyncio
 async def test_run_agent_command_with_args(mock_mcp_server):
     """Test that run_agent_command appends args to command."""
     server = mock_mcp_server
-    server.client.handle_internal_command = AsyncMock(return_value={"status": "success"})
+    sent: dict[str, str] = {}
+
+    async def fake_send_message(_computer, _session_id, message, _caller_session_id=None):
+        sent["message"] = message
+        yield "sent"
+
+    server.teleclaude__send_message = fake_send_message
 
     result = await server.teleclaude__run_agent_command(
         computer="local",
@@ -478,16 +481,20 @@ async def test_run_agent_command_with_args(mock_mcp_server):
     )
 
     assert result["status"] == "sent"
-    call_args = server.client.handle_internal_command.call_args
-    command = call_args[0][0]
-    assert command.text == "/next-work my-feature"
+    assert sent["message"] == "/next-work my-feature"
 
 
 @pytest.mark.asyncio
 async def test_run_agent_command_adds_prompts_prefix_for_codex(mock_mcp_server):
     """Test that codex commands are prefixed with /prompts:."""
     server = mock_mcp_server
-    server.client.handle_internal_command = AsyncMock(return_value={"status": "success"})
+    sent: dict[str, str] = {}
+
+    async def fake_send_message(_computer, _session_id, message, _caller_session_id=None):
+        sent["message"] = message
+        yield "sent"
+
+    server.teleclaude__send_message = fake_send_message
 
     result = await server.teleclaude__run_agent_command(
         computer="local",
@@ -498,18 +505,14 @@ async def test_run_agent_command_adds_prompts_prefix_for_codex(mock_mcp_server):
     )
 
     assert result["status"] == "sent"
-    call_args = server.client.handle_internal_command.call_args
-    command = call_args[0][0]
-    assert command.text == "/prompts:next-work"
+    assert sent["message"] == "/prompts:next-work"
 
 
 @pytest.mark.asyncio
 async def test_run_agent_command_starts_new_session(mock_mcp_server):
     """Test that run_agent_command starts new session when session_id not provided."""
     server = mock_mcp_server
-    server.client.handle_internal_command = AsyncMock(
-        return_value={"status": "success", "data": {"session_id": "new-session-789"}}
-    )
+    server.client.commands.create_session = AsyncMock(return_value={"session_id": "new-session-789"})
 
     result = await server.teleclaude__run_agent_command(
         computer="local",
@@ -543,9 +546,7 @@ async def test_run_agent_command_requires_project_for_new_session(mock_mcp_serve
 async def test_run_agent_command_with_subfolder(mock_mcp_server):
     """Test that run_agent_command passes subfolder to new session."""
     server = mock_mcp_server
-    server.client.handle_internal_command = AsyncMock(
-        return_value={"status": "success", "data": {"session_id": "sess-sub"}}
-    )
+    server.client.commands.create_session = AsyncMock(return_value={"session_id": "sess-sub"})
 
     result = await server.teleclaude__run_agent_command(
         computer="local",
@@ -557,8 +558,8 @@ async def test_run_agent_command_with_subfolder(mock_mcp_server):
 
     assert result["status"] == "success"
     # Metadata check
-    call_args = server.client.handle_internal_command.call_args_list[0]
-    cmd = call_args[0][0]
+    call_args = server.client.commands.create_session.call_args_list[0]
+    cmd = call_args.args[0]
     assert cmd.subdir == "worktrees/feat"
 
 
@@ -566,9 +567,7 @@ async def test_run_agent_command_with_subfolder(mock_mcp_server):
 async def test_run_agent_command_with_agent_type(mock_mcp_server):
     """Test that run_agent_command uses specified agent."""
     server = mock_mcp_server
-    server.client.handle_internal_command = AsyncMock(
-        return_value={"status": "success", "data": {"session_id": "sess-agent"}}
-    )
+    server.client.commands.create_session = AsyncMock(return_value={"session_id": "sess-agent"})
 
     await server.teleclaude__run_agent_command(
         computer="local",
@@ -578,11 +577,10 @@ async def test_run_agent_command_with_agent_type(mock_mcp_server):
         caller_session_id=CALLER_SESSION_ID,
     )
 
-    # Check auto_command in metadata
-    call_args = server.client.handle_internal_command.call_args
-    metadata = call_args[1].get("metadata")
-    assert metadata is not None
-    assert "gemini" in metadata.auto_command
+    # Check auto_command on command
+    call_args = server.client.commands.create_session.call_args
+    cmd = call_args.args[0]
+    assert "gemini" in cmd.auto_command
 
 
 @pytest.mark.asyncio

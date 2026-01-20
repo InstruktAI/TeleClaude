@@ -7,9 +7,7 @@ import pytest
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core import tmux_bridge
-from teleclaude.core.events import CommandEventContext
-from teleclaude.core.models import MessageMetadata
-from teleclaude.types.commands import CreateSessionCommand
+from teleclaude.types.commands import CreateSessionCommand, SendMessageCommand
 
 
 @pytest.mark.asyncio
@@ -30,20 +28,7 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
     # Create a test session
     project_path = "/tmp"
     create_cmd = CreateSessionCommand(project_path=project_path, origin="telegram", title="Short Test")
-    context = CommandEventContext(
-        command="create_session",
-        session_id="sess-ctx",
-        args=[],
-        origin="telegram",
-        project_path=project_path,
-        internal_command=create_cmd,
-    )
-    await daemon.handle_command(
-        "create_session",
-        ["Short", "Test"],
-        context,
-        MessageMetadata(origin="telegram", project_path=project_path),
-    )
+    await daemon.command_service.create_session(create_cmd)
 
     sessions = await daemon.db.list_sessions()
     assert len(sessions) == 1
@@ -56,8 +41,9 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
     telegram.send_output_update.reset_mock()
 
     # Send any command - it will be mocked with short echo
-    msg_context = {"user_id": 12345, "message_id": 2001}
-    await daemon.handle_message(session.session_id, "any command here", msg_context)
+    await daemon.command_service.send_message(
+        SendMessageCommand(session_id=session.session_id, text="any command here")
+    )
 
     # Wait for command to execute and polling to send output
     # Poll loop: 1s initial delay + 3s base update interval
@@ -94,20 +80,7 @@ async def test_long_running_command(daemon_with_mocked_telegram):
     # Create a test session
     project_path = "/tmp"
     create_cmd = CreateSessionCommand(project_path=project_path, origin="telegram", title="Long Test")
-    context = CommandEventContext(
-        command="create_session",
-        session_id="sess-ctx",
-        args=[],
-        origin="telegram",
-        project_path=project_path,
-        internal_command=create_cmd,
-    )
-    await daemon.handle_command(
-        "create_session",
-        ["Long", "Test"],
-        context,
-        MessageMetadata(origin="telegram", project_path=project_path),
-    )
+    await daemon.command_service.create_session(create_cmd)
 
     sessions = await daemon.db.list_sessions()
     assert len(sessions) == 1
@@ -120,8 +93,7 @@ async def test_long_running_command(daemon_with_mocked_telegram):
     telegram.send_output_update.reset_mock()
 
     # Send any command - it will be mocked with long-running Python process
-    msg_context = {"user_id": 12345, "message_id": 3001}
-    await daemon.handle_message(session.session_id, "any command", msg_context)
+    await daemon.command_service.send_message(SendMessageCommand(session_id=session.session_id, text="any command"))
 
     # Wait for process to start and produce initial output
     await asyncio.sleep(0.01)

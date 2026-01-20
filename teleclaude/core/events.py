@@ -11,14 +11,16 @@ if TYPE_CHECKING:
     from teleclaude.core.models import SessionLaunchIntent
     from teleclaude.types.commands import InternalCommand
 
-# Event bus only carries core events (facts) plus a single "command" channel.
+# Event bus carries internal events (not user commands).
 EventType = Literal[
-    "command",
     "session_started",
     "session_closed",
     "session_updated",
     "agent_event",
     "error",
+    "voice",
+    "file",
+    "system_command",
 ]
 
 # Agent hook event types (payload event_type values from agents)
@@ -246,7 +248,7 @@ class SystemCommandContext:
 
 
 @dataclass
-class CommandEventContext:  # pylint: disable=too-many-instance-attributes  # Event context requires many metadata fields
+class CommandContext:  # pylint: disable=too-many-instance-attributes  # Command context requires many metadata fields
     """Context for command dispatch."""
 
     command: str
@@ -294,8 +296,7 @@ class ErrorEventContext:
 
 # Union of all event context types (for adapter_client handler signatures)
 EventContext = (
-    CommandEventContext
-    | MessageEventContext
+    MessageEventContext
     | VoiceEventContext
     | FileEventContext
     | SessionLifecycleContext

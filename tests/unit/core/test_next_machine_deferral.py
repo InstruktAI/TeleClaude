@@ -92,11 +92,13 @@ async def test_next_work_dispatches_defer():
         (state_dir / "deferrals.md").write_text("deferrals")
 
         with (
-            patch("teleclaude.core.next_machine.Repo"),
-            patch("teleclaude.core.next_machine.has_uncommitted_changes", return_value=False),
-            patch("teleclaude.core.next_machine._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.is_docstrings_complete", return_value=True),
+            patch("teleclaude.core.next_machine.core.is_snippets_complete", return_value=True),
             patch(
-                "teleclaude.core.next_machine.get_available_agent",
+                "teleclaude.core.next_machine.core.get_available_agent",
                 new=AsyncMock(return_value=("claude", "med")),
             ),
         ):
@@ -133,11 +135,13 @@ async def test_next_work_skips_defer_if_processed():
         (state_dir / "deferrals.md").write_text("deferrals")
 
         with (
-            patch("teleclaude.core.next_machine.Repo"),
-            patch("teleclaude.core.next_machine.has_uncommitted_changes", return_value=False),
-            patch("teleclaude.core.next_machine._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.is_docstrings_complete", return_value=True),
+            patch("teleclaude.core.next_machine.core.is_snippets_complete", return_value=True),
             patch(
-                "teleclaude.core.next_machine.get_available_agent",
+                "teleclaude.core.next_machine.core.get_available_agent",
                 new=AsyncMock(return_value=("claude", "med")),
             ),
         ):

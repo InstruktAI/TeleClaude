@@ -18,7 +18,11 @@ def mock_adapter_client():  # type: ignore[explicit-any, unused-ignore]
     """Create mock AdapterClient."""
     client = MagicMock()
     client.handle_event = AsyncMock()
-    client.handle_internal_command = AsyncMock()
+    client.commands = MagicMock()
+    client.commands.create_session = AsyncMock()
+    client.commands.end_session = AsyncMock()
+    client.commands.send_message = AsyncMock()
+    client.commands.restart_agent = AsyncMock()
     return client
 
 
@@ -170,9 +174,9 @@ async def test_refresh_remote_cache_notifies_projects(api_server, mock_adapter_c
 
 def test_create_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test create_session endpoint."""
-    mock_adapter_client.handle_internal_command.return_value = {
-        "status": "success",
-        "data": {"session_id": "sess-123", "tmux_session_name": "tc_test"},
+    mock_adapter_client.commands.create_session.return_value = {
+        "session_id": "sess-123",
+        "tmux_session_name": "tc_test",
     }
 
     response = test_client.post(
@@ -191,19 +195,16 @@ def test_create_session_success(test_client, mock_adapter_client):  # type: igno
     assert data["status"] == "success"
     assert data["session_id"] == "sess-123"
 
-    # Verify handle_internal_command was called
-    call_args = mock_adapter_client.handle_internal_command.call_args
-    cmd = call_args[0][0]
+    # Verify create_session was called
+    call_args = mock_adapter_client.commands.create_session.call_args
+    cmd = call_args.args[0]
     assert cmd.project_path == "/home/user/project"
     assert cmd.title == "Test Session"
 
 
 def test_create_session_derives_title_from_message(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test that create_session derives title from message if not provided."""
-    mock_adapter_client.handle_internal_command.return_value = {
-        "status": "success",
-        "data": {"session_id": "sess-123"},
-    }
+    mock_adapter_client.commands.create_session.return_value = {"session_id": "sess-123"}
 
     response = test_client.post(
         "/sessions",
@@ -218,17 +219,14 @@ def test_create_session_derives_title_from_message(test_client, mock_adapter_cli
     assert data["status"] == "success"
 
     # Verify title was derived
-    call_args = mock_adapter_client.handle_internal_command.call_args
-    cmd = call_args[0][0]
+    call_args = mock_adapter_client.commands.create_session.call_args
+    cmd = call_args.args[0]
     assert cmd.title == "/claude"
 
 
 def test_create_session_defaults_title_to_untitled(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test that create_session defaults title to 'Untitled'."""
-    mock_adapter_client.handle_internal_command.return_value = {
-        "status": "success",
-        "data": {"session_id": "sess-123"},
-    }
+    mock_adapter_client.commands.create_session.return_value = {"session_id": "sess-123"}
 
     response = test_client.post(
         "/sessions",
@@ -239,17 +237,14 @@ def test_create_session_defaults_title_to_untitled(test_client, mock_adapter_cli
     assert data["status"] == "success"
 
     # Verify title is 'Untitled'
-    call_args = mock_adapter_client.handle_internal_command.call_args
-    cmd = call_args[0][0]
+    call_args = mock_adapter_client.commands.create_session.call_args
+    cmd = call_args.args[0]
     assert cmd.title == "Untitled"
 
 
 def test_create_session_uses_auto_command_override(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test that create_session uses auto_command override if provided."""
-    mock_adapter_client.handle_internal_command.return_value = {
-        "status": "success",
-        "data": {"session_id": "sess-123"},
-    }
+    mock_adapter_client.commands.create_session.return_value = {"session_id": "sess-123"}
 
     response = test_client.post(
         "/sessions",
@@ -263,18 +258,17 @@ def test_create_session_uses_auto_command_override(test_client, mock_adapter_cli
     data = response.json()
     assert data["status"] == "success"
 
-    # Verify auto_command in metadata
-    call_args = mock_adapter_client.handle_internal_command.call_args
-    metadata = call_args[1].get("metadata")
-    assert metadata is not None
-    assert metadata.auto_command == "custom_cmd"
+    # Verify auto_command on command
+    call_args = mock_adapter_client.commands.create_session.call_args
+    cmd = call_args.args[0]
+    assert cmd.auto_command == "custom_cmd"
 
 
 def test_create_session_populates_tmux_session_name(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test that create_session populates tmux_session_name in response."""
-    mock_adapter_client.handle_internal_command.return_value = {
-        "status": "success",
-        "data": {"session_id": "sess-123", "tmux_session_name": "tc_test"},
+    mock_adapter_client.commands.create_session.return_value = {
+        "session_id": "sess-123",
+        "tmux_session_name": "tc_test",
     }
 
     response = test_client.post(
@@ -288,7 +282,7 @@ def test_create_session_populates_tmux_session_name(test_client, mock_adapter_cl
 
 def test_end_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test end_session endpoint calls command handler."""
-    mock_adapter_client.handle_internal_command.return_value = {"status": "success", "data": {"ok": True}}
+    mock_adapter_client.commands.end_session.return_value = {"status": "success", "message": "ok"}
 
     response = test_client.delete("/sessions/sess-123?computer=local")
     assert response.status_code == 200
@@ -296,17 +290,14 @@ def test_end_session_success(test_client, mock_adapter_client):  # type: ignore[
     assert data["status"] == "success"
 
     # Verify internal command dispatch
-    call_args = mock_adapter_client.handle_internal_command.call_args
-    cmd = call_args[0][0]
+    call_args = mock_adapter_client.commands.end_session.call_args
+    cmd = call_args.args[0]
     assert cmd.session_id == "sess-123"
 
 
 def test_send_message_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test send_message endpoint."""
-    mock_adapter_client.handle_internal_command.return_value = {
-        "status": "success",
-        "data": "Message sent",
-    }
+    mock_adapter_client.commands.send_message.return_value = None
 
     response = test_client.post(
         "/sessions/sess-123/message?computer=local",
@@ -315,11 +306,10 @@ def test_send_message_success(test_client, mock_adapter_client):  # type: ignore
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert data["result"]["data"] == "Message sent"
 
-    # Verify handle_internal_command was called
-    call_args = mock_adapter_client.handle_internal_command.call_args
-    cmd = call_args[0][0]
+    # Verify send_message was called
+    call_args = mock_adapter_client.commands.send_message.call_args
+    cmd = call_args.args[0]
     assert cmd.session_id == "sess-123"
     assert cmd.text == "Hello AI"
 
@@ -637,25 +627,19 @@ def test_list_sessions_handler_exception(test_client):  # type: ignore[explicit-
 
 def test_create_session_handler_exception(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test create_session endpoint with handler exception."""
-    mock_adapter_client.handle_internal_command.return_value = {
-        "status": "error",
-        "error": "Failed to create session",
-    }
+    mock_adapter_client.commands.create_session.side_effect = Exception("Failed to create session")
 
     response = test_client.post(
         "/sessions",
         json={"project_path": "/home/user/project", "computer": "local"},
     )
-    # The route returns CreateSessionResponseDTO with status="error"
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "error"
-    assert data["error"] == "Failed to create session"
+    assert response.status_code == 500
+    assert "Failed to create session" in response.json()["detail"]
 
 
 def test_send_message_handler_exception(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test send_message endpoint with handler exception."""
-    mock_adapter_client.handle_internal_command.side_effect = Exception("Internal error")
+    mock_adapter_client.commands.send_message.side_effect = Exception("Internal error")
 
     response = test_client.post(
         "/sessions/sess-123/message?computer=local",
@@ -687,7 +671,7 @@ def test_list_projects_handler_exception(test_client):  # type: ignore[explicit-
 
 def test_end_session_handler_exception(test_client, api_server):  # type: ignore[explicit-any, unused-ignore]
     """Test end_session returns 500 when command handler raises exception."""
-    api_server.client.handle_internal_command = AsyncMock(side_effect=Exception("Session not found"))
+    api_server.client.commands.end_session = AsyncMock(side_effect=Exception("Session not found"))
 
     response = test_client.delete("/sessions/sess-123?computer=local")
     assert response.status_code == 500

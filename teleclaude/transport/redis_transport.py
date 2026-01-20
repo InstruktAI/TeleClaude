@@ -30,6 +30,7 @@ from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     AgentHookEvents,
+    DeployArgs,
     SessionLifecycleContext,
     SessionUpdatedContext,
     TeleClaudeEvents,
@@ -52,6 +53,17 @@ from teleclaude.core.models import (
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.core.redis_utils import scan_keys
 from teleclaude.types import SystemStats
+from teleclaude.types.commands import (
+    CloseSessionCommand,
+    CreateSessionCommand,
+    GetSessionDataCommand,
+    KeysCommand,
+    RestartAgentCommand,
+    ResumeAgentCommand,
+    RunAgentCommand,
+    SendMessageCommand,
+    StartAgentCommand,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -919,9 +931,15 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 metadata.channel_metadata = metadata.channel_metadata or {}
                 metadata.channel_metadata["target_computer"] = parsed.initiator
 
-            logger.info(">>> About to call handle_internal_command for: %s", command.command_type)
-            result = await self.client.handle_internal_command(command, metadata=metadata)
-            logger.info(">>> handle_internal_command completed for: %s", command.command_type)
+            if parsed.session_id:
+                try:
+                    await db.update_session(parsed.session_id, last_input_adapter=metadata.origin)
+                except Exception:
+                    logger.debug("Failed to update last_input_adapter for session %s", parsed.session_id[:8])
+
+            logger.info(">>> About to call command service for: %s", command.command_type)
+            result = await self._execute_command(command)
+            logger.info(">>> command service completed for: %s", command.command_type)
 
             # Result is always envelope: {"status": "success/error", "data": ..., "error": ...}
             response_json = json.dumps(result)
@@ -1015,6 +1033,40 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         return {"status": "error", "error": f"unsupported agent notification: {cmd_name}"}
 
+    async def _execute_command(self, command: object) -> dict[str, object]:
+        """Execute a command via command service and return an envelope."""
+        try:
+            if isinstance(command, CreateSessionCommand):
+                data = await self.client.commands.create_session(command)
+                return {"status": "success", "data": data}
+            if isinstance(command, SendMessageCommand):
+                await self.client.commands.send_message(command)
+                return {"status": "success", "data": None}
+            if isinstance(command, KeysCommand):
+                await self.client.commands.keys(command)
+                return {"status": "success", "data": None}
+            if isinstance(command, StartAgentCommand):
+                await self.client.commands.start_agent(command)
+                return {"status": "success", "data": None}
+            if isinstance(command, ResumeAgentCommand):
+                await self.client.commands.resume_agent(command)
+                return {"status": "success", "data": None}
+            if isinstance(command, RestartAgentCommand):
+                await self.client.commands.restart_agent(command)
+                return {"status": "success", "data": None}
+            if isinstance(command, RunAgentCommand):
+                await self.client.commands.run_agent_command(command)
+                return {"status": "success", "data": None}
+            if isinstance(command, GetSessionDataCommand):
+                data = await self.client.commands.get_session_data(command)
+                return {"status": "success", "data": data}
+            if isinstance(command, CloseSessionCommand):
+                await self.client.commands.close_session(command)
+                return {"status": "success", "data": None}
+            raise ValueError(f"Unsupported command type: {type(command).__name__}")
+        except Exception as exc:
+            return {"status": "error", "error": str(exc)}
+
     def _parse_redis_message(self, data: dict[bytes, bytes]) -> RedisInboundMessage:
         """Decode raw Redis stream entry into typed RedisInboundMessage."""
         msg_type = data.get(b"type", b"").decode("utf-8")
@@ -1080,18 +1132,22 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         logger.info("Received system command '%s' from %s", command, from_computer)
 
-        # Normalize via mapper
-        # map_redis_input doesn't handle system messages with explicit from_computer yet.
-        # But we can use SystemCommand directly or update mapper.
-        from teleclaude.types.commands import SystemCommand
+        deploy_args = DeployArgs()
+        if isinstance(args_obj, dict) and "verify_health" in args_obj:
+            try:
+                deploy_args.verify_health = bool(args_obj["verify_health"])
+            except Exception:
+                deploy_args.verify_health = True
 
-        cmd = SystemCommand(
-            command=command,
-            args=args_obj if isinstance(args_obj, list) else [],
-            data={"from_computer": from_computer, "raw_args": args_obj},
+        await self.client.handle_event(
+            "system_command",
+            {
+                "command": command,
+                "from_computer": from_computer,
+                "args": deploy_args,
+            },
+            MessageMetadata(origin="redis"),
         )
-
-        await self.client.handle_internal_command(cmd, metadata=MessageMetadata(origin="redis"))
 
     async def _heartbeat_loop(self) -> None:
         """Background task: Send heartbeat every N seconds."""
