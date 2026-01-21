@@ -1,7 +1,5 @@
 """Integration tests for worktree preparation."""
 
-import json
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -14,20 +12,25 @@ from teleclaude.core.next_machine import _prepare_worktree
 class TestWorktreePreparationIntegration:
     """Integration tests for actual worktree preparation execution."""
 
-    def test_makefile_worktree_prepare_integration(self) -> None:
-        """Test that actual Makefile worktree-prepare execution works."""
+    def test_script_worktree_prepare_integration(self) -> None:
+        """Test that bin/worktree-prepare.sh execution works."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
 
-            # Create a Makefile with worktree-prepare target
-            makefile = tmp_path / "Makefile"
-            makefile.write_text(
-                """worktree-prepare:
-\t@echo "Preparing worktree for $(SLUG)"
-\t@mkdir -p trees/$(SLUG)
-\t@echo "Worktree $(SLUG) prepared" > trees/$(SLUG)/status.txt
+            # Create a script-based worktree preparation hook
+            bin_dir = tmp_path / "bin"
+            bin_dir.mkdir(parents=True)
+            script = bin_dir / "worktree-prepare.sh"
+            script.write_text(
+                """#!/usr/bin/env bash
+set -e
+SLUG="$1"
+echo "Preparing worktree for ${SLUG}"
+mkdir -p "trees/${SLUG}"
+echo "Worktree ${SLUG} prepared" > "trees/${SLUG}/status.txt"
 """
             )
+            script.chmod(0o755)
 
             # Execute preparation
             slug = "test-work-item"
@@ -38,57 +41,34 @@ class TestWorktreePreparationIntegration:
             assert status_file.exists()
             assert status_file.read_text().strip() == f"Worktree {slug} prepared"
 
-    def test_package_json_worktree_prepare_integration(self) -> None:
-        """Test that actual package.json worktree:prepare execution works."""
-        if shutil.which("npm") is None:
-            pytest.skip("npm not available in this environment")
+    def test_error_propagation_when_script_fails(self) -> None:
+        """Test that errors from worktree-prepare.sh are properly propagated."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
 
-            # Create package.json with worktree:prepare script
-            # Note: npm scripts can't access positional args directly via $1
-            # Real implementations would use a Node.js script
-            package_json = tmp_path / "package.json"
-            package_json.write_text(json.dumps({"scripts": {"worktree:prepare": "echo 'Worktree preparation called'"}}))
-
-            # Execute preparation - should complete without error
-            slug = "test-work-item"
-            _prepare_worktree(str(tmp_path), slug)
-            # If we got here, the npm run command succeeded
-
-    def test_error_propagation_when_make_target_fails(self) -> None:
-        """Test that errors from make worktree-prepare are properly propagated."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_path = Path(tmpdir)
-
-            # Create a Makefile with failing worktree-prepare target
-            makefile = tmp_path / "Makefile"
-            makefile.write_text(
-                """worktree-prepare:
-\t@echo "Preparation failed!" >&2
-\t@exit 1
+            # Create a script that fails
+            bin_dir = tmp_path / "bin"
+            bin_dir.mkdir(parents=True)
+            script = bin_dir / "worktree-prepare.sh"
+            script.write_text(
+                """#!/usr/bin/env bash
+echo "Preparation failed!" >&2
+exit 1
 """
             )
+            script.chmod(0o755)
 
             # Execute and verify error is raised
             with pytest.raises(RuntimeError, match="Worktree preparation failed"):
                 _prepare_worktree(str(tmp_path), "test-slug")
 
     def test_error_propagation_when_target_missing(self) -> None:
-        """Test that error is raised when worktree-prepare target doesn't exist."""
+        """Test that error is raised when no preparation hook exists."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
 
-            # Create Makefile without worktree-prepare target
-            makefile = tmp_path / "Makefile"
-            makefile.write_text(
-                """other-target:
-\t@echo "Other target"
-"""
-            )
-
             # Execute and verify error is raised
-            with pytest.raises(RuntimeError, match="worktree-prepare' target not found"):
+            with pytest.raises(RuntimeError, match="Worktree preparation script not found"):
                 _prepare_worktree(str(tmp_path), "test-slug")
 
 

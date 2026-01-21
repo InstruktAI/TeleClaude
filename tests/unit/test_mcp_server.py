@@ -40,12 +40,11 @@ def mock_mcp_server():
 
     with (
         patch("teleclaude.mcp_server.config") as mock_config,
-        patch("teleclaude.mcp.handlers.db") as mock_db,
+        patch("teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=mock_caller_session)),
         patch("teleclaude.mcp.handlers.get_command_service", return_value=mock_commands),
     ):
         mock_config.computer.name = "TestComputer"
         mock_config.mcp.socket_path = "/tmp/test.sock"
-        mock_db.get_session = AsyncMock(return_value=mock_caller_session)
 
         server = TeleClaudeMCPServer(adapter_client=mock_client, tmux_bridge=mock_tmux_bridge)
         server.command_service = mock_commands
@@ -132,9 +131,9 @@ async def test_teleclaude_start_session_creates_session(mock_mcp_server):
     # Mock create_session to return success with session_id
     server.command_service.create_session = AsyncMock(return_value={"session_id": "new-session-456"})
 
-    with patch("teleclaude.mcp.handlers.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=MagicMock(last_input_origin="telegram"))
-
+    with patch(
+        "teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=MagicMock(last_input_origin="telegram"))
+    ):
         result = await server.teleclaude__start_session(
             computer="local",
             project_path="/home/user/project",
@@ -185,8 +184,7 @@ async def test_teleclaude_send_file_handles_upload(mock_mcp_server):
         mock_session = MagicMock()
         mock_session.session_id = "test-session-123"
 
-        with patch("teleclaude.mcp.handlers.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=mock_session)
+        with patch("teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=mock_session)):
             server.client.send_file = AsyncMock(return_value="file-msg-123")
 
             result = await server.teleclaude__send_file(
@@ -279,9 +277,7 @@ async def test_mcp_tools_handle_invalid_session_id(mock_mcp_server):
     server = mock_mcp_server
 
     # Mock db.get_session to return None
-    with patch("teleclaude.mcp.handlers.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=None)
-
+    with patch("teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=None)):
         # Use an existing path (the test file itself)
         existing_path = __file__
 
@@ -312,9 +308,9 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
 
     server.command_service.create_session = AsyncMock(side_effect=mock_create_session)
 
-    with patch("teleclaude.mcp.handlers.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=None)
-
+    with patch(
+        "teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=MagicMock(last_input_origin="telegram"))
+    ):
         # Test 1: Gemini agent
         result = await server.teleclaude__start_session(
             computer="local",
