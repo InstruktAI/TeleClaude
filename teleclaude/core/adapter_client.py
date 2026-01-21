@@ -219,11 +219,29 @@ class AdapterClient:
             task_factory: Function that takes adapter and returns awaitable
         """
         observer_tasks: list[tuple[str, Awaitable[object]]] = []
+        needs_channel = False
         for adapter_type, adapter in self.adapters.items():
             if adapter_type == session.last_input_origin:
                 continue
             if isinstance(adapter, UiAdapter):
+                if adapter_type == "telegram":
+                    telegram_meta = session.adapter_metadata.telegram
+                    if not telegram_meta or not telegram_meta.topic_id:
+                        needs_channel = True
                 observer_tasks.append((adapter_type, task_factory(adapter)))
+
+        if needs_channel:
+            try:
+                refreshed = await self.ensure_ui_channels(session, session.title)
+                session.adapter_metadata = refreshed.adapter_metadata
+                session.title = refreshed.title
+            except Exception as exc:
+                logger.warning(
+                    "Failed to ensure observer UI channels for session %s: %s",
+                    session.session_id[:8],
+                    exc,
+                )
+                return
 
         if observer_tasks:
             results = await asyncio.gather(*[task for _, task in observer_tasks], return_exceptions=True)
@@ -464,16 +482,14 @@ class AdapterClient:
         session_to_send = session
         if self._needs_ui_channel(session):
             try:
-                await self.ensure_ui_channels(session, session.title)
-                refreshed = await db.get_session(session.session_id)
-                if refreshed:
-                    session_to_send = refreshed
+                session_to_send = await self.ensure_ui_channels(session, session.title)
             except Exception as exc:
                 logger.warning(
                     "Failed to ensure UI channels for session %s: %s",
                     session.session_id[:8],
                     exc,
                 )
+                return None
 
         # Broadcast to ALL UI adapters
         tasks = []
@@ -959,11 +975,11 @@ class AdapterClient:
         self,
         session: "Session",
         title: str,
-    ) -> None:
+    ) -> "Session":
         """Ensure UI channels exist for a session (originless)."""
         ui_adapters = self._ui_adapters()
         if not ui_adapters:
-            return
+            raise ValueError("No UI adapters registered")
 
         pending: list[tuple[str, UiAdapter]] = []
         for adapter_type, adapter in ui_adapters:
@@ -974,7 +990,7 @@ class AdapterClient:
             pending.append((adapter_type, adapter))
 
         if not pending:
-            return
+            return session
 
         tasks = [
             adapter.create_channel(
@@ -984,21 +1000,22 @@ class AdapterClient:
             )
             for _, adapter in pending
         ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        try:
+            results = await asyncio.gather(*tasks)
+        except Exception as exc:
+            logger.error("Failed to create UI channel(s): %s", exc)
+            raise
 
         channel_ids: dict[str, str] = {}
         for (adapter_type, _), result in zip(pending, results):
-            if isinstance(result, Exception):
-                logger.error("Failed to create UI channel in %s: %s", adapter_type, result)
-                continue
             channel_ids[adapter_type] = str(result)
 
         if not channel_ids:
-            return
+            raise ValueError("No UI channels created")
 
         updated_session = await db.get_session(session.session_id)
         if not updated_session:
-            return
+            raise ValueError(f"Session {session.session_id[:8]} missing after channel creation")
 
         for adapter_type, channel_id in channel_ids.items():
             adapter_meta: object = getattr(updated_session.adapter_metadata, adapter_type, None)
@@ -1013,6 +1030,7 @@ class AdapterClient:
                 adapter_meta.topic_id = int(channel_id)
 
         await db.update_session(session.session_id, adapter_metadata=updated_session.adapter_metadata)
+        return updated_session
 
     async def send_general_message(
         self,
