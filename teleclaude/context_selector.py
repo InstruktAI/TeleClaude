@@ -268,7 +268,10 @@ def build_context_output(
             except Exception as exc:
                 logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))
                 continue
-            parts.append(f"--- SNIPPET: {snippet.snippet_id} (scope: {snippet.scope}) ---")
+            source = "project"
+            if global_snippets_root in snippet.path.parents:
+                source = "global"
+            parts.append(f"--- SNIPPET: {snippet.snippet_id} (scope: {snippet.scope}, source: {source}) ---")
             if head:
                 parts.append(head.strip())
                 continue
