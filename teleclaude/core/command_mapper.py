@@ -185,20 +185,6 @@ class CommandMapper:
                 origin=origin,
             )
 
-        if cmd_name in ["claude", "gemini", "codex"]:
-            return StartAgentCommand(
-                session_id=session_id or "",
-                agent_name=cmd_name,
-                args=args,
-            )
-
-        if cmd_name in ["claude_resume", "gemini_resume", "codex_resume"]:
-            agent_name = cmd_name.replace("_resume", "")
-            return ResumeAgentCommand(
-                session_id=session_id or "",
-                agent_name=agent_name,
-            )
-
         if cmd_name == "agent_restart":
             agent_name = args[0] if args else None
             return RestartAgentCommand(
