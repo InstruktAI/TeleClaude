@@ -1,0 +1,33 @@
+# Taxonomy Interpretation Procedure
+
+Use the taxonomy list as a lens for interpreting requests and organizing snippets.
+
+## Taxonomy (Exhaustive)
+
+- **policy**: rules, constraints, non-negotiables
+- **standard**: enforced conventions or quality bars
+- **guide**: recommended approach or best practice
+- **procedure**: ordered steps with outputs
+- **principles**: high-level governing ideas that shape design and judgment
+- **role**: identity, responsibilities, boundaries
+- **checklist**: verification or readiness criteria
+- **reference**: static facts or lookup tables
+- **concept**: definitions or framing
+- **architecture**: system structure, components, and relationships
+- **decision**: rationale for a chosen approach
+- **example**: concrete usage or pattern
+- **incident**: postmortems and lessons learned
+- **timeline**: time-ordered events
+- **faq**: recurring questions and answers
+
+## Scope Levels
+
+- **global**: universal across all projects
+- **domain**: applies to a domain (e.g., software development)
+- **project**: applies only to a specific repository or team
+
+## Rules
+
+- Pick exactly one taxonomy type per snippet.
+- Organize snippets by domain and type so selection can stay atomic.
+- Use the taxonomy to decide what still needs to be covered.
