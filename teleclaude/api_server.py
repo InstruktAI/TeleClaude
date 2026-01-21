@@ -272,6 +272,7 @@ class APIServer:
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT_RESUME,
                         agent=request.agent,
+                        thinking_mode=effective_thinking_mode,
                         native_session_id=request.native_session_id,
                     )
                 elif launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:

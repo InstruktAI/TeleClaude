@@ -252,6 +252,8 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         working_slug=working_slug,
         initiator_session_id=initiator_session_id,
     )
+    if cmd.launch_intent and cmd.launch_intent.thinking_mode:
+        await db.update_session(session.session_id, thinking_mode=cmd.launch_intent.thinking_mode)
 
     # Create tmux session IMMEDIATELY (don't wait for channel creation)
     voice_env_vars = get_voice_env_vars(voice) if voice else {}
@@ -1360,7 +1362,7 @@ async def resume_agent(
         await client.send_message(session, f"Unknown agent: {agent_name}")
         return
 
-    thinking_raw = session.thinking_mode
+    thinking_raw = session.thinking_mode or ThinkingMode.SLOW.value
     native_session_id_override = args[0].strip() if args else ""
     native_session_id = native_session_id_override or session.native_session_id
     if native_session_id_override:
