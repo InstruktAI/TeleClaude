@@ -94,6 +94,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # State tracking for color coding (detect changes between refreshes)
         self._prev_state: dict[str, dict[str, str]] = {}  # session_id -> {input, output}
         self._active_field: dict[str, ActivePane] = {}
+        # Track running highlight timers (for 60-second auto-dim)
+        self._highlight_timers: dict[str, asyncio.Task[None]] = {}  # session_id -> timer task
         # Store sessions for child lookup
         self._sessions: list[SessionInfo] = []
         # Store computers for SSH connection lookup
@@ -185,56 +187,64 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
 
+    async def _clear_highlight_after_delay(self, session_id: str) -> None:
+        """Clear highlight after 60 seconds if no new changes occurred.
+
+        Args:
+            session_id: Session ID to clear highlight for
+        """
+        await asyncio.sleep(60)
+        # Timer completed - remove highlight
+        self._active_field[session_id] = ActivePane.NONE
+        # Clean up timer reference
+        self._highlight_timers.pop(session_id, None)
+        logger.debug("Highlight timer expired for session %s", session_id[:8])
+
+    def _start_highlight_timer(self, session_id: str, field: ActivePane) -> None:
+        """Start 60-second highlight timer, canceling any existing timer.
+
+        Args:
+            session_id: Session ID
+            field: Which field to highlight (INPUT or OUTPUT)
+        """
+        # Cancel existing timer if any
+        existing_timer = self._highlight_timers.get(session_id)
+        if existing_timer and not existing_timer.done():
+            existing_timer.cancel()
+            logger.debug("Cancelled existing highlight timer for session %s", session_id[:8])
+
+        # Set highlight
+        self._active_field[session_id] = field
+
+        # Start new 60-second timer
+        timer = asyncio.create_task(self._clear_highlight_after_delay(session_id))
+        self._highlight_timers[session_id] = timer
+        logger.debug("Started highlight timer for session %s (%s)", session_id[:8], field.name)
+
     def _update_activity_state(self, sessions: list[SessionInfo]) -> None:
         """Update activity state tracking for color coding.
 
-        Determines which field (input/output) is "active" (bright) based on changes.
-        Activity older than 60 seconds is considered idle regardless of changes.
+        Event-based highlighting: when input/output changes, start 60-second timer.
+        When timer completes (no new changes), remove highlight.
 
         Args:
             sessions: List of session dicts
         """
-        now = datetime.now(timezone.utc)
-        idle_threshold_seconds = 60
-
         for session in sessions:
             session_id = session.session_id
             curr_input = session.last_input or ""
             curr_output = session.last_output or ""
 
-            # Check if last_activity is older than threshold
-            last_activity_str = session.last_activity or ""
-            is_idle_by_time = True  # Default to idle if we can't parse or missing
-            if last_activity_str:
-                try:
-                    last_activity_dt = datetime.fromisoformat(last_activity_str.replace("Z", "+00:00"))
-                    # Ensure timezone-aware comparison
-                    if last_activity_dt.tzinfo is None:
-                        last_activity_dt = last_activity_dt.replace(tzinfo=timezone.utc)
-                    age_seconds = (now - last_activity_dt).total_seconds()
-                    # Treat negative ages (timezone mismatch) or old activity as idle
-                    is_idle_by_time = age_seconds > idle_threshold_seconds or age_seconds < 0
-                except (ValueError, TypeError):
-                    pass  # Keep default of idle
-
-            # If activity is old or unparseable, always show as idle
-            if is_idle_by_time:
-                self._active_field[session_id] = ActivePane.NONE
-                self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
-                continue
-
-            # Activity is recent - check if this is a NEW session (no previous state)
+            # Get previous state
             prev = self._prev_state.get(session_id)
             if prev is None:
-                # First time seeing this session with recent activity
-                # Show output as highlighted if present, otherwise input, otherwise idle
-                if curr_output:
-                    self._active_field[session_id] = ActivePane.OUTPUT
-                elif curr_input:
-                    self._active_field[session_id] = ActivePane.INPUT
-                else:
-                    self._active_field[session_id] = ActivePane.NONE
+                # New session - store state and check if there's activity
                 self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
+                # If there's content, highlight it
+                if curr_input:
+                    self._start_highlight_timer(session_id, ActivePane.INPUT)
+                elif curr_output:
+                    self._start_highlight_timer(session_id, ActivePane.OUTPUT)
                 continue
 
             # Existing session - check what changed
@@ -245,13 +255,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             output_changed = curr_output != prev_output
 
             if output_changed:
-                # New output → output is bright (AI just responded)
-                self._active_field[session_id] = ActivePane.OUTPUT
+                # New output → highlight output, start timer
+                self._start_highlight_timer(session_id, ActivePane.OUTPUT)
             elif input_changed:
-                # New input → input is bright (processing)
-                self._active_field[session_id] = ActivePane.INPUT
-            # Note: Don't set to "none" here - keep previous active state
-            # until it becomes idle by time threshold
+                # New input → highlight input, start timer
+                self._start_highlight_timer(session_id, ActivePane.INPUT)
 
             # Store current state for next comparison
             self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
