@@ -45,6 +45,7 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.events import UiCommands
 from teleclaude.core.models import (
+    ChannelMetadata,
     MessageMetadata,
     PeerInfo,
     Session,
@@ -174,6 +175,31 @@ class TelegramAdapter(
 
         # Register simple command handlers dynamically
         self._register_simple_command_handlers()
+
+    async def ensure_channel(self, session: Session, title: str) -> Session:
+        telegram_meta = session.adapter_metadata.telegram
+        if telegram_meta and telegram_meta.topic_id:
+            return session
+
+        try:
+            await self.create_channel(session, title, metadata=ChannelMetadata(origin=False))
+        except Exception as exc:
+            logger.warning(
+                "Telegram ensure_channel failed for session %s; retrying: %s",
+                session.session_id[:8],
+                exc,
+            )
+            current = await db.get_session(session.session_id)
+            if current and current.adapter_metadata and current.adapter_metadata.telegram:
+                current.adapter_metadata.telegram.topic_id = None
+                current.adapter_metadata.telegram.output_message_id = None
+                await db.update_session(current.session_id, adapter_metadata=current.adapter_metadata)
+            await self.create_channel(current or session, title, metadata=ChannelMetadata(origin=False))
+
+        refreshed = await db.get_session(session.session_id)
+        if not refreshed:
+            raise ValueError(f"Session {session.session_id[:8]} missing after channel creation")
+        return refreshed
 
     def _register_simple_command_handlers(self) -> None:
         """Create handler methods for simple commands dynamically.

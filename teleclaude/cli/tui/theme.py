@@ -138,7 +138,7 @@ def init_colors() -> None:
     # Light mode: muted is lighter, highlight is darker.
     if _is_dark_mode:
         # Claude (orange tones) - muted darker, highlight lighter in dark mode
-        curses.init_pair(1, 94, -1)  # Muted: deeper orange/brown
+        curses.init_pair(1, 130, -1)  # Muted: lighter orange/brown
         curses.init_pair(2, 172, -1)  # Normal: orange (original Claude color)
         curses.init_pair(3, 214, -1)  # Highlight: brighter yellow-orange
 

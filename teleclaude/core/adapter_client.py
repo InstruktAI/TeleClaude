@@ -97,11 +97,14 @@ class AdapterClient:
         self,
         session: "Session",
         operation: str,
-        task_factory: Callable[[UiAdapter], Awaitable[object]],
+        task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
     ) -> list[tuple[str, object]]:
         """Broadcast operation to all UI adapters (originless)."""
         ui_adapters = self._ui_adapters()
-        adapter_tasks = [(adapter_type, task_factory(adapter)) for adapter_type, adapter in ui_adapters]
+        adapter_tasks = [
+            (adapter_type, self._run_ui_lane(session, adapter_type, adapter, task_factory))
+            for adapter_type, adapter in ui_adapters
+        ]
 
         if not adapter_tasks:
             logger.warning("No UI adapters available for %s (session %s)", operation, session.session_id[:8])
@@ -109,45 +112,8 @@ class AdapterClient:
 
         results = await asyncio.gather(*[task for _, task in adapter_tasks], return_exceptions=True)
         output: list[tuple[str, object]] = []
-        missing_thread_error: Optional[Exception] = None
-        telegram_index: Optional[int] = None
-        for index, ((adapter_type, _), result) in enumerate(zip(adapter_tasks, results)):
-            if isinstance(result, Exception):
-                logger.warning(
-                    "UI adapter %s failed %s for session %s: %s",
-                    adapter_type,
-                    operation,
-                    session.session_id[:8],
-                    result,
-                )
-                if adapter_type == "telegram" and self._is_missing_thread_error(result):
-                    missing_thread_error = result
-                    telegram_index = index
+        for (adapter_type, _), result in zip(adapter_tasks, results):
             output.append((adapter_type, result))
-
-        if missing_thread_error:
-            updated_session = await self._handle_missing_telegram_thread(session, missing_thread_error)
-            telegram_adapter = next(
-                (adapter for adapter_type, adapter in ui_adapters if adapter_type == "telegram"),
-                None,
-            )
-            if telegram_adapter:
-                try:
-                    if updated_session:
-                        session.adapter_metadata = updated_session.adapter_metadata
-                        session.title = updated_session.title
-                    retry_result = await task_factory(telegram_adapter)
-                    if telegram_index is not None:
-                        output[telegram_index] = ("telegram", retry_result)
-                    else:
-                        output.append(("telegram", retry_result))
-                except Exception as exc:
-                    logger.warning(
-                        "UI adapter telegram failed %s retry for session %s: %s",
-                        operation,
-                        session.session_id[:8],
-                        exc,
-                    )
 
         return output
 
@@ -206,7 +172,7 @@ class AdapterClient:
         self,
         session: "Session",
         operation: str,
-        task_factory: Callable[[UiAdapter], Awaitable[object]],
+        task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
     ) -> None:
         """Broadcast operation to all UI observers (best-effort).
 
@@ -219,29 +185,11 @@ class AdapterClient:
             task_factory: Function that takes adapter and returns awaitable
         """
         observer_tasks: list[tuple[str, Awaitable[object]]] = []
-        needs_channel = False
         for adapter_type, adapter in self.adapters.items():
             if adapter_type == session.last_input_origin:
                 continue
             if isinstance(adapter, UiAdapter):
-                if adapter_type == "telegram":
-                    telegram_meta = session.adapter_metadata.telegram
-                    if not telegram_meta or not telegram_meta.topic_id:
-                        needs_channel = True
-                observer_tasks.append((adapter_type, task_factory(adapter)))
-
-        if needs_channel:
-            try:
-                refreshed = await self.ensure_ui_channels(session, session.title)
-                session.adapter_metadata = refreshed.adapter_metadata
-                session.title = refreshed.title
-            except Exception as exc:
-                logger.warning(
-                    "Failed to ensure observer UI channels for session %s: %s",
-                    session.session_id[:8],
-                    exc,
-                )
-                return
+                observer_tasks.append((adapter_type, self._run_ui_lane(session, adapter_type, adapter, task_factory)))
 
         if observer_tasks:
             results = await asyncio.gather(*[task for _, task in observer_tasks], return_exceptions=True)
@@ -285,8 +233,8 @@ class AdapterClient:
         """
         origin_ui = self._origin_ui_adapter(session)
 
-        def make_task(adapter: UiAdapter) -> Awaitable[object]:
-            return cast(Awaitable[object], getattr(adapter, method)(session, *args, **kwargs))
+        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            return cast(Awaitable[object], getattr(adapter, method)(lane_session, *args, **kwargs))
 
         if not origin_ui:
             results = await self._broadcast_to_ui_adapters(session, method, make_task)
@@ -479,36 +427,24 @@ class AdapterClient:
         Returns:
             Message ID from first successful adapter, or None if all failed
         """
-        session_to_send = session
-        if self._needs_ui_channel(session):
-            try:
-                session_to_send = await self.ensure_ui_channels(session, session.title)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to ensure UI channels for session %s: %s",
-                    session.session_id[:8],
-                    exc,
-                )
-                return None
 
-        # Broadcast to ALL UI adapters
-        tasks = []
-        for adapter_type, adapter in self.adapters.items():
-            if isinstance(adapter, UiAdapter):
-                tasks.append(
-                    (
-                        adapter_type,
-                        adapter.send_output_update(
-                            session_to_send,
-                            output,
-                            started_at,
-                            last_output_changed_at,
-                            is_final,
-                            exit_code,
-                            render_markdown,
-                        ),
-                    )
-                )
+        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            return adapter.send_output_update(
+                lane_session,
+                output,
+                started_at,
+                last_output_changed_at,
+                is_final,
+                exit_code,
+                render_markdown,
+            )
+
+        # Broadcast to ALL UI adapters (per-adapter lanes)
+        tasks = [
+            (adapter_type, self._run_ui_lane(session, adapter_type, adapter, make_task))
+            for adapter_type, adapter in self.adapters.items()
+            if isinstance(adapter, UiAdapter)
+        ]
 
         if not tasks:
             logger.warning("No UI adapters available for session %s", session.session_id[:8])
@@ -519,50 +455,42 @@ class AdapterClient:
 
         # Log failures and return first success
         first_success: Optional[str] = None
-        missing_thread_error: Optional[Exception] = None
         for (adapter_type, _), result in zip(tasks, results):
-            if isinstance(result, Exception):
-                logger.warning(
-                    "UI adapter %s failed send_output_update for session %s: %s",
-                    adapter_type,
-                    session_to_send.session_id[:8],
-                    result,
-                )
-                if adapter_type == "telegram" and self._is_missing_thread_error(result):
-                    missing_thread_error = result
-            elif isinstance(result, str) and not first_success:
+            if isinstance(result, str) and not first_success:
                 first_success = result
-                logger.debug("Output update sent", adapter=adapter_type, session=session_to_send.session_id[:8])
-
-        if missing_thread_error:
-            updated_session = await self._handle_missing_telegram_thread(session_to_send, missing_thread_error)
-            telegram_adapter = self.adapters.get("telegram")
-            if isinstance(telegram_adapter, UiAdapter):
-                try:
-                    retry_session = updated_session or session_to_send
-                    retry_result = await telegram_adapter.send_output_update(
-                        retry_session,
-                        output,
-                        started_at,
-                        last_output_changed_at,
-                        is_final,
-                        exit_code,
-                        render_markdown,
-                    )
-                    if isinstance(retry_result, str) and not first_success:
-                        first_success = retry_result
-                        logger.debug(
-                            "Output update sent after topic recreation",
-                            session=session_to_send.session_id[:8],
-                        )
-                except Exception as exc:
-                    logger.warning(
-                        "UI adapter telegram failed send_output_update retry for session %s: %s",
-                        session_to_send.session_id[:8],
-                        exc,
-                    )
+                logger.debug("Output update sent", adapter=adapter_type, session=session.session_id[:8])
 
         return first_success
+
+    async def _run_ui_lane(
+        self,
+        session: "Session",
+        adapter_type: str,
+        adapter: UiAdapter,
+        task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
+    ) -> object | None:
+        lane_session = session
+        try:
+            lane_session = await adapter.ensure_channel(lane_session, lane_session.title)
+        except Exception as exc:
+            logger.warning(
+                "Failed to ensure UI channel for %s session %s: %s",
+                adapter_type,
+                session.session_id[:8],
+                exc,
+            )
+            return None
+
+        try:
+            return await task_factory(adapter, lane_session)
+        except Exception as exc:
+            logger.warning(
+                "UI adapter %s failed in lane for session %s: %s",
+                adapter_type,
+                session.session_id[:8],
+                exc,
+            )
+            return None
 
     @staticmethod
     def _summarize_output(output: str) -> str:
@@ -575,49 +503,6 @@ class AdapterClient:
             if line.strip():
                 return line.strip()[:200]
         return text[:200]
-
-    def _needs_ui_channel(self, session: "Session") -> bool:
-        telegram_adapter = self.adapters.get("telegram")
-        if isinstance(telegram_adapter, UiAdapter):
-            telegram_meta = session.adapter_metadata.telegram
-            if not telegram_meta or not telegram_meta.topic_id:
-                return True
-        return False
-
-    @staticmethod
-    def _is_missing_thread_error(error: Exception) -> bool:
-        error_text = str(error).lower()
-        return (
-            "message thread not found" in error_text or "topic_deleted" in error_text or "topic deleted" in error_text
-        )
-
-    async def _handle_missing_telegram_thread(self, session: "Session", error: Exception) -> "Session | None":
-        current = await db.get_session(session.session_id)
-        if not current:
-            return None
-
-        logger.warning(
-            "Telegram topic missing for session %s; recreating (error: %s)",
-            session.session_id[:8],
-            error,
-        )
-
-        # Clear stale topic/message IDs so create_channel can rebuild.
-        if current.adapter_metadata and current.adapter_metadata.telegram:
-            current.adapter_metadata.telegram.topic_id = None
-            current.adapter_metadata.telegram.output_message_id = None
-            await db.update_session(current.session_id, adapter_metadata=current.adapter_metadata)
-
-        try:
-            await self.ensure_ui_channels(current, current.title)
-        except Exception as exc:
-            logger.warning(
-                "Failed to recreate Telegram topic for session %s: %s",
-                current.session_id[:8],
-                exc,
-            )
-            return None
-        return await db.get_session(current.session_id)
 
     async def send_exit_message(
         self,
@@ -981,56 +866,17 @@ class AdapterClient:
         if not ui_adapters:
             raise ValueError("No UI adapters registered")
 
-        pending: list[tuple[str, UiAdapter]] = []
-        for adapter_type, adapter in ui_adapters:
-            if adapter_type == "telegram":
-                telegram_meta = session.adapter_metadata.telegram
-                if telegram_meta and telegram_meta.topic_id:
-                    continue
-            pending.append((adapter_type, adapter))
-
-        if not pending:
-            return session
-
-        tasks = [
-            adapter.create_channel(
-                session,
-                title,
-                metadata=ChannelMetadata(origin=False),
-            )
-            for _, adapter in pending
-        ]
+        tasks = [adapter.ensure_channel(session, title) for _, adapter in ui_adapters]
         try:
-            results = await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks)
         except Exception as exc:
-            logger.error("Failed to create UI channel(s): %s", exc)
+            logger.error("Failed to ensure UI channel(s): %s", exc)
             raise
 
-        channel_ids: dict[str, str] = {}
-        for (adapter_type, _), result in zip(pending, results):
-            channel_ids[adapter_type] = str(result)
-
-        if not channel_ids:
-            raise ValueError("No UI channels created")
-
-        updated_session = await db.get_session(session.session_id)
-        if not updated_session:
+        refreshed = await db.get_session(session.session_id)
+        if not refreshed:
             raise ValueError(f"Session {session.session_id[:8]} missing after channel creation")
-
-        for adapter_type, channel_id in channel_ids.items():
-            adapter_meta: object = getattr(updated_session.adapter_metadata, adapter_type, None)
-            if not adapter_meta:
-                if adapter_type == "telegram":
-                    adapter_meta = TelegramAdapterMetadata()
-                    setattr(updated_session.adapter_metadata, adapter_type, adapter_meta)
-                else:
-                    continue
-
-            if adapter_type == "telegram" and isinstance(adapter_meta, TelegramAdapterMetadata):
-                adapter_meta.topic_id = int(channel_id)
-
-        await db.update_session(session.session_id, adapter_metadata=updated_session.adapter_metadata)
-        return updated_session
+        return refreshed
 
     async def send_general_message(
         self,

@@ -78,6 +78,11 @@ class UiAdapter(BaseAdapter):
 
     # === Adapter Metadata Helpers ===
 
+    async def ensure_channel(self, session: "Session", title: str) -> "Session":
+        """Ensure adapter-specific channel exists (default no-op)."""
+        _ = title
+        return session
+
     async def _get_output_message_id(self, session: "Session") -> Optional[str]:
         """Get output_message_id from adapter namespace.
 
