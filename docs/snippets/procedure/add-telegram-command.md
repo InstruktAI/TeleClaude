@@ -15,5 +15,5 @@ Steps
 5) Dispatch via CommandService using _dispatch_command (pre/post hooks + broadcast).
 6) Add the command to UiCommands in teleclaude/core/events.py.
 
-Outputs
+## Outputs
 - Command appears in Telegram UI and executes through CommandService.

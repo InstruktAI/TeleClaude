@@ -7,7 +7,7 @@ scope: project
 type: guide
 ---
 
-Purpose
+## Purpose
 
 - Make snippets the authoritative, reusable source for AI context selection.
 - Capture intent, boundaries, and guarantees without drifting from code and docs.
@@ -106,52 +106,97 @@ Requires usage
 
 Schemas by taxonomy
 
+Use `##` headings for each section.
+
 Principles
 
+## Principle
 - Principle statement
+
+## Rationale
 - Rationale
+
+## Implications
 - Implications for design and decision-making
+
+## Tensions
 - Tensions or tradeoffs
 
 Architecture / Concept
 
+## Purpose
 - Purpose
+
+## Inputs/Outputs
 - Boundaries or inputs/outputs
+
+## Invariants
 - Invariants
+
+## Primary flows
 - Primary flows
+
+## Failure modes
 - Failure modes
-- If structure or integrations are central, include a small Mermaid diagram.
+
+If structure or integrations are central, include a small Mermaid diagram.
 
 Policy / Standard
 
+## Rule
 - Rule
+
+## Rationale
 - Rationale
+
+## Scope
 - Scope
+
+## Enforcement or checks
 - Enforcement or checks
+
+## Exceptions or edge cases
 - Exceptions or edge cases
 
 Procedure / Checklist / Guide
 
+## Goal
 - Goal
+
+## Preconditions
 - Preconditions
+
+## Steps
 - Steps or checks
+
+## Outputs
 - Outputs or verification
+
+## Recovery
 - Recovery or stop conditions
 
 Reference / Example
 
+## What it is
 - What it is
+
+## Canonical fields
 - Canonical fields or shape
+
+## Allowed values
 - Allowed values
+
+## Known caveats
 - Known caveats
 
 FAQ
 
-- Use for recurring questions that would otherwise be answered repeatedly.
-- Include: question, answer.
-- Exclude: one-off clarifications or internal notes.
+Use `##` headings for each question.
 
-References
+## Question
+- Answer
+
+## References
 
 - `requires` should list snippet IDs; inline `@...` references should be root-relative (e.g., `@docs/snippets/...`).
 - References prime context; the snippet body still needs to explain the concept on its own.

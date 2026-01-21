@@ -7,18 +7,18 @@ scope: project
 type: architecture
 ---
 
-Purpose
+## Purpose
 - Describe how TeleClaude manages tmux sessions and input injection.
 
-Inputs/Outputs
+## Inputs/Outputs
 - Inputs: commands, control keys, and session creation requests.
 - Outputs: tmux sessions, captured output, and shell-ready signals.
 
-Primary flows
+## Primary flows
 - Session names are derived from session_id with a stable prefix.
 - Each session gets a dedicated TMPDIR to avoid filesystem watcher issues.
 - tmux commands enforce timeouts to prevent hangs.
 
-Invariants
+## Invariants
 - Session tmp directories are created under ~/.teleclaude/tmp/sessions by default.
 - Shell readiness is determined by comparing the tmux command to the user shell.

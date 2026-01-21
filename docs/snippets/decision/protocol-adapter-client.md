@@ -12,7 +12,7 @@ Decision
 - Use AdapterClient as the single hub for UI and transport adapters.
 - Transport adapters implement RemoteExecutionProtocol for cross-computer orchestration.
 
-Rationale
+## Rationale
 - Decouples MCP server from specific transports.
 - Enables transport swaps without changing command handlers.
 - Improves testability and consistency across message flows.

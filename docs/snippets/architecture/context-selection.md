@@ -7,18 +7,18 @@ scope: project
 type: architecture
 ---
 
-Purpose
+## Purpose
 - Select relevant documentation snippets for a given request.
 
-Inputs/Outputs
+## Inputs/Outputs
 - Inputs: user corpus and snippet metadata (id, description, type, scope).
 - Outputs: ordered snippet list with resolved requires dependencies.
 
-Primary flows
+## Primary flows
 - Build snippet metadata from docs/snippets and global snippets.
 - Call the local LLM selector to choose snippet IDs.
 - Resolve requires dependencies and order by scope priority (global -> domain -> project).
 - Persist selected IDs per session to avoid repeated context churn.
 
-Failure modes
+## Failure modes
 - If selection fails or parsing is invalid, returns an empty snippet list.

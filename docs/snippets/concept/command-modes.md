@@ -6,7 +6,7 @@ description: Sync, async, and hybrid command response modes used across TeleClau
 requires: []
 ---
 
-Purpose
+## Purpose
 - Capture the command response modes used by API and transport workflows.
 
 Modes

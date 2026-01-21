@@ -6,7 +6,7 @@ description: Shared terminology for TeleClaude sessions, adapters, transports, a
 requires: []
 ---
 
-Purpose
+## Purpose
 - Provide consistent definitions for core TeleClaude terms used across docs and code.
 
 Definitions

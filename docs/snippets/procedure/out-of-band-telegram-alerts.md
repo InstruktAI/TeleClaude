@@ -12,6 +12,6 @@ Steps
 2) Use bin/notify_agents.py for structured alerts with auto-topic selection and backoff.
 3) If backoff needs reset after a healthy run, call bin/notify_agents.py --reset.
 
-Outputs
+## Outputs
 - Alert delivered even when MCP/daemon interfaces are unavailable.
 - Backoff state persisted under logs/monitoring.

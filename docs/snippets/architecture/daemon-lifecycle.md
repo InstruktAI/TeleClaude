@@ -10,19 +10,19 @@ scope: project
 type: architecture
 ---
 
-Purpose
+## Purpose
 - Describe how the daemon starts, monitors, and shuts down core services.
 
-Primary flows
+## Primary flows
 - Initialize AdapterClient, cache, agent coordinator, and output poller.
 - Start adapters, API server, and MCP server tasks.
 - Watch MCP socket health and restart MCP server on failure.
 - Run background workers for hook outbox processing and resource snapshots.
 
-Invariants
+## Invariants
 - Background tasks are tracked and logged on failure.
 - MCP restarts are rate-limited to avoid restart storms.
 
-Failure modes
+## Failure modes
 - Adapter startup failure prevents daemon boot.
 - MCP server failures trigger automatic restart attempts.

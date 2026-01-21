@@ -6,7 +6,7 @@ description: SQLite persistence for sessions, hook outbox, UX state, and agent m
 requires: []
 ---
 
-Purpose
+## Purpose
 - Persist daemon state for sessions, command durability, and UX continuity.
 
 Stored data
@@ -15,6 +15,6 @@ Stored data
 - UX state for message cleanup and registry message IDs.
 - Agent assignments and voice mappings.
 
-Invariants
+## Invariants
 - The daemon uses a single SQLite file at teleclaude.db in the project root.
 - Schema migrations run on startup to keep tables current.

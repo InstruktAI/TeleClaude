@@ -14,5 +14,5 @@ Steps
 4) Register the adapter in AdapterClient.start() based on config.
 5) Add tests to validate routing and adapter behavior.
 
-Outputs
+## Outputs
 - Adapter is discoverable, starts successfully, and routes through AdapterClient.

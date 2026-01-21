@@ -7,7 +7,7 @@ scope: project
 type: architecture
 ---
 
-Purpose
+## Purpose
 - Coordinate adapters, command handling, tmux execution, and background tasks.
 
 Responsibilities

@@ -12,5 +12,5 @@ Steps
 2) Verify the service is running with make status.
 3) Check recent logs with instrukt-ai-logs teleclaude --since 10m.
 
-Outputs
+## Outputs
 - Daemon process restarted and confirmed healthy.

@@ -8,7 +8,7 @@ scope: project
 type: concept
 ---
 
-Purpose
+## Purpose
 - Define the canonical resource concepts used by cache, API, and UI.
 
 Resources
@@ -18,6 +18,6 @@ Resources
 - Session summary: lightweight state for list views (id, title, status, timestamps, agent info).
 - Agent availability: per-agent readiness for orchestration selection.
 
-Invariants
+## Invariants
 - Resource shapes originate from core dataclasses in teleclaude/core/models.py.
 - Project identifiers are derived from full paths, not repo metadata.
