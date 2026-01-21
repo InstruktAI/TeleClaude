@@ -123,6 +123,10 @@ def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
             "type": "command",
             "command": f"{python_exe} {receiver_script} --agent claude session_start",
         },
+        "UserPromptSubmit": {
+            "type": "command",
+            "command": f"{python_exe} {receiver_script} --agent claude prompt",
+        },
         "Stop": {
             "type": "command",
             "command": f"{python_exe} {receiver_script} --agent claude stop",
@@ -133,10 +137,10 @@ def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
 def _prune_claude_hooks(existing_hooks: Dict[str, Any]) -> Dict[str, Any]:
     """Remove TeleClaude receiver hooks from unused Claude events.
 
-    Keep TeleClaude hooks only for SessionStart and Stop.
+    Keep TeleClaude hooks only for SessionStart, UserPromptSubmit, and Stop.
     Preserve all non-TeleClaude hooks.
     """
-    allowed_events = {"SessionStart", "Stop"}
+    allowed_events = {"SessionStart", "UserPromptSubmit", "Stop"}
     pruned: Dict[str, Any] = {}
 
     for event, blocks in existing_hooks.items():
@@ -385,7 +389,7 @@ def configure_codex(repo_root: Path) -> None:
 
         if not skip_notify_update:
             # Update or add notify line using text manipulation to preserve formatting
-            notify_line = f'notify = {json.dumps(notify_value)}'
+            notify_line = f"notify = {json.dumps(notify_value)}"
             if "notify" in config:
                 # Check if existing notify is our hook (contains receiver.py and --agent codex)
                 is_our_hook = (
@@ -401,7 +405,7 @@ def configure_codex(repo_root: Path) -> None:
                 else:
                     # Replace our existing notify line with updated paths
                     content = re.sub(
-                        r'^notify\s*=\s*\[.*?\]',
+                        r"^notify\s*=\s*\[.*?\]",
                         notify_line,
                         content,
                         count=1,
@@ -409,7 +413,7 @@ def configure_codex(repo_root: Path) -> None:
                     )
             if not skip_notify_update and "notify" not in config:
                 # Add notify after any comments at the top, before first section
-                first_section = re.search(r'^\[', content, re.MULTILINE)
+                first_section = re.search(r"^\[", content, re.MULTILINE)
                 if first_section:
                     insert_pos = first_section.start()
                     content = content[:insert_pos] + notify_line + "\n\n" + content[insert_pos:]
@@ -417,7 +421,7 @@ def configure_codex(repo_root: Path) -> None:
                     content = content.rstrip() + "\n\n" + notify_line + "\n"
     else:
         # Create new config with just the notify hook
-        notify_line = f'notify = {json.dumps(notify_value)}'
+        notify_line = f"notify = {json.dumps(notify_value)}"
         content = f"# Codex CLI configuration\n\n{notify_line}\n"
 
     content = ensure_codex_mcp_config(content, repo_root)
@@ -433,9 +437,9 @@ def ensure_codex_mcp_config(content: str, repo_root: Path) -> str:
     desired_block = (
         "# TeleClaude MCP Server\n"
         "[mcp_servers.teleclaude]\n"
-        "type = \"stdio\"\n"
-        f"command = \"{venv_python}\"\n"
-        f"args = [\"{wrapper_path}\"]\n"
+        'type = "stdio"\n'
+        f'command = "{venv_python}"\n'
+        f'args = ["{wrapper_path}"]\n'
     )
 
     section_name = "mcp_servers.teleclaude"

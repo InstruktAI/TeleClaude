@@ -10,10 +10,10 @@ from teleclaude.hooks.utils.parse_helpers import get_str
 
 def normalize_payload(event_type: str, data: Mapping[str, Any]) -> NormalizedHookPayload:
     """Map Claude external fields to internal schema."""
-    _ = event_type  # Part of adapter interface
+    _ = event_type
     return NormalizedHookPayload(
         session_id=get_str(data, "session_id"),
         transcript_path=get_str(data, "transcript_path"),
-        prompt=get_str(data, "user_prompt"),
+        prompt=get_str(data, "prompt"),
         message=get_str(data, "message"),
     )
