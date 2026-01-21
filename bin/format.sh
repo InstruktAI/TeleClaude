@@ -11,11 +11,24 @@ else
   echo "Formatting all code in teleclaude/, bin/, tests/"
 fi
 
-echo "Running ruff import-sort (fix)"
-ruff check --select I --fix $files
+py_files=""
+if [ $# -gt 0 ]; then
+  for file in "$@"; do
+    case "$file" in
+      *.py) py_files="$py_files $file" ;;
+    esac
+  done
+else
+  py_files="$files"
+fi
 
-echo "Running ruff format"
-ruff format $files
+if [ -n "$py_files" ]; then
+  echo "Running ruff import-sort (fix)"
+  ruff check --select I --fix $py_files
+
+  echo "Running ruff format"
+  ruff format $py_files
+fi
 
 # Markdown formatting (prettier)
 md_files=""
