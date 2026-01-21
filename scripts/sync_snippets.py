@@ -2,13 +2,18 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Mapping, TypedDict, cast
 
 import frontmatter
 import yaml
-
 from instrukt_ai_logging import get_logger
+
+# Allow running from any working directory by anchoring imports at repo root.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 from scripts.build_snippet_index import _iter_snippet_roots, build_index_payload
 
 logger = get_logger(__name__)
