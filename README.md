@@ -80,25 +80,21 @@ The installation wizard will:
 The `make init` wizard will prompt you for these values:
 
 1. **Create a Telegram Bot:**
-
    - Message [@BotFather](https://t.me/botfather) on Telegram
    - Send `/newbot` and follow instructions
    - Copy the bot token
 
 2. **Create a Telegram Supergroup:**
-
    - Create a new group in Telegram
    - Convert it to Supergroup (Group Settings > Group Type)
    - Enable Topics (Group Settings > Topics)
    - Add your bot to the group with admin rights
 
 3. **Get your Telegram User ID:**
-
    - Message [@userinfobot](https://t.me/userinfobot)
    - Copy your user ID
 
 4. **Get the Supergroup ID:**
-
    - Add your bot to the supergroup
    - Send a message in the group
    - Visit: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`

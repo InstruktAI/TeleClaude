@@ -197,7 +197,6 @@ telegram:
 **How it works:**
 
 1. **Master bot** registers all commands with **trailing spaces**:
-
    - Example: `BotCommand("new_session ", "Create a new tmux session")`
    - The trailing space prevents Telegram from appending `@botname` in autocomplete
    - Commands become universal: `/new_session` works for any bot
@@ -420,7 +419,6 @@ In your supergroup, you'll see:
    ```
 
 2. **Check "Online Now" topic** in Telegram:
-
    - Should see heartbeat messages from all computers
    - Messages should update every 30 seconds
 
@@ -455,7 +453,6 @@ In your supergroup, you'll see:
    ```
 
 2. **Verify bot has admin permissions** in supergroup:
-
    - Open supergroup → Administrators
    - Check each bot has "Manage Topics" permission
 
@@ -691,7 +688,6 @@ Claude Code will:
 If you encounter issues not covered in this guide:
 
 1. **Check documentation**:
-
    - `README.md` - Installation and basic usage
    - `docs/architecture.md` - Technical architecture details
    - `docs/troubleshooting.md` - Common issues and fixes

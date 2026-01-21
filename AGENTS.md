@@ -95,7 +95,6 @@ make status                  # Check daemon status and uptime
 **Two different restart mechanisms:**
 
 1. **Manual Restart** (`make restart`):
-
    - Runs `systemctl restart teleclaude`
    - Systemd sends SIGTERM → clean shutdown → starts fresh process
    - Used during development after code changes

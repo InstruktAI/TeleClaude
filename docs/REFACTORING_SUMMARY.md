@@ -55,11 +55,13 @@ class RemoteExecutionProtocol(Protocol):
 ### Adapter Classification
 
 **Transport Adapters** (implement RemoteExecutionProtocol):
+
 - ✅ RedisTransport - Redis Streams
 - ✅ PostgresAdapter (future) - PostgreSQL LISTEN/NOTIFY
 - `has_ui = False` (pure transport)
 
 **UI Adapters** (do NOT implement RemoteExecutionProtocol):
+
 - ❌ TelegramAdapter - Chat platform
 - ❌ SlackAdapter - Chat platform
 - `has_ui = True` (human-facing)
@@ -159,9 +161,11 @@ class TeleClaudeMCPServer:
 ### All Tests Passing ✅
 
 **Integration Tests:**
+
 - `test_mcp_redis.py`: 7/7 passing ✅
 
 **Unit Tests:**
+
 - `test_protocols.py`: 6/6 passing ✅
 - `test_adapter_client_protocols.py`: 11/11 passing ✅
 
@@ -186,6 +190,7 @@ class TeleClaudeMCPServer:
 ### 1. Extensibility
 
 Adding PostgresAdapter requires **ZERO changes** to:
+
 - MCP server
 - Daemon
 - Command handlers
@@ -216,6 +221,7 @@ mcp_server = TeleClaudeMCPServer(adapter_client=mock_adapter_client, ...)
 ### 4. Consistency
 
 Both message types now use AdapterClient:
+
 - **Message broadcasting**: `send_message()` → origin + observers with `has_ui=True`
 - **Cross-computer**: `send_remote_command()` → transport adapters
 

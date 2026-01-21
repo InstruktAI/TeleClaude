@@ -5,17 +5,21 @@ TeleClaude uses a durable outbox pattern for commands requiring exactly-once del
 ## Table: api_outbox
 
 **Primary key**
+
 - `id` (integer, autoincrement)
 
 **Identity & Correlation**
+
 - `request_id` (text, non-null) — Client-provided correlation ID.
 
 **Request**
+
 - `event_type` (text, non-null) — The TeleClaude event to trigger (e.g., `new_session`, `message`).
 - `payload` (json, non-null) — The event payload (args, text, etc.).
 - `metadata` (json, non-null) — MessageMetadata (adapter_type, project_path, etc.).
 
 **State & Lifecycle**
+
 - `created_at` (timestamp)
 - `next_attempt_at` (timestamp) — For exponential backoff.
 - `attempt_count` (integer)
@@ -24,12 +28,13 @@ TeleClaude uses a durable outbox pattern for commands requiring exactly-once del
 - `locked_at` (timestamp, nullable) — Used by workers to claim rows.
 
 **Response**
+
 - `response` (json, nullable) — The response envelope from the event handler.
 
 ## Status Lifecycle
 
 ```
-[Pending] (delivered_at IS NULL) 
+[Pending] (delivered_at IS NULL)
     → [Locked] (locked_at IS NOT NULL)
     → [Success/Failed] (delivered_at IS NOT NULL)
 ```

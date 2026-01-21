@@ -67,7 +67,6 @@ When adding a new command to the Telegram bot, you MUST follow ALL these steps:
    ⚠️ **IMPORTANT**: Include trailing space after command name (see Master Bot Pattern in CLAUDE.md)
 
 3. **Implement handler method** in `telegram_adapter.py`:
-
    - ALWAYS use `session = await self._get_session_from_topic(update)` (DRY pattern)
    - Never duplicate authorization/session-finding logic
    - Example:
@@ -81,7 +80,6 @@ When adding a new command to the Telegram bot, you MUST follow ALL these steps:
    ```
 
 4. **Dispatch command directly** from the adapter handler:
-
    - Build the typed command object (see `teleclaude/types/commands.py`)
    - Call the explicit command service method (see `teleclaude/core/command_service.py`)
    - Use `_dispatch_command(...)` to apply pre/post hooks and broadcast
@@ -114,7 +112,6 @@ Pattern for creating clickable button menus (like project selection):
    ```
 
 2. **Handle button clicks** in `_handle_callback_query()`:
-
    - Parse `callback_data` as "action:args"
    - Find session from `query.message.message_thread_id`
    - Call `await query.answer()` first
@@ -207,7 +204,7 @@ To add features that use configuration values (like `trusted_dirs`):
    ```yaml
    new_feature:
      enabled: true
-     option: 'value' # Description of what this does
+     option: "value" # Description of what this does
    ```
 2. Document in `docs/architecture.md` or relevant doc
 3. Access via `self.config[key]` in daemon

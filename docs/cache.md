@@ -20,6 +20,7 @@ flowchart TB
 ```
 
 Placement:
+
 - Cache lives inside the daemon, above adapters and below API.
 - API never fetches. It only reads cache.
 - Cache owns TTL decisions and refresh scheduling.
@@ -46,9 +47,11 @@ The cache stores only resource lists. No aggregate or composite fetches.
 Views compose these resources client-side.
 
 Identifiers:
+
 - Project identifiers are derived from full paths, not repo metadata.
 
 Sessions are split into two layers:
+
 - Session summary lives in cache and refreshes on TTL.
 - Session detail and live events are delivered by subscription when expanded.
 
@@ -65,13 +68,13 @@ Sessions are split into two layers:
 
 Only values that vary are listed. All rows inherit the global rules above.
 
-| Resource | Scope | TTL |
-| --- | --- | --- |
-| Computers | Global | 60s |
-| Projects | Per-computer | 5m |
-| Todos | Per-project | 5m |
-| Sessions | Per-computer | Infinite (event-driven) |
-| Agent availability | Global | 30s |
+| Resource           | Scope        | TTL                     |
+| ------------------ | ------------ | ----------------------- |
+| Computers          | Global       | 60s                     |
+| Projects           | Per-computer | 5m                      |
+| Todos              | Per-project  | 5m                      |
+| Sessions           | Per-computer | Infinite (event-driven) |
+| Agent availability | Global       | 30s                     |
 
 ## Behavior Rules
 

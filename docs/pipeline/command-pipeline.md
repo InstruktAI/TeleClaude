@@ -3,16 +3,19 @@
 ## Response Contract
 
 ### Sync
+
 - Must complete within its SLA
 - Timeout = failure
 - Returns full result immediately
 
 ### Async
+
 - Returns `command_id` immediately
 - Completion via events only
 - No sync timeout
 
 ### Hybrid
+
 - Returns `command_id` + partial identifiers immediately
 - Completion via events only
 - No sync timeout
@@ -31,15 +34,15 @@
 
 ## Command Matrix
 
-| Command | Mode | Immediate Return | Completion Signal(s) |
-| --- | --- | --- | --- |
-| new_session | Hybrid | `session_id`, `tmux_session_name` | `session_created`, `agent_event(session_start)` |
-| agent_restart | Async | success/error status | `agent_event(session_start)` |
-| message | Async | success/error status | `session_updated` |
-| end_session | Async | success/error status | `session_removed` |
-| get_session_data | Sync | transcript content | n/a |
-| next_prepare | Sync | instructions / status | n/a |
-| next_work | Sync | instructions / status | n/a |
+| Command          | Mode   | Immediate Return                  | Completion Signal(s)                            |
+| ---------------- | ------ | --------------------------------- | ----------------------------------------------- |
+| new_session      | Hybrid | `session_id`, `tmux_session_name` | `session_created`, `agent_event(session_start)` |
+| agent_restart    | Async  | success/error status              | `agent_event(session_start)`                    |
+| message          | Async  | success/error status              | `session_updated`                               |
+| end_session      | Async  | success/error status              | `session_removed`                               |
+| get_session_data | Sync   | transcript content                | n/a                                             |
+| next_prepare     | Sync   | instructions / status             | n/a                                             |
+| next_work        | Sync   | instructions / status             | n/a                                             |
 
 ## Completion Semantics
 

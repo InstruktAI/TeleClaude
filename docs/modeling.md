@@ -12,9 +12,11 @@ This document defines how data models are structured across the codebase. It is 
 ## Source of Truth
 
 Core resource models are defined as dataclasses in:
+
 - `teleclaude/core/models.py`
 
 These dataclasses are the canonical shapes for:
+
 - Computers
 - Projects
 - Todos
@@ -24,6 +26,7 @@ These dataclasses are the canonical shapes for:
 ## Boundary DTOs
 
 API and WebSocket payloads use DTOs that map 1:1 to the core dataclasses:
+
 - DTOs live with the adapters (target location: `teleclaude/api_models.py`).
 - DTOs may add transport metadata only (example `computer`).
 - DTOs are validated at the boundary only.

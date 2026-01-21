@@ -26,6 +26,7 @@ subprocess.run(
 **Impact:** When preparing a worktree, the entire event loop freezes for the duration of the subprocess (potentially several seconds for `make` or `npm` commands).
 
 **Fix Pattern:** Use `asyncio.to_thread()` as done correctly in `session_cleanup.py:239`:
+
 ```python
 result = await asyncio.to_thread(_blocking_function)
 ```
@@ -51,11 +52,13 @@ async def handle_get_computer_info() -> ComputerInfo:
 **Location:** `teleclaude/core/next_machine.py` (multiple locations)
 
 **Problem:** Extensive use of `.read_text()` and `.write_text()` which are synchronous:
+
 - Line 237, 245, 275, 320, 330, 448, 500, 514, 552, 580, 589, 622, 653, 690, 782, 819, 1308, 1388
 
 **Impact:** Each file read/write blocks the event loop. Small files are fast, but under load this adds up.
 
 **Fix:** Use `aiofiles` for async file I/O:
+
 ```python
 import aiofiles
 async with aiofiles.open(path, 'r') as f:
@@ -67,6 +70,7 @@ async with aiofiles.open(path, 'r') as f:
 **Location:** `teleclaude/core/db.py:66`
 
 **Problem:** The async database connection doesn't set `busy_timeout`:
+
 ```python
 self._db = await aiosqlite.connect(self.db_path)
 # Missing: await self._db.execute("PRAGMA busy_timeout = 5000")
@@ -75,6 +79,7 @@ self._db = await aiosqlite.connect(self.db_path)
 **Impact:** When concurrent database access occurs (e.g., sync lookup from hooks + async operations from daemon), SQLite fails immediately instead of waiting.
 
 **Fix:** Set a reasonable busy timeout after connection:
+
 ```python
 self._db = await aiosqlite.connect(self.db_path)
 await self._db.execute("PRAGMA busy_timeout = 5000")  # 5 second timeout
@@ -89,6 +94,7 @@ await self._db.execute("PRAGMA busy_timeout = 5000")  # 5 second timeout
 **Impact:** Can cause lock contention when hooks (which run sync) query the database while the daemon is writing.
 
 **Fix:** Either:
+
 1. Make hook receiver async and use the daemon's connection
 2. Use WAL mode for SQLite (allows concurrent readers)
 
