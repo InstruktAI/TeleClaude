@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass
+from os import getenv
 from pathlib import Path
 from typing import Iterable, TypedDict
 
@@ -169,7 +171,10 @@ def _parse_snippets(snippets_dir: Path, default_scope: str) -> list[SnippetMeta]
 
 
 def _select_ids(corpus: str, metadata: list[dict[str, str]]) -> list[str]:
-    llm_url = "http://192.168.1.247:1234/v1/chat/completions"
+    llm_url = getenv("TELECLAUDE_LLM_URL", "http://192.168.1.247:1234/v1/chat/completions")
+    model = getenv("TELECLAUDE_LLM_MODEL", "mistral-small-3.2-24b-instruct-2506-mlx@4bit")
+    timeout_s = float(getenv("TELECLAUDE_LLM_TIMEOUT", "30.0"))
+    max_tokens = int(getenv("TELECLAUDE_LLM_MAX_TOKENS", "128"))
     system_prompt = (
         "You are a context selector. Given a user request and a list of documentation snippets "
         "(id, description, type), select ONLY the IDs of the snippets that are relevant to the request.\n"
@@ -181,8 +186,17 @@ def _select_ids(corpus: str, metadata: list[dict[str, str]]) -> list[str]:
         "and omit the generic unless the user explicitly asks for general guidance."
     )
 
+    tokens = [tok for tok in re.split(r"[^a-z0-9]+", corpus.lower()) if tok]
+    if len(metadata) > 80:
+        filtered: list[dict[str, str]] = []
+        for item in metadata:
+            haystack = f"{item.get('id', '')} {item.get('description', '')} {item.get('type', '')}".lower()
+            if any(tok in haystack for tok in tokens):
+                filtered.append(item)
+        metadata = filtered[:80] if filtered else metadata[:80]
+
     payload = {
-        "model": "local-model",
+        "model": model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {
@@ -191,16 +205,28 @@ def _select_ids(corpus: str, metadata: list[dict[str, str]]) -> list[str]:
             },
         ],
         "temperature": 0,
+        "max_tokens": max_tokens,
     }
 
     logger.debug("context_selector_llm_request", snippet_count=len(metadata))
+    start = time.perf_counter()
 
     try:
-        response = httpx.post(llm_url, json=payload, timeout=30.0)
-        response.raise_for_status()
+        response = httpx.post(llm_url, json=payload, timeout=timeout_s)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            logger.error(
+                "context_selector_llm_http_error",
+                status_code=response.status_code,
+                response_text=response.text[:500],
+            )
+            raise
         result = response.json()
         content = result["choices"][0]["message"]["content"].strip()
     except Exception as exc:
+        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+        logger.debug("context_selector_llm_timing", elapsed_ms=elapsed_ms, success=False)
         logger.exception("context_selector_llm_failed", error=str(exc))
         return []
 
@@ -228,7 +254,22 @@ def _select_ids(corpus: str, metadata: list[dict[str, str]]) -> list[str]:
         logger.warning("context_selector_returned_indices", original=parsed, mapped=mapped)
         return mapped
 
-    return [item for item in parsed if isinstance(item, str)]
+    ids = [item for item in parsed if isinstance(item, str)]
+    if not ids:
+        return []
+
+    id_set = {item["id"] for item in metadata}
+    lower_map = {item_id.lower(): item_id for item_id in id_set}
+    resolved: list[str] = []
+    for item in ids:
+        if item in id_set:
+            resolved.append(item)
+            continue
+        mapped = lower_map.get(item.lower())
+        if mapped:
+            resolved.append(mapped)
+
+    return resolved
 
 
 def _resolve_requires(selected_ids: Iterable[str], snippets: list[SnippetMeta]) -> list[SnippetMeta]:
