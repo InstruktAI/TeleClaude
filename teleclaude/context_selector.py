@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterable, TypedDict
 
 import httpx
+import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.paths import CONTEXT_STATE_PATH, GLOBAL_SNIPPETS_DIR
@@ -117,55 +118,61 @@ def _resolve_inline_refs(content: str, *, snippet_path: Path, root_path: Path) -
     return f"{head}{_INLINE_REF_RE.sub(_expand, body)}"
 
 
-def _parse_snippets(snippets_dir: Path, default_scope: str) -> list[SnippetMeta]:
-    if not snippets_dir.exists():
+def _load_index(index_path: Path) -> list[SnippetMeta]:
+    if not index_path.exists():
+        logger.warning("snippet_index_missing", path=str(index_path))
         return []
 
     try:
-        import frontmatter  # type: ignore[import-not-found]
-    except ModuleNotFoundError:
-        logger.warning("frontmatter_missing; skipping snippet parsing", path=str(snippets_dir))
+        payload = yaml.safe_load(index_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.exception("snippet_index_load_failed", path=str(index_path), error=str(exc))
         return []
 
-    snippets: list[SnippetMeta] = []
-    for path in sorted(snippets_dir.rglob("*.md")):
-        if "baseline" in str(path):
+    if not isinstance(payload, dict):
+        return []
+
+    project_root = payload.get("project_root")
+    snippets = payload.get("snippets")
+    if not isinstance(project_root, str) or not isinstance(snippets, list):
+        return []
+
+    root_path = Path(project_root).expanduser().resolve()
+    entries: list[SnippetMeta] = []
+    for item in snippets:
+        if not isinstance(item, dict):
             continue
-        try:
-            post = frontmatter.load(path)
-        except Exception as exc:
-            logger.exception("snippet_parse_failed", path=str(path), error=str(exc))
-            continue
-        metadata = post.metadata or {}
-        snippet_id = metadata.get("id")
-        description = metadata.get("description")
-        snippet_type = metadata.get("type")
-        scope = metadata.get("scope", default_scope)
+        snippet_id = item.get("id")
+        description = item.get("description")
+        snippet_type = item.get("type")
+        scope = item.get("scope")
+        raw_path = item.get("path")
+        requires_raw = item.get("requires", [])
         if (
             not isinstance(snippet_id, str)
             or not isinstance(description, str)
             or not isinstance(snippet_type, str)
             or not isinstance(scope, str)
+            or not isinstance(raw_path, str)
         ):
             continue
-        requires_raw = metadata.get("requires", [])
         requires_list = requires_raw if isinstance(requires_raw, list) else []
-        resolved_requires: list[str] = []
-        for req in requires_list:
-            if not isinstance(req, str):
-                continue
-            resolved_requires.append(req)
-        snippets.append(
+        requires: list[str] = [req for req in requires_list if isinstance(req, str)]
+        path = Path(raw_path).expanduser()
+        if not path.is_absolute():
+            path = (root_path / path).resolve()
+        entries.append(
             SnippetMeta(
                 snippet_id=snippet_id,
                 description=description,
                 snippet_type=snippet_type,
                 scope=scope,
-                path=path.resolve(),
-                requires=resolved_requires,
+                path=path,
+                requires=requires,
             )
         )
-    return snippets
+
+    return entries
 
 
 def _select_ids(corpus: str, metadata: list[dict[str, str]]) -> list[str]:
@@ -187,7 +194,7 @@ def _select_ids(corpus: str, metadata: list[dict[str, str]]) -> list[str]:
             {"role": "system", "content": system_prompt},
             {
                 "role": "user",
-                "content": f"User Request: {corpus}\n\nAvailable Snippets:\n{json.dumps(metadata, indent=2)}",
+                "content": f"User Request: {corpus}\n\nAvailable Snippets:\n{json.dumps(metadata)}",
             },
         ],
         "temperature": 0,
@@ -271,11 +278,15 @@ def build_context_output(
     project_root: Path,
     session_id: str | None,
 ) -> str:
-    project_snippets_dir = project_root / "docs" / "snippets"
+    project_index = project_root / "docs" / "snippets" / "index.yaml"
+    global_index = GLOBAL_SNIPPETS_DIR / "index.yaml"
+    global_root = GLOBAL_SNIPPETS_DIR.parent.parent
+    global_snippets_root = GLOBAL_SNIPPETS_DIR
 
-    snippets = []
-    snippets.extend(_parse_snippets(GLOBAL_SNIPPETS_DIR, default_scope="domain"))
-    snippets.extend(_parse_snippets(project_snippets_dir, default_scope="project"))
+    # Load global snippets first, then project snippets.
+    snippets: list[SnippetMeta] = []
+    snippets.extend(_load_index(global_index))
+    snippets.extend(_load_index(project_index))
 
     if areas:
         areas_set = set(areas)
@@ -313,8 +324,11 @@ def build_context_output(
         state["sessions"][session_id] = {"ids": sorted(session_ids)}
         _save_state(state)
 
-    already_lines = "\n".join(f"- {sid}" for sid in sorted(already_ids)) or "- (none)"
-    parts: list[str] = ["ALREADY_PROVIDED_IDS:", already_lines, "", "NEW_SNIPPETS:"]
+    parts: list[str] = []
+    if session_id is not None:
+        already_lines = "\n".join(f"- {sid}" for sid in sorted(already_ids)) or "- (none)"
+        parts.extend(["ALREADY_PROVIDED_IDS:", already_lines, ""])
+    parts.append("NEW_SNIPPETS:")
 
     if not new_snippets:
         parts.append("(none)")
@@ -324,8 +338,8 @@ def build_context_output(
         try:
             raw = snippet.path.read_text(encoding="utf-8")
             root_path = project_root
-            if GLOBAL_SNIPPETS_DIR in snippet.path.parents:
-                root_path = GLOBAL_SNIPPETS_DIR.parent.parent
+            if global_snippets_root in snippet.path.parents:
+                root_path = global_root
             content = _resolve_inline_refs(raw, snippet_path=snippet.path, root_path=root_path)
         except Exception as exc:
             logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))

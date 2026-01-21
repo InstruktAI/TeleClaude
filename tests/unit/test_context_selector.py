@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
+import yaml
 
 from teleclaude import context_selector
 
@@ -27,9 +29,28 @@ def _snippet(
     )
 
 
+class SnippetPayload(TypedDict):
+    id: str
+    description: str
+    type: str
+    scope: str
+    path: str
+    requires: list[str]
+
+
+def _write_index(index_path: Path, project_root: Path, snippets: list[SnippetPayload]) -> None:
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "project_root": str(project_root),
+        "snippets": snippets,
+    }
+    index_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+
 def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project_root = tmp_path / "project"
     global_root = tmp_path / "global"
+    global_snippets_root = global_root / "docs" / "global-snippets"
 
     base = _snippet(
         "software-development/standards/base",
@@ -50,7 +71,31 @@ def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.M
     _write(project_root / "docs" / "snippets" / "software-development" / "standards" / "base.md", base)
     _write(project_root / "docs" / "snippets" / "software-development" / "roles" / "role.md", child)
 
-    monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_root)
+    _write_index(
+        project_root / "docs" / "snippets" / "index.yaml",
+        project_root,
+        [
+            {
+                "id": "software-development/standards/base",
+                "description": "Base standard",
+                "type": "policy",
+                "scope": "project",
+                "path": "docs/snippets/software-development/standards/base.md",
+                "requires": [],
+            },
+            {
+                "id": "software-development/roles/role",
+                "description": "Role description",
+                "type": "role",
+                "scope": "project",
+                "path": "docs/snippets/software-development/roles/role.md",
+                "requires": ["software-development/standards/base"],
+            },
+        ],
+    )
+    _write_index(global_snippets_root / "index.yaml", global_root, [])
+
+    monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
     monkeypatch.setattr(context_selector, "CONTEXT_STATE_PATH", tmp_path / "state.json")
     monkeypatch.setattr(context_selector, "_select_ids", lambda corpus, metadata: ["software-development/roles/role"])
 
