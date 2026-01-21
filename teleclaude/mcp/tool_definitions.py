@@ -33,6 +33,7 @@ def get_tool_definitions() -> list[Tool]:
                 "Two-phase snippet retrieval. "
                 "Phase 1: pass an empty corpus to return a filtered snippet index (frontmatter only). "
                 "Phase 2: pass selected snippet ids (as a JSON list or newline list) to receive full snippets. "
+                "Always start with phase 1 when you are unsure which snippets apply. "
                 "Use when you need policy/procedure/role/checklist/reference context beyond what you already have."
             ),
             inputSchema={
@@ -40,7 +41,7 @@ def get_tool_definitions() -> list[Tool]:
                 "properties": {
                     "corpus": {
                         "type": "string",
-                        "description": "Empty for index; otherwise a JSON list or newline list of snippet ids to fetch.",
+                        "description": "Phase 1: empty string to return index. Phase 2: JSON list or newline list of snippet ids.",
                     },
                     "areas": {
                         "type": "array",

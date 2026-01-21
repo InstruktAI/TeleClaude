@@ -47,6 +47,10 @@ If your task produces new artifacts or edits, finish with a clean, atomic commit
 
 When you sense missing information that could change decisions or edits, call `teleclaude__get_context` immediately before changing files or executing work.
 Always supply the `areas` parameter using the taxonomy already loaded in the system context; do not restate the taxonomy, just pick the best-fitting areas.
+Use the two-phase flow:
+
+1. Call with empty `corpus` to get the filtered index (frontmatter only).
+2. Call again with selected snippet ids to fetch full snippet bodies.
 
 ## Unexpected Changes Are Not a Blocker
 
