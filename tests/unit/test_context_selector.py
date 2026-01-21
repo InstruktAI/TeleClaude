@@ -97,10 +97,9 @@ def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.M
 
     monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
     monkeypatch.setattr(context_selector, "CONTEXT_STATE_PATH", tmp_path / "state.json")
-    monkeypatch.setattr(context_selector, "_select_ids", lambda corpus, metadata: ["software-development/roles/role"])
 
     output = context_selector.build_context_output(
-        corpus="Need role guidance",
+        corpus='["software-development/roles/role"]',
         areas=["role"],
         project_root=project_root,
         session_id="session-1",
@@ -117,7 +116,7 @@ def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.M
     assert f"@{expected_inline}" in output
 
     second = context_selector.build_context_output(
-        corpus="Need role guidance",
+        corpus='["software-development/roles/role"]',
         areas=["role"],
         project_root=project_root,
         session_id="session-1",

@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, TypedDict
 
-import httpx
 import yaml
 from instrukt_ai_logging import get_logger
 
@@ -176,91 +174,31 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
     return entries
 
 
-def _select_ids(corpus: str, metadata: list[dict[str, str]]) -> list[str]:
-    llm_url = "http://192.168.1.247:1234/v1/chat/completions"
-    system_prompt = (
-        "You are a context selector. Given a user request and a list of documentation snippets "
-        "(id, description, type), select ONLY the IDs of the snippets that are relevant to the request.\n"
-        "Respond ONLY with a JSON array of strings (the snippet IDs).\n"
-        "Do NOT return indices or numbers. Return the exact id values.\n"
-        "If no snippets are relevant, respond with [].\n"
-        "Do not include any explanation or other text.\n"
-        "If both a framework-specific scaffold and a generic scaffold match, select the framework-specific one "
-        "and omit the generic unless the user explicitly asks for general guidance."
-    )
-
-    user_content = f"User Request: {corpus}\n\nAvailable Snippets:\n{json.dumps(metadata)}"
-    payload = {
-        "model": "mistral-small-3.2-24b-instruct-2506-mlx@4bit",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": user_content,
-            },
-        ],
-        "temperature": 0,
-    }
-
-    payload_json = json.dumps(payload)
-    logger.debug(
-        "context_selector_llm_request",
-        snippet_count=len(metadata),
-        payload_bytes=len(payload_json.encode("utf-8")),
-        user_content_bytes=len(user_content.encode("utf-8")),
-    )
-    start_ns = time.time_ns()
-
-    try:
-        response = httpx.post(llm_url, json=payload, timeout=30.0)
-        response.raise_for_status()
-        result = response.json()
-        content = result["choices"][0]["message"]["content"].strip()
-    except Exception as exc:
-        end_ns = time.time_ns()
-        logger.debug(
-            "context_selector_llm_timing",
-            start_ns=start_ns,
-            end_ns=end_ns,
-            duration_ms=(end_ns - start_ns) / 1_000_000,
-            success=False,
-        )
-        logger.exception("context_selector_llm_failed", error=str(exc))
+def _parse_selected_ids(corpus: str, *, valid_ids: set[str]) -> list[str]:
+    if not corpus or not corpus.strip():
         return []
-    end_ns = time.time_ns()
-    logger.debug(
-        "context_selector_llm_timing",
-        start_ns=start_ns,
-        end_ns=end_ns,
-        duration_ms=(end_ns - start_ns) / 1_000_000,
-        success=True,
-    )
 
-    if "```json" in content:
-        content = content.split("```json")[1].split("```")[0].strip()
-    elif "```" in content:
-        content = content.split("```")[1].split("```")[0].strip()
-
+    raw = corpus.strip()
     try:
-        parsed = json.loads(content)
+        parsed = json.loads(raw)
     except Exception:
-        logger.error("context_selector_invalid_json", content=content)
-        return []
+        parsed = None
 
-    if not isinstance(parsed, list):
-        logger.error("context_selector_invalid_list", content=content)
-        return []
+    if isinstance(parsed, list):
+        return [item for item in parsed if isinstance(item, str) and item in valid_ids]
 
-    if all(isinstance(item, str) and item.isdigit() for item in parsed) and parsed:
-        mapped: list[str] = []
-        for item in parsed:
-            idx = int(item)
-            if 1 <= idx <= len(metadata):
-                mapped.append(metadata[idx - 1]["id"])
-        logger.warning("context_selector_returned_indices", original=parsed, mapped=mapped)
-        return mapped
+    selected: list[str] = []
+    for line in raw.splitlines():
+        cleaned = line.strip().lstrip("-").strip()
+        if cleaned in valid_ids:
+            selected.append(cleaned)
+    if selected:
+        return selected
 
-    return [item for item in parsed if isinstance(item, str)]
+    for snippet_id in sorted(valid_ids):
+        if snippet_id in raw:
+            selected.append(snippet_id)
+    return selected
 
 
 def _resolve_requires(selected_ids: Iterable[str], snippets: list[SnippetMeta]) -> list[SnippetMeta]:
@@ -302,6 +240,7 @@ def build_context_output(
     areas: list[str],
     project_root: Path,
     session_id: str | None,
+    snippet_ids: list[str] | None = None,
 ) -> str:
     project_index = project_root / "docs" / "snippets" / "index.yaml"
     global_index = GLOBAL_SNIPPETS_DIR / "index.yaml"
@@ -314,14 +253,48 @@ def build_context_output(
     snippets.extend(_load_index(project_index))
 
     areas_set = set(areas)
-    snippets_for_selection = [s for s in snippets if s.snippet_type in areas_set]
+    if areas_set:
+        snippets_for_selection = [s for s in snippets if s.snippet_type in areas_set]
+    else:
+        snippets_for_selection = list(snippets)
 
-    metadata: list[dict[str, str]] = [
-        {"id": s.snippet_id, "description": s.description, "type": s.snippet_type} for s in snippets_for_selection
-    ]
-    metadata.sort(key=lambda item: item["id"])
+    if not corpus.strip() and not snippet_ids:
+        parts: list[str] = ["INDEX:"]
+        ordered = sorted(snippets_for_selection, key=lambda s: (_scope_rank(s.scope), s.snippet_id))
+        for snippet in ordered:
+            try:
+                raw = snippet.path.read_text(encoding="utf-8")
+                head, _ = _split_frontmatter(raw)
+            except Exception as exc:
+                logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))
+                continue
+            parts.append(f"--- SNIPPET: {snippet.snippet_id} (scope: {snippet.scope}) ---")
+            if head:
+                parts.append(head.strip())
+                continue
+            requires_block = ""
+            if snippet.requires:
+                requires_lines = "\n".join(f"- {req}" for req in snippet.requires)
+                requires_block = f"requires:\n{requires_lines}\n"
+            parts.append(
+                "\n".join(
+                    [
+                        "---",
+                        f"id: {snippet.snippet_id}",
+                        f"type: {snippet.snippet_type}",
+                        f"scope: {snippet.scope}",
+                        f"description: {snippet.description}",
+                        *(requires_block.rstrip("\n").splitlines() if requires_block else []),
+                        "---",
+                    ]
+                ).strip()
+            )
+        return "\n".join(parts)
 
-    selected_ids = _select_ids(corpus, metadata) if metadata else []
+    valid_ids = {s.snippet_id for s in snippets}
+    selected_ids = [sid for sid in (snippet_ids or []) if sid in valid_ids]
+    if not selected_ids:
+        selected_ids = _parse_selected_ids(corpus, valid_ids=valid_ids)
     resolved = _resolve_requires(selected_ids, snippets)
 
     state = _load_state()

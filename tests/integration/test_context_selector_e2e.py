@@ -13,14 +13,8 @@ def test_get_context_e2e(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(paths, "GLOBAL_SNIPPETS_DIR", global_snippets)
     monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets)
 
-    monkeypatch.setattr(
-        context_selector,
-        "_select_ids",
-        lambda _corpus, _metadata: ["software-development/standards/commits"],
-    )
-
     output = context_selector.build_context_output(
-        corpus="commit standards commitizen atomic commits",
+        corpus='["software-development/standards/commits"]',
         areas=["policy", "standard"],
         project_root=REPO_ROOT,
         session_id=None,

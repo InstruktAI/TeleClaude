@@ -30,16 +30,17 @@ def get_tool_definitions() -> list[Tool]:
             name="teleclaude__get_context",
             title="TeleClaude: Get Context",
             description=(
-                "Select and return relevant documentation snippets based on a selector corpus. "
-                "Use when you need policy/procedure/role/checklist/reference context beyond what you already have. "
-                "Provide a short corpus describing the task and the perspectives you need."
+                "Two-phase snippet retrieval. "
+                "Phase 1: pass an empty corpus to return a filtered snippet index (frontmatter only). "
+                "Phase 2: pass selected snippet ids (as a JSON list or newline list) to receive full snippets. "
+                "Use when you need policy/procedure/role/checklist/reference context beyond what you already have."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "corpus": {
                         "type": "string",
-                        "description": "Selector corpus: short, focused text describing the task and needed context.",
+                        "description": "Empty for index; otherwise a JSON list or newline list of snippet ids to fetch.",
                     },
                     "areas": {
                         "type": "array",
@@ -63,7 +64,7 @@ def get_tool_definitions() -> list[Tool]:
                                 "principles",
                             ],
                         },
-                        "description": "Optional taxonomy types to prioritize (leave empty for all).",
+                        "description": "Taxonomy types to include in the index (leave empty for all).",
                     },
                 },
                 "required": ["corpus", "areas"],

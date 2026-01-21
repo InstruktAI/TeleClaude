@@ -24,10 +24,11 @@ type: architecture
 ## Primary flows
 
 - Build snippet metadata from docs/snippets and global snippets.
-- Call the local LLM selector to choose snippet IDs.
-- Resolve requires dependencies and order by scope priority (global -> domain -> project).
+- Return a filtered index (frontmatter only) when no IDs are provided.
+- Accept selected snippet IDs from the caller and resolve requires dependencies.
+- Order by scope priority (global -> domain -> project).
 - Persist selected IDs per session to avoid repeated context churn.
 
 ## Failure modes
 
-- If selection fails or parsing is invalid, returns an empty snippet list.
+- If no valid snippet IDs are provided, returns an empty snippet list.
