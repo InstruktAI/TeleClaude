@@ -43,7 +43,8 @@ snippets:
   type: checklist
   scope: global
   path: docs/snippets/checklist/multi-computer-readiness.md
-  requires: []
+  requires:
+  - procedure/ssh-agent-keychain
 - id: concept/durable-execution
   description: Reliability mechanism using the Outbox pattern in SQLite.
   type: concept
@@ -86,7 +87,8 @@ snippets:
   type: guide
   scope: global
   path: docs/snippets/guide/multi-computer-setup.md
-  requires: []
+  requires:
+  - checklist/multi-computer-readiness
 - id: guide/troubleshooting
   description: Diagnostic steps for common TeleClaude operational issues.
   type: guide

@@ -3,6 +3,8 @@ id: checklist/multi-computer-readiness
 type: checklist
 scope: global
 description: Verification steps before enabling multi-computer orchestration.
+requires:
+  - procedure/ssh-agent-keychain
 ---
 
 ## Goal

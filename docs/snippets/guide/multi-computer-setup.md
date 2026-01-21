@@ -3,6 +3,8 @@ id: guide/multi-computer-setup
 type: guide
 scope: global
 description: Step-by-step guide for setting up a distributed TeleClaude network.
+requires:
+  - checklist/multi-computer-readiness
 ---
 
 ## Goal
