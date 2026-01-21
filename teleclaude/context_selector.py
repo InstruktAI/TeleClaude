@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, TypedDict
@@ -188,19 +189,27 @@ def _select_ids(corpus: str, metadata: list[dict[str, str]]) -> list[str]:
         "and omit the generic unless the user explicitly asks for general guidance."
     )
 
+    user_content = f"User Request: {corpus}\n\nAvailable Snippets:\n{json.dumps(metadata)}"
     payload = {
         "model": "mistral-small-3.2-24b-instruct-2506-mlx@4bit",
         "messages": [
             {"role": "system", "content": system_prompt},
             {
                 "role": "user",
-                "content": f"User Request: {corpus}\n\nAvailable Snippets:\n{json.dumps(metadata)}",
+                "content": user_content,
             },
         ],
         "temperature": 0,
     }
 
-    logger.debug("context_selector_llm_request", snippet_count=len(metadata))
+    payload_json = json.dumps(payload)
+    logger.debug(
+        "context_selector_llm_request",
+        snippet_count=len(metadata),
+        payload_bytes=len(payload_json.encode("utf-8")),
+        user_content_bytes=len(user_content.encode("utf-8")),
+    )
+    start_ns = time.time_ns()
 
     try:
         response = httpx.post(llm_url, json=payload, timeout=30.0)
@@ -208,8 +217,24 @@ def _select_ids(corpus: str, metadata: list[dict[str, str]]) -> list[str]:
         result = response.json()
         content = result["choices"][0]["message"]["content"].strip()
     except Exception as exc:
+        end_ns = time.time_ns()
+        logger.debug(
+            "context_selector_llm_timing",
+            start_ns=start_ns,
+            end_ns=end_ns,
+            duration_ms=(end_ns - start_ns) / 1_000_000,
+            success=False,
+        )
         logger.exception("context_selector_llm_failed", error=str(exc))
         return []
+    end_ns = time.time_ns()
+    logger.debug(
+        "context_selector_llm_timing",
+        start_ns=start_ns,
+        end_ns=end_ns,
+        duration_ms=(end_ns - start_ns) / 1_000_000,
+        success=True,
+    )
 
     if "```json" in content:
         content = content.split("```json")[1].split("```")[0].strip()
