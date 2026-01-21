@@ -69,13 +69,6 @@ snippets:
   scope: global
   path: docs/snippets/concept/session-types.md
   requires: []
-- id: decision/exit-marker-removal
-  description: Architectural decision to move from file-based exit markers to hook-based
-    events.
-  type: decision
-  scope: project
-  path: docs/snippets/decision/exit-marker-removal.md
-  requires: []
 - id: example/ai-to-ai-delegation
   description: Code example of a Master AI delegating a task to a Worker AI.
   type: example
@@ -99,12 +92,6 @@ snippets:
   type: guide
   scope: global
   path: docs/snippets/guide/troubleshooting.md
-  requires: []
-- id: incident/api-reliability-blocking
-  description: Analysis of how third-party API rate limits can block the daemon.
-  type: incident
-  scope: global
-  path: docs/snippets/incident/api-reliability-blocking.md
   requires: []
 - id: policy/adapter-boundaries
   description: Strict separation between UI/Transport adapters and core logic.
@@ -212,8 +199,8 @@ snippets:
   requires:
   - teleclaude/concept/resource-models
 - id: teleclaude/architecture/context-index
-  description: Snippet index generation that produces docs/index.yaml from snippet
-    frontmatter.
+  description: Snippet index generation that produces docs/snippets/index.yaml from
+    snippet frontmatter.
   type: architecture
   scope: project
   path: docs/snippets/architecture/context-index.md
@@ -332,14 +319,6 @@ snippets:
   scope: project
   path: docs/snippets/concept/shell-readiness.md
   requires: []
-- id: teleclaude/decision/protocol-adapter-client
-  description: Decision to route all adapter operations through AdapterClient and
-    protocol-based transport.
-  type: decision
-  scope: project
-  path: docs/snippets/decision/protocol-adapter-client.md
-  requires:
-  - teleclaude/architecture/adapter-client
 - id: teleclaude/guide/ai-to-ai-operations
   description: Recommended flow for delegating work using TeleClaude MCP tools.
   type: guide
@@ -453,18 +432,3 @@ snippets:
   path: docs/snippets/standard/cache-contract.md
   requires:
   - teleclaude/architecture/cache
-- id: teleclaude/timeline/protocol-refactor-2025-01-08
-  description: Timeline entry for the protocol-based adapter refactor completed on
-    2025-01-08.
-  type: timeline
-  scope: project
-  path: docs/snippets/timeline/protocol-refactor-2025-01-08.md
-  requires:
-  - teleclaude/decision/protocol-adapter-client
-- id: timeline/protocol-refactor-2025-01
-  description: Major architectural refactor moving to Protocol-based adapters and
-    Redis transport.
-  type: timeline
-  scope: project
-  path: docs/snippets/timeline/protocol-refactor-2025-01.md
-  requires: []

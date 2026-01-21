@@ -57,5 +57,6 @@ fi
 
 # Auto-add formatted files back to staging area (pre-commit hook)
 if [ $# -gt 0 ]; then
+  rm -f .git/index.lock
   git add $files
 fi
