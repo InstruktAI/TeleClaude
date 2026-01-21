@@ -693,7 +693,7 @@ class AgentResumeArgs:
 
     agent_name: str
     native_session_id: Optional[str]
-    thinking_mode: ThinkingMode
+    thinking_mode: Optional[ThinkingMode]
 
 
 @dataclass

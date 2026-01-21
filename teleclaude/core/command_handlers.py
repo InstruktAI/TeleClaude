@@ -1362,7 +1362,7 @@ async def resume_agent(
         await client.send_message(session, f"Unknown agent: {agent_name}")
         return
 
-    thinking_raw = session.thinking_mode or ThinkingMode.SLOW.value
+    thinking_raw = session.thinking_mode
     native_session_id_override = args[0].strip() if args else ""
     native_session_id = native_session_id_override or session.native_session_id
     if native_session_id_override:
@@ -1371,12 +1371,12 @@ async def resume_agent(
     resume_args = AgentResumeArgs(
         agent_name=agent_name,
         native_session_id=native_session_id,
-        thinking_mode=ThinkingMode(thinking_raw),
+        thinking_mode=ThinkingMode(thinking_raw) if thinking_raw else None,
     )
 
     command_str = get_agent_command(
         agent=resume_args.agent_name,
-        thinking_mode=resume_args.thinking_mode.value,
+        thinking_mode=resume_args.thinking_mode.value if resume_args.thinking_mode else None,
         exec=False,
         resume=not resume_args.native_session_id,
         native_session_id=resume_args.native_session_id,

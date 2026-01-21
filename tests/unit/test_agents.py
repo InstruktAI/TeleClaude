@@ -103,6 +103,13 @@ def test_get_agent_command_native_session_id_uses_template():
     assert "-m gemini-3-pro-preview" in cmd  # model flag included for explicit session resume
 
 
+def test_get_agent_command_native_session_id_omits_model_when_none():
+    """Test that native session id omits model flag when thinking_mode=None."""
+    cmd = agents.get_agent_command("gemini", native_session_id="abc123", thinking_mode=None)
+    assert "--resume abc123" in cmd
+    assert " -m " not in cmd
+
+
 def test_get_agent_command_invalid_mode_raises():
     """Test that unknown thinking_mode raises a ValueError."""
     with pytest.raises(ValueError):
