@@ -92,8 +92,9 @@ class ChannelOperationsMixin:
             topic_id = topic.message_thread_id
             logger.info("Created topic: %s (ID: %s)", title, topic_id)
 
-            # Wait for forum_topic_created event before returning
-            await self._wait_for_topic_ready(topic_id, title)
+            # NOTE: We don't wait for forum_topic_created here anymore.
+            # Channel creation is fire-and-forget, and send_message will wait
+            # for topic readiness when it actually tries to send.
 
             # Persist topic_id inside the lock so concurrent callers see it.
             updated_session = await db.get_session(session_id)

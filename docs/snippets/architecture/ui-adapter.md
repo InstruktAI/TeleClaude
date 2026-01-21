@@ -2,12 +2,12 @@
 description:
   UI adapters translate human inputs into events and render outputs with
   UX rules.
-id: teleclaude/role/ui-adapter
+id: teleclaude/architecture/ui-adapter
 requires:
   - teleclaude/concept/adapter-types
   - teleclaude/architecture/ux-message-cleanup
 scope: project
-type: role
+type: architecture
 ---
 
 Responsibilities

@@ -22,7 +22,7 @@ description: Complete lifecycle of a terminal session from creation to cleanup.
 - **Queueing**: Command is persisted in the SQLite queue.
 - **Execution**: The `SessionLauncher` starts a new `tmux` session.
 - **Persistence**: Session metadata is saved in the `sessions` table.
-- **Announcement**: The originating adapter announces the session (e.g., creates a Telegram topic).
+- **Announcement**: The originating adapter announces the session (e.g., creates a Telegram topic). This is fire-and-forget; session creation does not block on channel readiness.
 
 ### 2. Active Operation
 

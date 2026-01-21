@@ -22,8 +22,6 @@ from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
 from teleclaude.core.models import MessageMetadata
 from teleclaude.utils import command_retry
 
-from ..base_adapter import AdapterError
-
 if TYPE_CHECKING:
     from telegram.ext import ExtBot
 
@@ -88,17 +86,18 @@ class MessageOperationsMixin:
         self._ensure_started()
         metadata = metadata or MessageMetadata()
 
-        # Get Telegram's topic_id from namespaced metadata (trust contract)
+        # Gracefully skip if channel not ready yet (fire-and-forget channel creation)
         if not session.adapter_metadata or not session.adapter_metadata.telegram:
-            raise AdapterError("Session missing telegram metadata")
+            logger.debug("send_message: skipping, telegram metadata not ready for session %s", session.session_id[:8])
+            return ""
         topic_id = session.adapter_metadata.telegram.topic_id
+        if not topic_id:
+            logger.debug("send_message: skipping, topic_id not ready for session %s", session.session_id[:8])
+            return ""
 
         # Extract reply_markup and parse_mode from metadata
         reply_markup = metadata.reply_markup
         parse_mode = metadata.parse_mode
-
-        # topic_id must be int (validated above)
-        assert isinstance(topic_id, int), "topic_id must be int"
 
         # Best-effort wait for topic readiness to avoid "thread not found" races.
         await self._wait_for_topic_ready(topic_id, session.title)
@@ -314,11 +313,14 @@ class MessageOperationsMixin:
         """Send file to session's topic."""
         self._ensure_started()
 
-        # Get topic_id from telegram metadata
-        # Trust contract: metadata exists
+        # Gracefully skip if channel not ready yet (fire-and-forget channel creation)
         if not session.adapter_metadata or not session.adapter_metadata.telegram:
-            raise AdapterError("Session missing telegram metadata")
+            logger.debug("send_file: skipping, telegram metadata not ready for session %s", session.session_id[:8])
+            return ""
         topic_id = session.adapter_metadata.telegram.topic_id
+        if not topic_id:
+            logger.debug("send_file: skipping, topic_id not ready for session %s", session.session_id[:8])
+            return ""
 
         with open(file_path, "rb") as f:
             message = await self.bot.send_document(

@@ -37,3 +37,4 @@ type: architecture
 
 - Missing topic threads trigger recovery and metadata repair before retry.
 - Telegram API errors are logged and surfaced as adapter failures.
+- Outbound methods gracefully skip if channel not ready; polling retries ensure eventual delivery.

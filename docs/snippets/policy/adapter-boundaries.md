@@ -11,6 +11,7 @@ description: Strict separation between UI/Transport adapters and core logic.
 - Adapter-specific types and APIs do not enter the core.
 - Adapter/core interaction happens through defined Python Protocols only.
 - Feedback cleanup is performed only by the adapter that originated the request.
+- Outbound UI adapter traffic is fire-and-forget; adapters broadcast but never block callers.
 
 ## Rationale
 

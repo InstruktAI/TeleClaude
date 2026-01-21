@@ -401,20 +401,20 @@ snippets:
   scope: project
   path: docs/snippets/reference/ui-commands.md
   requires: []
-- id: teleclaude/role/transport-adapter
+- id: teleclaude/architecture/transport-adapter
   description: Transport adapters handle cross-computer request/response and peer
     discovery.
-  type: role
+  type: architecture
   scope: project
-  path: docs/snippets/role/transport-adapter.md
+  path: docs/snippets/architecture/transport-adapter.md
   requires:
   - teleclaude/concept/adapter-types
-- id: teleclaude/role/ui-adapter
+- id: teleclaude/architecture/ui-adapter
   description: UI adapters translate human inputs into events and render outputs with
     UX rules.
-  type: role
+  type: architecture
   scope: project
-  path: docs/snippets/role/ui-adapter.md
+  path: docs/snippets/architecture/ui-adapter.md
   requires:
   - teleclaude/concept/adapter-types
   - teleclaude/architecture/ux-message-cleanup

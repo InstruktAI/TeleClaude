@@ -233,7 +233,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     if voice:
         await db.assign_voice(session_id, voice)
 
-    # Create session in database first (need session_id for create_channel)
+    # Create session in database first
     session = await db.create_session(
         computer_name=computer_name,
         tmux_session_name=tmux_name,
@@ -246,24 +246,8 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         initiator_session_id=initiator_session_id,
     )
 
-    # Create channel via client (session object passed, adapter_metadata updated in DB)
-    await client.create_channel(
-        session=session,
-        title=title,
-        origin_adapter=str(origin),
-        target_computer=str(initiator) if initiator else None,
-    )
-
-    # Re-fetch session to get updated adapter_metadata (set by create_channel)
-    updated_session = await db.get_session(session_id)
-    if updated_session is None:
-        raise RuntimeError(f"Session {session_id} disappeared after create_channel")
-    session = updated_session
-
-    # Create actual tmux session with voice env vars
+    # Create tmux session IMMEDIATELY (don't wait for channel creation)
     voice_env_vars = get_voice_env_vars(voice) if voice else {}
-
-    # Inject TELECLAUDE_SESSION_ID for hook routing
     env_vars = voice_env_vars.copy()
     env_vars["TELECLAUDE_SESSION_ID"] = session_id
 
@@ -274,21 +258,34 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         env_vars=env_vars,
     )
 
-    if success:
-        logger.info("Created session: %s", session.session_id)
-        return {"session_id": session_id, "tmux_session_name": tmux_name}
+    if not success:
+        logger.error(
+            "Failed to create tmux session for %s (tmux=%s, working_dir=%s)",
+            session.session_id[:8],
+            tmux_name,
+            working_dir,
+        )
+        await cleanup_session_resources(session, client)
+        await db.close_session(session.session_id)
+        raise RuntimeError("Failed to create tmux session")
 
-    # Tmux creation failed - clean up DB and channels
-    logger.error(
-        "Failed to create tmux session for %s (tmux=%s, working_dir=%s)",
-        session.session_id[:8],
-        tmux_name,
-        working_dir,
-    )
-    await cleanup_session_resources(session, client)
-    await db.close_session(session.session_id)
-    logger.error("Failed to create tmux session")
-    raise RuntimeError("Failed to create tmux session")
+    # Channel creation is fire-and-forget - don't block on it
+    # UI adapters will gracefully skip sends until channel is ready
+    async def _create_channel_background() -> None:
+        try:
+            await client.create_channel(
+                session=session,
+                title=title,
+                origin_adapter=str(origin),
+                target_computer=str(initiator) if initiator else None,
+            )
+        except Exception as e:
+            logger.error("Background channel creation failed for %s: %s", session_id[:8], e)
+
+    asyncio.create_task(_create_channel_background())
+
+    logger.info("Created session: %s", session.session_id)
+    return {"session_id": session_id, "tmux_session_name": tmux_name}
 
 
 async def list_sessions() -> list[SessionSummary]:
