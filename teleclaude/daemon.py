@@ -257,6 +257,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Debounce stop events (Gemini fires AfterAgent multiple times per turn)
         self._last_stop_time: dict[str, float] = {}
         self._stop_debounce_seconds = 5.0
+        self._last_resource_snapshot_time: float | None = None
+        self._last_loop_lag_ms: float | None = None
 
         # In-memory dedupe for stop summarization (session_id -> transcript fingerprint)
         self._last_summary_fingerprint: dict[str, str] = {}
@@ -1726,6 +1728,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             "mcp_connections": mcp_connections,
             "api_ws_clients": api_ws_clients,
         }
+        if self._last_loop_lag_ms is not None:
+            snapshot["loop_lag_ms"] = self._last_loop_lag_ms
         return snapshot
 
     def _log_resource_snapshot(self, reason: str) -> None:
@@ -1748,10 +1752,18 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     async def _resource_monitor_loop(self) -> None:
         """Periodically log resource snapshots."""
+        loop = asyncio.get_running_loop()
         while not self.shutdown_event.is_set():
             await asyncio.sleep(RESOURCE_SNAPSHOT_INTERVAL_S)
             if self.shutdown_event.is_set():
                 break
+            now = loop.time()
+            if self._last_resource_snapshot_time is None:
+                self._last_loop_lag_ms = 0.0
+            else:
+                lag_s = (now - self._last_resource_snapshot_time) - RESOURCE_SNAPSHOT_INTERVAL_S
+                self._last_loop_lag_ms = max(0.0, lag_s * 1000.0)
+            self._last_resource_snapshot_time = now
             self._log_resource_snapshot("periodic")
 
     async def _launchd_watch_loop(self) -> None:

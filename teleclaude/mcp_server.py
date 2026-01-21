@@ -369,7 +369,11 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
 
             async def _handle_get_context() -> list[TextContent]:
                 areas_obj = arguments.get("areas") if arguments else None
-                areas = [a for a in areas_obj if isinstance(a, str)] if isinstance(areas_obj, list) else None
+                if not isinstance(areas_obj, list) or not areas_obj:
+                    raise ValueError("areas is required and must be a non-empty list of strings")
+                areas = [a for a in areas_obj if isinstance(a, str)]
+                if not areas:
+                    raise ValueError("areas must contain at least one string")
                 cwd = self._str_arg(arguments, "cwd") or None
                 text = await self.teleclaude__get_context(
                     self._str_arg(arguments, "corpus"),

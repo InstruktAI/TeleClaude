@@ -239,6 +239,11 @@ class DaemonLifecycle:
                 reason=reason,
                 attempt=self._api_restart_attempts,
                 window_s=self._api_restart_window_s,
+                server_started=getattr(getattr(self.api_server, "server", None), "started", None),
+                server_should_exit=getattr(getattr(self.api_server, "server", None), "should_exit", None),
+                server_task_done=(
+                    self.api_server.server_task.done() if self.api_server and self.api_server.server_task else None
+                ),
             )
             await asyncio.sleep(self._api_restart_backoff_s)
             api_server = self.api_server

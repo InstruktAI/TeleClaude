@@ -898,7 +898,7 @@ class MCPHandlersMixin:
     async def teleclaude__get_context(
         self,
         corpus: str,
-        areas: list[str] | None = None,
+        areas: list[str],
         cwd: str | None = None,
         caller_session_id: str | None = None,
     ) -> str:

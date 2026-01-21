@@ -299,7 +299,7 @@ def _resolve_requires(selected_ids: Iterable[str], snippets: list[SnippetMeta]) 
 def build_context_output(
     *,
     corpus: str,
-    areas: list[str] | None,
+    areas: list[str],
     project_root: Path,
     session_id: str | None,
 ) -> str:
@@ -313,11 +313,8 @@ def build_context_output(
     snippets.extend(_load_index(global_index))
     snippets.extend(_load_index(project_index))
 
-    if areas:
-        areas_set = set(areas)
-        snippets_for_selection = [s for s in snippets if s.snippet_type in areas_set]
-    else:
-        snippets_for_selection = snippets
+    areas_set = set(areas)
+    snippets_for_selection = [s for s in snippets if s.snippet_type in areas_set]
 
     metadata: list[dict[str, str]] = [
         {"id": s.snippet_id, "description": s.description, "type": s.snippet_type} for s in snippets_for_selection
@@ -341,6 +338,13 @@ def build_context_output(
             continue
         new_snippets.append(snippet)
         new_ids.append(snippet.snippet_id)
+
+    logger.debug(
+        "context_selector_output_summary",
+        selected_ids_count=len(selected_ids),
+        resolved_snippets_count=len(resolved),
+        new_snippets_count=len(new_snippets),
+    )
 
     if session_id:
         state.setdefault("sessions", {})

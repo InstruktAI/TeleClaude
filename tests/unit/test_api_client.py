@@ -84,6 +84,26 @@ async def test_list_sessions_success():
 
 
 @pytest.mark.asyncio
+async def test_connect_error_debounced_logging():
+    """Log connect errors at most once per debounce window."""
+    client = TelecAPIClient()
+    await client.connect()
+
+    with patch.object(client._client, "get", side_effect=httpx.ConnectError("boom")):
+        with patch("teleclaude.cli.api_client.time.monotonic", side_effect=[0.0, 5.0, 12.0]):
+            with patch("teleclaude.cli.api_client.logger") as mock_logger:
+                with pytest.raises(APIError):
+                    await client._request("GET", "/sessions")
+                with pytest.raises(APIError):
+                    await client._request("GET", "/sessions")
+                with pytest.raises(APIError):
+                    await client._request("GET", "/sessions")
+                assert mock_logger.debug.call_count == 2
+
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_list_sessions_with_computer_filter():
     """Test list_sessions passes computer parameter."""
     client = TelecAPIClient()

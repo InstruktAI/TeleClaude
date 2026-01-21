@@ -66,6 +66,7 @@ class TelecAPIClient:
         self._ws_subscriptions: set[str] = set()
         self._ws_callback: Callable[[WsEvent], None] | None = None
         self._ws_lock = threading.Lock()
+        self._last_connect_error_log: float | None = None
 
     async def connect(self) -> None:
         """Connect to API socket."""
@@ -273,6 +274,17 @@ class TelecAPIClient:
         except httpx.HTTPStatusError as e:
             raise APIError(f"API request failed: {e.response.status_code} {e.response.text}") from e
         except httpx.ConnectError as e:
+            now = time.monotonic()
+            if self._last_connect_error_log is None or (now - self._last_connect_error_log) >= 10.0:
+                self._last_connect_error_log = now
+                logger.debug(
+                    "API connect failed",
+                    method=str(method),
+                    url=url,
+                    socket_path=self.socket_path,
+                    timeout=request_timeout,
+                    error=str(e),
+                )
             raise APIError("Cannot connect to API server. Socket may be missing.") from e
         except httpx.TimeoutException as e:
             raise APIError("API request timed out. Server may be blocked or overloaded.") from e
