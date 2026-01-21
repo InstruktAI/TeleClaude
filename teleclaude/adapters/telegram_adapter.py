@@ -197,9 +197,7 @@ class TelegramAdapter(
             await self.create_channel(current or session, title, metadata=ChannelMetadata(origin=False))
 
         refreshed = await db.get_session(session.session_id)
-        if not refreshed:
-            raise ValueError(f"Session {session.session_id[:8]} missing after channel creation")
-        return refreshed
+        return refreshed or session
 
     def _register_simple_command_handlers(self) -> None:
         """Create handler methods for simple commands dynamically.
