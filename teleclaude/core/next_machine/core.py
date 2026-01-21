@@ -1131,11 +1131,9 @@ async def ensure_worktree_async(cwd: str, slug: str) -> bool:
 
 
 def _prepare_worktree(cwd: str, slug: str) -> None:
-    """Call project-owned preparation hook to prepare worktree.
+    """Call worktree preparation hook.
 
-    Detects project type and calls appropriate hook:
-    - Python: bin/worktree-prepare.sh {slug}
-    - Node: npm run worktree:prepare -- {slug}
+    Convention: bin/worktree-prepare.sh {slug}
 
     Args:
         cwd: Project root directory (main repo)
@@ -1145,88 +1143,35 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
         RuntimeError: If hook not found or execution fails
     """
     cwd_path = Path(cwd)
-
-    # Check for bin/worktree-prepare.sh (Python projects)
     worktree_script = cwd_path / "bin" / "worktree-prepare.sh"
-    if worktree_script.exists():
-        logger.info("Preparing worktree with: bin/worktree-prepare.sh %s", slug)
-        try:
-            result = subprocess.run(
-                [str(worktree_script), slug],
-                cwd=cwd,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            logger.info("Worktree preparation output:\n%s", result.stdout)
-        except subprocess.CalledProcessError as e:
-            stdout_str = str(e.stdout) if e.stdout is not None else ""  # type: ignore[misc]
-            stderr_str = str(e.stderr) if e.stderr is not None else ""  # type: ignore[misc]
-            msg = (
-                f"Worktree preparation failed for {slug}:\n"
-                f"Command: bin/worktree-prepare.sh {slug}\n"
-                f"Exit code: {e.returncode}\n"
-                f"stdout: {stdout_str}\n"
-                f"stderr: {stderr_str}"
-            )
-            logger.error(msg)
-            raise RuntimeError(msg) from e
-        return
 
-    # Check for package.json
-    package_json = cwd_path / "package.json"
-    if package_json.exists():
-        # Parse JSON and verify worktree:prepare script exists
-        try:
-            with open(package_json, "r", encoding="utf-8") as f:
-                data: dict[str, dict[str, str]] = json.load(f)
-            if SCRIPTS_KEY not in data or WorktreeScript.PREPARE.value not in data[SCRIPTS_KEY]:
-                msg = f"package.json exists but 'worktree:prepare' script not found in {cwd}"
-                logger.error(msg)
-                raise RuntimeError(msg)
-        except (json.JSONDecodeError, KeyError) as e:
-            msg = f"Failed to parse package.json in {cwd}"
-            logger.error(msg)
-            raise RuntimeError(msg) from e
+    if not worktree_script.exists():
+        msg = f"Worktree preparation script not found: {worktree_script}"
+        logger.error(msg)
+        raise RuntimeError(msg)
 
-        # Call preparation hook
-        logger.info("Preparing worktree with: npm run worktree:prepare -- %s", slug)
-        try:
-            result = subprocess.run(
-                ["npm", "run", WorktreeScript.PREPARE.value, "--", slug],
-                cwd=cwd,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            logger.info("Worktree preparation output:\n%s", result.stdout)
-        except FileNotFoundError:
-            msg = "npm command not found. Install Node.js/npm to use package.json-based worktree preparation."
-            logger.error(msg)
-            raise RuntimeError(msg) from None
-        except subprocess.CalledProcessError as e:
-            stdout_str = str(e.stdout) if e.stdout is not None else ""  # type: ignore[misc]
-            stderr_str = str(e.stderr) if e.stderr is not None else ""  # type: ignore[misc]
-            msg = (
-                f"Worktree preparation failed for {slug}:\n"
-                f"Command: npm run worktree:prepare -- {slug}\n"
-                f"Exit code: {e.returncode}\n"
-                f"stdout: {stdout_str}\n"
-                f"stderr: {stderr_str}"
-            )
-            logger.error(msg)
-            raise RuntimeError(msg) from e
-        return
-
-    # No preparation hook found
-    msg = (
-        f"No worktree preparation hook found in {cwd}. "
-        f"Expected either:\n"
-        f"  - bin/worktree-prepare.sh\n"
-        f"  - package.json with 'worktree:prepare' script"
-    )
-    logger.error(msg)
-    raise RuntimeError(msg)
+    logger.info("Preparing worktree with: bin/worktree-prepare.sh %s", slug)
+    try:
+        result = subprocess.run(
+            [str(worktree_script), slug],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        logger.info("Worktree preparation output:\n%s", result.stdout)
+    except subprocess.CalledProcessError as e:
+        stdout_str = str(e.stdout) if e.stdout is not None else ""  # type: ignore[misc]
+        stderr_str = str(e.stderr) if e.stderr is not None else ""  # type: ignore[misc]
+        msg = (
+            f"Worktree preparation failed for {slug}:\n"
+            f"Command: bin/worktree-prepare.sh {slug}\n"
+            f"Exit code: {e.returncode}\n"
+            f"stdout: {stdout_str}\n"
+            f"stderr: {stderr_str}"
+        )
+        logger.error(msg)
+        raise RuntimeError(msg) from e
 
 
 def is_main_ahead(cwd: str, slug: str) -> bool:
