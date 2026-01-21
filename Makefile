@@ -1,4 +1,4 @@
-.PHONY: help install init certs format lint test-unit test-e2e test-all test coverage coverage-html coverage-report clean dev start stop restart kill status
+.PHONY: help install init certs format lint test-unit test-e2e test-all test coverage coverage-html coverage-report clean dev start stop restart kill status build deploy
 
 # Default target
 help:
@@ -13,6 +13,10 @@ help:
 	@echo "Code Quality:"
 	@echo "  make format       Format code with ruff"
 	@echo "  make lint         Run linting checks (ruff, pyright)"
+	@echo ""
+	@echo "Build & Distribution:"
+	@echo "  make build        Transpile agent files to dist/"
+	@echo "  make deploy       Transpile and deploy to ~/.claude, ~/.codex, ~/.gemini"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test-unit        Run unit tests only"
@@ -119,3 +123,13 @@ kill:
 
 status:
 	@./bin/daemon-control.sh status
+
+build:
+	@echo "Building agent distribution files..."
+	@./bin/distribute.py
+	@echo "✓ Build complete (output in dist/)"
+
+deploy:
+	@echo "Building and deploying agent files..."
+	@./bin/distribute.py --deploy
+	@echo "✓ Deployed to ~/.claude, ~/.codex, ~/.gemini"
