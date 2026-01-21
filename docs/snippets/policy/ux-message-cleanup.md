@@ -5,19 +5,27 @@ scope: project
 description: Automatic cleanup of Telegram message clutter for a clean UI.
 ---
 
-# UX Message Cleanup Policy
+## Rule
 
-## Purpose
-Prevents message accumulation in Telegram topics to maintain a clear, focused workspace for both humans and AI.
+- Track user input and feedback messages for deletion to keep Telegram topics clean.
+- Use `pending_deletions` with `deletion_type` to distinguish user input vs feedback.
+- Never delete persistent AI results or file artifacts.
+- Use tracking APIs instead of raw `reply_text`.
 
-## Cleanup Flows
-1. **User Input Cleanup**: Old user messages are deleted when the next input is received in the same session.
-2. **Feedback Cleanup**: Previous AI status/summary messages are deleted before sending a new feedback message.
-3. **Dual Tracking**:
-   - `user_input`: Tracked for deletion on next input.
-   - `feedback`: Tracked for deletion on next feedback.
+## Rationale
 
-## Invariants
-- **AI Results**: Persistent AI results (e.g., Markdown reports) are NEVER deleted.
-- **File Artifacts**: Files uploaded by agents are NEVER deleted.
-- **Tracking Required**: Developers MUST use tracking APIs (`db.add_pending_deletion`) instead of raw `reply_text`.
+- Prevents clutter, keeps session context readable, and avoids message spam.
+
+## Scope
+
+- Applies to all Telegram UI adapter flows and message responses.
+
+## Enforcement or checks
+
+- Verify cleanup flows delete user_input messages on next input.
+- Verify feedback cleanup runs before sending new feedback.
+- Audit usage of `db.add_pending_deletion` in adapter responses.
+
+## Exceptions or edge cases
+
+- Persistent AI results and file artifacts are never deleted.

@@ -5,31 +5,22 @@ scope: global
 description: Complete catalog of available MCP tools for AI agents.
 ---
 
-# MCP Tools Reference
+## What it is
 
-## Discovery
-- `teleclaude__list_computers`: List online computers.
-- `teleclaude__list_projects`: List trusted project directories.
-- `teleclaude__list_sessions`: List active AI-to-AI sessions.
+- Catalog of MCP tools exposed by TeleClaude for discovery, orchestration, and lifecycle management.
 
-## Lifecycle
-- `teleclaude__start_session`: Start a new AI worker session.
-- `teleclaude__run_agent_command`: Run a slash command (starts session if needed).
-- `teleclaude__send_message`: Send message to an existing session.
-- `teleclaude__get_session_data`: Retrieve transcript/state (tail/time-filtered).
-- `teleclaude__stop_notifications`: Unsubscribe from session events.
-- `teleclaude__end_session`: Terminate session and cleanup resources.
+## Canonical fields
 
-## Files & Results
-- `teleclaude__send_file`: Send a file to a session's Telegram chat.
-- `teleclaude__send_result`: Send formatted Markdown/HTML results to user.
+- **Discovery**: `teleclaude__list_computers`, `teleclaude__list_projects`, `teleclaude__list_sessions`.
+- **Lifecycle**: `teleclaude__start_session`, `teleclaude__run_agent_command`, `teleclaude__send_message`, `teleclaude__get_session_data`, `teleclaude__stop_notifications`, `teleclaude__end_session`.
+- **Files & Results**: `teleclaude__send_file`, `teleclaude__send_result`.
+- **Orchestration**: `teleclaude__next_prepare`, `teleclaude__next_work`, `teleclaude__mark_phase`, `teleclaude__set_dependencies`.
+- **Maintenance**: `teleclaude__deploy`, `teleclaude__mark_agent_unavailable`.
 
-## Orchestration
-- `teleclaude__next_prepare`: Prepare a work item (HITL).
-- `teleclaude__next_work`: Start autonomous work on a prepared item.
-- `teleclaude__mark_phase`: Mark build/review phase status.
-- `teleclaude__set_dependencies`: Define task dependencies.
+## Allowed values
 
-## Maintenance
-- `teleclaude__deploy`: Trigger `git pull` + `make install` on remotes.
-- `teleclaude__mark_agent_unavailable`: Handle rate limits or outages.
+- Tool names must match the registered MCP tool list exactly.
+
+## Known caveats
+
+- `teleclaude__run_agent_command` and `teleclaude__send_message` require a 5‑minute wait/timeout workflow for completion checks.

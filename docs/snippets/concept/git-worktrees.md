@@ -8,13 +8,25 @@ description: Use of git worktrees for isolated agent development and testing.
 # Git Worktrees for Agents
 
 ## Purpose
+
 Provides agents with a clean, isolated environment for implementation and testing, preventing interference with the main development directory or production state.
 
-## Characteristics
+## Inputs/Outputs
+
+- Inputs: worktree creation from the main repository.
+- Outputs: isolated working directory and database.
+
+## Primary flows
+
 1. **Isolated Database**: Every worktree contains its own `teleclaude.db` (usually symlinked or initialized separately).
 2. **Environment Isolation**: `TELECLAUDE_WORKING_DIR` is set to the worktree path.
 3. **Temporary Nature**: Worktrees are usually created for a single todo/slug and deleted after completion.
 
 ## Invariants
+
 - Agents SHOULD perform all build/test work inside a worktree.
 - Worktrees MUST be tracked by the main git repo (as additional worktrees) to ensure visibility.
+
+## Failure modes
+
+- Missing worktree tracking breaks visibility and task automation.

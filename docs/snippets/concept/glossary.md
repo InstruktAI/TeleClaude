@@ -7,9 +7,16 @@ requires: []
 ---
 
 ## Purpose
+
 - Provide consistent definitions for core TeleClaude terms used across docs and code.
 
-Definitions
+## Inputs/Outputs
+
+- Inputs: terms used in docs, code, and APIs.
+- Outputs: canonical definitions for shared understanding.
+
+## Primary flows
+
 - Session: a tmux-backed execution context tracked in SQLite and surfaced in Telegram/MCP/API.
 - session_id: TeleClaude-generated UUID used as the primary session identifier across adapters.
 - native_session_id: agent-native identifier captured from hook payloads (Claude/Gemini/Codex).
@@ -21,3 +28,11 @@ Definitions
 - subdir: optional relative path for a worktree or subfolder within project_path.
 - session summary: lightweight session DTO used for list views and cache snapshots.
 - session detail: live output and event stream for an active session.
+
+## Invariants
+
+- Definitions in this glossary are the canonical meanings for documentation and code comments.
+
+## Failure modes
+
+- Inconsistent terminology causes mismatched expectations across adapters and APIs.

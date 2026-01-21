@@ -12,6 +12,7 @@ repos:
         entry: ./bin/format.sh
         language: system
         pass_filenames: true
+        require_serial: true
       - id: lint
         name: Lint (make lint)
         entry: make lint

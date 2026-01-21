@@ -5,16 +5,26 @@ scope: project
 description: Standard commands for managing the TeleClaude daemon service.
 ---
 
-# Service Management
+## Goal
 
-## Lifecycle Commands
-- **Start**: `make start` (Enables and starts systemd/launchd service).
-- **Stop**: `make stop` (Disables and stops service - EMERGENCY ONLY).
-- **Restart**: `make restart` (Clean SIGTERM + start; use after code changes).
-- **Status**: `make status` (Checks uptime and health).
-- **Logs**: `instrukt-ai-logs teleclaude --since 10m` (View recent daemon logs).
+- Manage daemon lifecycle safely and consistently.
 
-## Development Rules
-- ALWAYS use `make restart` for development; never stop the service manually.
-- ALWAYS verify `make status` before reporting success.
-- If the daemon crashes loopingly, use `make stop` to break the cycle and investigate logs.
+## Preconditions
+
+- You are in the TeleClaude repository.
+
+## Steps
+
+1. Start service: `make start`.
+2. Stop service (emergency only): `make stop`.
+3. Restart service after changes: `make restart`.
+4. Check status: `make status`.
+5. Review logs: `instrukt-ai-logs teleclaude --since 10m`.
+
+## Outputs
+
+- Service state updated and verified.
+
+## Recovery
+
+- If the daemon crash-loops, use `make stop`, inspect logs, and fix the root cause before restarting.

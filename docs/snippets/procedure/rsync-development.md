@@ -5,17 +5,25 @@ scope: project
 description: High-speed iteration workflow using rsync instead of git push/pull.
 ---
 
-# Rsync Development Workflow
+## Goal
 
-## Purpose
-Enables sub-second synchronization of code changes to remote computers during active development, avoiding WIP git commits.
+- Sync changes to a remote computer quickly during active development.
 
-## Procedure
-1. **Sync**: `bin/rsync.sh <computer-name>` (Uses `.rsyncignore` to protect local configs/DBs).
-2. **Restart**: `ssh -A <remote> 'cd apps/TeleClaude && make restart'`.
-3. **Verify**: Monitor remote logs or check status.
+## Preconditions
 
-## Rules
-- ONLY use the `bin/rsync.sh` wrapper.
-- Remote computers MUST be defined in `config.yml` under `remote_computers`.
-- ONLY commit to git once the feature is fully tested and working.
+- Remote computers are defined in `config.yml` under `remote_computers`.
+- SSH access is available and uses agent forwarding (`-A`).
+
+## Steps
+
+1. Sync changes: `bin/rsync.sh <computer-name>` (uses `.rsyncignore`).
+2. Restart daemon: `ssh -A <remote> 'cd apps/TeleClaude && make restart'`.
+3. Verify: monitor logs or check status remotely.
+
+## Outputs
+
+- Remote instance updated and running the latest code.
+
+## Recovery
+
+- If sync fails, check SSH connectivity and `config.yml` mapping, then retry.

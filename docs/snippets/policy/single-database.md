@@ -5,16 +5,26 @@ scope: project
 description: Guaranteed single database file usage for the daemon to prevent data fragmentation.
 ---
 
-# Single Database Policy
+## Rule
 
-## Purpose
-Ensures that the running TeleClaude daemon always uses a single source of truth for its state, preventing data fragmentation and synchronization issues.
+- The daemon uses a single SQLite file: `teleclaude.db` at the project root.
+- The database path is `${WORKING_DIR}/teleclaude.db` in `config.yml`.
+- The daemon must never create, copy, or duplicate the production database file.
+- Extra `.db` files in the main repo are treated as bugs and removed.
 
-## Rules
-1. **Canonical Path**: The daemon MUST only use `teleclaude.db` located in the project root.
-2. **Configuration**: The database path is defined in `config.yml` as `${WORKING_DIR}/teleclaude.db`.
-3. **No Duplicates**: The daemon MUST NEVER create, copy, or duplicate the production database file.
-4. **Cleanup**: Any additional `.db` files found in the main repository (outside of worktrees) MUST be deleted immediately as they indicate a bug.
+## Rationale
 
-## Exceptions
-- **Git Worktrees**: Worktrees use isolated `teleclaude.db` files for test isolation and development sandboxing. This is intentional and these databases must never touch the production database.
+- Prevents state fragmentation and avoids split-brain behavior.
+
+## Scope
+
+- Applies to the running daemon in the main repository.
+
+## Enforcement or checks
+
+- Verify `teleclaude.db` path is the only active database in production.
+- Delete any additional `.db` files found outside worktrees.
+
+## Exceptions or edge cases
+
+- Git worktrees use isolated `teleclaude.db` files for test isolation and must not touch production state.

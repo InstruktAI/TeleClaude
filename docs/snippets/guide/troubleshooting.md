@@ -5,31 +5,29 @@ scope: global
 description: Diagnostic steps for common TeleClaude operational issues.
 ---
 
-# Troubleshooting Guide
+## Goal
 
-## Step 1: Health Check
-Run `make status` to see if the daemon is running and how long it has been up.
+- Diagnose and recover from common TeleClaude operational issues.
 
-## Step 2: Log Inspection
-Use the logging tool to see recent errors:
-```bash
-instrukt-ai-logs teleclaude --since 30m
-```
-Common grep targets: `ERROR`, `mcp-server`, `telegram-adapter`.
+## Preconditions
 
-## Step 3: Adapter Verification
-- **Telegram**: Check if the bot responds to `/help` in the General topic.
-- **MCP**: Check if `/tmp/teleclaude.sock` exists. Run `bin/mcp-wrapper.py` manually to test stdio connectivity.
-- **Redis**: Use `redis-cli ping` to verify transport availability.
+- Access to the host running the daemon.
 
-## Step 4: Session Recovery
-If a session is stuck:
-1. Try `/cancel` to send SIGINT.
-2. Try `/resize large` to force a redraw.
-3. If tmux is dead, `/close-session` and start a new one.
+## Steps
 
-## Step 5: Clean State
-If code changes cause loops:
-1. `make stop`
-2. `rm teleclaude.db` (WARNING: This wipes all session history!)
-3. `make start`
+1. Check daemon health with `make status`.
+2. Inspect logs with `instrukt-ai-logs teleclaude --since 30m` and scan for `ERROR`, `mcp-server`, `telegram-adapter`.
+3. Verify adapters:
+   - Telegram: confirm `/help` responds in the General topic.
+   - MCP: confirm `/tmp/teleclaude.sock` and test `bin/mcp-wrapper.py`.
+   - Redis: `redis-cli ping` if transport is used.
+4. Recover stuck sessions: try `/cancel`, then `/resize large`, then `/close-session`.
+5. As a last resort for crash loops: `make stop`, delete `teleclaude.db`, then `make start`.
+
+## Outputs
+
+- Root cause identified and service restored.
+
+## Recovery
+
+- If the daemon stays unstable, isolate recent changes and revert to a known good state.

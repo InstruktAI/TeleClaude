@@ -5,23 +5,25 @@ scope: global
 description: Resilient two-layer MCP architecture for AI-to-AI communication.
 ---
 
-# MCP Layer Architecture
+## Purpose
 
-## Layers
-1. **Resilient Proxy (`bin/mcp-wrapper.py`)**:
-   - Runs as the stdio entrypoint for MCP clients.
-   - Connects to the daemon via Unix socket.
-   - Provides cached handshakes and auto-reconnection.
-   - Injects `caller_session_id` into tool calls.
-2. **Backend Server (`teleclaude/mcp_server.py`)**:
-   - Actual tool implementations using the `mcp` SDK.
-   - Integrated into the main daemon process.
-   - Shares the database and Redis transport.
+- Provide a resilient MCP interface for AI-to-AI communication.
 
-## Data Flow
-```
-MCP Client (Claude) <-> Stdio Wrapper <-> Unix Socket <-> Daemon Backend <-> Command Pipeline
-```
+## Inputs/Outputs
 
-## Resilience Pattern
-If the daemon restarts (`make restart`), the wrapper stays alive and buffers requests until the socket is available again, ensuring zero-downtime for the AI client.
+- Inputs: MCP tool calls from AI clients.
+- Outputs: tool responses routed through the daemon command pipeline.
+
+## Invariants
+
+- Clients connect via `bin/mcp-wrapper.py` (stdio entrypoint).
+- Wrapper connects to the daemon via Unix socket and injects `caller_session_id`.
+
+## Primary flows
+
+- MCP Client ↔ Stdio Wrapper ↔ Unix Socket ↔ Daemon Backend ↔ Command Pipeline.
+- Wrapper returns cached handshake responses while backend reconnects.
+
+## Failure modes
+
+- If the backend is unavailable, wrapper buffers/awaits until the socket returns.

@@ -5,16 +5,27 @@ scope: project
 description: Strict separation between UI/Transport adapters and core logic.
 ---
 
-# Adapter Boundary Policy
+## Rule
 
-## Purpose
-Ensures that the core domain logic remains platform-agnostic and easy to test, while adapters handle the messiness of external APIs.
+- Adapters normalize external inputs into explicit command objects before entering core logic.
+- Adapter-specific types and APIs do not enter the core.
+- Adapter/core interaction happens through defined Python Protocols only.
+- Feedback cleanup is performed only by the adapter that originated the request.
 
-## Rules
-1. **Normalization**: Adapters MUST normalize external inputs into `Command` objects before passing them to the core.
-2. **No Core Leakage**: Adapter-specific types (e.g., Telegram's `Update`, Redis's raw stream data) MUST NOT enter the core.
-3. **Protocols**: All adapter-core interactions MUST happen via established Python Protocols (e.g., `RemoteExecutionProtocol`, `UiAdapter`).
-4. **Origin-Only Feedback**: User feedback (clutter cleanup) is only performed by the adapter that originated the request.
+## Rationale
 
-## Result
-A clean "onion" architecture where the core knows nothing about Telegram or Redis.
+- Keeps the core testable, stable, and platform-agnostic.
+- Prevents external API churn from leaking into domain logic.
+
+## Scope
+
+- Applies to all UI and transport adapters and their integration points with the core.
+
+## Enforcement or checks
+
+- Review adapter code for boundary violations (raw external types in core paths).
+- Enforce protocol-based interfaces at adapter/core boundaries.
+
+## Exceptions or edge cases
+
+- None; boundary violations are treated as regressions.

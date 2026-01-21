@@ -5,25 +5,28 @@ scope: global
 description: Step-by-step guide for setting up a distributed TeleClaude network.
 ---
 
-# Multi-Computer Setup Guide
+## Goal
 
-## Phase 1: Preparation
-1. **Provision Bots**: Create a unique Telegram bot for each computer via [@BotFather](https://t.me/botfather).
-2. **Supergroup**: Create a Telegram supergroup, enable Topics, and add all bots as admins.
-3. **Redis**: Ensure a Redis instance is accessible from all computers (required for AI-to-AI).
+- Set up a distributed TeleClaude deployment across multiple computers.
 
-## Phase 2: Installation
-1. **Clone & Install**: `make install && make init` on each machine.
-2. **Config**:
-   - `computer_name`: Set a unique shorthand (e.g., `macbook`).
-   - `is_master`: Set to `true` on EXACTLY one computer.
-   - `redis_url`: Point to your shared Redis instance.
-   - `trusted_dirs`: Add paths you want agents to be able to access.
+## Preconditions
 
-## Phase 3: SSH Configuration
-1. **Keychain**: Set up `keychain` as described in `procedure/ssh-agent-keychain`.
-2. **Key Exchange**: Ensure the master can SSH into remotes via agent forwarding.
+- Telegram supergroup and bot tokens are available.
+- Redis is available if AI-to-AI collaboration is required.
 
-## Phase 4: Verification
-1. **Status**: `make status` on all nodes.
-2. **Discovery**: In any AI session, call `teleclaude__list_computers()` to see the full network.
+## Steps
+
+1. Create a unique Telegram bot per computer and add all bots as admins to a Topics-enabled supergroup.
+2. Install on each machine with `make install && make init`.
+3. Configure `computer_name`, `telegram.is_master` (exactly one master), `redis_url`, and `trusted_dirs`.
+4. Configure SSH keychain using `procedure/ssh-agent-keychain`.
+5. Verify `make status` on all nodes.
+6. Use `teleclaude__list_computers()` to confirm network discovery.
+
+## Outputs
+
+- Multi-computer network is online and visible to AI sessions.
+
+## Recovery
+
+- If discovery fails, re-check bot tokens, Redis connectivity, and `trusted_dirs`.

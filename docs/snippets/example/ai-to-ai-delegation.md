@@ -5,12 +5,14 @@ scope: global
 description: Code example of a Master AI delegating a task to a Worker AI.
 ---
 
-# Example: AI-to-AI Delegation
+## What it is
 
-## Scenario
-A Master AI on a laptop wants a Worker AI on a server to run a test suite.
+- Example of a master AI delegating a task to a worker AI over MCP.
 
-## Tool Calls
+## Canonical fields
+
+- Tool calls and parameters used for delegation.
+
 ```python
 # 1. Discover the server
 teleclaude__list_computers()
@@ -32,3 +34,11 @@ teleclaude__start_session(
 # 4. Review and cleanup
 teleclaude__end_session(computer="server1", session_id="test-abc-123")
 ```
+
+## Allowed values
+
+- `computer` must match a listed computer name.
+
+## Known caveats
+
+- Use `teleclaude__list_projects` before starting a session to select a trusted project path.
