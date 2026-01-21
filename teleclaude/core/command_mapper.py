@@ -74,6 +74,7 @@ class CommandMapper:
             return SendMessageCommand(
                 session_id=session_id or "",
                 text=" ".join(args),
+                origin=metadata.origin,
             )
 
         if event == "agent":
@@ -107,6 +108,8 @@ class CommandMapper:
     @staticmethod
     def map_redis_input(
         command_str: str,
+        *,
+        origin: str,
         session_id: Optional[str] = None,
         project_path: Optional[str] = None,
         title: Optional[str] = None,
@@ -132,6 +135,7 @@ class CommandMapper:
             return SendMessageCommand(
                 session_id=session_id or "",
                 text=" ".join(args) if args else "",
+                origin=origin,
             )
 
         if cmd_name == "agent":
@@ -169,7 +173,7 @@ class CommandMapper:
             return CreateSessionCommand(
                 project_path=project_path or "",
                 title=title or (" ".join(args) if args else None),
-                origin="redis",
+                origin=origin,
                 channel_metadata=channel_metadata,
                 launch_intent=launch_intent_obj,
             )
@@ -178,6 +182,7 @@ class CommandMapper:
             return SendMessageCommand(
                 session_id=session_id or "",
                 text=" ".join(args),
+                origin=origin,
             )
 
         if cmd_name in ["claude", "gemini", "codex"]:
@@ -247,7 +252,7 @@ class CommandMapper:
                 project_path=metadata.project_path or "",
                 title=metadata.title,
                 subdir=metadata.subdir,
-                origin="api",
+                origin=metadata.origin,
                 channel_metadata=metadata.channel_metadata,
                 launch_intent=metadata.launch_intent,
                 auto_command=metadata.auto_command,
@@ -257,6 +262,7 @@ class CommandMapper:
             return SendMessageCommand(
                 session_id=session_id,
                 text=str(payload.get("text", "")),
+                origin=metadata.origin,
             )
 
         if command_name == "handle_voice":

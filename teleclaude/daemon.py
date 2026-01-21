@@ -859,13 +859,18 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
             # Update last user message if present in stop payload (Codex fallback)
             if payload.prompt is not None:
+                inferred_origin = self._infer_last_input_origin(session, payload.prompt)
                 await db.update_session(
                     session_id,
                     last_message_sent=payload.prompt,
                     last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+                    last_input_origin=inferred_origin,
                 )
                 logger.debug(
-                    "Captured last user input from stop hook", session_id=session_id[:8], prompt=payload.prompt[:50]
+                    "Captured last user input from stop hook",
+                    session_id=session_id[:8],
+                    prompt=payload.prompt[:50],
+                    origin=inferred_origin,
                 )
 
             # 4. Best-effort Enrichment (Summarization + Title + UI Feedback)
@@ -886,20 +891,39 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # (Only for local sessions; remote sessions handled via coordination if needed)
         if not payload.source_computer:
             try:
-                # payload.prompt is guaranteed by contract for this event type
-                await db.update_session(
-                    session_id,
-                    last_message_sent=payload.prompt,
-                    last_message_sent_at=datetime.now(timezone.utc).isoformat(),
-                )
-                logger.debug(
-                    "Captured last user input from hook", session_id=session_id[:8], prompt=payload.prompt[:50]
-                )
+                session = await db.get_session(session_id)
+                if not session:
+                    logger.warning("Prompt hook for unknown session %s", session_id[:8])
+                else:
+                    inferred_origin = self._infer_last_input_origin(session, payload.prompt)
+                    await db.update_session(
+                        session_id,
+                        last_message_sent=payload.prompt,
+                        last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+                        last_input_origin=inferred_origin,
+                    )
+                    logger.debug(
+                        "Captured last user input from hook",
+                        session_id=session_id[:8],
+                        prompt=payload.prompt[:50],
+                        origin=inferred_origin,
+                    )
             except Exception as e:
                 logger.error("Failed to update last_message_sent from prompt hook: %s", e)
 
         # 2. Coordinator can also listen if needed (e.g. for subagent flow)
         await self.agent_coordinator.handle_prompt(context)
+
+    @staticmethod
+    def _infer_last_input_origin(session: Session, prompt: str) -> str:
+        """Infer last input origin using prompt string comparison.
+
+        If the prompt matches the last stored message, assume the UI adapter
+        already set last_input_origin. Otherwise the hook indicates CLI input.
+        """
+        if session.last_message_sent and session.last_message_sent == prompt:
+            return session.last_input_origin or "cli"
+        return "cli"
 
     async def _sync_session_stop_state(self, session_id: str, payload: AgentStopPayload) -> Optional[Session]:
         """Update session record with native agent identity and transcript data."""
@@ -998,11 +1022,21 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         cmd_name, auto_args = parse_command_string(auto_command)
 
         if cmd_name and auto_command:
-            await db.update_session(
-                session_id,
-                last_message_sent=auto_command[:200],
-                last_message_sent_at=datetime.now(timezone.utc).isoformat(),
-            )
+            session = await db.get_session(session_id)
+            if not session or not session.last_input_origin:
+                logger.error("Auto-command missing last_input_origin for session %s", session_id[:8])
+                await db.update_session(
+                    session_id,
+                    last_message_sent=auto_command[:200],
+                    last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+                )
+            else:
+                await db.update_session(
+                    session_id,
+                    last_message_sent=auto_command[:200],
+                    last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+                    last_input_origin=session.last_input_origin,
+                )
 
         if cmd_name == "agent_then_message":
             return await self._handle_agent_then_message(session_id, auto_args)
@@ -1814,7 +1848,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                         exc,
                     )
 
-            if session.origin_adapter == "telegram":
+            if session.last_input_origin == "telegram":
                 if (
                     not session.adapter_metadata
                     or not session.adapter_metadata.telegram

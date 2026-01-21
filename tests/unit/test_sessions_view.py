@@ -16,6 +16,7 @@ import pytest
 from teleclaude.cli.models import ComputerInfo, SessionInfo
 from teleclaude.cli.tui.app import FocusContext
 from teleclaude.cli.tui.tree import SessionDisplayInfo, SessionNode
+from teleclaude.cli.tui.types import ActivePane
 from teleclaude.cli.tui.views.sessions import SessionsView
 
 
@@ -56,7 +57,7 @@ async def test_refresh_updates_activity_state_marks_idle_when_activity_is_old():
     sessions = [
         SessionInfo(
             session_id="sess-1",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             status="active",
             computer="local",
             project_path="/tmp",
@@ -72,7 +73,7 @@ async def test_refresh_updates_activity_state_marks_idle_when_activity_is_old():
     with patch("teleclaude.cli.tui.views.sessions.datetime", FixedDatetime):
         await view.refresh(computers=[], projects=[], sessions=sessions)
 
-    assert view._active_field["sess-1"] == "none"
+    assert view._active_field["sess-1"] == ActivePane.NONE
 
 
 @pytest.mark.asyncio
@@ -85,7 +86,7 @@ async def test_handle_enter_on_session_toggles_pane():
     # Setup state needed for toggle
     session = SessionInfo(
         session_id="parent",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         status="active",
         tmux_session_name="tmux-parent",
         computer="remote",
@@ -97,7 +98,7 @@ async def test_handle_enter_on_session_toggles_pane():
     )
     child = SessionInfo(
         session_id="child",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         status="active",
         tmux_session_name="tmux-child",
         computer="remote",

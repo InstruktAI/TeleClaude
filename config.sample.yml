@@ -31,12 +31,6 @@ telegram:
     - teleclaude_server_bot
     # Add other computer bot usernames here
 
-ui_delivery:
-  # UI delivery scope for human-facing adapters.
-  # origin_only: only the initiating adapter receives updates
-  # all_ui: send updates to all UI adapters
-  scope: origin_only
-
 agents:
   claude:
     # Special claude code wrapper to allow full disk access on MacOS. Defaults to "claude --dangerously-skip-permissions --settings ''{"forceLoginMethod": "claudeai"}''".

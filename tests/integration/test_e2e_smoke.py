@@ -95,7 +95,7 @@ def create_test_session(
     """Create test session summary object."""
     return SessionSummary(
         session_id=session_id,
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title=title,
         project_path="/tmp",
         status="active",
@@ -477,7 +477,7 @@ async def test_local_session_lifecycle_to_websocket(
     session = await db_instance.create_session(
         computer_name="test-computer",
         tmux_session_name="test-tmux-session",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Local Lifecycle Test Session",
         project_path="/tmp",
     )

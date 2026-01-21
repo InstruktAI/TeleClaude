@@ -146,20 +146,23 @@ class SendMessageCommand(InternalCommand):
 
     session_id: str
     text: str
+    origin: str
 
     def __init__(
         self,
         *,
         session_id: str,
         text: str,
+        origin: str,
         request_id: Optional[str] = None,
     ):
         super().__init__(command_type=CommandType.SEND_MESSAGE, request_id=request_id)
         self.session_id = session_id
         self.text = text
+        self.origin = origin
 
     def to_payload(self) -> Dict[str, object]:
-        return {"session_id": self.session_id, "text": self.text}
+        return {"session_id": self.session_id, "text": self.text, "origin": self.origin}
 
 
 @dataclass(kw_only=True)
@@ -279,6 +282,7 @@ class RunAgentCommand(InternalCommand):
     session_id: str
     command: str
     args: str = ""
+    origin: str
 
     def __init__(
         self,
@@ -286,15 +290,17 @@ class RunAgentCommand(InternalCommand):
         session_id: str,
         command: str,
         args: str = "",
+        origin: str,
         request_id: Optional[str] = None,
     ):
         super().__init__(command_type=CommandType.RUN_AGENT_COMMAND, request_id=request_id)
         self.session_id = session_id
         self.command = command
         self.args = args
+        self.origin = origin
 
     def to_payload(self) -> Dict[str, object]:
-        return {"session_id": self.session_id, "command": self.command, "args": self.args}
+        return {"session_id": self.session_id, "command": self.command, "args": self.args, "origin": self.origin}
 
 
 @dataclass(kw_only=True)

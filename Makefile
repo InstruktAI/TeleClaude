@@ -1,4 +1,4 @@
-.PHONY: help install init certs format lint test-unit test-e2e test-all test coverage coverage-html coverage-report clean dev start stop restart kill status worktree-prepare
+.PHONY: help install init certs format lint test-unit test-e2e test-all test coverage coverage-html coverage-report clean dev start stop restart kill status
 
 # Default target
 help:
@@ -33,9 +33,6 @@ help:
 	@echo "Development:"
 	@echo "  make dev          Run daemon in foreground (manual mode)"
 	@echo "  make clean        Clean generated files and caches"
-	@echo ""
-	@echo "Worktree Management:"
-	@echo "  make worktree-prepare SLUG=xxx  Prepare worktree for work"
 	@echo ""
 
 install:

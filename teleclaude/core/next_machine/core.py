@@ -1133,9 +1133,9 @@ async def ensure_worktree_async(cwd: str, slug: str) -> bool:
 def _prepare_worktree(cwd: str, slug: str) -> None:
     """Call project-owned preparation hook to prepare worktree.
 
-    Detects project type (Makefile or package.json) and calls appropriate hook:
-    - Python/Makefile: make worktree-prepare SLUG={slug}
-    - Node/package.json: npm run worktree:prepare -- {slug}
+    Detects project type and calls appropriate hook:
+    - Python: bin/worktree-prepare.sh {slug}
+    - Node: npm run worktree:prepare -- {slug}
 
     Args:
         cwd: Project root directory (main repo)
@@ -1146,32 +1146,13 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
     """
     cwd_path = Path(cwd)
 
-    # Check for Makefile
-    makefile = cwd_path / "Makefile"
-    if makefile.exists():
-        # Verify worktree-prepare target exists
-        try:
-            subprocess.run(
-                ["make", "-n", "worktree-prepare"],
-                cwd=cwd,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-        except FileNotFoundError:
-            msg = "make command not found. Install make to use Makefile-based worktree preparation."
-            logger.error(msg)
-            raise RuntimeError(msg) from None
-        except subprocess.CalledProcessError:
-            msg = f"Makefile exists but 'worktree-prepare' target not found in {cwd}"
-            logger.error(msg)
-            raise RuntimeError(msg) from None
-
-        # Call preparation hook
-        logger.info("Preparing worktree with: make worktree-prepare SLUG=%s", slug)
+    # Check for bin/worktree-prepare.sh (Python projects)
+    worktree_script = cwd_path / "bin" / "worktree-prepare.sh"
+    if worktree_script.exists():
+        logger.info("Preparing worktree with: bin/worktree-prepare.sh %s", slug)
         try:
             result = subprocess.run(
-                ["make", "worktree-prepare", f"SLUG={slug}"],
+                [str(worktree_script), slug],
                 cwd=cwd,
                 check=True,
                 capture_output=True,
@@ -1183,7 +1164,7 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
             stderr_str = str(e.stderr) if e.stderr is not None else ""  # type: ignore[misc]
             msg = (
                 f"Worktree preparation failed for {slug}:\n"
-                f"Command: make worktree-prepare SLUG={slug}\n"
+                f"Command: bin/worktree-prepare.sh {slug}\n"
                 f"Exit code: {e.returncode}\n"
                 f"stdout: {stdout_str}\n"
                 f"stderr: {stderr_str}"
@@ -1241,7 +1222,7 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
     msg = (
         f"No worktree preparation hook found in {cwd}. "
         f"Expected either:\n"
-        f"  - Makefile with 'worktree-prepare' target\n"
+        f"  - bin/worktree-prepare.sh\n"
         f"  - package.json with 'worktree:prepare' script"
     )
     logger.error(msg)

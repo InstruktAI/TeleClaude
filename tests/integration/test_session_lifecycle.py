@@ -36,7 +36,7 @@ async def test_close_session_full_cleanup(daemon_with_mocked_telegram):
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name=tmux_session_name,
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Cleanup Test",
             adapter_metadata={"channel_id": "test-channel-123"},
         )
@@ -99,7 +99,7 @@ async def test_close_session_with_active_polling(daemon_with_mocked_telegram):
     session = await test_db.create_session(
         computer_name="TestPC",
         tmux_session_name=tmux_session_name,
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Polling Test",
     )
 
@@ -140,7 +140,7 @@ async def test_close_session_idempotent(daemon_with_mocked_telegram):
     session = await test_db.create_session(
         computer_name="TestPC",
         tmux_session_name=tmux_session_name,
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Idempotent Test",
     )
 
@@ -172,7 +172,7 @@ async def test_close_session_deletes_from_db(daemon_with_mocked_telegram):
     session = await test_db.create_session(
         computer_name="TestPC",
         tmux_session_name="test-no-delete",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="No Delete Test",
     )
 

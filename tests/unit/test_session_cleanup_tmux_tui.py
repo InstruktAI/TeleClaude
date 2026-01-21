@@ -17,7 +17,7 @@ async def test_cleanup_orphan_tmux_sessions_skips_tui_session() -> None:
             session_id="abc",
             computer_name="local",
             tmux_session_name="tc_abc",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test",
         )
     ]

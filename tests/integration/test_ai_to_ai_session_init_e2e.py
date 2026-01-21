@@ -70,6 +70,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
             b"project_path": project_path.encode("utf-8"),
             b"initiator": initiator_computer.encode("utf-8"),
             b"channel_metadata": json.dumps(channel_metadata).encode("utf-8"),
+            b"origin": b"telegram",
         }
 
         # Call _handle_incoming_message (the real entry point for Redis messages)
@@ -83,7 +84,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
     assert len(sessions) == 1, "Should have created exactly one session"
 
     session = sessions[0]
-    assert session.origin_adapter == "redis"
+    assert session.last_input_origin == "telegram"
     # Title format: {project}: $initiator > $computer - custom title
     # (Agent info not yet known at session creation - will be updated when agent starts)
     assert session.title.startswith(f"TeleClaude: ${initiator_computer} > ${session.computer_name} -")
@@ -137,6 +138,7 @@ async def test_ai_to_ai_session_without_project_path_rejected(daemon_with_mocked
             b"project_path": b"",
             b"initiator": b"WorkStation",
             b"channel_metadata": b"{}",
+            b"origin": b"telegram",
         }
 
         await redis_transport._handle_incoming_message(request_id, message_data)

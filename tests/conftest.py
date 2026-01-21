@@ -79,7 +79,7 @@ def create_mock_session(
         "computer": computer,
         "active_agent": active_agent,
         "thinking_mode": thinking_mode,
-        "origin_adapter": "telegram",
+        "last_input_origin": "telegram",
         "project_path": "/test/path",
         "created_at": now,
         "last_activity": last_activity or now,

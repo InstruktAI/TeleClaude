@@ -33,7 +33,7 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
     session = await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="test-ephemeral-cleanup",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Test Ephemeral Cleanup",
         project_path="/tmp",
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=67890)),
@@ -103,7 +103,7 @@ async def test_send_message_ephemeral_auto_tracks(daemon_with_mocked_telegram):
     session = await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="test-auto-track",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Test Auto Track",
         project_path="/tmp",
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=67891)),
@@ -126,7 +126,7 @@ async def test_send_message_persistent_not_tracked(daemon_with_mocked_telegram):
     session = await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="test-persistent",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Test Persistent",
         project_path="/tmp",
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=67892)),

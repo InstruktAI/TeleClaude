@@ -22,7 +22,7 @@ class Session(SQLModel, table=True):
     computer_name: str
     title: Optional[str] = None
     tmux_session_name: str
-    origin_adapter: str = "telegram"
+    last_input_origin: str = "telegram"
     adapter_metadata: Optional[str] = None
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
@@ -34,7 +34,6 @@ class Session(SQLModel, table=True):
     initiated_by_ai: Optional[bool] = False
     initiator_session_id: Optional[str] = None
     output_message_id: Optional[str] = None
-    last_input_adapter: Optional[str] = None
     notification_sent: Optional[int] = 0
     native_session_id: Optional[str] = None
     native_log_file: Optional[str] = None

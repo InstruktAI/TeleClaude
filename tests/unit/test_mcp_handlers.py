@@ -50,12 +50,16 @@ async def test_start_session_extracts_tmux_name_from_event_result():
         "tmux_session_name": "tmux-123",
     }
 
-    with patch("teleclaude.mcp.handlers.get_command_service", return_value=mock_commands):
+    with (
+        patch("teleclaude.mcp.handlers.get_command_service", return_value=mock_commands),
+        patch.object(handler, "_resolve_origin", new_callable=AsyncMock, return_value="telegram"),
+    ):
         result = await handler.teleclaude__start_session(
             computer="local",
             project_path="/tmp",
             title="Test Session",
             message=None,  # skip agent start for simplicity
+            caller_session_id="sess-parent",
         )
 
     assert result["status"] == "success"
@@ -73,9 +77,16 @@ async def test_start_session_handles_missing_tmux_name():
     # Success but missing tmux name (or malformed data)
     mock_commands.create_session.return_value = {"session_id": "sess-123"}
 
-    with patch("teleclaude.mcp.handlers.get_command_service", return_value=mock_commands):
+    with (
+        patch("teleclaude.mcp.handlers.get_command_service", return_value=mock_commands),
+        patch.object(handler, "_resolve_origin", new_callable=AsyncMock, return_value="telegram"),
+    ):
         result = await handler.teleclaude__start_session(
-            computer="local", project_path="/tmp", title="Test Session", message=None
+            computer="local",
+            project_path="/tmp",
+            title="Test Session",
+            message=None,
+            caller_session_id="sess-parent",
         )
 
     assert result["status"] == "success"

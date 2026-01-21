@@ -140,19 +140,19 @@ class MockRedisTransport(BaseAdapter):
 
 
 @pytest.mark.integration
-async def test_origin_adapter_receives_output():
+async def test_last_input_origin_receives_output():
     """Test output sent to origin adapter (CRITICAL).
 
     Use Case: UC-M1
     Flow:
-    1. Create session with origin_adapter="telegram"
+    1. Create session with last_input_origin="telegram"
     2. Register TelegramAdapter as origin
     3. Send message via adapter_client
     4. Verify send_message() called on TelegramAdapter
     5. Verify message_id returned
     """
     # Setup test database
-    db_path = "/tmp/test_origin_adapter.db"
+    db_path = "/tmp/test_last_input_origin.db"
     Path(db_path).unlink(missing_ok=True)
 
     test_db = Db(db_path)
@@ -165,7 +165,7 @@ async def test_origin_adapter_receives_output():
                 session = await test_db.create_session(
                     computer_name="TestPC",
                     tmux_session_name="test-origin",
-                    origin_adapter="telegram",
+                    last_input_origin="telegram",
                     title="Origin Test",
                 )
 
@@ -217,7 +217,7 @@ async def test_redis_observer_skipped_no_ui():
                 session = await test_db.create_session(
                     computer_name="TestPC",
                     tmux_session_name="test-redis-observer",
-                    origin_adapter="telegram",
+                    last_input_origin="telegram",
                     title="Redis Observer Test",
                 )
 
@@ -257,7 +257,6 @@ async def test_ui_observer_receives_broadcasts():
     5. Verify slack (observer with has_ui=True) also receives message
     """
 
-    from teleclaude import config as config_module
     from teleclaude.adapters.ui_adapter import UiAdapter
 
     class MockSlackAdapter(UiAdapter):
@@ -330,8 +329,6 @@ async def test_ui_observer_receives_broadcasts():
     test_db = Db(db_path)
     await test_db.initialize()
 
-    prior_scope = config_module.config.ui_delivery.scope
-    config_module.config.ui_delivery.scope = "all_ui"
     try:
         with patch("teleclaude.core.db.db", test_db):
             with patch("teleclaude.core.adapter_client.db", test_db):
@@ -339,7 +336,7 @@ async def test_ui_observer_receives_broadcasts():
                 session = await test_db.create_session(
                     computer_name="TestPC",
                     tmux_session_name="test-ui-observer",
-                    origin_adapter="telegram",
+                    last_input_origin="telegram",
                     title="UI Observer Test",
                 )
 
@@ -358,11 +355,10 @@ async def test_ui_observer_receives_broadcasts():
                 # Verify telegram (origin) called
                 assert len(telegram_adapter.send_message_calls) == 1
 
-                # Notices are origin-only
+                # No broadcast for feedback messages
                 assert len(slack_adapter.send_message_calls) == 0
 
     finally:
-        config_module.config.ui_delivery.scope = prior_scope
         await test_db.close()
         Path(db_path).unlink(missing_ok=True)
 
@@ -380,7 +376,6 @@ async def test_observer_failure_does_not_affect_origin():
     5. Verify slack exception logged but not raised
     """
 
-    from teleclaude import config as config_module
     from teleclaude.adapters.ui_adapter import UiAdapter
 
     class MockSlackAdapterFailing(UiAdapter):
@@ -453,8 +448,6 @@ async def test_observer_failure_does_not_affect_origin():
     test_db = Db(db_path)
     await test_db.initialize()
 
-    prior_scope = config_module.config.ui_delivery.scope
-    config_module.config.ui_delivery.scope = "all_ui"
     try:
         with patch("teleclaude.core.db.db", test_db):
             with patch("teleclaude.core.adapter_client.db", test_db):
@@ -462,7 +455,7 @@ async def test_observer_failure_does_not_affect_origin():
                 session = await test_db.create_session(
                     computer_name="TestPC",
                     tmux_session_name="test-observer-failure",
-                    origin_adapter="telegram",
+                    last_input_origin="telegram",
                     title="Observer Failure Test",
                 )
 
@@ -482,11 +475,10 @@ async def test_observer_failure_does_not_affect_origin():
                 assert len(telegram_adapter.send_message_calls) == 1
                 assert result == "msg-123"
 
-                # Notices are origin-only
+                # No broadcast for feedback messages
                 assert len(slack_adapter.send_message_calls) == 0
 
     finally:
-        config_module.config.ui_delivery.scope = prior_scope
         await test_db.close()
         Path(db_path).unlink(missing_ok=True)
 
@@ -577,7 +569,7 @@ async def test_origin_failure_raises_exception():
                 session = await test_db.create_session(
                     computer_name="TestPC",
                     tmux_session_name="test-origin-failure",
-                    origin_adapter="telegram",
+                    last_input_origin="telegram",
                     title="Origin Failure Test",
                 )
 
@@ -714,7 +706,7 @@ async def test_discover_peers_respects_redis_enabled_flag():
                 session = await test_db.create_session(
                     computer_name="LocalPC",
                     tmux_session_name="local-session",
-                    origin_adapter="telegram",
+                    last_input_origin="telegram",
                     title="Local Session Test",
                 )
                 assert session is not None, "Local session creation should work"

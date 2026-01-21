@@ -75,7 +75,7 @@ class Db:
             session_id=row.session_id,
             computer_name=row.computer_name,
             tmux_session_name=row.tmux_session_name,
-            origin_adapter=row.origin_adapter,
+            last_input_origin=row.last_input_origin,
             title=row.title or "",
             adapter_metadata=adapter_metadata,
             created_at=Db._coerce_datetime(row.created_at),
@@ -87,7 +87,6 @@ class Db:
             initiated_by_ai=bool(row.initiated_by_ai) if row.initiated_by_ai is not None else False,
             initiator_session_id=row.initiator_session_id,
             output_message_id=row.output_message_id,
-            last_input_adapter=row.last_input_adapter,
             notification_sent=bool(row.notification_sent) if row.notification_sent is not None else False,
             native_session_id=row.native_session_id,
             native_log_file=row.native_log_file,
@@ -232,7 +231,7 @@ class Db:
         self,
         computer_name: str,
         tmux_session_name: str,
-        origin_adapter: str,
+        last_input_origin: str,
         title: str,
         adapter_metadata: Optional[SessionAdapterMetadata] = None,
         project_path: Optional[str] = None,
@@ -247,7 +246,7 @@ class Db:
         Args:
             computer_name: Name of the computer
             tmux_session_name: Name of tmux session
-            origin_adapter: Origin adapter type (e.g., "telegram", "redis")
+            last_input_origin: Last input origin (e.g., "telegram", "cli")
             title: Optional session title
             adapter_metadata: Optional adapter-specific metadata
             project_path: Base project path (no subdir)
@@ -267,7 +266,7 @@ class Db:
             session_id=session_id,
             computer_name=computer_name,
             tmux_session_name=tmux_session_name,
-            origin_adapter=origin_adapter,
+            last_input_origin=last_input_origin,
             title=title or f"[{computer_name}] Untitled",
             adapter_metadata=adapter_metadata or SessionAdapterMetadata(),
             created_at=now,
@@ -284,7 +283,7 @@ class Db:
             computer_name=session.computer_name,
             title=session.title,
             tmux_session_name=session.tmux_session_name,
-            origin_adapter=session.origin_adapter,
+            last_input_origin=session.last_input_origin,
             adapter_metadata=self._serialize_adapter_metadata(session.adapter_metadata),
             created_at=session.created_at,
             last_activity=session.last_activity,
@@ -347,14 +346,14 @@ class Db:
     async def list_sessions(
         self,
         computer_name: Optional[str] = None,
-        origin_adapter: Optional[str] = None,
+        last_input_origin: Optional[str] = None,
         include_closed: bool = False,
     ) -> list[Session]:
         """List sessions with optional filters.
 
         Args:
             computer_name: Filter by computer name
-            origin_adapter: Filter by origin adapter (telegram, redis, etc.)
+            last_input_origin: Filter by last input origin (telegram, redis, cli)
             include_closed: Include closed sessions when True
 
         Returns:
@@ -367,8 +366,8 @@ class Db:
             stmt = stmt.where(db_models.Session.closed_at.is_(None))
         if computer_name:
             stmt = stmt.where(db_models.Session.computer_name == computer_name)
-        if origin_adapter:
-            stmt = stmt.where(db_models.Session.origin_adapter == origin_adapter)
+        if last_input_origin:
+            stmt = stmt.where(db_models.Session.last_input_origin == last_input_origin)
         stmt = stmt.order_by(db_models.Session.last_activity.desc())
 
         async with self._session() as db_session:

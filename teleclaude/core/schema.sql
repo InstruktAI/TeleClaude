@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     computer_name TEXT NOT NULL,
     title TEXT,
     tmux_session_name TEXT NOT NULL,
-    origin_adapter TEXT NOT NULL DEFAULT 'telegram',  -- Single origin adapter (e.g., "telegram", "redis")
+    last_input_origin TEXT NOT NULL DEFAULT 'telegram',  -- Most recent input origin (e.g., "telegram", "cli")
     adapter_metadata TEXT,  -- JSON string for platform-specific data
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     initiator_session_id TEXT,  -- Session ID of the AI that created this session (for AI-to-AI nesting)
     -- UX state fields (migrated from JSON blob)
     output_message_id TEXT,
-    last_input_adapter TEXT,
     notification_sent INTEGER DEFAULT 0,
     native_session_id TEXT,
     native_log_file TEXT,

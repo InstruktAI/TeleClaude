@@ -103,7 +103,7 @@ class TestSendOutputUpdate:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 
@@ -124,7 +124,7 @@ class TestSendOutputUpdate:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 
@@ -153,7 +153,7 @@ class TestSendOutputUpdate:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 
@@ -178,7 +178,7 @@ class TestSendOutputUpdate:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 
@@ -206,7 +206,7 @@ class TestSendOutputUpdate:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 
@@ -241,7 +241,7 @@ class TestSendOutputUpdate:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 
@@ -273,7 +273,7 @@ class TestSendExitMessage:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 
@@ -296,7 +296,7 @@ class TestSendExitMessage:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 
@@ -337,7 +337,7 @@ class TestSendMessageNotice:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 

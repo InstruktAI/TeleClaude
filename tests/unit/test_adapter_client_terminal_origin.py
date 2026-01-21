@@ -71,12 +71,12 @@ class DummyUiAdapter(UiAdapter):
         return
 
 
-def _make_terminal_session() -> Session:
+def _make_session(last_input_origin: str) -> Session:
     return Session(
         session_id="sess-1",
         computer_name="TestPC",
         tmux_session_name="terminal:deadbeef",
-        origin_adapter="api",
+        last_input_origin=last_input_origin,
         title="Tmux",
         adapter_metadata=SessionAdapterMetadata(),
         created_at=None,
@@ -88,20 +88,20 @@ def _make_terminal_session() -> Session:
 
 
 @pytest.mark.asyncio
-async def test_terminal_origin_send_message_broadcasts_to_ui():
-    """Test that terminal-origin send_message routes to UI adapter."""
+async def test_terminal_origin_send_message_skips_ui():
+    """Test that terminal-origin send_message does not route to UI adapter."""
     client = AdapterClient()
     adapter = DummyUiAdapter(client)
     client.register_adapter("telegram", adapter)
 
-    session = _make_terminal_session()
+    session = _make_session("cli")
 
     # Mock db.add_pending_deletion since send_message auto-tracks ephemeral messages
     with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
         message_id = await client.send_message(session, "hello")
 
-    assert message_id == "msg-1"
-    assert adapter.sent_messages == [(session.session_id, "hello")]
+    assert message_id is None
+    assert adapter.sent_messages == []
 
 
 @pytest.mark.asyncio
@@ -110,7 +110,7 @@ async def test_terminal_origin_send_message_ephemeral_tracks_deletion():
     client = AdapterClient()
     adapter = DummyUiAdapter(client)
     client.register_adapter("telegram", adapter)
-    session = _make_terminal_session()
+    session = _make_session("telegram")
 
     mock_db = AsyncMock()
     with patch("teleclaude.core.adapter_client.db", mock_db):

@@ -25,6 +25,9 @@ def test_refresh_tool_cache_if_needed_updates_on_mtime_change(monkeypatch: pytes
     cache_path = tmp_path / "mcp-tools-cache.json"
     monkeypatch.setenv("MCP_WRAPPER_TOOL_CACHE_PATH", str(cache_path))
     wrapper = _load_wrapper_module(monkeypatch)
+    wrapper._impl.TOOL_CACHE_PATH = cache_path
+    wrapper._impl._TOOL_CACHE_MTIME = None
+    wrapper._impl.TOOL_LIST_CACHE = None
 
     tools_v1 = [
         {
@@ -36,8 +39,8 @@ def test_refresh_tool_cache_if_needed_updates_on_mtime_change(monkeypatch: pytes
     cache_path.write_text(json.dumps(tools_v1), encoding="utf-8")
 
     wrapper.refresh_tool_cache_if_needed(force=True)
-    assert wrapper.TOOL_LIST_CACHE
-    assert wrapper.TOOL_LIST_CACHE[0]["name"] == "teleclaude__one"
+    assert wrapper._impl.TOOL_LIST_CACHE
+    assert wrapper._impl.TOOL_LIST_CACHE[0]["name"] == "teleclaude__one"
 
     time.sleep(0.01)
     tools_v2 = [
@@ -50,5 +53,5 @@ def test_refresh_tool_cache_if_needed_updates_on_mtime_change(monkeypatch: pytes
     cache_path.write_text(json.dumps(tools_v2), encoding="utf-8")
 
     wrapper.refresh_tool_cache_if_needed()
-    assert wrapper.TOOL_LIST_CACHE
-    assert wrapper.TOOL_LIST_CACHE[0]["name"] == "teleclaude__two"
+    assert wrapper._impl.TOOL_LIST_CACHE
+    assert wrapper._impl.TOOL_LIST_CACHE[0]["name"] == "teleclaude__two"

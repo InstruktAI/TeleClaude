@@ -29,7 +29,9 @@ CODEX_AGENT = "codex"
 CODEX_NOTIFY_SUFFIX = [AGENT_FLAG, CODEX_AGENT]
 
 
-def _load_json_settings(path: Path, *, label: str) -> dict[str, object] | None:  # noqa: loose-dict - settings are dynamic JSON
+def _load_json_settings(
+    path: Path, *, label: str
+) -> dict[str, object] | None:  # guard: loose-dict - settings are dynamic JSON
     if not path.exists():
         return {}
 
@@ -68,6 +70,9 @@ def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Di
 
     for event, hook_def in new_hooks.items():
         event_hooks = merged.get(event, [])
+        if not isinstance(event_hooks, list):
+            event_hooks = []
+        event_hooks = [b for b in event_hooks if isinstance(b, dict)]
 
         # Structure: [{"matcher": "*", "hooks": [...]}]
         # We target the "*" matcher block or create one
@@ -84,6 +89,9 @@ def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Di
 
         # Update specific hook within the block
         hooks_list = target_block.get("hooks", [])
+        if not isinstance(hooks_list, list):
+            hooks_list = []
+        hooks_list = [h for h in hooks_list if isinstance(h, dict)]
 
         new_command = hook_def.get("command", "")
         new_receiver = _extract_receiver_script(new_command)
@@ -468,8 +476,8 @@ def ensure_codex_mcp_config(content: str, repo_root: Path) -> str:
 
 
 def main() -> None:
-    # Repo root is parent of scripts/ dir
-    repo_root = Path(__file__).parent.parent.resolve()
+    # Repo root is parent of the teleclaude package directory.
+    repo_root = Path(__file__).resolve().parents[2]
     print(f"Configuring hooks from repo: {repo_root}")
 
     configure_claude(repo_root)

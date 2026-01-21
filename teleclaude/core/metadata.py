@@ -21,7 +21,7 @@ class AdapterMetadata(BaseModel):  # type: ignore[explicit-any]
     # Optional common fields
     user_id: Optional[str] = Field(None, description="Platform user ID (if human)")
     message_id: Optional[str] = Field(None, description="Platform message ID")
-    origin_adapter: Optional[str] = Field(None, description="Origin adapter for observers")
+    last_input_origin: Optional[str] = Field(None, description="Last input origin for observers")
     target_computer: Optional[str] = Field(None, description="Target computer for AI-to-AI sessions")
 
     # Platform-specific data (nested dicts)

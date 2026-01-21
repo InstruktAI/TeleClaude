@@ -40,7 +40,7 @@ Notes:
 
 Session summary shape:
 
-- `session_id`, `origin_adapter`, `title`, `project_path`, `subdir`, `thinking_mode`, `active_agent`, `status`, `created_at`, `last_activity`, `last_input`, `last_input_at`, `last_output`, `last_output_at`, `tmux_session_name`, `initiator_session_id`, `computer`
+- `session_id`, `last_input_origin`, `title`, `project_path`, `subdir`, `thinking_mode`, `active_agent`, `status`, `created_at`, `last_activity`, `last_input`, `last_input_at`, `last_output`, `last_output_at`, `tmux_session_name`, `initiator_session_id`, `computer`
 
 ## WebSocket
 

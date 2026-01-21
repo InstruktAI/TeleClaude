@@ -21,7 +21,7 @@ class TestSession:
             session_id="test-789",
             computer_name="TestPC",
             tmux_session_name="test-tmux",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
             adapter_metadata=metadata,
             created_at=now,
@@ -44,7 +44,7 @@ class TestSession:
             session_id="test-none",
             computer_name="TestPC",
             tmux_session_name="test-tmux",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
             created_at=None,
             last_activity=None,
@@ -64,7 +64,7 @@ class TestSession:
             "session_id": "test-dt",
             "computer_name": "TestPC",
             "tmux_session_name": "test-tmux",
-            "origin_adapter": "telegram",
+            "last_input_origin": "telegram",
             "title": "Test Session",
             "created_at": now,  # Already datetime, not string
             "last_activity": now,
@@ -85,7 +85,7 @@ class TestSession:
             session_id="test-roundtrip",
             computer_name="TestPC",
             tmux_session_name="test-tmux",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Roundtrip Test",
             adapter_metadata=metadata,
             created_at=now,
@@ -101,7 +101,7 @@ class TestSession:
         assert restored.session_id == original.session_id
         assert restored.computer_name == original.computer_name
         assert restored.tmux_session_name == original.tmux_session_name
-        assert restored.origin_adapter == original.origin_adapter
+        assert restored.last_input_origin == original.last_input_origin
         assert restored.title == original.title
         assert restored.project_path == original.project_path
 
@@ -112,7 +112,7 @@ class TestSession:
             "session_id": "test-topic-id",
             "computer_name": "TestPC",
             "tmux_session_name": "test-tmux",
-            "origin_adapter": "telegram",
+            "last_input_origin": "telegram",
             "title": "Test Session",
             "created_at": now,
             "last_activity": now,

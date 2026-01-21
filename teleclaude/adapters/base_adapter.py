@@ -138,7 +138,7 @@ class BaseAdapter(ABC):
             title: Channel title
             metadata: {
                 "origin": bool,  # True if this adapter is origin
-                "origin_adapter": str,  # Which adapter is origin
+                "last_input_origin": str,  # Last input origin
             }
 
         Returns:

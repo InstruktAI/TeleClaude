@@ -917,6 +917,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 title=parsed.title,
                 channel_metadata=parsed.channel_metadata,
                 launch_intent=parsed.launch_intent,
+                origin=parsed.origin,
             )
             command.request_id = message_id
 
@@ -924,7 +925,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             if isinstance(parsed.launch_intent, dict):
                 launch_intent_obj = SessionLaunchIntent.from_dict(parsed.launch_intent)
             metadata = MessageMetadata(
-                origin="redis",
                 channel_metadata=parsed.channel_metadata,
                 project_path=parsed.project_path,
                 title=parsed.title,
@@ -935,12 +935,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 # Ensure target_computer set for stop forwarding
                 metadata.channel_metadata = metadata.channel_metadata or {}
                 metadata.channel_metadata["target_computer"] = parsed.initiator
-
-            if parsed.session_id:
-                try:
-                    await db.update_session(parsed.session_id, last_input_adapter=metadata.origin)
-                except Exception:
-                    logger.debug("Failed to update last_input_adapter for session %s", parsed.session_id[:8])
 
             logger.info(">>> About to call command service for: %s", command.command_type)
             result = await self._execute_command(command)
@@ -1071,6 +1065,9 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         msg_type = data.get(b"type", b"").decode("utf-8")
         session_id = data.get(b"session_id", b"").decode("utf-8") or None
         command = data.get(b"command", b"").decode("utf-8")
+        origin = data.get(b"origin", b"").decode("utf-8")
+        if not origin:
+            raise ValueError("Redis message missing origin")
 
         channel_metadata: dict[str, object] | None = None
         if b"channel_metadata" in data:
@@ -1102,6 +1099,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             initiator=initiator,
             project_path=project_path,
             title=title,
+            origin=origin,
             launch_intent=launch_intent,
         )
 
@@ -1359,7 +1357,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         summary = SessionSummary(
             session_id=session.session_id,
-            origin_adapter=session.origin_adapter,
+            last_input_origin=session.last_input_origin,
             title=session.title,
             project_path=session.project_path,
             subdir=session.subdir,
@@ -1386,7 +1384,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         summary = SessionSummary(
             session_id=session.session_id,
-            origin_adapter=session.origin_adapter,
+            last_input_origin=session.last_input_origin,
             title=session.title,
             project_path=session.project_path,
             subdir=session.subdir,
@@ -1824,6 +1822,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             data[b"channel_metadata"] = json.dumps(metadata.channel_metadata).encode("utf-8")
         if metadata.launch_intent:
             data[b"launch_intent"] = json.dumps(metadata.launch_intent.to_dict()).encode("utf-8")
+        if metadata.origin:
+            data[b"origin"] = metadata.origin.encode("utf-8")
 
         # Send to Redis stream - XADD returns unique message_id
         # This message_id is used for response correlation (receiver sends response to output:{message_id})

@@ -42,7 +42,7 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
 
     # Send any command - it will be mocked with short echo
     await daemon.command_service.send_message(
-        SendMessageCommand(session_id=session.session_id, text="any command here")
+        SendMessageCommand(session_id=session.session_id, text="any command here", origin="telegram")
     )
 
     # Wait for command to execute and polling to send output
@@ -93,7 +93,9 @@ async def test_long_running_command(daemon_with_mocked_telegram):
     telegram.send_output_update.reset_mock()
 
     # Send any command - it will be mocked with long-running Python process
-    await daemon.command_service.send_message(SendMessageCommand(session_id=session.session_id, text="any command"))
+    await daemon.command_service.send_message(
+        SendMessageCommand(session_id=session.session_id, text="any command", origin="telegram")
+    )
 
     # Wait for process to start and produce initial output
     await asyncio.sleep(0.01)

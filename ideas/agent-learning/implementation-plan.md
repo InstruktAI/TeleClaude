@@ -39,7 +39,7 @@ _These tasks depend on Group 2_
 
 - [ ] **DEPENDS: Group 2** Update `teleclaude/hooks/receiver_claude.py` - Emit events (UserPromptSubmit, Stop)
 - [ ] **DEPENDS: Group 2** Update `teleclaude/hooks/receiver_gemini.py` - Emit equivalent events
-- [ ] **DEPENDS: Group 2** Update `scripts/install_hooks.py` - Add UserPromptSubmit to hook maps
+- [ ] **DEPENDS: Group 2** Update `bin/init/install_hooks.py` - Add UserPromptSubmit to hook maps
 
 ### Group 4: Testing
 
@@ -72,7 +72,7 @@ _These tasks can run in parallel_
 
 **Post-merge:**
 
-- [ ] **SEQUENTIAL** Reinstall hooks on all computers (`python scripts/install_hooks.py`)
+- [ ] **SEQUENTIAL** Reinstall hooks on all computers (`python bin/init/install_hooks.py`)
 - [ ] **SEQUENTIAL** Restart daemons on all computers (`make restart`)
 - [ ] **SEQUENTIAL** Verify hooks fire on test session
 - [ ] **SEQUENTIAL** Roadmap item marked complete
@@ -115,32 +115,32 @@ Delete tmp/learning-raw.jsonl
 
 ### Modify Existing
 
-| File | Changes |
-|------|---------|
-| `teleclaude/core/events.py` | Add `emit()`, `on()`, `clear()` functions for pub-sub |
+| File                                  | Changes                                                                |
+| ------------------------------------- | ---------------------------------------------------------------------- |
+| `teleclaude/core/events.py`           | Add `emit()`, `on()`, `clear()` functions for pub-sub                  |
 | `teleclaude/hooks/receiver_claude.py` | Import events, call `emit("user_prompt", ...)` and `emit("stop", ...)` |
-| `teleclaude/hooks/receiver_gemini.py` | Same as receiver_claude.py |
-| `scripts/install_hooks.py` | Add UserPromptSubmit to `_claude_hook_map()` |
+| `teleclaude/hooks/receiver_gemini.py` | Same as receiver_claude.py                                             |
+| `bin/init/install_hooks.py`           | Add UserPromptSubmit to `_claude_hook_map()`                           |
 
 ### New Files
 
-| File | Purpose |
-|------|---------|
-| `teleclaude/utils/llm.py` | `call_llm_sync()`, `call_llm_async()` - CLI wrapper for Claude/Gemini/Codex |
-| `teleclaude/learning/__init__.py` | Module init, exports `init_learning()` |
-| `teleclaude/learning/manager.py` | `init_learning()` subscribes handlers; `handle_user_prompt()`, `handle_stop()` |
-| `teleclaude/learning/prompts/extract.md` | Stage 1 prompt template (opinion mining) |
-| `teleclaude/learning/prompts/synthesize.md` | Stage 2 prompt template (knowledge synthesis) |
-| `teleclaude/learning/prompts/bootstrap.md` | Init prompt template (knowledge extraction) |
+| File                                        | Purpose                                                                        |
+| ------------------------------------------- | ------------------------------------------------------------------------------ |
+| `teleclaude/utils/llm.py`                   | `call_llm_sync()`, `call_llm_async()` - CLI wrapper for Claude/Gemini/Codex    |
+| `teleclaude/learning/__init__.py`           | Module init, exports `init_learning()`                                         |
+| `teleclaude/learning/manager.py`            | `init_learning()` subscribes handlers; `handle_user_prompt()`, `handle_stop()` |
+| `teleclaude/learning/prompts/extract.md`    | Stage 1 prompt template (opinion mining)                                       |
+| `teleclaude/learning/prompts/synthesize.md` | Stage 2 prompt template (knowledge synthesis)                                  |
+| `teleclaude/learning/prompts/bootstrap.md`  | Init prompt template (knowledge extraction)                                    |
 
 ### Runtime Files (per project)
 
-| File | Purpose |
-|------|---------|
-| `{project}/LEARNED.md` | Project-level learned preferences (visible, capital) |
-| `{project}/tmp/known-facts-summary.md` | Compact summary for Stage 1 filtering |
-| `{project}/tmp/learning-raw.jsonl` | Ephemeral raw facts (deleted after Stage 2) |
-| `{project}/{subfolder}/AGENTS.md` | Module-specific facts (created by Stage 2 when relevant) |
+| File                                   | Purpose                                                  |
+| -------------------------------------- | -------------------------------------------------------- |
+| `{project}/LEARNED.md`                 | Project-level learned preferences (visible, capital)     |
+| `{project}/tmp/known-facts-summary.md` | Compact summary for Stage 1 filtering                    |
+| `{project}/tmp/learning-raw.jsonl`     | Ephemeral raw facts (deleted after Stage 2)              |
+| `{project}/{subfolder}/AGENTS.md`      | Module-specific facts (created by Stage 2 when relevant) |
 
 ## Implementation Details
 

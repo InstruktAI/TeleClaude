@@ -458,18 +458,22 @@ install_launchd_service() {
 
     # Load service
     print_info "Loading service..."
-    launchctl unload "$plist_file" 2>/dev/null || true
-    launchctl load "$plist_file"
+    local domain="gui/$(id -u)"
+    # Prefer modern launchctl bootstrap; fall back to legacy load for older macOS.
+    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
+    if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
+        launchctl load "$plist_file"
+    fi
 
     sleep 2
 
     # Check if running
-    if launchctl list | grep -q "$service_name"; then
+    if launchctl print "$domain/$service_name" >/dev/null 2>&1; then
         print_success "Service loaded successfully"
         print_info "Service commands:"
-        print_info "  Status:  launchctl list | grep teleclaude"
-        print_info "  Stop:    launchctl unload $plist_file"
-        print_info "  Start:   launchctl load $plist_file"
+        print_info "  Status:  launchctl print $domain/$service_name"
+        print_info "  Stop:    launchctl bootout $domain $plist_file"
+        print_info "  Start:   launchctl bootstrap $domain $plist_file"
         print_info "  Logs:    instrukt-ai-logs teleclaude --since 5m"
     else
         print_error "Service failed to load"

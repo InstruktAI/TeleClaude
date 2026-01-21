@@ -23,7 +23,7 @@ requires: []
 
 Signals
 
-- session_started, session_updated, session_closed, and agent_event are the primary completion signals.
+- session_started, session_updated, and session_closed are the primary completion signals.
 
 ## Invariants
 

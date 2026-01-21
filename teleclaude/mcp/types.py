@@ -31,7 +31,7 @@ class SessionInfo(TypedDict):
     """Session information returned by list_sessions."""
 
     session_id: str
-    origin_adapter: str
+    last_input_origin: str | None
     title: str
     project_path: str | None
     subdir: str | None

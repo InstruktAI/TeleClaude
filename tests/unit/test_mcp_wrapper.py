@@ -90,7 +90,7 @@ def _init_session_db(db_path: Path, session_id: str, tmux_name: str) -> None:
 async def test_backend_resync_replays_handshake(monkeypatch: pytest.MonkeyPatch) -> None:
     """Paranoid test that backend resync replays handshake still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
-    proxy = wrapper.MCPProxy()
+    proxy = wrapper._impl.MCPProxy()
 
     proxy.writer = _FakeWriter()
     proxy._needs_backend_resync = True
@@ -247,8 +247,8 @@ async def test_cached_handshake_emits_single_response(monkeypatch: pytest.Monkey
 async def test_handle_initialize_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
     """Paranoid test that handle initialize times out still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
-    wrapper.INIT_TIMEOUT = 0.01
-    proxy = wrapper.MCPProxy()
+    wrapper._impl.INIT_TIMEOUT = 0.01
+    proxy = wrapper._impl.MCPProxy()
 
     reader = asyncio.StreamReader()
 
@@ -292,7 +292,7 @@ async def test_handle_initialize_schedules_reconnect(monkeypatch: pytest.MonkeyP
 async def test_response_timeout_sends_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """Paranoid test that response timeout sends error still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
-    monkeypatch.setattr(wrapper, "RESPONSE_CHECK_INTERVAL", 0.01)
+    monkeypatch.setattr(wrapper._impl, "RESPONSE_CHECK_INTERVAL", 0.01)
     proxy = wrapper.MCPProxy()
 
     now = asyncio.get_running_loop().time()
@@ -390,9 +390,9 @@ async def test_acquire_connect_lock_times_out(monkeypatch: pytest.MonkeyPatch) -
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
-    monkeypatch.setattr(wrapper, "CONNECT_LOCK_SLOTS", 1)
-    monkeypatch.setattr(wrapper, "CONNECT_LOCK_TIMEOUT", 0.0)
-    monkeypatch.setattr(wrapper, "CONNECT_LOCK_RETRY_S", 0.0)
+    monkeypatch.setattr(wrapper._impl, "CONNECT_LOCK_SLOTS", 1)
+    monkeypatch.setattr(wrapper._impl, "CONNECT_LOCK_TIMEOUT", 0.0)
+    monkeypatch.setattr(wrapper._impl, "CONNECT_LOCK_RETRY_S", 0.0)
 
     calls: dict[str, int] = {"open": 0, "flock": 0, "close": 0}
 
@@ -407,9 +407,9 @@ async def test_acquire_connect_lock_times_out(monkeypatch: pytest.MonkeyPatch) -
     def fake_close(_fd: int) -> None:
         calls["close"] += 1
 
-    monkeypatch.setattr(wrapper.os, "open", fake_open)
-    monkeypatch.setattr(wrapper.fcntl, "flock", fake_flock)
-    monkeypatch.setattr(wrapper.os, "close", fake_close)
+    monkeypatch.setattr(wrapper._impl.os, "open", fake_open)
+    monkeypatch.setattr(wrapper._impl.fcntl, "flock", fake_flock)
+    monkeypatch.setattr(wrapper._impl.os, "close", fake_close)
 
     fd = await proxy._acquire_connect_lock()
 
@@ -423,10 +423,10 @@ async def test_acquire_connect_lock_times_out(monkeypatch: pytest.MonkeyPatch) -
 async def test_connect_guard_enables_after_failures(monkeypatch: pytest.MonkeyPatch) -> None:
     """Paranoid test that connect guard enables after failures still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
-    proxy = wrapper.MCPProxy()
+    proxy = wrapper._impl.MCPProxy()
 
-    monkeypatch.setattr(wrapper, "CONNECT_LOCK_FAILS", 2)
-    monkeypatch.setattr(wrapper, "CONNECT_LOCK_WINDOW_S", 10.0)
+    monkeypatch.setattr(wrapper._impl, "CONNECT_LOCK_FAILS", 2)
+    monkeypatch.setattr(wrapper._impl, "CONNECT_LOCK_WINDOW_S", 10.0)
 
     proxy._note_connect_failure()
     assert proxy._should_use_connect_lock() is False
@@ -443,12 +443,12 @@ async def test_tools_list_uses_cached_response(monkeypatch: pytest.MonkeyPatch, 
     """Paranoid test that tools list uses cached response still holds when everything is on fire."""
     monkeypatch.setenv("MCP_WRAPPER_TOOL_CACHE_PATH", str(tmp_path / "missing.json"))
     wrapper = _load_wrapper_module(monkeypatch)
-    proxy = wrapper.MCPProxy()
+    proxy = wrapper._impl.MCPProxy()
 
     dummy_stdout = _DummyStdout()
     monkeypatch.setattr(sys, "stdout", dummy_stdout)
 
-    wrapper.TOOL_LIST_CACHE = [
+    wrapper._impl.TOOL_LIST_CACHE = [
         {
             "name": "teleclaude__noop",
             "description": "",
@@ -466,7 +466,7 @@ async def test_tools_list_uses_cached_response(monkeypatch: pytest.MonkeyPatch, 
     output = dummy_stdout.buffer.getvalue().decode("utf-8").strip()
     response = json.loads(output)
     assert response["id"] == 9
-    assert response["result"]["tools"] == wrapper.TOOL_LIST_CACHE
+    assert response["result"]["tools"] == wrapper._impl.TOOL_LIST_CACHE
 
 
 @pytest.mark.asyncio
@@ -474,12 +474,12 @@ async def test_tools_list_errors_without_cache(monkeypatch: pytest.MonkeyPatch, 
     """Paranoid test that tools list errors without cache still holds when everything is on fire."""
     monkeypatch.setenv("MCP_WRAPPER_TOOL_CACHE_PATH", str(tmp_path / "missing.json"))
     wrapper = _load_wrapper_module(monkeypatch)
-    proxy = wrapper.MCPProxy()
+    proxy = wrapper._impl.MCPProxy()
 
     dummy_stdout = _DummyStdout()
     monkeypatch.setattr(sys, "stdout", dummy_stdout)
 
-    wrapper.TOOL_LIST_CACHE = None
+    wrapper._impl.TOOL_LIST_CACHE = None
 
     reader = asyncio.StreamReader()
     request = {"jsonrpc": "2.0", "id": 10, "method": "tools/list"}
@@ -491,14 +491,14 @@ async def test_tools_list_errors_without_cache(monkeypatch: pytest.MonkeyPatch, 
     output = dummy_stdout.buffer.getvalue().decode("utf-8").strip()
     response = json.loads(output)
     assert response["id"] == 10
-    assert response["error"]["code"] == wrapper._ERR_BACKEND_UNAVAILABLE
+    assert response["error"]["code"] == wrapper._impl._ERR_BACKEND_UNAVAILABLE
 
 
 @pytest.mark.asyncio
 async def test_tools_list_forwards_when_connected(monkeypatch: pytest.MonkeyPatch) -> None:
     """Paranoid test that tools list forwards when connected still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
-    proxy = wrapper.MCPProxy()
+    proxy = wrapper._impl.MCPProxy()
 
     class _DummyWriter:
         def write(self, _data: bytes) -> None:

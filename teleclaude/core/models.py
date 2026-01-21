@@ -312,8 +312,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
     session_id: str
     computer_name: str
     tmux_session_name: str
-    origin_adapter: str
     title: str
+    last_input_origin: Optional[str] = None
     adapter_metadata: SessionAdapterMetadata = field(default_factory=SessionAdapterMetadata)
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
@@ -324,7 +324,6 @@ class Session:  # pylint: disable=too-many-instance-attributes
     initiated_by_ai: bool = False
     initiator_session_id: Optional[str] = None
     output_message_id: Optional[str] = None
-    last_input_adapter: Optional[str] = None
     notification_sent: bool = False
     native_session_id: Optional[str] = None
     native_log_file: Optional[str] = None
@@ -402,20 +401,15 @@ class Session:  # pylint: disable=too-many-instance-attributes
         tui_capture_started_val = data.get("tui_capture_started")
         tui_capture_started = bool(tui_capture_started_val) if tui_capture_started_val is not None else False
 
-        def _get_required_str(key: str, *, default: str = "") -> str:
-            value = data.get(key)
-            return str(value) if value is not None else default
-
         def _get_optional_str(key: str) -> Optional[str]:
             value = data.get(key)
             return str(value) if value is not None else None
 
         return cls(
-            session_id=_get_required_str("session_id"),
-            computer_name=_get_required_str("computer_name"),
-            tmux_session_name=_get_required_str("tmux_session_name"),
-            origin_adapter=_get_required_str("origin_adapter"),
-            title=_get_required_str("title"),
+            session_id=_get_optional_str("session_id") or "",
+            computer_name=_get_optional_str("computer_name") or "",
+            tmux_session_name=_get_optional_str("tmux_session_name") or "",
+            title=_get_optional_str("title") or "",
             adapter_metadata=adapter_metadata,
             created_at=ensure_utc(created_at) if isinstance(created_at, datetime) else None,
             last_activity=ensure_utc(last_activity) if isinstance(last_activity, datetime) else None,
@@ -426,7 +420,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
             initiated_by_ai=initiated_by_ai,
             initiator_session_id=_get_optional_str("initiator_session_id"),
             output_message_id=_get_optional_str("output_message_id"),
-            last_input_adapter=_get_optional_str("last_input_adapter"),
+            last_input_origin=_get_optional_str("last_input_origin"),
             notification_sent=notification_sent,
             native_session_id=_get_optional_str("native_session_id"),
             native_log_file=_get_optional_str("native_log_file"),
@@ -590,6 +584,7 @@ class RedisInboundMessage:
     initiator: Optional[str] = None
     project_path: Optional[str] = None
     title: Optional[str] = None
+    origin: Optional[str] = None
     launch_intent: Optional[Dict[str, object]] = None  # guard: loose-dict
 
 
@@ -598,7 +593,7 @@ class SessionSummary:
     """Typed session summary for list_sessions output."""
 
     session_id: str
-    origin_adapter: str
+    last_input_origin: Optional[str]
     title: str
     thinking_mode: str | None
     active_agent: Optional[str]
@@ -618,7 +613,7 @@ class SessionSummary:
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict - Serialization output
         return {
             "session_id": self.session_id,
-            "origin_adapter": self.origin_adapter,
+            "last_input_origin": self.last_input_origin,
             "title": self.title,
             "project_path": self.project_path,
             "subdir": self.subdir,
@@ -641,7 +636,7 @@ class SessionSummary:
         """Create from database Session object."""
         return cls(
             session_id=session.session_id,
-            origin_adapter=session.origin_adapter,
+            last_input_origin=session.last_input_origin,
             title=session.title,
             project_path=session.project_path,
             subdir=session.subdir,
@@ -664,7 +659,7 @@ class SessionSummary:
         """Create from dict."""
         return cls(
             session_id=str(data["session_id"]),
-            origin_adapter=str(data["origin_adapter"]),
+            last_input_origin=str(data.get("last_input_origin")) if data.get("last_input_origin") else None,
             title=str(data["title"]),
             project_path=str(data.get("project_path")) if data.get("project_path") else None,
             subdir=str(data.get("subdir")) if data.get("subdir") else None,

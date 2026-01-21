@@ -169,6 +169,50 @@ async def test_handle_create_session_does_not_send_welcome(mock_initialized_db, 
 
 
 @pytest.mark.asyncio
+async def test_create_session_inherits_parent_origin(mock_initialized_db):
+    """AI-to-AI sessions should inherit last_input_origin from the parent session."""
+    mock_client = MagicMock()
+    mock_client.create_channel = AsyncMock()
+    mock_client.send_message = AsyncMock()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with (
+            patch.object(command_handlers, "config") as mock_config,
+            patch.object(command_handlers, "db") as mock_db,
+            patch.object(command_handlers, "tmux_bridge") as mock_tb,
+            patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
+        ):
+            mock_config.computer.name = "TestComputer"
+            mock_config.computer.default_working_dir = tmpdir
+            mock_db.create_session = mock_initialized_db.create_session
+            mock_db.get_session = mock_initialized_db.get_session
+            mock_db.assign_voice = mock_initialized_db.assign_voice
+            mock_tb.ensure_tmux_session = AsyncMock(return_value=True)
+            mock_tb.get_pane_tty = AsyncMock(return_value=None)
+            mock_tb.get_pane_pid = AsyncMock(return_value=None)
+            mock_unique.return_value = "$TestComputer[user] - Child Session"
+
+            parent = await mock_initialized_db.create_session(
+                computer_name="TestComputer",
+                tmux_session_name="tmux-parent",
+                last_input_origin="telegram",
+                title="Parent Session",
+            )
+
+            cmd = CreateSessionCommand(
+                project_path=tmpdir,
+                title="Child Session",
+                origin="telegram",
+                initiator_session_id=parent.session_id,
+            )
+            result = await command_handlers.create_session(cmd, mock_client)
+
+    stored = await mock_initialized_db.get_session(result["session_id"])
+    assert stored is not None
+    assert stored.last_input_origin == "telegram"
+
+
+@pytest.mark.asyncio
 async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state(mock_initialized_db):
     """Tmux adapter should store terminal metadata on the session."""
 
@@ -337,7 +381,7 @@ async def test_handle_list_sessions_formats_output():
 
     s0 = MagicMock()
     s0.session_id = "session-0"
-    s0.origin_adapter = "telegram"
+    s0.last_input_origin = "telegram"
     s0.title = "Test Session 0"
     s0.project_path = "/home/user"
     s0.created_at = now
@@ -346,7 +390,7 @@ async def test_handle_list_sessions_formats_output():
 
     s1 = MagicMock()
     s1.session_id = "session-1"
-    s1.origin_adapter = "telegram"
+    s1.last_input_origin = "telegram"
     s1.title = "Test Session 1"
     s1.project_path = "/home/user"
     s1.created_at = now
@@ -363,12 +407,12 @@ async def test_handle_list_sessions_formats_output():
     assert len(result) == 2
 
     assert result[0].session_id == "session-0"
-    assert result[0].origin_adapter == "telegram"
+    assert result[0].last_input_origin == "telegram"
     assert result[0].title == "Test Session 0"
     assert result[0].status == "active"
 
     assert result[1].session_id == "session-1"
-    assert result[1].origin_adapter == "telegram"
+    assert result[1].last_input_origin == "telegram"
     assert result[1].title == "Test Session 1"
     assert result[1].status == "active"
 
@@ -490,7 +534,7 @@ async def test_handle_ctrl_requires_key_argument(mock_initialized_db):
     session = await mock_initialized_db.create_session(
         computer_name="TestPC",
         tmux_session_name="tc_test",
-        origin_adapter="terminal",
+        last_input_origin="terminal",
         title="Test Session",
         project_path="/home/user",
     )

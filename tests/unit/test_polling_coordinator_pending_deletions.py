@@ -30,7 +30,7 @@ async def test_polling_does_not_clear_pending_deletions():
         session_id="test-123",
         computer_name="test",
         tmux_session_name="test-tmux",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Test Session",
     )
 

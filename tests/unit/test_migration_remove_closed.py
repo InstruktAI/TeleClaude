@@ -19,7 +19,7 @@ async def test_remove_closed_column_migrates_schema_and_data() -> None:
                 computer_name TEXT NOT NULL,
                 title TEXT,
                 tmux_session_name TEXT NOT NULL,
-                origin_adapter TEXT NOT NULL DEFAULT 'telegram',
+                last_input_origin TEXT NOT NULL DEFAULT 'telegram',
                 adapter_metadata TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -31,7 +31,6 @@ async def test_remove_closed_column_migrates_schema_and_data() -> None:
                 initiated_by_ai BOOLEAN DEFAULT 0,
                 initiator_session_id TEXT,
                 output_message_id TEXT,
-                last_input_adapter TEXT,
                 notification_sent INTEGER DEFAULT 0,
                 native_session_id TEXT,
                 native_log_file TEXT,
@@ -49,7 +48,7 @@ async def test_remove_closed_column_migrates_schema_and_data() -> None:
         )
         await db.execute(
             """
-            INSERT INTO sessions (session_id, computer_name, title, tmux_session_name, origin_adapter, closed)
+            INSERT INTO sessions (session_id, computer_name, title, tmux_session_name, last_input_origin, closed)
             VALUES ('sess-1', 'TestMac', 'Test', 'tmux-1', 'api', 0)
             """
         )

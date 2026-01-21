@@ -79,7 +79,7 @@ def _make_session() -> Session:
         session_id="sess-1",
         computer_name="TestPC",
         tmux_session_name="tc_sess_1",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Test",
         adapter_metadata=SessionAdapterMetadata(),
     )

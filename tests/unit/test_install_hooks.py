@@ -4,7 +4,7 @@ import json
 import tomllib
 from pathlib import Path
 
-from scripts import install_hooks
+from teleclaude.install import install_hooks
 
 
 def test_merge_hooks_replaces_existing_hook_definition():

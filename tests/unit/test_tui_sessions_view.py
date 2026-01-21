@@ -75,7 +75,7 @@ class TestSessionsViewLogic:
     ) -> SessionInfo:
         return SessionInfo(
             session_id=session_id,
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title=title,
             project_path="/test/project",
             thinking_mode=thinking_mode,

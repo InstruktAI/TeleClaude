@@ -72,7 +72,7 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True)
 
     session_id: str
-    origin_adapter: str
+    last_input_origin: str | None = None
     title: str
     project_path: str | None = None
     subdir: str | None = None
@@ -94,7 +94,7 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
         """Map from core SessionSummary dataclass."""
         return cls(
             session_id=summary.session_id,
-            origin_adapter=summary.origin_adapter,
+            last_input_origin=summary.last_input_origin,
             title=summary.title,
             project_path=summary.project_path,
             subdir=summary.subdir,

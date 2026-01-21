@@ -34,7 +34,7 @@ async def test_warm_local_sessions_cache_seeds_cache(monkeypatch: pytest.MonkeyP
 
     mock_session = MagicMock()
     mock_session.session_id = "sess-1"
-    mock_session.origin_adapter = "telegram"
+    mock_session.last_input_origin = "telegram"
     mock_session.title = "Test Session"
     mock_session.project_path = "~"
     mock_session.thinking_mode = "slow"

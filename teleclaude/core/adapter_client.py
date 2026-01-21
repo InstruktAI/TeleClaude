@@ -77,7 +77,15 @@ class AdapterClient:
         logger.info("Registered adapter: %s", adapter_type)
 
     def _origin_ui_adapter(self, session: "Session") -> UiAdapter | None:
-        adapter = self.adapters.get(session.origin_adapter)
+        if not session.last_input_origin:
+            logger.error(
+                "Session %s missing last_input_origin; broadcasting to all UI adapters",
+                session.session_id[:8],
+            )
+            return None
+        if session.last_input_origin == "cli":
+            return None
+        adapter = self.adapters.get(session.last_input_origin)
         return adapter if isinstance(adapter, UiAdapter) else None
 
     def _ui_adapters(self) -> list[tuple[str, UiAdapter]]:
@@ -206,13 +214,13 @@ class AdapterClient:
         Failures are logged as warnings but do not raise exceptions.
 
         Args:
-            session: Session object (contains origin_adapter)
+            session: Session object (contains last_input_origin)
             operation: Operation name for logging
             task_factory: Function that takes adapter and returns awaitable
         """
         observer_tasks: list[tuple[str, Awaitable[object]]] = []
         for adapter_type, adapter in self.adapters.items():
-            if adapter_type == session.origin_adapter:
+            if adapter_type == session.last_input_origin:
                 continue
             if isinstance(adapter, UiAdapter):
                 observer_tasks.append((adapter_type, task_factory(adapter)))
@@ -341,8 +349,29 @@ class AdapterClient:
                 )
                 await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
 
-        # Send message (feedback/notice mode is origin-only, no broadcast to observers)
-        result = await self._route_to_ui(session, "send_message", text, broadcast=not feedback, metadata=metadata)
+        if session.last_input_origin == "cli":
+            logger.debug(
+                "Skipping UI send for session %s (last_input_origin=cli)",
+                session.session_id[:8],
+            )
+            result = None
+        elif session.last_input_origin:
+            target = self.adapters.get(session.last_input_origin)
+            if isinstance(target, UiAdapter):
+                result = await target.send_message(session, text, metadata=metadata)
+            else:
+                logger.error(
+                    "Session %s last_input_origin=%s not available; broadcasting to all UI adapters",
+                    session.session_id[:8],
+                    session.last_input_origin,
+                )
+                result = await self._route_to_ui(session, "send_message", text, broadcast=True, metadata=metadata)
+        else:
+            logger.error(
+                "Session %s missing last_input_origin; broadcasting to all UI adapters",
+                session.session_id[:8],
+            )
+            result = await self._route_to_ui(session, "send_message", text, broadcast=True, metadata=metadata)
         message_id = str(result) if result else None
 
         # Track for deletion if ephemeral
@@ -694,7 +723,7 @@ class AdapterClient:
         Uses source adapter (where message came from) rather than origin adapter,
         so AI-to-AI sessions can still have UI cleanup on Telegram.
         """
-        adapter_type = source_adapter or session.origin_adapter
+        adapter_type = source_adapter or session.last_input_origin
         adapter = self.adapters.get(adapter_type)
         if not adapter or not isinstance(adapter, UiAdapter):
             return
@@ -714,7 +743,7 @@ class AdapterClient:
         Uses source adapter (where message came from) rather than origin adapter,
         so AI-to-AI sessions can still have UI state tracking on Telegram.
         """
-        adapter_type = source_adapter or session.origin_adapter
+        adapter_type = source_adapter or session.last_input_origin
         adapter = self.adapters.get(adapter_type)
         if not adapter or not isinstance(adapter, UiAdapter):
             return
@@ -765,7 +794,7 @@ class AdapterClient:
             return
 
         for adapter_type, adapter in self.adapters.items():
-            if adapter_type == session.origin_adapter:
+            if adapter_type == session.last_input_origin:
                 continue
             if adapter_type == source_adapter:
                 continue
@@ -832,7 +861,7 @@ class AdapterClient:
         self,
         session: "Session",
         title: str,
-        origin_adapter: str,
+        last_input_origin: str,
         target_computer: Optional[str] = None,
     ) -> str:
         """Create channels in ALL adapters for new session.
@@ -845,7 +874,7 @@ class AdapterClient:
         Args:
             session: Session object (caller already has it)
             title: Channel title
-            origin_adapter: Name of origin adapter (interactive)
+            last_input_origin: Name of origin adapter (interactive)
             target_computer: Initiator computer name for AI-to-AI sessions (for stop event forwarding)
 
         Returns:
@@ -856,18 +885,18 @@ class AdapterClient:
         """
         session_id = session.session_id
 
-        channel_origin_adapter = origin_adapter
-        if origin_adapter not in self.adapters:
-            logger.debug("Origin %s not a registered adapter; treating as originless", origin_adapter)
-            channel_origin_adapter = ""
+        channel_last_input_origin = last_input_origin
+        if last_input_origin not in self.adapters:
+            logger.debug("Origin %s not a registered adapter; treating as originless", last_input_origin)
+            channel_last_input_origin = ""
 
-        origin_adapter_instance = self.adapters.get(channel_origin_adapter)
-        origin_requires_channel = isinstance(origin_adapter_instance, UiAdapter)
+        last_input_origin_instance = self.adapters.get(channel_last_input_origin)
+        origin_requires_channel = isinstance(last_input_origin_instance, UiAdapter)
 
         tasks = []
         adapter_types = []
         for adapter_type, adapter in self.adapters.items():
-            is_origin = bool(channel_origin_adapter) and adapter_type == channel_origin_adapter
+            is_origin = bool(channel_last_input_origin) and adapter_type == channel_last_input_origin
             adapter_types.append((adapter_type, is_origin))
             tasks.append(
                 adapter.create_channel(
@@ -896,7 +925,7 @@ class AdapterClient:
                     origin_channel_id = channel_id
 
         if origin_requires_channel and not origin_channel_id:
-            raise ValueError(f"Origin adapter {origin_adapter} not found or did not return channel_id")
+            raise ValueError(f"Origin adapter {last_input_origin} not found or did not return channel_id")
         if not origin_channel_id:
             origin_channel_id = ""
 

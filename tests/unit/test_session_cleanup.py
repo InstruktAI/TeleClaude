@@ -29,7 +29,7 @@ async def test_cleanup_stale_session_detects_missing_tmux():
     mock_session = MagicMock()
     mock_session.session_id = "stale-session-123"
     mock_session.tmux_session_name = "tc_stale"
-    mock_session.origin_adapter = "telegram"
+    mock_session.last_input_origin = "telegram"
     mock_session.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)
 
     mock_adapter_client = MagicMock()
@@ -62,7 +62,7 @@ async def test_cleanup_stale_session_skips_healthy_session():
     mock_session = MagicMock()
     mock_session.session_id = "healthy-session-123"
     mock_session.tmux_session_name = "tc_healthy"
-    mock_session.origin_adapter = "telegram"
+    mock_session.last_input_origin = "telegram"
     mock_session.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)
 
     mock_adapter_client = MagicMock()
@@ -87,7 +87,7 @@ async def test_cleanup_all_stale_sessions_processes_all():
         s = MagicMock()
         s.session_id = f"session-{i}"
         s.tmux_session_name = f"tc_session_{i}"
-        s.origin_adapter = "telegram"
+        s.last_input_origin = "telegram"
         s.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)
         mock_sessions.append(s)
 
@@ -229,7 +229,7 @@ async def test_terminate_session_deletes_db_and_resources():
     mock_session = MagicMock()
     mock_session.session_id = "session-123"
     mock_session.tmux_session_name = "tc_session"
-    mock_session.origin_adapter = "telegram"
+    mock_session.last_input_origin = "telegram"
 
     adapter_client = MagicMock()
 
@@ -262,7 +262,7 @@ async def test_terminate_session_kills_tmux_for_terminal_origin():
     mock_session = MagicMock()
     mock_session.session_id = "session-456"
     mock_session.tmux_session_name = "terminal:deadbeef"
-    mock_session.origin_adapter = "terminal"
+    mock_session.last_input_origin = "terminal"
 
     adapter_client = MagicMock()
 

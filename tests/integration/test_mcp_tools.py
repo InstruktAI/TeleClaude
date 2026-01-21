@@ -71,7 +71,7 @@ async def test_teleclaude_list_sessions(mcp_server, daemon_with_mocked_telegram)
     await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="testcomp-ai-1",
-        origin_adapter="redis",
+        last_input_origin="cli",
         title="$testcomp > $workstation",
         adapter_metadata={"target_computer": {"name": "workstation"}},
     )
@@ -79,7 +79,7 @@ async def test_teleclaude_list_sessions(mcp_server, daemon_with_mocked_telegram)
     await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="testcomp-ai-2",
-        origin_adapter="redis",
+        last_input_origin="cli",
         title="$testcomp > $server",
         adapter_metadata={"target_computer": {"name": "server"}},
     )
@@ -91,7 +91,7 @@ async def test_teleclaude_list_sessions(mcp_server, daemon_with_mocked_telegram)
     # Verify session structure (fields returned by list_sessions)
     for session in result:
         assert "session_id" in session
-        assert "origin_adapter" in session
+        assert "last_input_origin" in session
         assert "title" in session
 
 
@@ -154,10 +154,18 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
 @pytest.mark.integration
 async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
     """Paranoid test teleclaude__send_message sends via request/response (no streaming)."""
+    daemon = daemon_with_mocked_telegram
 
     # Remote session ID (no local session needed)
     remote_session_id = "remote-uuid-123"
     target_computer = "RasPi"
+    await daemon.db.create_session(
+        computer_name="TestPC",
+        tmux_session_name="tmux-caller",
+        last_input_origin="telegram",
+        title="Caller Session",
+        session_id="caller-session-123",
+    )
 
     # Mock send_request (new architecture uses request/response)
     with patch.object(mcp_server.client, "send_request", new_callable=AsyncMock) as mock_send:
@@ -191,7 +199,7 @@ async def test_teleclaude_send_file(mcp_server, daemon_with_mocked_telegram):
     session = await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="test-file-upload",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Test File Upload",
         adapter_metadata={"channel_id": "12345"},
     )
@@ -256,7 +264,7 @@ async def test_teleclaude_send_file_nonexistent_file(mcp_server, daemon_with_moc
     session = await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="test-missing-file",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Test Missing File",
         adapter_metadata={"channel_id": "12345"},
     )

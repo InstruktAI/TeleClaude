@@ -22,7 +22,7 @@ async def test_polling_registry_clears_after_exit(daemon_with_mocked_telegram):
     await test_db.create_session(
         session_id=session_id,
         tmux_session_name=tmux_session_name,
-        origin_adapter="test",
+        last_input_origin="test",
         title="Test Session",
         computer_name="test-computer",
         adapter_metadata={},
@@ -69,7 +69,7 @@ async def test_polling_guard_prevents_duplicate_polling(daemon_with_mocked_teleg
     await test_db.create_session(
         session_id=session_id,
         tmux_session_name=f"test-{session_id[:8]}",
-        origin_adapter="test",
+        last_input_origin="test",
         title="Test Session",
         computer_name="test-computer",
         adapter_metadata={},

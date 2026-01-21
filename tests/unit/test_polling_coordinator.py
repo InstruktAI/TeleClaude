@@ -26,7 +26,7 @@ class TestPollAndSendOutput:
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",  # Not matching $X > $Y pattern
         )
 
@@ -57,7 +57,7 @@ class TestPollAndSendOutput:
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 
@@ -89,7 +89,7 @@ class TestPollAndSendOutput:
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 
@@ -141,7 +141,7 @@ class TestPollAndSendOutput:
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 
@@ -199,7 +199,7 @@ class TestPollAndSendOutput:
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
         )
 

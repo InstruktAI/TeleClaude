@@ -230,6 +230,19 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         Args:
             sessions: List of session dicts
         """
+        now = datetime.now(timezone.utc)
+
+        def _is_recent(last_activity: str | None) -> bool:
+            if not last_activity:
+                return False
+            try:
+                last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
+            except ValueError:
+                return False
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            return (now - last_dt).total_seconds() <= 60
+
         for session in sessions:
             session_id = session.session_id
             curr_input = session.last_input or ""
@@ -240,11 +253,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if prev is None:
                 # New session - store state and check if there's activity
                 self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
-                # If there's content, highlight it
-                if curr_input:
-                    self._start_highlight_timer(session_id, ActivePane.INPUT)
-                elif curr_output:
-                    self._start_highlight_timer(session_id, ActivePane.OUTPUT)
+                # If there's recent activity, highlight it
+                if _is_recent(session.last_activity):
+                    if curr_input:
+                        self._start_highlight_timer(session_id, ActivePane.INPUT)
+                    elif curr_output:
+                        self._start_highlight_timer(session_id, ActivePane.OUTPUT)
+                else:
+                    self._active_field[session_id] = ActivePane.NONE
                 continue
 
             # Existing session - check what changed

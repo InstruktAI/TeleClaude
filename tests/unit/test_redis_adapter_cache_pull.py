@@ -63,7 +63,7 @@ async def test_pull_initial_sessions_happy_path():
                 "data": [
                     {
                         "session_id": "sess-1",
-                        "origin_adapter": "telegram",
+                        "last_input_origin": "telegram",
                         "computer": "RemotePC1",
                         "status": "active",
                         "title": "Test Session",

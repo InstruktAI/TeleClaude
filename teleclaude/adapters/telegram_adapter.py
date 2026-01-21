@@ -48,6 +48,7 @@ from teleclaude.core.models import (
     MessageMetadata,
     PeerInfo,
     Session,
+    TelegramAdapterMetadata,
 )
 from teleclaude.core.ux_state import (
     get_system_ux_state,
@@ -647,6 +648,25 @@ class TelegramAdapter(
         sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", thread_id)
 
         if not sessions:
+            title = self._extract_topic_title(message)
+            if title and self._topic_title_mentions_this_computer(title):
+                candidates = await db.get_active_sessions()
+                matched = [sess for sess in candidates if sess.title == title]
+                if matched:
+                    session = matched[0]
+                    if session.adapter_metadata:
+                        telegram_meta = session.adapter_metadata.telegram
+                        if not telegram_meta:
+                            telegram_meta = TelegramAdapterMetadata()
+                            session.adapter_metadata.telegram = telegram_meta
+                        telegram_meta.topic_id = int(thread_id)
+                        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+                        logger.info(
+                            "_get_session_from_topic: registered topic_id %s for session %s",
+                            thread_id,
+                            session.session_id[:8],
+                        )
+                        return session
             logger.debug("_get_session_from_topic: no session found for topic_id %s", thread_id)
             return None
 

@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 # Columns to add (name -> type definition)
 REQUIRED_COLUMNS = {
     "output_message_id": "TEXT",
-    "last_input_adapter": "TEXT",
+    "last_input_origin": "TEXT",
     "notification_sent": "INTEGER DEFAULT 0",
     "native_session_id": "TEXT",
     "native_log_file": "TEXT",
@@ -81,7 +81,7 @@ async def _migrate_ux_state_data(db: aiosqlite.Connection) -> None:
             """
             UPDATE sessions SET
                 output_message_id = ?,
-                last_input_adapter = ?,
+                last_input_origin = ?,
                 notification_sent = ?,
                 native_session_id = ?,
                 native_log_file = ?,
@@ -93,7 +93,7 @@ async def _migrate_ux_state_data(db: aiosqlite.Connection) -> None:
             """,
             (
                 ux.get("output_message_id"),
-                ux.get("last_input_adapter"),
+                ux.get("last_input_origin"),
                 1 if ux.get("notification_sent") else 0,
                 ux.get("native_session_id"),
                 ux.get("native_log_file"),

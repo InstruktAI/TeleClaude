@@ -8,43 +8,43 @@ This document maps integration tests to use cases defined in `docs/use_cases.md`
 
 ## Coverage Matrix
 
-| Use Case | Test File | Test Name | Status |
-|----------|-----------|-----------|--------|
-| **UC-H1: Create New Tmux Session** | test_core.py | test_session_manager_crud | ✅ Partial (DB only) |
-| **UC-H1: Create New Tmux Session** | test_full_flow.py | test_message_execution_and_output_polling | ✅ Full |
-| **UC-H2: Execute Tmux Command (Human Mode)** | test_full_flow.py | test_command_execution_via_terminal | ✅ Full |
-| **UC-H2: Execute Tmux Command (Human Mode)** | test_process_exit_detection.py | test_process_detection_uses_output_message_id | ✅ Full |
-| **UC-H3: Long-Running Command with Idle Notification** | - | - | ❌ Missing |
-| **UC-H4: Download Large Output** | - | - | ❌ Missing |
-| **UC-H5: Send Voice Command** | test_voice_status_append.py | test_append_status_to_existing_output | ✅ Partial (status only) |
-| **UC-A1: AI Initiates Cross-Computer Session** | test_mcp_tools.py | test_teleclaude_start_session_success | ✅ Full |
-| **UC-A1: AI Initiates Cross-Computer Session** | test_mcp_redis.py | test_teleclaude_start_session | ✅ Full |
-| **UC-A2: AI Executes Remote Command (AI Mode)** | test_full_flow.py | test_multi_computer_mcp_command_execution | ✅ Full |
-| **UC-A2: AI Executes Remote Command (AI Mode)** | test_mcp_tools.py | test_teleclaude_send_success | ✅ Full |
-| **UC-A2: AI Executes Remote Command (AI Mode)** | test_concurrent_ai_sessions.py | test_concurrent_sessions_dont_interfere | ✅ Stress |
-| **UC-A2: AI Executes Remote Command (AI Mode)** | test_concurrent_ai_sessions.py | test_three_computer_chain | ✅ Multi-hop |
-| **UC-A3: AI Polls Output Stream** | test_concurrent_ai_sessions.py | test_concurrent_streaming_sessions | ✅ Full |
-| **UC-S1: List Active Sessions** | test_mcp_tools.py | test_teleclaude_list_sessions | ✅ Full |
-| **UC-S1: List Active Sessions** | test_mcp_redis.py | test_teleclaude_list_sessions | ✅ Full |
-| **UC-S2: Close Session** | - | - | ❌ Missing |
-| **UC-S3: Session Recovery After Daemon Restart** | test_process_exit_detection.py | test_process_detection_survives_daemon_restart | ✅ Full |
-| **UC-V1: Voice Command Confirmation Flow** | - | - | ❌ Missing |
-| **UC-V2: Voice Transcription Error Handling** | - | - | ❌ Missing |
-| **UC-M1: Telegram User with Redis Observer** | - | - | ❌ Missing |
-| **UC-M2: Multiple UI Observers (Future)** | - | - | ❌ N/A (future) |
+| Use Case                                               | Test File                      | Test Name                                      | Status                   |
+| ------------------------------------------------------ | ------------------------------ | ---------------------------------------------- | ------------------------ |
+| **UC-H1: Create New Tmux Session**                     | test_core.py                   | test_session_manager_crud                      | ✅ Partial (DB only)     |
+| **UC-H1: Create New Tmux Session**                     | test_full_flow.py              | test_message_execution_and_output_polling      | ✅ Full                  |
+| **UC-H2: Execute Tmux Command (Human Mode)**           | test_full_flow.py              | test_command_execution_via_terminal            | ✅ Full                  |
+| **UC-H2: Execute Tmux Command (Human Mode)**           | test_process_exit_detection.py | test_process_detection_uses_output_message_id  | ✅ Full                  |
+| **UC-H3: Long-Running Command with Idle Notification** | -                              | -                                              | ❌ Missing               |
+| **UC-H4: Download Large Output**                       | -                              | -                                              | ❌ Missing               |
+| **UC-H5: Send Voice Command**                          | test_voice_status_append.py    | test_append_status_to_existing_output          | ✅ Partial (status only) |
+| **UC-A1: AI Initiates Cross-Computer Session**         | test_mcp_tools.py              | test_teleclaude_start_session_success          | ✅ Full                  |
+| **UC-A1: AI Initiates Cross-Computer Session**         | test_mcp_redis.py              | test_teleclaude_start_session                  | ✅ Full                  |
+| **UC-A2: AI Executes Remote Command (AI Mode)**        | test_full_flow.py              | test_multi_computer_mcp_command_execution      | ✅ Full                  |
+| **UC-A2: AI Executes Remote Command (AI Mode)**        | test_mcp_tools.py              | test_teleclaude_send_success                   | ✅ Full                  |
+| **UC-A2: AI Executes Remote Command (AI Mode)**        | test_concurrent_ai_sessions.py | test_concurrent_sessions_dont_interfere        | ✅ Stress                |
+| **UC-A2: AI Executes Remote Command (AI Mode)**        | test_concurrent_ai_sessions.py | test_three_computer_chain                      | ✅ Multi-hop             |
+| **UC-A3: AI Polls Output Stream**                      | test_concurrent_ai_sessions.py | test_concurrent_streaming_sessions             | ✅ Full                  |
+| **UC-S1: List Active Sessions**                        | test_mcp_tools.py              | test_teleclaude_list_sessions                  | ✅ Full                  |
+| **UC-S1: List Active Sessions**                        | test_mcp_redis.py              | test_teleclaude_list_sessions                  | ✅ Full                  |
+| **UC-S2: Close Session**                               | -                              | -                                              | ❌ Missing               |
+| **UC-S3: Session Recovery After Daemon Restart**       | test_process_exit_detection.py | test_process_detection_survives_daemon_restart | ✅ Full                  |
+| **UC-V1: Voice Command Confirmation Flow**             | -                              | -                                              | ❌ Missing               |
+| **UC-V2: Voice Transcription Error Handling**          | -                              | -                                              | ❌ Missing               |
+| **UC-M1: Telegram User with Redis Observer**           | -                              | -                                              | ❌ Missing               |
+| **UC-M2: Multiple UI Observers (Future)**              | -                              | -                                              | ❌ N/A (future)          |
 
 ---
 
 ## Coverage Summary
 
-| Category | Covered | Partial | Missing | Total |
-|----------|---------|---------|---------|-------|
-| Human-Interactive (UC-H*) | 2 | 2 | 1 | 5 |
-| AI-to-AI (UC-A*) | 3 | 0 | 0 | 3 |
-| Session Management (UC-S*) | 2 | 0 | 1 | 3 |
-| Voice (UC-V*) | 0 | 1 | 1 | 2 |
-| Multi-Adapter (UC-M*) | 0 | 0 | 1 | 2 |
-| **Total** | **7** | **3** | **4** | **15** |
+| Category                    | Covered | Partial | Missing | Total  |
+| --------------------------- | ------- | ------- | ------- | ------ |
+| Human-Interactive (UC-H\*)  | 2       | 2       | 1       | 5      |
+| AI-to-AI (UC-A\*)           | 3       | 0       | 0       | 3      |
+| Session Management (UC-S\*) | 2       | 0       | 1       | 3      |
+| Voice (UC-V\*)              | 0       | 1       | 1       | 2      |
+| Multi-Adapter (UC-M\*)      | 0       | 0       | 1       | 2      |
+| **Total**                   | **7**   | **3**   | **4**   | **15** |
 
 **Coverage: 47% Full, 20% Partial, 27% Missing**
 
@@ -144,9 +144,9 @@ async def test_close_session_with_active_polling():
 """Integration test for multi-adapter broadcasting."""
 
 @pytest.mark.integration
-async def test_origin_adapter_receives_output():
+async def test_last_input_origin_receives_output():
     """Test output sent to origin adapter (CRITICAL)."""
-    # Setup: Create session with origin_adapter="telegram"
+    # Setup: Create session with last_input_origin="telegram"
     # Execute: Send command
     # Assert: Output sent to TelegramAdapter
     # Assert: send_message() called on origin adapter
@@ -212,6 +212,7 @@ async def test_voice_confirmation_cancel():
 ## Existing Tests - Enhancement Needed
 
 ### test_voice_status_append.py
+
 **Current:** Tests status message appending to output message
 **Missing:** Full voice flow (transcription → confirmation → execution)
 **Action:** Extract to separate test_voice_full_flow.py, keep append-specific tests
@@ -221,6 +222,7 @@ async def test_voice_confirmation_cancel():
 ## Test Execution Status
 
 Run integration tests:
+
 ```bash
 .venv/bin/pytest tests/integration/ -v
 ```

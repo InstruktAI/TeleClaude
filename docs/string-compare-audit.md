@@ -144,7 +144,7 @@ Total findings: **1282**
   - Category: **StringLiteral**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
-- L2285: `if session.origin_adapter == "telegram":`
+- L2285: `if session.last_input_origin == "telegram":`
   - Category: **AdapterType**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
@@ -1446,7 +1446,7 @@ Total findings: **1282**
   - Category: **StringLiteral**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
-- L451: `assert result[0].origin_adapter == "telegram"`
+- L451: `assert result[0].last_input_origin == "telegram"`
   - Category: **AdapterType**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
@@ -1462,7 +1462,7 @@ Total findings: **1282**
   - Category: **StringLiteral**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
-- L456: `assert result[1].origin_adapter == "telegram"`
+- L456: `assert result[1].last_input_origin == "telegram"`
   - Category: **AdapterType**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
@@ -1960,7 +1960,7 @@ Total findings: **1282**
   - Category: **StringLiteral**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
-- L118: `assert result[0]["origin_adapter"] == "telegram"`
+- L118: `assert result[0]["last_input_origin"] == "telegram"`
   - Category: **AdapterType**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
@@ -2252,7 +2252,7 @@ Total findings: **1282**
   - Category: **StringLiteral**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
-- L168: `assert all(s.origin_adapter == "telegram" for s in sessions)`
+- L168: `assert all(s.last_input_origin == "telegram" for s in sessions)`
   - Category: **AdapterType**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
@@ -4940,7 +4940,7 @@ Total findings: **1282**
   - Category: **StringLiteral**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
-- L103: `assert session.origin_adapter == "redis"`
+- L103: `assert session.last_input_origin == "redis"`
   - Category: **AdapterType**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
@@ -4952,7 +4952,7 @@ Total findings: **1282**
   - Category: **Status**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
-- L187: `assert session.origin_adapter == "redis"`
+- L187: `assert session.last_input_origin == "redis"`
   - Category: **AdapterType**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
@@ -4994,7 +4994,7 @@ Total findings: **1282**
   - Category: **StringLiteral**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
-- L94: `assert "origin_adapter" in session`
+- L94: `assert "last_input_origin" in session`
   - Category: **StringLiteral**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
@@ -5278,7 +5278,7 @@ Total findings: **1282**
   - Category: **StringLiteral**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
-### scripts/install_hooks.py
+### bin/init/install_hooks.py
 
 - L461: `if __name__ == "__main__":`
   - Category: **StringLiteral**
@@ -5318,7 +5318,7 @@ Total findings: **1282**
   - Category: **StringLiteral**
   - Action: _TBD_ (enum/helper/constant or structured error code)
 
-### scripts/guardrails.py
+### bin/guardrails.py
 
 - L253: `if __name__ == "__main__":`
   - Category: **StringLiteral**

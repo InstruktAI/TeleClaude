@@ -35,7 +35,7 @@ async def test_session(session_manager):
     session = await session_manager.create_session(
         computer_name="test-computer",
         tmux_session_name="tmux_test",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=12345, output_message_id="msg_out")
         ),

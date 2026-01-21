@@ -18,7 +18,7 @@ def mock_session():
         session_id="test123",
         computer_name="test-computer",
         tmux_session_name="tmux_test123",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=456, output_message_id="msg_123")
         ),
@@ -156,7 +156,7 @@ class TestHandleFile:
             session_id="test123",
             computer_name="test-computer",
             tmux_session_name="tmux_test123",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             adapter_metadata=SessionAdapterMetadata(
                 telegram=TelegramAdapterMetadata(topic_id=456)  # No output_message_id
             ),

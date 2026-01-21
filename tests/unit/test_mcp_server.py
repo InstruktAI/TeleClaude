@@ -36,6 +36,7 @@ def mock_mcp_server():
     mock_caller_session = MagicMock()
     mock_caller_session.active_agent = "claude"
     mock_caller_session.thinking_mode = "slow"
+    mock_caller_session.last_input_origin = "telegram"
 
     with (
         patch("teleclaude.mcp_server.config") as mock_config,
@@ -105,7 +106,7 @@ async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
             return_value=[
                 SessionSummary(
                     session_id="test-session-123",
-                    origin_adapter="telegram",
+                    last_input_origin="telegram",
                     title="Test Session",
                     project_path="/home/user",
                     thinking_mode="slow",
@@ -119,7 +120,7 @@ async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
 
         assert len(result) == 1
         assert result[0]["session_id"] == "test-session-123"
-        assert result[0]["origin_adapter"] == "telegram"
+        assert result[0]["last_input_origin"] == "telegram"
         assert result[0]["computer"] == "TestComputer"
 
 
@@ -132,7 +133,7 @@ async def test_teleclaude_start_session_creates_session(mock_mcp_server):
     server.command_service.create_session = AsyncMock(return_value={"session_id": "new-session-456"})
 
     with patch("teleclaude.mcp.handlers.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=None)
+        mock_db.get_session = AsyncMock(return_value=MagicMock(last_input_origin="telegram"))
 
         result = await server.teleclaude__start_session(
             computer="local",

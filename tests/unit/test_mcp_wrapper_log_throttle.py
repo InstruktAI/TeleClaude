@@ -35,7 +35,7 @@ async def test_log_throttled_suppresses_repeats(monkeypatch: pytest.MonkeyPatch)
         def debug(self, msg: str, *args: object) -> None:
             calls.append((10, (msg % args) if args else msg))
 
-    monkeypatch.setattr(wrapper, "logger", _Logger())
+    monkeypatch.setattr(wrapper._impl, "logger", _Logger())
 
     proxy._log_throttled("k", 30, "hello %s", "x")
     proxy._log_throttled("k", 30, "hello %s", "x")

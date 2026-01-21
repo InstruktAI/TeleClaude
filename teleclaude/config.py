@@ -156,19 +156,11 @@ class TelegramConfig:
 
 
 @dataclass
-class UiDeliveryConfig:
-    """Configuration for UI delivery scope."""
-
-    scope: str  # "origin_only" | "all_ui"
-
-
-@dataclass
 class Config:
     database: DatabaseConfig
     computer: ComputerConfig
     redis: RedisConfig
     telegram: TelegramConfig
-    ui_delivery: UiDeliveryConfig
     agents: Dict[str, AgentConfig]
 
 
@@ -195,9 +187,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
     },
     "telegram": {
         "trusted_bots": [],
-    },
-    "ui_delivery": {
-        "scope": "origin_only",
     },
     "agents": {
         "claude": {
@@ -266,7 +255,6 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
     comp_raw = raw["computer"]
     redis_raw = raw["redis"]
     tg_raw = raw["telegram"]
-    ui_raw = raw["ui_delivery"]
     agents_raw = raw.get("agents", {})
 
     # Import AGENT_METADATA from constants
@@ -316,9 +304,6 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
         ),
         telegram=TelegramConfig(
             trusted_bots=list(tg_raw["trusted_bots"]),  # type: ignore[index,misc]
-        ),
-        ui_delivery=UiDeliveryConfig(
-            scope=str(ui_raw["scope"]),  # type: ignore[index,misc]
         ),
         agents=agents_registry,
     )

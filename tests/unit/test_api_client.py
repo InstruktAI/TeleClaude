@@ -55,7 +55,7 @@ async def test_list_sessions_success():
         [
             {
                 "session_id": "sess-1",
-                "origin_adapter": "telegram",
+                "last_input_origin": "telegram",
                 "title": "Test",
                 "project_path": "/tmp",
                 "thinking_mode": "slow",

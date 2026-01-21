@@ -69,7 +69,7 @@ This document maps all critical user pathways to integration tests, identifying 
 
 **Current Coverage**:
 
-- ✅ `test_multi_adapter_broadcasting::test_origin_adapter_receives_output` - Origin receives (critical)
+- ✅ `test_multi_adapter_broadcasting::test_last_input_origin_receives_output` - Origin receives (critical)
 - ✅ `test_multi_adapter_broadcasting::test_redis_observer_skipped_no_ui` - Redis (has_ui=False) skipped
 - ✅ `test_multi_adapter_broadcasting::test_ui_observer_receives_broadcasts` - UI observers receive
 - ✅ `test_multi_adapter_broadcasting::test_observer_failure_does_not_affect_origin` - Best-effort observers
@@ -133,7 +133,6 @@ This document maps all critical user pathways to integration tests, identifying 
 ### P0: Must Have Before Deployment
 
 1. **✅ COMPLETED: Multi-adapter broadcasting** (origin + observers)
-
    - Tests exist and passing
 
 2. **❌ MISSING: Notification chain end-to-end**

@@ -13,7 +13,7 @@ async def test_heartbeat_includes_sessions(daemon_with_mocked_telegram):
     session = await daemon.db.create_session(
         computer_name="TestPC",
         tmux_session_name="test-heartbeat",
-        origin_adapter="redis",
+        last_input_origin="cli",
         title="Test Session",
         adapter_metadata={"test": "data"},
     )
@@ -39,7 +39,7 @@ async def test_heartbeat_sessions_limit(daemon_with_mocked_telegram):
         session = await daemon.db.create_session(
             computer_name="TestPC",
             tmux_session_name=f"test-heartbeat-{i}",
-            origin_adapter="redis",
+            last_input_origin="cli",
             title=f"Test Session {i}",
             adapter_metadata={"index": i},
         )

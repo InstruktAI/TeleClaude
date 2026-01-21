@@ -1,4 +1,4 @@
-"""Add project_path and subdir columns and remove legacy working_directory."""
+"""Consolidate origin fields into last_input_origin."""
 
 # mypy: disable-error-code="misc"
 # Migration files handle untyped sqlite rows
@@ -8,27 +8,22 @@ from typing import cast
 import aiosqlite
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.migrations.constants import (
-    COLUMN_PROJECT_PATH,
-    COLUMN_SUBDIR,
-    COLUMN_WORKING_DIRECTORY,
-)
-
 logger = get_logger(__name__)
 
 
 async def up(db: aiosqlite.Connection) -> None:
-    """Rebuild sessions table to use project_path/subdir and drop working_directory."""
+    """Replace origin_adapter/last_input_adapter with last_input_origin."""
     cursor = await db.execute("PRAGMA table_info(sessions)")
     rows = await cursor.fetchall()
     existing_columns = [cast(str, row[1]) for row in rows]
 
-    # If working_directory is already gone and project_path exists, we're done
-    if COLUMN_WORKING_DIRECTORY not in existing_columns and COLUMN_PROJECT_PATH in existing_columns:
-        logger.info("Sessions table already refactored; skipping migration")
+    has_last_input_origin = "last_input_origin" in existing_columns
+    has_legacy_origin = "origin_adapter" in existing_columns or "last_input_adapter" in existing_columns
+
+    if has_last_input_origin and not has_legacy_origin:
+        logger.info("last_input_origin already present; skipping migration")
         return
 
-    # Create new table with desired schema
     await db.execute(
         """
         CREATE TABLE IF NOT EXISTS sessions_new (
@@ -65,7 +60,6 @@ async def up(db: aiosqlite.Connection) -> None:
         """
     )
 
-    # Define columns to copy directly (present in both old and new schemas)
     desired_columns = [
         "session_id",
         "computer_name",
@@ -77,6 +71,8 @@ async def up(db: aiosqlite.Connection) -> None:
         "last_activity",
         "closed_at",
         "terminal_size",
+        "project_path",
+        "subdir",
         "description",
         "initiated_by_ai",
         "initiator_session_id",
@@ -95,30 +91,24 @@ async def up(db: aiosqlite.Connection) -> None:
         "working_slug",
     ]
 
-    common_columns = [col for col in desired_columns if col in existing_columns]
+    select_expressions: list[str] = []
+    for column in desired_columns:
+        if column == "last_input_origin":
+            if "last_input_origin" in existing_columns:
+                expr = "last_input_origin"
+            else:
+                expr = "COALESCE(last_input_adapter, origin_adapter)"
+        elif column in existing_columns:
+            expr = column
+        else:
+            expr = "NULL"
+        select_expressions.append(expr)
 
-    # We also want to backfill project_path from working_directory if it exists
-    if COLUMN_WORKING_DIRECTORY in existing_columns:
-        # Initial copy of common columns
-        cols_str = ", ".join(common_columns)
-        await db.execute(f"INSERT INTO sessions_new ({cols_str}) SELECT {cols_str} FROM sessions")
-
-        # Backfill project_path from working_directory
-        await db.execute(
-            "UPDATE sessions_new SET project_path = (SELECT working_directory FROM sessions WHERE sessions.session_id = sessions_new.session_id)"
-        )
-        logger.info("Backfilled project_path from legacy working_directory")
-    else:
-        # Just copy common columns (including project_path/subdir if they already existed)
-        if COLUMN_PROJECT_PATH in existing_columns:
-            common_columns.append(COLUMN_PROJECT_PATH)
-        if COLUMN_SUBDIR in existing_columns:
-            common_columns.append(COLUMN_SUBDIR)
-
-        cols_str = ", ".join(common_columns)
-        await db.execute(f"INSERT INTO sessions_new ({cols_str}) SELECT {cols_str} FROM sessions")
+    column_list = ", ".join(desired_columns)
+    select_list = ", ".join(select_expressions)
+    await db.execute(f"INSERT INTO sessions_new ({column_list}) SELECT {select_list} FROM sessions")
 
     await db.execute("DROP TABLE sessions")
     await db.execute("ALTER TABLE sessions_new RENAME TO sessions")
     await db.commit()
-    logger.info("Sessions table refactored: removed working_directory, ensured project_path/subdir")
+    logger.info("Migrated origin fields to last_input_origin")

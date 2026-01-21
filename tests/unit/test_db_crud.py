@@ -27,7 +27,7 @@ async def test_session_manager_crud():
         session = await session_mgr.create_session(
             computer_name="TestMac",
             tmux_session_name="test-session-crud",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Test Session",
             project_path="~",
         )
@@ -86,7 +86,7 @@ async def test_session_manager_with_metadata():
         session = await session_mgr.create_session(
             computer_name="TestMac",
             tmux_session_name="test-metadata",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             adapter_metadata=metadata,
             title="Metadata Test",
         )

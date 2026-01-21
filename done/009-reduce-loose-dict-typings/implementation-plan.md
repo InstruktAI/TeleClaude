@@ -399,7 +399,7 @@ dict[str, object]  # noqa: loose-dict - Reason why this must stay loose
 dict[str, object]  # type: boundary - External data source with unknown structure
 ```
 
-**Guardrails enforcement:** The `scripts/guardrails.py` pre-commit hook enforces zero tolerance for undocumented loose dicts. Any `dict[str, object]` without an exception comment will fail the build.
+**Guardrails enforcement:** The `bin/guardrails.py` pre-commit hook enforces zero tolerance for undocumented loose dicts. Any `dict[str, object]` without an exception comment will fail the build.
 
 These files/patterns should keep `dict[str, object]` for valid reasons:
 
@@ -449,7 +449,6 @@ def process_data() -> dict[str, object]:  # ❌ Build fails!
 **Aggressive Breakdown:**
 
 - **Can be typed:** ~130 occurrences
-
   - SystemStats extraction: 4
   - MCP server returns: 26
   - MCP tool arguments: ~15

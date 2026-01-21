@@ -161,6 +161,7 @@ async def test_stop_notification_emits_agent_stop_event():
         b"command": b"/stop_notification sess-123 RemotePC",
         b"timestamp": b"1",
         b"initiator": b"RemotePC",
+        b"origin": b"telegram",
     }
 
     with patch("teleclaude.core.event_bus.event_bus.emit", new=AsyncMock()) as mock_emit:
@@ -273,7 +274,7 @@ async def test_send_message_adds_to_stream():
         session_id="test-session-123",
         computer_name="RemotePC",
         tmux_session_name="test-tmux",
-        origin_adapter="redis",
+        last_input_origin="cli",
         title="Test Session",
     )
     # Set up adapter_metadata with redis channel info

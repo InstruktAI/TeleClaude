@@ -317,10 +317,11 @@ class MCPHandlersMixin:
         if caller_session_id:
             channel_metadata["initiator_session_id"] = caller_session_id
 
+        origin = await self._resolve_origin(caller_session_id)
         cmd = CreateSessionCommand(
             project_path=project_path,
             title=title,
-            origin="mcp",
+            origin=origin,
             channel_metadata=channel_metadata,
             initiator_session_id=caller_session_id,
         )
@@ -473,16 +474,17 @@ class MCPHandlersMixin:
         """Send message to an AI agent session."""
         try:
             await self._register_listener_if_present(session_id, caller_session_id)
+            origin = await self._resolve_origin(caller_session_id)
 
             if self._is_local_computer(computer):
-                cmd = SendMessageCommand(session_id=session_id, text=message)
+                cmd = SendMessageCommand(session_id=session_id, text=message, origin=origin)
                 await get_command_service().send_message(cmd)
             else:
                 await self.client.send_request(
                     computer_name=computer,
                     command=f"message {message}",
                     session_id=session_id,
-                    metadata=MessageMetadata(),
+                    metadata=MessageMetadata(origin=origin),
                 )
 
             yield f"Message sent to session {session_id[:8]} on {computer}. Use teleclaude__get_session_data to check status."
@@ -540,6 +542,15 @@ class MCPHandlersMixin:
             computer, project, title, auto_command, caller_session_id, normalized_subfolder, working_slug
         )
 
+    async def _resolve_origin(self, caller_session_id: str | None) -> str:
+        """Resolve origin for MCP requests based on the caller session."""
+        if not caller_session_id:
+            raise ValueError("MCP request missing caller_session_id")
+        session = await db.get_session(caller_session_id)
+        if not session or not session.last_input_origin:
+            raise ValueError(f"MCP request missing parent origin for session {caller_session_id}")
+        return session.last_input_origin
+
     async def _start_local_session_with_auto_command(
         self,
         project_path: str,
@@ -564,13 +575,14 @@ class MCPHandlersMixin:
         if caller_session_id:
             channel_metadata["initiator_session_id"] = caller_session_id
 
+        origin = await self._resolve_origin(caller_session_id)
         cmd = CreateSessionCommand(
             project_path=project_path,
             title=title,
             subdir=subfolder,
             working_slug=working_slug,
             initiator_session_id=caller_session_id,
-            origin="mcp",
+            origin=origin,
             channel_metadata=channel_metadata,
             auto_command=auto_command,
         )
@@ -615,7 +627,9 @@ class MCPHandlersMixin:
         if caller_session_id:
             channel_metadata["initiator_session_id"] = caller_session_id
 
+        origin = await self._resolve_origin(caller_session_id)
         metadata = MessageMetadata(
+            origin=origin,
             project_path=project_path,
             title=title,
             auto_command=auto_command,

@@ -32,7 +32,7 @@ def make_session(
 ) -> SessionInfo:
     return SessionInfo(
         session_id=session_id,
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title=title,
         project_path=project_path,
         thinking_mode="slow",

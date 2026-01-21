@@ -361,7 +361,7 @@ class UiAdapter(BaseAdapter):
     ) -> object:
         """Run command with UI pre/post handling and observer broadcast."""
         if metadata.origin and metadata.origin in self.client.adapters:
-            await db.update_session(session.session_id, last_input_adapter=metadata.origin)
+            await db.update_session(session.session_id, last_input_origin=metadata.origin)
 
         if message_id:
             await self.client.pre_handle_command(session, metadata.origin)

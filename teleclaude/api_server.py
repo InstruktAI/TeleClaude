@@ -112,7 +112,7 @@ class APIServer:
 
     def _metadata(self, **kwargs: object) -> MessageMetadata:
         """Build API boundary metadata."""
-        return MessageMetadata(origin="api", **kwargs)
+        return MessageMetadata(origin="cli", **kwargs)
 
     @property
     def cache(self) -> "DaemonCache | None":

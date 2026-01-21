@@ -233,11 +233,18 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     if voice:
         await db.assign_voice(session_id, voice)
 
+    # Prefer parent origin for AI-to-AI sessions
+    last_input_origin = str(origin)
+    if initiator_session_id:
+        parent_session = await db.get_session(initiator_session_id)
+        if parent_session and parent_session.last_input_origin:
+            last_input_origin = parent_session.last_input_origin
+
     # Create session in database first
     session = await db.create_session(
         computer_name=computer_name,
         tmux_session_name=tmux_name,
-        origin_adapter=str(origin),
+        last_input_origin=last_input_origin,
         title=title,
         project_path=project_path,
         subdir=subfolder,
@@ -276,7 +283,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             await client.create_channel(
                 session=session,
                 title=title,
-                origin_adapter=str(origin),
+                last_input_origin=str(origin),
                 target_computer=str(initiator) if initiator else None,
             )
         except Exception as e:
@@ -305,7 +312,7 @@ async def list_sessions() -> list[SessionSummary]:
         summaries.append(
             SessionSummary(
                 session_id=s.session_id,
-                origin_adapter=s.origin_adapter,
+                last_input_origin=s.last_input_origin,
                 title=s.title,
                 project_path=s.project_path,
                 subdir=s.subdir,
@@ -622,7 +629,7 @@ async def handle_voice(
             await client.delete_message(session, str(cmd.message_id))
 
     await send_message(
-        SendMessageCommand(session_id=cmd.session_id, text=transcribed),
+        SendMessageCommand(session_id=cmd.session_id, text=transcribed, origin=cmd.origin),
         client,
         start_polling,
     )
@@ -687,6 +694,7 @@ async def send_message(
         session_id,
         last_message_sent=message_text[:200],
         last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+        last_input_origin=cmd.origin,
     )
 
     active_agent = session.active_agent
@@ -1464,5 +1472,12 @@ async def run_agent_command(
     command_text = f"/{cmd.command}".strip()
     if cmd.args:
         command_text = f"{command_text} {cmd.args}".strip()
+
+    await db.update_session(
+        session.session_id,
+        last_message_sent=command_text[:200],
+        last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+        last_input_origin=cmd.origin,
+    )
 
     await execute_terminal_command(session.session_id, command_text, None, True)

@@ -122,7 +122,7 @@ def mock_daemon():
 @pytest.mark.asyncio
 async def test_get_session_data_parses_tail_chars_without_placeholders():
     """get_session_data should parse numeric tail_chars directly."""
-    cmd = CommandMapper.map_redis_input("get_session_data 2000", session_id="sess-123")
+    cmd = CommandMapper.map_redis_input("get_session_data 2000", session_id="sess-123", origin="telegram")
     assert isinstance(cmd, GetSessionDataCommand)
     assert cmd.session_id == "sess-123"
     assert cmd.since_timestamp is None
@@ -133,7 +133,9 @@ async def test_get_session_data_parses_tail_chars_without_placeholders():
 @pytest.mark.asyncio
 async def test_get_session_data_supports_dash_placeholders():
     """GET_SESSION_DATA should treat '-' as an explicit empty placeholder."""
-    cmd = CommandMapper.map_redis_input("get_session_data - 2026-01-01T00:00:00Z 2000", session_id="sess-123")
+    cmd = CommandMapper.map_redis_input(
+        "get_session_data - 2026-01-01T00:00:00Z 2000", session_id="sess-123", origin="telegram"
+    )
     assert isinstance(cmd, GetSessionDataCommand)
     assert cmd.session_id == "sess-123"
     assert cmd.since_timestamp is None
@@ -244,7 +246,7 @@ async def test_new_session_auto_command_agent_then_message():
 
         create_cmd = CreateSessionCommand(
             project_path="/tmp",
-            origin="redis",
+            origin="cli",
             auto_command="agent_then_message codex slow /prompts:next-review next-machine",
         )
 
@@ -368,12 +370,16 @@ async def test_execute_auto_command_updates_last_message_sent():
     with (
         patch("teleclaude.daemon.db") as mock_db,
     ):
+        mock_db.get_session = AsyncMock(return_value=MagicMock(active_agent="codex", last_input_origin="telegram"))
         mock_db.update_session = AsyncMock()
 
         await daemon._execute_auto_command("sess-456", "agent codex fast")
 
         mock_db.update_session.assert_called_with(
-            "sess-456", last_message_sent="agent codex fast", last_message_sent_at=ANY
+            "sess-456",
+            last_message_sent="agent codex fast",
+            last_message_sent_at=ANY,
+            last_input_origin="telegram",
         )
 
 
@@ -810,7 +816,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
         session_id="tele-123",
         computer_name="TestMac",
         tmux_session_name="terminal:abc",
-        origin_adapter="api",
+        last_input_origin="cli",
         title="Test session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="24419")
@@ -849,7 +855,7 @@ async def test_cleanup_terminates_sessions_inactive_72h():
         session_id="inactive-123",
         computer_name="TestMac",
         tmux_session_name="inactive-tmux",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Inactive",
         last_activity=old_time,
     )
@@ -882,7 +888,7 @@ async def test_ensure_tmux_session_recreates_when_missing():
         session_id="sess-123",
         computer_name="TestMac",
         tmux_session_name="tc_sess-123",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Test session",
         project_path="/tmp/project",
         subdir="subdir",
@@ -915,7 +921,7 @@ async def test_ensure_tmux_session_skips_when_exists():
         session_id="sess-456",
         computer_name="TestMac",
         tmux_session_name="tc_sess-456",
-        origin_adapter="telegram",
+        last_input_origin="telegram",
         title="Test session",
         project_path="/tmp/project",
     )
@@ -947,7 +953,7 @@ async def test_ensure_tmux_session_skips_when_exists():
             session_id="active-456",
             computer_name="TestMac",
             tmux_session_name="active-tmux",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="Active",
             last_activity=recent_time,
         )
@@ -979,7 +985,7 @@ async def test_dispatch_hook_event_updates_tty_before_polling():
         session_id="sess-tty",
         computer_name="TestMac",
         tmux_session_name="terminal:deadbeef",
-        origin_adapter="api",
+        last_input_origin="cli",
         title="TeleClaude: $TestMac - Tmux",
     )
 
@@ -1022,7 +1028,7 @@ async def test_ensure_output_polling_uses_tmux():
         session_id="sess-term",
         computer_name="TestMac",
         tmux_session_name="telec_1234",
-        origin_adapter="api",
+        last_input_origin="cli",
         title="TeleClaude: $TestMac - Tmux",
         project_path="/tmp/project",
     )
@@ -1083,7 +1089,7 @@ class TestTitleUpdate:
             session_id="sess-1",
             computer_name="TestMac",
             tmux_session_name="tmux-1",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="TeleClaude: $TestMac - Untitled",
         )
 
@@ -1108,7 +1114,7 @@ class TestTitleUpdate:
             session_id="sess-1",
             computer_name="TestMac",
             tmux_session_name="tmux-1",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="TeleClaude: $TestMac - Untitled (2)",
         )
 
@@ -1133,7 +1139,7 @@ class TestTitleUpdate:
             session_id="sess-1",
             computer_name="TestMac",
             tmux_session_name="tmux-1",
-            origin_adapter="telegram",
+            last_input_origin="telegram",
             title="TeleClaude: $TestMac - Fix login bug",  # Already updated
         )
 
