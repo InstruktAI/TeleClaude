@@ -75,7 +75,44 @@ def _iter_snippet_roots(project_root: Path) -> list[Path]:
     return roots
 
 
+def _strip_baseline_frontmatter(project_root: Path) -> list[str]:
+    baseline_root = project_root / "docs" / "global-snippets" / "baseline"
+    if not baseline_root.exists():
+        return []
+    violations: list[str] = []
+    for path in sorted(baseline_root.rglob("*.md")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception as exc:
+            logger.warning("baseline_read_failed", path=str(path), error=str(exc))
+            continue
+        if text.lstrip().startswith("---"):
+            try:
+                rel = path.relative_to(project_root)
+            except ValueError:
+                rel = path
+            violations.append(str(rel))
+            lines = text.splitlines(keepends=True)
+            end_idx = None
+            for idx in range(1, len(lines)):
+                if lines[idx].strip() == "---":
+                    end_idx = idx
+                    break
+            if end_idx is None:
+                continue
+            stripped = "".join(lines[end_idx + 1 :]).lstrip()
+            try:
+                path.write_text(stripped, encoding="utf-8")
+            except Exception as exc:
+                logger.warning("baseline_strip_failed", path=str(path), error=str(exc))
+    return violations
+
+
 def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload:
+    violations = _strip_baseline_frontmatter(project_root)
+    if violations:
+        logger.warning("baseline_frontmatter_removed", paths=violations)
+        print("Unexpected baseline frontmatter was found and cleaned.")
     if not snippets_root.exists():
         return {
             "project_root": str(project_root),
