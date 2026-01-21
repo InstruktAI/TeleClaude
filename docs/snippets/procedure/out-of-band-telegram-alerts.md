@@ -17,9 +17,11 @@ type: procedure
 
 ## Steps
 
-1. Use `bin/send_telegram.py` for a one-off message with a chat id or username.
+1. Use `bin/send_telegram.py` for a one-off ops message to the configured username (`TELEGRAM_ALERT_USERNAME`).
 2. Use `bin/notify_agents.py` for structured alerts with auto-topic selection and backoff.
 3. After a healthy run, reset backoff with `bin/notify_agents.py --reset`.
+
+Note: these scripts are not wired by default; you must schedule them (cron/launchd/systemd) for automated alerts.
 
 ## Outputs
 
@@ -28,4 +30,4 @@ type: procedure
 
 ## Recovery
 
-- If delivery fails, verify bot token and chat id, then retry with `bin/send_telegram.py`.
+- If delivery fails, verify bot token and `TELEGRAM_ALERT_USERNAME`, then retry with `bin/send_telegram.py`.

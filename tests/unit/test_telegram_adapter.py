@@ -230,7 +230,7 @@ class TestChannelManagement:
 
         assert result == "123"
         telegram_adapter.app.bot.create_forum_topic.assert_called_once()
-        mock_wait.assert_awaited_once_with(123, "Test Topic")
+        mock_wait.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_wait_for_topic_ready_timeout_is_soft(self, telegram_adapter, monkeypatch):

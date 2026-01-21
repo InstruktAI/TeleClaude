@@ -311,7 +311,7 @@ Sometimes you need to send a Telegram notification even when the TeleClaude daem
 
 **Scripts (repo-local):**
 
-- `bin/send_telegram.py` - Generic Telegram Bot API sender (uses `TELEGRAM_BOT_TOKEN` by default).
+- `bin/send_telegram.py` - Ops-only Telegram sender (uses `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALERT_USERNAME`).
 - `bin/notify_agents.py` - Opinionated alert sender:
   - Automatically creates (or reuses) a forum topic named **Agents** when possible
   - Uses exponential backoff to avoid spam (max 1/hour)
@@ -321,7 +321,7 @@ Sometimes you need to send a Telegram notification even when the TeleClaude daem
 
 ```bash
 # Send a one-off message (direct chat id, or @username/display-name if a local Telegram session is configured)
-./bin/send_telegram.py --chat-id -1001234567890 --text "Hello"
+./bin/send_telegram.py --text "Hello"
 
 # Send an alert with backoff + auto-topic
 ./bin/notify_agents.py --prefix-host "Smoke test failed"

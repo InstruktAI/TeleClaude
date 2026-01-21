@@ -361,9 +361,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     "Local helper scripts:\n"
                     "- `bin/notify_agents.py`: out-of-band Telegram alerts with exponential backoff (max 1/hour). "
                     "State is stored in `logs/monitoring/`.\n"
-                    "- `bin/send_telegram.py`: Telegram Bot API sender (`sendMessage`). "
-                    "Supports `--chat-id` for direct IDs and `--to` for @username/display-name resolution "
-                    "if a local Telegram user session is configured.\n"
+                    "- `bin/send_telegram.py`: ops-only Telegram sender (uses `TELEGRAM_ALERT_USERNAME`).\n"
                 )
                 return [TextContent(type="text", text=text)]
 
