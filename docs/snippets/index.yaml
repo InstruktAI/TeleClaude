@@ -277,6 +277,23 @@ snippets:
   path: docs/snippets/architecture/tmux-management.md
   requires:
   - teleclaude/concept/shell-readiness
+- id: teleclaude/architecture/transport-adapter
+  description: Transport adapters handle cross-computer request/response and peer
+    discovery.
+  type: architecture
+  scope: project
+  path: docs/snippets/architecture/transport-adapter.md
+  requires:
+  - teleclaude/concept/adapter-types
+- id: teleclaude/architecture/ui-adapter
+  description: UI adapters translate human inputs into events and render outputs with
+    UX rules.
+  type: architecture
+  scope: project
+  path: docs/snippets/architecture/ui-adapter.md
+  requires:
+  - teleclaude/concept/adapter-types
+  - teleclaude/architecture/ux-message-cleanup
 - id: teleclaude/architecture/ux-message-cleanup
   description: Message deletion tracking for clean Telegram UX (user input and feedback).
   type: architecture
@@ -401,30 +418,6 @@ snippets:
   scope: project
   path: docs/snippets/reference/ui-commands.md
   requires: []
-- id: teleclaude/architecture/transport-adapter
-  description: Transport adapters handle cross-computer request/response and peer
-    discovery.
-  type: architecture
-  scope: project
-  path: docs/snippets/architecture/transport-adapter.md
-  requires:
-  - teleclaude/concept/adapter-types
-- id: teleclaude/architecture/ui-adapter
-  description: UI adapters translate human inputs into events and render outputs with
-    UX rules.
-  type: architecture
-  scope: project
-  path: docs/snippets/architecture/ui-adapter.md
-  requires:
-  - teleclaude/concept/adapter-types
-  - teleclaude/architecture/ux-message-cleanup
-- id: teleclaude/snippets/authoring
-  description: How to author TeleClaude snippets and choose taxonomy-appropriate structure.
-  type: guide
-  scope: project
-  path: docs/snippets/guide/snippet-authoring.md
-  requires:
-  - ai-collaboration/principles/priming
 - id: teleclaude/standard/cache-contract
   description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
   type: standard

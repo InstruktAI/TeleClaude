@@ -191,6 +191,12 @@ snippets:
   scope: domain
   path: docs/global-snippets/software-development/procedure/snippet-authoring-sequence.md
   requires: []
+- id: software-development/reference/snippet-authoring-schema
+  description: Frontmatter fields and body structures for snippet authoring.
+  type: reference
+  scope: domain
+  path: docs/global-snippets/software-development/reference/snippet-authoring-schema.md
+  requires: []
 - id: software-development/roles/administrator
   description: Process awareness role. Know workflow, keep roles aligned, process
     deferrals, create new todos, manage dependencies.
