@@ -262,6 +262,12 @@ def main() -> None:
         raw_transcript_path=raw_native_log_file,
     )
 
+    # Preserve native_session_id if present (needed for later tooling lookups)
+    if raw_native_session_id:
+        data["native_session_id"] = raw_native_session_id
+    if raw_native_log_file:
+        data["native_log_file"] = raw_native_log_file
+
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(timezone.utc).isoformat()
     _enqueue_hook_event(teleclaude_session_id, event_type, data)

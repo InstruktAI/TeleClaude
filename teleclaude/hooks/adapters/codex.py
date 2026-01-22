@@ -22,29 +22,64 @@ def _discover_transcript_path(session_id: str) -> str:
     Returns:
         Path to transcript file if found, empty string otherwise
     """
+    from instrukt_ai_logging import get_logger
+
+    logger = get_logger(__name__)
+
     sessions_dir = Path.home() / ".codex" / "sessions"
     if not sessions_dir.exists():
+        logger.debug(
+            "Codex sessions directory not found",
+            sessions_dir=str(sessions_dir),
+        )
         return ""
 
     # Search for session file matching session_id suffix
     # Start from today and work backwards (most likely to find recent sessions)
     today = datetime.now()
     for days_back in range(7):  # Search last 7 days
-        check_date = today.replace(day=today.day - days_back) if days_back == 0 else today
         try:
-            if days_back > 0:
-                check_date = today - timedelta(days=days_back)
+            check_date = today - timedelta(days=days_back) if days_back > 0 else today
             date_dir = sessions_dir / f"{check_date.year}" / f"{check_date.month:02d}" / f"{check_date.day:02d}"
             if date_dir.exists():
                 for session_file in date_dir.glob(f"rollout-*-{session_id}.jsonl"):
+                    logger.debug(
+                        "Codex transcript discovered",
+                        session_id=session_id,
+                        path=str(session_file),
+                    )
                     return str(session_file)
-        except (ValueError, OSError):
+        except (ValueError, OSError) as e:
+            logger.debug(
+                "Error searching Codex date directory",
+                days_back=days_back,
+                error=str(e),
+            )
             continue
 
     # Fallback: search all directories
+    logger.debug("Falling back to recursive Codex search", session_id=session_id)
     for session_file in sessions_dir.rglob(f"rollout-*-{session_id}.jsonl"):
+        logger.debug(
+            "Codex transcript discovered (recursive)",
+            session_id=session_id,
+            path=str(session_file),
+        )
         return str(session_file)
 
+    logger.warning(
+        "Codex transcript not found",
+        session_id=session_id,
+        search_dirs=[
+            str(
+                sessions_dir
+                / f"{(today - timedelta(days=i)).year}"
+                / f"{(today - timedelta(days=i)).month:02d}"
+                / f"{(today - timedelta(days=i)).day:02d}"
+            )
+            for i in range(7)
+        ],
+    )
     return ""
 
 

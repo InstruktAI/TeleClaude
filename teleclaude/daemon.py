@@ -675,8 +675,19 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             raise ValueError(f"TeleClaude session {session_id} not found")
 
         transcript_path = data.get("transcript_path")
+        native_session_id = data.get("native_session_id")
+        native_log_file = data.get("native_log_file")
+
+        update_kwargs = {}
         if isinstance(transcript_path, str) and transcript_path:
-            await db.update_session(session_id, native_log_file=transcript_path)
+            update_kwargs["native_log_file"] = transcript_path
+        if isinstance(native_log_file, str) and native_log_file:
+            update_kwargs["native_log_file"] = native_log_file
+        if isinstance(native_session_id, str) and native_session_id:
+            update_kwargs["native_session_id"] = native_session_id
+
+        if update_kwargs:
+            await db.update_session(session_id, **update_kwargs)
 
         await self._ensure_output_polling(session)
 

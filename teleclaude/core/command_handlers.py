@@ -496,12 +496,34 @@ async def get_session_data(
         logger.error("Session %s not found", session_id[:8])
         return {"status": "error", "error": "Session not found"}
 
-    # Get native_log_file from session
-    if not session.native_log_file:
+    # Get native_log_file from session, or discover it if not set
+    native_log_file_str = session.native_log_file
+
+    # For Codex sessions, try to discover transcript if not yet bound
+    if not native_log_file_str and session.active_agent == "codex" and session.native_session_id:
+        logger.debug(
+            "Attempting to discover Codex transcript for session %s (native_id=%s)",
+            session_id[:8],
+            session.native_session_id,
+        )
+        from teleclaude.hooks.adapters.codex import _discover_transcript_path
+
+        discovered_path = _discover_transcript_path(session.native_session_id)
+        if discovered_path:
+            native_log_file_str = discovered_path
+            logger.info(
+                "Discovered Codex transcript path for session %s: %s",
+                session_id[:8],
+                discovered_path,
+            )
+            # Update database for future queries
+            await db.update_session(session_id, native_log_file=discovered_path)
+
+    if not native_log_file_str:
         logger.error("No native_log_file for session %s", session_id[:8])
         return {"status": "error", "error": "Session file not found"}
 
-    native_log_file = Path(session.native_log_file)
+    native_log_file = Path(native_log_file_str)
     if not native_log_file.exists():
         logger.error("Native session file does not exist: %s", native_log_file)
         return {"status": "error", "error": "Session file does not exist"}
