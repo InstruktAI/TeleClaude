@@ -21,10 +21,12 @@ class DummyAPI:
         self._result = result
 
     async def create_session(self, **kwargs: object) -> object:
+        _ = kwargs
+        tmux_session_name = str(self._result.get("tmux_session_name") or "tc_missing")
         return CreateSessionResult(
             session_id=self._result.get("session_id", "sess-123"),
-            tmux_session_name=self._result.get("tmux_session_name"),
-            status="success" if self._result.get("tmux_session_name") else "error",
+            tmux_session_name=tmux_session_name,
+            status="success",
         )
 
 

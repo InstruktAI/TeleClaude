@@ -225,9 +225,9 @@ class TestPreparationViewLogic:
                 self.called = False
                 self.args = None
 
-            def show_session(self, tmux_session_name, child_tmux_session_name, computer_info):
+            def show_session(self, tmux_session_name, active_agent, child_tmux_session_name, computer_info):
                 self.called = True
-                self.args = (tmux_session_name, child_tmux_session_name, computer_info)
+                self.args = (tmux_session_name, active_agent, child_tmux_session_name, computer_info)
 
         pane_manager = MockPaneManager()
         view = PreparationView(
@@ -247,12 +247,13 @@ class TestPreparationViewLogic:
             )
         ]
 
-        result = CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_456")
+        result = CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_456", agent="claude")
         view._attach_new_session(result, "test-machine", object())
 
         assert pane_manager.called is True
         assert pane_manager.args is not None
         assert pane_manager.args[0] == "tc_456"
+        assert pane_manager.args[1] == "claude"
 
     def test_file_node_renders(self, prep_view):
         """File nodes render with index and name."""

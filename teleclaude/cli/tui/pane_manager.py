@@ -223,6 +223,32 @@ class TmuxPaneManager:
         output = self._run_tmux("display-message", "-p", "#{pane_id}")
         return output if output else None
 
+    def get_active_pane_id(self) -> str | None:
+        """Return the active pane id for the current tmux client."""
+        if not self._in_tmux:
+            return None
+        return self._get_current_pane_id()
+
+    def get_session_id_for_pane(self, pane_id: str) -> str | None:
+        """Return session_id mapped to a pane id, if known."""
+        if not pane_id:
+            return None
+        for session_id, mapped_pane in self.state.session_to_pane.items():
+            if mapped_pane == pane_id:
+                return session_id
+
+        if self.state.parent_pane_id and pane_id == self.state.parent_pane_id and self.state.parent_session:
+            for session in self._session_catalog.values():
+                if session.tmux_session_name == self.state.parent_session:
+                    return session.session_id
+
+        if self.state.child_pane_id and pane_id == self.state.child_pane_id and self._active_child_tmux:
+            for session in self._session_catalog.values():
+                if session.tmux_session_name == self._active_child_tmux:
+                    return session.session_id
+
+        return None
+
     def _get_pane_exists(self, pane_id: str) -> bool:
         """Check if a pane still exists."""
         output = self._run_tmux("list-panes", "-F", "#{pane_id}")
@@ -374,6 +400,10 @@ class TmuxPaneManager:
         self._active_child_tmux = None
         self._active_child_computer = None
         self._render_layout()
+        self.state.parent_pane_id = None
+        self.state.child_pane_id = None
+        self.state.parent_session = None
+        self.state.child_session = None
         logger.debug("hide_sessions: cleared active pane")
 
     def toggle_session(

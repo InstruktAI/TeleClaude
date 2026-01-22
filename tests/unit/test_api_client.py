@@ -2,8 +2,9 @@
 
 # type: ignore - test uses mocked httpx
 
+import itertools
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -90,15 +91,17 @@ async def test_connect_error_debounced_logging():
     await client.connect()
 
     with patch.object(client._client, "get", side_effect=httpx.ConnectError("boom")):
-        with patch("teleclaude.cli.api_client.time.monotonic", side_effect=[0.0, 5.0, 12.0]):
-            with patch("teleclaude.cli.api_client.logger") as mock_logger:
-                with pytest.raises(APIError):
-                    await client._request("GET", "/sessions")
-                with pytest.raises(APIError):
-                    await client._request("GET", "/sessions")
-                with pytest.raises(APIError):
-                    await client._request("GET", "/sessions")
-                assert mock_logger.debug.call_count == 2
+        with patch("teleclaude.cli.api_client.API_CONNECT_RETRY_DELAYS_S", ()):
+            with patch.object(client, "_now_monotonic", side_effect=itertools.count(start=0.0, step=5.0)):
+                with patch.object(client, "_wait_for_socket", new=AsyncMock()):
+                    with patch("teleclaude.cli.api_client.logger") as mock_logger:
+                        with pytest.raises(APIError):
+                            await client._request("GET", "/sessions")
+                        with pytest.raises(APIError):
+                            await client._request("GET", "/sessions")
+                        with pytest.raises(APIError):
+                            await client._request("GET", "/sessions")
+                        assert mock_logger.debug.call_count == 2
 
     await client.close()
 

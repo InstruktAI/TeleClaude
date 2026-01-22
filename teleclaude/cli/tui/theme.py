@@ -326,8 +326,8 @@ _BASE_INACTIVE_BG_DARK = "#202529"
 _BASE_INACTIVE_BG_LIGHT = "#e8e8e8"  # Light gray for light mode
 
 # Configurable haze percentages (0.0 to 1.0)
-# Inactive pane background: 10% agent color, 90% base color
-_HAZE_PERCENTAGE = 0.10
+# Inactive pane background: 6% agent color, 94% base color
+_HAZE_PERCENTAGE = 0.06
 # Active pane background: 2% agent color, 98% base color (most subtle)
 _ACTIVE_HAZE_PERCENTAGE = 0.02
 # Status bar background: 5% agent color, 95% base color (subtle)

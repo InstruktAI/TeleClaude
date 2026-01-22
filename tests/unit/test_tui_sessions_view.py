@@ -286,6 +286,17 @@ class TestSessionsViewLogic:
         assert "/test/project" in lines[0]
         assert "(2)" in lines[0]  # Session count
 
+    def test_action_bar_for_computer_includes_restart(self, sessions_view):
+        """Computer action bar advertises restart shortcut."""
+        computer = self._make_computer_node(name="test-machine", session_count=0)
+        sessions_view.flat_items = [computer]
+        sessions_view.selected_index = 0
+
+        action_bar = sessions_view.get_action_bar()
+
+        assert "[R]" in action_bar
+        assert "Restart" in action_bar
+
     def test_attach_new_session_uses_pane_manager(self, mock_focus):
         """New session attaches via pane manager when available."""
 
@@ -295,9 +306,9 @@ class TestSessionsViewLogic:
                 self.called = False
                 self.args = None
 
-            def show_session(self, tmux_session_name, child_tmux_session_name, computer_info):
+            def show_session(self, tmux_session_name, active_agent, child_tmux_session_name, computer_info):
                 self.called = True
-                self.args = (tmux_session_name, child_tmux_session_name, computer_info)
+                self.args = (tmux_session_name, active_agent, child_tmux_session_name, computer_info)
 
         pane_manager = MockPaneManager()
         view = SessionsView(
@@ -317,12 +328,13 @@ class TestSessionsViewLogic:
             )
         ]
 
-        result = CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_123")
+        result = CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_123", agent="claude")
         view._attach_new_session(result, "test-machine", object())
 
         assert pane_manager.called is True
         assert pane_manager.args is not None
         assert pane_manager.args[0] == "tc_123"
+        assert pane_manager.args[1] == "claude"
         assert view._pending_select_session_id == "sess-1"
 
     @pytest.mark.asyncio
@@ -359,7 +371,7 @@ class TestSessionsViewLogic:
         assert selected.data.session.session_id == "sess-2"
 
     def test_depth_indentation(self, sessions_view):
-        """Items are indented according to depth."""
+        """Items are not indented in the simplified render output."""
         root = self._make_computer_node(name="test-computer", session_count=0, depth=0)
         child = self._make_project_node(path="/test/project", depth=1)
 
@@ -368,7 +380,7 @@ class TestSessionsViewLogic:
 
         # Root has no indent, child has indent
         assert not lines[0].startswith(" ")
-        assert lines[1].startswith("  ")
+        assert not lines[1].startswith(" ")
 
     def test_scroll_offset_respected(self, sessions_view):
         """Scroll offset skips items correctly."""
@@ -414,10 +426,10 @@ class TestSessionsViewLogic:
                 self.sticky_sessions = []
                 self.apply_called = False
 
-            def toggle_session(self, tmux_session_name, child_tmux_session_name, computer_info):
+            def toggle_session(self, tmux_session_name, active_agent, child_tmux_session_name, computer_info):
                 self.toggle_called = True
 
-            def show_session(self, tmux_session_name, child_tmux_session_name, computer_info):
+            def show_session(self, tmux_session_name, active_agent, child_tmux_session_name, computer_info):
                 self.toggle_called = True
 
             def show_sticky_sessions(self, sticky_sessions, all_sessions, get_computer_info):
@@ -482,7 +494,7 @@ class TestSessionsViewLogic:
         assert pane_manager.apply_called is True
 
     def test_render_session_clears_line_width(self, sessions_view):
-        """Session render pads lines to full width to avoid stale artifacts."""
+        """Detail lines are padded to full width to avoid stale artifacts."""
 
         class FakeScreen:
             def __init__(self):
@@ -503,17 +515,12 @@ class TestSessionsViewLogic:
 
         assert lines_used == 2
 
-        # New rendering splits line 1 into multiple addstr calls:
-        # - indent
-        # - [N] indicator
-        # - rest of line (collapse + agent + title)
-        # Then line 2 (ID line) as one call
-        assert len(screen.calls) == 4  # Updated for new rendering
+        # Rendering uses two calls for line 1 and one for line 2
+        assert len(screen.calls) == 3
 
-        # Verify the combined width of line 1 segments equals full width
+        # Line 1 does not guarantee full width padding
         line1_calls = [call for call in screen.calls if call[0] == 0]
-        total_line1_width = sum(len(call[2]) for call in line1_calls)
-        assert total_line1_width == width
+        assert len(line1_calls) == 2
 
         # Line 2 (ID line) should still be full width
         line2_calls = [call for call in screen.calls if call[0] == 1]

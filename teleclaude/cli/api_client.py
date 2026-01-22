@@ -1,6 +1,9 @@
 """HTTP client for telec TUI."""
 
+import asyncio
 import json
+import os
+import stat
 import threading
 import time
 from collections.abc import Callable
@@ -38,6 +41,7 @@ WS_URI = "ws://localhost/ws"
 WS_INITIAL_BACKOFF = 1.0  # Initial reconnect delay in seconds
 WS_MAX_BACKOFF = 30.0  # Maximum reconnect delay
 WS_BACKOFF_MULTIPLIER = 2.0  # Exponential backoff multiplier
+API_CONNECT_RETRY_DELAYS_S = (0.1, 0.3, 0.6)
 
 __all__ = ["TelecAPIClient", "APIError"]
 
@@ -253,6 +257,7 @@ class TelecAPIClient:
             raise APIError("Client not connected. Call connect() first.")
 
         request_timeout = timeout if timeout is not None else 5.0
+        logged_connect_error = False
 
         try:
             try:
@@ -260,36 +265,65 @@ class TelecAPIClient:
             except ValueError as e:
                 raise APIError(f"Unsupported HTTP method: {method}") from e
 
-            if method_enum is HTTPMethod.GET:
-                resp = await self._client.get(url, params=params, timeout=request_timeout)
-            elif method_enum is HTTPMethod.POST:
-                resp = await self._client.post(url, params=params, json=json_body, timeout=request_timeout)
-            elif method_enum is HTTPMethod.DELETE:
-                resp = await self._client.delete(url, params=params, timeout=request_timeout)
-            else:
-                raise APIError(f"Unsupported HTTP method: {method}")
+            for attempt, delay in enumerate((0.0, *API_CONNECT_RETRY_DELAYS_S), start=1):
+                if delay:
+                    await asyncio.sleep(delay)
+                try:
+                    if method_enum is HTTPMethod.GET:
+                        resp = await self._client.get(url, params=params, timeout=request_timeout)
+                    elif method_enum is HTTPMethod.POST:
+                        resp = await self._client.post(url, params=params, json=json_body, timeout=request_timeout)
+                    elif method_enum is HTTPMethod.DELETE:
+                        resp = await self._client.delete(url, params=params, timeout=request_timeout)
+                    else:
+                        raise APIError(f"Unsupported HTTP method: {method}")
 
-            resp.raise_for_status()
-            return resp
+                    resp.raise_for_status()
+                    return resp
+                except httpx.ConnectError as e:
+                    if not logged_connect_error:
+                        now = self._now_monotonic()
+                        if self._last_connect_error_log is None or (now - self._last_connect_error_log) >= 10.0:
+                            self._last_connect_error_log = now
+                            logger.debug(
+                                "API connect failed",
+                                method=str(method),
+                                url=url,
+                                socket_path=self.socket_path,
+                                timeout=request_timeout,
+                                error=str(e),
+                            )
+                        logged_connect_error = True
+                    await self._wait_for_socket()
+                    if attempt >= (1 + len(API_CONNECT_RETRY_DELAYS_S)):
+                        raise APIError("Cannot connect to API server. Socket may be missing.") from e
         except httpx.HTTPStatusError as e:
             raise APIError(f"API request failed: {e.response.status_code} {e.response.text}") from e
-        except httpx.ConnectError as e:
-            now = time.monotonic()
-            if self._last_connect_error_log is None or (now - self._last_connect_error_log) >= 10.0:
-                self._last_connect_error_log = now
-                logger.debug(
-                    "API connect failed",
-                    method=str(method),
-                    url=url,
-                    socket_path=self.socket_path,
-                    timeout=request_timeout,
-                    error=str(e),
-                )
-            raise APIError("Cannot connect to API server. Socket may be missing.") from e
         except httpx.TimeoutException as e:
             raise APIError("API request timed out. Server may be blocked or overloaded.") from e
+        except APIError:
+            raise
         except Exception as e:
             raise APIError(f"Unexpected error: {e}") from e
+
+        raise APIError("Cannot connect to API server. Socket may be missing.")
+
+    def _now_monotonic(self) -> float:
+        """Return a monotonic timestamp for debounce logic."""
+        return time.monotonic()
+
+    async def _wait_for_socket(self, *, timeout_s: float = 1.0) -> None:
+        """Wait briefly for the API socket to appear and be connectable."""
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            try:
+                if os.path.exists(self.socket_path):
+                    mode = os.stat(self.socket_path).st_mode
+                    if stat.S_ISSOCK(mode):
+                        return
+            except OSError:
+                pass
+            await asyncio.sleep(0.05)
 
     async def list_sessions(self, computer: str | None = None) -> list[SessionInfo]:
         """List sessions from all computers or specific computer.

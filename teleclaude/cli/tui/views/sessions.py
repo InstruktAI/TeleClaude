@@ -202,11 +202,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self.rebuild_for_focus()
         self._apply_pending_selection()
 
-    def request_select_session(self, session_id: str) -> None:
+    def request_select_session(self, session_id: str) -> bool:
         """Request that a session be selected once it appears in the tree."""
         if not session_id:
-            return
+            return False
+        if self._pending_select_session_id == session_id:
+            return False
         self._pending_select_session_id = session_id
+        return True
 
     def _apply_pending_selection(self) -> None:
         """Select any pending session once the tree is available."""
@@ -886,6 +889,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return
         if result.session_id:
             self.request_select_session(result.session_id)
+            self._apply_pending_selection()
 
         if self.pane_manager.is_available:
             computer_info = self._get_computer_info(computer)

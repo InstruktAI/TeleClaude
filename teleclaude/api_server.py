@@ -341,11 +341,22 @@ class APIServer:
                     if session:
                         tmux_session_name = session.tmux_session_name
 
+                if not session_id or not tmux_session_name:
+                    logger.error(
+                        "create_session missing required fields (session_id=%s, tmux_session_name=%s)",
+                        session_id,
+                        tmux_session_name,
+                    )
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Failed to create session: missing session_id or tmux_session_name",
+                    )
+
                 return CreateSessionResponseDTO(
                     status="success",
-                    session_id=str(session_id) if session_id else None,
-                    tmux_session_name=str(tmux_session_name) if tmux_session_name else None,
-                    agent=launch_intent.agent if launch_intent else request.agent,
+                    session_id=str(session_id),
+                    tmux_session_name=str(tmux_session_name),
+                    agent=launch_intent.agent if launch_intent else None,
                 )
             except HTTPException as exc:
                 raise exc

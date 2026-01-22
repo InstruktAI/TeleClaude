@@ -13,7 +13,7 @@ def test_toggle_session_returns_false_when_not_in_tmux():
     with patch.dict(os.environ):
         os.environ.pop("TMUX", None)
         manager = TmuxPaneManager()
-        result = manager.toggle_session("session-1")
+        result = manager.toggle_session("session-1", "claude")
 
     assert result is False
     assert manager.active_session is None
@@ -27,7 +27,12 @@ def test_show_session_tracks_parent_and_child_panes():
 
     mock_run = Mock(return_value="%5")
     with patch.object(manager, "_run_tmux", mock_run):
-        manager.show_session("parent-session", "child-session", ComputerInfo(name="local", is_local=True))
+        manager.show_session(
+            "parent-session",
+            "claude",
+            "child-session",
+            ComputerInfo(name="local", is_local=True),
+        )
 
     assert manager.state.parent_pane_id is not None
     assert manager.state.child_pane_id is not None
@@ -44,8 +49,8 @@ def test_toggle_session_hides_when_already_showing():
             manager = TmuxPaneManager()
 
     manager.state.parent_session = "session-1"
-    with patch.object(manager, "_get_pane_exists", return_value=False):
-        result = manager.toggle_session("session-1")
+    with patch.object(manager, "_render_layout", return_value=None):
+        result = manager.toggle_session("session-1", "claude")
 
     assert result is False
     assert manager.active_session is None

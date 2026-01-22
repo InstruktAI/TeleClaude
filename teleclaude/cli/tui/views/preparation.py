@@ -692,7 +692,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
 
         if self.pane_manager.is_available:
             computer_info = self._get_computer_info(computer)
-            self.pane_manager.show_session(tmux_session_name, None, computer_info)
+            active_agent = result.agent or ""
+            self.pane_manager.show_session(tmux_session_name, active_agent, None, computer_info)
         else:
             attach_tmux_from_result(result, stdscr)
 

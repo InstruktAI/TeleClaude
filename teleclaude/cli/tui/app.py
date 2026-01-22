@@ -177,6 +177,7 @@ class TelecApp:
         self._subscribed_computers: set[str] = set()
         self._theme_refresh_requested = False
         self._session_status_cache: dict[str, str] = {}
+        self._last_active_pane_id: str | None = None
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
@@ -363,6 +364,9 @@ class TelecApp:
 
             # Handle incremental update events
             elif isinstance(event, SessionStartedEvent):
+                sessions_view = self.views.get(1)
+                if isinstance(sessions_view, SessionsView):
+                    sessions_view.request_select_session(event.data.session_id)
                 asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
             elif isinstance(event, SessionUpdatedEvent):
@@ -481,6 +485,7 @@ class TelecApp:
         while self.running:
             # Process any pending WebSocket events
             ws_updated = self._process_ws_events()
+            pane_updated = self._sync_selection_with_active_pane()
 
             key = stdscr.getch()  # type: ignore[attr-defined]
 
@@ -499,7 +504,7 @@ class TelecApp:
                     asyncio.get_event_loop().run_until_complete(self.refresh_data())
                     view.needs_refresh = False
                 self._render(stdscr)
-            elif ws_updated:
+            elif ws_updated or pane_updated:
                 # Re-render if WebSocket events were processed (no key press)
                 self._render(stdscr)
 
@@ -507,6 +512,31 @@ class TelecApp:
         if self._theme_refresh_requested:
             self._theme_refresh_requested = False
             return True
+        return False
+
+    def _sync_selection_with_active_pane(self) -> bool:
+        """Sync tree selection with active tmux pane (Sessions view only)."""
+        if self.current_view != 1:
+            return False
+        sessions_view = self.views.get(self.current_view)
+        if not isinstance(sessions_view, SessionsView):
+            return False
+        if not self.pane_manager.is_available:
+            return False
+
+        active_pane_id = self.pane_manager.get_active_pane_id()
+        if not active_pane_id or active_pane_id == self._last_active_pane_id:
+            return False
+
+        self._last_active_pane_id = active_pane_id
+        session_id = self.pane_manager.get_session_id_for_pane(active_pane_id)
+        if not session_id:
+            return False
+
+        if sessions_view.request_select_session(session_id):
+            sessions_view._apply_pending_selection()
+            return True
+
         return False
 
     def _install_appearance_hook(self) -> None:

@@ -138,6 +138,40 @@ def _enqueue_hook_event(
         session.commit()
 
 
+def _update_session_native_fields(
+    session_id: str,
+    *,
+    native_log_file: str | None = None,
+    native_session_id: str | None = None,
+) -> None:
+    """Update native session fields directly on the session row."""
+    if not native_log_file and not native_session_id:
+        return
+    db_path = config.database.path
+    from sqlalchemy import create_engine, text
+    from sqlmodel import Session as SqlSession
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    update_parts: list[str] = []
+    params: dict[str, str] = {"session_id": session_id}
+    if native_log_file:
+        update_parts.append("native_log_file = :native_log_file")
+        params["native_log_file"] = native_log_file
+    if native_session_id:
+        update_parts.append("native_session_id = :native_session_id")
+        params["native_session_id"] = native_session_id
+    if not update_parts:
+        return
+
+    sql = f"UPDATE sessions SET {', '.join(update_parts)} WHERE session_id = :session_id"
+    statement = text(sql).bindparams(**params)
+    with SqlSession(engine) as session:
+        session.exec(text("PRAGMA journal_mode = WAL"))
+        session.exec(text("PRAGMA busy_timeout = 5000"))
+        session.exec(statement)
+        session.commit()
+
+
 def _extract_native_identity(agent: str, data: Mapping[str, Any]) -> tuple[str | None, str | None]:
     """Extract native session id + transcript path from raw hook payload."""
     native_session_id: str | None = None
@@ -228,6 +262,33 @@ def main() -> None:
     teleclaude_session_id = _get_teleclaude_session_id()
     if not teleclaude_session_id:
         # No TeleClaude session found - this is valid for standalone sessions
+        sys.exit(0)
+
+    # Gemini: only allow session_start and stop into outbox.
+    # For other events, update native log metadata directly (if provided) and exit cleanly.
+    if args.agent == AgentName.GEMINI.value and event_type not in {"session_start", "stop"}:
+        native_log_file = raw_native_log_file or cast(str | None, raw_data.get("transcript_path"))
+        native_session_id = raw_native_session_id or cast(str | None, raw_data.get("session_id"))
+        if native_log_file is not None:
+            native_log_file = native_log_file.strip() or None
+        try:
+            _update_session_native_fields(
+                teleclaude_session_id,
+                native_log_file=native_log_file,
+                native_session_id=native_session_id,
+            )
+            logger.debug(
+                "Gemini hook metadata updated (event filtered)",
+                event_type=event_type,
+                session_id=teleclaude_session_id,
+            )
+        except Exception as exc:  # Best-effort update; never fail hook.
+            logger.warning(
+                "Gemini hook metadata update failed (ignored)",
+                event_type=event_type,
+                session_id=teleclaude_session_id,
+                error=str(exc),
+            )
         sys.exit(0)
 
     normalize_payload = _get_adapter(args.agent)

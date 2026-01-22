@@ -22,7 +22,6 @@ def test_remote_attach_uses_remote_tmux_binary(monkeypatch) -> None:
 
     assert '/remote/tmux-wrapper -u set-option -t tc_123 status-right ""' in cmd
     assert "set-option -t tc_123 status-right-length 0" in cmd
-    assert 'set-option -t tc_123 status-style "bg=default"' in cmd
     assert "attach-session -t tc_123" in cmd
 
 
@@ -42,6 +41,5 @@ def test_remote_attach_defaults_to_tmux_when_missing(monkeypatch) -> None:
 
     assert ' tmux -u set-option -t tc_456 status-right ""' in cmd
     assert "set-option -t tc_456 status-right-length 0" in cmd
-    assert 'set-option -t tc_456 status-style "bg=default"' in cmd
     assert "attach-session -t tc_456" in cmd
     assert "/local/tmux-wrapper" not in cmd

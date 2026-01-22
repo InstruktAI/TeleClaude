@@ -212,7 +212,10 @@ def test_create_session_success(test_client, mock_command_service):  # type: ign
 
 def test_create_session_derives_title_from_message(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """Test that create_session derives title from message if not provided."""
-    mock_command_service.create_session.return_value = {"session_id": "sess-123"}
+    mock_command_service.create_session.return_value = {
+        "session_id": "sess-123",
+        "tmux_session_name": "tc_123",
+    }
 
     response = test_client.post(
         "/sessions",
@@ -234,7 +237,10 @@ def test_create_session_derives_title_from_message(test_client, mock_command_ser
 
 def test_create_session_defaults_title_to_untitled(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """Test that create_session defaults title to 'Untitled'."""
-    mock_command_service.create_session.return_value = {"session_id": "sess-123"}
+    mock_command_service.create_session.return_value = {
+        "session_id": "sess-123",
+        "tmux_session_name": "tc_123",
+    }
 
     response = test_client.post(
         "/sessions",
@@ -252,7 +258,10 @@ def test_create_session_defaults_title_to_untitled(test_client, mock_command_ser
 
 def test_create_session_uses_auto_command_override(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """Test that create_session uses auto_command override if provided."""
-    mock_command_service.create_session.return_value = {"session_id": "sess-123"}
+    mock_command_service.create_session.return_value = {
+        "session_id": "sess-123",
+        "tmux_session_name": "tc_123",
+    }
 
     response = test_client.post(
         "/sessions",

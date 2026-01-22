@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import redis.asyncio as redis_asyncio
 from dotenv import load_dotenv
 
 
@@ -371,19 +372,25 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
                         pass  # Resilient to already-deleted messages
                 await test_db.clear_pending_deletions(session.session_id)  # type: ignore[union-attr]
 
-    with (
-        patch("redis.asyncio.Redis.from_url", return_value=mock_redis_client),
-        patch("teleclaude.core.adapter_client.TelegramAdapter", MockTelegramAdapter),
-        patch(
-            "teleclaude.transport.redis_transport.RedisTransport._poll_redis_messages", new=AsyncMock(return_value=None)
-        ),
-        patch("teleclaude.transport.redis_transport.RedisTransport._heartbeat_loop", new=AsyncMock(return_value=None)),
-    ):
-        # Create daemon (config is loaded automatically from config.yml)
-        daemon = TeleClaudeDaemon(str(base_dir / ".env"))
+    def _mock_from_url(*_args, **_kwargs):
+        return mock_redis_client
 
-        # Start adapters - this will use mocked Redis and mocked TelegramAdapter
-        await daemon.client.start()
+    monkeypatch.setattr(redis_asyncio.Redis, "from_url", classmethod(_mock_from_url))
+    monkeypatch.setattr("teleclaude.core.adapter_client.TelegramAdapter", MockTelegramAdapter)
+    monkeypatch.setattr(
+        "teleclaude.transport.redis_transport.RedisTransport._poll_redis_messages",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "teleclaude.transport.redis_transport.RedisTransport._heartbeat_loop",
+        AsyncMock(return_value=None),
+    )
+
+    # Create daemon (config is loaded automatically from config.yml)
+    daemon = TeleClaudeDaemon(str(base_dir / ".env"))
+
+    # Start adapters - this will use mocked Redis and mocked TelegramAdapter
+    await daemon.client.start()
 
     # Add db property for test compatibility
     daemon.db = db_module.db

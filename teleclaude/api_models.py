@@ -31,8 +31,8 @@ class CreateSessionResponseDTO(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True)
 
     status: Literal["success", "error"]
-    session_id: str | None = None
-    tmux_session_name: str | None = None
+    session_id: str
+    tmux_session_name: str
     agent: Literal["claude", "gemini", "codex"] | None = None
     error: str | None = None
 
