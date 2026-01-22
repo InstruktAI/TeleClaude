@@ -15,6 +15,19 @@ from typing import Mapping
 
 import frontmatter
 
+# Directories to scan for markdown files
+MARKDOWN_DIRS = [
+    "docs",  # Main documentation
+    "agents/docs",  # Agent-specific docs
+    "todos",  # Active work items
+    "done",  # Completed work items
+    "ideas",  # Feature ideas and proposals
+    "docs-3rd",  # Third-party research
+]
+
+# Root-level markdown files to validate
+ROOT_MARKDOWN_FILES = ["README.md", "AGENTS.md"]
+
 
 def _validate_mermaid_diagrams(file_path: Path, content: str) -> list[str]:
     """Validate Mermaid diagram syntax.
@@ -130,13 +143,13 @@ def _find_markdown_files(repo_root: Path) -> list[Path]:
     files: list[Path] = []
 
     # Root-level markdown
-    for pattern in ["README.md", "AGENTS.md"]:
+    for pattern in ROOT_MARKDOWN_FILES:
         path = repo_root / pattern
         if path.exists():
             files.append(path)
 
     # Documentation directories
-    for doc_dir in ["docs", "agents/docs", "todos"]:
+    for doc_dir in MARKDOWN_DIRS:
         doc_path = repo_root / doc_dir
         if doc_path.exists():
             files.extend(doc_path.rglob("*.md"))
