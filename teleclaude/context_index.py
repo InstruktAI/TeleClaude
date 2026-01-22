@@ -82,9 +82,9 @@ def _resolve_requires(file_path: Path, requires: Iterable[str], project_root: Pa
 
 
 def build_snippet_index(project_root: Path, *, snippets_dir: Path | None = None) -> list[SnippetEntry]:
-    """Build snippet index entries from a project's docs/snippets directory."""
+    """Build snippet index entries from a project's docs/ directory."""
     root = project_root.resolve()
-    snippets_root = (snippets_dir or (root / "docs" / "snippets")).resolve()
+    snippets_root = (snippets_dir or (root / "docs")).resolve()
     if not snippets_root.exists():
         logger.warning("Snippets directory missing", path=str(snippets_root))
         return []

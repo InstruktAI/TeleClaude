@@ -126,7 +126,7 @@ def validate_index(project_root: Path, snippets_root: Path, index_path: Path) ->
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Validate snippet indexes for docs/snippets and docs/global-snippets.")
+    parser = argparse.ArgumentParser(description="Validate snippet indexes for docs/ and agents/docs/.")
     parser.add_argument("--project-root", default=str(Path.cwd()), help="Project root (default: cwd)")
     args = parser.parse_args()
 

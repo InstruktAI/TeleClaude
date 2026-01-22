@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+from pathlib import Path
 from typing import Callable, NotRequired, TypedDict, cast
 
 import frontmatter
@@ -85,15 +86,44 @@ def process_file(content: str, agent_prefix: str) -> str:
     return content
 
 
+def rewrite_global_index(index_path: str, deploy_root: str) -> None:
+    """Rewrite global docs index to match deployed paths."""
+    index_file = Path(index_path)
+    if not index_file.exists():
+        return
+    lines = index_file.read_text(encoding="utf-8").splitlines()
+    new_lines: list[str] = []
+    for line in lines:
+        if line.startswith("project_root:"):
+            new_lines.append(f"project_root: {deploy_root}")
+            continue
+        if line.startswith("snippets_root:"):
+            new_lines.append(f"snippets_root: {os.path.join(deploy_root, 'docs')}")
+            continue
+        if "path: agents/docs/" in line:
+            new_lines.append(line.replace("path: agents/docs/", "path: docs/"))
+            continue
+        new_lines.append(line)
+    index_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Transpile and distribute agent markdown files.")
     parser.add_argument("--deploy", action="store_true", help="Sync generated files to their locations.")
+    parser.add_argument(
+        "--project-root",
+        default=None,
+        help="Project root to read agents/.agents from (default: script parent).",
+    )
     args = parser.parse_args()
 
     # Get the project root, which is the parent directory of the script's directory
     script_dir = os.path.dirname(os.path.realpath(__file__))
     project_root = os.path.dirname(script_dir)
+    if args.project_root:
+        project_root = os.path.abspath(os.path.expanduser(args.project_root))
     agents_root = os.path.join(project_root, "agents")
+    dot_agents_root = os.path.join(project_root, ".agents")
     os.chdir(project_root)
 
     dist_dir = "dist"
@@ -104,6 +134,11 @@ def main() -> None:
     master_agents_file = os.path.join(agents_root, "AGENTS.master.md")
     master_commands_dir = os.path.join(agents_root, "commands")
     master_skills_dir = os.path.join(agents_root, "skills")
+
+    dot_master_agents_file = os.path.join(dot_agents_root, "AGENTS.master.md")
+    dot_master_commands_dir = os.path.join(dot_agents_root, "commands")
+    dot_master_skills_dir = os.path.join(dot_agents_root, "skills")
+    master_docs_dir = os.path.join(agents_root, "docs")
 
     agents_config: dict[str, AgentConfig] = {
         "claude": {
@@ -147,24 +182,44 @@ def main() -> None:
         },
     }
 
-    # Ensure master files exist
-    if not os.path.exists(master_agents_file):
-        print(f"Error: Master agents file not found at {master_agents_file}")
-        return
-    if not os.path.exists(master_commands_dir):
-        print(f"Error: Master commands directory not found at {master_commands_dir}")
-        return
-    if not os.path.exists(master_skills_dir):
-        print(f"Error: Master skills directory not found at {master_skills_dir}")
-        return
-
-    with open(master_agents_file, "r") as f:
-        master_agents_content = f.read()
-
-    command_files = [f for f in os.listdir(master_commands_dir) if f.endswith(".md")]
-    skill_dirs = [
-        name for name in os.listdir(master_skills_dir) if os.path.isdir(os.path.join(master_skills_dir, name))
+    sources = [
+        {
+            "label": "agents",
+            "master": master_agents_file,
+            "commands": master_commands_dir,
+            "skills": master_skills_dir,
+        },
+        {
+            "label": ".agents",
+            "master": dot_master_agents_file,
+            "commands": dot_master_commands_dir,
+            "skills": dot_master_skills_dir,
+        },
     ]
+    if args.project_root:
+        sources = [source for source in sources if source["label"] == ".agents"]
+
+    existing_sources = []
+    for source in sources:
+        if os.path.isfile(source["master"]) or os.path.isdir(source["commands"]) or os.path.isdir(source["skills"]):
+            existing_sources.append(source)
+    sources = existing_sources
+
+    agent_master_contents: list[str] = []
+    command_files: list[str] = []
+    skill_dirs: list[str] = []
+    for source in sources:
+        if os.path.isfile(source["master"]) and source["label"] != ".agents":
+            with open(source["master"], "r") as f:
+                agent_master_contents.append(f.read())
+        if os.path.isdir(source["commands"]):
+            command_files.extend([f for f in os.listdir(source["commands"]) if f.endswith(".md")])
+        if os.path.isdir(source["skills"]):
+            skill_dirs.extend(
+                [name for name in os.listdir(source["skills"]) if os.path.isdir(os.path.join(source["skills"], name))]
+            )
+    command_files = sorted(set(command_files))
+    skill_dirs = sorted(set(skill_dirs))
 
     for agent_name, config in agents_config.items():
         if agent_name != "agents" and not os.path.isdir(config["check_dir"]):
@@ -187,7 +242,7 @@ def main() -> None:
         os.makedirs(commands_dest_path, exist_ok=True)
         os.makedirs(config["skills_dest_dir"], exist_ok=True)
 
-        # Process AGENTS.master.md
+        # Process AGENTS.master.md (optional for .agents-only distributions)
         agent_specific_file = os.path.join(agents_root, f"PREFIX.{agent_name}.md")
         agent_specific_content = ""
         if os.path.exists(agent_specific_file):
@@ -195,18 +250,25 @@ def main() -> None:
                 raw_agent_specific = extra_f.read()
             agent_specific_content = process_file(raw_agent_specific, config["prefix"])
 
-        processed_agents_content = process_file(master_agents_content, config["prefix"])
-
+        processed_contents = [process_file(content, config["prefix"]) for content in agent_master_contents]
         combined_agents_content = "\n\n".join(
-            content for content in (agent_specific_content, processed_agents_content) if content
+            content for content in (agent_specific_content, *processed_contents) if content
         )
-
-        with open(master_dest_path, "w") as f:
-            f.write(combined_agents_content)
+        if combined_agents_content:
+            with open(master_dest_path, "w") as f:
+                f.write(combined_agents_content)
 
         # Process commands/*.md
         for command_file in command_files:
-            with open(os.path.join(master_commands_dir, command_file), "r") as f:
+            command_path = ""
+            for source in sources:
+                candidate = os.path.join(source["commands"], command_file)
+                if os.path.exists(candidate):
+                    command_path = candidate
+                    break
+            if not command_path:
+                continue
+            with open(command_path, "r") as f:
                 try:
                     post = frontmatter.load(f)
 
@@ -225,8 +287,13 @@ def main() -> None:
 
         # Process skills/*/SKILL.md
         for skill_dir in skill_dirs:
-            skill_path = os.path.join(master_skills_dir, skill_dir, "SKILL.md")
-            if not os.path.exists(skill_path):
+            skill_path = ""
+            for source in sources:
+                candidate = os.path.join(source["skills"], skill_dir, "SKILL.md")
+                if os.path.exists(candidate):
+                    skill_path = candidate
+                    break
+            if not skill_path:
                 print(f"Skipping skill {skill_dir}: SKILL.md not found.")
                 continue
             with open(skill_path, "r") as f:
@@ -255,6 +322,17 @@ def main() -> None:
                 except Exception as e:
                     print(f"Error processing skill {skill_dir} for agent {agent_name}: {e}")
 
+    # Sync global docs bundle (agents/docs) into dist and optional deploy target
+    if os.path.isdir(master_docs_dir):
+        docs_dist = os.path.join(dist_dir, "teleclaude", "docs")
+        if os.path.exists(docs_dist):
+            shutil.rmtree(docs_dist)
+        shutil.copytree(master_docs_dir, docs_dist)
+        rewrite_global_index(
+            os.path.join(docs_dist, "index.yaml"),
+            os.path.join(dist_dir, "teleclaude"),
+        )
+
     print("\nTranspilation complete.")
 
     if args.deploy:
@@ -271,6 +349,17 @@ def main() -> None:
 
             dist_agent_root = os.path.dirname(config["master_dest"])
             shutil.copytree(dist_agent_root, target_root, dirs_exist_ok=True)
+
+        if os.path.isdir(master_docs_dir):
+            deploy_docs_root = os.path.join(os.path.expanduser("~/.teleclaude"), "docs")
+            if os.path.exists(deploy_docs_root):
+                shutil.rmtree(deploy_docs_root)
+            os.makedirs(os.path.dirname(deploy_docs_root), exist_ok=True)
+            shutil.copytree(master_docs_dir, deploy_docs_root)
+            rewrite_global_index(
+                os.path.join(deploy_docs_root, "index.yaml"),
+                os.path.expanduser("~/.teleclaude"),
+            )
 
         print("Deployment complete.")
 

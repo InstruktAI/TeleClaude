@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build docs/index.yaml from docs/snippets frontmatter."""
+"""Build docs/index.yaml from docs/ snippet frontmatter."""
 
 from __future__ import annotations
 

@@ -71,6 +71,19 @@ print_header() {
     echo ""
 }
 
+ensure_teleclaude_yaml() {
+    if [ ! -f "$INSTALL_DIR/teleclaude.yml" ]; then
+        cat > "$INSTALL_DIR/teleclaude.yml" <<'EOF'
+business:
+  domains:
+    software-development: docs
+EOF
+        print_success "Created teleclaude.yml"
+    else
+        print_info "teleclaude.yml already exists"
+    fi
+}
+
 # Detect OS
 detect_os() {
     OS_TYPE=$(uname -s)
@@ -365,6 +378,7 @@ main() {
     install_python_deps
     provision_logs
     install_global_cli
+    ensure_teleclaude_yaml
 
     print_header "Install Complete"
     print_success "Binaries and Python dependencies installed"

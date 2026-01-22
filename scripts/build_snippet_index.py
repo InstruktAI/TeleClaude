@@ -66,9 +66,19 @@ def _snippet_files(snippets_root: Path) -> list[Path]:
     return [path for path in snippets_root.rglob("*.md") if path.name != "index.yaml" and "baseline" not in str(path)]
 
 
+def _ensure_project_config(project_root: Path) -> None:
+    config_path = project_root / "teleclaude.yml"
+    if config_path.exists():
+        return
+    config_path.write_text(
+        "business:\n  domains:\n    software-development: docs\n",
+        encoding="utf-8",
+    )
+
+
 def _iter_snippet_roots(project_root: Path) -> list[Path]:
     roots: list[Path] = []
-    candidates = [project_root / "docs" / "global-snippets", project_root / "docs" / "snippets"]
+    candidates = [project_root / "agents" / "docs", project_root / "docs"]
     for candidate in candidates:
         if candidate.exists() and _snippet_files(candidate):
             roots.append(candidate)
@@ -76,7 +86,7 @@ def _iter_snippet_roots(project_root: Path) -> list[Path]:
 
 
 def _strip_baseline_frontmatter(project_root: Path) -> list[str]:
-    baseline_root = project_root / "docs" / "global-snippets" / "baseline"
+    baseline_root = project_root / "agents" / "docs" / "baseline"
     if not baseline_root.exists():
         return []
     violations: list[str] = []
@@ -190,11 +200,12 @@ def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build snippet indexes from docs/snippets and docs/global-snippets.")
+    parser = argparse.ArgumentParser(description="Build snippet indexes from docs/ and agents/docs/.")
     parser.add_argument("--project-root", default=str(Path.cwd()), help="Project root (default: cwd)")
     args = parser.parse_args()
 
     project_root = Path(args.project_root).expanduser().resolve()
+    _ensure_project_config(project_root)
     roots = _iter_snippet_roots(project_root)
     if not roots:
         logger.info("no_snippet_roots", project_root=str(project_root))
