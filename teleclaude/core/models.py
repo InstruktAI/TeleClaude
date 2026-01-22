@@ -223,7 +223,7 @@ class MessageMetadata:
     """Per-call metadata for message operations."""
 
     reply_markup: Optional["InlineKeyboardMarkup"] = None
-    parse_mode: str = ""
+    parse_mode: str = "MarkdownV2"
     message_thread_id: Optional[int] = None
     raw_format: bool = False
     origin: Optional[str] = None

@@ -148,7 +148,7 @@ TeleClaude follows the global software-development Definition of Done. See
 
 ## Docs + Agent Artifacts Auto-Sync
 
-Run `telec /init` from a project root to build docs indexes, distribute agent artifacts, and
+Run `telec init` from a project root to build docs indexes, distribute agent artifacts, and
 install an OS watcher that re-runs the sync on changes to `.agents`, `docs`, `agents/docs`,
 or `teleclaude.yml`.
 

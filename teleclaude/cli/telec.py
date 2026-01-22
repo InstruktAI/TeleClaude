@@ -35,8 +35,13 @@ def main() -> None:
     setup_logging()
     argv = sys.argv[1:]
 
-    if argv and argv[0].startswith("/"):
-        _handle_cli_command(argv)
+    if argv:
+        token = argv[0].lstrip("/")
+        if token in {cmd.value for cmd in TelecCommand}:
+            _handle_cli_command(argv)
+            return
+        if argv[0].startswith("/"):
+            _handle_cli_command(argv)
         return
 
     # TUI mode - ensure we're in tmux for pane preview
@@ -375,11 +380,11 @@ def _usage() -> str:
     return (
         "Usage:\n"
         "  telec                          # Open TUI (Sessions view)\n"
-        "  telec /list                    # List sessions (stdout, no TUI)\n"
-        "  telec /claude [mode] [prompt]  # Start Claude (mode: fast/med/slow, prompt optional)\n"
-        "  telec /gemini [mode] [prompt]  # Start Gemini (mode: fast/med/slow, prompt optional)\n"
-        "  telec /codex [mode] [prompt]   # Start Codex (mode: fast/med/slow/deep, prompt optional)\n"
-        "  telec /init                    # Initialize docs sync and auto-rebuild watcher\n"
+        "  telec list                     # List sessions (stdout, no TUI)\n"
+        "  telec claude [mode] [prompt]   # Start Claude (mode: fast/med/slow, prompt optional)\n"
+        "  telec gemini [mode] [prompt]   # Start Gemini (mode: fast/med/slow, prompt optional)\n"
+        "  telec codex [mode] [prompt]    # Start Codex (mode: fast/med/slow/deep, prompt optional)\n"
+        "  telec init                     # Initialize docs sync and auto-rebuild watcher\n"
     )
 
 

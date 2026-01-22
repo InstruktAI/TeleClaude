@@ -897,10 +897,10 @@ class MCPHandlersMixin:
             )
             return {"status": "success", "message_id": message_id}
         except Exception as e:
-            logger.warning("MarkdownV2 send failed, falling back to plain text: %s", e)
+            logger.warning("MarkdownV2 send failed, retrying with default formatting: %s", e)
             try:
                 message_id = await self.client.send_message(
-                    session=session, text=content[:4096], metadata=MessageMetadata(parse_mode=""), ephemeral=False
+                    session=session, text=content[:4096], metadata=MessageMetadata(), ephemeral=False
                 )
                 return {
                     "status": "success",

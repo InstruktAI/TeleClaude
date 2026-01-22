@@ -79,7 +79,7 @@ The service is ALWAYS running (24/7 requirement). Never manually start the daemo
 
 ## Docs + Agent Artifacts Auto-Sync
 
-Run `telec /init` from a project root to build docs indexes, distribute agent artifacts, and
+Run `telec init` from a project root to build docs indexes, distribute agent artifacts, and
 install an OS watcher that re-runs the sync on changes to `.agents`, `docs`, `agents/docs`,
 or `teleclaude.yml`.
 

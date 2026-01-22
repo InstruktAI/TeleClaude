@@ -392,11 +392,11 @@ Usage:
             # Log detailed error for debugging
             logger.error("Failed to download %s: %s", file_type, str(e))
 
-            # Send user-friendly error message (plain text, no Markdown parsing)
+            # Send user-friendly error message
             message_id = await self.client.send_message(
                 session,
                 f"❌ Failed to upload {file_type}",
-                metadata=self._metadata(parse_mode=""),
+                metadata=self._metadata(),
             )
             if message_id:
                 await db.add_pending_deletion(session.session_id, message_id)
