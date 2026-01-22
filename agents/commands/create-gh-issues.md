@@ -109,7 +109,7 @@ For each issue:
 
    ## Implementation Steps
    <Detailed, actionable steps from the implementation plan>
-   <Include code snippets, commands, file paths>
+   <Include code docs, commands, file paths>
 
    ## Success Criteria
    <Checklist of what defines "done">

@@ -4,6 +4,6 @@ description: Load implementation context for coding. Use when given next-build c
 
 # Prime Builder
 
-@~/.agents/docs/global-snippets/software-development/roles/builder.md
+@~/.teleclaude/docs/software-development/roles/builder.md
 
 **You are now primed as Builder.**

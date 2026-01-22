@@ -10,7 +10,7 @@ This skill reviews code against project guidelines with high precision to minimi
 Before reviewing, read:
 
 - `AGENTS.md` or `CLAUDE.md` - Project-specific guidelines
-- `~/.agents/docs/development/coding-directives.md` - Coding standards
+- `~/.teleclaude/docs/development/coding-directives.md` - Coding standards
 - Related source files to understand patterns
 
 ## Review Scope

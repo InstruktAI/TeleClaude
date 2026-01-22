@@ -4,6 +4,6 @@ description: Load review context for code evaluation. Use when reviewing PRs, ev
 
 # Prime Reviewer
 
-@~/.agents/docs/global-snippets/software-development/roles/reviewer.md
+@~/.teleclaude/docs/software-development/roles/reviewer.md
 
 **You are now primed as Reviewer.**

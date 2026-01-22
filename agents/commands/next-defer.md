@@ -5,7 +5,7 @@ description: Administrator command - resolve deferrals, create new todos
 
 # Deferral Resolution
 
-@~/.agents/docs/global-snippets/software-development/roles/administrator.md
-@~/.agents/docs/global-snippets/software-development/procedure/lifecycle/deferrals.md
+@~/.teleclaude/docs/software-development/roles/administrator.md
+@~/.teleclaude/docs/software-development/procedure/lifecycle/deferrals.md
 
 Slug given: "$ARGUMENTS"

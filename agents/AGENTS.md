@@ -162,19 +162,19 @@ The codebase handles different command invocation patterns:
 
 ## Documentation Structure
 
-- `docs/snippets/` - Local snippets for this repo only
-- `docs/3rd-party/` - Research material (not used for snippets)
+- `docs/` - Local snippets for this repo only
+- `docs-3rd/` - Research material (not used for snippets)
 - `README.md` - Project overview and build instructions
 - `AGENTS.master.md` - Master agent behavior template
 
 ## Global Snippets (Meta)
 
-This repo owns the **global** snippet library under `docs/global-snippets/`.
+This repo owns the **global** snippet library under `agents/docs/`.
 Do not document or mirror its contents here. Treat it as a separate distribution artifact.
 
 ## Snippet Tooling
 
-- `scripts/build_snippet_index.py` - Build `docs/index.yaml` from `docs/snippets/`
+- `scripts/build_snippet_index.py` - Build `docs/index.yaml` from `docs/`
 - `scripts/sync_snippets.py` - Validate `docs/index.yaml` against snippets
 - Snippets use YAML frontmatter with `id`, `description`, `type`, `scope`, and optional `requires`.
 

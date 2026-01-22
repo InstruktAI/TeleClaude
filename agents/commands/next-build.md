@@ -5,7 +5,7 @@ description: Worker command - execute implementation plan, update checkboxes, co
 
 # Build
 
-@~/.agents/docs/global-snippets/software-development/roles/builder.md
-@~/.agents/docs/global-snippets/software-development/procedure/lifecycle/build.md
+@~/.teleclaude/docs/software-development/roles/builder.md
+@~/.teleclaude/docs/software-development/procedure/lifecycle/build.md
 
 Slug given: "$ARGUMENTS"

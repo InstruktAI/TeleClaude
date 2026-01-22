@@ -4,6 +4,6 @@ description: Load strategic context for architecture and requirements work. Use 
 
 # Prime Architect
 
-@~/.agents/docs/global-snippets/software-development/roles/architect.md
+@~/.teleclaude/docs/software-development/roles/architect.md
 
 **You are now primed as Architect.**

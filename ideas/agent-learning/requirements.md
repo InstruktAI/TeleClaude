@@ -8,6 +8,7 @@
 AI sessions receive static context (coding directives, testing directives, project AGENTS.md) but don't learn from corrections and preferences expressed during conversations. When Mo corrects an AI or expresses a preference, that knowledge is lost after the session ends. The next session makes the same mistakes.
 
 We need a system that:
+
 - Captures novel facts from conversations autonomously
 - Filters out already-known information (no noise)
 - Stores learned preferences for future sessions
@@ -79,6 +80,7 @@ Stage 2 LLM determines WHERE to store each learned fact:
 2. **Subfolder-level** (`{module}/AGENTS.md`) - Module-specific patterns, package-specific facts
 
 **Examples:**
+
 - "Prefers functions over classes" → `LEARNED.md`
 - "The learning module uses event bus pattern" → `teleclaude/learning/AGENTS.md`
 - "Use sonnet for synthesis in LLM utility" → `teleclaude/utils/AGENTS.md`
@@ -88,8 +90,12 @@ Stage 2 prompt must include context about WHICH folders were discussed to make s
 ### Fact Format (Semantic, Concise)
 
 Stage 1 raw output:
+
 ```json
-{"ts": "2025-12-17T01:50:00Z", "facts": ["Prefers X over Y", "Corrected: do Z"]}
+{
+  "ts": "2025-12-17T01:50:00Z",
+  "facts": ["Prefers X over Y", "Corrected: do Z"]
+}
 ```
 
 ### Stage 1 Prompt (Opinion Mining & Preference Extraction)
@@ -155,39 +161,48 @@ FACT: Use event bus pattern for hook communication
 ```
 
 LEARNED.md format (project root):
+
 ```markdown
 # Learned Preferences
 
 ## Coding
+
 - Prefers functions over classes
 - Avoids type annotations for internal code
 - Dislikes premature abstractions
 
 ## Communication
+
 - Prefers concise responses
 - Wants answers without summaries at end
 
 ## Testing
+
 - Wants tests written after code, not before
 ```
 
 Module AGENTS.md format (subfolder):
+
 ```markdown
 # Learning Module
 
 ## Architecture
+
 - Use event bus pattern for hook communication
 - Handlers subscribe via events.on()
 
 ## Implementation
+
 - LLM utility shared in teleclaude/utils/
 ```
 
 Plain markdown. Human readable. No invented formats. No "User" prefix (implicit).
 
 **AGENTS.md should reference LEARNED.md:**
+
 ```markdown
 # Project AGENTS.md
+
 ...
 See also: [LEARNED.md](LEARNED.md) for dynamically learned preferences.
 ```
@@ -283,6 +298,7 @@ claude -p "prompt" --model sonnet --output-format text
 ```
 
 **Why CLI over API:**
+
 - Uses existing Claude subscription (within account budget)
 - No API key management
 - No separate billing
@@ -307,8 +323,8 @@ A one-time initialization that creates `tmp/known-facts-summary.md` from existin
 
 ```
 Input sources:
-├── ~/.agents/docs/development/coding-directives.md
-├── ~/.agents/docs/development/testing-directives.md
+├── ~/.teleclaude/docs/development/coding-directives.md
+├── ~/.teleclaude/docs/development/testing-directives.md
 ├── {project}/AGENTS.md (if exists)
 └── {project}/LEARNED.md (if exists)
 

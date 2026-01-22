@@ -4,7 +4,7 @@ description: Load orchestration context for managing worker AIs through the buil
 
 # Prime Orchestrator
 
-@~/.agents/docs/global-snippets/software-development/roles/orchestrator.md
-@~/.agents/docs/global-snippets/software-development/procedure/orchestration.md
+@~/.teleclaude/docs/software-development/roles/orchestrator.md
+@~/.teleclaude/docs/software-development/procedure/orchestration.md
 
 **You are now primed as Orchestrator.**

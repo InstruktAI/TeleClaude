@@ -4,6 +4,6 @@ description: Load testing context for evaluating and improving tests. Use when w
 
 # Prime Tester
 
-@~/.agents/docs/global-snippets/software-development/roles/tester.md
+@~/.teleclaude/docs/software-development/roles/tester.md
 
 **You are now primed as Tester.**

@@ -10,7 +10,7 @@ This skill simplifies code for clarity, consistency, and maintainability while p
 Before simplifying, read:
 
 - `AGENTS.md` or `CLAUDE.md` - Project coding standards
-- `~/.agents/docs/development/coding-directives.md` - Coding standards
+- `~/.teleclaude/docs/development/coding-directives.md` - Coding standards
 - Related code to understand existing patterns
 
 ## Core Responsibilities

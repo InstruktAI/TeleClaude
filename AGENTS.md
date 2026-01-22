@@ -4,6 +4,11 @@ This file provides guidance to agents when working with code in this repository.
 
 > **For user-facing documentation, installation, and usage instructions, see [README.md](README.md)**
 
+## Required Reading
+
+@~/.teleclaude/docs/baseline/index.md
+@~/.teleclaude/docs/software-development/procedure/scaffolding/python.md
+
 ## 🚨 CRITICAL RULES (Never Break These)
 
 ### YOU ARE THE ONLY ONE MAKING CODE CHANGES
@@ -292,8 +297,8 @@ db.clear_pending_deletions(session_id, deletion_type='feedback')
 
 See global directives (automatically loaded for all projects):
 
-- `~/.agents/docs/development/coding-directives.md`
-- `~/.agents/docs/development/testing-directives.md`
+- `~/.teleclaude/docs/development/coding-directives.md`
+- `~/.teleclaude/docs/development/testing-directives.md`
 
 ## Technical Architecture
 

@@ -16,9 +16,9 @@ ARGUMENT: "$ARGUMENTS"
 
 ## Mandatory Procedure
 
-@~/.agents/docs/global-snippets/software-development/procedure/lifecycle/documentation/sync-docstrings.md
+@~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docstrings.md
 
 ## Output
 
 - Updated docstrings in code.
-- No changes to docs/ or snippets.
+- No changes to docs/ or docs.

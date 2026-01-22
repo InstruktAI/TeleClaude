@@ -4,6 +4,6 @@ description: Prime the Process Administrator role. This role exists to understan
 
 # Prime Administrator
 
-@~/.agents/docs/global-snippets/software-development/roles/administrator.md
+@~/.teleclaude/docs/software-development/roles/administrator.md
 
 **You are now primed as Administrator.**

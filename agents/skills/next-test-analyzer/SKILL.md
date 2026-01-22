@@ -9,7 +9,7 @@ This skill analyzes test coverage quality for PRs to ensure critical functionali
 
 Before analyzing, read:
 
-- `~/.agents/docs/development/testing-directives.md` - Testing standards
+- `~/.teleclaude/docs/development/testing-directives.md` - Testing standards
 - All test files for changed modules
 - The source code being tested
 - Existing test patterns in the project

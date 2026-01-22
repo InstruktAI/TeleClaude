@@ -6,4 +6,4 @@ The baseline here is intentionally minimal. Read the baseline index and follow e
 
 ## Required Reads
 
-@~/.agents/docs/global-snippets/baseline/index.md
+@~/.teleclaude/docs/baseline/index.md

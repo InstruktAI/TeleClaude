@@ -5,7 +5,7 @@ description: Architect command - analyze codebase and discuss requirements with 
 
 # Prepare
 
-@~/.agents/docs/global-snippets/software-development/roles/architect.md
-@~/.agents/docs/global-snippets/software-development/procedure/lifecycle/prepare.md
+@~/.teleclaude/docs/software-development/roles/architect.md
+@~/.teleclaude/docs/software-development/procedure/lifecycle/prepare.md
 
 Slug given: "$ARGUMENTS"

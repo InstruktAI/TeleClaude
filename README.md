@@ -13,7 +13,7 @@ Control your terminal sessions remotely via Telegram. Run commands, monitor outp
 
 ## What is TeleClaude?
 
-TeleClaude is a pure terminal bridge - a "dumb pipe" between Telegram and your terminal. It's **NOT** a custom AI bot. The intelligence comes from whatever you run in the terminal (Claude CLI, vim, htop, or any other tool).
+TeleClaude is a terminal and agent orchestration layer. It doesn’t run its own model; it coordinates external CLIs (Claude, Codex, Gemini, shell tools) and exposes MCP tools for automation across computers and adapters.
 
 **Key Features:**
 
@@ -140,6 +140,11 @@ make stop      # Stop service first
 make dev       # Run with Ctrl+C to stop
 make start     # Re-enable service when done
 ```
+
+## Definition of Done
+
+TeleClaude follows the global software-development Definition of Done. See
+`agents/docs/software-development/standards/definition-of-done.md`.
 
 ## Usage
 
@@ -312,7 +317,7 @@ ps aux | grep teleclaude.daemon | awk '{print $2}' | xargs -I {} sudo cat /proc/
 
 ### AI-to-AI Communication (MCP Server)
 
-TeleClaude includes a **Model Context Protocol (MCP) server** that enables Agent instances on different computers to communicate with each other using Telegram as a distributed message bus.
+TeleClaude includes a **Model Context Protocol (MCP) server** that enables Agent instances on different computers to communicate with each other. Redis transport is required for cross-computer orchestration.
 
 **What it enables:**
 
