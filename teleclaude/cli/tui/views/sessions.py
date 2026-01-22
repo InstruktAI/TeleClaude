@@ -603,17 +603,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # Start new session on project
             self._start_session_for_project(stdscr, item.data)
         elif is_session_node(item):
-            # Only activate if we got here via arrow keys (clicks already activated)
-            if self._selection_method == "arrow":
-                self._activate_session(item)
-                logger.trace(
-                    "sessions_enter",
-                    item_type="session",
-                    action="activate",
-                    duration_ms=int((time.perf_counter() - enter_start) * 1000),
-                )
-            else:
-                logger.debug("handle_enter: ignoring Enter after click (already activated)")
+            # Activate session (same behavior as clicking)
+            self._activate_session(item)
+            logger.trace(
+                "sessions_enter",
+                item_type="session",
+                action="activate",
+                duration_ms=int((time.perf_counter() - enter_start) * 1000),
+            )
             self._id_row_clicked = False
 
     def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
