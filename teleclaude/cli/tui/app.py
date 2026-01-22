@@ -814,11 +814,23 @@ class TelecApp:
         stdscr.erase()  # type: ignore[attr-defined]  # erase() doesn't affect scroll buffer
         height, width = stdscr.getmaxyx()  # type: ignore[attr-defined]
 
-        # Rows 0-5: ASCII banner (6 lines)
-        render_banner(stdscr, 0, width)
+        # Calculate total pane count (1 TUI pane + session panes)
+        sessions_view = self.views.get(1)
+        total_panes = 1  # TUI pane
+        if isinstance(sessions_view, SessionsView):
+            total_panes += len(sessions_view.sticky_sessions)
+            if sessions_view._active_session_id and not any(
+                s.session_id == sessions_view._active_session_id for s in sessions_view.sticky_sessions
+            ):
+                total_panes += 1  # Active session not in sticky list
+
+        # Hide banner for 4 or 6 panes (optimizes vertical space for grid layouts)
+        show_banner = total_panes not in (4, 6)
+        if show_banner:
+            render_banner(stdscr, 0, width)
 
         # Row after banner: Tab bar (3 rows for browser-style tabs)
-        tab_row = BANNER_HEIGHT
+        tab_row = BANNER_HEIGHT if show_banner else 0
         self.tab_bar.render(stdscr, tab_row, width)
 
         # Row after tab bar: empty row for spacing, then breadcrumb (if focused)
