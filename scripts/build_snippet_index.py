@@ -118,11 +118,28 @@ def _strip_baseline_frontmatter(project_root: Path) -> list[str]:
     return violations
 
 
+def _write_baseline_index(project_root: Path) -> None:
+    baseline_root = project_root / "agents" / "docs" / "baseline"
+    if not baseline_root.exists():
+        return
+    entries: list[str] = []
+    for path in sorted(baseline_root.rglob("*.md")):
+        if path.name == "index.md":
+            continue
+        rel = path.relative_to(baseline_root).as_posix()
+        entries.append(f"@~/.teleclaude/docs/baseline/{rel}")
+    if not entries:
+        return
+    baseline_index = baseline_root / "index.md"
+    baseline_index.write_text("\n".join(entries) + "\n", encoding="utf-8")
+
+
 def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload:
     violations = _strip_baseline_frontmatter(project_root)
     if violations:
         logger.warning("baseline_frontmatter_removed", paths=violations)
         print("Unexpected baseline frontmatter was found and cleaned.")
+    _write_baseline_index(project_root)
     if not snippets_root.exists():
         return {
             "project_root": str(project_root),

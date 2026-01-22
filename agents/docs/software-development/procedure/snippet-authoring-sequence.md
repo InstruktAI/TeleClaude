@@ -18,4 +18,4 @@ type: procedure
 7. **Use type-specific structure** — steps for procedures, rules for policies, tables for references, etc.
 8. **Minimize the body** — include only what is necessary to use it correctly.
 9. **Validate against source** — confirm it matches reality (code/process/system).
-10. **Rebuild and validate** — `python ~/.teleclaude/scripts/build_snippet_index.py` then `python ~/.teleclaude/scripts/sync_docs.py`.
+10. **Rebuild and validate** — run docs sync (`telec init` or `scripts/build_snippet_index.py`), which regenerates indexes automatically.
