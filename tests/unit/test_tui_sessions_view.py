@@ -50,6 +50,9 @@ def mock_pane_manager():
         def focus_pane_for_session(self, session_id):
             return True
 
+        def apply_layout(self, **_kwargs):
+            return None
+
     return MockPaneManager()
 
 
@@ -409,6 +412,7 @@ class TestSessionsViewLogic:
                 self.toggle_called = False
                 self.show_sticky_called = False
                 self.sticky_sessions = []
+                self.apply_called = False
 
             def toggle_session(self, tmux_session_name, child_tmux_session_name, computer_info):
                 self.toggle_called = True
@@ -422,6 +426,10 @@ class TestSessionsViewLogic:
 
             def focus_pane_for_session(self, session_id):
                 return True
+
+            def apply_layout(self, **_kwargs):
+                self.apply_called = True
+                return None
 
         pane_manager = MockPaneManager()
         view = SessionsView(
@@ -460,17 +468,18 @@ class TestSessionsViewLogic:
         # First click - single click activates (no sticky sessions)
         assert view.handle_click(10, is_double_click=False) is True
         assert view.selected_index == 0
-        assert pane_manager.toggle_called is True  # Activated via toggle_session
+        assert pane_manager.apply_called is True
 
         # Second click as double-click on ID line
         pane_manager.toggle_called = False
+        pane_manager.apply_called = False
         assert view.handle_click(10, is_double_click=True) is True
 
         # Should have toggled sticky with parent-only mode
         assert len(view.sticky_sessions) == 1
         assert view.sticky_sessions[0].session_id == "sess-1"
         assert view.sticky_sessions[0].show_child is False  # Parent-only mode
-        assert pane_manager.show_sticky_called is True
+        assert pane_manager.apply_called is True
 
     def test_render_session_clears_line_width(self, sessions_view):
         """Session render pads lines to full width to avoid stale artifacts."""

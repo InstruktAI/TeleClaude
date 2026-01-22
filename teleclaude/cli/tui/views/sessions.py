@@ -120,6 +120,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_rendered_range: tuple[int, int] = (0, 0)
         # Sticky session state (max 5 sessions across 3 lanes)
         self.sticky_sessions: list[StickySessionInfo] = []
+        self._active_session_id: str | None = None
+        self._active_child_session_id: str | None = None
         self._last_click_time: dict[int, float] = {}  # screen_row -> timestamp
         self._double_click_threshold = 0.4  # seconds
         self._selection_method: str = "arrow"  # "arrow" | "click"
@@ -338,6 +340,25 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return False
 
         return walk(self.tree)
+
+    def sync_layout(self) -> None:
+        """Sync pane layout with current session list."""
+        session_ids = {session.session_id for session in self._sessions}
+        if self._active_session_id and self._active_session_id not in session_ids:
+            self._active_session_id = None
+            self._active_child_session_id = None
+        if self._active_child_session_id and self._active_child_session_id not in session_ids:
+            self._active_child_session_id = None
+
+        if self.sticky_sessions:
+            self.sticky_sessions = [s for s in self.sticky_sessions if s.session_id in session_ids]
+
+        self.pane_manager.apply_layout(
+            active_session_id=self._active_session_id,
+            sticky_session_ids=[s.session_id for s in self.sticky_sessions],
+            child_session_id=self._active_child_session_id,
+            get_computer_info=self._get_computer_info,
+        )
 
     def rebuild_for_focus(self) -> None:
         """Rebuild flat_items based on current focus context."""
@@ -667,7 +688,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         session = item.data.session
         session_id = session.session_id
         tmux_session = session.tmux_session_name or ""
-        computer_name = session.computer or "local"
 
         logger.info(
             "_activate_session: session_id=%s, tmux=%s, sticky_count=%d, sticky_ids=%s",
@@ -688,23 +708,33 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 "_activate_session: session %s ALREADY STICKY, hiding active pane",
                 session_id[:8],
             )
-            self.pane_manager.hide_sessions()  # Clear active pane
+            self._active_session_id = None
+            self._active_child_session_id = None
+            self.pane_manager.apply_layout(
+                active_session_id=None,
+                sticky_session_ids=[s.session_id for s in self.sticky_sessions],
+                child_session_id=None,
+                get_computer_info=self._get_computer_info,
+            )
             return
 
-        # Get computer info for SSH (if remote)
-        computer_info = self._get_computer_info(computer_name)
-
         # Find child session if exists
-        child_tmux_session: str | None = None
+        child_session_id: str | None = None
         for sess in self._sessions:
             if sess.initiator_session_id == session_id:
-                child_tmux = sess.tmux_session_name
-                if child_tmux:
-                    child_tmux_session = child_tmux
-                    break
+                child_session_id = sess.session_id
+                break
 
-        # Show the active session (replaces any existing active pane)
-        self.pane_manager.show_session(tmux_session, child_tmux_session, computer_info)
+        self._active_session_id = session_id
+        self._active_child_session_id = child_session_id
+
+        # Apply deterministic layout
+        self.pane_manager.apply_layout(
+            active_session_id=self._active_session_id,
+            sticky_session_ids=[s.session_id for s in self.sticky_sessions],
+            child_session_id=self._active_child_session_id,
+            get_computer_info=self._get_computer_info,
+        )
         logger.debug(
             "_activate_session: showing session in active pane (sticky_count=%d)",
             len(self.sticky_sessions),
@@ -714,7 +744,12 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         """Rebuild pane layout based on sticky sessions."""
         if not self.sticky_sessions:
             # No sticky sessions - clear all panes
-            self.pane_manager.hide_sessions()
+            self.pane_manager.apply_layout(
+                active_session_id=self._active_session_id,
+                sticky_session_ids=[],
+                child_session_id=self._active_child_session_id,
+                get_computer_info=self._get_computer_info,
+            )
             logger.debug("_rebuild_sticky_panes: no sticky sessions, hiding all panes")
             return
 
@@ -735,8 +770,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             len(sticky_session_infos),
         )
 
-        # Tell pane manager to show sticky sessions in 3-lane layout
-        self.pane_manager.show_sticky_sessions(sticky_session_infos, self._sessions, self._get_computer_info)
+        # Apply deterministic layout
+        self.pane_manager.apply_layout(
+            active_session_id=self._active_session_id,
+            sticky_session_ids=[s.session_id for s in self.sticky_sessions],
+            child_session_id=self._active_child_session_id,
+            get_computer_info=self._get_computer_info,
+        )
 
     def _toggle_session_pane(self, item: SessionNode) -> None:
         """Toggle session preview pane visibility.

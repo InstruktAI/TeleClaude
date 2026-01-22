@@ -116,6 +116,7 @@ class TmuxPaneManager:
         self._active_child_tmux: str | None = None
         self._active_child_computer: ComputerInfo | None = None
         self._layout_signature: tuple[object, ...] | None = None
+        self._session_catalog: dict[str, "SessionInfo"] = {}
         # Store our own pane ID for reference
         self._tui_pane_id: str | None = None
         if self._in_tmux:
@@ -125,6 +126,72 @@ class TmuxPaneManager:
     def is_available(self) -> bool:
         """Check if tmux pane management is available."""
         return self._in_tmux
+
+    def update_session_catalog(self, sessions: list["SessionInfo"]) -> None:
+        """Update the session catalog used for layout lookup."""
+        self._session_catalog = {session.session_id: session for session in sessions}
+
+    def apply_layout(
+        self,
+        *,
+        active_session_id: str | None,
+        sticky_session_ids: list[str],
+        child_session_id: str | None,
+        get_computer_info: Callable[[str], ComputerInfo | None],
+    ) -> None:
+        """Apply a deterministic layout from session ids."""
+        if not self._in_tmux:
+            return
+
+        sticky_specs: list[SessionPaneSpec] = []
+        for session_id in sticky_session_ids:
+            session = self._session_catalog.get(session_id)
+            if not session:
+                continue
+            tmux_session = session.tmux_session_name or ""
+            if not tmux_session:
+                continue
+            sticky_specs.append(
+                SessionPaneSpec(
+                    session_id=session.session_id,
+                    tmux_session_name=tmux_session,
+                    computer_info=get_computer_info(session.computer or "local"),
+                    is_sticky=True,
+                )
+            )
+
+        active_spec: SessionPaneSpec | None = None
+        if active_session_id:
+            session = self._session_catalog.get(active_session_id)
+            if session and session.tmux_session_name:
+                active_spec = SessionPaneSpec(
+                    session_id=session.session_id,
+                    tmux_session_name=session.tmux_session_name,
+                    computer_info=get_computer_info(session.computer or "local"),
+                    is_sticky=False,
+                )
+
+        child_tmux: str | None = None
+        child_computer: ComputerInfo | None = None
+        if child_session_id:
+            child_session = self._session_catalog.get(child_session_id)
+            if child_session and child_session.tmux_session_name:
+                child_tmux = child_session.tmux_session_name
+                child_computer = get_computer_info(child_session.computer or "local")
+
+        self._sticky_specs = sticky_specs
+        self._active_spec = active_spec
+        self._active_child_tmux = child_tmux
+        self._active_child_computer = child_computer
+
+        if self._layout_is_unchanged():
+            if child_tmux != self.state.child_session:
+                self.update_child_session(child_tmux, child_computer)
+            if active_spec:
+                self.focus_pane_for_session(active_spec.session_id)
+            return
+
+        self._render_layout()
 
     def _run_tmux(self, *args: str) -> str:
         """Run a tmux command and return output.

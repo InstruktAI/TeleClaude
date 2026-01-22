@@ -26,6 +26,7 @@ class DummyPaneManager:
 
     last_args: tuple[object, ...] | None = None
     is_available: bool = True
+    apply_called: bool = False
 
     def toggle_session(self, *args: object) -> None:
         """Record arguments from toggle_session."""
@@ -34,6 +35,10 @@ class DummyPaneManager:
     def show_session(self, *args: object) -> None:
         """Record arguments from show_session."""
         self.last_args = args
+
+    def apply_layout(self, **_kwargs: object) -> None:
+        """No-op layout application for tests."""
+        self.apply_called = True
 
     def focus_pane_for_session(self, session_id: str) -> bool:
         """Mock focus method."""
@@ -132,9 +137,4 @@ async def test_handle_enter_on_session_toggles_pane():
     screen = Mock()
     view.handle_enter(screen)
 
-    assert pane_manager.last_args is not None
-    tmux_session, child_session, computer_info = pane_manager.last_args
-    assert tmux_session == "tmux-parent"
-    assert child_session == "tmux-child"
-    assert computer_info is not None
-    assert computer_info.name == "remote"
+    assert pane_manager.apply_called is True

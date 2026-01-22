@@ -252,6 +252,8 @@ class TelecApp:
                 len(sessions),
             )
 
+            self.pane_manager.update_session_catalog(sessions)
+
             # Update in-place so views keep the same shared dict reference.
             self.agent_availability.clear()
             self.agent_availability.update(availability)
@@ -264,6 +266,10 @@ class TelecApp:
                     view_num,
                     len(view.flat_items),
                 )
+
+            sessions_view = self.views.get(1)
+            if isinstance(sessions_view, SessionsView):
+                sessions_view.sync_layout()
 
             # Update footer with new availability
             self.footer = Footer(self.agent_availability)
@@ -447,6 +453,7 @@ class TelecApp:
             return
 
         sessions_view._sessions = [s for s in sessions_view._sessions if s.session_id != session_id]
+        sessions_view.sync_layout()
         logger.debug("Session %s removed", session_id[:8])
 
     def run(self, stdscr: CursesWindow) -> None:
