@@ -136,7 +136,7 @@ def _find_markdown_files(repo_root: Path) -> list[Path]:
             files.append(path)
 
     # Documentation directories
-    for doc_dir in ["docs", "agents/docs"]:
+    for doc_dir in ["docs", "agents/docs", "todos"]:
         doc_path = repo_root / doc_dir
         if doc_path.exists():
             files.extend(doc_path.rglob("*.md"))
