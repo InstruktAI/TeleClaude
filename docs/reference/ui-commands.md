@@ -9,6 +9,7 @@ requires: []
 ## What it is
 
 - Canonical list of Telegram slash commands exposed by `UiCommands`.
+- Serves as a reference point for command registration and UX consistency.
 
 ## Canonical fields
 
@@ -21,6 +22,7 @@ requires: []
 ## Allowed values
 
 - Command names must match `UiCommands` registrations.
+- Keep the list synchronized with adapter registration behavior.
 
 ## Known caveats
 

@@ -1,9 +1,7 @@
-@~/.teleclaude/docs/baseline/concept/identity.md
 @~/.teleclaude/docs/baseline/policy/autonomy.md
 @~/.teleclaude/docs/baseline/policy/conflict-resolution.md
 @~/.teleclaude/docs/baseline/policy/stateless-commands.md
 @~/.teleclaude/docs/baseline/principles/autonomy.md
-@~/.teleclaude/docs/baseline/principles/deterministic-anchors.md
 @~/.teleclaude/docs/baseline/principles/explicit-inference.md
 @~/.teleclaude/docs/baseline/principles/intent-first-documentation.md
 @~/.teleclaude/docs/baseline/principles/priming.md

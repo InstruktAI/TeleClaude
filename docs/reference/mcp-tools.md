@@ -8,6 +8,7 @@ description: Complete catalog of available MCP tools for AI agents.
 ## What it is
 
 - Catalog of MCP tools exposed by TeleClaude for discovery, orchestration, and lifecycle management.
+- Use this list to select the smallest tool that satisfies the intent.
 
 ## Canonical fields
 
@@ -20,7 +21,9 @@ description: Complete catalog of available MCP tools for AI agents.
 ## Allowed values
 
 - Tool names must match the registered MCP tool list exactly.
+- Prefer dedicated tools over ad‑hoc shell commands when available.
 
 ## Known caveats
 
 - `teleclaude__run_agent_command` and `teleclaude__send_message` require a 5‑minute wait/timeout workflow for completion checks.
+- Long‑running orchestration should use the next‑machine tools to preserve state.

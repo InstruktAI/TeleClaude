@@ -7,11 +7,16 @@ description: Maintenance phase for repo-wide upkeep (security, dependencies, inf
 
 # Maintenance Phase
 
-Maintenance covers infrastructure upkeep and operational hygiene:
+Maintenance restores reliability and reduces drift across the repo and its infrastructure.
 
-- Dependency updates
-- Security patches
-- Runtime and infrastructure maintenance
-- Operational reliability improvements
+Steps
 
-Tasks are defined separately; this phase is intentionally a stub until procedures are added.
+1. Identify the maintenance target (dependency, security, infra, reliability, tooling).
+2. Define the smallest safe change set with clear verification steps.
+3. Execute updates and validate against the Definition of Done.
+4. Record outcomes, risks, and any follow‑up work items.
+
+Outputs
+
+- Verified changes with documented impact.
+- Follow‑up tasks captured and prioritized.

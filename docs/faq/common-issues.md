@@ -11,6 +11,7 @@ description: Frequently asked questions and common troubleshooting steps.
 
 - **A**: Ensure the bot is an **admin**. Non-admin bots cannot manage topics or read all messages in some group configurations.
 - **A**: Verify your Telegram User ID is in the `TELEGRAM_USER_IDS` whitelist in `.env`.
+- **A**: Confirm the daemon is healthy with `make status` and recent logs.
 
 ## Q: "Another daemon instance is already running" error?
 
@@ -19,6 +20,10 @@ description: Frequently asked questions and common troubleshooting steps.
 ## Q: Why do I see duplicate bot commands in the menu?
 
 - **A**: More than one bot has `telegram.is_master: true`. Only one should be master.
+
+## Q: Why are tool calls timing out?
+
+- **A**: Check daemon health and MCP socket availability; restart if needed.
 
 ## Q: My tmux session died, is the session lost?
 

@@ -9,13 +9,15 @@ description: Analyze or draft implementation-plan.md with approach, files, tasks
 
 ## When implementation-plan.md Exists
 
-- Assess whether it is ready after examining context and related files.
+- Confirm it reflects current intent and constraints.
+- Verify scope is atomic and testable.
+- Ensure tasks map to concrete edits and verification steps.
 
 ## When implementation-plan.md Is Missing
 
-Analyze and report:
+Produce a minimal plan that includes:
 
-- Recommended approach
-- Files likely to change
-- Task breakdown
-- Risks or open questions
+- Approach summary aligned with requirements.
+- Files expected to change and why.
+- Task sequence with verification points.
+- Risks, unknowns, and assumptions to validate.

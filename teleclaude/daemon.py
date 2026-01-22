@@ -1953,9 +1953,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 native_session_id=session.native_session_id,
             )
 
+            # Wrap command to prevent shell echo
+            wrapped_cmd = tmux_io.wrap_bracketed_paste(cmd)
+
             restored = await tmux_bridge.send_keys(
                 session_name=session.tmux_session_name,
-                text=cmd,
+                text=wrapped_cmd,
                 session_id=session.session_id,
                 working_dir=working_dir,
                 active_agent=session.active_agent,

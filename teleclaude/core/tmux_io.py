@@ -26,11 +26,17 @@ def wrap_bracketed_paste(text: str) -> str:
     stripped = text.lstrip()
     if stripped.startswith("/"):
         first_word = stripped.split()[0] if stripped else ""
+        slash_count = first_word.count("/")
         # Single slash = command (/help), multiple slashes = path (/Users/...)
-        if first_word.count("/") == 1:
+        if slash_count == 1:
+            logger.debug("Bypassing bracketed paste for slash command: %s", text[:50])
             return text
+        logger.debug("Will wrap path (slash_count=%d): %s", slash_count, text[:80])
     if any(char in _SPECIAL_CHARS for char in text):
-        return f"{_BRACKETED_PASTE_START}{text}{_BRACKETED_PASTE_END}"
+        wrapped = f"{_BRACKETED_PASTE_START}{text}{_BRACKETED_PASTE_END}"
+        logger.debug("Wrapped with bracketed paste (has special chars): %s", text[:80])
+        return wrapped
+    logger.debug("No wrapping needed (no special chars): %s", text[:50])
     return text
 
 

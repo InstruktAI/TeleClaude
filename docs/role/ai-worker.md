@@ -15,8 +15,10 @@ description: The role of an AI agent session in the TeleClaude network.
    - Responds to `caller_session_id` annotations.
    - Provides turn-summaries for the Telegram topic.
    - Emits stop events via the hook system.
+4. **Reporting**: Surfaces findings, risks, and next steps in a structured way.
 
 ## Boundaries
 
 - Operates within the `project_dir` and `subdir` provided at startup.
 - Injected with `TELECLAUDE_SESSION_ID` and `TELECLAUDE_COMPUTER_NAME`.
+- Does not bypass the command pipeline for persistent state changes.

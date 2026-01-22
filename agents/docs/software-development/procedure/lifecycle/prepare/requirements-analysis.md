@@ -9,13 +9,15 @@ description: Analyze or verify requirements.md content for completeness and clar
 
 ## When requirements.md Exists
 
-- If `requirements.md` exists but `implementation-plan.md` does not, assess readiness.
+- Confirm the document is complete, unambiguous, and testable.
+- Verify constraints and success criteria are explicit.
+- Identify any gaps that would block implementation planning.
 
 ## When requirements.md Is Missing
 
 Analyze and report:
 
-- What problem is being solved?
-- What requirements are implied by code and docs?
-- What ambiguities or questions remain?
-- What constraints should be considered?
+- Problem statement and intended outcomes.
+- Derived requirements from existing context.
+- Ambiguities that change scope or design decisions.
+- Constraints that must hold throughout implementation.

@@ -1,12 +1,12 @@
 # Stateless Command Policy
 
-Commands must be **atomic** and **idempotent**. They cannot assume hidden state or ask for conditional actions that require unknown checks.
+Commands are atomic, explicit, and idempotent. They state required setup, perform the work, and end with a verifiable outcome.
 
 ## Rules
 
-- **No conditional pre-steps**: Do not say “if X is stale, then run Y.” If a step is required, run it as part of the command.
-- **No hidden prerequisites**: Commands must not depend on implicit or undisclosed state.
-- **Single responsibility**: One command does one job end-to-end.
-- **Idempotent**: Re-running a command should produce a correct result without manual cleanup.
+- **Make prerequisites explicit**: include required setup as part of the command flow.
+- **Declare the working state**: state what the command relies on and what it produces.
+- **Single responsibility**: one command completes one job end-to-end.
+- **Idempotent execution**: repeat runs converge on the same correct result.
 
-If sequencing is required, use the orchestration layer or a state machine, not conditional text inside a command.
+When sequencing is needed, use orchestration or a state machine to compose commands.
