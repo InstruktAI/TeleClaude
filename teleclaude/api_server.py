@@ -306,6 +306,20 @@ class APIServer:
                     else:
                         auto_command = f"agent_resume {launch_intent.agent}"
 
+            auto_command_source = "request" if request.auto_command else ("derived" if launch_intent else "none")
+            logger.info(
+                "create_session request: computer=%s project=%s agent=%s thinking_mode=%s launch_kind=%s "
+                "native_session_id=%s auto_command=%s auto_command_source=%s",
+                request.computer,
+                request.project_path,
+                request.agent,
+                request.thinking_mode,
+                request.launch_kind,
+                request.native_session_id,
+                auto_command,
+                auto_command_source,
+            )
+
             # Update metadata with derived fields
             metadata.title = title
             metadata.launch_intent = launch_intent

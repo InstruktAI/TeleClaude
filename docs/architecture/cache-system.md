@@ -13,12 +13,12 @@ Provides sub-millisecond read access to system state (computers, sessions, proje
 
 ```mermaid
 flowchart TB
-  TUI[TUI (API + WS)]
-  API[API\n(thin, read-only)]
-  CACHE[Snapshot Cache\n(read-only)]
-  LOCAL[Local sources\n(DB, command handlers)]
-  EVENTS[Domain events\n(from core)]
-  WS[WS pushes\n(from cache updates)]
+  TUI["TUI (API + WS)"]
+  API["API<br/>(thin, read-only)"]
+  CACHE["Snapshot Cache<br/>(read-only)"]
+  LOCAL["Local sources<br/>(DB, command handlers)"]
+  EVENTS["Domain events<br/>(from core)"]
+  WS["WS pushes<br/>(from cache updates)"]
 
   TUI --> API --> CACHE
   CACHE --> LOCAL

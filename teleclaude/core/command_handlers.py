@@ -151,6 +151,13 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     if not origin:
         raise ValueError("Command missing origin")
 
+    logger.info(
+        "CreateSession: origin=%s launch_intent=%s auto_command=%s",
+        origin,
+        cmd.launch_intent.kind.value if cmd.launch_intent else None,
+        cmd.auto_command,
+    )
+
     computer_name = config.computer.name
     # Generate tmux session name with prefix for TeleClaude ownership
     session_id = str(uuid.uuid4())

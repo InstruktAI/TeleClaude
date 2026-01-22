@@ -11,6 +11,7 @@ def _fail(message: str) -> None:
 
 
 def main() -> None:
+    # bin/lint/guardrails.py -> go up 2 levels to repo root
     repo_root = Path(__file__).resolve().parents[2]
 
     pyproject_path = repo_root / "pyproject.toml"
