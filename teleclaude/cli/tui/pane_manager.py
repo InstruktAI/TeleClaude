@@ -431,7 +431,7 @@ class TmuxPaneManager:
             attach_cmd = self._build_attach_cmd(spec.tmux_session_name, spec.computer_info)
             if col == 1:
                 split_args = ["-t", self._tui_pane_id, "-h"]
-                if layout.cols == 2:
+                if layout.cols == 2 and total_panes <= 3:
                     split_args.extend(["-p", "60"])
                 pane_id = self._run_tmux(
                     "split-window",
@@ -455,6 +455,9 @@ class TmuxPaneManager:
             if pane_id:
                 col_top_panes[col] = pane_id
                 self._track_session_pane(spec, pane_id)
+
+        if layout.cols == 3:
+            self._run_tmux("select-layout", "even-horizontal")
 
         if layout.rows > 1:
             for col in range(layout.cols):
