@@ -146,6 +146,12 @@ make start     # Re-enable service when done
 TeleClaude follows the global software-development Definition of Done. See
 `agents/docs/software-development/standards/definition-of-done.md`.
 
+## Docs + Agent Artifacts Auto-Sync
+
+Run `telec /init` from a project root to build docs indexes, distribute agent artifacts, and
+install an OS watcher that re-runs the sync on changes to `.agents`, `docs`, `agents/docs`,
+or `teleclaude.yml`.
+
 ## Usage
 
 ### Creating a Session

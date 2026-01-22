@@ -77,6 +77,12 @@ When orchestrating multiple AI workers, the master AI can manage session lifecyc
 
 The service is ALWAYS running (24/7 requirement). Never manually start the daemon with `python -m teleclaude.daemon` - always use `make` commands.
 
+## Docs + Agent Artifacts Auto-Sync
+
+Run `telec /init` from a project root to build docs indexes, distribute agent artifacts, and
+install an OS watcher that re-runs the sync on changes to `.agents`, `docs`, `agents/docs`,
+or `teleclaude.yml`.
+
 1. **Make code changes** as needed
 2. **Restart daemon**: `make restart`
    - Runs `systemctl restart teleclaude` (proper systemd restart)
