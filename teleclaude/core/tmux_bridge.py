@@ -590,11 +590,22 @@ async def _send_keys_tmux(
     # See: https://github.com/google-gemini/gemini-cli/issues/4454
     send_text = text.replace("!", r"\!") if active_agent == AgentName.GEMINI.value else text
 
+    # Check if text contains bracketed paste markers
+    has_bracketed_paste = "\x1b[200~" in send_text or "\x1b[201~" in send_text
+
     # Send command (no pipes - don't leak file descriptors)
     # UPDATE: We must capture stderr to debug failures. send-keys is ephemeral and doesn't
     # start a long-lived process that would inherit the pipe, so this is safe.
-    # -l flag sends keys literally
-    cmd_text = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-l", "--", send_text]
+    # NOTE: Use -l (literal) flag EXCEPT when text has bracketed paste markers.
+    # Bracketed paste markers are ANSI escape sequences that need shell interpretation.
+    # The -l flag sends text literally (char-by-char), stripping escape sequences.
+    if has_bracketed_paste:
+        # Send without -l to allow shell to interpret bracketed paste sequences
+        cmd_text = [config.computer.tmux_binary, "send-keys", "-t", session_name, send_text]
+        logger.debug("Sending with bracketed paste markers (no -l flag): %s", send_text[:80])
+    else:
+        # Send with -l for literal interpretation (prevents unwanted shell expansion)
+        cmd_text = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-l", "--", send_text]
     result = await asyncio.create_subprocess_exec(
         *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
