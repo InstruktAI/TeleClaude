@@ -1,6 +1,14 @@
 project_root: /Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude
 snippets_root: /Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude/agents/docs
 snippets:
+- id: software-development/checklist/security-review
+  description: Security review checklist for boundary validation, secrets, and access
+    controls.
+  type: checklist
+  scope: domain
+  path: agents/docs/software-development/checklist/security-review.md
+  requires:
+  - software-development/standards/security-awareness
 - id: software-development/failure-modes
   description: Five AI pitfalls to guard against. Trust code over comments, verify
     before concluding, hunt bugs actively, slow down, trace actual values not patterns.
@@ -8,10 +16,17 @@ snippets:
   scope: domain
   path: agents/docs/software-development/failure-modes.md
   requires: []
+- id: software-development/guide/code-quality-practices
+  description: Practical guidance for applying code-quality policy in day-to-day work.
+  type: guide
+  scope: domain
+  path: agents/docs/software-development/guide/code-quality-practices.md
+  requires:
+  - software-development/standards/code-quality
 - id: software-development/guides/python/core
   description: Python typing, data handling, error patterns, async, idioms. Modern
     syntax, explicit types, pure functions.
-  type: reference
+  type: guide
   scope: domain
   path: agents/docs/software-development/guides/python/core.md
   requires:
@@ -19,7 +34,7 @@ snippets:
 - id: software-development/guides/python/logging
   description: InstruktAI Python logging standard. Logfmt format, dual-level control,
     structured pairs, tail-friendly output.
-  type: reference
+  type: guide
   scope: domain
   path: agents/docs/software-development/guides/python/logging.md
   requires:
@@ -28,7 +43,7 @@ snippets:
 - id: software-development/guides/typescript/core
   description: TypeScript strict typing, discriminated unions, type guards, property
     checks. No any, no enum, no default exports.
-  type: reference
+  type: guide
   scope: domain
   path: agents/docs/software-development/guides/typescript/core.md
   requires:

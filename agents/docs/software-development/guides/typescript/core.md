@@ -6,7 +6,7 @@ id: software-development/guides/typescript/core
 requires:
   - software-development/standards/code-quality
 scope: domain
-type: reference
+type: guide
 ---
 
 # TypeScript Core Patterns

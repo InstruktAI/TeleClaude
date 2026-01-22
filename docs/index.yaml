@@ -96,7 +96,7 @@ snippets:
   path: docs/guide/troubleshooting.md
   requires: []
 - id: policy/adapter-boundaries
-  description: Strict separation between UI/Transport adapters and core logic.
+  description: Strict separation between adapters and core logic.
   type: policy
   scope: project
   path: docs/policy/adapter-boundaries.md
@@ -388,17 +388,17 @@ snippets:
   scope: project
   path: docs/reference/command-contracts.md
   requires: []
+- id: teleclaude/reference/command-surface
+  description: Command surface contract for TeleClaude client interfaces.
+  type: reference
+  scope: project
+  path: docs/reference/command-surface.md
+  requires: []
 - id: teleclaude/reference/event-types
   description: TeleClaude event names used between adapters, daemon, and clients.
   type: reference
   scope: project
   path: docs/reference/event-types.md
-  requires: []
-- id: teleclaude/reference/ui-commands
-  description: Telegram slash commands registered from UiCommands.
-  type: reference
-  scope: project
-  path: docs/reference/ui-commands.md
   requires: []
 - id: teleclaude/standard/cache-contract
   description: Cache contract for snapshot reads, TTL refresh, and websocket updates.

@@ -6,7 +6,7 @@ id: software-development/guides/python/core
 requires:
   - software-development/standards/code-quality
 scope: domain
-type: reference
+type: guide
 ---
 
 # Python Core Patterns
