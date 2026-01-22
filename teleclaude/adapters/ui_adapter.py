@@ -137,14 +137,26 @@ class UiAdapter(BaseAdapter):
             True if edited successfully, False if no message_id or edit failed
         """
         message_id = await self._get_output_message_id(session)
+        logger.debug(
+            "[TRY_EDIT] session=%s existing_message_id=%s",
+            session.session_id[:8],
+            message_id if message_id else "None",
+        )
         if not message_id:
+            logger.debug("[TRY_EDIT] No existing message_id, will send new message")
             return False
 
+        logger.debug("[TRY_EDIT] Attempting to edit message %s for session %s", message_id, session.session_id[:8])
         success = await self.edit_message(session, message_id, text, metadata=metadata)
+        logger.debug(
+            "[TRY_EDIT] Edit result for message %s: %s",
+            message_id,
+            "SUCCESS" if success else "FAILED",
+        )
 
         if not success:
             # Edit failed - clear stale message_id
-            logger.warning("Failed to edit message %s, clearing stale message_id", message_id)
+            logger.warning("[TRY_EDIT] Failed to edit message %s, clearing stale message_id", message_id)
             await self._clear_output_message_id(session)
 
         return success
@@ -266,12 +278,33 @@ class UiAdapter(BaseAdapter):
             metadata.parse_mode = "MarkdownV2" if self.ADAPTER_KEY == AdapterType.TELEGRAM.value else "Markdown"
 
         # Try to edit existing message
-        if await self._try_edit_output_message(session, display_output, metadata):
+        edit_result = await self._try_edit_output_message(session, display_output, metadata)
+        logger.debug(
+            "[UI_SEND_OUTPUT] Edit attempt for session %s: result=%s",
+            session.session_id[:8],
+            edit_result,
+        )
+        if edit_result:
             # Edit succeeded, return existing message_id
-            return await self._get_output_message_id(session)
+            message_id = await self._get_output_message_id(session)
+            logger.debug(
+                "[UI_SEND_OUTPUT] Edit succeeded, message_id=%s for session %s",
+                message_id,
+                session.session_id[:8],
+            )
+            return message_id
 
         # Edit failed or no existing message - send new
+        logger.info(
+            "[UI_SEND_OUTPUT] Sending new message for session %s (edit_failed or no_existing_message)",
+            session.session_id[:8],
+        )
         new_id = await self.send_message(session, display_output, metadata=metadata)
+        logger.info(
+            "[UI_SEND_OUTPUT] send_message returned %s for session %s",
+            new_id if new_id else "None (FAILED!)",
+            session.session_id[:8],
+        )
         if new_id:
             await self._store_output_message_id(session, new_id)
         return new_id
@@ -289,13 +322,17 @@ class UiAdapter(BaseAdapter):
         Returns:
             Formatted message text
         """
+        from teleclaude.utils.markdown import escape_markdown_v2
+
         message_parts = []
         if tmux_output:
             # Escape internal ``` markers to prevent nested code blocks breaking markdown
             # Use zero-width space (\u200b) to break the sequence
             sanitized = tmux_output.replace("```", "`\u200b``")
             message_parts.append(f"```\n{sanitized}\n```")
-        message_parts.append(status_line)
+        # Escape status_line for MarkdownV2 (contains special chars like -, :, etc.)
+        escaped_status = escape_markdown_v2(status_line)
+        message_parts.append(escaped_status)
         return "\n".join(message_parts)
 
     def _build_output_metadata(self, _session: "Session", _is_truncated: bool) -> MessageMetadata:

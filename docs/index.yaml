@@ -76,12 +76,6 @@ snippets:
   scope: global
   path: docs/example/ai-to-ai-delegation.md
   requires: []
-- id: faq/common-issues
-  description: Frequently asked questions and common troubleshooting steps.
-  type: faq
-  scope: global
-  path: docs/faq/common-issues.md
-  requires: []
 - id: guide/multi-computer-setup
   description: Step-by-step guide for setting up a distributed TeleClaude network.
   type: guide

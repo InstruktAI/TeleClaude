@@ -18,11 +18,16 @@ description: Diagnostic steps for common TeleClaude operational issues.
 1. Check daemon health with `make status`.
 2. Inspect logs with `instrukt-ai-logs teleclaude --since 30m` and scan for `ERROR`, `mcp-server`, `telegram-adapter`.
 3. Verify adapters:
-   - Telegram: confirm `/help` responds in the General topic.
-   - MCP: confirm `/tmp/teleclaude.sock` and test `bin/mcp-wrapper.py`.
+   - Telegram: confirm recent adapter activity in logs and verify the configured bot is polling.
+   - MCP: confirm `/tmp/teleclaude.sock` exists and `bin/mcp-wrapper.py` can connect.
    - Redis: `redis-cli ping` if transport is used.
-4. Recover stuck sessions: try `/cancel`, then `/resize large`, then `/close-session`.
-5. As a last resort for crash loops: `make stop`, delete `teleclaude.db`, then `make start`.
+4. If the daemon is healthy but the bot is silent, verify admin status and `TELEGRAM_USER_IDS`.
+5. If command menus are duplicated, enforce a single `telegram.is_master: true`.
+6. If MCP calls time out, confirm `/tmp/teleclaude.sock` is present and responding.
+7. If API calls fail, verify `/tmp/teleclaude-api.sock` is present and the daemon is healthy.
+8. If `make status` says NOT running but a daemon‑already‑running error appears, remove the stale `teleclaude.pid`.
+9. If a session is stuck, send a message with `teleclaude__send_message`. If it remains unresponsive (or MCP is unavailable), call `POST /sessions/{session_id}/agent-restart`.
+10. If instability persists, isolate the last change and revert to a known good state.
 
 ## Outputs
 
@@ -30,4 +35,6 @@ description: Diagnostic steps for common TeleClaude operational issues.
 
 ## Recovery
 
-- If the daemon stays unstable, isolate recent changes and revert to a known good state.
+- Restart only via `make restart` and verify with `make status`.
+- Do not use `make stop` during normal recovery.
+- Do not delete `teleclaude.db` outside worktrees.

@@ -427,6 +427,12 @@ class AdapterClient:
         Returns:
             Message ID from first successful adapter, or None if all failed
         """
+        logger.debug(
+            "[OUTPUT_ROUTE] send_output_update called: session=%s output_len=%d is_final=%s",
+            session.session_id[:8],
+            len(output),
+            is_final,
+        )
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
             return adapter.send_output_update(
@@ -446,6 +452,12 @@ class AdapterClient:
             if isinstance(adapter, UiAdapter)
         ]
 
+        logger.debug(
+            "[OUTPUT_ROUTE] Found %d UI adapters: %s",
+            len(tasks),
+            [adapter_type for adapter_type, _ in tasks],
+        )
+
         if not tasks:
             logger.warning("No UI adapters available for session %s", session.session_id[:8])
             return None
@@ -456,9 +468,28 @@ class AdapterClient:
         # Log failures and return first success
         first_success: Optional[str] = None
         for (adapter_type, _), result in zip(tasks, results):
-            if isinstance(result, str) and not first_success:
+            if isinstance(result, Exception):
+                logger.error(
+                    "[OUTPUT_ROUTE] Adapter %s failed for session %s: %s",
+                    adapter_type,
+                    session.session_id[:8],
+                    result,
+                )
+            elif isinstance(result, str) and not first_success:
                 first_success = result
-                logger.debug("Output update sent", adapter=adapter_type, session=session.session_id[:8])
+                logger.debug("[OUTPUT_ROUTE] Output update sent to %s: message_id=%s", adapter_type, result)
+            elif result is None:
+                logger.warning(
+                    "[OUTPUT_ROUTE] Adapter %s returned None for session %s (likely ensure_channel failed)",
+                    adapter_type,
+                    session.session_id[:8],
+                )
+
+        if not first_success:
+            logger.error(
+                "[OUTPUT_ROUTE] NO ADAPTERS SUCCEEDED for session %s - output lost!",
+                session.session_id[:8],
+            )
 
         return first_success
 
@@ -469,12 +500,23 @@ class AdapterClient:
         adapter: UiAdapter,
         task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
     ) -> object | None:
+        logger.debug(
+            "[UI_LANE] Starting lane for adapter=%s session=%s title=%s",
+            adapter_type,
+            session.session_id[:8],
+            session.title,
+        )
         lane_session = session
         try:
             lane_session = await adapter.ensure_channel(lane_session, lane_session.title)
+            logger.debug(
+                "[UI_LANE] ensure_channel succeeded for %s session %s",
+                adapter_type,
+                session.session_id[:8],
+            )
         except Exception as exc:
-            logger.warning(
-                "Failed to ensure UI channel for %s session %s: %s",
+            logger.error(
+                "[UI_LANE] Failed to ensure UI channel for %s session %s: %s (BLOCKING OUTPUT)",
                 adapter_type,
                 session.session_id[:8],
                 exc,
@@ -482,10 +524,17 @@ class AdapterClient:
             return None
 
         try:
-            return await task_factory(adapter, lane_session)
+            result = await task_factory(adapter, lane_session)
+            logger.debug(
+                "[UI_LANE] Task completed for %s session %s: result=%s",
+                adapter_type,
+                session.session_id[:8],
+                type(result).__name__ if result else "None",
+            )
+            return result
         except Exception as exc:
-            logger.warning(
-                "UI adapter %s failed in lane for session %s: %s",
+            logger.error(
+                "[UI_LANE] UI adapter %s failed in lane for session %s: %s",
                 adapter_type,
                 session.session_id[:8],
                 exc,

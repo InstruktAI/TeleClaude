@@ -178,14 +178,27 @@ class TelegramAdapter(
 
     async def ensure_channel(self, session: Session, title: str) -> Session:
         telegram_meta = session.adapter_metadata.telegram
+        logger.debug(
+            "[TG_ENSURE] session=%s telegram_meta=%s topic_id=%s",
+            session.session_id[:8],
+            "present" if telegram_meta else "MISSING",
+            telegram_meta.topic_id if telegram_meta else "N/A",
+        )
         if telegram_meta and telegram_meta.topic_id:
+            logger.debug("[TG_ENSURE] Topic exists, returning session %s", session.session_id[:8])
             return session
 
+        logger.info(
+            "[TG_ENSURE] No topic_id for session %s, creating channel (title=%s)",
+            session.session_id[:8],
+            title,
+        )
         try:
             await self.create_channel(session, title, metadata=ChannelMetadata(origin=False))
+            logger.info("[TG_ENSURE] Channel created successfully for session %s", session.session_id[:8])
         except Exception as exc:
-            logger.warning(
-                "Telegram ensure_channel failed for session %s; retrying: %s",
+            logger.error(
+                "[TG_ENSURE] Telegram ensure_channel FAILED for session %s; retrying: %s",
                 session.session_id[:8],
                 exc,
             )
@@ -197,6 +210,7 @@ class TelegramAdapter(
             await self.create_channel(current or session, title, metadata=ChannelMetadata(origin=False))
 
         refreshed = await db.get_session(session.session_id)
+        logger.debug("[TG_ENSURE] Refreshed session from DB for %s", session.session_id[:8])
         return refreshed or session
 
     def _register_simple_command_handlers(self) -> None:
