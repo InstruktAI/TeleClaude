@@ -430,13 +430,12 @@ class TmuxPaneManager:
                 continue
             attach_cmd = self._build_attach_cmd(spec.tmux_session_name, spec.computer_info)
             if col == 1:
+                split_args = ["-t", self._tui_pane_id, "-h"]
+                if layout.cols == 2:
+                    split_args.extend(["-p", "60"])
                 pane_id = self._run_tmux(
                     "split-window",
-                    "-t",
-                    self._tui_pane_id,
-                    "-h",
-                    "-p",
-                    "60",
+                    *split_args,
                     "-P",
                     "-F",
                     "#{pane_id}",
