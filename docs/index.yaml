@@ -144,12 +144,6 @@ snippets:
   scope: global
   path: docs/procedure/ssh-agent-keychain.md
   requires: []
-- id: reference/mcp-tools
-  description: Complete catalog of available MCP tools for AI agents.
-  type: reference
-  scope: global
-  path: docs/reference/mcp-tools.md
-  requires: []
 - id: role/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
   type: role

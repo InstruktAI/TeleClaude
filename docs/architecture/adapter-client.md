@@ -11,26 +11,24 @@ type: architecture
 
 ## Purpose
 
-- Centralize adapter lifecycle, UI/transport routing, and cross-computer requests.
+- Own adapter lifecycle and fan-out delivery to adapters.
 
 ## Inputs/Outputs
 
-- Inputs: direct calls from command handlers and daemon orchestration logic.
-- Outputs: UI broadcasts, transport requests, and adapter-side lifecycle operations.
+- Inputs: commands and events from core logic that need to reach adapters.
+- Outputs: fan-out delivery to adapters.
 
 ## Primary flows
 
-- Broadcasts output updates to the origin UI adapter plus other UI adapters.
-- Routes remote requests to the first transport adapter implementing RemoteExecutionProtocol.
-- Manages UI cleanup hooks (pre/post handlers) and observer broadcasts for user commands.
+- Fans out output updates to the correct adapters based on last input origin and configuration.
+- Ensures UI channel metadata before first delivery to a non-origin adapter.
+- Applies UI cleanup hooks and observer notifications around user input and AI output.
 
 ## Invariants
 
 - Only successfully started adapters are registered.
-- Transport adapters are not used for UI broadcast.
-- AdapterClient is the single routing point for adapter operations.
+- Delivery runs in parallel lanes so one adapter cannot block another.
 
 ## Failure modes
 
-- Missing transport adapter raises a runtime error for remote requests.
-- UI adapter failures are logged; origin adapter failures are treated as fatal for the operation.
+- Adapter failures are isolated per lane and logged.
