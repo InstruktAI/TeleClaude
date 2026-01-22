@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,10 +11,11 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.paths import CONTEXT_STATE_PATH, GLOBAL_SNIPPETS_DIR
+from teleclaude.utils import expand_env_vars
 
 logger = get_logger(__name__)
 
-SCOPE_ORDER = {"global": 0, "domain": 1, "project": 2}
+SCOPE_ORDER = {"global": 0, "domain": 0, "project": 1}
 
 
 @dataclass(frozen=True)
@@ -79,6 +81,74 @@ def _save_state(state: ContextState) -> None:
 
 _INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 
+_TEST_ENABLED_ENV = "TELECLAUDE_GET_CONTEXT_TESTING"
+
+
+def _write_test_output(
+    *,
+    phase: str,
+    areas: list[str],
+    index_ids: list[str],
+    selected_ids: list[str],
+    test_agent: str | None = None,
+    test_mode: str | None = None,
+    test_request: str | None = None,
+    test_csv_path: str | None = None,
+) -> None:
+    if not os.getenv(_TEST_ENABLED_ENV):
+        return
+    csv_path = test_csv_path
+    agent = test_agent
+    mode = test_mode
+    request_text = (test_request or "").strip()
+    if not csv_path or not agent or not mode or not request_text:
+        return
+    if mode not in {"fast", "med", "slow"}:
+        return
+    try:
+        rows = []
+        with open(csv_path, "r", encoding="utf-8") as handle:
+            header = handle.readline().strip().split(",")
+            for line in handle:
+                rows.append(line.strip().split(","))
+    except Exception:
+        return
+    if not header:
+        return
+
+    def _set(row: list[str], col: str, value: str) -> None:
+        if col not in header:
+            return
+        idx = header.index(col)
+        while len(row) <= idx:
+            row.append("")
+        row[idx] = value
+
+    for row in rows:
+        if not row:
+            continue
+        if len(row) <= 2:
+            continue
+        if row[1] != agent:
+            continue
+        variants = row[2].split("|") if row[2] else []
+        if request_text not in [v.strip() for v in variants]:
+            continue
+        if phase == "phase1":
+            _set(row, f"{mode}_phase1_areas", "|".join(areas))
+            _set(row, f"{mode}_phase1_index_ids", "|".join(index_ids))
+        if phase == "phase2":
+            _set(row, f"{mode}_phase2_selected_ids", "|".join(selected_ids))
+        break
+
+    try:
+        with open(csv_path, "w", encoding="utf-8") as handle:
+            handle.write(",".join(header) + "\n")
+            for row in rows:
+                handle.write(",".join(row) + "\n")
+    except Exception:
+        return
+
 
 def _split_frontmatter(content: str) -> tuple[str, str]:
     """Split frontmatter header from body, preserving header verbatim."""
@@ -94,6 +164,59 @@ def _split_frontmatter(content: str) -> tuple[str, str]:
             body = "".join(lines[idx + 1 :])
             return head, body
     return "", content
+
+
+def _domain_for_snippet(snippet: SnippetMeta, *, project_domains: dict[str, Path]) -> str:
+    snippet_id = snippet.snippet_id
+    if snippet_id.startswith("baseline/"):
+        return "baseline"
+    for domain, root in project_domains.items():
+        if root in snippet.path.parents or root == snippet.path.parent:
+            return domain
+    return snippet_id.split("/", 1)[0] if "/" in snippet_id else snippet_id
+
+
+def _load_project_domains(project_root: Path) -> dict[str, Path]:
+    config_path = project_root / "teleclaude.yml"
+    if not config_path.exists():
+        return {"software-development": project_root / "docs"}
+    try:
+        payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"software-development": project_root / "docs"}
+    if not isinstance(payload, dict):
+        return {"software-development": project_root / "docs"}
+    expanded = expand_env_vars(payload)
+    if not isinstance(expanded, dict):
+        return {"software-development": project_root / "docs"}
+    payload = expanded
+    business = payload.get("business", {})
+    if not isinstance(business, dict):
+        return {"software-development": project_root / "docs"}
+    domains = business.get("domains", {})
+    if isinstance(domains, list):
+        clean = [d for d in domains if isinstance(d, str) and d.strip()]
+        return {d: project_root / "docs" for d in (clean or ["software-development"])}
+    if not isinstance(domains, dict):
+        return {"software-development": project_root / "docs"}
+    clean_map: dict[str, Path] = {}
+    for key, value in domains.items():
+        if not isinstance(key, str) or not key.strip():
+            continue
+        if isinstance(value, str) and value.strip():
+            candidate = (project_root / value).resolve()
+        else:
+            candidate = (project_root / "docs").resolve()
+        clean_map[key] = candidate
+    return clean_map or {"software-development": project_root / "docs"}
+
+
+def _output_scope(snippet: SnippetMeta, *, global_snippets_root: Path) -> str:
+    if snippet.snippet_id.startswith("baseline/"):
+        return "global"
+    if global_snippets_root in snippet.path.parents:
+        return "global"
+    return "project"
 
 
 def _resolve_inline_refs(content: str, *, snippet_path: Path, root_path: Path) -> str:
@@ -201,7 +324,12 @@ def _parse_selected_ids(corpus: str, *, valid_ids: set[str]) -> list[str]:
     return selected
 
 
-def _resolve_requires(selected_ids: Iterable[str], snippets: list[SnippetMeta]) -> list[SnippetMeta]:
+def _resolve_requires(
+    selected_ids: Iterable[str],
+    snippets: list[SnippetMeta],
+    *,
+    global_snippets_root: Path,
+) -> list[SnippetMeta]:
     snippets_by_id = {s.snippet_id: s for s in snippets}
     snippets_by_path = {str(s.path): s for s in snippets}
 
@@ -230,7 +358,9 @@ def _resolve_requires(selected_ids: Iterable[str], snippets: list[SnippetMeta]) 
             if req_snippet and str(req_snippet.path) not in seen:
                 stack.append(req_snippet)
 
-    resolved.sort(key=lambda s: (_scope_rank(s.scope), s.snippet_id))
+    resolved.sort(
+        key=lambda s: (_scope_rank(_output_scope(s, global_snippets_root=global_snippets_root)), s.snippet_id)
+    )
     return resolved
 
 
@@ -241,8 +371,12 @@ def build_context_output(
     project_root: Path,
     session_id: str | None,
     snippet_ids: list[str] | None = None,
+    test_agent: str | None = None,
+    test_mode: str | None = None,
+    test_request: str | None = None,
+    test_csv_path: str | None = None,
 ) -> str:
-    project_index = project_root / "docs" / "snippets" / "index.yaml"
+    project_index = project_root / "docs" / "index.yaml"
     global_index = GLOBAL_SNIPPETS_DIR / "index.yaml"
     global_root = GLOBAL_SNIPPETS_DIR.parent.parent
     global_snippets_root = GLOBAL_SNIPPETS_DIR
@@ -252,6 +386,24 @@ def build_context_output(
     snippets.extend(_load_index(global_index))
     snippets.extend(_load_index(project_index))
 
+    domains = _load_project_domains(project_root)
+    project_domain_roots = {d: p for d, p in domains.items() if p.exists()}
+    if not project_domain_roots:
+        project_domain_roots = {d: project_root / "docs" for d in domains.keys()}
+
+    def _include_snippet(snippet: SnippetMeta) -> bool:
+        if global_snippets_root in snippet.path.parents:
+            if snippet.snippet_id.startswith("baseline/"):
+                return True
+            return any(snippet.snippet_id.startswith(f"{domain}/") for domain in domains)
+        if snippet.scope == "project":
+            return any(
+                root in snippet.path.parents or root == snippet.path.parent for root in project_domain_roots.values()
+            )
+        return True
+
+    snippets = [snippet for snippet in snippets if _include_snippet(snippet)]
+
     areas_set = set(areas)
     if areas_set:
         snippets_for_selection = [s for s in snippets if s.snippet_type in areas_set]
@@ -259,35 +411,33 @@ def build_context_output(
         snippets_for_selection = list(snippets)
 
     if not corpus.strip() and not snippet_ids:
-        parts: list[str] = ["INDEX:"]
-        ordered = sorted(snippets_for_selection, key=lambda s: (_scope_rank(s.scope), s.snippet_id))
+        parts: list[str] = []
+        ordered = sorted(
+            snippets_for_selection,
+            key=lambda s: (_scope_rank(_output_scope(s, global_snippets_root=global_snippets_root)), s.snippet_id),
+        )
+        _write_test_output(
+            phase="phase1",
+            areas=areas,
+            index_ids=[snippet.snippet_id for snippet in ordered],
+            selected_ids=[],
+            test_agent=test_agent,
+            test_mode=test_mode,
+            test_request=test_request,
+            test_csv_path=test_csv_path,
+        )
         for snippet in ordered:
-            try:
-                raw = snippet.path.read_text(encoding="utf-8")
-                head, _ = _split_frontmatter(raw)
-            except Exception as exc:
-                logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))
-                continue
-            source = "project"
-            if global_snippets_root in snippet.path.parents:
-                source = "global"
-            parts.append(f"--- SNIPPET: {snippet.snippet_id} (scope: {snippet.scope}, source: {source}) ---")
-            if head:
-                parts.append(head.strip())
-                continue
-            requires_block = ""
-            if snippet.requires:
-                requires_lines = "\n".join(f"- {req}" for req in snippet.requires)
-                requires_block = f"requires:\n{requires_lines}\n"
+            domain = _domain_for_snippet(snippet, project_domains=project_domain_roots)
+            scope = _output_scope(snippet, global_snippets_root=global_snippets_root)
             parts.append(
                 "\n".join(
                     [
                         "---",
                         f"id: {snippet.snippet_id}",
                         f"type: {snippet.snippet_type}",
-                        f"scope: {snippet.scope}",
+                        f"domain: {domain}",
+                        f"scope: {scope}",
                         f"description: {snippet.description}",
-                        *(requires_block.rstrip("\n").splitlines() if requires_block else []),
                         "---",
                     ]
                 ).strip()
@@ -298,7 +448,17 @@ def build_context_output(
     selected_ids = [sid for sid in (snippet_ids or []) if sid in valid_ids]
     if not selected_ids:
         selected_ids = _parse_selected_ids(corpus, valid_ids=valid_ids)
-    resolved = _resolve_requires(selected_ids, snippets)
+    resolved = _resolve_requires(selected_ids, snippets, global_snippets_root=global_snippets_root)
+    _write_test_output(
+        phase="phase2",
+        areas=areas,
+        index_ids=[],
+        selected_ids=selected_ids,
+        test_agent=test_agent,
+        test_mode=test_mode,
+        test_request=test_request,
+        test_csv_path=test_csv_path,
+    )
 
     state = _load_state()
     already_ids: set[str] = set()
@@ -346,10 +506,25 @@ def build_context_output(
             if global_snippets_root in snippet.path.parents:
                 root_path = global_root
             content = _resolve_inline_refs(raw, snippet_path=snippet.path, root_path=root_path)
+            _, body = _split_frontmatter(content)
         except Exception as exc:
             logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))
             continue
-        parts.append(f"--- SNIPPET: {snippet.snippet_id} (scope: {snippet.scope}) ---")
-        parts.append(content)
+        domain = _domain_for_snippet(snippet, project_domains=project_domain_roots)
+        scope = _output_scope(snippet, global_snippets_root=global_snippets_root)
+        parts.append(
+            "\n".join(
+                [
+                    "---",
+                    f"id: {snippet.snippet_id}",
+                    f"type: {snippet.snippet_type}",
+                    f"domain: {domain}",
+                    f"scope: {scope}",
+                    f"description: {snippet.description}",
+                    "---",
+                ]
+            ).strip()
+        )
+        parts.append(body.lstrip("\n"))
 
     return "\n".join(parts)

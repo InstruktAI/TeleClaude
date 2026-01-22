@@ -12,7 +12,7 @@ def _write(path: Path, content: str) -> None:
 
 def test_build_snippet_index_resolves_requires(tmp_path: Path) -> None:
     project_root = tmp_path
-    snippets_root = project_root / "docs" / "snippets"
+    snippets_root = project_root / "docs"
 
     base = "---\nid: domain/base\ndescription: Base snippet\n---\nBase content\n"
     child = "---\nid: domain/child\ndescription: Child snippet\nrequires:\n  - ./base.md\n---\nChild content\n"
@@ -26,4 +26,4 @@ def test_build_snippet_index_resolves_requires(tmp_path: Path) -> None:
 
     assert ids == ["domain/base", "domain/child"]
     child_entry = next(entry for entry in entries if entry.snippet_id == "domain/child")
-    assert child_entry.requires == ["docs/snippets/domain/base.md"]
+    assert child_entry.requires == ["docs/domain/base.md"]

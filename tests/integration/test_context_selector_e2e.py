@@ -8,8 +8,8 @@ from teleclaude.paths import REPO_ROOT
 
 
 def test_get_context_e2e(monkeypatch, tmp_path) -> None:
-    global_snippets = tmp_path / "global-snippets"
-    shutil.copytree(REPO_ROOT / "docs" / "global-snippets", global_snippets)
+    global_snippets = tmp_path / "agents" / "docs"
+    shutil.copytree(REPO_ROOT / "agents" / "docs", global_snippets)
     monkeypatch.setattr(paths, "GLOBAL_SNIPPETS_DIR", global_snippets)
     monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets)
 

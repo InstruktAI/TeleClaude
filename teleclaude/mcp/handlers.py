@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import shlex
 from datetime import datetime, timedelta, timezone
@@ -919,12 +920,27 @@ class MCPHandlersMixin:
         """Select and return relevant snippet context for the current session."""
         if not cwd:
             cwd = str(config.computer.default_working_dir)
+        test_agent = None
+        test_mode = None
+        test_request = None
+        test_csv_path = None
+        if os.getenv("TELECLAUDE_GET_CONTEXT_TESTING") and caller_session_id:
+            session = await db.get_session(caller_session_id)
+            if session:
+                test_agent = session.active_agent
+                test_mode = session.thinking_mode
+                test_request = session.last_message_sent
+                test_csv_path = str(Path(cwd).expanduser().resolve() / ".agents" / "tests" / "runs" / "get-context.csv")
         project_root = Path(cwd)
         return build_context_output(
             corpus=corpus,
             areas=areas,
             project_root=project_root,
             session_id=caller_session_id,
+            test_agent=test_agent,
+            test_mode=test_mode,
+            test_request=test_request,
+            test_csv_path=test_csv_path,
         )
 
     # =========================================================================

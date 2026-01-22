@@ -50,7 +50,7 @@ def _write_index(index_path: Path, project_root: Path, snippets: list[SnippetPay
 def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project_root = tmp_path / "project"
     global_root = tmp_path / "global"
-    global_snippets_root = global_root / "docs" / "global-snippets"
+    global_snippets_root = global_root / "agents" / "docs"
 
     base = _snippet(
         "software-development/standards/base",
@@ -64,15 +64,15 @@ def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.M
         "role",
         "project",
         "Role description",
-        "Role content. @docs/snippets/software-development/standards/base.md",
+        "Role content. @docs/software-development/standards/base.md",
         ["software-development/standards/base"],
     )
 
-    _write(project_root / "docs" / "snippets" / "software-development" / "standards" / "base.md", base)
-    _write(project_root / "docs" / "snippets" / "software-development" / "roles" / "role.md", child)
+    _write(project_root / "docs" / "software-development" / "standards" / "base.md", base)
+    _write(project_root / "docs" / "software-development" / "roles" / "role.md", child)
 
     _write_index(
-        project_root / "docs" / "snippets" / "index.yaml",
+        project_root / "docs" / "index.yaml",
         project_root,
         [
             {
@@ -80,7 +80,7 @@ def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.M
                 "description": "Base standard",
                 "type": "policy",
                 "scope": "project",
-                "path": "docs/snippets/software-development/standards/base.md",
+                "path": "docs/software-development/standards/base.md",
                 "requires": [],
             },
             {
@@ -88,7 +88,7 @@ def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.M
                 "description": "Role description",
                 "type": "role",
                 "scope": "project",
-                "path": "docs/snippets/software-development/roles/role.md",
+                "path": "docs/software-development/roles/role.md",
                 "requires": ["software-development/standards/base"],
             },
         ],
@@ -111,8 +111,8 @@ def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.M
     assert "software-development/standards/base" in output
     assert "Role content." in output
     assert "Base content." in output
-    assert "scope: project" in output
-    expected_inline = project_root / "docs" / "snippets" / "software-development" / "standards" / "base.md"
+    assert "domain: software-development" in output
+    expected_inline = project_root / "docs" / "software-development" / "standards" / "base.md"
     assert f"@{expected_inline}" in output
 
     second = context_selector.build_context_output(
