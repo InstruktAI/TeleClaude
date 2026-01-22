@@ -115,6 +115,7 @@ class TmuxPaneManager:
         self._active_spec: SessionPaneSpec | None = None
         self._active_child_tmux: str | None = None
         self._active_child_computer: ComputerInfo | None = None
+        self._layout_signature: tuple[object, ...] | None = None
         # Store our own pane ID for reference
         self._tui_pane_id: str | None = None
         if self._in_tmux:
@@ -285,6 +286,11 @@ class TmuxPaneManager:
         )
         self._active_child_tmux = child_tmux_session_name
         self._active_child_computer = computer_info
+        if self._layout_is_unchanged():
+            if child_tmux_session_name != self.state.child_session:
+                self.update_child_session(child_tmux_session_name, computer_info)
+            self.focus_pane_for_session(tmux_session_name)
+            return
         self._render_layout()
 
     def hide_sessions(self) -> None:
@@ -383,6 +389,39 @@ class TmuxPaneManager:
         self.state.parent_session = None
         self.state.child_session = None
 
+    def _build_session_specs(self) -> list[SessionPaneSpec]:
+        session_specs: list[SessionPaneSpec] = list(self._sticky_specs)
+        if self._active_spec and not any(
+            spec.tmux_session_name == self._active_spec.tmux_session_name for spec in session_specs
+        ):
+            session_specs.append(self._active_spec)
+        if len(session_specs) > 5:
+            session_specs = session_specs[:5]
+        return session_specs
+
+    def _compute_layout_signature(self) -> tuple[object, ...] | None:
+        session_specs = self._build_session_specs()
+        total_panes = 1 + len(session_specs)
+        layout = LAYOUT_SPECS.get(total_panes)
+        if not layout:
+            return None
+        spec_keys = tuple((spec.tmux_session_name, "sticky" if spec.is_sticky else "active") for spec in session_specs)
+        return (
+            layout.rows,
+            layout.cols,
+            tuple(tuple(row) for row in layout.grid),
+            spec_keys,
+        )
+
+    def _layout_is_unchanged(self) -> bool:
+        signature = self._compute_layout_signature()
+        if signature is None:
+            return False
+        if signature == self._layout_signature:
+            return True
+        self._layout_signature = signature
+        return False
+
     def _render_layout(self) -> None:
         """Render panes deterministically from the layout matrix."""
         if not self._in_tmux:
@@ -393,18 +432,9 @@ class TmuxPaneManager:
             logger.warning("_render_layout: missing TUI pane id")
             return
 
-        session_specs: list[SessionPaneSpec] = list(self._sticky_specs)
-        if self._active_spec and not any(
-            spec.tmux_session_name == self._active_spec.tmux_session_name for spec in session_specs
-        ):
-            session_specs.append(self._active_spec)
-
+        session_specs = self._build_session_specs()
         if len(session_specs) > 5:
-            logger.warning(
-                "_render_layout: truncating session panes from %d to 5",
-                len(session_specs),
-            )
-            session_specs = session_specs[:5]
+            logger.warning("_render_layout: truncating session panes from %d to 5", len(session_specs))
 
         total_panes = 1 + len(session_specs)
         layout = LAYOUT_SPECS.get(total_panes)
@@ -508,6 +538,8 @@ class TmuxPaneManager:
                         self.state.child_pane_id = child_pane_id
                         self.state.child_session = self._active_child_tmux
 
+        self._layout_signature = self._compute_layout_signature()
+
     def _track_session_pane(self, spec: SessionPaneSpec, pane_id: str) -> None:
         """Track pane ids for session lookup and cleanup."""
         self.state.session_pane_ids.append(pane_id)
@@ -599,6 +631,8 @@ class TmuxPaneManager:
             )
 
         self._sticky_specs = sticky_specs
+        if self._layout_is_unchanged():
+            return
         self._render_layout()
 
     def _find_child_session(self, parent_session_id: str, all_sessions: list["SessionInfo"]) -> str | None:
