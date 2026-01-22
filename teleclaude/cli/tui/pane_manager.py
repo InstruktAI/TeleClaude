@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Literal
 
 from instrukt_ai_logging import get_logger
 
@@ -54,6 +54,45 @@ class PaneState:
         """Initialize mutable fields."""
         # Sticky session panes (new multi-pane layout)
         self.sticky_pane_ids: list[str] = []
+        # Map session_id → pane_id for sticky sessions
+        self.sticky_session_to_pane: dict[str, str] = {}
+        # All session panes (active + sticky)
+        self.session_pane_ids: list[str] = []
+        # Map session_id → pane_id for any session pane
+        self.session_to_pane: dict[str, str] = {}
+
+
+@dataclass
+class SessionPaneSpec:
+    """Session pane description for layout planning."""
+
+    session_id: str
+    tmux_session_name: str
+    computer_info: ComputerInfo | None
+    is_sticky: bool
+
+
+LayoutCell = Literal["T"] | int | None
+
+
+@dataclass(frozen=True)
+class LayoutSpec:
+    """Declarative layout matrix (rows x cols)."""
+
+    rows: int
+    cols: int
+    grid: list[list[LayoutCell]]
+
+
+LAYOUT_SPECS: dict[int, LayoutSpec] = {
+    # Total panes include the TUI pane.
+    1: LayoutSpec(rows=1, cols=1, grid=[["T"]]),
+    2: LayoutSpec(rows=1, cols=2, grid=[["T", 1]]),
+    3: LayoutSpec(rows=2, cols=2, grid=[["T", 1], ["T", 2]]),
+    4: LayoutSpec(rows=2, cols=2, grid=[["T", 1], [3, 2]]),
+    5: LayoutSpec(rows=2, cols=3, grid=[["T", 1, 3], [None, 2, 4]]),
+    6: LayoutSpec(rows=2, cols=3, grid=[["T", 1, 3], [5, 2, 4]]),
+}
 
 
 class TmuxPaneManager:
@@ -72,6 +111,10 @@ class TmuxPaneManager:
         """Initialize pane manager."""
         self.state = PaneState()
         self._in_tmux = bool(os.environ.get("TMUX"))
+        self._sticky_specs: list[SessionPaneSpec] = []
+        self._active_spec: SessionPaneSpec | None = None
+        self._active_child_tmux: str | None = None
+        self._active_child_computer: ComputerInfo | None = None
         # Store our own pane ID for reference
         self._tui_pane_id: str | None = None
         if self._in_tmux:
@@ -226,84 +269,31 @@ class TmuxPaneManager:
             logger.debug("show_session: not in tmux, skipping")
             return
 
-        # Check if we're already showing this exact configuration
-        if self.state.parent_session == tmux_session_name and self.state.child_session == child_tmux_session_name:
-            logger.debug("show_session: already showing %s, skipping", tmux_session_name)
-            return
-
         logger.debug(
             "show_session: %s (child=%s, remote=%s, sticky_count=%d)",
             tmux_session_name,
             child_tmux_session_name,
             computer_info.is_remote if computer_info else False,
-            len(self.state.sticky_pane_ids),
+            len(self._sticky_specs),
         )
 
-        # Clean up existing active panes (preserve sticky panes)
-        self._cleanup_panes()
-
-        # Determine where to split from
-        # If sticky panes exist, split from the last sticky pane (creates active pane below sticky panes)
-        # Otherwise, split from TUI pane (creates active pane to the right of TUI)
-        attach_cmd = self._build_attach_cmd(tmux_session_name, computer_info)
-        logger.debug("show_session: attach_cmd=%s", attach_cmd)
-
-        if self.state.sticky_pane_ids:
-            # Split from last sticky pane (vertical split = below)
-            target_pane = self.state.sticky_pane_ids[-1]
-            parent_pane_id = self._run_tmux(
-                "split-window",
-                "-t",
-                target_pane,
-                "-v",  # Vertical split (creates pane below)
-                "-P",  # Print pane info
-                "-F",
-                "#{pane_id}",
-                attach_cmd,
-            )
-            logger.debug("show_session: created active pane below sticky panes: %s", parent_pane_id or "EMPTY")
-        else:
-            # No sticky panes - split from TUI (horizontal split = to the right)
-            parent_pane_id = self._run_tmux(
-                "split-window",
-                "-h",  # Horizontal split (creates pane to the right)
-                "-p",
-                "60",  # 60% for session pane, 40% for TUI
-                "-P",  # Print pane info
-                "-F",
-                "#{pane_id}",
-                attach_cmd,
-            )
-            logger.debug("show_session: created active pane to right of TUI: %s", parent_pane_id or "EMPTY")
-
-        if parent_pane_id:
-            self.state.parent_pane_id = parent_pane_id
-            self.state.parent_session = tmux_session_name
-
-        # If there's a child session, split the right pane vertically
-        # Note: child sessions are assumed to be on the same computer as parent
-        if child_tmux_session_name and parent_pane_id:
-            child_attach_cmd = self._build_attach_cmd(child_tmux_session_name, computer_info)
-            child_pane_id = self._run_tmux(
-                "split-window",
-                "-t",
-                parent_pane_id,
-                "-v",  # Vertical split (creates pane below)
-                "-P",
-                "-F",
-                "#{pane_id}",
-                child_attach_cmd,
-            )
-            if child_pane_id:
-                self.state.child_pane_id = child_pane_id
-                self.state.child_session = child_tmux_session_name
-
-        # Focus stays on the new session pane (don't return to TUI)
+        self._active_spec = SessionPaneSpec(
+            session_id=tmux_session_name,
+            tmux_session_name=tmux_session_name,
+            computer_info=computer_info,
+            is_sticky=False,
+        )
+        self._active_child_tmux = child_tmux_session_name
+        self._active_child_computer = computer_info
+        self._render_layout()
 
     def hide_sessions(self) -> None:
         """Hide active/preview session pane (preserve sticky panes)."""
-        self._cleanup_panes()
-        logger.debug("hide_sessions: cleaned up active pane (sticky panes preserved)")
+        self._active_spec = None
+        self._active_child_tmux = None
+        self._active_child_computer = None
+        self._render_layout()
+        logger.debug("hide_sessions: cleared active pane")
 
     def toggle_session(
         self,
@@ -356,38 +346,173 @@ class TmuxPaneManager:
         return self.state.parent_session
 
     def _cleanup_panes(self) -> None:
-        """Clean up any panes we've created (legacy single-session panes)."""
-        killed_count = 0
+        """Clean up active/preview panes only (legacy path)."""
+        if self.state.child_pane_id and self._get_pane_exists(self.state.child_pane_id):
+            self._run_tmux("kill-pane", "-t", self.state.child_pane_id)
+        if self.state.parent_pane_id and self._get_pane_exists(self.state.parent_pane_id):
+            self._run_tmux("kill-pane", "-t", self.state.parent_pane_id)
+        self.state.child_pane_id = None
+        self.state.parent_pane_id = None
+        self.state.child_session = None
+        self.state.parent_session = None
 
-        # Kill child pane first (if it exists)
+    def _cleanup_all_session_panes(self) -> None:
+        """Clean up all session panes (active + sticky)."""
+        pane_ids: list[str] = []
+        pane_ids.extend(self.state.session_pane_ids)
+        pane_ids.extend(self.state.sticky_pane_ids)
         if self.state.child_pane_id:
-            if self._get_pane_exists(self.state.child_pane_id):
-                self._run_tmux("kill-pane", "-t", self.state.child_pane_id)
-                killed_count += 1
-                logger.debug("_cleanup_panes: killed child pane %s", self.state.child_pane_id)
-            else:
-                logger.debug("_cleanup_panes: child pane %s already gone", self.state.child_pane_id)
-
-        # Kill parent pane
+            pane_ids.append(self.state.child_pane_id)
         if self.state.parent_pane_id:
-            if self._get_pane_exists(self.state.parent_pane_id):
-                self._run_tmux("kill-pane", "-t", self.state.parent_pane_id)
-                killed_count += 1
-                logger.debug("_cleanup_panes: killed parent pane %s", self.state.parent_pane_id)
-            else:
-                logger.debug("_cleanup_panes: parent pane %s already gone", self.state.parent_pane_id)
+            pane_ids.append(self.state.parent_pane_id)
 
-        # Reset legacy state while preserving sticky_pane_ids
-        old_state = f"parent={self.state.parent_pane_id}, child={self.state.child_pane_id}"
-        sticky_pane_ids = self.state.sticky_pane_ids  # Preserve sticky panes
-        self.state = PaneState()
-        self.state.sticky_pane_ids = sticky_pane_ids  # Restore sticky panes
-        logger.debug(
-            "_cleanup_panes: reset legacy state (was: %s, killed %d panes, preserved %d sticky)",
-            old_state,
-            killed_count,
-            len(sticky_pane_ids),
-        )
+        seen: set[str] = set()
+        for pane_id in pane_ids:
+            if not pane_id or pane_id in seen:
+                continue
+            seen.add(pane_id)
+            if self._get_pane_exists(pane_id):
+                self._run_tmux("kill-pane", "-t", pane_id)
+
+        self.state.session_pane_ids.clear()
+        self.state.session_to_pane.clear()
+        self.state.sticky_pane_ids.clear()
+        self.state.sticky_session_to_pane.clear()
+        self.state.parent_pane_id = None
+        self.state.child_pane_id = None
+        self.state.parent_session = None
+        self.state.child_session = None
+
+    def _render_layout(self) -> None:
+        """Render panes deterministically from the layout matrix."""
+        if not self._in_tmux:
+            return
+        if not self._tui_pane_id:
+            self._tui_pane_id = self._get_current_pane_id()
+        if not self._tui_pane_id:
+            logger.warning("_render_layout: missing TUI pane id")
+            return
+
+        session_specs: list[SessionPaneSpec] = list(self._sticky_specs)
+        if self._active_spec and not any(
+            spec.tmux_session_name == self._active_spec.tmux_session_name for spec in session_specs
+        ):
+            session_specs.append(self._active_spec)
+
+        if len(session_specs) > 5:
+            logger.warning(
+                "_render_layout: truncating session panes from %d to 5",
+                len(session_specs),
+            )
+            session_specs = session_specs[:5]
+
+        total_panes = 1 + len(session_specs)
+        layout = LAYOUT_SPECS.get(total_panes)
+        if not layout:
+            logger.warning("_render_layout: no layout for total=%d", total_panes)
+            return
+
+        self._cleanup_all_session_panes()
+
+        def get_spec(index: int) -> SessionPaneSpec | None:
+            if index <= 0 or index > len(session_specs):
+                return None
+            return session_specs[index - 1]
+
+        col_top_panes: list[str | None] = [self._tui_pane_id] + [None] * (layout.cols - 1)
+
+        for col in range(1, layout.cols):
+            cell = layout.grid[0][col]
+            if not isinstance(cell, int):
+                continue
+            spec = get_spec(cell)
+            if not spec:
+                continue
+            attach_cmd = self._build_attach_cmd(spec.tmux_session_name, spec.computer_info)
+            if col == 1:
+                pane_id = self._run_tmux(
+                    "split-window",
+                    "-t",
+                    self._tui_pane_id,
+                    "-h",
+                    "-p",
+                    "60",
+                    "-P",
+                    "-F",
+                    "#{pane_id}",
+                    attach_cmd,
+                )
+            else:
+                pane_id = self._run_tmux(
+                    "split-window",
+                    "-t",
+                    col_top_panes[col - 1] or "",
+                    "-h",
+                    "-P",
+                    "-F",
+                    "#{pane_id}",
+                    attach_cmd,
+                )
+            if pane_id:
+                col_top_panes[col] = pane_id
+                self._track_session_pane(spec, pane_id)
+
+        if layout.rows > 1:
+            for col in range(layout.cols):
+                cell = layout.grid[1][col]
+                if not isinstance(cell, int):
+                    continue
+                spec = get_spec(cell)
+                if not spec:
+                    continue
+                target_pane = col_top_panes[col]
+                if not target_pane:
+                    continue
+                attach_cmd = self._build_attach_cmd(spec.tmux_session_name, spec.computer_info)
+                pane_id = self._run_tmux(
+                    "split-window",
+                    "-t",
+                    target_pane,
+                    "-v",
+                    "-P",
+                    "-F",
+                    "#{pane_id}",
+                    attach_cmd,
+                )
+                if pane_id:
+                    self._track_session_pane(spec, pane_id)
+
+        if self._active_spec:
+            active_pane_id = self.state.session_to_pane.get(self._active_spec.session_id)
+            if active_pane_id:
+                self.state.parent_pane_id = active_pane_id
+                self.state.parent_session = self._active_spec.tmux_session_name
+                if self._active_child_tmux:
+                    child_attach_cmd = self._build_attach_cmd(
+                        self._active_child_tmux,
+                        self._active_child_computer,
+                    )
+                    child_pane_id = self._run_tmux(
+                        "split-window",
+                        "-t",
+                        active_pane_id,
+                        "-v",
+                        "-P",
+                        "-F",
+                        "#{pane_id}",
+                        child_attach_cmd,
+                    )
+                    if child_pane_id:
+                        self.state.child_pane_id = child_pane_id
+                        self.state.child_session = self._active_child_tmux
+
+    def _track_session_pane(self, spec: SessionPaneSpec, pane_id: str) -> None:
+        """Track pane ids for session lookup and cleanup."""
+        self.state.session_pane_ids.append(pane_id)
+        self.state.session_to_pane[spec.session_id] = pane_id
+        if spec.is_sticky:
+            self.state.sticky_pane_ids.append(pane_id)
+            self.state.sticky_session_to_pane[spec.session_id] = pane_id
 
     def update_child_session(
         self,
@@ -454,171 +579,25 @@ class TmuxPaneManager:
             logger.debug("show_sticky_sessions: not in tmux, skipping")
             return
 
-        if not sticky_sessions:
-            # No sticky sessions - clean up only sticky panes (preserve active pane)
-            self._cleanup_sticky_panes()
-            logger.debug("show_sticky_sessions: no sticky sessions, cleaned up sticky panes")
-            return
-
+        _ = all_sessions
         logger.info("show_sticky_sessions: showing %d sticky sessions", len(sticky_sessions))
 
-        # Clean up existing sticky panes
-        self._cleanup_sticky_panes()
-
-        # If active pane is showing a session that's about to become sticky, clean it up
-        # (prevents duplicate panes for the same session)
-        if self.state.parent_session:
-            active_session_tmux = self.state.parent_session
-            logger.info(
-                "show_sticky_sessions: active_pane=%s, checking against %d sticky sessions",
-                active_session_tmux,
-                len(sticky_sessions),
-            )
-            for session_info, _ in sticky_sessions:
-                if session_info.tmux_session_name == active_session_tmux:
-                    logger.info(
-                        "show_sticky_sessions: ACTIVE PANE (%s) matches sticky session, cleaning up active pane",
-                        active_session_tmux,
-                    )
-                    self._cleanup_panes()
-                    break
-        else:
-            logger.info("show_sticky_sessions: no active pane to check")
-
-        # Create all session panes
-        num_sessions = len(sticky_sessions)
-        session_panes: list[str] = []
-
-        # Build list of all panes to create (with their info)
-        panes_to_create: list[tuple[str, ComputerInfo | None]] = []
+        sticky_specs: list[SessionPaneSpec] = []
         for session_info, _ in sticky_sessions:
-            computer_info = get_computer_info(session_info.computer or "local")
             tmux_session = session_info.tmux_session_name or ""
-            if tmux_session:
-                panes_to_create.append((tmux_session, computer_info))
-
-        # Create panes based on count
-        if num_sessions <= 2:
-            # For 1-2 sessions: simple sequential creation
-            for idx, (tmux_session, computer_info) in enumerate(panes_to_create):
-                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
-                if idx == 0:
-                    pane_id = self._run_tmux("split-window", "-h", "-P", "-F", "#{pane_id}", attach_cmd)
-                else:
-                    pane_id = self._run_tmux(
-                        "split-window", "-t", session_panes[0], "-v", "-P", "-F", "#{pane_id}", attach_cmd
-                    )
-                if pane_id:
-                    session_panes.append(pane_id)
-                    self.state.sticky_pane_ids.append(pane_id)
-
-        elif num_sessions == 3:
-            # For 3 sessions (4 panes total): create panes then immediately apply tiled to get 2x2 grid
-            for idx, (tmux_session, computer_info) in enumerate(panes_to_create):
-                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
-                if idx == 0:
-                    pane_id = self._run_tmux("split-window", "-h", "-P", "-F", "#{pane_id}", attach_cmd)
-                else:
-                    pane_id = self._run_tmux(
-                        "split-window", "-t", session_panes[0], "-v", "-P", "-F", "#{pane_id}", attach_cmd
-                    )
-                if pane_id:
-                    session_panes.append(pane_id)
-                    self.state.sticky_pane_ids.append(pane_id)
-
-            # Apply tiled layout immediately to create 2x2 grid
-            self._run_tmux("select-layout", "tiled")
-            logger.info("Applied tiled layout for 3 sessions (4 panes total) → 2x2 grid")
-            return  # Done, skip layout section below
-
-        else:
-            # For 4-5 sessions: force 3x2 grid by creating 3 columns, then splitting vertically
-            # Create first row (3 panes horizontally: TUI, S1, S2)
-            first_row: list[str] = [self._tui_pane_id or ""]
-
-            # Create S1 (right of TUI)
-            if len(panes_to_create) > 0:
-                tmux_session, computer_info = panes_to_create[0]
-                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
-                pane_id = self._run_tmux("split-window", "-h", "-P", "-F", "#{pane_id}", attach_cmd)
-                if pane_id:
-                    first_row.append(pane_id)
-                    session_panes.append(pane_id)
-                    self.state.sticky_pane_ids.append(pane_id)
-
-            # Create S2 (right of S1)
-            if len(panes_to_create) > 1:
-                tmux_session, computer_info = panes_to_create[1]
-                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
-                pane_id = self._run_tmux(
-                    "split-window", "-t", first_row[-1], "-h", "-P", "-F", "#{pane_id}", attach_cmd
+            if not tmux_session:
+                continue
+            sticky_specs.append(
+                SessionPaneSpec(
+                    session_id=session_info.session_id,
+                    tmux_session_name=tmux_session,
+                    computer_info=get_computer_info(session_info.computer or "local"),
+                    is_sticky=True,
                 )
-                if pane_id:
-                    first_row.append(pane_id)
-                    session_panes.append(pane_id)
-                    self.state.sticky_pane_ids.append(pane_id)
+            )
 
-            # Now split vertically to create second row
-            # Split S1 to create S3 below it
-            if len(panes_to_create) > 2 and len(first_row) > 1:
-                tmux_session, computer_info = panes_to_create[2]
-                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
-                pane_id = self._run_tmux("split-window", "-t", first_row[1], "-v", "-P", "-F", "#{pane_id}", attach_cmd)
-                if pane_id:
-                    session_panes.append(pane_id)
-                    self.state.sticky_pane_ids.append(pane_id)
-
-            # Split S2 to create S4 below it
-            if len(panes_to_create) > 3 and len(first_row) > 2:
-                tmux_session, computer_info = panes_to_create[3]
-                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
-                pane_id = self._run_tmux("split-window", "-t", first_row[2], "-v", "-P", "-F", "#{pane_id}", attach_cmd)
-                if pane_id:
-                    session_panes.append(pane_id)
-                    self.state.sticky_pane_ids.append(pane_id)
-
-            # Split TUI to create S5 below it (if 5 sessions)
-            if len(panes_to_create) > 4:
-                tmux_session, computer_info = panes_to_create[4]
-                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
-                pane_id = self._run_tmux("split-window", "-t", first_row[0], "-v", "-P", "-F", "#{pane_id}", attach_cmd)
-                if pane_id:
-                    session_panes.append(pane_id)
-                    self.state.sticky_pane_ids.append(pane_id)
-
-            # This naturally creates 3x2 grid
-            logger.info("Created 3x2 grid manually for %d sessions", num_sessions)
-            return  # Skip the layout application below since we manually created the grid
-
-        if not session_panes:
-            return
-
-        # Get window dimensions for calculations
-        window_width = int(self._run_tmux("display-message", "-p", "#{window_width}") or "0")
-        window_height = int(self._run_tmux("display-message", "-p", "#{window_height}") or "0")
-
-        num_sticky = len(session_panes)
-        logger.info("Applying layout for %d sticky sessions (window: %dx%d)", num_sticky, window_width, window_height)
-
-        if num_sticky == 1:
-            # 1 session: TUI (40%) | Session (60%)
-            if window_width > 0:
-                tui_width = int(window_width * 0.4)
-                self._run_tmux("resize-pane", "-t", self._tui_pane_id or "", "-x", str(tui_width))
-            logger.info("Layout: 1 session - TUI 40%%, session 60%%")
-
-        elif num_sticky == 2:
-            # 2 sessions: TUI (40%) | Session1 (top) / Session2 (bottom)
-            if window_width > 0:
-                tui_width = int(window_width * 0.4)
-                self._run_tmux("resize-pane", "-t", self._tui_pane_id or "", "-x", str(tui_width))
-            logger.info("Layout: 2 sessions - TUI 40%%, right split 50/50")
-
-        else:
-            # 3+ sessions: Use tiled layout for grid distribution
-            # tmux will create 2x2 for 4 panes, 3x2 or 2x3 for 5-6 panes
-            self._run_tmux("select-layout", "tiled")
-            logger.info("Layout: %d sessions - tiled grid (%d total panes)", num_sticky, num_sticky + 1)
+        self._sticky_specs = sticky_specs
+        self._render_layout()
 
     def _find_child_session(self, parent_session_id: str, all_sessions: list["SessionInfo"]) -> str | None:
         """Find child session's tmux name for a parent session.
@@ -641,9 +620,39 @@ class TmuxPaneManager:
             if self._get_pane_exists(pane_id):
                 self._run_tmux("kill-pane", "-t", pane_id)
         self.state.sticky_pane_ids.clear()
-        logger.debug("_cleanup_sticky_panes: cleaned up sticky panes")
+        self.state.sticky_session_to_pane.clear()  # Clear session→pane mapping
+        logger.debug("_cleanup_sticky_panes: cleaned up sticky panes and mapping")
 
     def cleanup(self) -> None:
         """Clean up all managed panes. Call this when TUI exits."""
         self._cleanup_panes()
         self._cleanup_sticky_panes()
+
+    def focus_pane_for_session(self, session_id: str) -> bool:
+        """Focus the pane showing a specific session.
+
+        Args:
+            session_id: The session ID to focus
+
+        Returns:
+            True if pane was found and focused, False otherwise
+        """
+        if not self._in_tmux:
+            return False
+
+        # Check if session is visible in any pane
+        pane_id = self.state.session_to_pane.get(session_id)
+        if pane_id and self._get_pane_exists(pane_id):
+            self._run_tmux("select-pane", "-t", pane_id)
+            logger.debug("Focused sticky pane %s for session %s", pane_id, session_id[:8])
+            return True
+
+        # Check if session is in active pane (match by session_id would require tracking)
+        # For now, just focus active pane if it exists
+        if self.state.parent_pane_id and self._get_pane_exists(self.state.parent_pane_id):
+            self._run_tmux("select-pane", "-t", self.state.parent_pane_id)
+            logger.debug("Focused active pane %s", self.state.parent_pane_id)
+            return True
+
+        logger.debug("No pane found for session %s", session_id[:8])
+        return False

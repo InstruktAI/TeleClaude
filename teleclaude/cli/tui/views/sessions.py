@@ -451,11 +451,25 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         """Move selection up (arrow key navigation)."""
         super().move_up()
         self._selection_method = "arrow"
+        self._focus_selected_pane()
 
     def move_down(self) -> None:
         """Move selection down (arrow key navigation)."""
         super().move_down()
         self._selection_method = "arrow"
+        self._focus_selected_pane()
+
+    def _focus_selected_pane(self) -> None:
+        """Focus the pane for currently selected session."""
+        if not self.flat_items or self.selected_index >= len(self.flat_items):
+            return
+
+        item = self.flat_items[self.selected_index]
+        if not is_session_node(item):
+            return
+
+        session_id = item.data.session.session_id
+        self.pane_manager.focus_pane_for_session(session_id)
 
     def drill_down(self) -> bool:
         """Drill down into selected item (arrow right).
@@ -949,6 +963,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # Select the item but don't activate (sticky toggle is the action)
             self.selected_index = item_idx
             self._selection_method = "click"
+            self._focus_selected_pane()  # Focus the sticky pane
             return True
 
         # SINGLE CLICK - select and activate
@@ -959,6 +974,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Activate session immediately on single click
         if is_session_node(item):
             self._activate_session(item)
+            self._focus_selected_pane()  # Focus the pane (sticky or active)
 
         logger.trace(
             "sessions_click",

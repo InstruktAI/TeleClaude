@@ -47,6 +47,9 @@ def mock_pane_manager():
         def toggle_session(self, *_args, **_kwargs):
             return None
 
+        def focus_pane_for_session(self, session_id):
+            return True
+
     return MockPaneManager()
 
 
@@ -416,6 +419,9 @@ class TestSessionsViewLogic:
             def show_sticky_sessions(self, sticky_sessions, all_sessions, get_computer_info):
                 self.show_sticky_called = True
                 self.sticky_sessions = sticky_sessions
+
+            def focus_pane_for_session(self, session_id):
+                return True
 
         pane_manager = MockPaneManager()
         view = SessionsView(

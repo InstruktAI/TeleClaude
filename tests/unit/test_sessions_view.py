@@ -35,6 +35,10 @@ class DummyPaneManager:
         """Record arguments from show_session."""
         self.last_args = args
 
+    def focus_pane_for_session(self, session_id: str) -> bool:
+        """Mock focus method."""
+        return True
+
     @property
     def active_session(self) -> str | None:
         """No active session tracking for tests."""
