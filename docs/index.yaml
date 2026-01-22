@@ -162,12 +162,6 @@ snippets:
   scope: global
   path: docs/role/master-bot.md
   requires: []
-- id: standard/definition-of-done
-  description: Project uses the global software-development definition of done.
-  type: standard
-  scope: project
-  path: docs/standard/definition-of-done.md
-  requires: []
 - id: standard/modeling-policy
   description: Standards for data modeling, validation, and resource representation.
   type: standard
@@ -358,14 +352,6 @@ snippets:
   scope: project
   path: docs/policy/daemon-availability.md
   requires: []
-- id: teleclaude/policy/telegram-command-registration
-  description: Only the master bot registers Telegram commands, and command names
-    include trailing spaces.
-  type: policy
-  scope: project
-  path: docs/policy/telegram-command-registration.md
-  requires:
-  - teleclaude/architecture/telegram-adapter
 - id: teleclaude/procedure/add-adapter
   description: Steps to add a new adapter implementation and wire it into the daemon.
   type: procedure

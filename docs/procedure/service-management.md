@@ -19,7 +19,7 @@ description: Standard commands for managing the TeleClaude daemon service.
 2. Stop service (emergency only): `make stop`.
 3. Restart service after changes: `make restart`.
 4. Check status: `make status`.
-5. Review logs: `instrukt-ai-logs teleclaude --since 10m`.
+5. Review logs: `instrukt-ai-logs teleclaude --since 2m`.
 
 ## Outputs
 

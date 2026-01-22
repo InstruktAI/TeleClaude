@@ -26,6 +26,13 @@
   "files.associations": {
     "*.yml": "yaml"
   },
+  "markdownPathCompletion.exclude": {
+    "**/.history/**": true,
+    "**/.venv/**": true
+  },
+  "markdownPathCompletion.include": [
+    "**/*"
+  ],
   "files.exclude": {
     "**/.history": false
   },

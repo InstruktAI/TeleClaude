@@ -23,8 +23,8 @@ requires: []
 
 ## Enforcement or checks
 
-- Use `make restart` after changes and `make status` before reporting success.
-- Review recent logs with `instrukt-ai-logs teleclaude --since 10m` if stability is in doubt.
+- Use `make restart` ONLY after changes that require it.
+- Review recent logs with `instrukt-ai-logs teleclaude --since 2m` if stability is in doubt.
 
 ## Exceptions or edge cases
 

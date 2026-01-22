@@ -29,3 +29,10 @@ def test_wrap_bracketed_paste_skips_slash_commands() -> None:
     """Test that slash commands remain unwrapped."""
     text = "/prime-architect"
     assert tmux_io.wrap_bracketed_paste(text) == text
+
+
+def test_wrap_bracketed_paste_wraps_absolute_paths() -> None:
+    """Test that absolute paths are wrapped to prevent shell echo."""
+    text = "/Users/Morriz/Applications/ClaudeLauncher.app/Contents/MacOS/claude-launcher --resume abc123"
+    wrapped = tmux_io.wrap_bracketed_paste(text)
+    assert wrapped == f"\x1b[200~{text}\x1b[201~"

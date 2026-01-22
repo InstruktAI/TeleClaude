@@ -21,9 +21,14 @@ _BRACKETED_PASTE_END = "\x1b[201~"
 def wrap_bracketed_paste(text: str) -> str:
     if not text:
         return text
-    # Guard for slash-prefixed commands if we ever decide to bypass bracketed paste.
-    if text.lstrip().startswith("/"):
-        return text
+    # Only bypass bracketed paste for single-word slash commands (e.g., /help, /exit)
+    # Absolute paths like /Users/... should still be wrapped to prevent shell echo
+    stripped = text.lstrip()
+    if stripped.startswith("/"):
+        first_word = stripped.split()[0] if stripped else ""
+        # Single slash = command (/help), multiple slashes = path (/Users/...)
+        if first_word.count("/") == 1:
+            return text
     if any(char in _SPECIAL_CHARS for char in text):
         return f"{_BRACKETED_PASTE_START}{text}{_BRACKETED_PASTE_END}"
     return text

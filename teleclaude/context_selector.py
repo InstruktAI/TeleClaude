@@ -168,8 +168,6 @@ def _split_frontmatter(content: str) -> tuple[str, str]:
 
 def _domain_for_snippet(snippet: SnippetMeta, *, project_domains: dict[str, Path]) -> str:
     snippet_id = snippet.snippet_id
-    if snippet_id.startswith("baseline/"):
-        return "baseline"
     for domain, root in project_domains.items():
         if root in snippet.path.parents or root == snippet.path.parent:
             return domain
@@ -212,8 +210,6 @@ def _load_project_domains(project_root: Path) -> dict[str, Path]:
 
 
 def _output_scope(snippet: SnippetMeta, *, global_snippets_root: Path) -> str:
-    if snippet.snippet_id.startswith("baseline/"):
-        return "global"
     if global_snippets_root in snippet.path.parents:
         return "global"
     return "project"
