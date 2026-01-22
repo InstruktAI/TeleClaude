@@ -123,6 +123,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_click_time: dict[int, float] = {}  # screen_row -> timestamp
         self._double_click_threshold = 0.4  # seconds
         self._selection_method: str = "arrow"  # "arrow" | "click"
+        self._pending_select_session_id: str | None = None
 
     async def refresh(
         self,
@@ -197,6 +198,33 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self.tree = build_tree(enriched_computers, project_infos, sessions)
         logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
+        self._apply_pending_selection()
+
+    def request_select_session(self, session_id: str) -> None:
+        """Request that a session be selected once it appears in the tree."""
+        if not session_id:
+            return
+        self._pending_select_session_id = session_id
+
+    def _apply_pending_selection(self) -> None:
+        """Select any pending session once the tree is available."""
+        target = self._pending_select_session_id
+        if not target:
+            return
+
+        for idx, item in enumerate(self.flat_items):
+            if is_session_node(item) and item.data.session.session_id == target:
+                self.selected_index = idx
+                self._selection_method = "click"
+                if self.selected_index < self.scroll_offset:
+                    self.scroll_offset = self.selected_index
+                else:
+                    _, last_rendered = self._last_rendered_range
+                    if self.selected_index > last_rendered:
+                        self.scroll_offset += self.selected_index - last_rendered
+                self._pending_select_session_id = None
+                logger.debug("Selected new session %s at index %d", target[:8], idx)
+                return
 
     async def _clear_highlight_after_delay(self, session_id: str) -> None:
         """Clear highlight after 60 seconds if no new changes occurred.
@@ -791,6 +819,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if not tmux_session_name:
             logger.warning("New session missing tmux_session_name, cannot attach")
             return
+        if result.session_id:
+            self.request_select_session(result.session_id)
 
         if self.pane_manager.is_available:
             computer_info = self._get_computer_info(computer)

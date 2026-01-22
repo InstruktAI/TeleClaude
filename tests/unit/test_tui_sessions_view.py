@@ -2,7 +2,13 @@
 
 import pytest
 
-from teleclaude.cli.models import ComputerInfo, CreateSessionResult, ProjectInfo, SessionInfo
+from teleclaude.cli.models import (
+    ComputerInfo,
+    CreateSessionResult,
+    ProjectInfo,
+    ProjectWithTodosInfo,
+    SessionInfo,
+)
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     ComputerNode,
@@ -311,6 +317,40 @@ class TestSessionsViewLogic:
         assert pane_manager.called is True
         assert pane_manager.args is not None
         assert pane_manager.args[0] == "tc_123"
+        assert view._pending_select_session_id == "sess-1"
+
+    @pytest.mark.asyncio
+    async def test_refresh_selects_pending_session(self, sessions_view):
+        """Pending selection is applied when session appears in tree."""
+        sessions_view.request_select_session("sess-2")
+        computers = [
+            ComputerInfo(
+                name="test-computer",
+                status="online",
+                user="testuser",
+                host="test.local",
+                is_local=True,
+                tmux_binary="tmux",
+            )
+        ]
+        projects = [
+            ProjectWithTodosInfo(
+                computer="test-computer",
+                name="Test Project",
+                path="/test/project",
+                description="",
+                todos=[],
+            )
+        ]
+        sessions = [
+            self._make_session_info(session_id="sess-1", tmux_session_name="tmux-1"),
+            self._make_session_info(session_id="sess-2", tmux_session_name="tmux-2"),
+        ]
+
+        await sessions_view.refresh(computers, projects, sessions)
+
+        selected = sessions_view.flat_items[sessions_view.selected_index]
+        assert selected.data.session.session_id == "sess-2"
 
     def test_depth_indentation(self, sessions_view):
         """Items are indented according to depth."""

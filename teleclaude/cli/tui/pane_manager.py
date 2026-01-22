@@ -489,99 +489,106 @@ class TmuxPaneManager:
         num_sessions = len(sticky_sessions)
         session_panes: list[str] = []
 
-        for idx, (session_info, show_child) in enumerate(sticky_sessions):
+        # Build list of all panes to create (with their info)
+        panes_to_create: list[tuple[str, ComputerInfo | None]] = []
+        for session_info, _ in sticky_sessions:
             computer_info = get_computer_info(session_info.computer or "local")
             tmux_session = session_info.tmux_session_name or ""
-            if not tmux_session:
-                continue
+            if tmux_session:
+                panes_to_create.append((tmux_session, computer_info))
 
-            # Create pane for this session
-            attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
-
-            if num_sessions <= 2:
-                # For 1-2 sessions: simple layout
+        # Create panes based on count
+        if num_sessions <= 2:
+            # For 1-2 sessions: simple sequential creation
+            for idx, (tmux_session, computer_info) in enumerate(panes_to_create):
+                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
                 if idx == 0:
-                    # First session: split from TUI horizontally (to the right)
-                    pane_id = self._run_tmux(
-                        "split-window",
-                        "-h",  # Horizontal split (right of TUI)
-                        "-P",
-                        "-F",
-                        "#{pane_id}",
-                        attach_cmd,
-                    )
+                    pane_id = self._run_tmux("split-window", "-h", "-P", "-F", "#{pane_id}", attach_cmd)
                 else:
-                    # Second session: split from first session vertically (below)
                     pane_id = self._run_tmux(
-                        "split-window",
-                        "-t",
-                        session_panes[0],
-                        "-v",  # Vertical split (below first session)
-                        "-P",
-                        "-F",
-                        "#{pane_id}",
-                        attach_cmd,
+                        "split-window", "-t", session_panes[0], "-v", "-P", "-F", "#{pane_id}", attach_cmd
                     )
-            else:
-                # For 3+ sessions: create panes for tiled layout
+                if pane_id:
+                    session_panes.append(pane_id)
+                    self.state.sticky_pane_ids.append(pane_id)
+
+        elif num_sessions == 3:
+            # For 3 sessions (4 panes total): create panes then immediately apply tiled to get 2x2 grid
+            for idx, (tmux_session, computer_info) in enumerate(panes_to_create):
+                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
                 if idx == 0:
-                    # First session: split from TUI horizontally
-                    pane_id = self._run_tmux(
-                        "split-window",
-                        "-h",
-                        "-P",
-                        "-F",
-                        "#{pane_id}",
-                        attach_cmd,
-                    )
-                elif idx == 1:
-                    # Second session: split from TUI vertically (below TUI)
-                    pane_id = self._run_tmux(
-                        "split-window",
-                        "-t",
-                        self._tui_pane_id or "",
-                        "-v",
-                        "-P",
-                        "-F",
-                        "#{pane_id}",
-                        attach_cmd,
-                    )
+                    pane_id = self._run_tmux("split-window", "-h", "-P", "-F", "#{pane_id}", attach_cmd)
                 else:
-                    # Remaining sessions: split from previous pane
                     pane_id = self._run_tmux(
-                        "split-window",
-                        "-t",
-                        session_panes[-1],  # Split from last created pane
-                        "-v" if idx % 2 == 0 else "-h",  # Alternate split direction
-                        "-P",
-                        "-F",
-                        "#{pane_id}",
-                        attach_cmd,
+                        "split-window", "-t", session_panes[0], "-v", "-P", "-F", "#{pane_id}", attach_cmd
                     )
+                if pane_id:
+                    session_panes.append(pane_id)
+                    self.state.sticky_pane_ids.append(pane_id)
 
-            if pane_id:
-                session_panes.append(pane_id)
-                self.state.sticky_pane_ids.append(pane_id)
+            # Apply tiled layout immediately to create 2x2 grid
+            self._run_tmux("select-layout", "tiled")
+            logger.info("Applied tiled layout for 3 sessions (4 panes total) → 2x2 grid")
+            return  # Done, skip layout section below
 
-                # If child session requested, split this pane horizontally
-                if show_child:
-                    child_tmux = self._find_child_session(session_info.session_id, all_sessions)
-                    if child_tmux:
-                        child_attach_cmd = self._build_attach_cmd(child_tmux, computer_info)
-                        child_pane = self._run_tmux(
-                            "split-window",
-                            "-t",
-                            pane_id,
-                            "-h",  # Horizontal split (right of parent)
-                            "-p",
-                            "50",  # Child gets 50% of parent's width
-                            "-P",
-                            "-F",
-                            "#{pane_id}",
-                            child_attach_cmd,
-                        )
-                        if child_pane:
-                            self.state.sticky_pane_ids.append(child_pane)
+        else:
+            # For 4-5 sessions: force 3x2 grid by creating 3 columns, then splitting vertically
+            # Create first row (3 panes horizontally: TUI, S1, S2)
+            first_row: list[str] = [self._tui_pane_id or ""]
+
+            # Create S1 (right of TUI)
+            if len(panes_to_create) > 0:
+                tmux_session, computer_info = panes_to_create[0]
+                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
+                pane_id = self._run_tmux("split-window", "-h", "-P", "-F", "#{pane_id}", attach_cmd)
+                if pane_id:
+                    first_row.append(pane_id)
+                    session_panes.append(pane_id)
+                    self.state.sticky_pane_ids.append(pane_id)
+
+            # Create S2 (right of S1)
+            if len(panes_to_create) > 1:
+                tmux_session, computer_info = panes_to_create[1]
+                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
+                pane_id = self._run_tmux(
+                    "split-window", "-t", first_row[-1], "-h", "-P", "-F", "#{pane_id}", attach_cmd
+                )
+                if pane_id:
+                    first_row.append(pane_id)
+                    session_panes.append(pane_id)
+                    self.state.sticky_pane_ids.append(pane_id)
+
+            # Now split vertically to create second row
+            # Split S1 to create S3 below it
+            if len(panes_to_create) > 2 and len(first_row) > 1:
+                tmux_session, computer_info = panes_to_create[2]
+                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
+                pane_id = self._run_tmux("split-window", "-t", first_row[1], "-v", "-P", "-F", "#{pane_id}", attach_cmd)
+                if pane_id:
+                    session_panes.append(pane_id)
+                    self.state.sticky_pane_ids.append(pane_id)
+
+            # Split S2 to create S4 below it
+            if len(panes_to_create) > 3 and len(first_row) > 2:
+                tmux_session, computer_info = panes_to_create[3]
+                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
+                pane_id = self._run_tmux("split-window", "-t", first_row[2], "-v", "-P", "-F", "#{pane_id}", attach_cmd)
+                if pane_id:
+                    session_panes.append(pane_id)
+                    self.state.sticky_pane_ids.append(pane_id)
+
+            # Split TUI to create S5 below it (if 5 sessions)
+            if len(panes_to_create) > 4:
+                tmux_session, computer_info = panes_to_create[4]
+                attach_cmd = self._build_attach_cmd(tmux_session, computer_info)
+                pane_id = self._run_tmux("split-window", "-t", first_row[0], "-v", "-P", "-F", "#{pane_id}", attach_cmd)
+                if pane_id:
+                    session_panes.append(pane_id)
+                    self.state.sticky_pane_ids.append(pane_id)
+
+            # This naturally creates 3x2 grid
+            logger.info("Created 3x2 grid manually for %d sessions", num_sessions)
+            return  # Skip the layout application below since we manually created the grid
 
         if not session_panes:
             return
@@ -595,41 +602,23 @@ class TmuxPaneManager:
 
         if num_sticky == 1:
             # 1 session: TUI (40%) | Session (60%)
-            # Panes already created correctly, just resize TUI
             if window_width > 0:
                 tui_width = int(window_width * 0.4)
                 self._run_tmux("resize-pane", "-t", self._tui_pane_id or "", "-x", str(tui_width))
-            logger.debug("Layout: 1 session - TUI 40%%, session 60%%")
+            logger.info("Layout: 1 session - TUI 40%%, session 60%%")
 
         elif num_sticky == 2:
             # 2 sessions: TUI (40%) | Session1 (top) / Session2 (bottom)
-            # Panes already created correctly (split from TUI -h, then from S1 -v)
-            # Just resize TUI to 40%
             if window_width > 0:
                 tui_width = int(window_width * 0.4)
                 self._run_tmux("resize-pane", "-t", self._tui_pane_id or "", "-x", str(tui_width))
-            logger.debug("Layout: 2 sessions - TUI 40%%, right split vertically 50/50")
+            logger.info("Layout: 2 sessions - TUI 40%%, right split 50/50")
 
-        elif num_sticky == 3:
-            # 3 sessions (4 total panes): 2x2 grid
-            # TUI + 3 sessions in equal grid
+        else:
+            # 3+ sessions: Use tiled layout for grid distribution
+            # tmux will create 2x2 for 4 panes, 3x2 or 2x3 for 5-6 panes
             self._run_tmux("select-layout", "tiled")
-            logger.debug("Layout: 3 sessions - 2x2 grid (4 total panes)")
-
-        elif num_sticky == 4:
-            # 4 sessions (5 total panes): 3 columns x 2 rows
-            # Left: TUI (full height)
-            # Middle: S1/S2 (top/bottom)
-            # Right: S3/S4 (top/bottom)
-            # Use tiled layout which should distribute panes in a grid
-            self._run_tmux("select-layout", "tiled")
-            logger.debug("Layout: 4 sessions - 3 columns x 2 rows (5 total panes)")
-
-        elif num_sticky == 5:
-            # 5 sessions (6 total panes): 3 columns x 2 rows grid
-            # All panes equal size
-            self._run_tmux("select-layout", "tiled")
-            logger.debug("Layout: 5 sessions - 3x2 grid (6 total panes)")
+            logger.info("Layout: %d sessions - tiled grid (%d total panes)", num_sticky, num_sticky + 1)
 
     def _find_child_session(self, parent_session_id: str, all_sessions: list["SessionInfo"]) -> str | None:
         """Find child session's tmux name for a parent session.
