@@ -2,7 +2,7 @@
 
 import asyncio
 import curses
-from typing import TYPE_CHECKING, Any, Callable, Coroutine
+from typing import TYPE_CHECKING, Callable
 
 from instrukt_ai_logging import get_logger
 
@@ -237,9 +237,9 @@ class StartSessionModal:
             self.notify("Starting session...", NotificationLevel.INFO)
         self.start_requested = True
 
-        async def _do_create() -> None:
-            try:
-                result = await self.api.create_session(
+        try:
+            result = asyncio.get_event_loop().run_until_complete(
+                self.api.create_session(
                     computer=self.computer,
                     project_path=self.project_path,
                     agent=agent,
@@ -247,24 +247,21 @@ class StartSessionModal:
                     message=message,
                     auto_command=auto_command,
                 )
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.error("Failed to start session: %s", exc, exc_info=True)
-                if self.notify:
-                    self.notify(f"Start failed: {exc}", NotificationLevel.ERROR)
-                return
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.error("Failed to start session: %s", exc, exc_info=True)
+            if self.notify:
+                self.notify(f"Start failed: {exc}", NotificationLevel.ERROR)
+            return None
 
-            if result.status != ResultStatus.SUCCESS.value:
-                error_msg = result.error or "Unknown error"
-                logger.error("Session start failed: %s", error_msg)
-                if self.notify:
-                    self.notify(f"Start failed: {error_msg}", NotificationLevel.ERROR)
+        if result.status != ResultStatus.SUCCESS.value:
+            error_msg = result.error or "Unknown error"
+            logger.error("Session start failed: %s", error_msg)
+            if self.notify:
+                self.notify(f"Start failed: {error_msg}", NotificationLevel.ERROR)
+            return None
 
-        self._schedule_session_start(_do_create())
-        return None
-
-    def _schedule_session_start(self, coro: Coroutine[Any, Any, None]) -> None:
-        """Schedule session creation without blocking the modal."""
-        asyncio.get_event_loop().create_task(coro)
+        return result
 
     def _render(self, stdscr: CursesWindow) -> None:
         """Render the modal.

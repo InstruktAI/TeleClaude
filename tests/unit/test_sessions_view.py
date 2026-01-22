@@ -31,6 +31,10 @@ class DummyPaneManager:
         """Record arguments from toggle_session."""
         self.last_args = args
 
+    def show_session(self, *args: object) -> None:
+        """Record arguments from show_session."""
+        self.last_args = args
+
     @property
     def active_session(self) -> str | None:
         """No active session tracking for tests."""

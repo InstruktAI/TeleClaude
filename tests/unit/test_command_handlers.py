@@ -97,7 +97,6 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
-            patch.object(command_handlers, "tmux_bridge") as mock_tb,
             patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
         ):
             mock_config.computer.name = "TestComputer"
@@ -105,9 +104,6 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
             mock_db.create_session = mock_initialized_db.create_session
             mock_db.get_session = mock_initialized_db.get_session
             mock_db.assign_voice = mock_initialized_db.assign_voice
-            mock_tb.ensure_tmux_session = AsyncMock(return_value=True)
-            mock_tb.get_pane_tty = AsyncMock(return_value=None)
-            mock_tb.get_pane_pid = AsyncMock(return_value=None)
             mock_unique.return_value = "$TestComputer[user] - Test Title"
 
             cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", origin="telegram")
@@ -148,7 +144,6 @@ async def test_handle_create_session_does_not_send_welcome(mock_initialized_db, 
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
-            patch.object(command_handlers, "tmux_bridge") as mock_tb,
             patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
         ):
             mock_config.computer.name = "TestComputer"
@@ -156,9 +151,6 @@ async def test_handle_create_session_does_not_send_welcome(mock_initialized_db, 
             mock_db.create_session = mock_initialized_db.create_session
             mock_db.get_session = mock_initialized_db.get_session
             mock_db.assign_voice = mock_initialized_db.assign_voice
-            mock_tb.ensure_tmux_session = AsyncMock(return_value=True)
-            mock_tb.get_pane_tty = AsyncMock(return_value=None)
-            mock_tb.get_pane_pid = AsyncMock(return_value=None)
             mock_unique.return_value = "$TestComputer[user] - Test Title"
 
             cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", origin="telegram")
@@ -179,7 +171,6 @@ async def test_create_session_inherits_parent_origin(mock_initialized_db):
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
-            patch.object(command_handlers, "tmux_bridge") as mock_tb,
             patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
         ):
             mock_config.computer.name = "TestComputer"
@@ -187,9 +178,6 @@ async def test_create_session_inherits_parent_origin(mock_initialized_db):
             mock_db.create_session = mock_initialized_db.create_session
             mock_db.get_session = mock_initialized_db.get_session
             mock_db.assign_voice = mock_initialized_db.assign_voice
-            mock_tb.ensure_tmux_session = AsyncMock(return_value=True)
-            mock_tb.get_pane_tty = AsyncMock(return_value=None)
-            mock_tb.get_pane_pid = AsyncMock(return_value=None)
             mock_unique.return_value = "$TestComputer[user] - Child Session"
 
             parent = await mock_initialized_db.create_session(
@@ -234,7 +222,6 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
-            patch.object(command_handlers, "tmux_bridge") as mock_tb,
             patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
         ):
             mock_config.computer.name = "TestComputer"
@@ -243,7 +230,6 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
             mock_db.get_session = mock_initialized_db.get_session
             mock_db.assign_voice = mock_initialized_db.assign_voice
             mock_db.update_session = mock_initialized_db.update_session
-            mock_tb.ensure_tmux_session = AsyncMock(return_value=True)
             mock_unique.return_value = "$TestComputer[user] - Test"
 
             cmd = CreateSessionCommand(
@@ -278,7 +264,6 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
     with (
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "tmux_bridge") as mock_tb,
         patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
         patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
         patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock),
@@ -289,9 +274,6 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
         mock_db.get_session = mock_initialized_db.get_session
         mock_db.delete_session = mock_initialized_db.delete_session
         mock_db.assign_voice = mock_initialized_db.assign_voice
-        mock_tb.ensure_tmux_session = AsyncMock(return_value=True)
-        mock_tb.get_pane_tty = AsyncMock(return_value=None)
-        mock_tb.get_pane_pid = AsyncMock(return_value=None)
         mock_unique.return_value = "$TestComputer[user] - Untitled"
 
         cmd = CreateSessionCommand(project_path="/nonexistent", origin="telegram")

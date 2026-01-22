@@ -1,6 +1,5 @@
 """Database manager for TeleClaude - handles session persistence and retrieval."""
 
-import asyncio
 import json
 import os
 import tempfile
@@ -99,6 +98,7 @@ class Db:
             last_feedback_received=row.last_feedback_received,
             last_feedback_received_at=Db._coerce_datetime(row.last_feedback_received_at),
             working_slug=row.working_slug,
+            lifecycle_status=row.lifecycle_status or "active",
         )
 
     def __init__(self, db_path: str) -> None:
@@ -240,6 +240,7 @@ class Db:
         session_id: Optional[str] = None,
         working_slug: Optional[str] = None,
         initiator_session_id: Optional[str] = None,
+        lifecycle_status: str = "active",
     ) -> Session:
         """Create a new session.
 
@@ -276,6 +277,7 @@ class Db:
             description=description,
             working_slug=working_slug,
             initiator_session_id=initiator_session_id,
+            lifecycle_status=lifecycle_status,
         )
 
         db_row = db_models.Session(
@@ -292,12 +294,13 @@ class Db:
             description=session.description,
             working_slug=session.working_slug,
             initiator_session_id=session.initiator_session_id,
+            lifecycle_status=session.lifecycle_status,
         )
         async with self._session() as db_session:
             db_session.add(db_row)
             await db_session.commit()
 
-        await event_bus.emit(
+        event_bus.emit(
             TeleClaudeEvents.SESSION_STARTED,
             SessionLifecycleContext(session_id=session_id),
         )
@@ -319,7 +322,9 @@ class Db:
                 return None
             return self._to_core_session(row)
 
-    async def get_session_by_field(self, field: str, value: object) -> Optional[Session]:
+    async def get_session_by_field(
+        self, field: str, value: object, *, include_initializing: bool = False
+    ) -> Optional[Session]:
         """Get session by field value.
 
         Args:
@@ -335,9 +340,10 @@ class Db:
         async with self._session() as db_session:
             from sqlmodel import select
 
-            result = await db_session.exec(
-                select(db_models.Session).where(column == value, db_models.Session.closed_at.is_(None))
-            )
+            conditions = [column == value, db_models.Session.closed_at.is_(None)]
+            if not include_initializing:
+                conditions.append(db_models.Session.lifecycle_status == "active")
+            result = await db_session.exec(select(db_models.Session).where(*conditions))
             row = result.first()
             if not row:
                 return None
@@ -348,6 +354,7 @@ class Db:
         computer_name: Optional[str] = None,
         last_input_origin: Optional[str] = None,
         include_closed: bool = False,
+        include_initializing: bool = False,
     ) -> list[Session]:
         """List sessions with optional filters.
 
@@ -364,6 +371,8 @@ class Db:
         stmt = select(db_models.Session)
         if not include_closed:
             stmt = stmt.where(db_models.Session.closed_at.is_(None))
+        if not include_initializing:
+            stmt = stmt.where(db_models.Session.lifecycle_status == "active")
         if computer_name:
             stmt = stmt.where(db_models.Session.computer_name == computer_name)
         if last_input_origin:
@@ -453,16 +462,10 @@ class Db:
             await db_session.commit()
 
         # Emit SESSION_UPDATED event (UI handlers will update channel titles)
-        async def _dispatch_update_event() -> None:
-            try:
-                await event_bus.emit(
-                    TeleClaudeEvents.SESSION_UPDATED,
-                    SessionUpdatedContext(session_id=session_id, updated_fields=updates),
-                )
-            except Exception as exc:
-                logger.error("Failed to dispatch SESSION_UPDATED for %s: %s", session_id[:8], exc)
-
-        asyncio.create_task(_dispatch_update_event())
+        event_bus.emit(
+            TeleClaudeEvents.SESSION_UPDATED,
+            SessionUpdatedContext(session_id=session_id, updated_fields=updates),
+        )
 
     async def close_session(self, session_id: str) -> None:
         """Mark a session as closed without deleting it."""
@@ -472,14 +475,15 @@ class Db:
             return
         if session.closed_at:
             return
-        await self.update_session(session_id, closed_at=datetime.now(timezone.utc))
-        try:
-            await event_bus.emit(
-                TeleClaudeEvents.SESSION_CLOSED,
-                SessionLifecycleContext(session_id=session_id),
-            )
-        except Exception as exc:
-            logger.error("Failed to dispatch SESSION_CLOSED for %s: %s", session_id[:8], exc)
+        await self.update_session(
+            session_id,
+            closed_at=datetime.now(timezone.utc),
+            lifecycle_status="closed",
+        )
+        event_bus.emit(
+            TeleClaudeEvents.SESSION_CLOSED,
+            SessionLifecycleContext(session_id=session_id),
+        )
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
@@ -601,13 +605,10 @@ class Db:
         logger.debug("Deleted session %s from database", session_id[:8])
 
         if session:
-            try:
-                await event_bus.emit(
-                    TeleClaudeEvents.SESSION_CLOSED,
-                    SessionLifecycleContext(session_id=session_id),
-                )
-            except Exception as exc:
-                logger.error("Failed to dispatch SESSION_CLOSED for %s: %s", session_id[:8], exc)
+            event_bus.emit(
+                TeleClaudeEvents.SESSION_CLOSED,
+                SessionLifecycleContext(session_id=session_id),
+            )
 
     async def count_sessions(self, computer_name: Optional[str] = None) -> int:
         """Count sessions with optional filters.
@@ -714,7 +715,10 @@ class Db:
 
         stmt = (
             select(db_models.Session)
-            .where(db_models.Session.closed_at.is_(None))
+            .where(
+                db_models.Session.closed_at.is_(None),
+                db_models.Session.lifecycle_status == "active",
+            )
             .order_by(db_models.Session.last_activity.desc())
         )
         async with self._session() as db_session:

@@ -14,8 +14,8 @@ from teleclaude.daemon import TeleClaudeDaemon
 
 
 @pytest.mark.asyncio
-async def test_poller_watch_creates_ui_channel_when_missing_topic():
-    """Test that poller watch ensures UI channels when topic metadata missing."""
+async def test_poller_watch_does_not_create_ui_channel():
+    """Poller watch should not create UI channels (handled by UI lanes)."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = Mock()
     daemon.client.ensure_ui_channels = AsyncMock()
@@ -42,7 +42,7 @@ async def test_poller_watch_creates_ui_channel_when_missing_topic():
     ):
         await daemon._poller_watch_iteration()
 
-    daemon.client.ensure_ui_channels.assert_called_once_with(session, session.title)
+    daemon.client.ensure_ui_channels.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -50,7 +50,6 @@ async def test_poller_watch_recreates_missing_tmux_session():
     """Ensure poller watch recreates missing tmux session before polling."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = Mock()
-    daemon.client.ensure_ui_channels = AsyncMock()
     daemon.output_poller = Mock()
     daemon._get_output_file_path = Mock()
     daemon._ensure_tmux_session = AsyncMock(return_value=True)

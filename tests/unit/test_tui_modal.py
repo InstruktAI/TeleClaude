@@ -277,18 +277,9 @@ def test_modal_start_requests_session_and_notifies(mock_api):
         notify=notify,
     )
 
-    scheduled = {}
-
-    def schedule(coro):
-        scheduled["coro"] = coro
-
-    modal._schedule_session_start = schedule
-
     result = modal._start_session(MagicMock())
 
-    assert result is None
+    assert result is not None
+    assert result.status == "success"
     assert modal.start_requested is True
     assert ("Starting session...", "info") in notify_calls
-    assert "coro" in scheduled
-
-    asyncio.get_event_loop().run_until_complete(scheduled["coro"])

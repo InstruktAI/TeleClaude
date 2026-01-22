@@ -35,7 +35,13 @@ from teleclaude.cli.tui.tree import (
     is_project_node,
     is_session_node,
 )
-from teleclaude.cli.tui.types import ActivePane, CursesWindow, FocusLevelType, NodeType
+from teleclaude.cli.tui.types import (
+    ActivePane,
+    CursesWindow,
+    FocusLevelType,
+    NodeType,
+    StickySessionInfo,
+)
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
 
@@ -112,6 +118,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._visible_height: int = 20  # Default, updated in render
         # Track rendered item range for scroll calculations
         self._last_rendered_range: tuple[int, int] = (0, 0)
+        # Sticky session state (max 5 sessions across 3 lanes)
+        self.sticky_sessions: list[StickySessionInfo] = []
+        self._last_click_time: dict[int, float] = {}  # screen_row -> timestamp
+        self._double_click_threshold = 0.4  # seconds
+        self._selection_method: str = "arrow"  # "arrow" | "click"
 
     async def refresh(
         self,
@@ -406,6 +417,17 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         return f"{back_hint}[→] View Projects"
 
     # move_up() and move_down() inherited from ScrollableViewMixin
+    # Override them to track selection method
+
+    def move_up(self) -> None:
+        """Move selection up (arrow key navigation)."""
+        super().move_up()
+        self._selection_method = "arrow"
+
+    def move_down(self) -> None:
+        """Move selection down (arrow key navigation)."""
+        super().move_down()
+        self._selection_method = "arrow"
 
     def drill_down(self) -> bool:
         """Drill down into selected item (arrow right).
@@ -493,6 +515,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     def handle_enter(self, stdscr: CursesWindow) -> None:
         """Handle Enter key - perform action on selected item.
 
+        Only activates sessions if navigated via arrow keys (not after single-click).
+
         Args:
             stdscr: Curses screen object
         """
@@ -508,26 +532,17 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # Start new session on project
             self._start_session_for_project(stdscr, item.data)
         elif is_session_node(item):
-            # Double-click on ID line shows parent only; otherwise toggle split
-            session_id = item.data.session.session_id
-            is_collapsed = session_id in self.collapsed_sessions
-            if not is_collapsed and self._id_row_clicked:
-                self._show_single_session_pane(item)
+            # Only activate if we got here via arrow keys (clicks already activated)
+            if self._selection_method == "arrow":
+                self._activate_session(item)
                 logger.trace(
                     "sessions_enter",
                     item_type="session",
-                    action="show_single",
+                    action="activate",
                     duration_ms=int((time.perf_counter() - enter_start) * 1000),
                 )
             else:
-                # Toggle session preview pane
-                self._toggle_session_pane(item)
-                logger.trace(
-                    "sessions_enter",
-                    item_type="session",
-                    action="toggle_pane",
-                    duration_ms=int((time.perf_counter() - enter_start) * 1000),
-                )
+                logger.debug("handle_enter: ignoring Enter after click (already activated)")
             self._id_row_clicked = False
 
     def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
@@ -549,6 +564,137 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                     tmux_binary=comp.tmux_binary,
                 )
         return None
+
+    def _toggle_sticky(self, session_id: str, show_child: bool) -> None:
+        """Toggle sticky state for a session (max 5 sessions).
+
+        Args:
+            session_id: Session ID to toggle
+            show_child: Whether to show child session (False for parent-only mode)
+        """
+        # Find existing sticky entry (check session_id only, ignore show_child)
+        existing_idx = None
+        for i, sticky in enumerate(self.sticky_sessions):
+            if sticky.session_id == session_id:
+                existing_idx = i
+                break
+
+        if existing_idx is not None:
+            # Remove from sticky
+            removed = self.sticky_sessions.pop(existing_idx)
+            logger.info(
+                "REMOVED STICKY: %s (was show_child=%s, now count=%d, remaining=%s)",
+                session_id[:8],
+                removed.show_child,
+                len(self.sticky_sessions),
+                [s.session_id[:8] for s in self.sticky_sessions],
+            )
+        elif len(self.sticky_sessions) < 5:
+            # Double-check: no duplicates allowed (defensive)
+            if any(s.session_id == session_id for s in self.sticky_sessions):
+                logger.error("BUG: Attempted to add duplicate session_id %s to sticky list", session_id[:8])
+                return
+
+            # Add to sticky with child preference
+            self.sticky_sessions.append(StickySessionInfo(session_id, show_child))
+            logger.info(
+                "Added sticky: %s (show_child=%s, total=%d)",
+                session_id[:8],
+                show_child,
+                len(self.sticky_sessions),
+            )
+        else:
+            # Max 5 reached
+            if self.notify:
+                self.notify("warning", "Maximum 5 sticky sessions")
+            logger.warning("Cannot add sticky session %s: maximum 5 reached", session_id[:8])
+            return
+
+        # Rebuild panes with new sticky set
+        self._rebuild_sticky_panes()
+
+    def _activate_session(self, item: SessionNode) -> None:
+        """Activate a single session (single-click or Enter from arrows).
+
+        Shows the session in preview mode without affecting sticky panes.
+        If session is already sticky, hides the active pane entirely.
+
+        Args:
+            item: Session node to activate
+        """
+        session = item.data.session
+        session_id = session.session_id
+        tmux_session = session.tmux_session_name or ""
+        computer_name = session.computer or "local"
+
+        logger.info(
+            "_activate_session: session_id=%s, tmux=%s, sticky_count=%d, sticky_ids=%s",
+            session_id[:8],
+            tmux_session or "MISSING",
+            len(self.sticky_sessions),
+            [s.session_id[:8] for s in self.sticky_sessions],
+        )
+
+        if not tmux_session:
+            logger.warning("_activate_session: tmux_session_name missing, cannot activate")
+            return
+
+        # If session is already sticky, hide active pane (no duplication)
+        is_already_sticky = any(sticky.session_id == session_id for sticky in self.sticky_sessions)
+        if is_already_sticky:
+            logger.info(
+                "_activate_session: session %s ALREADY STICKY, hiding active pane",
+                session_id[:8],
+            )
+            self.pane_manager.hide_sessions()  # Clear active pane
+            return
+
+        # Get computer info for SSH (if remote)
+        computer_info = self._get_computer_info(computer_name)
+
+        # Find child session if exists
+        child_tmux_session: str | None = None
+        for sess in self._sessions:
+            if sess.initiator_session_id == session_id:
+                child_tmux = sess.tmux_session_name
+                if child_tmux:
+                    child_tmux_session = child_tmux
+                    break
+
+        # Show the active session (replaces any existing active pane)
+        self.pane_manager.show_session(tmux_session, child_tmux_session, computer_info)
+        logger.debug(
+            "_activate_session: showing session in active pane (sticky_count=%d)",
+            len(self.sticky_sessions),
+        )
+
+    def _rebuild_sticky_panes(self) -> None:
+        """Rebuild pane layout based on sticky sessions."""
+        if not self.sticky_sessions:
+            # No sticky sessions - clear all panes
+            self.pane_manager.hide_sessions()
+            logger.debug("_rebuild_sticky_panes: no sticky sessions, hiding all panes")
+            return
+
+        # Gather SessionInfo objects for sticky sessions
+        sticky_session_infos: list[tuple[SessionInfo, bool]] = []
+        for sticky in self.sticky_sessions:
+            for sess in self._sessions:
+                if sess.session_id == sticky.session_id:
+                    sticky_session_infos.append((sess, sticky.show_child))
+                    break
+
+        if not sticky_session_infos:
+            logger.warning("_rebuild_sticky_panes: no matching sessions found for sticky IDs")
+            return
+
+        logger.info(
+            "_rebuild_sticky_panes: showing %d sticky sessions across 3 lanes",
+            len(sticky_session_infos),
+        )
+
+        # Tell pane manager to show sticky sessions in 3-lane layout
+        self.pane_manager.show_sticky_sessions(sticky_session_infos, self._sessions, self._get_computer_info)
 
     def _toggle_session_pane(self, item: SessionNode) -> None:
         """Toggle session preview pane visibility.
@@ -721,35 +867,77 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.error("Error killing session: %s", e)
 
-    def handle_click(self, screen_row: int) -> bool:
+    def handle_click(self, screen_row: int, is_double_click: bool = False) -> bool:
         """Handle mouse click at screen row.
+
+        Single click: Select and activate session
+        Double click on title: Toggle sticky with parent + child
+        Double click on ID line: Toggle sticky with parent only
 
         Args:
             screen_row: The screen row that was clicked
+            is_double_click: True if this is a double-click event (from curses BUTTON1_DOUBLE_CLICKED)
 
         Returns:
             True if an item was selected, False otherwise
         """
         click_start = time.perf_counter()
         item_idx = self._row_to_item.get(screen_row)
-        if item_idx is not None:
-            self.selected_index = item_idx
-            self._id_row_clicked = screen_row in self._row_to_id_item
+        if item_idx is None:
+            self._id_row_clicked = False
             logger.trace(
-                "sessions_click",
+                "sessions_click_miss",
                 row=screen_row,
-                item_type=self.flat_items[item_idx].type,
-                id_row=self._id_row_clicked,
                 duration_ms=int((time.perf_counter() - click_start) * 1000),
             )
+            return False
+
+        item = self.flat_items[item_idx]
+
+        # Handle double-click on session nodes
+        if is_double_click and is_session_node(item):
+            session_id = item.data.session.session_id
+            clicked_id_line = screen_row in self._row_to_id_item
+
+            # DOUBLE CLICK - toggle sticky
+            if clicked_id_line:
+                # ID line → parent only, no child
+                self._toggle_sticky(session_id, show_child=False)
+                logger.debug("Double-click on ID line: toggled sticky (parent-only) for %s", session_id[:8])
+            else:
+                # Title/other line → parent + child
+                self._toggle_sticky(session_id, show_child=True)
+                logger.debug("Double-click on title: toggled sticky (parent+child) for %s", session_id[:8])
+
+            logger.trace(
+                "sessions_double_click",
+                row=screen_row,
+                session_id=session_id[:8],
+                id_line=clicked_id_line,
+                duration_ms=int((time.perf_counter() - click_start) * 1000),
+            )
+            # Select the item but don't activate (sticky toggle is the action)
+            self.selected_index = item_idx
+            self._selection_method = "click"
             return True
-        self._id_row_clicked = False
+
+        # SINGLE CLICK - select and activate
+        self.selected_index = item_idx
+        self._selection_method = "click"
+        self._id_row_clicked = screen_row in self._row_to_id_item
+
+        # Activate session immediately on single click
+        if is_session_node(item):
+            self._activate_session(item)
+
         logger.trace(
-            "sessions_click_miss",
+            "sessions_click",
             row=screen_row,
+            item_type=item.type,
+            id_row=self._id_row_clicked,
             duration_ms=int((time.perf_counter() - click_start) * 1000),
         )
-        return False
+        return True
 
     def get_render_lines(self, width: int, height: int) -> list[str]:
         """Return lines this view would render (testable without curses).
@@ -1019,6 +1207,15 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         title = session.title
         idx = session_display.display_index
 
+        # Check if this session is sticky
+        is_sticky = any(s.session_id == session_id for s in self.sticky_sessions)
+        sticky_position = None
+        if is_sticky:
+            for i, s in enumerate(self.sticky_sessions):
+                if s.session_id == session_id:
+                    sticky_position = i + 1
+                    break
+
         # Get agent color pairs (muted, normal, highlight)
         agent_colors = AGENT_COLORS.get(agent, {"muted": 0, "normal": 0, "highlight": 0})
         muted_pair = agent_colors.get("muted", 0)
@@ -1028,6 +1225,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         normal_attr = curses.color_pair(normal_pair) if normal_pair else 0
         highlight_attr = curses.color_pair(highlight_pair) if highlight_pair else curses.A_BOLD
 
+        # Sticky sessions get highlighted [N] indicator
+        if is_sticky and sticky_position is not None:
+            idx_text = f"[{sticky_position}]"
+            idx_attr = curses.A_REVERSE | curses.A_BOLD
+        else:
+            idx_text = f"[{idx}]"
+            idx_attr = normal_attr
+
         # Title line uses normal color (the original agent color)
         title_attr = curses.A_REVERSE if selected else normal_attr
 
@@ -1035,8 +1240,16 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         collapse_indicator = "▶" if is_collapsed else "▼"
 
         # Line 1: [idx] ▶/▼ agent/mode "title"
-        line1 = f'{indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"'
-        _safe_addstr(row, line1, title_attr)
+        # Render [idx] with special attr if sticky, then rest with title_attr
+        try:
+            stdscr.addstr(row, 0, indent, title_attr)  # type: ignore[attr-defined]
+            col = len(indent)
+            stdscr.addstr(row, col, idx_text, idx_attr if not selected else curses.A_REVERSE)  # type: ignore[attr-defined]
+            col += len(idx_text)
+            rest = f' {collapse_indicator} {agent}/{mode}  "{title}"'
+            stdscr.addstr(row, col, rest[: width - col], title_attr)  # type: ignore[attr-defined]
+        except curses.error:
+            pass  # Ignore if line doesn't fit
 
         # If collapsed, only show title line
         if is_collapsed:

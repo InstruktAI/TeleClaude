@@ -30,7 +30,7 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
     create_cmd = CreateSessionCommand(project_path=project_path, origin="telegram", title="Short Test")
     await daemon.command_service.create_session(create_cmd)
 
-    sessions = await daemon.db.list_sessions()
+    sessions = await daemon.db.list_sessions(include_initializing=True)
     assert len(sessions) == 1
     session = sessions[0]
 
@@ -82,7 +82,7 @@ async def test_long_running_command(daemon_with_mocked_telegram):
     create_cmd = CreateSessionCommand(project_path=project_path, origin="telegram", title="Long Test")
     await daemon.command_service.create_session(create_cmd)
 
-    sessions = await daemon.db.list_sessions()
+    sessions = await daemon.db.list_sessions(include_initializing=True)
     assert len(sessions) == 1
     session = sessions[0]
 

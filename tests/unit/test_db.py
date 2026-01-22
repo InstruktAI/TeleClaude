@@ -144,6 +144,26 @@ class TestListSessions:
         assert len(sessions) == 3
 
     @pytest.mark.asyncio
+    async def test_list_sessions_excludes_initializing(self, test_db):
+        """Initializing sessions should be hidden by default."""
+        await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
+        await test_db.create_session(
+            "PC1",
+            "session-2",
+            "telegram",
+            "Test Session",
+            lifecycle_status="initializing",
+        )
+
+        sessions = await test_db.list_sessions()
+
+        assert len(sessions) == 1
+        assert sessions[0].tmux_session_name == "session-1"
+
+        sessions_with_init = await test_db.list_sessions(include_initializing=True)
+        assert len(sessions_with_init) == 2
+
+    @pytest.mark.asyncio
     async def test_list_sessions_filter_by_computer(self, test_db):
         """Test filtering sessions by computer name."""
         await test_db.create_session("PC1", "session-1", "telegram", "Test Session")

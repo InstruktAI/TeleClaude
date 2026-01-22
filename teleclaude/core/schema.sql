@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_feedback_received TEXT,
     last_feedback_received_at TEXT,
     working_slug TEXT,  -- Slug of work item this session is working on (from state machine)
+    lifecycle_status TEXT DEFAULT 'active',
     UNIQUE(computer_name, tmux_session_name)
 );
 

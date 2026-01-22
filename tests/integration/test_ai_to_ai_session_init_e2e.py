@@ -4,7 +4,7 @@
 import asyncio
 import json
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -33,7 +33,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
     mock_redis = AsyncMock()
     redis_transport.redis = mock_redis
 
-    with patch("teleclaude.core.event_bus.event_bus.emit", new_callable=AsyncMock):
+    with patch("teleclaude.core.event_bus.event_bus.emit", new_callable=Mock):
         # Simulate incoming create_session command from initiator (MozBook)
         request_id = "test-request-123"
         project_path = tmp_path / "apps" / "TeleClaude"
@@ -80,7 +80,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
         await asyncio.sleep(0.01)
 
     # Verify session was created
-    sessions = await daemon.db.list_sessions()
+    sessions = await daemon.db.list_sessions(include_initializing=True)
     assert len(sessions) == 1, "Should have created exactly one session"
 
     session = sessions[0]
@@ -117,7 +117,7 @@ async def test_ai_to_ai_session_without_project_path_rejected(daemon_with_mocked
     mock_redis = AsyncMock()
     redis_transport.redis = mock_redis
 
-    with patch("teleclaude.core.event_bus.event_bus.emit", new_callable=AsyncMock):
+    with patch("teleclaude.core.event_bus.event_bus.emit", new_callable=Mock):
         # Simulate create_session command WITHOUT project_path
         request_id = "test-request-456"
 

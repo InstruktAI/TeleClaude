@@ -38,40 +38,16 @@ class EventBus:
         """Clear all registered handlers (primarily for tests)."""
         self._handlers.clear()
 
-    async def emit(self, event: EventType, context: EventContext) -> DispatchEnvelope:
-        """Emit an event to all handlers."""
+    def emit(self, event: EventType, context: EventContext) -> None:
+        """Emit an event to all handlers (fire-and-forget)."""
         handlers = self._handlers.get(event)
         if not handlers:
             logger.warning("No handler registered for event: %s", event)
-            return DispatchEnvelope(
-                status="error",
-                error=f"No handler registered for event: {event}",
-                code="NO_HANDLER",
-            )
+            return
 
-        tasks = [handler(event, context) for handler in handlers]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        success_results: list[object] = []
-        errors: list[Exception] = []
-
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error("Handler %d failed for event %s: %s", i, event, result, exc_info=True)
-                errors.append(result)
-            else:
-                success_results.append(result)
-
-        if success_results:
-            logger.debug(
-                "Dispatch completed for event: %s (%d success, %d failed)", event, len(success_results), len(errors)
-            )
-            return DispatchEnvelope(status="success", data=success_results[0])
-
-        if errors:
-            raise errors[0]
-
-        return DispatchEnvelope(status="success", data=None)
+        loop = asyncio.get_running_loop()
+        for handler in handlers:
+            loop.create_task(handler(event, context))
 
 
 event_bus = EventBus()

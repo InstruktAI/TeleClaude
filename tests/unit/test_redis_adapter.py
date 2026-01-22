@@ -164,10 +164,10 @@ async def test_stop_notification_emits_agent_stop_event():
         b"origin": b"telegram",
     }
 
-    with patch("teleclaude.core.event_bus.event_bus.emit", new=AsyncMock()) as mock_emit:
+    with patch("teleclaude.core.event_bus.event_bus.emit", new=MagicMock()) as mock_emit:
         await adapter._handle_incoming_message("msg-1", data)
 
-    assert mock_emit.await_count == 1
+    assert mock_emit.call_count == 1
     call_args = mock_emit.call_args
     assert call_args.args[0] == TeleClaudeEvents.AGENT_EVENT
     context = call_args.args[1]

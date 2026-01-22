@@ -336,6 +336,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
     last_feedback_received: Optional[str] = None
     last_feedback_received_at: Optional[datetime] = None
     working_slug: Optional[str] = None
+    lifecycle_status: str = "active"
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict - Serialization output
         """Convert session to dictionary for JSON serialization."""
@@ -350,6 +351,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
             data["last_feedback_received_at"] = self.last_feedback_received_at.isoformat()
         if self.closed_at:
             data["closed_at"] = self.closed_at.isoformat()
+        data["lifecycle_status"] = self.lifecycle_status
         adapter_meta = self.adapter_metadata
         if isinstance(adapter_meta, dict):
             data["adapter_metadata"] = json.dumps(adapter_meta)
@@ -437,6 +439,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
             if isinstance(last_feedback_received_at, datetime)
             else None,
             working_slug=_get_optional_str("working_slug"),
+            lifecycle_status=str(data.get("lifecycle_status") or "active"),
         )
 
 
@@ -642,7 +645,7 @@ class SessionSummary:
             subdir=session.subdir,
             thinking_mode=session.thinking_mode,
             active_agent=session.active_agent,
-            status="active",
+            status=session.lifecycle_status,
             created_at=session.created_at.isoformat() if session.created_at else None,
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
             last_input=session.last_message_sent,

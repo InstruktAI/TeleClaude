@@ -34,6 +34,7 @@ from teleclaude.api_models import (
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
     SessionSummaryDTO,
+    SessionUpdatedEventDTO,
     TodoDTO,
     VoiceInputRequest,
 )
@@ -930,18 +931,21 @@ class APIServer:
             event: Event type (e.g., "session_updated", "computer_updated")
             data: Event data
         """
-        if event == "session_updated":
-            return
         # Convert to DTO payload if necessary
         payload: dict[str, object]  # guard: loose-dict - WebSocket payload assembly
-        if event == "session_started":
+        if event in ("session_started", "session_updated"):
             if isinstance(data, SessionSummary):
                 dto = SessionSummaryDTO.from_core(data, computer=data.computer)
-                # Proper cast for Mypy Literal
-                payload = SessionStartedEventDTO(
-                    event=event,
-                    data=dto,
-                ).model_dump(exclude_none=True)
+                if event == "session_started":
+                    payload = SessionStartedEventDTO(
+                        event=event,
+                        data=dto,
+                    ).model_dump(exclude_none=True)
+                else:
+                    payload = SessionUpdatedEventDTO(
+                        event=event,
+                        data=dto,
+                    ).model_dump(exclude_none=True)
             elif isinstance(data, dict):
                 # Already a dict (e.g. from _handle_session_updated)
                 payload = {"event": event, "data": data}

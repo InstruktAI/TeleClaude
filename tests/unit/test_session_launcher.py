@@ -20,6 +20,10 @@ async def test_create_session_runs_auto_command_after_create(monkeypatch):
         assert session_id == "s1"
         return {"status": "success", "message": "ok"}
 
+    async def _fake_bootstrap_session(session_id: str, _cmd: str | None) -> None:
+        order.append("bootstrap")
+        assert session_id == "s1"
+
     def _queue_background_task(coro, _name) -> None:
         order.append("queue")
         coro.close()
@@ -42,6 +46,7 @@ async def test_create_session_runs_auto_command_after_create(monkeypatch):
         client=MagicMock(),
         execute_auto_command=_fake_execute_auto_command,
         queue_background_task=_queue_background_task,
+        bootstrap_session=_fake_bootstrap_session,
     )
 
     assert order == ["create", "queue"]

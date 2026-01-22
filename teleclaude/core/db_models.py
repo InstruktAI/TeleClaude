@@ -46,6 +46,7 @@ class Session(SQLModel, table=True):
     last_feedback_received: Optional[str] = None
     last_feedback_received_at: Optional[datetime] = None
     working_slug: Optional[str] = None
+    lifecycle_status: Optional[str] = "active"
 
 
 class VoiceAssignment(SQLModel, table=True):

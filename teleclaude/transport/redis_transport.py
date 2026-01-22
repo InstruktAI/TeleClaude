@@ -989,8 +989,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 event_type=AgentHookEvents.AGENT_STOP,
                 data=build_agent_payload(AgentHookEvents.AGENT_STOP, event_data),
             )
-            result = await event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
-            return {"status": "success", "data": result}
+            event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
+            return {"status": "success", "data": None}
 
         if cmd_name == "input_notification":
             if len(args) < 3:
@@ -1020,8 +1020,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 event_type=AgentHookEvents.AGENT_NOTIFICATION,
                 data=build_agent_payload(AgentHookEvents.AGENT_NOTIFICATION, event_data),
             )
-            result = await event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
-            return {"status": "success", "data": result}
+            event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
+            return {"status": "success", "data": None}
 
         return {"status": "error", "error": f"unsupported agent notification: {cmd_name}"}
 
@@ -1136,7 +1136,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             except Exception:
                 deploy_args.verify_health = True
 
-        await event_bus.emit(
+        event_bus.emit(
             "system_command",
             SystemCommandContext(
                 command=command,

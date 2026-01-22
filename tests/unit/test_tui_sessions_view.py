@@ -38,6 +38,9 @@ def mock_pane_manager():
         def show_session(self, *_args, **_kwargs):
             return None
 
+        def toggle_session(self, *_args, **_kwargs):
+            return None
+
     return MockPaneManager()
 
 
@@ -355,17 +358,24 @@ class TestSessionsViewLogic:
         assert "[17:43:21] in: hello" in output
         assert "[17:43:21] out: world" in output
 
-    def test_double_clicking_session_id_row_shows_single_session(self, mock_focus):
-        """Double-clicking the ID row shows only the parent session in the side pane."""
+    def test_double_clicking_session_id_row_toggles_sticky_parent_only(self, mock_focus):
+        """Double-clicking the ID row toggles sticky with parent-only mode (no child)."""
 
         class MockPaneManager:
             def __init__(self):
-                self.called = False
-                self.args = None
+                self.toggle_called = False
+                self.show_sticky_called = False
+                self.sticky_sessions = []
+
+            def toggle_session(self, tmux_session_name, child_tmux_session_name, computer_info):
+                self.toggle_called = True
 
             def show_session(self, tmux_session_name, child_tmux_session_name, computer_info):
-                self.called = True
-                self.args = (tmux_session_name, child_tmux_session_name, computer_info)
+                self.toggle_called = True
+
+            def show_sticky_sessions(self, sticky_sessions, all_sessions, get_computer_info):
+                self.show_sticky_called = True
+                self.sticky_sessions = sticky_sessions
 
         pane_manager = MockPaneManager()
         view = SessionsView(
@@ -384,6 +394,13 @@ class TestSessionsViewLogic:
                 tmux_binary="tmux",
             )
         ]
+        view._sessions = [
+            self._make_session_info(
+                session_id="sess-1",
+                computer="test-machine",
+                tmux_session_name="tc_parent",
+            )
+        ]
         session = self._make_session_node(
             session_id="sess-1",
             computer="test-machine",
@@ -394,15 +411,20 @@ class TestSessionsViewLogic:
         view._row_to_item[10] = 0
         view._row_to_id_item[10] = session
 
-        assert view.handle_click(10) is True
+        # First click - single click activates (no sticky sessions)
+        assert view.handle_click(10, is_double_click=False) is True
         assert view.selected_index == 0
-        assert pane_manager.called is False
+        assert pane_manager.toggle_called is True  # Activated via toggle_session
 
-        view.handle_enter(object())
+        # Second click as double-click on ID line
+        pane_manager.toggle_called = False
+        assert view.handle_click(10, is_double_click=True) is True
 
-        assert pane_manager.called is True
-        assert pane_manager.args[0] == "tc_parent"
-        assert pane_manager.args[1] is None
+        # Should have toggled sticky with parent-only mode
+        assert len(view.sticky_sessions) == 1
+        assert view.sticky_sessions[0].session_id == "sess-1"
+        assert view.sticky_sessions[0].show_child is False  # Parent-only mode
+        assert pane_manager.show_sticky_called is True
 
     def test_render_session_clears_line_width(self, sessions_view):
         """Session render pads lines to full width to avoid stale artifacts."""
@@ -425,5 +447,20 @@ class TestSessionsViewLogic:
         lines_used = sessions_view._render_session(screen, 0, session, width, False)
 
         assert lines_used == 2
-        assert len(screen.calls) == 2
-        assert all(len(text) == width for _row, _col, text in screen.calls)
+
+        # New rendering splits line 1 into multiple addstr calls:
+        # - indent
+        # - [N] indicator
+        # - rest of line (collapse + agent + title)
+        # Then line 2 (ID line) as one call
+        assert len(screen.calls) == 4  # Updated for new rendering
+
+        # Verify the combined width of line 1 segments equals full width
+        line1_calls = [call for call in screen.calls if call[0] == 0]
+        total_line1_width = sum(len(call[2]) for call in line1_calls)
+        assert total_line1_width == width
+
+        # Line 2 (ID line) should still be full width
+        line2_calls = [call for call in screen.calls if call[0] == 1]
+        assert len(line2_calls) == 1
+        assert len(line2_calls[0][2]) == width

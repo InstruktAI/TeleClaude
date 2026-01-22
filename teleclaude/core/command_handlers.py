@@ -18,7 +18,7 @@ import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
+from teleclaude.core import tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.db import db
@@ -36,7 +36,7 @@ from teleclaude.core.models import (
     ThinkingMode,
     TodoInfo,
 )
-from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, cleanup_session_resources, terminate_session
+from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_utils import (
     build_session_title,
     ensure_unique_title,
@@ -44,7 +44,7 @@ from teleclaude.core.session_utils import (
     resolve_working_dir,
     update_title_with_agent,
 )
-from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
+from teleclaude.core.voice_assignment import get_random_voice
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import (
     CloseSessionCommand,
@@ -258,47 +258,14 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         session_id=session_id,
         working_slug=working_slug,
         initiator_session_id=initiator_session_id,
+        lifecycle_status="initializing",
     )
     if cmd.launch_intent and cmd.launch_intent.thinking_mode:
         await db.update_session(session.session_id, thinking_mode=cmd.launch_intent.thinking_mode)
 
-    # Create tmux session IMMEDIATELY (don't wait for channel creation)
-    voice_env_vars = get_voice_env_vars(voice) if voice else {}
-    env_vars = voice_env_vars.copy()
-    env_vars["TELECLAUDE_SESSION_ID"] = session_id
-
-    success = await tmux_bridge.ensure_tmux_session(
-        name=tmux_name,
-        working_dir=working_dir,
-        session_id=session_id,
-        env_vars=env_vars,
-    )
-
-    if not success:
-        logger.error(
-            "Failed to create tmux session for %s (tmux=%s, working_dir=%s)",
-            session.session_id[:8],
-            tmux_name,
-            working_dir,
-        )
-        await cleanup_session_resources(session, client)
-        await db.close_session(session.session_id)
-        raise RuntimeError("Failed to create tmux session")
-
-    # Channel creation is fire-and-forget - don't block on it
-    # UI adapters will gracefully skip sends until channel is ready
-    async def _create_channel_background() -> None:
-        try:
-            await client.create_channel(
-                session=session,
-                title=title,
-                last_input_origin=str(origin),
-                target_computer=str(initiator) if initiator else None,
-            )
-        except Exception as e:
-            logger.error("Background channel creation failed for %s: %s", session_id[:8], e)
-
-    asyncio.create_task(_create_channel_background())
+    # NOTE: tmux creation + auto-command execution are handled asynchronously
+    # by the daemon bootstrap task. Channel creation is deferred to UI lanes
+    # on first output.
 
     logger.info("Created session: %s", session.session_id)
     return {"session_id": session_id, "tmux_session_name": tmux_name}

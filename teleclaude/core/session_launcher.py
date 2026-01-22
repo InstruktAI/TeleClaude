@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 
 QueueTask = Callable[[Coroutine[object, object, object], str], None]
 ExecuteAuto = Callable[[str, str], Coroutine[object, object, dict[str, str]]]
+BootstrapSession = Callable[[str, str | None], Coroutine[object, object, None]]
 
 
 async def create_empty_session(
@@ -39,6 +40,7 @@ async def create_agent_session(
     client: AdapterClient,
     execute_auto_command: ExecuteAuto,
     queue_background_task: QueueTask,
+    bootstrap_session: BootstrapSession,
 ) -> dict[str, str]:
     """Create a session and start agent immediately (async)."""
     return await _create_session_with_intent(
@@ -46,6 +48,7 @@ async def create_agent_session(
         client,
         execute_auto_command,
         queue_background_task,
+        bootstrap_session,
     )
 
 
@@ -54,6 +57,7 @@ async def create_agent_session_with_auto_command(
     client: AdapterClient,
     execute_auto_command: ExecuteAuto,
     queue_background_task: QueueTask,
+    bootstrap_session: BootstrapSession,
 ) -> dict[str, str]:
     """Create a session and run auto_command (async)."""
     return await _create_session_with_intent(
@@ -61,6 +65,7 @@ async def create_agent_session_with_auto_command(
         client,
         execute_auto_command,
         queue_background_task,
+        bootstrap_session,
     )
 
 
@@ -90,26 +95,31 @@ async def _create_session_with_intent(
     client: AdapterClient,
     execute_auto_command: ExecuteAuto,
     queue_background_task: QueueTask,
+    bootstrap_session: BootstrapSession,
 ) -> dict[str, str]:
+    _ = execute_auto_command
     result = await create_tmux_session(cmd, client)
 
     intent = cmd.launch_intent
     # Priority: explicit auto_command > intent-derived auto_command
     auto_command = cmd.auto_command or (_intent_to_auto_command(intent) if intent else None)
-    if not auto_command or not result.get("session_id"):
+    session_id_raw = result.get("session_id")
+    if not session_id_raw:
+        return result
+    session_id = str(session_id_raw)
+
+    queue_background_task(
+        bootstrap_session(session_id, auto_command),
+        f"session_bootstrap:{session_id[:8]}",
+    )
+
+    if not auto_command:
         return result
 
-    session_id = str(result["session_id"])
     logger.debug(
         "NEW_SESSION result: session_id=%s, auto_command=%s",
         session_id,
         auto_command,
-    )
-
-    # Always queue auto-commands as they are slow/long-running
-    queue_background_task(
-        execute_auto_command(session_id, auto_command),
-        f"auto_command:{session_id[:8]}",
     )
     result["auto_command_status"] = "queued"
     result["auto_command_message"] = "Auto-command queued"
@@ -122,6 +132,7 @@ async def create_session(
     client: AdapterClient,
     execute_auto_command: ExecuteAuto,
     queue_background_task: QueueTask,
+    bootstrap_session: BootstrapSession,
 ) -> dict[str, str]:
     """Dispatch to the appropriate session creation intent."""
     intent = cmd.launch_intent
@@ -133,18 +144,29 @@ async def create_session(
                 client,
                 execute_auto_command,
                 queue_background_task,
+                bootstrap_session,
             )
-        return await create_empty_session(cmd, client)
+        result = await create_empty_session(cmd, client)
+        session_id_raw = result.get("session_id")
+        if session_id_raw:
+            session_id = str(session_id_raw)
+            queue_background_task(
+                bootstrap_session(session_id, None),
+                f"session_bootstrap:{session_id[:8]}",
+            )
+        return result
     if intent.kind == SessionLaunchKind.AGENT:
         return await create_agent_session(
             cmd,
             client,
             execute_auto_command,
             queue_background_task,
+            bootstrap_session,
         )
     return await create_agent_session_with_auto_command(
         cmd,
         client,
         execute_auto_command,
         queue_background_task,
+        bootstrap_session,
     )

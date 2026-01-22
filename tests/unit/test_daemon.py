@@ -239,6 +239,7 @@ async def test_new_session_auto_command_agent_then_message():
         execute_terminal_command=daemon._execute_terminal_command,
         execute_auto_command=daemon._execute_auto_command,
         queue_background_task=daemon._queue_background_task,
+        bootstrap_session=AsyncMock(),
     )
 
     with patch("teleclaude.core.command_service.create_session", new_callable=AsyncMock) as mock_create:
@@ -1003,8 +1004,7 @@ async def test_dispatch_hook_event_updates_tty_before_polling():
         mock_db.get_session = AsyncMock(return_value=session)
         mock_db.update_session = AsyncMock(side_effect=record_update)
 
-        with patch("teleclaude.daemon.event_bus.emit", new_callable=AsyncMock) as mock_emit:
-            mock_emit.return_value = {"status": "success"}
+        with patch("teleclaude.daemon.event_bus.emit", new_callable=Mock) as mock_emit:
             await daemon._dispatch_hook_event(
                 session_id="sess-tty",
                 event_type="stop",

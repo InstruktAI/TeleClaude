@@ -118,6 +118,9 @@ async def terminate_session(
 
     logger.info("Terminating session %s (%s)", session_id[:8], reason)
 
+    if not already_closed:
+        await db.update_session(session_id, lifecycle_status="closing")
+
     if kill_tmux is None:
         kill_tmux = True
 

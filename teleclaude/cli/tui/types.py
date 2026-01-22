@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import curses
+from dataclasses import dataclass
 from enum import Enum
 from typing import TypeAlias
 
@@ -60,6 +61,14 @@ class ThemeMode(str, Enum):
 
     DARK = "dark"
     LIGHT = "light"
+
+
+@dataclass
+class StickySessionInfo:
+    """Sticky session state for multi-pane view."""
+
+    session_id: str
+    show_child: bool  # False when toggled via ID line (parent-only mode)
 
 
 CursesWindow: TypeAlias = curses.window

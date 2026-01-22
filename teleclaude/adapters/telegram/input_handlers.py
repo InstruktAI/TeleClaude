@@ -452,7 +452,7 @@ Usage:
         )
 
         # Emit session_closed event to daemon for cleanup
-        await event_bus.emit(
+        event_bus.emit(
             "session_closed",
             SessionLifecycleContext(session_id=session.session_id),
         )

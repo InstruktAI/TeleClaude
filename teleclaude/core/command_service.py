@@ -47,6 +47,7 @@ StartPollingFunc = Callable[[str, str], Awaitable[None]]
 ExecuteTerminalCommandFunc = Callable[[str, str, str | None, bool], Awaitable[bool]]
 ExecuteAutoCommandFunc = Callable[[str, str], Awaitable[dict[str, str]]]
 QueueBackgroundTaskFunc = Callable[[Awaitable[object], str], None]
+BootstrapSessionFunc = Callable[[str, str | None], Awaitable[None]]
 
 
 class CommandService:
@@ -60,12 +61,14 @@ class CommandService:
         execute_terminal_command: ExecuteTerminalCommandFunc,
         execute_auto_command: ExecuteAutoCommandFunc,
         queue_background_task: QueueBackgroundTaskFunc,
+        bootstrap_session: BootstrapSessionFunc,
     ) -> None:
         self.client = client
         self._start_polling = start_polling
         self._execute_terminal_command = execute_terminal_command
         self._execute_auto_command = execute_auto_command
         self._queue_background_task = queue_background_task
+        self._bootstrap_session = bootstrap_session
 
     async def create_session(self, cmd: CreateSessionCommand) -> dict[str, str]:
         return await create_session(
@@ -73,6 +76,7 @@ class CommandService:
             self.client,
             self._execute_auto_command,
             self._queue_background_task,
+            self._bootstrap_session,
         )
 
     async def send_message(self, cmd: SendMessageCommand) -> None:

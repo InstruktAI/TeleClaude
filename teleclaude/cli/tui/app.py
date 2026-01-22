@@ -21,6 +21,7 @@ from teleclaude.cli.models import (
     SessionInfo,
     SessionsInitialEvent,
     SessionStartedEvent,
+    SessionUpdatedEvent,
     TodoInfo,
     WsEvent,
 )
@@ -175,6 +176,7 @@ class TelecApp:
         self._ws_queue: queue.Queue[WsEvent] = queue.Queue()
         self._subscribed_computers: set[str] = set()
         self._theme_refresh_requested = False
+        self._session_status_cache: dict[str, str] = {}
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
@@ -357,6 +359,18 @@ class TelecApp:
             elif isinstance(event, SessionStartedEvent):
                 asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
+            elif isinstance(event, SessionUpdatedEvent):
+                updated_session = event.data
+                old_status = self._session_status_cache.get(updated_session.session_id)
+                new_status = updated_session.status
+                if old_status and old_status != new_status:
+                    self.notify(
+                        f"Session status: {old_status} → {new_status}",
+                        NotificationLevel.INFO,
+                    )
+                self._session_status_cache[updated_session.session_id] = new_status
+                asyncio.get_event_loop().run_until_complete(self.refresh_data())
+
             elif isinstance(event, SessionClosedEvent):
                 asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
@@ -378,6 +392,7 @@ class TelecApp:
             return
 
         sessions_view._sessions = sessions
+        self._session_status_cache = {session.session_id: session.status for session in sessions}
         sessions_view._update_activity_state(sessions)
         logger.debug("Sessions view updated with %d sessions", len(sessions))
 
@@ -540,27 +555,40 @@ class TelecApp:
                         y=my,
                         duration_ms=int((time.perf_counter() - mouse_start) * 1000),
                     )
-                # Double-click: select item and execute default action
+                # Double-click: select item and execute default action (or toggle sticky for sessions)
                 elif bstate & curses.BUTTON1_DOUBLE_CLICKED:
                     if self._content_start <= my < self._content_start + self._content_height:
                         view = self.views.get(self.current_view)
                         if view and hasattr(view, "handle_click"):
                             click_start = time.perf_counter()
-                            if view.handle_click(my):
+                            # Pass is_double_click=True to allow view-specific double-click handling
+                            if view.handle_click(my, is_double_click=True):
                                 click_ms = int((time.perf_counter() - click_start) * 1000)
-                                # Item selected, now execute default action
-                                enter_start = time.perf_counter()
-                                view.handle_enter(stdscr)
-                                enter_ms = int((time.perf_counter() - enter_start) * 1000)
-                                logger.trace(
-                                    "mouse_double_click_action",
-                                    view=self.current_view,
-                                    x=mx,
-                                    y=my,
-                                    click_ms=click_ms,
-                                    enter_ms=enter_ms,
-                                    total_ms=int((time.perf_counter() - mouse_start) * 1000),
-                                )
+                                # For sessions view (1), double-click toggles sticky (no enter action)
+                                # For other views, execute default action
+                                if self.current_view != 1:
+                                    enter_start = time.perf_counter()
+                                    view.handle_enter(stdscr)
+                                    enter_ms = int((time.perf_counter() - enter_start) * 1000)
+                                    logger.trace(
+                                        "mouse_double_click_action",
+                                        view=self.current_view,
+                                        x=mx,
+                                        y=my,
+                                        click_ms=click_ms,
+                                        enter_ms=enter_ms,
+                                        total_ms=int((time.perf_counter() - mouse_start) * 1000),
+                                    )
+                                else:
+                                    # Sessions view: double-click handled by toggle_sticky
+                                    logger.trace(
+                                        "mouse_double_click_sticky",
+                                        view=self.current_view,
+                                        x=mx,
+                                        y=my,
+                                        click_ms=click_ms,
+                                        total_ms=int((time.perf_counter() - mouse_start) * 1000),
+                                    )
                 # Single click: select item or switch tab
                 elif bstate & curses.BUTTON1_CLICKED:
                     # First check if a tab was clicked

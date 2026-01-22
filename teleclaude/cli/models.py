@@ -50,6 +50,9 @@ from teleclaude.api_models import (
     SessionSummaryDTO as SessionInfo,
 )
 from teleclaude.api_models import (
+    SessionUpdatedEventDTO as SessionUpdatedEvent,
+)
+from teleclaude.api_models import (
     TodoDTO as TodoInfo,
 )
 
@@ -69,6 +72,7 @@ __all__ = [
     "SessionsInitialEvent",
     "SessionInfo",
     "SessionStartedEvent",
+    "SessionUpdatedEvent",
     "TodoInfo",
     "JsonValue",
     "JsonObject",
@@ -84,7 +88,12 @@ JsonObject: TypeAlias = dict[str, JsonValue]
 
 
 WsEvent: TypeAlias = Union[
-    SessionsInitialEvent, ProjectsInitialEvent, SessionStartedEvent, SessionClosedEvent, RefreshEvent
+    SessionsInitialEvent,
+    ProjectsInitialEvent,
+    SessionStartedEvent,
+    SessionUpdatedEvent,
+    SessionClosedEvent,
+    RefreshEvent,
 ]
 
 

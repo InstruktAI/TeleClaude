@@ -835,11 +835,12 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             elif key == ord("p"):
                 self._prepare(item.data, stdscr)
 
-    def handle_click(self, screen_row: int) -> bool:
+    def handle_click(self, screen_row: int, is_double_click: bool = False) -> bool:  # noqa: ARG002
         """Handle mouse click at screen row.
 
         Args:
             screen_row: The screen row that was clicked
+            is_double_click: True if this is a double-click event (unused in this view)
 
         Returns:
             True if an item was selected, False otherwise

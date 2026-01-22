@@ -245,7 +245,7 @@ class CodexWatcher:
                     {"session_id": native_id, "transcript_path": str(file_path)},
                 ),
             )
-            await event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
+            event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
 
     async def _tail_files(self) -> None:
         """Read new content from watched files and dispatch events."""
@@ -313,7 +313,7 @@ class CodexWatcher:
                                 event_type=event.event_type,
                                 data=build_agent_payload(event.event_type, payload_data),
                             )
-                            await event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
+                            event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
                             emitted += 1
                     except json.JSONDecodeError:
                         # Expected for partial lines after backfill seek

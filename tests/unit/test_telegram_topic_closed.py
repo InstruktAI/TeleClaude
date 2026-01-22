@@ -59,7 +59,7 @@ async def test_topic_closed_ignores_new_session() -> None:
             "teleclaude.adapters.telegram.input_handlers.db.get_sessions_by_adapter_metadata",
             new=AsyncMock(return_value=[session]),
         ),
-        patch("teleclaude.core.event_bus.event_bus.emit", new=AsyncMock()) as mock_emit,
+        patch("teleclaude.core.event_bus.event_bus.emit", new=Mock()) as mock_emit,
     ):
         await handlers._handle_topic_closed(update, None)
 
@@ -89,7 +89,7 @@ async def test_topic_closed_handles_naive_created_at() -> None:
             "teleclaude.adapters.telegram.input_handlers.db.get_sessions_by_adapter_metadata",
             new=AsyncMock(return_value=[session]),
         ),
-        patch("teleclaude.core.event_bus.event_bus.emit", new=AsyncMock()) as mock_emit,
+        patch("teleclaude.core.event_bus.event_bus.emit", new=Mock()) as mock_emit,
     ):
         await handlers._handle_topic_closed(update, None)
 

@@ -240,6 +240,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 execute_terminal_command=self._execute_terminal_command,
                 execute_auto_command=self._execute_auto_command,
                 queue_background_task=self._queue_background_task,
+                bootstrap_session=self._bootstrap_session_resources,
             )
         )
 
@@ -690,18 +691,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 source=str(data.get("source")) if "source" in data else None,
                 details=data.get("details") if isinstance(data.get("details"), dict) else None,
             )
-            response = await event_bus.emit(TeleClaudeEvents.ERROR, context)
+            event_bus.emit(TeleClaudeEvents.ERROR, context)
         else:
             context = AgentEventContext(
                 session_id=session_id,
                 event_type=cast(AgentHookEvents, event_type),
                 data=build_agent_payload(cast(AgentHookEvents, event_type), data),
             )
-            response = await event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
-
-        status = response.get("status")
-        if status == "error":
-            raise ValueError(str(response.get("error")))
+            event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
 
     async def _hook_outbox_worker(self) -> None:
         """Drain hook outbox for durable, restart-safe delivery."""
@@ -1062,6 +1059,41 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         logger.warning("Unknown or malformed auto_command: %s", auto_command)
         return {"status": "error", "message": f"Unknown or malformed auto_command: {auto_command}"}
+
+    async def _bootstrap_session_resources(self, session_id: str, auto_command: str | None) -> None:
+        """Create tmux + start polling + run auto command, then mark session active."""
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Session %s missing during bootstrap", session_id[:8])
+            return
+
+        voice = await db.get_voice(session_id)
+        voice_env_vars = get_voice_env_vars(voice) if voice else {}
+        env_vars = voice_env_vars.copy()
+        env_vars["TELECLAUDE_SESSION_ID"] = session_id
+        working_dir = resolve_working_dir(session.project_path, session.subdir)
+
+        created = await tmux_bridge.ensure_tmux_session(
+            name=session.tmux_session_name,
+            working_dir=working_dir,
+            session_id=session_id,
+            env_vars=env_vars,
+        )
+        if not created:
+            logger.error("Failed to create tmux session for %s", session_id[:8])
+            await db.update_session(
+                session_id,
+                lifecycle_status="closed",
+                closed_at=datetime.now(timezone.utc),
+            )
+            return
+
+        await self._start_polling_for_session(session_id, session.tmux_session_name)
+
+        if auto_command:
+            await self._execute_auto_command(session_id, auto_command)
+
+        await db.update_session(session_id, lifecycle_status="active")
 
     async def _handle_agent_then_message(self, session_id: str, args: list[str]) -> dict[str, str]:
         """Start agent, wait for TUI to stabilize, then inject message."""
@@ -1834,20 +1866,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Run a single poller watch iteration (extracted for testing)."""
         sessions = await db.get_active_sessions()
         for session in sessions:
-            if (
-                not session.adapter_metadata
-                or not session.adapter_metadata.telegram
-                or not session.adapter_metadata.telegram.topic_id
-            ):
-                try:
-                    await self.client.ensure_ui_channels(session, session.title)
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to ensure UI channels for session %s: %s",
-                        session.session_id[:8],
-                        exc,
-                    )
-
             if session.last_input_origin == "telegram":
                 if (
                     not session.adapter_metadata
@@ -1981,19 +1999,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _ensure_output_polling(self, session: Session) -> None:
         if await polling_coordinator.is_polling(session.session_id):
             return
-        if (
-            not session.adapter_metadata
-            or not session.adapter_metadata.telegram
-            or not session.adapter_metadata.telegram.topic_id
-        ):
-            try:
-                await self.client.ensure_ui_channels(session, session.title)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to create UI channel for session %s: %s",
-                    session.session_id[:8],
-                    exc,
-                )
         if not await self._ensure_tmux_session(session):
             logger.warning("Tmux session missing for %s; polling skipped", session.session_id[:8])
             return

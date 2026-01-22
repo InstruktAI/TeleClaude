@@ -221,6 +221,15 @@ class SessionStartedEventDTO(BaseModel):  # type: ignore[explicit-any]
     data: SessionSummaryDTO
 
 
+class SessionUpdatedEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for session updates."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["session_updated"]
+    data: SessionSummaryDTO
+
+
 class SessionClosedDataDTO(BaseModel):  # type: ignore[explicit-any]
     """Data for session_closed event."""
 
