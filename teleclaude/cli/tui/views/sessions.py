@@ -1201,7 +1201,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
             last_rendered = i
             is_selected = i == self.selected_index
-            lines_used = self._render_item(stdscr, row, item, width, is_selected)
+            remaining = start_row + height - row
+            lines_used = self._render_item(stdscr, row, item, width, is_selected, remaining)
             # Map all lines of this item to its index (for mouse click)
             for offset in range(lines_used):
                 screen_row = row + offset
@@ -1219,7 +1220,15 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             self.scroll_offset,
         )
 
-    def _render_item(self, stdscr: CursesWindow, row: int, item: TreeNode, width: int, selected: bool) -> int:
+    def _render_item(
+        self,
+        stdscr: CursesWindow,
+        row: int,
+        item: TreeNode,
+        width: int,
+        selected: bool,
+        remaining: int,
+    ) -> int:
         """Render a single tree item.
 
         Args:
@@ -1235,6 +1244,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         indent = "  " * item.depth
         attr = curses.A_REVERSE if selected else 0
 
+        if remaining <= 0:
+            return 0
         if is_computer_node(item):
             name = item.data.computer.name
             session_count = item.data.session_count
@@ -1253,10 +1264,18 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
         if is_session_node(item):
-            return self._render_session(stdscr, row, item, width, selected)
+            return self._render_session(stdscr, row, item, width, selected, remaining)
         return 1
 
-    def _render_session(self, stdscr: CursesWindow, row: int, item: SessionNode, width: int, selected: bool) -> int:
+    def _render_session(
+        self,
+        stdscr: CursesWindow,
+        row: int,
+        item: SessionNode,
+        width: int,
+        selected: bool,
+        remaining: int,
+    ) -> int:
         """Render session with agent-colored text (1-3 lines).
 
         Color coding rules:
@@ -1274,6 +1293,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         Returns:
             Number of lines used (1-3 depending on content and collapsed state)
         """
+
+        if remaining <= 0:
+            return 0
 
         def _safe_addstr(target_row: int, text: str, attr: int) -> None:
             line = text[:width].ljust(width)
@@ -1342,6 +1364,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return 1
 
         lines_used = 1
+        if lines_used >= remaining:
+            return lines_used
 
         # Calculate content indent (align with agent name)
         # indent + "[X] ▶ " = where agent starts
@@ -1353,6 +1377,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         _safe_addstr(row + lines_used, line2, normal_attr)
         self._row_to_id_item[row + lines_used] = item
         lines_used += 1
+        if lines_used >= remaining:
+            return lines_used
 
         # Determine which field is "active" (highlight) based on state tracking
         active = self._active_field.get(session_id, ActivePane.NONE)
@@ -1368,6 +1394,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             line3 = f"{content_indent}[{input_time}] in: {input_text}"
             _safe_addstr(row + lines_used, line3, input_attr)
             lines_used += 1
+            if lines_used >= remaining:
+                return lines_used
 
         # Line 4: Last output (only if content exists)
         last_output = (session.last_output or "").strip()

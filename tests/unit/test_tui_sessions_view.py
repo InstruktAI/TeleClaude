@@ -499,7 +499,7 @@ class TestSessionsViewLogic:
         )
         screen = FakeScreen()
         width = 30
-        lines_used = sessions_view._render_session(screen, 0, session, width, False)
+        lines_used = sessions_view._render_session(screen, 0, session, width, False, 3)
 
         assert lines_used == 2
 
