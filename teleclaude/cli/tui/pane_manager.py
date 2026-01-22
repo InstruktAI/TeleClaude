@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Callable, Literal
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.tui import theme
 from teleclaude.config import config
 
 if TYPE_CHECKING:
@@ -70,6 +71,7 @@ class SessionPaneSpec:
     tmux_session_name: str
     computer_info: ComputerInfo | None
     is_sticky: bool
+    active_agent: str = ""
 
 
 LayoutCell = Literal["T"] | int | None
@@ -138,6 +140,7 @@ class TmuxPaneManager:
         sticky_session_ids: list[str],
         child_session_id: str | None,
         get_computer_info: Callable[[str], ComputerInfo | None],
+        focus: bool = True,
     ) -> None:
         """Apply a deterministic layout from session ids."""
         if not self._in_tmux:
@@ -157,6 +160,7 @@ class TmuxPaneManager:
                     tmux_session_name=tmux_session,
                     computer_info=get_computer_info(session.computer or "local"),
                     is_sticky=True,
+                    active_agent=session.active_agent,
                 )
             )
 
@@ -169,6 +173,7 @@ class TmuxPaneManager:
                     tmux_session_name=session.tmux_session_name,
                     computer_info=get_computer_info(session.computer or "local"),
                     is_sticky=False,
+                    active_agent=session.active_agent,
                 )
 
         child_tmux: str | None = None
@@ -187,7 +192,7 @@ class TmuxPaneManager:
         if self._layout_is_unchanged():
             if child_tmux != self.state.child_session:
                 self.update_child_session(child_tmux, child_computer)
-            if active_spec:
+            if focus and active_spec:
                 self.focus_pane_for_session(active_spec.session_id)
             return
 
@@ -313,13 +318,13 @@ class TmuxPaneManager:
         return (
             f'set-option -t {tmux_session_name} status-right "" \\; '
             f"set-option -t {tmux_session_name} status-right-length 0 \\; "
-            f'set-option -t {tmux_session_name} status-style "bg=default" \\; '
             f"attach-session -t {tmux_session_name}"
         )
 
     def show_session(
         self,
         tmux_session_name: str,
+        active_agent: str,
         child_tmux_session_name: str | None = None,
         computer_info: ComputerInfo | None = None,
     ) -> None:
@@ -330,6 +335,7 @@ class TmuxPaneManager:
 
         Args:
             tmux_session_name: The parent session's tmux session name
+            active_agent: Agent name for color styling
             child_tmux_session_name: Optional child/worker session name
             computer_info: Computer info for SSH (None = local)
         """
@@ -338,8 +344,9 @@ class TmuxPaneManager:
             return
 
         logger.debug(
-            "show_session: %s (child=%s, remote=%s, sticky_count=%d)",
+            "show_session: %s (agent=%s, child=%s, remote=%s, sticky_count=%d)",
             tmux_session_name,
+            active_agent,
             child_tmux_session_name,
             computer_info.is_remote if computer_info else False,
             len(self._sticky_specs),
@@ -350,6 +357,7 @@ class TmuxPaneManager:
             tmux_session_name=tmux_session_name,
             computer_info=computer_info,
             is_sticky=False,
+            active_agent=active_agent,
         )
         self._active_child_tmux = child_tmux_session_name
         self._active_child_computer = computer_info
@@ -371,6 +379,7 @@ class TmuxPaneManager:
     def toggle_session(
         self,
         tmux_session_name: str,
+        active_agent: str,
         child_tmux_session_name: str | None = None,
         computer_info: ComputerInfo | None = None,
     ) -> bool:
@@ -384,6 +393,7 @@ class TmuxPaneManager:
 
         Args:
             tmux_session_name: The session's tmux session name
+            active_agent: Agent name for color styling
             child_tmux_session_name: Optional child/worker session name
             computer_info: Computer info for SSH (None = local)
 
@@ -395,8 +405,9 @@ class TmuxPaneManager:
             return False
 
         logger.debug(
-            "toggle_session: %s (child=%s, computer=%s, sticky_count=%d)",
+            "toggle_session: %s (agent=%s, child=%s, computer=%s, sticky_count=%d)",
             tmux_session_name,
+            active_agent,
             child_tmux_session_name,
             computer_info.name if computer_info else "local",
             len(self.state.sticky_pane_ids),
@@ -410,7 +421,7 @@ class TmuxPaneManager:
 
         # Otherwise show it
         logger.debug("toggle_session: showing session")
-        self.show_session(tmux_session_name, child_tmux_session_name, computer_info)
+        self.show_session(tmux_session_name, active_agent, child_tmux_session_name, computer_info)
         return True
 
     @property
@@ -615,6 +626,75 @@ class TmuxPaneManager:
             self.state.sticky_pane_ids.append(pane_id)
             self.state.sticky_session_to_pane[spec.session_id] = pane_id
 
+        # Apply agent-colored background haze
+        self._set_pane_background(pane_id, spec.tmux_session_name, spec.active_agent)
+
+    def _set_pane_background(self, pane_id: str, tmux_session_name: str, agent: str) -> None:
+        """Set per-pane background color and status bar with agent haze.
+
+        Args:
+            pane_id: Tmux pane ID
+            tmux_session_name: Tmux session name (for status bar styling)
+            agent: Agent name for color calculation
+        """
+        # Set inactive pane background (10% haze) and foreground (agent normal color)
+        bg_color = theme.get_agent_pane_background(agent)
+        normal_color_code = theme.get_agent_normal_color(agent)
+        self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg=colour{normal_color_code},bg={bg_color}")
+
+        # Set active pane foreground (agent normal color) with terminal default background
+        normal_color_code = theme.get_agent_normal_color(agent)
+        if theme.get_current_mode():  # dark mode
+            terminal_bg = theme.get_terminal_background()
+            self._run_tmux(
+                "set", "-p", "-t", pane_id, "window-active-style", f"fg=colour{normal_color_code},bg={terminal_bg}"
+            )
+        else:  # light mode - use 'terminal' to get iTerm background
+            self._run_tmux(
+                "set", "-p", "-t", pane_id, "window-active-style", f"fg=colour{normal_color_code},bg=terminal"
+            )
+
+        # Set status bar background (5% haze)
+        # Preserve fg color, only update bg
+        status_bg_color = theme.get_agent_status_background(agent)
+        fg_color = theme.STATUS_FG_COLOR
+        self._run_tmux("set", "-t", tmux_session_name, "status-style", f"fg={fg_color},bg={status_bg_color}")
+        # Also set status-left-style and status-right-style to match
+        self._run_tmux("set", "-t", tmux_session_name, "status-left-style", f"fg={fg_color},bg={status_bg_color}")
+        self._run_tmux("set", "-t", tmux_session_name, "status-right-style", f"fg={fg_color},bg={status_bg_color}")
+        # Make status-left long enough to show full session name
+        self._run_tmux("set", "-t", tmux_session_name, "status-left-length", "50")
+        # Set window status (the [1:node*] part) to match
+        self._run_tmux(
+            "set", "-t", tmux_session_name, "window-status-current-style", f"fg={fg_color},bg={status_bg_color}"
+        )
+
+        # Override color 236 (message box backgrounds) for specific agents
+        if agent == "codex" and theme.get_current_mode():  # dark mode
+            # Use color 237 (slightly lighter gray) for Codex message boxes
+            self._run_tmux("set", "-p", "-t", pane_id, "pane-colours[236]", "#3a3a3a")
+
+    def reapply_agent_colors(self) -> None:
+        """Re-apply agent-colored backgrounds and status bars to all session panes.
+
+        Called when appearance theme changes (SIGUSR1) to restore agent colors
+        after global theme reload.
+        """
+        if not self._in_tmux:
+            return
+
+        # Re-apply colors to sticky session panes
+        for spec in self._sticky_specs:
+            pane_id = self.state.session_to_pane.get(spec.session_id)
+            if pane_id and self._get_pane_exists(pane_id):
+                self._set_pane_background(pane_id, spec.tmux_session_name, spec.active_agent)
+
+        # Re-apply colors to active session pane
+        if self._active_spec:
+            pane_id = self.state.session_to_pane.get(self._active_spec.session_id)
+            if pane_id and self._get_pane_exists(pane_id):
+                self._set_pane_background(pane_id, self._active_spec.tmux_session_name, self._active_spec.active_agent)
+
     def update_child_session(
         self,
         child_tmux_session_name: str | None,
@@ -694,6 +774,7 @@ class TmuxPaneManager:
                     tmux_session_name=tmux_session,
                     computer_info=get_computer_info(session_info.computer or "local"),
                     is_sticky=True,
+                    active_agent=session_info.active_agent,
                 )
             )
 

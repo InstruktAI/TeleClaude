@@ -358,6 +358,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             sticky_session_ids=[s.session_id for s in self.sticky_sessions],
             child_session_id=self._active_child_session_id,
             get_computer_info=self._get_computer_info,
+            focus=False,
         )
 
     def rebuild_for_focus(self) -> None:
@@ -463,7 +464,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if is_project_node(selected):
             return f"{back_hint}[n] Untitled"
         # computer
-        return f"{back_hint}[→] View Projects"
+        return f"{back_hint}[→] View Projects  [R] Restart Agents"
+
+    def get_session_ids_for_computer(self, computer_name: str) -> list[str]:
+        """Return session IDs for the given computer."""
+        if not computer_name:
+            return []
+        return [session.session_id for session in self._sessions if session.computer == computer_name]
 
     # move_up() and move_down() inherited from ScrollableViewMixin
     # Override them to track selection method
@@ -472,13 +479,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         """Move selection up (arrow key navigation)."""
         super().move_up()
         self._selection_method = "arrow"
-        self._focus_selected_pane()
 
     def move_down(self) -> None:
         """Move selection down (arrow key navigation)."""
         super().move_down()
         self._selection_method = "arrow"
-        self._focus_selected_pane()
 
     def _focus_selected_pane(self) -> None:
         """Focus the pane for currently selected session."""
@@ -734,6 +739,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             sticky_session_ids=[s.session_id for s in self.sticky_sessions],
             child_session_id=self._active_child_session_id,
             get_computer_info=self._get_computer_info,
+            focus=False,
         )
         logger.debug(
             "_activate_session: showing session in active pane (sticky_count=%d)",
@@ -749,6 +755,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 sticky_session_ids=[],
                 child_session_id=self._active_child_session_id,
                 get_computer_info=self._get_computer_info,
+                focus=False,
             )
             logger.debug("_rebuild_sticky_panes: no sticky sessions, hiding all panes")
             return
@@ -776,6 +783,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             sticky_session_ids=[s.session_id for s in self.sticky_sessions],
             child_session_id=self._active_child_session_id,
             get_computer_info=self._get_computer_info,
+            focus=False,
         )
 
     def _toggle_session_pane(self, item: SessionNode) -> None:
@@ -788,6 +796,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         session_id = session.session_id
         tmux_session = session.tmux_session_name or ""
         computer_name = session.computer or "local"
+        agent = session.active_agent
 
         logger.debug(
             "_toggle_session_pane: session_id=%s, tmux=%s, computer=%s",
@@ -818,20 +827,21 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                     break
 
         # Toggle pane visibility (handles both local and remote via SSH)
-        self.pane_manager.toggle_session(tmux_session, child_tmux_session, computer_info)
+        self.pane_manager.toggle_session(tmux_session, agent, child_tmux_session, computer_info)
 
     def _show_single_session_pane(self, item: SessionNode) -> None:
         """Show only the selected session in the side pane (no child split)."""
         session = item.data.session
         tmux_session = session.tmux_session_name or ""
         computer_name = session.computer or "local"
+        agent = session.active_agent
 
         if not tmux_session:
             logger.warning("_show_single_session_pane: tmux_session_name missing, cannot show")
             return
 
         computer_info = self._get_computer_info(computer_name)
-        self.pane_manager.show_session(tmux_session, None, computer_info)
+        self.pane_manager.show_session(tmux_session, agent, None, computer_info)
 
     def _start_session_for_project(self, stdscr: CursesWindow, project: ProjectInfo) -> None:
         """Open modal to start session on project.
@@ -870,6 +880,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     ) -> None:
         """Attach newly created session to the side pane immediately."""
         tmux_session_name = result.tmux_session_name or ""
+        agent = result.agent
         if not tmux_session_name:
             logger.warning("New session missing tmux_session_name, cannot attach")
             return
@@ -878,7 +889,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         if self.pane_manager.is_available:
             computer_info = self._get_computer_info(computer)
-            self.pane_manager.show_session(tmux_session_name, None, computer_info)
+            self.pane_manager.show_session(tmux_session_name, agent, None, computer_info)
         else:
             attach_tmux_from_result(result, stdscr)
 
@@ -1069,20 +1080,18 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         Returns:
             List of formatted lines for this item
         """
-        indent = "  " * item.depth
-
         if is_computer_node(item):
             name = item.data.computer.name
             session_count = item.data.session_count
             suffix = f"({session_count})" if session_count else ""
-            line = f"{indent}🖥  {name} {suffix}"
+            line = f"🖥  {name} {suffix}"
             return [line[:width]]
 
         if is_project_node(item):
             path = item.data.path
             session_count = len(item.children)
             suffix = f"({session_count})" if session_count else ""
-            line = f"{indent}📁 {path} {suffix}"
+            line = f"📁 {path} {suffix}"
             return [line[:width]]
 
         if is_session_node(item):
@@ -1106,7 +1115,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         session_id = session.session_id
         is_collapsed = session_id in self.collapsed_sessions
 
-        indent = "  " * item.depth
         agent = session.active_agent or "?"
         mode = session.thinking_mode or "?"
         title = session.title
@@ -1117,15 +1125,15 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Line 1: [idx] ▶/▼ agent/mode "title"
         lines: list[str] = []
-        line1 = f'{indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"'
+        line1 = f'[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"'
         lines.append(line1[:width])
 
         # If collapsed, only show title line
         if is_collapsed:
             return lines
 
-        # Calculate content indent (align with agent name)
-        content_indent = indent + "      "  # 6 chars for "[X] ▶ "
+        # Detail lines use 3-space indent
+        content_indent = "   "
 
         # Line 2 (expanded only): ID + last activity time
         activity_time = _format_time(session.last_activity)
@@ -1241,7 +1249,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         Returns:
             Number of lines used
         """
-        indent = "  " * item.depth
         attr = curses.A_REVERSE if selected else 0
 
         if remaining <= 0:
@@ -1250,14 +1257,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             name = item.data.computer.name
             session_count = item.data.session_count
             suffix = f"({session_count})" if session_count else ""
-            line = f"{indent}🖥  {name} {suffix}"
+            line = f"🖥  {name} {suffix}"
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
         if is_project_node(item):
             path = item.data.path
             session_count = len(item.children)
             suffix = f"({session_count})" if session_count else ""
-            line = f"{indent}📁 {path} {suffix}"
+            line = f"📁 {path} {suffix}"
             # Mute empty projects
             if not session_count and not selected:
                 attr = curses.A_DIM
@@ -1309,7 +1316,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         session_id = session.session_id
         is_collapsed = session_id in self.collapsed_sessions
 
-        indent = "  " * item.depth
         agent = session.active_agent or "?"
         mode = session.thinking_mode or "?"
         title = session.title
@@ -1350,8 +1356,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Line 1: [idx] ▶/▼ agent/mode "title"
         # Render [idx] with special attr if sticky, then rest with title_attr
         try:
-            stdscr.addstr(row, 0, indent, title_attr)  # type: ignore[attr-defined]
-            col = len(indent)
+            col = 0
             stdscr.addstr(row, col, idx_text, idx_attr if not selected else curses.A_REVERSE)  # type: ignore[attr-defined]
             col += len(idx_text)
             rest = f' {collapse_indicator} {agent}/{mode}  "{title}"'
@@ -1367,9 +1372,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if lines_used >= remaining:
             return lines_used
 
-        # Calculate content indent (align with agent name)
-        # indent + "[X] ▶ " = where agent starts
-        content_indent = indent + "      "  # 6 chars for "[X] ▶ "
+        # Detail lines use 3-space indent
+        content_indent = "   "
 
         # Line 2 (expanded only): ID + last activity time
         activity_time = _format_time(session.last_activity)

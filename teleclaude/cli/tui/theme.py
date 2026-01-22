@@ -48,6 +48,22 @@ _TAB_LINE_PAIR_ID = 23
 # Track current mode for reference
 _is_dark_mode: bool = True
 
+# Status bar foreground color (neutral gray for both dark/light modes)
+STATUS_FG_COLOR = "#727578"
+
+# Agent highlight color codes (xterm 256) for active pane foreground
+_AGENT_HIGHLIGHT_DARK = {
+    "claude": 180,  # Light tan/beige
+    "gemini": 183,  # Light purple
+    "codex": 153,  # LightSlateGrey (light stone with blue)
+}
+
+_AGENT_HIGHLIGHT_LIGHT = {
+    "claude": 94,  # Dark brown
+    "gemini": 90,  # Soft lilac
+    "codex": 24,  # Deep steel blue
+}
+
 _APPLE_DARK_LABEL = "Dark"
 
 
@@ -137,10 +153,10 @@ def init_colors() -> None:
     # Dark mode: muted is darker, highlight is lighter.
     # Light mode: muted is lighter, highlight is darker.
     if _is_dark_mode:
-        # Claude (orange tones) - muted darker, highlight lighter in dark mode
-        curses.init_pair(1, 130, -1)  # Muted: lighter orange/brown
-        curses.init_pair(2, 172, -1)  # Normal: orange (original Claude color)
-        curses.init_pair(3, 214, -1)  # Highlight: brighter yellow-orange
+        # Claude (terra/brown tones) - muted darker, highlight lighter in dark mode
+        curses.init_pair(1, 94, -1)  # Muted: dark brown
+        curses.init_pair(2, 137, -1)  # Normal: light brown/tan
+        curses.init_pair(3, 180, -1)  # Highlight: light tan/beige
 
         # Gemini (lilac/purple tones) - muted darker, highlight lighter
         curses.init_pair(4, 103, -1)  # Muted: lighter purple for dark mode
@@ -149,13 +165,13 @@ def init_colors() -> None:
 
         # Codex (steel blue tones) - muted darker, highlight lighter
         curses.init_pair(7, 67, -1)  # Muted: deep steel blue
-        curses.init_pair(8, 109, -1)  # Normal: steel blue
-        curses.init_pair(9, 110, -1)  # Highlight: light steel blue
+        curses.init_pair(8, 110, -1)  # Normal: CadetBlue (grey-blue balanced)
+        curses.init_pair(9, 153, -1)  # Highlight: LightSlateGrey (light stone with blue)
     else:
-        # Claude (orange tones)
-        curses.init_pair(1, 178, -1)  # Muted: light orange (slightly darker)
-        curses.init_pair(2, 166, -1)  # Normal: orange (slightly darker)
-        curses.init_pair(3, 124, -1)  # Highlight: dark orange/brown (slightly darker)
+        # Claude (terra/brown tones)
+        curses.init_pair(1, 180, -1)  # Muted: light tan/beige
+        curses.init_pair(2, 137, -1)  # Normal: light brown/tan
+        curses.init_pair(3, 94, -1)  # Highlight: dark brown
 
         # Gemini (lilac/purple tones)
         curses.init_pair(4, 177, -1)  # Muted: light purple (slightly darker)
@@ -164,7 +180,7 @@ def init_colors() -> None:
 
         # Codex (steel blue tones)
         curses.init_pair(7, 110, -1)  # Muted: light steel blue (slightly darker)
-        curses.init_pair(8, 67, -1)  # Normal: steel blue (bluish metal)
+        curses.init_pair(8, 67, -1)  # Normal: steel blue (bluish metal, less cyan)
         curses.init_pair(9, 24, -1)  # Highlight: deep steel blue (slightly darker)
 
     # Disabled/unavailable
@@ -290,3 +306,232 @@ def get_tab_line_attr() -> int:
     if _is_dark_mode:
         return curses.color_pair(_TAB_LINE_PAIR_ID)
     return curses.A_NORMAL
+
+
+# Agent color hex values (for tmux pane background hazes)
+_AGENT_HEX_COLORS_DARK: dict[str, str] = {
+    "claude": "#af875f",  # 137: light brown/tan
+    "gemini": "#af87ff",  # 141: lilac/purple
+    "codex": "#87afaf",  # 109: steel blue/cyan
+}
+
+_AGENT_HEX_COLORS_LIGHT: dict[str, str] = {
+    "claude": "#af875f",  # 137: light brown/tan
+    "gemini": "#af5fff",  # 135: darker lilac
+    "codex": "#5f8787",  # 67: darker steel blue
+}
+
+# Base inactive pane background (from window-style setting)
+_BASE_INACTIVE_BG_DARK = "#202529"
+_BASE_INACTIVE_BG_LIGHT = "#e8e8e8"  # Light gray for light mode
+
+# Configurable haze percentages (0.0 to 1.0)
+# Inactive pane background: 10% agent color, 90% base color
+_HAZE_PERCENTAGE = 0.10
+# Active pane background: 2% agent color, 98% base color (most subtle)
+_ACTIVE_HAZE_PERCENTAGE = 0.02
+# Status bar background: 5% agent color, 95% base color (subtle)
+_STATUS_HAZE_PERCENTAGE = 0.05
+
+
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    """Convert hex color to RGB tuple.
+
+    Args:
+        hex_color: Hex color string (e.g., "#d78700")
+
+    Returns:
+        RGB tuple (r, g, b) with values 0-255
+    """
+    hex_color = hex_color.lstrip("#")
+    return (
+        int(hex_color[0:2], 16),
+        int(hex_color[2:4], 16),
+        int(hex_color[4:6], 16),
+    )
+
+
+def _rgb_to_hex(r: int, g: int, b: int) -> str:
+    """Convert RGB tuple to hex color.
+
+    Args:
+        r: Red value (0-255)
+        g: Green value (0-255)
+        b: Blue value (0-255)
+
+    Returns:
+        Hex color string (e.g., "#d78700")
+    """
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def blend_colors(base_hex: str, agent_hex: str, percentage: float) -> str:
+    """Blend two colors with a configurable percentage.
+
+    Formula: new_rgb = base_rgb × (1 - percentage) + agent_rgb × percentage
+
+    Args:
+        base_hex: Base color hex (e.g., "#202529")
+        agent_hex: Agent color hex (e.g., "#d78700")
+        percentage: Blend percentage (0.0 to 1.0, e.g., 0.10 for 10%)
+
+    Returns:
+        Blended hex color
+    """
+    base_r, base_g, base_b = _hex_to_rgb(base_hex)
+    agent_r, agent_g, agent_b = _hex_to_rgb(agent_hex)
+
+    blended_r = int(base_r * (1 - percentage) + agent_r * percentage)
+    blended_g = int(base_g * (1 - percentage) + agent_g * percentage)
+    blended_b = int(base_b * (1 - percentage) + agent_b * percentage)
+
+    return _rgb_to_hex(blended_r, blended_g, blended_b)
+
+
+def get_agent_pane_background(agent: str) -> str:
+    """Get background color for an agent's pane with configurable haze.
+
+    Blends the agent's color with the base inactive background color
+    to create a subtle haze effect.
+
+    Args:
+        agent: Agent name ("claude", "gemini", "codex", or unknown)
+
+    Returns:
+        Hex color string for tmux window-style background
+    """
+    if _is_dark_mode:
+        agent_colors = _AGENT_HEX_COLORS_DARK
+        base_bg = _BASE_INACTIVE_BG_DARK
+    else:
+        agent_colors = _AGENT_HEX_COLORS_LIGHT
+        base_bg = _BASE_INACTIVE_BG_LIGHT
+
+    agent_color = agent_colors.get(agent)
+    if not agent_color:
+        # Unknown agent: return base background
+        return base_bg
+
+    return blend_colors(base_bg, agent_color, _HAZE_PERCENTAGE)
+
+
+def get_agent_active_pane_background(agent: str) -> str:
+    """Get background color for an agent's active pane with very subtle haze.
+
+    Blends the agent's color with the base inactive background color
+    using the most subtle percentage for active panes.
+
+    Args:
+        agent: Agent name ("claude", "gemini", "codex", or unknown)
+
+    Returns:
+        Hex color string for tmux window-active-style background
+    """
+    if _is_dark_mode:
+        agent_colors = _AGENT_HEX_COLORS_DARK
+        base_bg = _BASE_INACTIVE_BG_DARK
+    else:
+        agent_colors = _AGENT_HEX_COLORS_LIGHT
+        base_bg = _BASE_INACTIVE_BG_LIGHT
+
+    agent_color = agent_colors.get(agent)
+    if not agent_color:
+        # Unknown agent: return base background
+        return base_bg
+
+    return blend_colors(base_bg, agent_color, _ACTIVE_HAZE_PERCENTAGE)
+
+
+def get_agent_status_background(agent: str) -> str:
+    """Get background color for an agent's status bar with subtle haze.
+
+    Blends the agent's color with the base inactive background color
+    using a more subtle percentage for status bars.
+
+    Args:
+        agent: Agent name ("claude", "gemini", "codex", or unknown)
+
+    Returns:
+        Hex color string for tmux status-style background
+    """
+    if _is_dark_mode:
+        agent_colors = _AGENT_HEX_COLORS_DARK
+        base_bg = _BASE_INACTIVE_BG_DARK
+    else:
+        agent_colors = _AGENT_HEX_COLORS_LIGHT
+        base_bg = _BASE_INACTIVE_BG_LIGHT
+
+    agent_color = agent_colors.get(agent)
+    if not agent_color:
+        # Unknown agent: return base background
+        return base_bg
+
+    return blend_colors(base_bg, agent_color, _STATUS_HAZE_PERCENTAGE)
+
+
+def get_agent_highlight_color(agent: str) -> int:
+    """Get xterm 256 color code for agent's highlight color (for active pane foreground).
+
+    Args:
+        agent: Agent name ("claude", "gemini", "codex", or unknown)
+
+    Returns:
+        xterm 256 color code for the agent's highlight color (default: 153)
+    """
+    if _is_dark_mode:
+        return _AGENT_HIGHLIGHT_DARK.get(agent, 153)
+    return _AGENT_HIGHLIGHT_LIGHT.get(agent, 24)
+
+
+def get_terminal_background() -> str:
+    """Get the terminal's actual default background color.
+
+    Returns black for dark mode, white for light mode (pure terminal defaults).
+
+    Returns:
+        Hex color string for terminal background
+    """
+    if _is_dark_mode:
+        return "#000000"  # Pure black for dark mode
+    return "#ffffff"  # Pure white for light mode
+
+
+def get_agent_muted_color(agent: str) -> int:
+    """Get xterm 256 color code for agent's muted color (for active pane foreground).
+
+    Args:
+        agent: Agent name ("claude", "gemini", "codex", or unknown)
+
+    Returns:
+        xterm 256 color code for the agent's muted color
+    """
+    # In dark mode: claude=94, gemini=103, codex=67
+    # In light mode: claude=180, gemini=177, codex=110
+    if _is_dark_mode:
+        return {"claude": 94, "gemini": 103, "codex": 67}.get(agent, 94)
+    return {"claude": 180, "gemini": 177, "codex": 110}.get(agent, 180)
+
+
+def get_agent_normal_color(agent: str) -> int:
+    """Get xterm 256 color code for agent's normal color (for inactive pane foreground).
+
+    Args:
+        agent: Agent name ("claude", "gemini", "codex", or unknown)
+
+    Returns:
+        xterm 256 color code for the agent's normal color
+    """
+    # Map agent to their color pair ID (normal = second color)
+    agent_pairs = {
+        "claude": 2,
+        "gemini": 5,
+        "codex": 8,
+    }
+    pair_id = agent_pairs.get(agent, 2)
+
+    # Extract the color code from the pair
+    # In dark mode: claude=137, gemini=141, codex=110
+    # In light mode: claude=137, gemini=135, codex=67
+    if _is_dark_mode:
+        return {2: 137, 5: 141, 8: 110}.get(pair_id, 137)
+    return {2: 137, 5: 135, 8: 67}.get(pair_id, 137)

@@ -33,6 +33,7 @@ class CreateSessionResponseDTO(BaseModel):  # type: ignore[explicit-any]
     status: Literal["success", "error"]
     session_id: str | None = None
     tmux_session_name: str | None = None
+    agent: Literal["claude", "gemini", "codex"] | None = None
     error: str | None = None
 
 

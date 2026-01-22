@@ -345,6 +345,7 @@ class APIServer:
                     status="success",
                     session_id=str(session_id) if session_id else None,
                     tmux_session_name=str(tmux_session_name) if tmux_session_name else None,
+                    agent=launch_intent.agent if launch_intent else request.agent,
                 )
             except HTTPException as exc:
                 raise exc

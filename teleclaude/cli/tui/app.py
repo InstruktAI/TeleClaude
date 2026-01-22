@@ -27,7 +27,7 @@ from teleclaude.cli.models import (
 )
 from teleclaude.cli.tui.pane_manager import TmuxPaneManager
 from teleclaude.cli.tui.theme import get_tab_line_attr, init_colors
-from teleclaude.cli.tui.tree import is_session_node
+from teleclaude.cli.tui.tree import is_computer_node, is_session_node
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NotificationLevel
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
@@ -486,6 +486,8 @@ class TelecApp:
 
             if self._consume_theme_refresh():
                 init_colors()
+                # Re-apply agent colors after theme change
+                self.pane_manager.reapply_agent_colors()
                 self._render(stdscr)
                 continue
 
@@ -712,6 +714,37 @@ class TelecApp:
                         except Exception as e:
                             logger.error("Error restarting agent: %s", e)
                             self.notify(f"Restart failed: {e}", NotificationLevel.ERROR)
+                elif is_computer_node(selected):
+                    computer_name = selected.data.computer.name
+                    session_ids = view.get_session_ids_for_computer(computer_name)
+                    if not session_ids:
+                        self.notify(
+                            f"No sessions to restart on {computer_name}",
+                            NotificationLevel.INFO,
+                        )
+                        return
+                    logger.debug(
+                        "Agent restart requested for computer %s (%d sessions)",
+                        computer_name,
+                        len(session_ids),
+                    )
+                    try:
+                        successes, failures = asyncio.get_event_loop().run_until_complete(
+                            self._restart_sessions(session_ids)
+                        )
+                        if failures:
+                            self.notify(
+                                f"Restarted {successes}/{len(session_ids)} sessions on {computer_name}",
+                                NotificationLevel.ERROR,
+                            )
+                        else:
+                            self.notify(
+                                f"Restarted {successes} sessions on {computer_name}",
+                                NotificationLevel.INFO,
+                            )
+                    except Exception as e:
+                        logger.error("Error restarting agents: %s", e)
+                        self.notify(f"Restart failed: {e}", NotificationLevel.ERROR)
 
         # View-specific actions
         else:
@@ -725,6 +758,25 @@ class TelecApp:
                 view.handle_key(key, stdscr)
             else:
                 logger.warning("No view found for current_view=%d", self.current_view)
+
+    async def _restart_sessions(self, session_ids: list[str]) -> tuple[int, int]:
+        """Restart multiple sessions in parallel.
+
+        Returns:
+            Tuple of (successes, failures)
+        """
+        results = await asyncio.gather(
+            *(self.api.agent_restart(session_id) for session_id in session_ids),
+            return_exceptions=True,
+        )
+        successes = 0
+        failures = 0
+        for result in results:
+            if isinstance(result, Exception) or result is False:
+                failures += 1
+            else:
+                successes += 1
+        return successes, failures
 
     def _switch_view(self, view_num: int) -> None:
         """Switch to a different view.
