@@ -105,7 +105,7 @@ class OutputPoller:
             await asyncio.sleep(1.0)
             started_at = time.time()
             last_output_changed_at = started_at
-            last_yield_time = started_at  # Track when we last yielded (wall-clock, not tick-based)
+            last_yield_time = started_at - current_update_interval  # Force first send after interval check
             last_summary_time = started_at
             logger.trace("Polling started for %s", session_id[:8])
 
