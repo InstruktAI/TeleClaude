@@ -1,14 +1,10 @@
 # Roadmap
 
-> **Last Updated**: 2026-01-16
+> **Last Updated**: 2026-01-23
 > **Status Legend**: `[ ]` = Pending | `[.]` = Ready | `[>]` = In Progress
 > (DONE work is tracked in [delivered.md](./delivered.md))
 
 ---
-
-## TUI Asccii banner
-
-- [>] banner-animations
 
 ## MCP Role-Based Tool Filtering
 
