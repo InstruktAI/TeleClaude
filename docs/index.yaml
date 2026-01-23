@@ -95,6 +95,12 @@ snippets:
   scope: project
   path: docs/policy/adapter-boundaries.md
   requires: []
+- id: policy/agent-service-control
+  description: Guardrails for agent-run service control in this repo.
+  type: policy
+  scope: project
+  path: docs/policy/agent-service-control.md
+  requires: []
 - id: policy/master-bot-registration
   description: Policy for Telegram command registration in multi-computer setups.
   type: policy

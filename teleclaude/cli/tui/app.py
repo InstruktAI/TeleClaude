@@ -43,6 +43,7 @@ logger = get_logger(__name__)
 
 # WebSocket update polling interval in milliseconds
 WS_POLL_INTERVAL_MS = 100
+WS_HEAL_REFRESH_S = 5.0
 
 # Mouse mask for curses - clicks, double-clicks, scroll wheel (NOT drag to allow text selection)
 MOUSE_MASK = (
@@ -178,6 +179,7 @@ class TelecApp:
         self._theme_refresh_requested = False
         self._session_status_cache: dict[str, str] = {}
         self._last_active_pane_id: str | None = None
+        self._last_ws_heal = time.monotonic()
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
@@ -486,6 +488,7 @@ class TelecApp:
             # Process any pending WebSocket events
             ws_updated = self._process_ws_events()
             pane_updated = self._sync_selection_with_active_pane()
+            ws_healed = self._maybe_heal_ws()
 
             key = stdscr.getch()  # type: ignore[attr-defined]
 
@@ -506,6 +509,8 @@ class TelecApp:
                 self._render(stdscr)
             elif ws_updated or pane_updated:
                 # Re-render if WebSocket events were processed (no key press)
+                self._render(stdscr)
+            elif ws_healed:
                 self._render(stdscr)
 
     def _consume_theme_refresh(self) -> bool:
@@ -538,6 +543,20 @@ class TelecApp:
             return True
 
         return False
+
+    def _maybe_heal_ws(self, now: float | None = None) -> bool:
+        """Auto-heal when WebSocket is down by refreshing periodically."""
+        if self.api.ws_connected:
+            self._last_ws_heal = now or time.monotonic()
+            return False
+
+        current = now or time.monotonic()
+        if current - self._last_ws_heal < WS_HEAL_REFRESH_S:
+            return False
+
+        self._last_ws_heal = current
+        asyncio.get_event_loop().run_until_complete(self.refresh_data())
+        return True
 
     def _install_appearance_hook(self) -> None:
         if not os.environ.get("TMUX"):

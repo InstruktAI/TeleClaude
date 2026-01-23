@@ -352,12 +352,12 @@ def main() -> None:
 
         if os.path.isdir(master_docs_dir):
             deploy_docs_root = os.path.join(os.path.expanduser("~/.teleclaude"), "docs")
-            if os.path.exists(deploy_docs_root):
-                shutil.rmtree(deploy_docs_root)
+            if os.path.islink(deploy_docs_root):
+                os.unlink(deploy_docs_root)
             os.makedirs(os.path.dirname(deploy_docs_root), exist_ok=True)
-            shutil.copytree(master_docs_dir, deploy_docs_root)
+            os.symlink(master_docs_dir, deploy_docs_root)
             rewrite_global_index(
-                os.path.join(deploy_docs_root, "index.yaml"),
+                os.path.join(master_docs_dir, "index.yaml"),
                 os.path.expanduser("~/.teleclaude"),
             )
 

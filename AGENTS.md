@@ -8,6 +8,7 @@ This file provides guidance to agents when working with code in this repository.
 
 @~/.teleclaude/docs/baseline/index.md
 @~/.teleclaude/docs/software-development/procedure/scaffolding/python.md
+@docs/policy/agent-service-control.md
 
 ## 🚨 CRITICAL RULES (Never Break These)
 
@@ -79,14 +80,11 @@ The service is ALWAYS running (24/7 requirement). Never manually start the daemo
 
 ## Docs + Agent Artifacts Auto-Sync
 
-Run `telec init` from a project root to build docs indexes, distribute agent artifacts, and
-install an OS watcher that re-runs the sync on changes to `.agents`, `docs`, `agents/docs`,
-or `teleclaude.yml`.
+Docs sync is handled by the watcher installed via human setup. Agents must **not** run
+`telec init` or any service-control scripts. When changes are made, use only:
 
 1. **Make code changes** as needed
 2. **Restart daemon**: `make restart`
-   - Runs `systemctl restart teleclaude` (proper systemd restart)
-   - Daemon restarts in ~1-2 seconds
 3. **Verify**: `make status`
 4. **Monitor logs**: `instrukt-ai-logs teleclaude --since 10m` (single log file; do not pass `log_filename` in code)
 

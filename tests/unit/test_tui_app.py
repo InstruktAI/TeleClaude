@@ -66,3 +66,45 @@ class TestTelecAppWebSocketEvents:
         app._process_ws_events()
 
         assert app.refresh_called is True
+
+    def test_ws_heal_refreshes_when_disconnected(self):
+        """Disconnected WebSocket should trigger periodic refresh."""
+
+        class DummyAPI(MockAPIClient):
+            ws_connected = False
+
+        class DummyApp(TelecApp):
+            def __init__(self, api):
+                super().__init__(api)
+                self.refresh_called = False
+
+            async def refresh_data(self, *, include_todos: bool | None = None) -> None:
+                self.refresh_called = True
+
+        app = DummyApp(DummyAPI())
+        app._last_ws_heal = 0.0
+        refreshed = app._maybe_heal_ws(now=10.0)
+
+        assert refreshed is True
+        assert app.refresh_called is True
+
+    def test_ws_heal_skips_when_connected(self):
+        """Connected WebSocket should not trigger refresh."""
+
+        class DummyAPI(MockAPIClient):
+            ws_connected = True
+
+        class DummyApp(TelecApp):
+            def __init__(self, api):
+                super().__init__(api)
+                self.refresh_called = False
+
+            async def refresh_data(self, *, include_todos: bool | None = None) -> None:
+                self.refresh_called = True
+
+        app = DummyApp(DummyAPI())
+        app._last_ws_heal = 0.0
+        refreshed = app._maybe_heal_ws(now=10.0)
+
+        assert refreshed is False
+        assert app.refresh_called is False

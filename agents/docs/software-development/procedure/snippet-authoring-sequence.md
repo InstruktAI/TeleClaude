@@ -21,7 +21,7 @@ Authoring is performed by AI. Write snippets for AI execution and maintenance, w
 8. **Use type-specific structure** — procedures are steps, policies are rules, references are structured lookups.
 9. **Minimize the body** — include only what is required to act correctly.
 10. **Validate against reality** — ensure alignment with code, process, and system behavior.
-11. **Rebuild and validate** — run docs sync (`telec init` or `scripts/build_snippet_index.py`), which regenerates indexes automatically.
+11. **Rebuild and validate** — run `~/.teleclaude/scripts/build_snippet_index.py`, which regenerates indexes automatically.
 
 See also
 

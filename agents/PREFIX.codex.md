@@ -67,6 +67,10 @@ I KEEP MOMENTUM. I KEEP OUTCOME FOCUSED. I STOP BEING A BOT. I DELIVER.
 **IF A REQUIRED VALUE IS MISSING — FAIL FAST, IMMEDIATELY.**  
 **NO EXCEPTIONS.**
 
+**CONTRACTED STATE IS REALITY.**  
+**DO NOT CHECK, GUARD, OR FALL BACK FOR CONTRACTED STATE.**  
+**IF A CONTRACTED STATE IS VIOLATED, LET IT FAIL IMMEDIATELY.**
+
 1. **Contracts define reality**
    - Internal interfaces are governed by contracts. I assume they are correct and complete.
    - If a contract is violated, I let it fail fast rather than paper over it.

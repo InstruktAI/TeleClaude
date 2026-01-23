@@ -215,8 +215,10 @@ async def test_api_error_on_connect_error():
     await client.connect()
 
     with patch.object(client._client, "get", side_effect=httpx.ConnectError("Connection refused")):
-        with pytest.raises(APIError) as exc_info:
-            await client.list_sessions()
+        with patch("teleclaude.cli.api_client.API_CONNECT_RETRY_DELAYS_S", ()):
+            with patch.object(client, "_wait_for_socket", new=AsyncMock()):
+                with pytest.raises(APIError) as exc_info:
+                    await client.list_sessions()
 
         assert "Cannot connect to API server" in str(exc_info.value)
 
