@@ -206,13 +206,24 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
 def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
     target = snippets_root / "index.yaml"
     payload = build_index_payload(project_root, snippets_root)
+    if snippets_root == project_root / "agents" / "docs" and project_root == REPO_ROOT:
+        global_root = Path.home() / ".teleclaude"
+        payload["project_root"] = str(global_root)
+        payload["snippets_root"] = str(global_root / "docs")
+        for snippet in payload["snippets"]:
+            if snippet["path"].startswith("agents/docs/"):
+                snippet["path"] = snippet["path"].replace("agents/docs/", "docs/", 1)
     if not payload["snippets"]:
         if target.exists():
             target.unlink()
         return target
     target.parent.mkdir(parents=True, exist_ok=True)
-    with open(target, "w", encoding="utf-8") as handle:
-        yaml.safe_dump(payload, handle, sort_keys=False, allow_unicode=False)
+    rendered = yaml.safe_dump(payload, sort_keys=False, allow_unicode=False)
+    if target.exists():
+        existing = target.read_text(encoding="utf-8")
+        if existing == rendered:
+            return target
+    target.write_text(rendered, encoding="utf-8")
     return target
 
 
