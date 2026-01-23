@@ -7,7 +7,7 @@ import queue
 import signal
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import nest_asyncio
 from instrukt_ai_logging import get_logger
@@ -25,6 +25,9 @@ from teleclaude.cli.models import (
     TodoInfo,
     WsEvent,
 )
+from teleclaude.cli.tui.animation_colors import palette_registry
+from teleclaude.cli.tui.animation_engine import AnimationEngine
+from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger
 from teleclaude.cli.tui.pane_manager import TmuxPaneManager
 from teleclaude.cli.tui.theme import get_tab_line_attr, init_colors
 from teleclaude.cli.tui.tree import is_computer_node, is_session_node
@@ -34,6 +37,7 @@ from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import BANNER_HEIGHT, render_banner
 from teleclaude.cli.tui.widgets.footer import Footer
 from teleclaude.cli.tui.widgets.tab_bar import TabBar
+from teleclaude.config import config
 from teleclaude.constants import LOCAL_COMPUTER
 
 # Allow nested event loops (required for async calls inside curses sync loop)
@@ -181,6 +185,11 @@ class TelecApp:
         self._last_active_pane_id: str | None = None
         self._last_ws_heal = time.monotonic()
 
+        # Animation system
+        self.animation_engine = AnimationEngine()
+        self.periodic_trigger = PeriodicTrigger(self.animation_engine)
+        self.activity_trigger = ActivityTrigger(self.animation_engine)
+
     async def initialize(self) -> None:
         """Load initial data and create views."""
         await self.api.connect()
@@ -202,6 +211,12 @@ class TelecApp:
             self.pane_manager,
             notify=self.notify,
         )
+
+        # Start animation triggers
+        self.animation_engine.is_enabled = config.ui.animations_enabled
+        palette_registry.initialize_colors()
+        self.periodic_trigger.interval_sec = config.ui.animations_periodic_interval
+        self.periodic_trigger.task = asyncio.create_task(self.periodic_trigger.start())
 
         # Now refresh to populate views with data
         await self.refresh_data()
@@ -373,6 +388,18 @@ class TelecApp:
 
             elif isinstance(event, SessionUpdatedEvent):
                 updated_session = event.data
+
+                # Trigger animation on any update (activity pulse)
+                if updated_session.active_agent:
+                    self.activity_trigger.on_agent_activity(
+                        updated_session.active_agent,
+                        is_big=True,  # Trigger for big banner if it will be shown
+                    )
+                    self.activity_trigger.on_agent_activity(
+                        updated_session.active_agent,
+                        is_big=False,  # Trigger for logo if it will be shown
+                    )
+
                 old_status = self._session_status_cache.get(updated_session.session_id)
                 new_status = updated_session.status
                 if old_status and old_status != new_status:
@@ -863,6 +890,9 @@ class TelecApp:
         stdscr.erase()  # type: ignore[attr-defined]  # erase() doesn't affect scroll buffer
         height, width = stdscr.getmaxyx()  # type: ignore[attr-defined]
 
+        # Update animations
+        self.animation_engine.update()
+
         # Calculate total pane count (1 TUI pane + session panes)
         sessions_view = self.views.get(1)
         total_panes = 1  # TUI pane
@@ -876,7 +906,7 @@ class TelecApp:
         # Hide banner for 4 or 6 panes (optimizes vertical space for grid layouts)
         show_banner = total_panes not in (4, 6)
         if show_banner:
-            render_banner(stdscr, 0, width)
+            render_banner(stdscr, 0, width, self.animation_engine)
 
         # Row after banner: Tab bar (3 rows for browser-style tabs)
         tab_row = BANNER_HEIGHT if show_banner else 0
@@ -886,7 +916,7 @@ class TelecApp:
 
         # When banner is hidden, show TELECLAUDE ASCII art at top right (render after tab bar)
         if not show_banner:
-            self._render_hidden_banner_header(stdscr, width)
+            self._render_hidden_banner_header(stdscr, width, self.animation_engine)
 
         # Row after tab bar: empty row for spacing, then breadcrumb (if focused)
         content_start = tab_row + TabBar.HEIGHT + 1  # +HEIGHT for tab bar + 1 for spacing
@@ -965,12 +995,15 @@ class TelecApp:
         except curses.error:
             pass  # Screen too small
 
-    def _render_hidden_banner_header(self, stdscr: object, width: int) -> None:
+    def _render_hidden_banner_header(
+        self, stdscr: object, width: int, animation_engine: Optional[AnimationEngine] = None
+    ) -> None:
         """Render TELECLAUDE ASCII art logo at top right when banner is hidden.
 
         Args:
             stdscr: Curses screen object
             width: Screen width
+            animation_engine: Optional animation engine for colors
         """
         logo_lines = [
             "▀█▀ ▛▀▀ ▌   ▛▀▀ ▛▀▜ ▌   ▞▀▚ ▌ ▐ ▛▀▚ ▛▀▀",
@@ -983,7 +1016,13 @@ class TelecApp:
             try:
                 start_col = width - logo_width
                 for i, line in enumerate(logo_lines):
-                    stdscr.addstr(i, start_col, line)  # type: ignore[attr-defined]
+                    for j, char in enumerate(line):
+                        attr = curses.A_NORMAL
+                        if animation_engine:
+                            color_idx = animation_engine.get_color(j, i, is_big=False)
+                            if color_idx is not None:
+                                attr = curses.color_pair(color_idx)
+                        stdscr.addstr(i, start_col + j, char, attr)  # type: ignore[attr-defined]
             except curses.error:
                 pass  # Ignore if can't render
 

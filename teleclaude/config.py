@@ -156,12 +156,21 @@ class TelegramConfig:
 
 
 @dataclass
+class UIConfig:
+    """TUI display settings."""
+
+    animations_enabled: bool
+    animations_periodic_interval: int
+
+
+@dataclass
 class Config:
     database: DatabaseConfig
     computer: ComputerConfig
     redis: RedisConfig
     telegram: TelegramConfig
     agents: Dict[str, AgentConfig]
+    ui: UIConfig
 
 
 # Default configuration values (single source of truth)
@@ -198,6 +207,10 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
         "codex": {
             "command": "codex --dangerously-bypass-approvals-and-sandbox --search",
         },
+    },
+    "ui": {
+        "animations_enabled": True,
+        "animations_periodic_interval": 60,
     },
 }
 
@@ -255,6 +268,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
     comp_raw = raw["computer"]
     redis_raw = raw["redis"]
     tg_raw = raw["telegram"]
+    ui_raw = raw["ui"]
     agents_raw = raw.get("agents", {})
 
     # Import AGENT_METADATA from constants
@@ -306,6 +320,10 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
             trusted_bots=list(tg_raw["trusted_bots"]),  # type: ignore[index,misc]
         ),
         agents=agents_registry,
+        ui=UIConfig(
+            animations_enabled=bool(ui_raw["animations_enabled"]),  # type: ignore[index,misc]
+            animations_periodic_interval=int(ui_raw["animations_periodic_interval"]),  # type: ignore[index,misc]
+        ),
     )
 
 
