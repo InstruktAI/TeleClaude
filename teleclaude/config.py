@@ -325,6 +325,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
         ui=UIConfig(
             animations_enabled=bool(ui_raw["animations_enabled"]),  # type: ignore[index,misc]
             animations_periodic_interval=int(ui_raw["animations_periodic_interval"]),  # type: ignore[index,misc]
+            animations_subset=list(ui_raw.get("animations_subset", [])),  # type: ignore[index,misc]
         ),
     )
 
