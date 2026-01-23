@@ -56,6 +56,7 @@ class AnimationEngine:
             self._big_frame_count += 1
             if self._big_animation.is_complete(self._big_frame_count):
                 self._big_animation = None
+                self._colors.clear()  # Clear colors to revert to default rendering
 
         if self._small_animation:
             new_colors = self._small_animation.update(self._small_frame_count)
@@ -63,6 +64,7 @@ class AnimationEngine:
             self._small_frame_count += 1
             if self._small_animation.is_complete(self._small_frame_count):
                 self._small_animation = None
+                self._logo_colors.clear()  # Clear colors to revert to default rendering
 
     def get_color(self, x: int, y: int, is_big: bool = True) -> Optional[int]:
         """Get the color pair ID for a specific pixel.
