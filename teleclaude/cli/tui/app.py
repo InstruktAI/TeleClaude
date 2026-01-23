@@ -339,6 +339,11 @@ class TelecApp:
 
     def cleanup(self) -> None:
         """Clean up resources before exit."""
+        # Save sticky sessions state before exit
+        sessions_view = self.views.get(1)
+        if isinstance(sessions_view, SessionsView):
+            sessions_view.save_sticky_state()
+
         self.pane_manager.cleanup()
         # Stop WebSocket connection
         self.api.stop_websocket()
@@ -1005,6 +1010,8 @@ class TelecApp:
             width: Screen width
             animation_engine: Optional animation engine for colors
         """
+        from teleclaude.cli.tui.theme import get_banner_attr, get_current_mode
+
         logo_lines = [
             "▀█▀ ▛▀▀ ▌   ▛▀▀ ▛▀▜ ▌   ▞▀▚ ▌ ▐ ▛▀▚ ▛▀▀",
             " █  ■■  ▌   ■■  ▌   ▌   ▙▄▟ ▌ ▐ ▌ ▐ ■■",
@@ -1014,10 +1021,12 @@ class TelecApp:
 
         if width > logo_width + 1:  # +1 for the gap
             try:
+                is_dark_mode = get_current_mode()
+                banner_attr = get_banner_attr(is_dark_mode)
                 start_col = width - logo_width
                 for i, line in enumerate(logo_lines):
                     for j, char in enumerate(line):
-                        attr = curses.A_NORMAL
+                        attr = banner_attr
                         if animation_engine:
                             color_idx = animation_engine.get_color(j, i, is_big=False)
                             if color_idx is not None:
