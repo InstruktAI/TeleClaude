@@ -52,3 +52,4 @@ redis:
 ui:
   animations_enabled: true # Enable banner/logo animations
   animations_periodic_interval: 60 # Seconds between periodic animations
+  animations_subset: [] # Empty list = all animations. Specify names to filter (e.g., ["FullSpectrumCycle", "LetterWave"])

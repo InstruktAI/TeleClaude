@@ -7,7 +7,7 @@ Config is loaded at module import time and available globally via:
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
 import yaml
 from dotenv import load_dotenv
@@ -161,6 +161,7 @@ class UIConfig:
 
     animations_enabled: bool
     animations_periodic_interval: int
+    animations_subset: List[str]  # Empty list means all animations enabled
 
 
 @dataclass
@@ -211,6 +212,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
     "ui": {
         "animations_enabled": True,
         "animations_periodic_interval": 60,
+        "animations_subset": [],  # Empty list = all animations enabled
     },
 }
 

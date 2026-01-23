@@ -187,8 +187,8 @@ class TelecApp:
 
         # Animation system
         self.animation_engine = AnimationEngine()
-        self.periodic_trigger = PeriodicTrigger(self.animation_engine)
-        self.activity_trigger = ActivityTrigger(self.animation_engine)
+        self.periodic_trigger = PeriodicTrigger(self.animation_engine, animations_subset=config.ui.animations_subset)
+        self.activity_trigger = ActivityTrigger(self.animation_engine, animations_subset=config.ui.animations_subset)
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
