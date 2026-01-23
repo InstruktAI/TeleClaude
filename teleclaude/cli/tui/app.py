@@ -516,9 +516,9 @@ class TelecApp:
 
         while self.running:
             # Process any pending WebSocket events
-            ws_updated = self._process_ws_events()
-            pane_updated = self._sync_selection_with_active_pane()
-            ws_healed = self._maybe_heal_ws()
+            self._process_ws_events()
+            self._sync_selection_with_active_pane()
+            self._maybe_heal_ws()
 
             key = stdscr.getch()  # type: ignore[attr-defined]
 
@@ -536,12 +536,9 @@ class TelecApp:
                 if view and getattr(view, "needs_refresh", False):
                     asyncio.get_event_loop().run_until_complete(self.refresh_data())
                     view.needs_refresh = False
-                self._render(stdscr)
-            elif ws_updated or pane_updated:
-                # Re-render if WebSocket events were processed (no key press)
-                self._render(stdscr)
-            elif ws_healed:
-                self._render(stdscr)
+
+            # Always render to advance animations, even during idle periods
+            self._render(stdscr)
 
     def _consume_theme_refresh(self) -> bool:
         if self._theme_refresh_requested:
