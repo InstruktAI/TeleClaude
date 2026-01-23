@@ -47,3 +47,8 @@ redis:
   enabled: true # Enable Redis adapter for cross-computer messaging
   url: redis://redis.srv.instrukt.ai:6379
   password: ${REDIS_PASSWORD} # Set in .env
+
+# UI Configuration (TUI display settings)
+ui:
+  animations_enabled: true # Enable banner/logo animations
+  animations_periodic_interval: 60 # Seconds between periodic animations
