@@ -8,7 +8,7 @@
 
 ## TUI Asccii banner
 
-- [.] banner-animations
+- [>] banner-animations
 
 ## Test Suite Quality Cleanup
 
