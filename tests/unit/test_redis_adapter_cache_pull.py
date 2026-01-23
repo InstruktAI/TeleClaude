@@ -1,5 +1,6 @@
 """Unit tests for Redis adapter cache pull methods."""
 
+import asyncio
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -507,3 +508,32 @@ async def test_heartbeat_populates_cache():
     call_args = mock_cache.update_computer.call_args
     assert call_args[0][0].name == "RemotePC"
     assert call_args[0][0].status == "online"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_request_refresh_coalesces_in_flight_tasks():
+    """request_refresh should coalesce concurrent refreshes per peer+data type."""
+    from teleclaude.transport.redis_transport import RedisTransport
+
+    adapter = RedisTransport(MagicMock())
+    adapter._refresh_cooldown_seconds = 0
+
+    blocker = asyncio.Event()
+
+    async def _blocked(*_args, **_kwargs):
+        await blocker.wait()
+
+    adapter.pull_remote_projects_with_todos = AsyncMock(side_effect=_blocked)
+
+    scheduled = adapter.request_refresh("RemotePC", "projects", reason="interest")
+    assert scheduled is True
+
+    scheduled_again = adapter.request_refresh("RemotePC", "projects", reason="interest")
+    assert scheduled_again is False
+
+    blocker.set()
+    await asyncio.sleep(0)
+
+    scheduled_after = adapter.request_refresh("RemotePC", "projects", reason="interest")
+    assert scheduled_after is True

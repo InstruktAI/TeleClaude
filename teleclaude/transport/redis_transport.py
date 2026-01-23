@@ -18,13 +18,14 @@ import ssl
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, cast
+from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable, Optional, cast
 
 from instrukt_ai_logging import get_logger
 from redis.asyncio import Redis
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
+from teleclaude.constants import REDIS_REFRESH_COOLDOWN_SECONDS
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import parse_iso_datetime
@@ -95,6 +96,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
     - Comp2 → XADD output:{message_id} → Comp1 reads response for request/response
     """
 
+    _ALLOWED_REFRESH_REASONS = {"startup", "digest", "interest", "ttl"}
+
     def __init__(self, adapter_client: "AdapterClient", task_registry: "TaskRegistry | None" = None):
         """Initialize Redis transport.
 
@@ -147,6 +150,11 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         # Track last-seen project digests for peers
         self._peer_digests: dict[str, str] = {}
+
+        # Remote refresh coalescing (per peer + data type)
+        self._refresh_cooldown_seconds = REDIS_REFRESH_COOLDOWN_SECONDS
+        self._refresh_last: dict[str, float] = {}
+        self._refresh_tasks: dict[str, asyncio.Task[object]] = {}
 
         # Initialize redis client placeholder (actual connection established in start)
         self.redis: Redis = self._create_redis_client()
@@ -301,11 +309,126 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         for peer in peers:
             try:
-                await self.pull_remote_projects_with_todos(peer.name)
+                self._schedule_refresh(
+                    computer=peer.name,
+                    data_type="projects",
+                    reason="startup",
+                    force=True,
+                )
             except Exception as e:
                 logger.warning("Failed to refresh snapshot from %s: %s", peer.name, e)
 
         logger.info("Remote cache snapshot refresh complete: %d computers", len(peers))
+
+    def request_refresh(
+        self,
+        computer: str,
+        data_type: str,
+        *,
+        reason: str,
+        project_path: str | None = None,
+        force: bool = False,
+    ) -> bool:
+        """Request a remote refresh if the reason is allowed and cooldown permits it."""
+        return self._schedule_refresh(
+            computer=computer,
+            data_type=data_type,
+            reason=reason,
+            project_path=project_path,
+            force=force,
+        )
+
+    def _schedule_refresh(
+        self,
+        *,
+        computer: str,
+        data_type: str,
+        reason: str,
+        project_path: str | None = None,
+        force: bool = False,
+        on_success: Callable[[], None] | None = None,
+    ) -> bool:
+        """Coalesce refresh requests by peer+data type and enforce cooldown."""
+        if reason not in self._ALLOWED_REFRESH_REASONS:
+            logger.warning("Skipping refresh for %s:%s: reason not allowed (%s)", computer, data_type, reason)
+            return False
+
+        if computer in ("local", self.computer_name):
+            return False
+
+        key = self._refresh_key(computer, data_type, project_path)
+        if not self._can_schedule_refresh(key, force=force):
+            logger.debug("Refresh skipped for %s (reason=%s, force=%s)", key, reason, force)
+            return False
+
+        coro = self._build_refresh_coro(computer, data_type, project_path)
+        if coro is None:
+            logger.warning("Skipping refresh for %s:%s (reason=%s): unsupported data type", computer, data_type, reason)
+            return False
+
+        self._refresh_last[key] = time.monotonic()
+
+        async def _refresh_wrapper() -> None:
+            try:
+                await coro
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Refresh failed for %s (reason=%s): %s", key, reason, exc)
+            else:
+                if on_success:
+                    on_success()
+
+        task = self._spawn_refresh_task(_refresh_wrapper(), key=key)
+        self._refresh_tasks[key] = task
+        return True
+
+    def _refresh_key(self, computer: str, data_type: str, project_path: str | None) -> str:
+        if data_type == "sessions":
+            return "sessions:global"
+        if project_path:
+            return f"{computer}:{data_type}:{project_path}"
+        return f"{computer}:{data_type}"
+
+    def _can_schedule_refresh(self, key: str, *, force: bool) -> bool:
+        task = self._refresh_tasks.get(key)
+        if task and not task.done():
+            return False
+        if force:
+            return True
+        last = self._refresh_last.get(key)
+        if last is None:
+            return True
+        return (time.monotonic() - last) >= self._refresh_cooldown_seconds
+
+    def _build_refresh_coro(
+        self,
+        computer: str,
+        data_type: str,
+        project_path: str | None,
+    ) -> Optional[Awaitable[None]]:
+        if data_type in ("projects", "preparation"):
+            return self.pull_remote_projects_with_todos(computer)
+        if data_type == "todos":
+            if not project_path:
+                return None
+            return self.pull_remote_todos(computer, project_path)
+        if data_type == "sessions":
+            return self.pull_interested_sessions()
+        return None
+
+    def _spawn_refresh_task(self, coro: Awaitable[None], *, key: str) -> asyncio.Task[object]:
+        if self.task_registry:
+            task = self.task_registry.spawn(coro, name=f"redis-refresh-{key}")
+        else:
+            task = asyncio.create_task(coro)
+            task.add_done_callback(self._log_task_exception)
+
+        def _cleanup(_task: asyncio.Task[object]) -> None:
+            self._refresh_tasks.pop(key, None)
+
+        task.add_done_callback(_cleanup)
+        return task
 
     async def _peer_refresh_loop(self) -> None:
         """Background task: refresh peer cache from heartbeats."""
@@ -357,16 +480,18 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                     last_digest = self._peer_digests.get(computer_name)
                     if last_digest != digest_obj:
                         logger.info("Project digest changed for %s, refreshing projects", computer_name)
-                        try:
-                            await self.pull_remote_projects_with_todos(computer_name)
-                        except Exception as exc:
-                            logger.warning(
-                                "Failed to refresh projects after digest change from %s: %s",
-                                computer_name,
-                                exc,
-                            )
-                        else:
-                            self._peer_digests[computer_name] = digest_obj
+                        digest_value = digest_obj
+                        scheduled = self._schedule_refresh(
+                            computer=computer_name,
+                            data_type="projects",
+                            reason="digest",
+                            force=True,
+                            on_success=lambda name=computer_name, d=digest_value: self._peer_digests.__setitem__(
+                                name, d
+                            ),
+                        )
+                        if not scheduled:
+                            self._peer_digests[computer_name] = digest_value
             except Exception as exc:
                 logger.warning("Heartbeat peer parse failed: %s", exc)
                 continue

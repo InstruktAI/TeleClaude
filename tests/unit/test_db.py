@@ -11,6 +11,7 @@ import pytest
 
 from teleclaude.core.db import Db
 from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
+from teleclaude.core.voice_assignment import VoiceConfig
 
 FIXED_NOW = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -601,3 +602,21 @@ class TestNotificationFlag:
 
         await test_db.set_notification_flag(session.session_id, True)
         assert await test_db.get_notification_flag(session.session_id) is True
+
+
+class TestVoiceAssignments:
+    """Tests for voice assignment methods."""
+
+    @pytest.mark.asyncio
+    async def test_assign_voice_upsert_overwrites_existing(self, test_db):
+        voice_id = "voice-session-1"
+        first_voice = VoiceConfig(service_name="service-a", voice_name="alpha")
+        second_voice = VoiceConfig(service_name="service-b", voice_name="beta")
+
+        await test_db.assign_voice(voice_id, first_voice)
+        await test_db.assign_voice(voice_id, second_voice)
+
+        assigned = await test_db.get_voice(voice_id)
+        assert assigned is not None
+        assert assigned.service_name == "service-b"
+        assert assigned.voice_name == "beta"

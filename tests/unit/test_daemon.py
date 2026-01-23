@@ -634,7 +634,7 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
     ):
         mock_db.update_session = AsyncMock()
         mock_db.get_session = AsyncMock(return_value=mock_session)
-        mock_summarize.return_value = ("title", "summary")
+        mock_summarize.return_value = ("title", "summary", "raw")
 
         await daemon._process_agent_stop(context)
 
@@ -683,7 +683,7 @@ async def test_process_agent_stop_sets_native_session_id_from_payload(tmp_path):
 
         mock_db.update_session = AsyncMock(side_effect=record_update)
         mock_db.get_session = AsyncMock(return_value=mock_session)
-        mock_summarize.return_value = ("title", "summary")
+        mock_summarize.return_value = ("title", "summary", "raw")
 
         await daemon._process_agent_stop(context)
 
@@ -735,7 +735,7 @@ async def test_process_agent_stop_sets_active_agent_from_payload(tmp_path):
     ):
         mock_db.update_session = AsyncMock()
         mock_db.get_session = AsyncMock(side_effect=[session_missing_agent, session_with_agent, session_with_agent])
-        mock_summarize.return_value = ("title", "summary")
+        mock_summarize.return_value = ("title", "summary", "raw")
 
         await daemon._process_agent_stop(context)
 
@@ -834,7 +834,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
     ):
         mock_db.update_session = AsyncMock()
         mock_db.get_session = AsyncMock(return_value=session)
-        mock_summarize.return_value = ("title", "summary")
+        mock_summarize.return_value = ("title", "summary", "raw")
 
         await daemon._process_agent_stop(context)
 

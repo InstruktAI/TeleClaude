@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal, Optional, TypedDict
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
@@ -798,17 +799,22 @@ class Db:
             voice: VoiceConfig to assign
         """
         async with self._session() as db_session:
-            row = await db_session.get(db_models.VoiceAssignment, voice_id)
-            if row is None:
-                row = db_models.VoiceAssignment(
-                    id=voice_id,
-                    service_name=voice.service_name,
-                    voice_name=voice.voice_name,
-                )
-            else:
-                row.service_name = voice.service_name
-                row.voice_name = voice.voice_name
-            db_session.add(row)
+            stmt = text(
+                "INSERT INTO voice_assignments (id, service_name, voice_name, assigned_at) "
+                "VALUES (:id, :service_name, :voice_name, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "service_name = excluded.service_name, "
+                "voice_name = excluded.voice_name, "
+                "assigned_at = CURRENT_TIMESTAMP"
+            )
+            await db_session.exec(
+                stmt,
+                params={
+                    "id": voice_id,
+                    "service_name": voice.service_name,
+                    "voice_name": voice.voice_name,
+                },
+            )
             await db_session.commit()
         logger.debug("Assigned voice '%s' from service '%s' to %s", voice.voice_name, voice.service_name, voice_id[:8])
 

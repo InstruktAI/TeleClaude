@@ -127,6 +127,7 @@ REDIS_SOCKET_TIMEOUT = 60  # Increased to accommodate poor network conditions
 REDIS_MESSAGE_STREAM_MAXLEN = 10000  # Max messages to keep per computer
 REDIS_OUTPUT_STREAM_MAXLEN = 10000  # Max output messages per session
 REDIS_OUTPUT_STREAM_TTL = 3600  # Auto-expire output streams after 1 hour
+REDIS_REFRESH_COOLDOWN_SECONDS = 30  # Minimum time between remote refreshes per peer+data type
 
 # Agent metadata (NOT user-configurable)
 AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {

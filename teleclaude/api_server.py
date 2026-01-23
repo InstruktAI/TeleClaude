@@ -680,7 +680,6 @@ class APIServer:
         # Update interest in cache when first client connects
         if self.cache and len(self._ws_clients) == 1:
             self._update_cache_interest()
-            self._trigger_initial_refresh()
 
         try:
             while True:
@@ -742,9 +741,11 @@ class APIServer:
                         logger.warning("WebSocket subscribe data is invalid type: %s", type(subscribe_data))
                         continue
 
-                    # Update cache interest
+                    # Update cache interest and refresh only on newly added interest
                     if self.cache:
-                        self._update_cache_interest()
+                        newly_added = self._update_cache_interest()
+                        for computer, data_type in newly_added:
+                            await self._pull_remote_on_interest(computer, data_type)
 
                 # Handle unsubscribe messages
                 elif "unsubscribe" in data:
@@ -795,10 +796,10 @@ class APIServer:
             if self.cache and len(self._ws_clients) == 0:
                 self._update_cache_interest()
 
-    def _update_cache_interest(self) -> None:
+    def _update_cache_interest(self) -> list[tuple[str, str]]:
         """Update cache interest based on active WebSocket subscriptions."""
         if not self.cache:
-            return
+            return []
 
         # Collect current subscriptions from all connected clients
         # Structure: {data_type: {computers}}
@@ -819,15 +820,18 @@ class APIServer:
                 logger.debug("Removed stale interest: %s for %s", data_type, computer)
 
         # Add new interest (present in current but not in previous)
+        newly_added: list[tuple[str, str]] = []
         for data_type, curr_computers in current_interest.items():
             prev_computers = self._previous_interest.get(data_type, set())
             for computer in curr_computers - prev_computers:
                 self.cache.set_interest(data_type, computer)
                 logger.debug("Added new interest: %s for %s", data_type, computer)
+                newly_added.append((computer, data_type))
 
         # Update tracking
         self._previous_interest = current_interest
         logger.debug("Current cache interest: %s", current_interest)
+        return newly_added
 
     def _trigger_initial_refresh(self) -> None:
         """Kick off background cache refresh for remote computers on first UI connect."""
@@ -856,11 +860,10 @@ class APIServer:
         if not isinstance(adapter, RedisTransport):
             return
 
-        await adapter.refresh_peers_from_heartbeats()
         if data_type in ("projects", "preparation"):
-            await adapter.pull_remote_projects_with_todos(computer)
+            adapter.request_refresh(computer, "projects", reason="interest")
         elif data_type == "sessions":
-            await adapter.pull_interested_sessions()
+            adapter.request_refresh(computer, "sessions", reason="interest")
 
     def _refresh_stale_projects(self, computers: set[str]) -> None:
         """Trigger background refresh for stale project caches."""
@@ -873,11 +876,7 @@ class APIServer:
         for computer in sorted(computers):
             if computer == "local":
                 continue
-            coro = adapter.pull_remote_projects_with_todos(computer)
-            if self.task_registry:
-                self.task_registry.spawn(coro, name=f"projects-refresh-{computer}")
-            else:
-                asyncio.create_task(coro)
+            adapter.request_refresh(computer, "projects", reason="ttl")
 
     def _refresh_stale_todos(self, computer: str, project_path: str) -> None:
         """Trigger background refresh for stale todo cache entries."""
@@ -889,11 +888,7 @@ class APIServer:
         adapter = self.client.adapters.get("redis")
         if not isinstance(adapter, RedisTransport):
             return
-        coro = adapter.pull_remote_todos(computer, project_path)
-        if self.task_registry:
-            self.task_registry.spawn(coro, name=f"todos-refresh-{computer}")
-        else:
-            asyncio.create_task(coro)
+        adapter.request_refresh(computer, "todos", reason="ttl", project_path=project_path)
 
     async def _send_initial_state(self, websocket: WebSocket, data_type: str, computer: str) -> None:
         """Send initial state for a subscription.

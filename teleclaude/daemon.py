@@ -70,6 +70,7 @@ from teleclaude.types.commands import (
     ResumeAgentCommand,
     StartAgentCommand,
 )
+from teleclaude.utils.transcript import extract_last_agent_message
 
 init_voice_handler = voice_message_handler.init_voice_handler
 
@@ -1001,18 +1002,30 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
         agent_name = AgentName.from_str(active_agent)
 
-        # 1. AI Summarization
-        try:
-            title, summary, raw_transcript = await summarize(agent_name, transcript_path)
-        except Exception as sum_err:
-            logger.warning("Summarization failed for %s: %s", session_id[:8], sum_err)
-            return
+        title: str | None = None
+        summary: str | None = None
+        raw_transcript: str | None = None
 
-        if not summary:
+        if config.summarizer.enabled:
+            # 1. AI Summarization
+            try:
+                title, summary, raw_transcript = await summarize(agent_name, transcript_path)
+            except Exception as sum_err:
+                logger.warning("Summarization failed for %s: %s", session_id[:8], sum_err)
+                # Continue without summary - still try to capture raw_transcript
+
+        if not raw_transcript:
+            nr_messages = config.summarizer.nr_of_last_messages_used
+            raw_transcript = extract_last_agent_message(transcript_path, agent_name, nr_messages)
+        if not raw_transcript:
+            logger.debug("No agent text found in transcript for %s", session_id[:8])
             return
 
         # 2. Enrich payload for downstream coordinator
-        payload.summary = summary
+        if summary:
+            payload.summary = summary
+        else:
+            payload.summary = raw_transcript  # Use raw when summarizer disabled
         payload.title = title
 
         # 3. Update Title (Once only)
@@ -1022,8 +1035,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # 4. Save both raw output and summary to DB
         await db.update_session(
             session_id,
-            last_feedback_received=raw_transcript,  # Raw agent output
-            last_feedback_summary=summary,  # LLM-generated summary
+            last_feedback_received=raw_transcript,  # Raw agent text output
+            last_feedback_summary=summary,  # LLM-generated summary (or None)
             last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
         )
 

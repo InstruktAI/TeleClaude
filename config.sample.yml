@@ -54,6 +54,13 @@ ui:
   animations_periodic_interval: 60 # Seconds between periodic animations
   animations_subset: [] # Empty list = all animations. Specify names to filter (e.g., ["FullSpectrumCycle", "LetterWave"])
 
+# Summarizer Configuration
+# Controls how agent feedback is processed for TTS and UI display
+summarizer:
+  enabled: true # If true, use LLM to summarize agent output. If false, use raw agent text.
+  nr_of_last_messages_used: 1 # Number of last agent text messages to extract (skips tool_use blocks)
+  max_summary_words: 30 # Target max words for the summary (~1-2 sentences)
+
 # Text-to-Speech Configuration
 tts:
   enabled: true

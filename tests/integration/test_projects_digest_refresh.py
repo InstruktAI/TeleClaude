@@ -1,6 +1,6 @@
 """Integration test for digest-triggered project refresh."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 
@@ -25,20 +25,33 @@ async def test_refresh_peers_triggers_pull_on_digest_change():
     local_adapter.redis = redis_client
     local_adapter.computer_name = "LocalPC"
     local_adapter.cache = DaemonCache()
-    local_adapter.pull_remote_projects_with_todos = AsyncMock()
+    local_adapter._schedule_refresh = MagicMock(return_value=True)
 
     remote_adapter._compute_projects_digest = MagicMock(return_value="digest-1")
     await remote_adapter._send_heartbeat()
     await local_adapter.refresh_peers_from_heartbeats()
 
-    local_adapter.pull_remote_projects_with_todos.assert_awaited_once_with("RemotePC")
+    local_adapter._schedule_refresh.assert_called_once_with(
+        computer="RemotePC",
+        data_type="projects",
+        reason="digest",
+        force=True,
+        on_success=ANY,
+    )
+    local_adapter._peer_digests["RemotePC"] = "digest-1"
 
-    local_adapter.pull_remote_projects_with_todos.reset_mock()
+    local_adapter._schedule_refresh.reset_mock()
     await local_adapter.refresh_peers_from_heartbeats()
-    local_adapter.pull_remote_projects_with_todos.assert_not_awaited()
+    local_adapter._schedule_refresh.assert_not_called()
 
     remote_adapter._compute_projects_digest = MagicMock(return_value="digest-2")
     await remote_adapter._send_heartbeat()
     await local_adapter.refresh_peers_from_heartbeats()
 
-    local_adapter.pull_remote_projects_with_todos.assert_awaited_once_with("RemotePC")
+    local_adapter._schedule_refresh.assert_called_once_with(
+        computer="RemotePC",
+        data_type="projects",
+        reason="digest",
+        force=True,
+        on_success=ANY,
+    )

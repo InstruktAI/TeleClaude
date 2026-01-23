@@ -5,6 +5,7 @@ description:
 id: teleclaude/architecture/cache
 requires:
   - teleclaude/concept/resource-models
+  - teleclaude/standard/cache-refresh-strategy
 scope: project
 type: architecture
 ---

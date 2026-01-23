@@ -206,14 +206,17 @@ class TTSConfig:
 class SummarizerConfig:
     """Summarizer configuration.
 
-    Controls whether TTS and UI display use the LLM-generated summary
-    or the raw agent output.
+    Controls whether the LLM summarizer runs and how feedback is displayed.
 
     Attributes:
-        use_summary: If True, use last_feedback_summary. If False, use last_feedback_received.
+        enabled: If True, run LLM summarizer. If False, skip summarization entirely.
+        nr_of_last_messages_used: Number of last agent text messages to extract for display.
+        max_summary_words: Target maximum words for the summary output.
     """
 
-    use_summary: bool = True
+    enabled: bool = True
+    nr_of_last_messages_used: int = 1
+    max_summary_words: int = 30
 
 
 @dataclass
@@ -300,7 +303,9 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
         },
     },
     "summarizer": {
-        "use_summary": True,
+        "enabled": True,
+        "nr_of_last_messages_used": 1,
+        "max_summary_words": 30,
     },
 }
 
@@ -478,7 +483,13 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
         ),
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
         summarizer=SummarizerConfig(
-            use_summary=bool(summarizer_raw.get("use_summary", True)) if isinstance(summarizer_raw, dict) else True,
+            enabled=bool(summarizer_raw.get("enabled", True)) if isinstance(summarizer_raw, dict) else True,
+            nr_of_last_messages_used=int(summarizer_raw.get("nr_of_last_messages_used", 1))
+            if isinstance(summarizer_raw, dict)
+            else 1,
+            max_summary_words=int(summarizer_raw.get("max_summary_words", 30))
+            if isinstance(summarizer_raw, dict)
+            else 30,
         ),
     )
 

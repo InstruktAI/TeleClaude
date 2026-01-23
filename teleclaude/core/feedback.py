@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 def get_last_feedback(session: Session) -> Optional[str]:
     """Get the appropriate last feedback text based on summarizer config.
 
-    If summarizer.use_summary is True, returns the LLM-generated summary.
-    If False, returns the raw agent output.
+    If summarizer.enabled is True, returns the LLM-generated summary.
+    If False, returns the raw agent output (last_feedback_received).
 
     Args:
         session: Session object with feedback fields populated.
@@ -25,8 +25,8 @@ def get_last_feedback(session: Session) -> Optional[str]:
     Returns:
         The summary or raw output depending on config, or None if neither available.
     """
-    if config.summarizer.use_summary:
+    if config.summarizer.enabled:
         # Prefer summary, fall back to raw if summary not available
         return session.last_feedback_summary or session.last_feedback_received
-    # Use raw agent output
+    # Summarizer disabled - use raw agent output
     return session.last_feedback_received

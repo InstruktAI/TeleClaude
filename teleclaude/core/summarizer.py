@@ -9,6 +9,7 @@ from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
 
+from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.agents import AgentName
 from teleclaude.utils.transcript import (
@@ -117,28 +118,37 @@ def extract_recent_exchanges(
     return "\n".join(output_lines).strip()
 
 
-async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | None, str, str]:
+async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | None, str, str | None]:
     """Summarize an agent session transcript.
 
     Returns:
         Tuple of (title, summary, raw_transcript) where:
         - title: Short description of user's intent (max 70 chars)
         - summary: LLM-generated summary of what the agent did
-        - raw_transcript: The last agent message (for last_feedback_received)
+        - raw_transcript: The last agent text message, or None if not found
     """
-    transcript = parse_session_transcript(
+    # Verify file exists
+    if not Path(transcript_path).expanduser().exists():
+        raise FileNotFoundError(f"Transcript not found: {transcript_path}")
+
+    # Extract last N agent text messages for last_feedback_received
+    nr_messages = config.summarizer.nr_of_last_messages_used
+    raw_transcript = extract_last_agent_message(transcript_path, agent_name, nr_messages)
+
+    # Parse transcript for LLM context (separate from raw_transcript)
+    transcript_for_llm = parse_session_transcript(
         transcript_path,
         title="",
         agent_name=agent_name,
         tail_chars=UI_MESSAGE_MAX_CHARS,
     )
-    if transcript.startswith("Transcript file not found:") or transcript.startswith("Error parsing transcript:"):
-        raise ValueError(transcript)
-
-    # Extract just the last agent message for last_feedback_received
-    raw_transcript = extract_last_agent_message(transcript_path, agent_name) or transcript
+    if not transcript_for_llm:
+        raise ValueError("Empty transcript")
 
     recent_exchanges = extract_recent_exchanges(transcript_path, agent_name)
+
+    # Build prompt with configurable constraints
+    max_summary_words = config.summarizer.max_summary_words
 
     prompt = f"""Analyze this AI assistant session to generate a title and summary.
 
@@ -146,11 +156,11 @@ async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | 
 {recent_exchanges}
 
 ## Latest Agent Output (Execution details):
-{transcript}
+{transcript_for_llm}
 
 ## Output:
 1. **title** (max 7 words, max 70 chars): What the USER is trying to accomplish. Focus on user intent, not agent actions. Use imperative form (e.g., "Fix login bug", "Add dark mode").
-2. **summary** (1-2 sentences, first person "I..."): What the agent just did based on its responses above.
+2. **summary** (max {max_summary_words} words, first person "I..."): What the agent just did based on its responses above.
 """
 
     errors: list[str] = []

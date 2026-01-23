@@ -188,6 +188,7 @@ snippets:
   path: docs/architecture/cache.md
   requires:
   - teleclaude/concept/resource-models
+  - teleclaude/standard/cache-refresh-strategy
 - id: teleclaude/architecture/context-index
   description: Snippet index generation that produces docs/index.yaml from snippet
     frontmatter.
@@ -405,5 +406,12 @@ snippets:
   type: standard
   scope: project
   path: docs/standard/cache-contract.md
+  requires:
+  - teleclaude/architecture/cache
+- id: teleclaude/standard/cache-refresh-strategy
+  description: Allowed moments for remote cache refresh requests.
+  type: standard
+  scope: project
+  path: docs/standard/cache-refresh-strategy.md
   requires:
   - teleclaude/architecture/cache

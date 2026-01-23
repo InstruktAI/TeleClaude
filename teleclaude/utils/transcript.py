@@ -632,7 +632,7 @@ class TranscriptParserInfo:
 
     display_name: str
     file_prefix: str
-    parser: Callable[[str, str, Optional[str], Optional[str], int, bool], str]
+    parse: Callable[[str, str, Optional[str], Optional[str], int, bool], str]
 
 
 AGENT_TRANSCRIPT_PARSERS: dict[AgentName, TranscriptParserInfo] = {
@@ -691,8 +691,9 @@ def _extract_last_message_by_role(
     transcript_path: str,
     agent_name: AgentName,
     target_role: str,
+    count: int = 1,
 ) -> Optional[str]:
-    """Extract the last message with the specified role from the transcript.
+    """Extract the last N messages with the specified role from the transcript.
 
     guard: allow-string-compare
 
@@ -700,17 +701,26 @@ def _extract_last_message_by_role(
         transcript_path: Path to transcript file
         agent_name: Agent type for entry iterator selection
         target_role: Role to search for ("user" or "assistant")
+        count: Number of messages to extract (default 1)
 
     Returns:
-        Last message text for the given role, or None if not found
+        Concatenated text of last N messages, or None if not found
     """
     try:
         entries = _get_entries_for_agent(transcript_path, agent_name)
         if entries is None:
             return None
 
+        collected: list[str] = []
         for entry in reversed(entries):
             message = entry.get("message")
+
+            # Handle Codex "response_item" format where message is in payload
+            if not isinstance(message, dict) and entry.get("type") == "response_item":
+                payload = entry.get("payload")
+                if isinstance(payload, dict):
+                    message = payload
+
             if not isinstance(message, dict):
                 continue
             role = message.get("role")
@@ -719,8 +729,15 @@ def _extract_last_message_by_role(
             content = message.get("content")
             text = _extract_text_from_content(content, target_role)
             if text is not None:
-                return text
-        return None
+                collected.append(text)
+                if len(collected) >= count:
+                    break
+
+        if not collected:
+            return None
+        # Reverse to get chronological order
+        collected.reverse()
+        return "\n\n".join(collected)
     except Exception:
         return None
 
@@ -744,17 +761,21 @@ def extract_last_user_message(
 def extract_last_agent_message(
     transcript_path: str,
     agent_name: AgentName,
+    count: int = 1,
 ) -> Optional[str]:
-    """Extract the last assistant/agent message from the transcript.
+    """Extract the last N assistant/agent text messages from the transcript.
+
+    Only extracts actual text content, skipping tool_use and thinking blocks.
 
     Args:
         transcript_path: Path to transcript file
         agent_name: Agent type for entry iterator selection
+        count: Number of messages to extract (default 1)
 
     Returns:
-        Last assistant message text or None if not found
+        Concatenated text of last N assistant messages, or None if not found
     """
-    return _extract_last_message_by_role(transcript_path, agent_name, "assistant")
+    return _extract_last_message_by_role(transcript_path, agent_name, "assistant", count)
 
 
 def parse_session_transcript(
@@ -781,7 +802,7 @@ def parse_session_transcript(
     """
 
     parser_info = get_transcript_parser_info(agent_name)
-    rendered = parser_info.parser(
+    rendered = parser_info.parse(
         transcript_path,
         title,
         since_timestamp,
