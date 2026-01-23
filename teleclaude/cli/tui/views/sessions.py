@@ -1202,20 +1202,26 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         title = session.title
         idx = session_display.display_index
 
+        # Calculate indentation for child sessions
+        # Parent sessions (depth 2): 3 spaces
+        # Child sessions (depth 3): 6 spaces
+        # Grandchild (depth 4): 9 spaces, etc.
+        # Formula: 3 + (depth - 2) * 3
+        content_indent = " " * (3 + max(0, item.depth - 2) * 3)
+
         # Collapse indicator
         collapse_indicator = "▶" if is_collapsed else "▼"
 
         # Line 1: [idx] ▶/▼ agent/mode "title"
         lines: list[str] = []
-        line1 = f'[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"'
+        line1 = f'{content_indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"'
         lines.append(line1[:width])
 
         # If collapsed, only show title line
         if is_collapsed:
             return lines
 
-        # Detail lines use 3-space indent
-        content_indent = "   "
+        # Detail lines use same indent as title
 
         # Line 2 (expanded only): ID + last activity time
         activity_time = _format_time(session.last_activity)
@@ -1403,6 +1409,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         title = session.title
         idx = session_display.display_index
 
+        # Calculate indentation for child sessions
+        # Parent sessions (depth 2): 3 spaces
+        # Child sessions (depth 3): 6 spaces
+        # Grandchild (depth 4): 9 spaces, etc.
+        # Formula: 3 + (depth - 2) * 3
+        content_indent = " " * (3 + max(0, item.depth - 2) * 3)
+
         # Check if this session is sticky
         is_sticky = any(s.session_id == session_id for s in self.sticky_sessions)
         sticky_position = None
@@ -1436,9 +1449,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         collapse_indicator = "▶" if is_collapsed else "▼"
 
         # Line 1: [idx] ▶/▼ agent/mode "title"
-        # Render [idx] with special attr if sticky, then rest with title_attr
+        # Render content indent + [idx] with special attr if sticky, then rest with title_attr
         try:
             col = 0
+            # Render content indent first
+            if content_indent:
+                stdscr.addstr(row, col, content_indent, normal_attr)  # type: ignore[attr-defined]
+                col += len(content_indent)
             stdscr.addstr(row, col, idx_text, idx_attr if not selected else curses.A_REVERSE)  # type: ignore[attr-defined]
             col += len(idx_text)
             rest = f' {collapse_indicator} {agent}/{mode}  "{title}"'
@@ -1454,8 +1471,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if lines_used >= remaining:
             return lines_used
 
-        # Detail lines use 3-space indent
-        content_indent = "   "
+        # Detail lines use same indent as title
 
         # Line 2 (expanded only): ID + last activity time
         activity_time = _format_time(session.last_activity)
