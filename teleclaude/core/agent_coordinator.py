@@ -56,7 +56,11 @@ class AgentCoordinator:
         voice = await db.get_voice(context.session_id)
         if voice:
             await db.assign_voice(str(native_session_id), voice)
-            logger.debug("Copied voice '%s' to native_session_id %s", voice.name, str(native_session_id)[:8])
+            logger.debug(
+                "Copied voice from service '%s' to native_session_id %s",
+                voice.service_name,
+                str(native_session_id)[:8],
+            )
 
         logger.info(
             "Stored Agent session data: teleclaude=%s, native=%s",

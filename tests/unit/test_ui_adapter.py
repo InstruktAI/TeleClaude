@@ -264,62 +264,6 @@ class TestSendOutputUpdate:
 
 
 @pytest.mark.asyncio
-class TestSendExitMessage:
-    """Paranoid test send_exit_message method."""
-
-    async def test_sends_exit_message(self, test_db):
-        """Paranoid test sending exit message."""
-        adapter = MockUiAdapter()
-        session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test",
-            last_input_origin="telegram",
-            title="Test Session",
-        )
-
-        await adapter.send_exit_message(
-            session,
-            "final output",
-            "✅ Process exited",
-        )
-
-        adapter._send_message_mock.assert_called_once()
-        call_args = adapter._send_message_mock.call_args
-        message_text = call_args[0][1]
-
-        assert "final output" in message_text
-        assert "✅ Process exited" in message_text
-
-    async def test_edits_existing_message_on_exit(self, test_db):
-        """Paranoid test editing existing message on exit."""
-        adapter = MockUiAdapter()
-        session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test",
-            last_input_origin="telegram",
-            title="Test Session",
-        )
-
-        # Set output_message_id in adapter namespace
-        if not session.adapter_metadata:
-            session.adapter_metadata = SessionAdapterMetadata()
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="msg-existing")
-        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-
-        # Refresh session from DB
-        session = await test_db.get_session(session.session_id)
-
-        await adapter.send_exit_message(
-            session,
-            "final output",
-            "✅ Process exited",
-        )
-
-        adapter._edit_message_mock.assert_called_once()
-        adapter._send_message_mock.assert_not_called()
-
-
-@pytest.mark.asyncio
 class TestSendMessageNotice:
     """Paranoid test notice messages (ephemeral message tracking)."""
 

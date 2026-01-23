@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_message_sent_at TEXT,
     last_feedback_received TEXT,
     last_feedback_received_at TEXT,
+    last_feedback_summary TEXT,  -- LLM-generated summary of last_feedback_received
     working_slug TEXT,  -- Slug of work item this session is working on (from state machine)
     lifecycle_status TEXT DEFAULT 'active',
     UNIQUE(computer_name, tmux_session_name)
@@ -42,10 +43,11 @@ CREATE TABLE IF NOT EXISTS sessions (
 -- Records expire after 7 days (cleaned up by daemon.cleanup_stale_voice_assignments)
 CREATE TABLE IF NOT EXISTS voice_assignments (
     id TEXT PRIMARY KEY,  -- Either teleclaude_session_id or native_session_id
-    voice_name TEXT NOT NULL,
+    voice_name TEXT,
     elevenlabs_id TEXT DEFAULT '',
     macos_voice TEXT DEFAULT '',
     openai_voice TEXT DEFAULT '',
+    service_name TEXT,
     assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

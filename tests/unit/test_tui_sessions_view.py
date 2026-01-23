@@ -59,12 +59,15 @@ def mock_pane_manager():
 @pytest.fixture
 def sessions_view(mock_focus, mock_pane_manager):
     """Create SessionsView instance for testing."""
-    return SessionsView(
+    view = SessionsView(
         api=None,  # Not needed for render tests
         agent_availability={},
         focus=mock_focus,
         pane_manager=mock_pane_manager,
     )
+    # Ensure tests are isolated from persisted sticky state on disk.
+    view.sticky_sessions = []
+    return view
 
 
 @pytest.mark.unit
@@ -317,6 +320,7 @@ class TestSessionsViewLogic:
             focus=mock_focus,
             pane_manager=pane_manager,
         )
+        view.sticky_sessions = []
         view._computers = [
             ComputerInfo(
                 name="test-machine",
@@ -450,6 +454,7 @@ class TestSessionsViewLogic:
             focus=mock_focus,
             pane_manager=pane_manager,
         )
+        view.sticky_sessions = []
         view._computers = [
             ComputerInfo(
                 name="test-machine",

@@ -647,13 +647,89 @@ def get_transcript_parser_info(agent_name: AgentName) -> TranscriptParserInfo:
     return AGENT_TRANSCRIPT_PARSERS[agent_name]
 
 
+def _get_entries_for_agent(
+    transcript_path: str,
+    agent_name: AgentName,
+) -> Optional[list[dict[str, object]]]:  # noqa: loose-dict - External entries
+    """Load and return transcript entries for the given agent type.
+
+    Returns None if path doesn't exist or agent type is unknown.
+    """
+    path = Path(transcript_path).expanduser()
+    if not path.exists():
+        return None
+
+    if agent_name == AgentName.CLAUDE:
+        return list(_iter_claude_entries(path))
+    if agent_name == AgentName.GEMINI:
+        return list(_iter_gemini_entries(path))
+    if agent_name == AgentName.CODEX:
+        return list(_iter_codex_entries(path))
+    return None  # type: ignore[unreachable]  # Defensive fallback
+
+
+def _extract_text_from_content(content: object, role: str) -> Optional[str]:
+    """Extract text from message content based on role.
+
+    guard: allow-string-compare
+    """
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        # User messages use "input_text" or "text", assistant uses "text" or "output_text"
+        valid_types = ("input_text", "text") if role == "user" else ("text", "output_text")
+
+        for block in content:
+            if isinstance(block, dict) and block.get("type") in valid_types:
+                return str(block.get("text", ""))
+
+    return None
+
+
+def _extract_last_message_by_role(
+    transcript_path: str,
+    agent_name: AgentName,
+    target_role: str,
+) -> Optional[str]:
+    """Extract the last message with the specified role from the transcript.
+
+    guard: allow-string-compare
+
+    Args:
+        transcript_path: Path to transcript file
+        agent_name: Agent type for entry iterator selection
+        target_role: Role to search for ("user" or "assistant")
+
+    Returns:
+        Last message text for the given role, or None if not found
+    """
+    try:
+        entries = _get_entries_for_agent(transcript_path, agent_name)
+        if entries is None:
+            return None
+
+        for entry in reversed(entries):
+            message = entry.get("message")
+            if not isinstance(message, dict):
+                continue
+            role = message.get("role")
+            if not isinstance(role, str) or role != target_role:
+                continue
+            content = message.get("content")
+            text = _extract_text_from_content(content, target_role)
+            if text is not None:
+                return text
+        return None
+    except Exception:
+        return None
+
+
 def extract_last_user_message(
     transcript_path: str,
     agent_name: AgentName,
 ) -> Optional[str]:
     """Extract the last user message from the transcript.
-
-    guard: allow-string-compare
 
     Args:
         transcript_path: Path to transcript file
@@ -662,39 +738,23 @@ def extract_last_user_message(
     Returns:
         Last user message text or None if not found
     """
-    path = Path(transcript_path).expanduser()
-    if not path.exists():
-        return None
+    return _extract_last_message_by_role(transcript_path, agent_name, "user")
 
-    try:
-        if agent_name == AgentName.CLAUDE:
-            entries = list(_iter_claude_entries(path))
-        elif agent_name == AgentName.GEMINI:
-            entries = list(_iter_gemini_entries(path))
-        elif agent_name == AgentName.CODEX:
-            entries = list(_iter_codex_entries(path))
-        else:
-            return None
 
-        # Work backwards from the end
-        for entry in reversed(entries):
-            message = entry.get("message")
-            if not isinstance(message, dict):
-                continue
-            role = message.get("role")
-            if not isinstance(role, str) or role != "user":
-                continue
-            content = message.get("content")
-            if isinstance(content, list):
-                # Find the text block
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") in ("input_text", "text"):
-                        return str(block.get("text", ""))
-            elif isinstance(content, str):
-                return content
-        return None
-    except Exception:
-        return None
+def extract_last_agent_message(
+    transcript_path: str,
+    agent_name: AgentName,
+) -> Optional[str]:
+    """Extract the last assistant/agent message from the transcript.
+
+    Args:
+        transcript_path: Path to transcript file
+        agent_name: Agent type for entry iterator selection
+
+    Returns:
+        Last assistant message text or None if not found
+    """
+    return _extract_last_message_by_role(transcript_path, agent_name, "assistant")
 
 
 def parse_session_transcript(

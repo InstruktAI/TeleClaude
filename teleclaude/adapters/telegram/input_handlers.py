@@ -328,7 +328,7 @@ Usage:
             await self.client.send_message(
                 session,
                 f"❌ Failed to download voice message: {error_msg}",
-                metadata=self._metadata(),
+                metadata=MessageMetadata(parse_mode=None),
                 cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
             )
 

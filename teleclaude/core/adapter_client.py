@@ -553,21 +553,6 @@ class AdapterClient:
                 return line.strip()[:200]
         return text[:200]
 
-    async def send_exit_message(
-        self,
-        session: "Session",
-        output: str,
-        exit_text: str,
-    ) -> None:
-        """Send exit message to ALL UiAdapters (origin + observers).
-
-        Args:
-            session: Session object
-            output: Tmux output
-            exit_text: Exit message text
-        """
-        await self._route_to_ui(session, "send_exit_message", output, exit_text)
-
     async def update_channel_title(self, session: "Session", title: str) -> bool:
         """Broadcast channel title update to ALL adapters.
 

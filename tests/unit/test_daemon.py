@@ -171,7 +171,7 @@ async def test_enrich_with_summary_dedupes_transcript() -> None:
         patch("teleclaude.daemon.AgentName.from_str", return_value=MagicMock()),
         patch.object(daemon, "_update_session_title", new_callable=AsyncMock),
     ):
-        mock_sum.return_value = ("Title", "Summary")
+        mock_sum.return_value = ("Title", "Summary", "Raw transcript output")
 
         await daemon._enrich_with_summary(session, payload)
         await daemon._enrich_with_summary(session, payload)
@@ -210,7 +210,7 @@ async def test_enrich_with_summary_dedupes_native_session() -> None:
         patch("teleclaude.daemon.AgentName.from_str", return_value=MagicMock()),
         patch.object(daemon, "_update_session_title", new_callable=AsyncMock),
     ):
-        mock_sum.return_value = ("Title", "Summary")
+        mock_sum.return_value = ("Title", "Summary", "Raw transcript output")
 
         await daemon._enrich_with_summary(session, payload)
         await daemon._enrich_with_summary(session, payload)

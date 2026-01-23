@@ -802,19 +802,15 @@ class Db:
             if row is None:
                 row = db_models.VoiceAssignment(
                     id=voice_id,
-                    voice_name=voice.name,
-                    elevenlabs_id=voice.elevenlabs_id,
-                    macos_voice=voice.macos_voice,
-                    openai_voice=voice.openai_voice,
+                    service_name=voice.service_name,
+                    voice_name=voice.voice_name,
                 )
             else:
-                row.voice_name = voice.name
-                row.elevenlabs_id = voice.elevenlabs_id
-                row.macos_voice = voice.macos_voice
-                row.openai_voice = voice.openai_voice
+                row.service_name = voice.service_name
+                row.voice_name = voice.voice_name
             db_session.add(row)
             await db_session.commit()
-        logger.debug("Assigned voice '%s' to %s", voice.name, voice_id[:8])
+        logger.debug("Assigned voice '%s' from service '%s' to %s", voice.voice_name, voice.service_name, voice_id[:8])
 
     async def get_voice(self, voice_id: str) -> Optional[VoiceConfig]:
         """Get voice assignment by ID.
@@ -830,10 +826,8 @@ class Db:
             if not row:
                 return None
             return VoiceConfig(
-                name=row.voice_name,
-                elevenlabs_id=row.elevenlabs_id or "",
-                macos_voice=row.macos_voice or "",
-                openai_voice=row.openai_voice or "",
+                service_name=row.service_name or "",
+                voice_name=row.voice_name or "",
             )
 
     async def cleanup_stale_voice_assignments(self, max_age_days: int = 7) -> int:

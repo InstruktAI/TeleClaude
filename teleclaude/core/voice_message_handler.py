@@ -198,7 +198,7 @@ async def handle_voice(
         await send_message(
             session_id,
             "🎤 Voice input requires an active process (e.g., claude, vim)",
-            MessageMetadata(),
+            MessageMetadata(parse_mode=None),
         )
         # Clean up temp file
         try:
@@ -214,7 +214,7 @@ async def handle_voice(
     msg_id = await send_message(
         session_id,
         "🎤 Transcribing...",
-        MessageMetadata(),
+        MessageMetadata(parse_mode=None),
     )
     if msg_id is None:
         logger.info(
@@ -237,7 +237,7 @@ async def handle_voice(
         await send_message(
             session_id,
             "❌ Transcription failed. Please try again.",
-            MessageMetadata(),
+            MessageMetadata(parse_mode=None),
         )
         return None
 

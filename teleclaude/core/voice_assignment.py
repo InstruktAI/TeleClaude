@@ -3,76 +3,59 @@
 Assigns random TTS voices to new sessions for distinct AI personalities.
 """
 
-import json
-import random
+from __future__ import annotations
+
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-logger = get_logger(__name__)
+if TYPE_CHECKING:
+    from teleclaude.tts.manager import TTSManager
 
-VOICES_CONFIG_PATH = Path.home() / ".teleclaude" / "config" / "voices.json"
+logger = get_logger(__name__)
 
 
 @dataclass
 class VoiceConfig:
-    """Voice configuration for a session."""
+    """Voice configuration for a session (service-specific).
 
-    name: str
-    elevenlabs_id: str
-    macos_voice: str
-    openai_voice: str
-
-
-def load_voices() -> list[VoiceConfig]:
-    """Load voice configurations from JSON file.
-
-    Returns:
-        List of VoiceConfig objects, empty list if file not found or invalid.
+    Attributes:
+        service_name: TTS service (elevenlabs, openai, macos, pyttsx3)
+        voice_name: Voice ID or name for the service
     """
-    if not VOICES_CONFIG_PATH.exists():
-        logger.warning("Voice config not found: %s", VOICES_CONFIG_PATH)
-        return []
 
-    try:
-        with open(VOICES_CONFIG_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)  # type: ignore[misc]
+    service_name: str
+    voice_name: str
 
-        voices = []
-        for v in data.get("voices", []):  # type: ignore[misc]
-            voices.append(
-                VoiceConfig(
-                    name=v.get("name", "Unknown"),  # type: ignore[misc]
-                    elevenlabs_id=v.get("elevenlabs_id", ""),  # type: ignore[misc]
-                    macos_voice=v.get("macos_voice", ""),  # type: ignore[misc]
-                    openai_voice=v.get("openai_voice", ""),  # type: ignore[misc]
-                )
-            )
-        logger.debug("Loaded %d voices from config", len(voices))
-        return voices
 
-    except json.JSONDecodeError as e:
-        logger.error("Invalid JSON in voice config: %s", e)
-        return []
-    except Exception as e:
-        logger.error("Failed to load voice config: %s", e)
-        return []
+# Lazy-initialized TTS manager (avoids circular import)
+_tts_manager: TTSManager | None = None
+
+
+def _get_tts_manager() -> TTSManager:
+    """Get or create TTS manager instance (lazy import to avoid circular dependency)."""
+    global _tts_manager  # noqa: PLW0603 - singleton pattern
+    if _tts_manager is None:
+        from teleclaude.tts.manager import TTSManager
+
+        _tts_manager = TTSManager()
+    return _tts_manager
 
 
 def get_random_voice() -> VoiceConfig | None:
-    """Get a random voice configuration.
+    """Get a random voice assignment for a session.
 
     Returns:
-        Random VoiceConfig, or None if no voices configured.
+        VoiceConfig with (service_name, voice_name) or None if no voices configured.
     """
-    voices = load_voices()
-    if not voices:
-        return None
-
-    voice = random.choice(voices)
-    logger.info("Assigned voice: %s", voice.name)
-    return voice
+    manager = _get_tts_manager()
+    voice_assignment = manager.get_random_voice_for_session()
+    if voice_assignment:
+        service_name, voice_name = voice_assignment
+        logger.info("Assigned voice: %s from service %s", voice_name, service_name)
+        return VoiceConfig(service_name=service_name, voice_name=voice_name or "")
+    return None
 
 
 def get_voice_env_vars(voice: VoiceConfig) -> dict[str, str]:
@@ -86,13 +69,12 @@ def get_voice_env_vars(voice: VoiceConfig) -> dict[str, str]:
     """
     env_vars = {}
 
-    if voice.elevenlabs_id:
-        env_vars["ELEVENLABS_VOICE_ID"] = voice.elevenlabs_id
-
-    if voice.macos_voice:
-        env_vars["MACOS_VOICE"] = voice.macos_voice
-
-    if voice.openai_voice:
-        env_vars["OPENAI_VOICE"] = voice.openai_voice
+    if voice.service_name == "elevenlabs":
+        env_vars["ELEVENLABS_VOICE_ID"] = voice.voice_name
+    elif voice.service_name == "macos":
+        env_vars["MACOS_VOICE"] = voice.voice_name
+    elif voice.service_name == "openai":
+        env_vars["OPENAI_VOICE"] = voice.voice_name
+    # pyttsx3 doesn't use voice parameters
 
     return env_vars

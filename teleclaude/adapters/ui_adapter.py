@@ -23,6 +23,7 @@ from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents, UiCommands
+from teleclaude.core.feedback import get_last_feedback
 from teleclaude.core.models import (
     AdapterType,
     CleanupTrigger,
@@ -37,12 +38,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
 
-from teleclaude.utils import (
-    format_active_status_line,
-    format_completed_status_line,
-    format_size,
-    format_tmux_message,
-)
+from teleclaude.utils import format_active_status_line, format_completed_status_line, format_size
 from teleclaude.utils.markdown import telegramify_markdown
 
 logger = get_logger(__name__)
@@ -373,18 +369,6 @@ class UiAdapter(BaseAdapter):
 
         return "\n".join(lines)
 
-    async def send_exit_message(self, session: "Session", output: str, exit_text: str) -> None:
-        """Send exit message when session dies - default implementation."""
-        final_output = format_tmux_message(output if output else "", exit_text)
-        metadata = MessageMetadata(raw_format=True)
-
-        # Try to edit existing message, fallback to send new
-        if not await self._try_edit_output_message(session, final_output, metadata):
-            # send new
-            new_id = await self.send_message(session, final_output, metadata=metadata)
-            if new_id:
-                await self._store_output_message_id(session, new_id)
-
     async def _pre_handle_user_input(self, _session: "Session") -> None:
         """Called before handling user input - cleanup ephemeral messages.
 
@@ -585,19 +569,23 @@ class UiAdapter(BaseAdapter):
                 await self.client.update_channel_title(session, new_title)
                 logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
 
-        # Handle summary output updates
-        if SessionField.LAST_FEEDBACK_RECEIVED.value in updated_fields:
-            summary = session.last_feedback_received or ""
-            if summary:
+        # Handle feedback output updates (check both raw and summary fields)
+        feedback_updated = (
+            SessionField.LAST_FEEDBACK_RECEIVED.value in updated_fields or "last_feedback_summary" in updated_fields
+        )
+        if feedback_updated:
+            # Use helper to get appropriate feedback based on config
+            feedback = get_last_feedback(session) or ""
+            if feedback:
                 logger.debug(
-                    "Summary feedback emit: session=%s len=%d updated_fields=%s",
+                    "Feedback emit: session=%s len=%d updated_fields=%s",
                     session_id[:8],
-                    len(summary),
+                    len(feedback),
                     list(updated_fields.keys()),
                 )
                 await self.client.send_message(
                     session,
-                    summary,
+                    feedback,
                     metadata=MessageMetadata(origin="internal"),
                     cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
                 )

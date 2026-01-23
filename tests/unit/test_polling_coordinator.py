@@ -118,7 +118,6 @@ class TestPollAndSendOutput:
 
         adapter_client = Mock()
         adapter_client.send_output_update = AsyncMock()
-        adapter_client.send_exit_message = AsyncMock()
 
         get_output_file = Mock(return_value=output_file)
 
@@ -133,7 +132,6 @@ class TestPollAndSendOutput:
             )
 
         mock_terminate.assert_called_once()
-        adapter_client.send_exit_message.assert_not_called()
 
     async def test_process_exited_with_exit_code_and_missing_tmux(self, tmp_path):
         """Exit code with missing tmux should terminate the session."""

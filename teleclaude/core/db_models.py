@@ -45,6 +45,7 @@ class Session(SQLModel, table=True):
     last_message_sent_at: Optional[datetime] = None
     last_feedback_received: Optional[str] = None
     last_feedback_received_at: Optional[datetime] = None
+    last_feedback_summary: Optional[str] = None
     working_slug: Optional[str] = None
     lifecycle_status: Optional[str] = "active"
 
@@ -56,10 +57,11 @@ class VoiceAssignment(SQLModel, table=True):
     __table_args__ = {"extend_existing": True}
 
     id: str = Field(primary_key=True)
-    voice_name: str
+    voice_name: Optional[str] = None
     elevenlabs_id: Optional[str] = ""
     macos_voice: Optional[str] = ""
     openai_voice: Optional[str] = ""
+    service_name: Optional[str] = None
     assigned_at: Optional[datetime] = None
 
 

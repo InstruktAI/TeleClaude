@@ -64,6 +64,8 @@ from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
 from teleclaude.transport.redis_transport import RedisTransport
+from teleclaude.tts.event_handler import register_tts_handlers
+from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import (
     ResumeAgentCommand,
     StartAgentCommand,
@@ -246,6 +248,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Initialize cache for remote data
         self.cache = DaemonCache()
         logger.info("DaemonCache initialized")
+
+        # Initialize TTS manager for session voice assignments and event triggers
+        self.tts_manager = TTSManager()
+        register_tts_handlers()
+        logger.info("TTSManager initialized with event handlers")
 
         # Initialize AgentCoordinator for agent events and cross-computer orchestration
         self.agent_coordinator = AgentCoordinator(self.client)
@@ -996,7 +1003,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # 1. AI Summarization
         try:
-            title, summary = await summarize(agent_name, transcript_path)
+            title, summary, raw_transcript = await summarize(agent_name, transcript_path)
         except Exception as sum_err:
             logger.warning("Summarization failed for %s: %s", session_id[:8], sum_err)
             return
@@ -1012,14 +1019,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if title:
             await self._update_session_title(session_id, title)
 
-        # 4. Save summary to DB (Last Output)
+        # 4. Save both raw output and summary to DB
         await db.update_session(
             session_id,
-            last_feedback_received=summary,
+            last_feedback_received=raw_transcript,  # Raw agent output
+            last_feedback_summary=summary,  # LLM-generated summary
             last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
         )
 
-        # 5. UI feedback is emitted via session_updated event handlers.
+        # 5. UI feedback + TTS is emitted via session_updated event handlers.
 
     async def _execute_auto_command(self, session_id: str, auto_command: str) -> dict[str, str]:
         """Execute a post-session auto_command and return status/message."""
@@ -1095,6 +1103,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             )
             return
 
+        # TTS session_start is triggered via event_bus (SESSION_STARTED event)
         await self._start_polling_for_session(session_id, session.tmux_session_name)
 
         if auto_command:

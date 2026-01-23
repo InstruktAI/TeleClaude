@@ -10,7 +10,6 @@ import json
 import os
 import re
 import shlex
-import shutil
 import tomllib
 from pathlib import Path
 from typing import Any, Dict
@@ -431,28 +430,6 @@ def ensure_codex_mcp_config(content: str, repo_root: Path) -> str:
     return content
 
 
-def configure_voices(repo_root: Path) -> None:
-    """Install voices.json config if not present.
-
-    Only copies the example file if ~/.teleclaude/config/voices.json doesn't exist.
-    Preserves user customizations.
-    """
-    target_path = Path.home() / ".teleclaude" / "config" / "voices.json"
-    example_path = repo_root / "config" / "voices.example.json"
-
-    if target_path.exists():
-        print(f"Voices config already exists at {target_path}, skipping")
-        return
-
-    if not example_path.exists():
-        print(f"Warning: voices.example.json not found at {example_path}")
-        return
-
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(example_path, target_path)
-    print(f"Voices config installed to {target_path}")
-
-
 def main() -> None:
     # Repo root is parent of the teleclaude package directory.
     repo_root = Path(__file__).resolve().parents[2]
@@ -461,7 +438,6 @@ def main() -> None:
     configure_claude(repo_root)
     configure_gemini(repo_root)
     configure_codex(repo_root)
-    configure_voices(repo_root)
 
 
 if __name__ == MAIN_MODULE:

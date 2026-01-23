@@ -5,7 +5,7 @@ Config is loaded at module import time and available globally via:
 """
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List
 
@@ -165,6 +165,58 @@ class UIConfig:
 
 
 @dataclass
+class TTSServiceVoiceConfig:
+    """Voice configuration for a TTS service."""
+
+    name: str
+    voice_id: str | None = None  # For services like ElevenLabs that need IDs
+
+
+@dataclass
+class TTSServiceConfig:
+    """Configuration for a single TTS service."""
+
+    enabled: bool
+    voices: list[TTSServiceVoiceConfig] | None = None
+
+
+@dataclass
+class TTSEventConfig:
+    """Configuration for a TTS event.
+
+    Supports either a single message or a list of messages (picks randomly).
+    """
+
+    enabled: bool
+    message: str | None = None
+    messages: list[str] | None = None  # For random selection (e.g., startup greetings)
+
+
+@dataclass
+class TTSConfig:
+    """Text-to-speech configuration."""
+
+    enabled: bool
+    service_priority: list[str] | None = None
+    events: Dict[str, TTSEventConfig] | None = None
+    services: Dict[str, TTSServiceConfig] | None = None
+
+
+@dataclass
+class SummarizerConfig:
+    """Summarizer configuration.
+
+    Controls whether TTS and UI display use the LLM-generated summary
+    or the raw agent output.
+
+    Attributes:
+        use_summary: If True, use last_feedback_summary. If False, use last_feedback_received.
+    """
+
+    use_summary: bool = True
+
+
+@dataclass
 class Config:
     database: DatabaseConfig
     computer: ComputerConfig
@@ -172,6 +224,8 @@ class Config:
     telegram: TelegramConfig
     agents: Dict[str, AgentConfig]
     ui: UIConfig
+    tts: TTSConfig | None = None
+    summarizer: SummarizerConfig = field(default_factory=SummarizerConfig)
 
 
 # Default configuration values (single source of truth)
@@ -213,6 +267,40 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
         "animations_enabled": True,
         "animations_periodic_interval": 60,
         "animations_subset": [],  # Empty list = all animations enabled
+    },
+    "tts": {
+        "enabled": False,
+        "events": {
+            "session_start": {
+                "enabled": False,
+                "message": None,
+            },
+            "agent_stop": {
+                "enabled": False,
+                "message": None,
+            },
+        },
+        "services": {
+            "pyttsx3": {
+                "enabled": True,
+                "voices": [],
+            },
+            "macos": {
+                "enabled": False,
+                "voices": [],
+            },
+            "openai": {
+                "enabled": False,
+                "voices": [],
+            },
+            "elevenlabs": {
+                "enabled": False,
+                "voices": [],
+            },
+        },
+    },
+    "summarizer": {
+        "use_summary": True,
     },
 }
 
@@ -264,6 +352,65 @@ def _parse_trusted_dirs(raw_dirs: list[object]) -> list[TrustedDir]:
     return trusted_dirs
 
 
+def _parse_tts_config(raw_tts: dict[str, object] | None) -> TTSConfig | None:  # noqa: loose-dict
+    """Parse TTS config from raw dict.
+
+    Args:
+        raw_tts: Raw TTS dict from YAML
+
+    Returns:
+        TTSConfig object or None if not configured
+    """
+    if not raw_tts:
+        return None
+
+    tts_enabled = bool(raw_tts.get("enabled", False))
+    service_priority_raw = raw_tts.get("service_priority", [])
+    events_raw = raw_tts.get("events", {})
+    services_raw = raw_tts.get("services", {})
+
+    # Parse service priority
+    service_priority = None
+    if isinstance(service_priority_raw, list):
+        service_priority = [str(s) for s in service_priority_raw]
+
+    # Parse events
+    events = {}
+    if isinstance(events_raw, dict):
+        for event_name, event_data in events_raw.items():
+            if isinstance(event_data, dict):
+                events[event_name] = TTSEventConfig(
+                    enabled=bool(event_data.get("enabled", False)),
+                    message=str(event_data.get("message", "")) if event_data.get("message") else None,
+                )
+
+    # Parse services
+    services = {}
+    if isinstance(services_raw, dict):
+        for service_name, service_data in services_raw.items():
+            if isinstance(service_data, dict):
+                voices_raw = service_data.get("voices", [])
+                voices = []
+                if isinstance(voices_raw, list):
+                    for voice_data in voices_raw:
+                        if isinstance(voice_data, dict):
+                            voices.append(
+                                TTSServiceVoiceConfig(
+                                    name=str(voice_data.get("name", "")),
+                                    voice_id=str(voice_data.get("voice_id", ""))
+                                    if voice_data.get("voice_id")
+                                    else None,
+                                )
+                            )
+
+                services[service_name] = TTSServiceConfig(
+                    enabled=bool(service_data.get("enabled", False)),
+                    voices=voices if voices else None,
+                )
+
+    return TTSConfig(enabled=tts_enabled, service_priority=service_priority, events=events, services=services)
+
+
 def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML deserialization input
     """Build typed Config from raw dict with proper type conversion."""
     db_raw = raw["database"]
@@ -272,6 +419,8 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
     tg_raw = raw["telegram"]
     ui_raw = raw["ui"]
     agents_raw = raw.get("agents", {})
+    tts_raw = raw.get("tts", None)
+    summarizer_raw = raw.get("summarizer", {})
 
     # Import AGENT_METADATA from constants
     from teleclaude.constants import AGENT_METADATA
@@ -326,6 +475,10 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
             animations_enabled=bool(ui_raw["animations_enabled"]),  # type: ignore[index,misc]
             animations_periodic_interval=int(ui_raw["animations_periodic_interval"]),  # type: ignore[index,misc]
             animations_subset=list(ui_raw.get("animations_subset", [])),  # type: ignore[index,misc]
+        ),
+        tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
+        summarizer=SummarizerConfig(
+            use_summary=bool(summarizer_raw.get("use_summary", True)) if isinstance(summarizer_raw, dict) else True,
         ),
     )
 

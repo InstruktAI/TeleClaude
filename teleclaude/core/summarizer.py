@@ -15,6 +15,7 @@ from teleclaude.utils.transcript import (
     _iter_claude_entries,
     _iter_codex_entries,
     _iter_gemini_entries,
+    extract_last_agent_message,
     parse_session_transcript,
 )
 
@@ -116,8 +117,15 @@ def extract_recent_exchanges(
     return "\n".join(output_lines).strip()
 
 
-async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | None, str]:
-    """Summarize an agent session transcript and return (title, summary)."""
+async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | None, str, str]:
+    """Summarize an agent session transcript.
+
+    Returns:
+        Tuple of (title, summary, raw_transcript) where:
+        - title: Short description of user's intent (max 70 chars)
+        - summary: LLM-generated summary of what the agent did
+        - raw_transcript: The last agent message (for last_feedback_received)
+    """
     transcript = parse_session_transcript(
         transcript_path,
         title="",
@@ -126,6 +134,9 @@ async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | 
     )
     if transcript.startswith("Transcript file not found:") or transcript.startswith("Error parsing transcript:"):
         raise ValueError(transcript)
+
+    # Extract just the last agent message for last_feedback_received
+    raw_transcript = extract_last_agent_message(transcript_path, agent_name) or transcript
 
     recent_exchanges = extract_recent_exchanges(transcript_path, agent_name)
 
@@ -165,7 +176,8 @@ async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | 
                 },
             )
             text = response.content[0].text  # type: ignore[union-attr]
-            return _parse_response(text)
+            title, summary = _parse_response(text)
+            return title, summary, raw_transcript
         except Exception as e:
             errors.append(f"Anthropic: {e}")
 
@@ -190,7 +202,8 @@ async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | 
             )
             response_any = cast(Any, response)
             text = response_any.choices[0].message.content or ""
-            return _parse_response(text)
+            title, summary = _parse_response(text)
+            return title, summary, raw_transcript
         except Exception as e:
             errors.append(f"OpenAI: {e}")
 
