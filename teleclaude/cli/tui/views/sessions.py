@@ -465,7 +465,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             preview_action = "[Enter] Hide Preview" if is_previewing else "[Enter] Preview"
             return f"{back_hint}{preview_action}  [←/→] Collapse/Expand  [R] Restart  [k] Kill"
         if is_project_node(selected):
-            return f"{back_hint}[n] New Session  [w] Open Sessions"
+            return f"{back_hint}[n] New Session  [a] Open Sessions"
         # computer
         return f"{back_hint}[→] View Projects  [R] Restart Agents"
 
@@ -894,17 +894,55 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         else:
             attach_tmux_from_result(result, stdscr)
 
+    def _collect_project_session_ids_in_view(self, project: ProjectInfo) -> list[str]:
+        """Collect project session ids in the current tree order."""
+        if not self.flat_items:
+            return []
+
+        start_idx: int | None = None
+        if 0 <= self.selected_index < len(self.flat_items):
+            selected_item = self.flat_items[self.selected_index]
+            if (
+                is_project_node(selected_item)
+                and selected_item.data.path == project.path
+                and selected_item.data.computer == project.computer
+            ):
+                start_idx = self.selected_index
+        if start_idx is None:
+            for idx, item in enumerate(self.flat_items):
+                if is_project_node(item) and item.data.path == project.path and item.data.computer == project.computer:
+                    start_idx = idx
+                    break
+
+        if start_idx is None:
+            return []
+
+        base_depth = self.flat_items[start_idx].depth
+        session_ids: list[str] = []
+        for item in self.flat_items[start_idx + 1 :]:
+            if item.depth <= base_depth:
+                break
+            if is_session_node(item):
+                session_ids.append(item.data.session.session_id)
+        return session_ids
+
     def _open_project_sessions(self, project: ProjectInfo) -> None:
         """Make all sessions for a project sticky and attach them in panes."""
         if not project.path:
             logger.debug("_open_project_sessions: missing project path")
             return
 
-        project_sessions = [
-            session
-            for session in self._sessions
-            if session.project_path == project.path and (session.computer or "") == project.computer
-        ]
+        session_by_id = {session.session_id: session for session in self._sessions}
+        ordered_ids = self._collect_project_session_ids_in_view(project)
+        if ordered_ids:
+            project_sessions = [session_by_id[session_id] for session_id in ordered_ids if session_id in session_by_id]
+        else:
+            project_sessions = [
+                session
+                for session in self._sessions
+                if session.project_path == project.path and (session.computer or "") == project.computer
+            ]
+
         if not project_sessions:
             if self.notify:
                 self.notify("info", "No sessions found for project")
@@ -965,12 +1003,12 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             else:
                 logger.debug("handle_key: 'n' ignored, not on a project")
             return
-        if key in (ord("w"), ord("W")):
+        if key in (ord("a"), ord("A")):
             if is_project_node(selected):
                 logger.debug("handle_key: opening all sessions for project")
                 self._open_project_sessions(selected.data)
             else:
-                logger.debug("handle_key: 'w' ignored, not on a project")
+                logger.debug("handle_key: 'a' ignored, not on a project")
             return
 
         if key == ord("k"):

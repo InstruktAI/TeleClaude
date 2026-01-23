@@ -148,25 +148,50 @@ def test_open_project_sessions_sets_sticky_list():
     project = ProjectInfo(computer="local", name="TeleClaude", path="/repo")
     sessions = [
         SessionInfo(
-            session_id=f"sess-{idx}",
+            session_id="sess-0",
             last_input_origin="telegram",
             status="active",
-            tmux_session_name=f"tmux-{idx}",
+            tmux_session_name="tmux-0",
             computer="local",
             project_path="/repo",
-            title=f"Session {idx}",
+            title="Session 0",
             active_agent="claude",
             thinking_mode="slow",
-        )
-        for idx in range(6)
+        ),
+        SessionInfo(
+            session_id="sess-1",
+            last_input_origin="telegram",
+            status="active",
+            tmux_session_name="tmux-1",
+            computer="local",
+            project_path="/repo",
+            title="Session 1",
+            active_agent="claude",
+            thinking_mode="slow",
+        ),
+        SessionInfo(
+            session_id="sess-2",
+            last_input_origin="telegram",
+            status="active",
+            tmux_session_name="tmux-2",
+            computer="local",
+            project_path="/repo",
+            title="Session 2",
+            active_agent="claude",
+            thinking_mode="slow",
+        ),
     ]
 
-    view._sessions = sessions
-    view.flat_items = [ProjectNode(type=NodeType.PROJECT, data=project, depth=0, children=[])]
+    view._sessions = list(reversed(sessions))
+    view.flat_items = [
+        ProjectNode(type=NodeType.PROJECT, data=project, depth=0, children=[]),
+        SessionNode(type=NodeType.SESSION, data=SessionDisplayInfo(session=sessions[2], display_index="1"), depth=1),
+        SessionNode(type=NodeType.SESSION, data=SessionDisplayInfo(session=sessions[0], display_index="2"), depth=1),
+        SessionNode(type=NodeType.SESSION, data=SessionDisplayInfo(session=sessions[1], display_index="3"), depth=1),
+    ]
     view.selected_index = 0
 
-    view.handle_key(ord("w"), Mock())
+    view.handle_key(ord("a"), Mock())
 
     assert pane_manager.apply_called is True
-    assert len(view.sticky_sessions) == 5
-    assert [sticky.session_id for sticky in view.sticky_sessions] == [f"sess-{i}" for i in range(5)]
+    assert [sticky.session_id for sticky in view.sticky_sessions] == ["sess-2", "sess-0", "sess-1"]
