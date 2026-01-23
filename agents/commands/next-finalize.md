@@ -1,6 +1,6 @@
 ---
 argument-hint: "[slug]"
-description: Worker command - merge, archive, cleanup after review passes
+description: Worker command - merge, log delivery, cleanup after review passes
 ---
 
 # Finalize

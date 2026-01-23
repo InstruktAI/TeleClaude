@@ -1,7 +1,5 @@
 ---
-description:
-  Finalize phase. Verify approval, merge to main, archive todos, log delivery,
-  and cleanup.
+description: Finalize phase. Verify approval, merge to main, log delivery, and cleanup.
 id: software-development/procedure/lifecycle/finalize
 scope: domain
 type: procedure
@@ -55,26 +53,25 @@ git push origin main
 
 If you stashed in step 4, run `git stash pop` and report any conflicts.
 
-## 8) Archive Todo Folder
-
-- Create `done/{NNN}-{slug}` (NNN = next numeric id)
-- Move `todos/{slug}/` into archive
-
-## 9) Log Delivery
+## 8) Log Delivery
 
 Append to `todos/delivered.md`:
 
 ```
-| {date} | {slug} | {title} | DELIVERED | {commit-hash} | done/{NNN}-{slug} |
+| {date} | {slug} | {title} | DELIVERED | {commit-hash} |
 ```
 
-## 10) Update Roadmap
+## 9) Update Roadmap
 
 Remove the item for `{slug}` from `todos/roadmap.md`.
 
+## 10) Remove Todo Folder
+
+Delete `todos/{slug}/` after logging delivery and updating the roadmap.
+
 ## 11) Final Commit and Push
 
-Commit archive + log + roadmap updates and push to main.
+Commit log + roadmap + todo folder removal and push to main.
 
 ## 12) Remove Worktree
 

@@ -98,11 +98,15 @@ async def test_long_running_command(daemon_with_mocked_telegram):
     )
 
     # Wait for process to start and produce initial output
-    await asyncio.sleep(0.01)
+    output = ""
+    for _ in range(40):
+        output = await tmux_bridge.capture_pane(session.tmux_session_name) or ""
+        if "Ready" in output:
+            break
+        await asyncio.sleep(0.1)
 
     # Verify initial output
-    output = await tmux_bridge.capture_pane(session.tmux_session_name)
-    assert output is not None, "Should have tmux output"
+    assert output, "Should have tmux output"
     assert "Ready" in output, f"Should see initial output, got: {output[:500]}"
 
     # For the second send (sending input to running process), temporarily disable mock

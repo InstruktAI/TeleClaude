@@ -117,7 +117,7 @@ Before considering ANY work complete, verify ALL criteria are met:
 
 - [ ] Changes merged/delivered
 - [ ] State updated
-- [ ] Work archived
+- [ ] Delivery logged in todos/delivered.md
 - [ ] Clean working directory
 
 ## Red Flags (Never "Done")

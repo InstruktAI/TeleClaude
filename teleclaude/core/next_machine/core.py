@@ -163,7 +163,7 @@ POST_COMPLETION: dict[str, str] = {
 3. Call {next_call}
 """,
     "next-finalize": """WHEN WORKER COMPLETES:
-1. Verify merge and archive succeeded
+1. Verify merge succeeded and delivery log updated
 2. If success:
    - teleclaude__end_session(computer="local", session_id="<session_id>")
    - Call {next_call}
@@ -286,13 +286,6 @@ def format_prepared(slug: str) -> str:
     return f"""PREPARED: todos/{slug} is ready for work.
 
 ASK USER: Do you want to continue with more preparation work, or start the build/review cycle with teleclaude__next_work(slug="{slug}")?"""
-
-
-def format_complete(slug: str, archive_path: str) -> str:
-    """Format a 'complete' message indicating work item is finalized."""
-    return f"""COMPLETE: todos/{slug} has been finalized and delivered to {archive_path}/
-
-NEXT: Call teleclaude__next_work() to continue with more work."""
 
 
 def format_uncommitted_changes(slug: str) -> str:
@@ -650,20 +643,6 @@ def has_pending_bugs(cwd: str) -> bool:
     return RoadmapBox.PENDING.value in content
 
 
-def get_archive_path(cwd: str, slug: str) -> str | None:
-    """Check if done/*-{slug}/ directory exists.
-
-    Returns the archive path (e.g., "done/005-my-slug") if found, None otherwise.
-    """
-    done_dir = Path(cwd) / "done"
-    if not done_dir.exists():
-        return None
-    for entry in done_dir.iterdir():
-        if entry.is_dir() and entry.name.endswith(f"-{slug}"):
-            return f"done/{entry.name}"
-    return None
-
-
 # =============================================================================
 # Roadmap State Management (R3, R7)
 # =============================================================================
@@ -807,8 +786,7 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
 
     A dependency is satisfied if:
     - It is marked [x] in roadmap.md, OR
-    - It is not present in roadmap.md (assumed completed/archived), OR
-    - It exists in done/*-{dep}/ directory
+    - It is not present in roadmap.md (assumed completed/removed)
 
     Args:
         cwd: Project root directory
@@ -838,11 +816,6 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
     for dep in item_deps:
         if dep not in roadmap_items:
             # Not in roadmap - treat as satisfied (completed and cleaned up)
-            continue
-
-        # Check if dependency is archived (done/*-dep exists)
-        if get_archive_path(cwd, dep):
-            # Archived = completed, even if still in roadmap
             continue
 
         dep_state = roadmap_items[dep]
@@ -1446,12 +1419,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             )
         resolved_slug = found_slug
 
-    # 2. Check if already finalized
-    archive_path = get_archive_path(cwd, resolved_slug)
-    if archive_path:
-        return format_complete(resolved_slug, archive_path)
-
-    # 3. Validate preconditions
+    # 2. Validate preconditions
     has_requirements = check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md")
     has_impl_plan = check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md")
     if not (has_requirements and has_impl_plan):

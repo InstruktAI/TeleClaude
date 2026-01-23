@@ -104,8 +104,7 @@ snippets:
   path: docs/software-development/procedure/lifecycle/documentation/sync-docstrings.md
   requires: []
 - id: software-development/procedure/lifecycle/finalize
-  description: Finalize phase. Verify approval, merge to main, archive todos, log
-    delivery, and cleanup.
+  description: Finalize phase. Verify approval, merge to main, log delivery, and cleanup.
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/finalize.md
@@ -230,8 +229,8 @@ snippets:
   requires:
   - software-development/failure-modes
 - id: software-development/roles/finalizer
-  description: Post-review delivery role. Merge, archive, clean up, and log delivery
-    after approval.
+  description: Post-review delivery role. Merge, clean up, and log delivery after
+    approval.
   type: role
   scope: domain
   path: docs/software-development/roles/finalizer.md

@@ -146,8 +146,8 @@ async def test_next_work_dependency_blocking():
 
 
 @pytest.mark.asyncio
-async def test_archived_dependency_satisfaction():
-    """Integration test: Dependencies in done/ directory are considered satisfied"""
+async def test_removed_dependency_satisfaction():
+    """Integration test: Dependencies removed from roadmap are considered satisfied"""
     db = MagicMock(spec=Db)
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -156,14 +156,10 @@ async def test_archived_dependency_satisfaction():
         roadmap_path.parent.mkdir(parents=True, exist_ok=True)
         roadmap_path.write_text("# Roadmap\n\n- [.] new-feature\nNew feature\n")
 
-        # Set up dependency on archived item
-        deps = {"new-feature": ["archived-foundation"]}
+        # Set up dependency on removed item
+        deps = {"new-feature": ["former-foundation"]}
         with patch("teleclaude.core.next_machine.core.Repo"):
             write_dependencies(tmpdir, deps)
-
-        # Simulate archived dependency in done/ directory
-        done_dir = Path(tmpdir) / "done" / "001-archived-foundation"
-        done_dir.mkdir(parents=True, exist_ok=True)
 
         # Create required files for new-feature
         item_dir = Path(tmpdir) / "todos" / "new-feature"
@@ -172,7 +168,7 @@ async def test_archived_dependency_satisfaction():
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
         (item_dir / "state.json").write_text('{"build": "pending", "review": "pending"}')
 
-        # Should be able to work on new-feature (archived dependency is satisfied)
+        # Should be able to work on new-feature (missing dependency is satisfied)
         with (
             patch("teleclaude.core.next_machine.core.Repo"),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),

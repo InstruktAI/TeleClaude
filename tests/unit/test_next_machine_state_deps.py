@@ -146,21 +146,17 @@ def test_check_dependencies_satisfied_incomplete():
         assert result is False
 
 
-def test_check_dependencies_satisfied_archived():
-    """Verify archived dependencies (not in roadmap) are satisfied"""
+def test_check_dependencies_satisfied_removed():
+    """Verify dependencies missing from roadmap are satisfied"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create roadmap without the dependency (assumed archived/completed)
+        # Create roadmap without the dependency (assumed completed/removed)
         roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
         roadmap_path.parent.mkdir(parents=True, exist_ok=True)
         roadmap_path.write_text("# Roadmap\n\n- [.] test-item\n")
 
-        # Create done directory to simulate archived dependency
-        done_dir = Path(tmpdir) / "done" / "001-archived-dep"
-        done_dir.mkdir(parents=True, exist_ok=True)
-
-        deps = {"test-item": ["archived-dep"]}
+        deps = {"test-item": ["former-dep"]}
         result = check_dependencies_satisfied(tmpdir, "test-item", deps)
-        # Should be satisfied since dependency is in done/ directory
+        # Should be satisfied since dependency is not in roadmap
         assert result is True
 
 

@@ -18,7 +18,7 @@ The software development lifecycle in this organization follows a deterministic,
 3. Review — validate against requirements and standards
 4. Fix — address review findings
 5. Documentation — sync docstrings and docs
-6. Finalize — merge and archive
+6. Finalize — merge and deliver
 7. Maintenance — infra/dependency/security upkeep
 
 ## Lifecycle Phases
@@ -60,10 +60,10 @@ Run docstring synchronization, then snippet synchronization. This phase is part 
 
 ### 6. Finalize
 
-**Output:** Merge, archive, cleanup
+**Output:** Merge, log delivery, cleanup
 **Responsibility:** Orchestrator
 
-Merge approved work, archive todo folder to `done/`, update delivered log, clean up worktree.
+Merge approved work, update delivered log, remove todo folder, clean up worktree.
 
 ### 7. Maintenance
 
