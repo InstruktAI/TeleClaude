@@ -323,18 +323,18 @@ if config.animations.enabled:
 
 ## File Checklist
 
-- [ ] `teleclaude/cli/tui/pixel_mapping.py` - Pixel coordinate definitions
-- [ ] `teleclaude/cli/tui/animation_colors.py` - Palette management
-- [ ] `teleclaude/cli/tui/animations/base.py` - Base Animation class
-- [ ] `teleclaude/cli/tui/animations/general.py` - G1-G15 implementations
-- [ ] `teleclaude/cli/tui/animations/agent.py` - A1-A14 implementations
-- [ ] `teleclaude/cli/tui/animation_engine.py` - Core engine
-- [ ] `teleclaude/cli/tui/animation_triggers.py` - Periodic + activity triggers
-- [ ] `tests/unit/test_animations.py` - Animation unit tests
-- [ ] `tests/integration/test_animation_engine.py` - Integration tests
-- [ ] Modifications to `widgets/banner.py` - Big banner integration
-- [ ] Modifications to `app.py` - Small logo integration
-- [ ] Configuration updates in `config.sample.yml`
+- [x] `teleclaude/cli/tui/pixel_mapping.py` - Pixel coordinate definitions
+- [x] `teleclaude/cli/tui/animation_colors.py` - Palette management
+- [x] `teleclaude/cli/tui/animations/base.py` - Base Animation class
+- [x] `teleclaude/cli/tui/animations/general.py` - G1-G15 implementations
+- [x] `teleclaude/cli/tui/animations/agent.py` - A1-A14 implementations
+- [x] `teleclaude/cli/tui/animation_engine.py` - Core engine
+- [x] `teleclaude/cli/tui/animation_triggers.py` - Periodic + activity triggers
+- [x] `tests/unit/test_animations.py` - Animation unit tests
+- [ ] `tests/integration/test_animation_engine.py` - Integration tests (minimal coverage)
+- [x] Modifications to `widgets/banner.py` - Big banner integration
+- [x] Modifications to `app.py` - Small logo integration
+- [x] Configuration updates in `config.sample.yml`
 
 ## Performance Targets
 
