@@ -41,4 +41,66 @@
    - **Fix:** Add unit tests for engine update/clear, triggers (periodic + activity), and small/big compatibility; add an integration test for render/trigger flow and mark the plan item complete.
    - **Confidence: 88**
 
+## Fixes Applied
+
+### Critical Issue #1: Steady render tick
+
+- **Commit:** 08c0df8
+- **Changes:** Modified main loop in `app.py` to call `_render()` on every iteration (~100ms), not just on key/WS events
+- **Result:** Animations now advance during idle periods
+- **Tests:** Passing
+
+### Important Issue #1: Double-buffering
+
+- **Commit:** ae75f13
+- **Changes:** Added front/back buffer pairs (`_colors_front`/`_colors_back`, `_logo_colors_front`/`_logo_colors_back`) to `AnimationEngine`
+- **Result:** Renderer reads from stable front buffer while animations update back buffer, then swap atomically
+- **Tests:** Passing
+
+### Important Issue #2: Queue/priority handling
+
+- **Commit:** 3db9eff
+- **Changes:**
+  - Added `AnimationPriority` enum (PERIODIC=1, ACTIVITY=2)
+  - Added priority queues (`_big_queue`, `_small_queue`) with maxlen=5
+  - Updated `play()` to accept priority parameter and handle interruption/queueing
+  - Activity animations interrupt periodic animations; same priority replaces current
+- **Result:** Activity animations correctly interrupt periodic animations
+- **Tests:** Passing (test_priority_queue)
+
+### Important Issue #3: Per-animation speed timing
+
+- **Commit:** 843e54d
+- **Changes:**
+  - Added `_big_last_update_ms` and `_small_last_update_ms` to track elapsed time
+  - Modified `update()` to only advance frames when `elapsed_ms >= animation.speed_ms`
+  - Animations can now run at different speeds (e.g., 50ms/frame vs 200ms/frame)
+- **Result:** Per-animation `speed_ms` is now respected
+- **Tests:** Passing (updated existing tests to account for timing)
+- **Note:** Easing functions deferred - no current animations require them
+
+### Important Issue #4: Animation subset configuration
+
+- **Commit:** 2fd32b2
+- **Changes:**
+  - Added `animations_subset: List[str]` to `UIConfig`
+  - Added `filter_animations()` helper function
+  - Updated `PeriodicTrigger` and `ActivityTrigger` to filter by subset
+  - Added to `config.sample.yml` with documentation
+- **Result:** Users can filter animations by class name (empty list = all enabled)
+- **Tests:** Passing (test*filter_animations*\*)
+
+### Important Issue #5: Test coverage
+
+- **Commit:** 24aa2e8
+- **Changes:** Added comprehensive tests for:
+  - Engine clear on completion
+  - Priority queue behavior
+  - Simultaneous big/small animations
+  - Engine disabled state
+  - Animation subset filtering (empty, by name, no match)
+- **Result:** Test coverage now includes all core engine/trigger functionality
+- **Tests:** 11 animation tests passing (was 3)
+- **Note:** Integration test deferred - requires full TUI environment setup
+
 ## Verdict: REQUEST CHANGES
