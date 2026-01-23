@@ -212,9 +212,8 @@ class TelecApp:
             notify=self.notify,
         )
 
-        # Start animation triggers
+        # Start animation triggers (palette initialization deferred to run())
         self.animation_engine.is_enabled = config.ui.animations_enabled
-        palette_registry.initialize_colors()
         self.periodic_trigger.interval_sec = config.ui.animations_periodic_interval
         self.periodic_trigger.task = asyncio.create_task(self.periodic_trigger.start())
 
@@ -500,6 +499,7 @@ class TelecApp:
         """
         curses.curs_set(0)
         init_colors()
+        palette_registry.initialize_colors()  # Must be after init_colors() -> start_color()
         self._install_appearance_hook()
 
         # Enable mouse support (can be toggled with 'm' key to allow tmux copy-mode)
