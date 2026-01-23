@@ -113,6 +113,8 @@ class LineSweepBottomTop(Animation):
 class MiddleOutVertical(Animation):
     """G8: Vertical center expansion (Big only)."""
 
+    supports_small = False
+
     def update(self, frame: int) -> Dict[Tuple[int, int], int]:
         if not self.is_big:
             return {}  # Not supported for small logo
@@ -138,6 +140,8 @@ class MiddleOutVertical(Animation):
 
 class WithinLetterSweepLR(Animation):
     """G4: Within each letter, pixels sweep horizontally left to right (Big only)."""
+
+    supports_small = False
 
     def update(self, frame: int) -> Dict[Tuple[int, int], int]:
         if not self.is_big:
@@ -165,6 +169,8 @@ class WithinLetterSweepLR(Animation):
 
 class WithinLetterSweepRL(Animation):
     """G5: Within each letter, pixels sweep horizontally right to left (Big only)."""
+
+    supports_small = False
 
     def update(self, frame: int) -> Dict[Tuple[int, int], int]:
         if not self.is_big:
@@ -247,6 +253,8 @@ class WordSplitBlink(Animation):
 class DiagonalSweepDR(Animation):
     """G11: Pixels light up in diagonal waves top-left to bottom-right."""
 
+    supports_small = False
+
     def update(self, frame: int) -> Dict[Tuple[int, int], int]:
         if not self.is_big:
             return {}
@@ -265,6 +273,8 @@ class DiagonalSweepDR(Animation):
 
 class DiagonalSweepDL(Animation):
     """G12: Pixels light up in diagonal waves top-right to bottom-left."""
+
+    supports_small = False
 
     def update(self, frame: int) -> Dict[Tuple[int, int], int]:
         if not self.is_big:

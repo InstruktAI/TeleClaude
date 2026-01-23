@@ -9,6 +9,9 @@ from teleclaude.cli.tui.animation_colors import ColorPalette
 class Animation(ABC):
     """Abstract base class for all banner/logo animations."""
 
+    # Class attribute: Override to False for big-only animations
+    supports_small: bool = True
+
     def __init__(
         self,
         palette: ColorPalette,

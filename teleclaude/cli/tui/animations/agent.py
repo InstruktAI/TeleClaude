@@ -93,6 +93,8 @@ class AgentLineSweep(Animation):
 class AgentMiddleOut(Animation):
     """A14: Vertical center expansion (Big only) using agent colors."""
 
+    supports_small = False
+
     def update(self, frame: int) -> Dict[Tuple[int, int], int]:
         if not self.is_big:
             return {}
@@ -133,6 +135,8 @@ class AgentSparkle(Animation):
 
 class AgentWithinLetterSweep(Animation):
     """A11: Within each letter, pixels sweep L→R using agent colors (Big only)."""
+
+    supports_small = False
 
     def update(self, frame: int) -> Dict[Tuple[int, int], int]:
         if not self.is_big:
@@ -258,6 +262,8 @@ class AgentBreathing(Animation):
 
 class AgentDiagonalWave(Animation):
     """A13: Diagonal pixel sweep using agent color sequence."""
+
+    supports_small = False
 
     def update(self, frame: int) -> Dict[Tuple[int, int], int]:
         if not self.is_big:

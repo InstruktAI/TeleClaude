@@ -25,13 +25,18 @@ class PeriodicTrigger:
             if not self.engine.is_enabled:
                 continue
 
-            anim_class = random.choice(GENERAL_ANIMATIONS)
             palette = palette_registry.get("spectrum")
             duration = random.uniform(3, 8)
 
-            # Play for both big and small
-            self.engine.play(anim_class(palette=palette, is_big=True, duration_seconds=duration))
-            self.engine.play(anim_class(palette=palette, is_big=False, duration_seconds=duration))
+            # Play for big banner
+            anim_class_big = random.choice(GENERAL_ANIMATIONS)
+            self.engine.play(anim_class_big(palette=palette, is_big=True, duration_seconds=duration))
+
+            # Play for small logo (filter to only small-compatible animations)
+            small_compatible = [cls for cls in GENERAL_ANIMATIONS if cls.supports_small]
+            if small_compatible:
+                anim_class_small = random.choice(small_compatible)
+                self.engine.play(anim_class_small(palette=palette, is_big=False, duration_seconds=duration))
 
     def stop(self):
         if self.task:
@@ -50,7 +55,14 @@ class ActivityTrigger:
         if not self.engine.is_enabled:
             return
 
-        anim_class = random.choice(AGENT_ANIMATIONS)
+        # Filter to small-compatible animations if needed
+        animations = AGENT_ANIMATIONS
+        if not is_big:
+            animations = [cls for cls in AGENT_ANIMATIONS if cls.supports_small]
+            if not animations:
+                return  # No compatible animations for small logo
+
+        anim_class = random.choice(animations)
         palette = palette_registry.get(f"agent_{agent_name}")
         if not palette:
             palette = palette_registry.get("agent_claude")
