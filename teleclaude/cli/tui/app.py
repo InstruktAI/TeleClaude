@@ -877,13 +877,14 @@ class TelecApp:
         show_banner = total_panes not in (4, 6)
         if show_banner:
             render_banner(stdscr, 0, width)
-        else:
-            # When banner is hidden, show "TELECLAUDE" in bold at top right
-            self._render_hidden_banner_header(stdscr, width)
 
         # Row after banner: Tab bar (3 rows for browser-style tabs)
         tab_row = BANNER_HEIGHT if show_banner else 0
         self.tab_bar.render(stdscr, tab_row, width)
+
+        # When banner is hidden, show "TELECLAUDE" in bold at top right (render after tab bar)
+        if not show_banner:
+            self._render_hidden_banner_header(stdscr, width)
 
         # Row after tab bar: empty row for spacing, then breadcrumb (if focused)
         content_start = tab_row + TabBar.HEIGHT + 1  # +HEIGHT for tab bar + 1 for spacing
