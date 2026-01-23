@@ -1,23 +1,42 @@
 """Core animation engine for TUI banner and logo."""
 
-from typing import Dict, Optional, Tuple
+from collections import deque
+from enum import IntEnum
+from typing import Deque, Dict, Optional, Tuple
 
 from teleclaude.cli.tui.animations.base import Animation
 
 
+class AnimationPriority(IntEnum):
+    """Animation priority levels (higher value = higher priority)."""
+
+    PERIODIC = 1
+    ACTIVITY = 2
+
+
 class AnimationEngine:
-    """Manages animation state and timing for the banner and logo."""
+    """Manages animation state and timing for the banner and logo.
+
+    Supports priority-based animation queuing:
+    - Activity animations (higher priority) interrupt periodic animations
+    - Periodic animations queue behind activity animations
+    """
 
     def __init__(self):
         self._big_animation: Optional[Animation] = None
         self._small_animation: Optional[Animation] = None
         self._big_frame_count: int = 0
         self._small_frame_count: int = 0
+        self._big_priority: AnimationPriority = AnimationPriority.PERIODIC
+        self._small_priority: AnimationPriority = AnimationPriority.PERIODIC
         # Double-buffering: front buffer for rendering, back buffer for updates
         self._colors_front: Dict[Tuple[int, int], int] = {}
         self._colors_back: Dict[Tuple[int, int], int] = {}
         self._logo_colors_front: Dict[Tuple[int, int], int] = {}
         self._logo_colors_back: Dict[Tuple[int, int], int] = {}
+        # Priority queues for big/small animations
+        self._big_queue: Deque[Tuple[Animation, AnimationPriority]] = deque(maxlen=5)
+        self._small_queue: Deque[Tuple[Animation, AnimationPriority]] = deque(maxlen=5)
         self._is_enabled: bool = True
 
     @property
@@ -30,24 +49,48 @@ class AnimationEngine:
         if not value:
             self.stop()
 
-    def play(self, animation: Animation) -> None:
-        """Start a new animation, interrupting the current one."""
+    def play(self, animation: Animation, priority: AnimationPriority = AnimationPriority.PERIODIC) -> None:
+        """Start a new animation with priority-based queuing.
+
+        Args:
+            animation: The animation to play
+            priority: Priority level (ACTIVITY interrupts PERIODIC)
+
+        Rules:
+            - Higher priority animations interrupt lower priority ones
+            - Same priority animations replace current animation
+            - Interrupted animations are NOT queued (dropped)
+        """
         if not self._is_enabled:
             return
 
         if animation.is_big:
-            self._big_animation = animation
-            self._big_frame_count = 0
+            # Higher priority interrupts current animation
+            if self._big_animation is None or priority >= self._big_priority:
+                self._big_animation = animation
+                self._big_frame_count = 0
+                self._big_priority = priority
+            # Lower priority gets queued (if queue has space)
+            else:
+                self._big_queue.append((animation, priority))
         else:
-            self._small_animation = animation
-            self._small_frame_count = 0
+            # Higher priority interrupts current animation
+            if self._small_animation is None or priority >= self._small_priority:
+                self._small_animation = animation
+                self._small_frame_count = 0
+                self._small_priority = priority
+            # Lower priority gets queued (if queue has space)
+            else:
+                self._small_queue.append((animation, priority))
 
     def stop(self) -> None:
-        """Stop all animations and clear colors."""
+        """Stop all animations, clear queues, and clear colors."""
         self._big_animation = None
         self._small_animation = None
         self._big_frame_count = 0
         self._small_frame_count = 0
+        self._big_queue.clear()
+        self._small_queue.clear()
         self._colors_front.clear()
         self._colors_back.clear()
         self._logo_colors_front.clear()
@@ -57,6 +100,7 @@ class AnimationEngine:
         """Update animation state. Call this once per render cycle (~100ms).
 
         Uses double-buffering: updates are written to back buffer, then swapped to front.
+        Handles queue progression when animations complete.
         """
         # Update big animation in back buffer
         if self._big_animation:
@@ -64,8 +108,15 @@ class AnimationEngine:
             self._colors_back.update(new_colors)
             self._big_frame_count += 1
             if self._big_animation.is_complete(self._big_frame_count):
-                self._big_animation = None
-                self._colors_back.clear()  # Clear colors to revert to default rendering
+                # Animation complete - check queue for next animation
+                if self._big_queue:
+                    next_animation, next_priority = self._big_queue.popleft()
+                    self._big_animation = next_animation
+                    self._big_frame_count = 0
+                    self._big_priority = next_priority
+                else:
+                    self._big_animation = None
+                    self._colors_back.clear()  # Clear colors to revert to default rendering
         else:
             self._colors_back.clear()
 
@@ -75,8 +126,15 @@ class AnimationEngine:
             self._logo_colors_back.update(new_colors)
             self._small_frame_count += 1
             if self._small_animation.is_complete(self._small_frame_count):
-                self._small_animation = None
-                self._logo_colors_back.clear()  # Clear colors to revert to default rendering
+                # Animation complete - check queue for next animation
+                if self._small_queue:
+                    next_animation, next_priority = self._small_queue.popleft()
+                    self._small_animation = next_animation
+                    self._small_frame_count = 0
+                    self._small_priority = next_priority
+                else:
+                    self._small_animation = None
+                    self._logo_colors_back.clear()  # Clear colors to revert to default rendering
         else:
             self._logo_colors_back.clear()
 

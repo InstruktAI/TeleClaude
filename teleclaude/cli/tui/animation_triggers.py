@@ -5,7 +5,7 @@ import random
 from typing import Optional
 
 from teleclaude.cli.tui.animation_colors import palette_registry
-from teleclaude.cli.tui.animation_engine import AnimationEngine
+from teleclaude.cli.tui.animation_engine import AnimationEngine, AnimationPriority
 from teleclaude.cli.tui.animations.agent import AGENT_ANIMATIONS
 from teleclaude.cli.tui.animations.general import GENERAL_ANIMATIONS
 
@@ -28,15 +28,21 @@ class PeriodicTrigger:
             palette = palette_registry.get("spectrum")
             duration = random.uniform(3, 8)
 
-            # Play for big banner
+            # Play for big banner (periodic priority)
             anim_class_big = random.choice(GENERAL_ANIMATIONS)
-            self.engine.play(anim_class_big(palette=palette, is_big=True, duration_seconds=duration))
+            self.engine.play(
+                anim_class_big(palette=palette, is_big=True, duration_seconds=duration),
+                priority=AnimationPriority.PERIODIC,
+            )
 
             # Play for small logo (filter to only small-compatible animations)
             small_compatible = [cls for cls in GENERAL_ANIMATIONS if cls.supports_small]
             if small_compatible:
                 anim_class_small = random.choice(small_compatible)
-                self.engine.play(anim_class_small(palette=palette, is_big=False, duration_seconds=duration))
+                self.engine.play(
+                    anim_class_small(palette=palette, is_big=False, duration_seconds=duration),
+                    priority=AnimationPriority.PERIODIC,
+                )
 
     def stop(self):
         if self.task:
@@ -68,4 +74,4 @@ class ActivityTrigger:
             palette = palette_registry.get("agent_claude")
 
         animation = anim_class(palette=palette, is_big=is_big, duration_seconds=random.uniform(2, 5))
-        self.engine.play(animation)
+        self.engine.play(animation, priority=AnimationPriority.ACTIVITY)
