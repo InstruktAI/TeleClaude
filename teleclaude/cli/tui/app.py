@@ -342,6 +342,9 @@ class TelecApp:
         self.pane_manager.cleanup()
         # Stop WebSocket connection
         self.api.stop_websocket()
+        # Cancel periodic animation task
+        if self.periodic_trigger.task:
+            self.periodic_trigger.task.cancel()
 
     def _on_ws_event(self, event: WsEvent) -> None:
         """Handle WebSocket event from background thread.
