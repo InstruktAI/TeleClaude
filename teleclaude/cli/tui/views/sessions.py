@@ -465,7 +465,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             preview_action = "[Enter] Hide Preview" if is_previewing else "[Enter] Preview"
             return f"{back_hint}{preview_action}  [←/→] Collapse/Expand  [R] Restart  [k] Kill"
         if is_project_node(selected):
-            return f"{back_hint}[n] Untitled"
+            return f"{back_hint}[n] New Session  [w] Open Sessions"
         # computer
         return f"{back_hint}[→] View Projects  [R] Restart Agents"
 
@@ -894,6 +894,42 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         else:
             attach_tmux_from_result(result, stdscr)
 
+    def _open_project_sessions(self, project: ProjectInfo) -> None:
+        """Make all sessions for a project sticky and attach them in panes."""
+        if not project.path:
+            logger.debug("_open_project_sessions: missing project path")
+            return
+
+        project_sessions = [
+            session
+            for session in self._sessions
+            if session.project_path == project.path and (session.computer or "") == project.computer
+        ]
+        if not project_sessions:
+            if self.notify:
+                self.notify("info", "No sessions found for project")
+            logger.debug("_open_project_sessions: no matching sessions for %s", project.path)
+            return
+
+        tmux_sessions = [session for session in project_sessions if session.tmux_session_name]
+        if not tmux_sessions:
+            if self.notify:
+                self.notify("info", "No attachable sessions found for project")
+            logger.debug("_open_project_sessions: no tmux sessions for %s", project.path)
+            return
+
+        max_sticky = 5
+        if len(tmux_sessions) > max_sticky and self.notify:
+            self.notify("warning", f"Showing first {max_sticky} sessions (max 5 sticky panes)")
+
+        self.sticky_sessions = [StickySessionInfo(session.session_id, True) for session in tmux_sessions[:max_sticky]]
+        self._active_session_id = None
+        self._active_child_session_id = None
+        self._rebuild_sticky_panes()
+
+        for sticky in self.sticky_sessions:
+            self.pane_manager.focus_pane_for_session(sticky.session_id)
+
     def handle_key(self, key: int, stdscr: CursesWindow) -> None:
         """Handle view-specific keys.
 
@@ -928,6 +964,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 self._start_session_for_project(stdscr, selected.data)
             else:
                 logger.debug("handle_key: 'n' ignored, not on a project")
+            return
+        if key in (ord("w"), ord("W")):
+            if is_project_node(selected):
+                logger.debug("handle_key: opening all sessions for project")
+                self._open_project_sessions(selected.data)
+            else:
+                logger.debug("handle_key: 'w' ignored, not on a project")
             return
 
         if key == ord("k"):

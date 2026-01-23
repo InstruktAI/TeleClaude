@@ -245,19 +245,39 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
             caller_session_id: The caller's session ID (required for listener registration)
         """
         if not caller_session_id:
+            logger.debug(
+                "Listener register skipped: missing caller_session_id (target=%s)",
+                target_session_id[:8],
+            )
             return
 
         # Prevent self-subscription (would cause notification loops)
         if target_session_id == caller_session_id:
+            logger.debug(
+                "Listener register skipped: caller equals target (session=%s)",
+                target_session_id[:8],
+            )
             return
 
         try:
             caller_session = await db.get_session(caller_session_id)
             if caller_session:
+                logger.info(
+                    "Listener register attempt: caller=%s target=%s tmux=%s",
+                    caller_session_id[:8],
+                    target_session_id[:8],
+                    caller_session.tmux_session_name,
+                )
                 register_listener(
                     target_session_id=target_session_id,
                     caller_session_id=caller_session_id,
                     caller_tmux_session=caller_session.tmux_session_name,
+                )
+            else:
+                logger.warning(
+                    "Listener register skipped: caller session not found (caller=%s target=%s)",
+                    caller_session_id[:8],
+                    target_session_id[:8],
                 )
         except RuntimeError:
             # Database not initialized (e.g., in tests)

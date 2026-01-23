@@ -1764,7 +1764,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 break
             except Exception as e:
                 logger.error("Error in poller watch loop: %s", e)
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(5.0)
 
     def _collect_resource_snapshot(self, reason: str) -> dict[str, int | float | str | None]:
         """Collect a lightweight resource snapshot for diagnostics."""
@@ -1862,19 +1862,45 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _poller_watch_iteration(self) -> None:
         """Run a single poller watch iteration (extracted for testing)."""
         sessions = await db.get_active_sessions()
+        if not sessions:
+            return
+
+        # Optimization: Get all tmux sessions once instead of N times
+        try:
+            active_tmux_sessions = set(await tmux_bridge.list_tmux_sessions())
+        except Exception as exc:
+            logger.warning("Failed to list tmux sessions during poller watch: %s", exc)
+            return
+
         for session in sessions:
+            # Check if poller is already running (memory check, very fast)
+            if await polling_coordinator.is_polling(session.session_id):
+                continue
+
+            # Ensure UI channels exist (migration/recovery) for telegram sessions
             if session.last_input_origin == "telegram":
                 if (
                     not session.adapter_metadata
                     or not session.adapter_metadata.telegram
+                    or not session.adapter_metadata.telegram.topic_id
                     or not session.adapter_metadata.telegram.output_message_id
                 ):
-                    continue
+                    try:
+                        await self.client.ensure_ui_channels(session, session.title)
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to ensure UI channels for session %s: %s",
+                            session.session_id[:8],
+                            exc,
+                        )
+                        continue
 
-            if not await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False):
+            # Check if session exists in our cached list, recreate if missing
+            if session.tmux_session_name not in active_tmux_sessions:
                 recreated = await self._ensure_tmux_session(session)
                 if not recreated:
                     continue
+
             if await tmux_bridge.is_pane_dead(session.tmux_session_name):
                 await session_cleanup.terminate_session(
                     session.session_id,
@@ -1882,8 +1908,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     reason="pane_dead",
                     session=session,
                 )
-                continue
-            if await polling_coordinator.is_polling(session.session_id):
                 continue
 
             await polling_coordinator.schedule_polling(

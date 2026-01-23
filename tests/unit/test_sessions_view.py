@@ -13,10 +13,10 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from teleclaude.cli.models import ComputerInfo, SessionInfo
+from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.app import FocusContext
-from teleclaude.cli.tui.tree import SessionDisplayInfo, SessionNode
-from teleclaude.cli.tui.types import ActivePane
+from teleclaude.cli.tui.tree import ProjectNode, SessionDisplayInfo, SessionNode
+from teleclaude.cli.tui.types import ActivePane, NodeType
 from teleclaude.cli.tui.views.sessions import SessionsView
 
 
@@ -138,3 +138,35 @@ async def test_handle_enter_on_session_toggles_pane():
     view.handle_enter(screen)
 
     assert pane_manager.apply_called is True
+
+
+def test_open_project_sessions_sets_sticky_list():
+    """Project shortcut should sticky project sessions (up to 5) and apply layout."""
+    pane_manager = DummyPaneManager()
+    view = SessionsView(api=AsyncMock(), agent_availability={}, focus=FocusContext(), pane_manager=pane_manager)
+
+    project = ProjectInfo(computer="local", name="TeleClaude", path="/repo")
+    sessions = [
+        SessionInfo(
+            session_id=f"sess-{idx}",
+            last_input_origin="telegram",
+            status="active",
+            tmux_session_name=f"tmux-{idx}",
+            computer="local",
+            project_path="/repo",
+            title=f"Session {idx}",
+            active_agent="claude",
+            thinking_mode="slow",
+        )
+        for idx in range(6)
+    ]
+
+    view._sessions = sessions
+    view.flat_items = [ProjectNode(type=NodeType.PROJECT, data=project, depth=0, children=[])]
+    view.selected_index = 0
+
+    view.handle_key(ord("w"), Mock())
+
+    assert pane_manager.apply_called is True
+    assert len(view.sticky_sessions) == 5
+    assert [sticky.session_id for sticky in view.sticky_sessions] == [f"sess-{i}" for i in range(5)]

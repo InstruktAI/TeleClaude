@@ -161,7 +161,6 @@ tmux list-sessions | grep -E "test-|Test"
    - `test_teleclaude_list_sessions`
    - `test_teleclaude_start_session`
    - `test_teleclaude_send_message`
-   - `test_teleclaude_send_notification`
    - `test_teleclaude_send_file`
    - `test_teleclaude_send_file_invalid_session`
    - `test_teleclaude_send_file_nonexistent_file`

@@ -202,15 +202,20 @@ class MessageOperationsMixin:
         reply_markup = metadata.reply_markup
         parse_mode = metadata.parse_mode
 
-        # CRITICAL FIX: Remove pending edit optimization - it causes race conditions where
-        # subsequent updates return True without actually sending, leading to stuck messages.
-        # Instead, cancel the pending edit and start fresh with latest data.
+        # Platform-specific optimization: if an edit is already pending for this message,
+        # just update the existing context with the latest text. The already-running
+        # retry loop will use this updated text on its next attempt.
         if message_id in self._pending_edits:
-            logger.debug(
-                "Cancelling stale edit for message %s, starting fresh with latest content",
+            existing_ctx = self._pending_edits[message_id]
+            existing_ctx.text = text
+            existing_ctx.reply_markup = reply_markup
+            existing_ctx.parse_mode = parse_mode
+            logger.trace(
+                "[TELEGRAM %s] Updated pending edit for message %s with latest content",
+                session.session_id[:8],
                 message_id,
             )
-            self._pending_edits.pop(message_id)  # Remove stale edit
+            return True
 
         # Create new edit context (mutable)
         ctx = EditContext(

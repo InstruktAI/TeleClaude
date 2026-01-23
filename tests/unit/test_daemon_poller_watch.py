@@ -29,11 +29,12 @@ async def test_poller_watch_does_not_create_ui_channel():
         last_input_origin="cli",
         title="Test Session",
         adapter_metadata=SessionAdapterMetadata(),
+        project_path="/tmp",
     )
 
     with (
         patch("teleclaude.daemon.db.get_active_sessions", new=AsyncMock(return_value=[session])),
-        patch("teleclaude.daemon.tmux_bridge.session_exists", new=AsyncMock(return_value=True)),
+        patch("teleclaude.daemon.tmux_bridge.list_tmux_sessions", new=AsyncMock(return_value=["tc_sess"])),
         patch("teleclaude.daemon.tmux_bridge.is_pane_dead", new=AsyncMock(return_value=False)),
         patch("teleclaude.daemon.tmux_bridge.is_process_running", new=AsyncMock(return_value=False)),
         patch("teleclaude.daemon.session_cleanup.terminate_session", new=AsyncMock()),
@@ -62,11 +63,12 @@ async def test_poller_watch_recreates_missing_tmux_session():
         title="Test Session 2",
         adapter_metadata=SessionAdapterMetadata(),
         active_agent="claude",
+        project_path="/tmp",
     )
 
     with (
         patch("teleclaude.daemon.db.get_active_sessions", new=AsyncMock(return_value=[session])),
-        patch("teleclaude.daemon.tmux_bridge.session_exists", new=AsyncMock(return_value=False)),
+        patch("teleclaude.daemon.tmux_bridge.list_tmux_sessions", new=AsyncMock(return_value=[])),
         patch("teleclaude.daemon.tmux_bridge.is_pane_dead", new=AsyncMock(return_value=False)),
         patch("teleclaude.daemon.session_cleanup.terminate_session", new=AsyncMock()),
         patch("teleclaude.daemon.polling_coordinator.is_polling", new=AsyncMock(return_value=False)),

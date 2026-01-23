@@ -415,9 +415,9 @@ def get_tool_definitions() -> list[Tool]:
             title="TeleClaude: Send Result",
             description=(
                 "Send formatted results to the user as a separate message "
-                "(not in the streaming tmux output).\n\n"
-                "Use this tool when the user explicitly asks to send results.\n\n"
-                "Content can be markdown or html."
+                "(not in the streaming terminal output).\n\n"
+                "Content can be markdown or html.\n\n"
+                "ONLY use this tool when the user explicitly asks to send results!"
             ),
             inputSchema={
                 "type": "object",
@@ -487,20 +487,6 @@ def get_tool_definitions() -> list[Tool]:
                     },
                 },
                 "required": ["computer", "session_id"],
-            },
-        ),
-        Tool(
-            name="teleclaude__handle_agent_event",
-            title="TeleClaude: Handle Agent Event (internal)",
-            description="Internal: receive agent hook events from Claude Code sessions.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "session_id": {"type": "string"},
-                    "event_type": {"type": "string"},
-                    "payload": {"type": "object"},
-                },
-                "required": ["session_id", "event_type", "payload"],
             },
         ),
         Tool(

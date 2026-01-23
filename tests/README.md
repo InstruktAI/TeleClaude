@@ -24,8 +24,6 @@ This document maps all critical user pathways to integration tests, identifying 
 
 **Missing Tests**:
 
-- ❌ **Notification Chain**: Poller detects idle → MCP send_notification called → Notification sent to Telegram
-- ❌ **Notification Chain**: Poller detects completion → MCP send_notification called → Completion message sent
 - ❌ **Error handling**: Command fails → Error captured → Error message sent to user
 
 ### 2. AI → MCP → Remote Computer (Cross-Computer Orchestration)
@@ -93,7 +91,6 @@ This document maps all critical user pathways to integration tests, identifying 
 
 **Missing Tests**:
 
-- ❌ **Idle notification sent via MCP**: Poller triggers → MCP send_notification → Message appears
 - ❌ **Notification flag prevents duplicate**: notification_sent flag set → Skip sending again
 
 ### 6. Voice Status Append (Real-time Status)
@@ -135,27 +132,7 @@ This document maps all critical user pathways to integration tests, identifying 
 1. **✅ COMPLETED: Multi-adapter broadcasting** (origin + observers)
    - Tests exist and passing
 
-2. **❌ MISSING: Notification chain end-to-end**
-
-   ```python
-   # tests/integration/test_notification_chain.py
-
-   async def test_idle_notification_sent_via_mcp():
-       """Test: Poller detects idle → MCP notification → Telegram message."""
-       # 1. Start session with active command
-       # 2. Let poller detect idle (mock 60s wait)
-       # 3. Verify MCP send_notification called
-       # 4. Verify Telegram receives message
-
-   async def test_completion_notification_sent_via_mcp():
-       """Test: Command completes → MCP notification → Telegram message."""
-       # 1. Execute command
-       # 2. Wait for exit code detection
-       # 3. Verify MCP send_notification called with completion message
-       # 4. Verify Telegram receives message
-   ```
-
-3. **❌ MISSING: MCP interest window pattern**
+2. **❌ MISSING: MCP interest window pattern**
 
    ```python
    # tests/integration/test_mcp_interest_window.py

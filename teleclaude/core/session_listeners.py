@@ -77,6 +77,11 @@ def register_listener(
         target_session_id[:8],
         len(_listeners[target_session_id]),
     )
+    logger.debug(
+        "Listener map snapshot: target=%s callers=%s",
+        target_session_id[:8],
+        ",".join(item.caller_session_id[:8] for item in _listeners[target_session_id]),
+    )
     return True
 
 
@@ -150,6 +155,8 @@ def pop_listeners(target_session_id: str) -> list[SessionListener]:
             len(listeners),
             target_session_id[:8],
         )
+    else:
+        logger.debug("Pop listeners: none for target %s", target_session_id[:8])
     return listeners
 
 
@@ -172,6 +179,13 @@ def cleanup_caller_listeners(caller_session_id: str) -> int:
         _listeners[target_id] = [listener for listener in listeners if listener.caller_session_id != caller_session_id]
         removed = original_len - len(_listeners[target_id])
         count += removed
+        if removed:
+            logger.debug(
+                "Removed %d listener(s) for caller %s from target %s",
+                removed,
+                caller_session_id[:8],
+                target_id[:8],
+            )
 
         # Mark empty lists for cleanup
         if not _listeners[target_id]:
@@ -260,6 +274,11 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
         logger.debug("No listeners for session %s", target_session_id[:8])
         return 0
 
+    logger.debug(
+        "Notify listeners: target=%s callers=%s",
+        target_session_id[:8],
+        ",".join(listener.caller_session_id[:8] for listener in listeners),
+    )
     success_count = 0
     for listener in listeners:
         delivered = await deliver_listener_message(
