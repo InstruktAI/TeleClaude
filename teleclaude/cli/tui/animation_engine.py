@@ -1,5 +1,6 @@
 """Core animation engine for TUI banner and logo."""
 
+import time
 from collections import deque
 from enum import IntEnum
 from typing import Deque, Dict, Optional, Tuple
@@ -27,6 +28,8 @@ class AnimationEngine:
         self._small_animation: Optional[Animation] = None
         self._big_frame_count: int = 0
         self._small_frame_count: int = 0
+        self._big_last_update_ms: float = 0
+        self._small_last_update_ms: float = 0
         self._big_priority: AnimationPriority = AnimationPriority.PERIODIC
         self._small_priority: AnimationPriority = AnimationPriority.PERIODIC
         # Double-buffering: front buffer for rendering, back buffer for updates
@@ -69,6 +72,7 @@ class AnimationEngine:
             if self._big_animation is None or priority >= self._big_priority:
                 self._big_animation = animation
                 self._big_frame_count = 0
+                self._big_last_update_ms = time.time() * 1000
                 self._big_priority = priority
             # Lower priority gets queued (if queue has space)
             else:
@@ -78,6 +82,7 @@ class AnimationEngine:
             if self._small_animation is None or priority >= self._small_priority:
                 self._small_animation = animation
                 self._small_frame_count = 0
+                self._small_last_update_ms = time.time() * 1000
                 self._small_priority = priority
             # Lower priority gets queued (if queue has space)
             else:
@@ -99,42 +104,58 @@ class AnimationEngine:
     def update(self) -> None:
         """Update animation state. Call this once per render cycle (~100ms).
 
-        Uses double-buffering: updates are written to back buffer, then swapped to front.
-        Handles queue progression when animations complete.
+        Respects per-animation speed_ms timing:
+        - Only advances frame when enough time has elapsed
+        - Uses double-buffering: updates written to back buffer, then swapped to front
+        - Handles queue progression when animations complete
         """
-        # Update big animation in back buffer
+        current_time_ms = time.time() * 1000
+
+        # Update big animation in back buffer (respecting speed_ms timing)
         if self._big_animation:
-            new_colors = self._big_animation.update(self._big_frame_count)
-            self._colors_back.update(new_colors)
-            self._big_frame_count += 1
-            if self._big_animation.is_complete(self._big_frame_count):
-                # Animation complete - check queue for next animation
-                if self._big_queue:
-                    next_animation, next_priority = self._big_queue.popleft()
-                    self._big_animation = next_animation
-                    self._big_frame_count = 0
-                    self._big_priority = next_priority
-                else:
-                    self._big_animation = None
-                    self._colors_back.clear()  # Clear colors to revert to default rendering
+            elapsed_ms = current_time_ms - self._big_last_update_ms
+            if elapsed_ms >= self._big_animation.speed_ms:
+                # Time to advance frame
+                new_colors = self._big_animation.update(self._big_frame_count)
+                self._colors_back.update(new_colors)
+                self._big_frame_count += 1
+                self._big_last_update_ms = current_time_ms
+
+                if self._big_animation.is_complete(self._big_frame_count):
+                    # Animation complete - check queue for next animation
+                    if self._big_queue:
+                        next_animation, next_priority = self._big_queue.popleft()
+                        self._big_animation = next_animation
+                        self._big_frame_count = 0
+                        self._big_last_update_ms = current_time_ms
+                        self._big_priority = next_priority
+                    else:
+                        self._big_animation = None
+                        self._colors_back.clear()  # Clear colors to revert to default rendering
         else:
             self._colors_back.clear()
 
-        # Update small animation in back buffer
+        # Update small animation in back buffer (respecting speed_ms timing)
         if self._small_animation:
-            new_colors = self._small_animation.update(self._small_frame_count)
-            self._logo_colors_back.update(new_colors)
-            self._small_frame_count += 1
-            if self._small_animation.is_complete(self._small_frame_count):
-                # Animation complete - check queue for next animation
-                if self._small_queue:
-                    next_animation, next_priority = self._small_queue.popleft()
-                    self._small_animation = next_animation
-                    self._small_frame_count = 0
-                    self._small_priority = next_priority
-                else:
-                    self._small_animation = None
-                    self._logo_colors_back.clear()  # Clear colors to revert to default rendering
+            elapsed_ms = current_time_ms - self._small_last_update_ms
+            if elapsed_ms >= self._small_animation.speed_ms:
+                # Time to advance frame
+                new_colors = self._small_animation.update(self._small_frame_count)
+                self._logo_colors_back.update(new_colors)
+                self._small_frame_count += 1
+                self._small_last_update_ms = current_time_ms
+
+                if self._small_animation.is_complete(self._small_frame_count):
+                    # Animation complete - check queue for next animation
+                    if self._small_queue:
+                        next_animation, next_priority = self._small_queue.popleft()
+                        self._small_animation = next_animation
+                        self._small_frame_count = 0
+                        self._small_last_update_ms = current_time_ms
+                        self._small_priority = next_priority
+                    else:
+                        self._small_animation = None
+                        self._logo_colors_back.clear()  # Clear colors to revert to default rendering
         else:
             self._logo_colors_back.clear()
 
