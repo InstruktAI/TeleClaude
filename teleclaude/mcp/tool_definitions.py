@@ -34,7 +34,7 @@ def get_tool_definitions() -> list[Tool]:
                 "You will use this tool to get important context before starting any work. "
                 "Phase 1: pass an empty corpus to return a filtered snippet index (frontmatter only). "
                 "Phase 2: pass selected snippet ids (as a JSON list or newline list) to receive full snippets. "
-                "Always start with phase 1 when you are unsure which snippets apply. "
+                "Always start with phase 1 when you are unsure which snippets apply. ALWAYS use phase 2 when you found interesting snippets! "
                 "Use when you need policy/procedure/role/checklist/reference context beyond what you already have."
             ),
             inputSchema={

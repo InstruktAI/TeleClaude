@@ -43,8 +43,8 @@ See [animation-matrix.md](./animation-matrix.md) for complete animation catalog.
 
 **Small ASCII Logo**
 
-- Grid: 39 characters wide × 3 lines tall
-- Letter size: Variable, ~4 characters wide per letter
+- Grid: ~39 characters wide × 3 lines tall
+- Letter size: Variable, ~3-4 characters wide per letter
 - Supports: Color changes only, letter-level waves, line sweeps
 
 ### Character-as-Pixel Model

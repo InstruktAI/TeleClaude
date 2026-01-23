@@ -1,9 +1,0 @@
-{
-  "build": "complete",
-  "review": "changes_requested",
-  "deferrals_processed": false,
-  "breakdown": {
-    "assessed": true,
-    "todos": []
-  }
-}
