@@ -43,11 +43,14 @@ def _load_json_settings(
         return None
 
 
-def _extract_receiver_script(command: str) -> str | None:
-    try:
-        parts = shlex.split(command)
-    except ValueError:
-        return None
+def _extract_receiver_script(command: str | list[object]) -> str | None:
+    if isinstance(command, list):
+        parts = [str(part) for part in command]
+    else:
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            return None
     for part in parts:
         if part.endswith(PY_EXTENSION) and RECEIVER_TOKEN in part:
             # Normalize legacy receiver_claude/receiver_gemini to receiver.py family
@@ -131,7 +134,7 @@ def _resolve_hook_python(repo_root: Path) -> Path:
     return venv_python
 
 
-def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, str]]:
+def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
     """Return TeleClaude hook definitions for Claude Code.
 
     Claude valid events: PreToolUse, PostToolUse, PostToolUseFailure, Notification,
@@ -139,15 +142,16 @@ def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
     PreCompact, PermissionRequest
 
     Note: Claude hooks only use 'type' and 'command' - no 'name' or 'description'.
+    Command is an array to bypass shell invocation (avoids /bin/sh ENOENT in sandboxed Claude).
     """
     return {
         "SessionStart": {
             "type": "command",
-            "command": f"{python_exe} {receiver_script} --agent claude session_start",
+            "command": [str(python_exe), str(receiver_script), "--agent", "claude", "session_start"],
         },
         "Stop": {
             "type": "command",
-            "command": f"{python_exe} {receiver_script} --agent claude stop",
+            "command": [str(python_exe), str(receiver_script), "--agent", "claude", "stop"],
         },
     }
 

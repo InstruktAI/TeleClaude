@@ -51,7 +51,12 @@ def test_configure_claude_writes_hook_file(tmp_path, monkeypatch):
     # Claude hooks only have type and command (no name/description)
     hook = hooks_block["hooks"][0]
     assert hook["type"] == "command"
-    assert "receiver.py --agent claude session_start" in hook["command"]
+    command = hook["command"]
+    if isinstance(command, list):
+        command_text = " ".join(command)
+    else:
+        command_text = command
+    assert "receiver.py --agent claude session_start" in command_text
 
 
 def test_configure_codex_writes_notify_hook(tmp_path, monkeypatch):
