@@ -37,7 +37,10 @@ Discussion results go in `todos/{slug}/input.md`. Use the preparation state mach
 ### When Notification Arrives
 
 1. Verify output matches intended outcome.
-2. Read POST_COMPLETION steps and execute them exactly.
+2. Execute POST_COMPLETION steps (orchestrator responsibility):
+   - Mark phase status using `teleclaude__mark_phase()` if applicable
+   - **Terminate worker session: `teleclaude__end_session(computer, session_id)`** ← ORCHESTRATOR OWNS THIS
+   - Execute any phase-specific cleanup from the state machine instruction
 3. Invoke the work state machine to continue.
 
 ### When Timer Expires

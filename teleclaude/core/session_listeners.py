@@ -274,10 +274,12 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
         logger.debug("No listeners for session %s", target_session_id[:8])
         return 0
 
+    preview = message.replace("\n", "\\n")[:160]
     logger.debug(
-        "Notify listeners: target=%s callers=%s",
+        "Notify listeners: target=%s callers=%s message_preview=%r",
         target_session_id[:8],
         ",".join(listener.caller_session_id[:8] for listener in listeners),
+        preview,
     )
     success_count = 0
     for listener in listeners:

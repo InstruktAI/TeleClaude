@@ -38,6 +38,7 @@ class SessionInfo(TypedDict):
     status: str
     created_at: str
     last_activity: str
+    initiator_session_id: str | None
     computer: str
 
 

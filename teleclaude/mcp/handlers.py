@@ -373,7 +373,20 @@ class MCPHandlersMixin:
         if not await self._is_computer_online(computer):
             return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
-        metadata = MessageMetadata(project_path=project_path, title=title)
+        initiator_agent, initiator_mode = await self._get_caller_agent_info(caller_session_id)
+        channel_metadata: dict[str, object] = {"target_computer": self.computer_name}  # guard: loose-dict
+        if initiator_agent:
+            channel_metadata["initiator_agent"] = initiator_agent
+        if initiator_mode:
+            channel_metadata["initiator_mode"] = initiator_mode
+        if caller_session_id:
+            channel_metadata["initiator_session_id"] = caller_session_id
+
+        metadata = MessageMetadata(
+            project_path=project_path,
+            title=title,
+            channel_metadata=channel_metadata,
+        )
         message_id = await self.client.send_request(computer_name=computer, command="/new_session", metadata=metadata)
 
         try:
@@ -417,13 +430,21 @@ class MCPHandlersMixin:
             logger.error("Failed to create remote session: %s", e)
             return {"status": "error", "message": f"Failed to create remote session: {str(e)}"}
 
-    async def teleclaude__list_sessions(self, computer: Optional[str] = "local") -> list[SessionInfo]:
+    async def teleclaude__list_sessions(
+        self,
+        computer: Optional[str] = "local",
+        spawned_by_me: bool = True,
+        caller_session_id: str | None = None,
+    ) -> list[SessionInfo]:
         """List sessions from local or remote computer(s)."""
         if computer is None:
-            return await self._list_all_sessions()
-        if self._is_local_computer(computer):
-            return await self._list_local_sessions()
-        return await self._list_remote_sessions(computer)
+            sessions = await self._list_all_sessions()
+        elif self._is_local_computer(computer):
+            sessions = await self._list_local_sessions()
+        else:
+            sessions = await self._list_remote_sessions(computer)
+
+        return self._filter_spawned_sessions(sessions, spawned_by_me, caller_session_id)
 
     async def _list_local_sessions(self) -> list[SessionInfo]:
         """List sessions from local database directly."""
@@ -464,6 +485,19 @@ class MCPHandlersMixin:
             all_sessions.extend(await self._list_remote_sessions(computer_name))
 
         return all_sessions
+
+    @staticmethod
+    def _filter_spawned_sessions(
+        sessions: list[SessionInfo],
+        spawned_by_me: bool,
+        caller_session_id: str | None,
+    ) -> list[SessionInfo]:
+        if not spawned_by_me:
+            return sessions
+        if not caller_session_id:
+            logger.debug("spawned_by_me requested but missing caller_session_id; returning unfiltered sessions")
+            return sessions
+        return [session for session in sessions if session.get("initiator_session_id") == caller_session_id]
 
     async def teleclaude__send_message(
         self,
@@ -616,7 +650,7 @@ class MCPHandlersMixin:
 
         initiator_agent, initiator_mode = await self._get_caller_agent_info(caller_session_id)
 
-        channel_metadata: dict[str, object] = {}  # guard: loose-dict
+        channel_metadata: dict[str, object] = {"target_computer": self.computer_name}  # guard: loose-dict
         if initiator_agent:
             channel_metadata["initiator_agent"] = initiator_agent
         if initiator_mode:

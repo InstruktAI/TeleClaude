@@ -11,6 +11,7 @@ from teleclaude.core.session_listeners import (
     get_listeners,
     get_listeners_for_caller,
     get_stale_targets,
+    notify_stop,
     pop_listeners,
     register_listener,
     unregister_listener,
@@ -88,6 +89,29 @@ class TestGetListeners:
         """Should return empty list for nonexistent target."""
         listeners = get_listeners("nonexistent")
         assert listeners == []
+
+
+@pytest.mark.asyncio
+async def test_notify_stop_delivers_message(monkeypatch):
+    """notify_stop should deliver a message to the caller session."""
+    register_listener("target-123", "caller-A", "tc_callerA")
+    delivered: dict[str, str] = {}
+
+    async def fake_deliver(session_id: str, tmux_session: str, message: str) -> bool:
+        delivered["session_id"] = session_id
+        delivered["tmux_session"] = tmux_session
+        delivered["message"] = message
+        return True
+
+    monkeypatch.setattr("teleclaude.core.tmux_delivery.deliver_listener_message", fake_deliver)
+
+    count = await notify_stop("target-123", "Local", title="Test Title")
+
+    assert count == 1
+    assert delivered["session_id"] == "caller-A"
+    assert delivered["tmux_session"] == "tc_callerA"
+    assert "teleclaude__get_session_data" in delivered["message"]
+    assert "target-123" in delivered["message"]
 
 
 class TestPopListeners:

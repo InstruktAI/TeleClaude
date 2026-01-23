@@ -461,6 +461,7 @@ class APIServer:
         ) -> dict[str, str]:
             """Restart agent in session (preserves conversation via --resume)."""
             try:
+                logger.info("API agent_restart requested (session=%s, origin=cli)", session_id[:8])
                 # Normalize command through mapper before dispatching
                 metadata = self._metadata()
                 cmd = CommandMapper.map_api_input(

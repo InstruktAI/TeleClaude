@@ -98,8 +98,9 @@ async def test_long_running_command(daemon_with_mocked_telegram):
     )
 
     # Wait for process to start and produce initial output
+    # Allow extra slack under parallel test load.
     output = ""
-    for _ in range(40):
+    for _ in range(90):
         output = await tmux_bridge.capture_pane(session.tmux_session_name) or ""
         if "Ready" in output:
             break

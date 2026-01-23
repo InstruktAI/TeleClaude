@@ -355,7 +355,7 @@ TeleClaude includes a **Model Context Protocol (MCP) server** that enables Agent
 
 - `teleclaude__list_computers` - List all online computers in the network
 - `teleclaude__list_projects` - List available project directories on a computer
-- `teleclaude__list_sessions` - List active AI-to-AI sessions
+- `teleclaude__list_sessions` - List active AI-to-AI sessions (defaults to sessions spawned by the caller; set `spawned_by_me=false` to list all)
 - `teleclaude__start_session` - Start AI-to-AI session with remote computer
 - `teleclaude__send_message` - Send message to a session
 - `teleclaude__get_session_data` - Get session transcript data
@@ -375,6 +375,16 @@ TeleClaude includes a **Model Context Protocol (MCP) server** that enables Agent
 # 2. Start session with workstation
 # 3. Send command: tail -100 /var/log/nginx/error.log
 # 4. Stream response back in real-time
+```
+
+**List Sessions Examples:**
+
+```bash
+# Only sessions spawned by this orchestrator (default)
+> teleclaude__list_sessions {"computer":"local"}
+
+# All sessions on a specific computer
+> teleclaude__list_sessions {"computer":"workstation","spawned_by_me":false}
 ```
 
 **For detailed setup instructions, see [docs/multi-computer-setup.md](docs/multi-computer-setup.md)**

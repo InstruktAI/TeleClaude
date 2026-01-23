@@ -11,6 +11,13 @@ logger = get_logger(__name__)
 
 async def deliver_listener_message(session_id: str, tmux_session: str, message: str) -> bool:
     """Deliver a notification to a listener via tmux."""
+    preview = message.replace("\n", "\\n")[:160]
+    logger.debug(
+        "Deliver listener message: session=%s tmux=%s preview=%r",
+        session_id[:8],
+        tmux_session,
+        preview,
+    )
     delivered = await tmux_bridge.send_keys_existing_tmux(
         session_name=tmux_session,
         text=message,

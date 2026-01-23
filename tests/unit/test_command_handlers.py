@@ -608,6 +608,36 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
 
 
 @pytest.mark.asyncio
+async def test_handle_agent_start_does_not_clear_native_fields(mock_initialized_db):
+    """Ensure agent_start does not wipe native session metadata."""
+    mock_session = MagicMock()
+    mock_session.session_id = "native-session-123"
+    mock_session.tmux_session_name = "tc_test"
+    mock_session.native_session_id = "native-123"
+    mock_session.native_log_file = "/tmp/native.jsonl"
+    mock_session.title = "Project: $local - Test"
+
+    mock_execute = AsyncMock()
+    mock_client = MagicMock()
+
+    with (
+        patch.object(command_handlers, "config") as mock_config,
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
+    ):
+        mock_config.computer.name = "local"
+        mock_db.update_session = AsyncMock()
+        mock_get_agent_command.return_value = "claude"
+
+        cmd = StartAgentCommand(session_id=mock_session.session_id, agent_name="claude", args=[])
+        await command_handlers.start_agent.__wrapped__(mock_session, cmd, mock_client, mock_execute)
+
+    _, kwargs = mock_db.update_session.call_args
+    assert "native_session_id" not in kwargs
+    assert "native_log_file" not in kwargs
+
+
+@pytest.mark.asyncio
 async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
     """Ensure /codex deep maps to the deep model flag."""
 

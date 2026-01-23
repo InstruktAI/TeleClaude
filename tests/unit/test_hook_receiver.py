@@ -152,6 +152,87 @@ def test_receiver_accepts_gemini_stop_event(monkeypatch, tmp_path):
     assert event_type == "stop"
 
 
+def test_receiver_updates_native_fields_for_gemini_session_start(monkeypatch, tmp_path):
+    """Gemini session_start should update native fields before enqueue."""
+    sent = []
+    updates = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    def fake_normalize(_event_type, _data):
+        return NormalizedHookPayload()
+
+    def fake_update(session_id, *, native_log_file=None, native_session_id=None):
+        updates.append((session_id, native_log_file, native_session_id))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: fake_normalize)
+    monkeypatch.setattr(receiver, "_update_session_native_fields", fake_update)
+    monkeypatch.setattr(
+        receiver,
+        "_read_stdin",
+        lambda: (
+            '{"session_id": "native-1", "transcript_path": "/tmp/gemini.jsonl"}',
+            {
+                "session_id": "native-1",
+                "transcript_path": "/tmp/gemini.jsonl",
+            },
+        ),
+    )
+    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="session_start"))
+    tmpdir = tmp_path / "tmp-gemini-start"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("sess-1")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
+
+    receiver.main()
+
+    assert updates
+    assert updates[0] == ("sess-1", "/tmp/gemini.jsonl", "native-1")
+    assert sent
+
+
+def test_receiver_filters_gemini_non_terminal_events(monkeypatch, tmp_path):
+    """Gemini intermediate events should update native fields but not enqueue."""
+    sent = []
+    updates = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    def fake_update(session_id, *, native_log_file=None, native_session_id=None):
+        updates.append((session_id, native_log_file, native_session_id))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_update_session_native_fields", fake_update)
+    monkeypatch.setattr(
+        receiver,
+        "_read_stdin",
+        lambda: (
+            '{"session_id": "native-2", "transcript_path": "/tmp/gemini-2.jsonl"}',
+            {
+                "session_id": "native-2",
+                "transcript_path": "/tmp/gemini-2.jsonl",
+            },
+        ),
+    )
+    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="prompt"))
+    tmpdir = tmp_path / "tmp-gemini-prompt"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("sess-2")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
+
+    with pytest.raises(SystemExit) as exc:
+        receiver.main()
+
+    assert exc.value.code == 0
+
+    assert updates
+    assert updates[0] == ("sess-2", "/tmp/gemini-2.jsonl", "native-2")
+    assert not sent
+
+
 def test_receiver_includes_agent_name_in_payload(monkeypatch, tmp_path):
     sent = []
 

@@ -124,6 +124,142 @@ async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
 
 
 @pytest.mark.asyncio
+async def test_teleclaude_list_sessions_filters_spawned_by_me(mock_mcp_server):
+    """Test that list_sessions defaults to sessions spawned by the caller."""
+    server = mock_mcp_server
+
+    with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
+        mock_handlers.list_sessions = AsyncMock(
+            return_value=[
+                SessionSummary(
+                    session_id="sess-1",
+                    last_input_origin="telegram",
+                    title="Session One",
+                    project_path="/home/user",
+                    thinking_mode="slow",
+                    active_agent=None,
+                    status="active",
+                    initiator_session_id="caller-1",
+                ),
+                SessionSummary(
+                    session_id="sess-2",
+                    last_input_origin="telegram",
+                    title="Session Two",
+                    project_path="/home/user",
+                    thinking_mode="slow",
+                    active_agent=None,
+                    status="active",
+                    initiator_session_id="caller-2",
+                ),
+                SessionSummary(
+                    session_id="sess-3",
+                    last_input_origin="telegram",
+                    title="Session Three",
+                    project_path="/home/user",
+                    thinking_mode="slow",
+                    active_agent=None,
+                    status="active",
+                    initiator_session_id=None,
+                ),
+            ]
+        )
+
+        result = await server.teleclaude__list_sessions(
+            computer="local",
+            spawned_by_me=True,
+            caller_session_id="caller-1",
+        )
+
+        assert [session["session_id"] for session in result] == ["sess-1"]
+
+
+@pytest.mark.asyncio
+async def test_teleclaude_list_sessions_allows_all_sessions(mock_mcp_server):
+    """Test that list_sessions returns all sessions when spawned_by_me is false."""
+    server = mock_mcp_server
+
+    with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
+        mock_handlers.list_sessions = AsyncMock(
+            return_value=[
+                SessionSummary(
+                    session_id="sess-1",
+                    last_input_origin="telegram",
+                    title="Session One",
+                    project_path="/home/user",
+                    thinking_mode="slow",
+                    active_agent=None,
+                    status="active",
+                    initiator_session_id="caller-1",
+                ),
+                SessionSummary(
+                    session_id="sess-2",
+                    last_input_origin="telegram",
+                    title="Session Two",
+                    project_path="/home/user",
+                    thinking_mode="slow",
+                    active_agent=None,
+                    status="active",
+                    initiator_session_id="caller-2",
+                ),
+            ]
+        )
+
+        result = await server.teleclaude__list_sessions(
+            computer="local",
+            spawned_by_me=False,
+            caller_session_id="caller-1",
+        )
+
+        assert [session["session_id"] for session in result] == ["sess-1", "sess-2"]
+
+
+@pytest.mark.asyncio
+async def test_teleclaude_list_sessions_isolates_multiple_callers(mock_mcp_server):
+    """Test that list_sessions isolates sessions per orchestrator."""
+    server = mock_mcp_server
+
+    with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
+        mock_handlers.list_sessions = AsyncMock(
+            return_value=[
+                SessionSummary(
+                    session_id="sess-1",
+                    last_input_origin="telegram",
+                    title="Session One",
+                    project_path="/home/user",
+                    thinking_mode="slow",
+                    active_agent=None,
+                    status="active",
+                    initiator_session_id="caller-1",
+                ),
+                SessionSummary(
+                    session_id="sess-2",
+                    last_input_origin="telegram",
+                    title="Session Two",
+                    project_path="/home/user",
+                    thinking_mode="slow",
+                    active_agent=None,
+                    status="active",
+                    initiator_session_id="caller-2",
+                ),
+            ]
+        )
+
+        caller_one = await server.teleclaude__list_sessions(
+            computer="local",
+            spawned_by_me=True,
+            caller_session_id="caller-1",
+        )
+        caller_two = await server.teleclaude__list_sessions(
+            computer="local",
+            spawned_by_me=True,
+            caller_session_id="caller-2",
+        )
+
+        assert [session["session_id"] for session in caller_one] == ["sess-1"]
+        assert [session["session_id"] for session in caller_two] == ["sess-2"]
+
+
+@pytest.mark.asyncio
 async def test_teleclaude_start_session_creates_session(mock_mcp_server):
     """Test that start_session creates a new session."""
     server = mock_mcp_server

@@ -264,13 +264,13 @@ def main() -> None:
         # No TeleClaude session found - this is valid for standalone sessions
         sys.exit(0)
 
-    # Gemini: only allow session_start and stop into outbox.
-    # For other events, update native log metadata directly (if provided) and exit cleanly.
-    if args.agent == AgentName.GEMINI.value and event_type not in {"session_start", "stop"}:
-        native_log_file = raw_native_log_file or cast(str | None, raw_data.get("transcript_path"))
-        native_session_id = raw_native_session_id or cast(str | None, raw_data.get("session_id"))
-        if native_log_file is not None:
-            native_log_file = native_log_file.strip() or None
+    native_log_file = raw_native_log_file or cast(str | None, raw_data.get("transcript_path"))
+    native_session_id = raw_native_session_id or cast(str | None, raw_data.get("session_id"))
+    if native_log_file is not None:
+        native_log_file = native_log_file.strip() or None
+    if native_session_id is not None:
+        native_session_id = native_session_id.strip() or None
+    if native_log_file or native_session_id:
         try:
             _update_session_native_fields(
                 teleclaude_session_id,
@@ -278,17 +278,28 @@ def main() -> None:
                 native_session_id=native_session_id,
             )
             logger.debug(
-                "Gemini hook metadata updated (event filtered)",
+                "Hook metadata updated",
                 event_type=event_type,
                 session_id=teleclaude_session_id,
+                agent=args.agent,
             )
         except Exception as exc:  # Best-effort update; never fail hook.
             logger.warning(
-                "Gemini hook metadata update failed (ignored)",
+                "Hook metadata update failed (ignored)",
                 event_type=event_type,
                 session_id=teleclaude_session_id,
+                agent=args.agent,
                 error=str(exc),
             )
+
+    # Gemini: only allow session_start and stop into outbox.
+    # For other events, update native log metadata directly (if provided) and exit cleanly.
+    if args.agent == AgentName.GEMINI.value and event_type not in {"session_start", "stop"}:
+        logger.debug(
+            "Gemini hook metadata updated (event filtered)",
+            event_type=event_type,
+            session_id=teleclaude_session_id,
+        )
         sys.exit(0)
 
     normalize_payload = _get_adapter(args.agent)

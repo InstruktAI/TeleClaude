@@ -1313,8 +1313,6 @@ async def start_agent(
         session.session_id,
         active_agent=agent_name,
         thinking_mode=start_args.thinking_mode.value,
-        native_session_id=None,
-        native_log_file=None,
         last_message_sent=truncated_prompt,
         last_message_sent_at=datetime.now(timezone.utc).isoformat(),
         title=new_title or session.title,
