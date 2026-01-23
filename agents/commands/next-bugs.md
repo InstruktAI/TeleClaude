@@ -20,5 +20,3 @@ Fixed: {count}
 New todos created: {count}
 Remaining: {count}
 ```
-
-**STOP.** Do not invoke any further tools.

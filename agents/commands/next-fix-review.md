@@ -28,5 +28,3 @@ Lint: PASSING
 
 Ready for re-review.
 ```
-
-**STOP.** Do not invoke any further tools.

@@ -26,5 +26,3 @@ REVIEW COMPLETE: {slug}
 Verdict: [APPROVE | REQUEST CHANGES]
 Findings: {count}
 ```
-
-**STOP.** Do not invoke any further tools.

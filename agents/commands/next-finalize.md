@@ -25,5 +25,3 @@ Cleanup: COMPLETE
 
 Work item delivered.
 ```
-
-**STOP.** Do not invoke any further tools.

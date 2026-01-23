@@ -24,5 +24,3 @@ Marked NOOP: {count}
 
 Ready to continue.
 ```
-
-**STOP.** Do not invoke any further tools.

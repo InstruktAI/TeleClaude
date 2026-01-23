@@ -38,5 +38,3 @@ ANALYSIS: Roadmap
 
 What should we prioritize?
 ```
-
-**STOP.** Do not invoke any further tools.
