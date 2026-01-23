@@ -1,6 +1,6 @@
 ---
 argument-hint: "[slug]"
-description: Worker command - execute implementation plan, update checkboxes, commit per task
+description: Worker command - execute implementation plan, commit per task, verify at completion
 ---
 
 # Build
@@ -12,39 +12,18 @@ Slug given: "$ARGUMENTS"
 
 ---
 
-## Your Role
+## Pre-Completion Checklist
 
-You are a **Worker** executing the Build phase. You implement code according to the implementation plan.
+Before reporting completion, verify:
 
-## Your Scope
+1. All tasks in Groups 1-4 are `[x]` in `implementation-plan.md`
+2. Tests pass: `make test`
+3. Lint passes: `make lint`
+4. Working tree is clean: `git status`
+   - If not clean, commit: `git add . && git commit -m "build({slug}): final checkpoint"`
+5. Verify commits exist: `git log --oneline -10`
 
-1. Read `todos/{slug}/requirements.md` and `todos/{slug}/implementation-plan.md`
-2. Execute tasks from Groups 1-4 sequentially
-3. Write code, run tests, commit per task
-4. Update checkboxes in implementation-plan.md as you complete tasks
-5. When ALL build tasks are done, report completion and STOP
-
-## FORBIDDEN Actions
-
-**You are a worker, not an orchestrator. The following are STRICTLY FORBIDDEN:**
-
-- ❌ **DO NOT** call `teleclaude__next_work` - that is for orchestrators only
-- ❌ **DO NOT** call `teleclaude__next_prepare` - that is for orchestrators only
-- ❌ **DO NOT** call `teleclaude__mark_phase` - that is for orchestrators only
-- ❌ **DO NOT** call `teleclaude__start_session` - you cannot spawn other workers
-- ❌ **DO NOT** call `teleclaude__send_message` to other sessions
-- ❌ **DO NOT** call `teleclaude__run_agent_command` - you cannot dispatch commands
-- ❌ **DO NOT** modify `todos/roadmap.md` or `todos/delivered.md`
-- ❌ **DO NOT** modify `state.json` directly
-- ❌ **DO NOT** merge branches or finalize work - that comes later
-
-## When You Are Done
-
-When all build tasks (Groups 1-4) are complete:
-
-1. Ensure all tests pass (`make test` or equivalent)
-2. Ensure lint passes (`make lint` or equivalent)
-3. Report completion with this format:
+## Report Completion
 
 ```
 BUILD COMPLETE: {slug}
@@ -57,12 +36,4 @@ Lint: PASSING
 Ready for review.
 ```
 
-4. **STOP.** Do not invoke any further tools. The orchestrator will handle the next phase.
-
-## If You Get Stuck
-
-- Re-read the requirements and implementation plan
-- Check existing patterns in the codebase
-- If truly blocked after 2 attempts, report the blocker and STOP
-
-**Remember: Your job is to BUILD, then STOP. The orchestrator handles everything else.**
+**STOP.** Do not invoke any further tools.
