@@ -55,6 +55,7 @@ from teleclaude.mcp.types import (
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types import SystemStats
 from teleclaude.types.commands import (
+    CloseSessionCommand,
     CreateSessionCommand,
     GetSessionDataCommand,
     SendMessageCommand,
@@ -817,7 +818,8 @@ class MCPHandlersMixin:
     async def teleclaude__end_session(self, computer: str, session_id: str) -> EndSessionResult:
         """End a session gracefully (kill tmux, delete session, clean up resources)."""
         if self._is_local_computer(computer):
-            return await command_handlers.end_session(session_id, self.client)
+            cmd = CloseSessionCommand(session_id=session_id)
+            return await command_handlers.end_session(cmd, self.client)
 
         try:
             envelope = await self._send_remote_request(computer, f"end_session {session_id}", timeout=5.0)

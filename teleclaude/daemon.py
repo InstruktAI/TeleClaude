@@ -1973,15 +1973,21 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _ensure_tmux_session(self, session: Session) -> bool:
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         env_vars = await self._build_tmux_env_vars(session.session_id)
-        created = await tmux_bridge.ensure_tmux_session(
-            name=session.tmux_session_name,
-            working_dir=working_dir,
-            session_id=session.session_id,
-            env_vars=env_vars,
-        )
-        if not created:
-            logger.warning("Failed to recreate tmux session for %s", session.session_id[:8])
-            return False
+        existed = await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False)
+        created = False
+        if not existed:
+            created = await tmux_bridge.ensure_tmux_session(
+                name=session.tmux_session_name,
+                working_dir=working_dir,
+                session_id=session.session_id,
+                env_vars=env_vars,
+            )
+            if not created:
+                logger.warning("Failed to recreate tmux session for %s", session.session_id[:8])
+                return False
+        else:
+            # Session already exists; no restore needed.
+            return True
 
         # If we recreated the tmux session, restore the agent inside it.
         if session.active_agent and session.native_session_id:

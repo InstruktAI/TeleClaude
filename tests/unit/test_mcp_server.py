@@ -12,6 +12,7 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.models import ComputerInfo, SessionSummary, ThinkingMode
 from teleclaude.mcp_server import MCP_SESSION_DATA_MAX_CHARS, TeleClaudeMCPServer
+from teleclaude.types.commands import CloseSessionCommand
 
 CALLER_SESSION_ID = "caller-session-123"
 
@@ -121,6 +122,26 @@ async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
         assert result[0]["session_id"] == "test-session-123"
         assert result[0]["last_input_origin"] == "telegram"
         assert result[0]["computer"] == "TestComputer"
+
+
+@pytest.mark.asyncio
+async def test_teleclaude_end_session_wraps_close_command(mock_mcp_server):
+    """Local end_session should wrap session_id into CloseSessionCommand."""
+    server = mock_mcp_server
+    captured = {}
+
+    async def fake_end_session(cmd, _client):
+        captured["cmd"] = cmd
+        return {"status": "success", "message": "ok"}
+
+    with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
+        mock_handlers.end_session = AsyncMock(side_effect=fake_end_session)
+
+        result = await server.teleclaude__end_session(computer="local", session_id="sess-1")
+
+    assert result["status"] == "success"
+    assert isinstance(captured["cmd"], CloseSessionCommand)
+    assert captured["cmd"].session_id == "sess-1"
 
 
 @pytest.mark.asyncio
