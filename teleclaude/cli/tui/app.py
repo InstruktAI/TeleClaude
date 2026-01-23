@@ -877,6 +877,9 @@ class TelecApp:
         show_banner = total_panes not in (4, 6)
         if show_banner:
             render_banner(stdscr, 0, width)
+        else:
+            # When banner is hidden, show "TELECLAUDE" in bold at top right
+            self._render_hidden_banner_header(stdscr, width)
 
         # Row after banner: Tab bar (3 rows for browser-style tabs)
         tab_row = BANNER_HEIGHT if show_banner else 0
@@ -899,8 +902,9 @@ class TelecApp:
         if current and content_height > 0:
             current.render(stdscr, content_start, content_height, width)
 
-        # Render notification (toast) if active
-        self._render_notification(stdscr, width)
+        # Render notification (toast) if active - position on empty line below tab bar
+        toast_row = tab_row + TabBar.HEIGHT
+        self._render_notification(stdscr, width, toast_row)
 
         # Row height-4: Separator
         separator_attr = get_tab_line_attr()
@@ -958,12 +962,28 @@ class TelecApp:
         except curses.error:
             pass  # Screen too small
 
-    def _render_notification(self, stdscr: object, width: int) -> None:
+    def _render_hidden_banner_header(self, stdscr: object, width: int) -> None:
+        """Render 'TELECLAUDE' in bold at top right when banner is hidden.
+
+        Args:
+            stdscr: Curses screen object
+            width: Screen width
+        """
+        header_text = "TELECLAUDE"
+        if width > len(header_text):
+            try:
+                start_col = width - len(header_text)
+                stdscr.addstr(0, start_col, header_text, curses.A_BOLD)  # type: ignore[attr-defined]
+            except curses.error:
+                pass  # Ignore if can't render
+
+    def _render_notification(self, stdscr: object, width: int, row: int) -> None:
         """Render notification toast if active.
 
         Args:
             stdscr: Curses screen object
             width: Screen width
+            row: Row to render notification at
         """
         if not self.notification:
             return
@@ -973,8 +993,7 @@ class TelecApp:
             self.notification = None
             return
 
-        # Position: top center, just below tab bar
-        row = BANNER_HEIGHT + 1
+        # Position: on empty line below tab bar (passed as parameter)
         msg = self.notification.message
         msg_len = len(msg) + 4  # Add padding
         start_col = max(0, (width - msg_len) // 2)
