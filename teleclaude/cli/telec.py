@@ -181,7 +181,7 @@ def _sync_project_artifacts(project_root: Path) -> None:
             "uv",
             "run",
             "--quiet",
-            "bin/distribute.py",
+            "scripts/distribute.py",
             "--project-root",
             str(project_root),
             "--deploy",
@@ -209,7 +209,7 @@ def _install_launchd_watch(project_root: Path) -> None:
     command = (
         f"cd {project_root} && "
         f"uv run --quiet scripts/build_snippet_index.py --project-root {project_root} && "
-        f"uv run --quiet bin/distribute.py --project-root {project_root} --deploy"
+        f"uv run --quiet scripts/distribute.py --project-root {project_root} --deploy"
     )
     watch_paths = [
         project_root / ".agents",
@@ -263,7 +263,7 @@ def _install_systemd_watch(project_root: Path) -> None:
     command = (
         f"cd {project_root} && "
         f"uv run --quiet scripts/build_snippet_index.py --project-root {project_root} && "
-        f"uv run --quiet bin/distribute.py --project-root {project_root} --deploy"
+        f"uv run --quiet scripts/distribute.py --project-root {project_root} --deploy"
     )
     service_content = f"""[Unit]
 Description=TeleClaude docs sync ({project_root})

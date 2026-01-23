@@ -14,10 +14,10 @@ This repository manages agent command definitions and tooling that get distribut
 
 ```bash
 # Build only (generates dist/ directory with agent-specific files)
-./bin/distribute.py
+./scripts/distribute.py
 
 # Build and deploy (generates dist/ + copies to ~/.claude, ~/.codex, ~/.gemini)
-./bin/distribute.py --deploy
+./scripts/distribute.py --deploy
 ```
 
 **Important:** The script uses `uv run` via shebang to automatically manage dependencies. No manual venv management needed.
@@ -193,17 +193,17 @@ Python environment managed via `uv`:
 1. **Adding a new command:**
    - Create `commands/new-command.md` with frontmatter
    - Use `{AGENT_PREFIX}` placeholder for command references
-   - Run `./bin/distribute.py` to test transpilation
-   - Run `./bin/distribute.py --deploy` to deploy
+   - Run `./scripts/distribute.py` to test transpilation
+   - Run `./scripts/distribute.py --deploy` to deploy
 
 2. **Modifying AGENTS behavior:**
    - Edit `AGENTS.master.md` for shared behavior
    - Edit `PREFIX.{agent}.md` for agent-specific preamble
-   - Run `./bin/distribute.py --deploy`
+   - Run `./scripts/distribute.py --deploy`
 
 ## Git Workflow
 
 - All imports must be at top-level (C0415 enabled)
 - Commit format: `type(scope): subject` (commitizen style)
 - Attribution footer required (see coding-directives.md)
-- Never commit before testing `bin/distribute.py`.
+- Never commit before testing `scripts/distribute.py`.
