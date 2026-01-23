@@ -36,7 +36,6 @@ from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.cache import DaemonCache
-from teleclaude.core.codex_watcher import CodexWatcher
 from teleclaude.core.command_registry import init_command_service
 from teleclaude.core.command_service import CommandService
 from teleclaude.core.db import db
@@ -247,9 +246,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Initialize cache for remote data
         self.cache = DaemonCache()
         logger.info("DaemonCache initialized")
-
-        # Initialize Codex watcher for file-based hooks
-        self.codex_watcher = CodexWatcher(self.client, db_handle=db)
 
         # Initialize AgentCoordinator for agent events and cross-computer orchestration
         self.agent_coordinator = AgentCoordinator(self.client)
@@ -1673,11 +1669,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.launchd_watch_task.add_done_callback(self._log_background_task_exception("launchd_watch"))
             logger.info("Launchd watch task started (interval=%.0fs)", LAUNCHD_WATCH_INTERVAL_S)
 
-        # CodexWatcher disabled - using native Codex notify hook instead (2026-01)
-        # Keeping code for fallback. Remove after notify hook proven stable.
-        # await self.codex_watcher.start()
-        # logger.info("Session watcher started")
-
         logger.info("TeleClaude is running. Press Ctrl+C to stop.")
 
     async def stop(self) -> None:
@@ -1725,11 +1716,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Launchd watch task stopped")
-
-        # Stop session watcher
-        if hasattr(self, "codex_watcher"):
-            await self.codex_watcher.stop()
-            logger.info("Session watcher stopped")
 
         # Shutdown task registry (cancel all tracked background tasks)
         if hasattr(self, "task_registry"):

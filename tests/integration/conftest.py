@@ -282,7 +282,6 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         "teleclaude.core.voice_message_handler",
         "teleclaude.core.computer_registry",
         "teleclaude.core.agent_coordinator",
-        "teleclaude.core.codex_watcher",
     ]
 
     for module_name in modules_to_patch:
