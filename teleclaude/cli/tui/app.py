@@ -880,9 +880,11 @@ class TelecApp:
 
         # Row after banner: Tab bar (3 rows for browser-style tabs)
         tab_row = BANNER_HEIGHT if show_banner else 0
-        self.tab_bar.render(stdscr, tab_row, width)
+        # When banner is hidden, tab bar bottom line stops before logo
+        logo_width = 39 if not show_banner else None
+        self.tab_bar.render(stdscr, tab_row, width, logo_width)
 
-        # When banner is hidden, show "TELECLAUDE" in bold at top right (render after tab bar)
+        # When banner is hidden, show TELECLAUDE ASCII art at top right (render after tab bar)
         if not show_banner:
             self._render_hidden_banner_header(stdscr, width)
 
@@ -964,17 +966,24 @@ class TelecApp:
             pass  # Screen too small
 
     def _render_hidden_banner_header(self, stdscr: object, width: int) -> None:
-        """Render 'TELECLAUDE' in bold at top right when banner is hidden.
+        """Render TELECLAUDE ASCII art logo at top right when banner is hidden.
 
         Args:
             stdscr: Curses screen object
             width: Screen width
         """
-        header_text = "TELECLAUDE"
-        if width > len(header_text):
+        logo_lines = [
+            "▀█▀ ▛▀▀ ▌   ▛▀▀ ▛▀▜ ▌   ▞▀▚ ▌ ▐ ▛▀▚ ▛▀▀",
+            " █  ■■  ▌   ■■  ▌   ▌   ▙▄▟ ▌ ▐ ▌ ▐ ■■",
+            " █  ▙▄▄ ▙▄▄ ▙▄▄ ▙▄▟ ▙▄▄ ▌ ▐ ▚▄▞ ▙▄▞ ▙▄▄",
+        ]
+        logo_width = 39  # Width of the logo
+
+        if width > logo_width + 1:  # +1 for the gap
             try:
-                start_col = width - len(header_text)
-                stdscr.addstr(0, start_col, header_text, curses.A_BOLD)  # type: ignore[attr-defined]
+                start_col = width - logo_width
+                for i, line in enumerate(logo_lines):
+                    stdscr.addstr(i, start_col, line)  # type: ignore[attr-defined]
             except curses.error:
                 pass  # Ignore if can't render
 

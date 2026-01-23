@@ -29,7 +29,7 @@ class TabBar:
         """
         self.active = view_num
 
-    def render(self, stdscr: object, row: int, width: int) -> None:
+    def render(self, stdscr: object, row: int, width: int, logo_width: int | None = None) -> None:
         """Render browser-style tab bar (3 rows).
 
         Active tab has box with open bottom, inactive is plain text.
@@ -38,6 +38,7 @@ class TabBar:
             stdscr: Curses screen object
             row: Starting row to render at
             width: Screen width
+            logo_width: Optional width of logo at right edge; if provided, bottom line stops before it
         """
         # Store row start for click detection
         self._row_start = row
@@ -92,6 +93,8 @@ class TabBar:
                     stdscr.addstr(row + 1, c + len(label) + 1, "│", line_attr)  # type: ignore[attr-defined]
 
         # Row 3: Bottom line with breaks at active tab corners
+        # If logo_width is provided, stop the line before the logo with 1-char gap
+        line_end = width if logo_width is None else width - logo_width - 1
         line3 = ["─"] * width
         for c, w, _, is_active in tab_positions:
             if is_active:
@@ -101,7 +104,9 @@ class TabBar:
                         line3[c + i] = " "
                 if c + w + 1 < width:
                     line3[c + w + 1] = "┴"
-        stdscr.addstr(row + 2, 0, "".join(line3)[:width], line_attr)  # type: ignore[attr-defined]
+        # Render only up to line_end, rest becomes spaces
+        line3_str = "".join(line3)[:line_end] + " " * (width - line_end)
+        stdscr.addstr(row + 2, 0, line3_str[:width], line_attr)  # type: ignore[attr-defined]
 
     def handle_click(self, screen_row: int, screen_col: int) -> int | None:
         """Handle mouse click, return view number if tab was clicked.
