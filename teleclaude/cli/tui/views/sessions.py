@@ -1202,30 +1202,28 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         title = session.title
         idx = session_display.display_index
 
-        # Calculate indentation for child sessions
-        # Parent sessions (depth 2): 3 spaces
-        # Child sessions (depth 3): 6 spaces
-        # Grandchild (depth 4): 9 spaces, etc.
-        # Formula: 3 + (depth - 2) * 3
-        content_indent = " " * (3 + max(0, item.depth - 2) * 3)
+        # Child indentation: 2 spaces per nesting level
+        # Parent (depth 2) = 0, Child (depth 3) = 2, Grandchild (depth 4) = 4
+        child_indent = " " * (max(0, item.depth - 2) * 2)
 
         # Collapse indicator
         collapse_indicator = "▶" if is_collapsed else "▼"
 
-        # Line 1: [idx] ▶/▼ agent/mode "title"
+        # Title line uses child indentation
         lines: list[str] = []
-        line1 = f'{content_indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"'
+        line1 = f'{child_indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"'
         lines.append(line1[:width])
 
         # If collapsed, only show title line
         if is_collapsed:
             return lines
 
-        # Detail lines use same indent as title
+        # Detail lines: child indentation + 4 spaces (expansion offset)
+        detail_indent = child_indent + "    "
 
         # Line 2 (expanded only): ID + last activity time
         activity_time = _format_time(session.last_activity)
-        line2 = f"{content_indent}[{activity_time}] ID: {session_id}"
+        line2 = f"{detail_indent}[{activity_time}] ID: {session_id}"
         lines.append(line2[:width])
 
         # Line 3: Last input (only if content exists)
@@ -1234,7 +1232,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
             input_time = _format_time(last_input_at)
-            line3 = f"{content_indent}[{input_time}] in: {input_text}"
+            line3 = f"{detail_indent}[{input_time}] in: {input_text}"
             lines.append(line3[:width])
 
         # Line 4: Last output (only if content exists)
@@ -1243,7 +1241,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
             output_time = _format_time(last_output_at)
-            line4 = f"{content_indent}[{output_time}] out: {output_text}"
+            line4 = f"{detail_indent}[{output_time}] out: {output_text}"
             lines.append(line4[:width])
 
         return lines
@@ -1409,12 +1407,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         title = session.title
         idx = session_display.display_index
 
-        # Calculate indentation for child sessions
-        # Parent sessions (depth 2): 3 spaces
-        # Child sessions (depth 3): 6 spaces
-        # Grandchild (depth 4): 9 spaces, etc.
-        # Formula: 3 + (depth - 2) * 3
-        content_indent = " " * (3 + max(0, item.depth - 2) * 3)
+        # Child indentation: 2 spaces per nesting level
+        # Parent (depth 2) = 0, Child (depth 3) = 2, Grandchild (depth 4) = 4
+        child_indent = " " * (max(0, item.depth - 2) * 2)
 
         # Check if this session is sticky
         is_sticky = any(s.session_id == session_id for s in self.sticky_sessions)
@@ -1449,13 +1444,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         collapse_indicator = "▶" if is_collapsed else "▼"
 
         # Line 1: [idx] ▶/▼ agent/mode "title"
-        # Render content indent + [idx] with special attr if sticky, then rest with title_attr
+        # Render child indent + [idx] with special attr if sticky, then rest with title_attr
         try:
             col = 0
-            # Render content indent first
-            if content_indent:
-                stdscr.addstr(row, col, content_indent, normal_attr)  # type: ignore[attr-defined]
-                col += len(content_indent)
+            # Render child indent first
+            if child_indent:
+                stdscr.addstr(row, col, child_indent, normal_attr)  # type: ignore[attr-defined]
+                col += len(child_indent)
             stdscr.addstr(row, col, idx_text, idx_attr if not selected else curses.A_REVERSE)  # type: ignore[attr-defined]
             col += len(idx_text)
             rest = f' {collapse_indicator} {agent}/{mode}  "{title}"'
@@ -1471,11 +1466,12 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if lines_used >= remaining:
             return lines_used
 
-        # Detail lines use same indent as title
+        # Detail lines: child indentation + 4 spaces (expansion offset)
+        detail_indent = child_indent + "    "
 
         # Line 2 (expanded only): ID + last activity time
         activity_time = _format_time(session.last_activity)
-        line2 = f"{content_indent}[{activity_time}] ID: {session_id}"
+        line2 = f"{detail_indent}[{activity_time}] ID: {session_id}"
         _safe_addstr(row + lines_used, line2, normal_attr)
         self._row_to_id_item[row + lines_used] = item
         lines_used += 1
@@ -1493,7 +1489,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
             input_time = _format_time(last_input_at)
-            line3 = f"{content_indent}[{input_time}] in: {input_text}"
+            line3 = f"{detail_indent}[{input_time}] in: {input_text}"
             _safe_addstr(row + lines_used, line3, input_attr)
             lines_used += 1
             if lines_used >= remaining:
@@ -1508,7 +1504,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
             output_time = _format_time(last_output_at)
-            line4 = f"{content_indent}[{output_time}] out: {output_text}"
+            line4 = f"{detail_indent}[{output_time}] out: {output_text}"
             _safe_addstr(row + lines_used, line4, output_attr)
             lines_used += 1
 
