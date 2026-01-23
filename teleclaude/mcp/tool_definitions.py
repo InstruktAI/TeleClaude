@@ -31,6 +31,7 @@ def get_tool_definitions() -> list[Tool]:
             title="TeleClaude: Get Context",
             description=(
                 "Two-phase snippet retrieval. "
+                "You will use this tool to get important context before starting any work. "
                 "Phase 1: pass an empty corpus to return a filtered snippet index (frontmatter only). "
                 "Phase 2: pass selected snippet ids (as a JSON list or newline list) to receive full snippets. "
                 "Always start with phase 1 when you are unsure which snippets apply. "
