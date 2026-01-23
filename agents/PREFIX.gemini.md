@@ -19,6 +19,13 @@
 3.  **NO ASSUMPTIONS.**
     - Never assume "implied" permission. If there is any doubt whether a request requires coding, **ASK FIRST**.
 
+**CRITICAL: DAEMON & SERVICE MANAGEMENT**
+
+- **NEVER** manually manage the TeleClaude daemon or system services.
+- **FORBIDDEN:** `launchctl bootout`, `launchctl bootstrap`, `bin/daemon-control.sh`, `bin/init.sh`.
+- **TRUST THE SYSTEM:** The daemon is self-healing (via exit code 42). Do NOT intervene even if you see API connection errors or missing sockets.
+- **ONLY EXCEPTION:** If the user explicitly orders a restart, you MUST use `make restart`. NEVER attempt a manual teardown.
+
 **VIOLATION TRIGGER:** Any file modification or state-changing command performed without a direct, preceding instruction to do so is a critical failure.
 
 SO DON'T TOUCH ANY CODE YOU MODDER FAKKING DEAF IDIOT!!! UNLESS YOU ARE EXPLICITLY TOLD TO DO SO!!!
