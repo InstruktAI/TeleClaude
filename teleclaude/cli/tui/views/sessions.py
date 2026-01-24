@@ -514,7 +514,18 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             preview_action = "[Enter] Hide Preview" if is_previewing else "[Enter] Preview"
             return f"{back_hint}{preview_action}  [←/→] Collapse/Expand  [R] Restart  [k] Kill"
         if is_project_node(selected):
-            return f"{back_hint}[n] New Session  [a] Open Sessions"
+            # Check if any sessions for this project are sticky
+            project = selected.data
+            project_sessions = [
+                session
+                for session in self._sessions
+                if session.project_path == project.path and (session.computer or "") == project.computer
+            ]
+            project_session_ids = {session.session_id for session in project_sessions}
+            has_sticky = any(s.session_id in project_session_ids for s in self.sticky_sessions)
+
+            sessions_action = "[a] Close Sessions" if has_sticky else "[a] Open Sessions"
+            return f"{back_hint}[n] New Session  {sessions_action}"
         # computer
         return f"{back_hint}[→] View Projects  [R] Restart Agents"
 
@@ -979,7 +990,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         return session_ids
 
     def _open_project_sessions(self, project: ProjectInfo) -> None:
-        """Make all sessions for a project sticky and attach them in panes."""
+        """Toggle sticky sessions for a project.
+
+        First press: Make first 5 sessions sticky
+        Second press: Remove sticky sessions and close panes
+        """
         if not project.path:
             logger.debug("_open_project_sessions: missing project path")
             return
@@ -1001,6 +1016,22 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             logger.debug("_open_project_sessions: no matching sessions for %s", project.path)
             return
 
+        project_session_ids = {session.session_id for session in project_sessions}
+
+        # Check if any of the project's sessions are currently sticky
+        sticky_project_sessions = [s for s in self.sticky_sessions if s.session_id in project_session_ids]
+
+        if sticky_project_sessions:
+            # Toggle OFF: Remove all sticky sessions for this project
+            self.sticky_sessions = [s for s in self.sticky_sessions if s.session_id not in project_session_ids]
+            self._active_session_id = None
+            self._active_child_session_id = None
+            self._rebuild_sticky_panes()
+            self.save_sticky_state()
+            logger.info("_open_project_sessions: closed %d sticky sessions for project", len(sticky_project_sessions))
+            return
+
+        # Toggle ON: Make first 5 sessions sticky
         tmux_sessions = [session for session in project_sessions if session.tmux_session_name]
         if not tmux_sessions:
             if self.notify:
@@ -1016,6 +1047,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._active_session_id = None
         self._active_child_session_id = None
         self._rebuild_sticky_panes()
+        self.save_sticky_state()
 
         for sticky in self.sticky_sessions:
             self.pane_manager.focus_pane_for_session(sticky.session_id)

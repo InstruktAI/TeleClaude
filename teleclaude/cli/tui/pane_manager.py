@@ -684,20 +684,11 @@ class TmuxPaneManager:
                 "set", "-p", "-t", pane_id, "window-active-style", f"fg=colour{normal_color_code},bg=terminal"
             )
 
-        # Set status bar background (5% haze)
-        # Preserve fg color, only update bg
-        status_bg_color = theme.get_agent_status_background(agent)
+        # Set status bar to use terminal default background (no haze)
         fg_color = theme.STATUS_FG_COLOR
-        self._run_tmux("set", "-t", tmux_session_name, "status-style", f"fg={fg_color},bg={status_bg_color}")
-        # Also set status-left-style and status-right-style to match
-        self._run_tmux("set", "-t", tmux_session_name, "status-left-style", f"fg={fg_color},bg={status_bg_color}")
-        self._run_tmux("set", "-t", tmux_session_name, "status-right-style", f"fg={fg_color},bg={status_bg_color}")
+        self._run_tmux("set", "-t", tmux_session_name, "status-style", f"fg={fg_color},bg=default")
         # Make status-left long enough to show full session name
         self._run_tmux("set", "-t", tmux_session_name, "status-left-length", "50")
-        # Set window status (the [1:node*] part) to match
-        self._run_tmux(
-            "set", "-t", tmux_session_name, "window-status-current-style", f"fg={fg_color},bg={status_bg_color}"
-        )
 
         # Override color 236 (message box backgrounds) for specific agents
         if agent == "codex" and theme.get_current_mode():  # dark mode
