@@ -72,7 +72,7 @@ Read the snippet indexes to learn what exists:
 
 - Create missing docs across the taxonomy.
 - Replace or split overgrown docs.
-- Ensure coverage across taxonomy categories (policy/standard/guide/procedure/role/checklist/reference/concept/architecture/decision/example/incident/timeline/faq).
+- Ensure coverage across taxonomy categories (policy/standard/guide/procedure/role/checklist/reference/concept/architecture/example).
 - References are for priming; the snippet body must still be self-explanatory.
 - Keep `requires` and inline `@...` references relative; tooling resolves them at runtime.
 

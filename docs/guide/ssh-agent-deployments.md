@@ -3,7 +3,6 @@ id: teleclaude/guide/ssh-agent-deployments
 type: guide
 scope: project
 description: Configure SSH agent access for automated git operations and deployments.
-requires: []
 ---
 
 ## Goal

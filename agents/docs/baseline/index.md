@@ -1,10 +1,15 @@
 @~/.teleclaude/docs/baseline/policy/autonomy.md
 @~/.teleclaude/docs/baseline/policy/conflict-resolution.md
+@~/.teleclaude/docs/baseline/policy/context-retrieval.md
+@~/.teleclaude/docs/baseline/policy/referencing-doc-snippets.md
 @~/.teleclaude/docs/baseline/policy/stateless-commands.md
 @~/.teleclaude/docs/baseline/policy/version-control-safety.md
 @~/.teleclaude/docs/baseline/principles/autonomy.md
 @~/.teleclaude/docs/baseline/principles/explicit-inference.md
 @~/.teleclaude/docs/baseline/principles/intent-first-documentation.md
 @~/.teleclaude/docs/baseline/principles/priming.md
+@~/.teleclaude/docs/baseline/procedure/agents-authoring.md
+@~/.teleclaude/docs/baseline/procedure/snippet-authoring-sequence.md
 @~/.teleclaude/docs/baseline/procedure/taxonomy-interpretation.md
+@~/.teleclaude/docs/baseline/reference/snippet-authoring-schema.md
 @~/.teleclaude/docs/baseline/reference/snippet-taxonomy.md

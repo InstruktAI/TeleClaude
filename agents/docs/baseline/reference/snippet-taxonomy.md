@@ -13,11 +13,8 @@ Always interpret requests through the taxonomy below. Use the most appropriate t
 - **reference**: static facts or lookup tables
 - **concept**: definitions or framing
 - **architecture**: system structure, components, and relationships
-- **decision**: rationale for a chosen approach
 - **example**: concrete usage or pattern
-- **incident**: postmortems and lessons learned
-- **timeline**: time-ordered events
-- **faq**: recurring questions and answers
+- **principles**: high-level governing ideas that shape design and judgment
 
 ## Scope Levels
 

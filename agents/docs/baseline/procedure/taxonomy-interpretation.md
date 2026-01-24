@@ -14,11 +14,7 @@ Use the taxonomy list as a lens for interpreting requests and organizing docs.
 - **reference**: static facts or lookup tables
 - **concept**: definitions or framing
 - **architecture**: system structure, components, and relationships
-- **decision**: rationale for a chosen approach
 - **example**: concrete usage or pattern
-- **incident**: postmortems and lessons learned
-- **timeline**: time-ordered events
-- **faq**: recurring questions and answers
 
 ## Scope Levels
 

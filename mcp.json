@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "teleclaude": {
-      "type": "stdio",
-      "command": "{{INSTALL_DIR}}/.venv/bin/python",
-      "args": ["{{INSTALL_DIR}}/bin/mcp-wrapper.py"]
-    }
-  }
-}

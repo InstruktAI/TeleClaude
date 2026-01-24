@@ -117,11 +117,7 @@ def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object]) -> li
         "reference",
         "concept",
         "architecture",
-        "decision",
         "example",
-        "incident",
-        "timeline",
-        "faq",
         "principles",
     ]
     snippet_type = metadata.get("type")

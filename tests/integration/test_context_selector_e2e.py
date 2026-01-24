@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import shutil
-from pathlib import Path
 
 from teleclaude import context_selector, paths
 from teleclaude.paths import REPO_ROOT
@@ -14,7 +13,7 @@ def test_get_context_e2e(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets)
 
     output = context_selector.build_context_output(
-        corpus='["software-development/standards/commits"]',
+        snippet_ids=["software-development/standards/commits"],
         areas=["policy", "standard"],
         project_root=REPO_ROOT,
         session_id=None,

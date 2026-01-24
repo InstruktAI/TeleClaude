@@ -417,7 +417,7 @@ def build_context_output(
         parts.extend(
             [
                 "",
-                "# ⚠️  IMPORTANT: Call teleclaude__get_context again with the snippet IDs you selected!",
+                "# ⚠️  IMPORTANT: Call teleclaude__get_context again with the snippet IDs of interest!",
             ]
         )
         return "\n".join(parts)
