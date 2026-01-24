@@ -20,6 +20,9 @@ type: procedure
 1. Run `make restart`.
 2. Verify the service is running with `make status`.
 3. Check recent logs with `instrukt-ai-logs teleclaude --since 10m`.
+4. If the daemon is restarting repeatedly, review:
+   - `~/.teleclaude/logs/monitoring/teleclaude-api-unlink.log`
+   - `~/.teleclaude/logs/monitoring/teleclaude-sigterm-watch.log`
 
 ## Outputs
 

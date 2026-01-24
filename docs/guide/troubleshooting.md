@@ -25,9 +25,13 @@ description: Diagnostic steps for common TeleClaude operational issues.
 5. If command menus are duplicated, enforce a single `telegram.is_master: true`.
 6. If MCP calls time out, confirm `/tmp/teleclaude.sock` is present and responding.
 7. If API calls fail, verify `/tmp/teleclaude-api.sock` is present and the daemon is healthy.
-8. If `make status` says NOT running but a daemon‑already‑running error appears, remove the stale `teleclaude.pid`.
-9. If a session is stuck, send a message with `teleclaude__send_message`. If it remains unresponsive (or MCP is unavailable), call `POST /sessions/{session_id}/agent-restart`.
-10. If instability persists, isolate the last change and revert to a known good state.
+8. If API disconnects are frequent, inspect monitoring logs:
+   - API socket activity: `~/.teleclaude/logs/monitoring/teleclaude-api-unlink.log`
+   - SIGTERM snapshots: `~/.teleclaude/logs/monitoring/teleclaude-sigterm-watch.log`
+     These should capture socket bind/unlink events and recent launchctl snapshots when the daemon exits.
+9. If `make status` says NOT running but a daemon‑already‑running error appears, remove the stale `teleclaude.pid`.
+10. If a session is stuck, send a message with `teleclaude__send_message`. If it remains unresponsive (or MCP is unavailable), call `POST /sessions/{session_id}/agent-restart`.
+11. If instability persists, isolate the last change and revert to a known good state.
 
 ## Outputs
 
