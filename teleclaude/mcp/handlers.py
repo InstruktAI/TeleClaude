@@ -948,14 +948,20 @@ class MCPHandlersMixin:
 
     async def teleclaude__get_context(
         self,
-        corpus: str,
-        areas: list[str],
+        areas: list[str] | None = None,
+        snippet_ids: list[str] | None = None,
         cwd: str | None = None,
         caller_session_id: str | None = None,
     ) -> str:
-        """Select and return relevant snippet context for the current session."""
+        """Select and return relevant snippet context for the current session.
+
+        Phase 1: Call with areas filter (or no params) to get index.
+        Phase 2: Call with snippet_ids to get full content.
+        """
         if not cwd:
             cwd = str(config.computer.default_working_dir)
+        if areas is None:
+            areas = []
         test_agent = None
         test_mode = None
         test_request = None
@@ -969,10 +975,10 @@ class MCPHandlersMixin:
                 test_csv_path = str(Path(cwd).expanduser().resolve() / ".agents" / "tests" / "runs" / "get-context.csv")
         project_root = Path(cwd)
         return build_context_output(
-            corpus=corpus,
             areas=areas,
             project_root=project_root,
             session_id=caller_session_id,
+            snippet_ids=snippet_ids,
             test_agent=test_agent,
             test_mode=test_mode,
             test_request=test_request,

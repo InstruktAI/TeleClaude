@@ -32,18 +32,14 @@ def get_tool_definitions() -> list[Tool]:
             description=(
                 "Two-phase snippet retrieval. "
                 "You will use this tool to get important context before starting any work. "
-                "Phase 1: pass an empty corpus to return a filtered snippet index (frontmatter only). "
-                "Phase 2: pass selected snippet ids (as a JSON list or newline list) to receive full snippets. "
+                "Phase 1: Call with no parameters (or with areas filter) to return snippet index with IDs and descriptions. "
+                "Phase 2: Call with snippet_ids parameter to retrieve full snippet content. "
                 "Always start with phase 1 when you are unsure which snippets apply. ALWAYS use phase 2 when you found interesting snippets! "
                 "Use when you need policy/procedure/role/checklist/reference context beyond what you already have."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "corpus": {
-                        "type": "string",
-                        "description": "Phase 1: empty string to return index. Phase 2: JSON list or newline list of snippet ids.",
-                    },
                     "areas": {
                         "type": "array",
                         "items": {
@@ -66,10 +62,14 @@ def get_tool_definitions() -> list[Tool]:
                                 "principles",
                             ],
                         },
-                        "description": "Taxonomy types to include in the index (leave empty for all).",
+                        "description": "Phase 1 only: Taxonomy types to filter index (omit for all types). Ignored in Phase 2.",
+                    },
+                    "snippet_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Phase 2 only: Array of snippet IDs to retrieve full content for.",
                     },
                 },
-                "required": ["corpus", "areas"],
             },
         ),
         Tool(

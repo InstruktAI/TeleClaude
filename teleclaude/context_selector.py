@@ -293,33 +293,6 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
     return entries
 
 
-def _parse_selected_ids(corpus: str, *, valid_ids: set[str]) -> list[str]:
-    if not corpus or not corpus.strip():
-        return []
-
-    raw = corpus.strip()
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        parsed = None
-
-    if isinstance(parsed, list):
-        return [item for item in parsed if isinstance(item, str) and item in valid_ids]
-
-    selected: list[str] = []
-    for line in raw.splitlines():
-        cleaned = line.strip().lstrip("-").strip()
-        if cleaned in valid_ids:
-            selected.append(cleaned)
-    if selected:
-        return selected
-
-    for snippet_id in sorted(valid_ids):
-        if snippet_id in raw:
-            selected.append(snippet_id)
-    return selected
-
-
 def _resolve_requires(
     selected_ids: Iterable[str],
     snippets: list[SnippetMeta],
@@ -362,7 +335,6 @@ def _resolve_requires(
 
 def build_context_output(
     *,
-    corpus: str,
     areas: list[str],
     project_root: Path,
     session_id: str | None,
@@ -406,8 +378,12 @@ def build_context_output(
     else:
         snippets_for_selection = list(snippets)
 
-    if not corpus.strip() and not snippet_ids:
-        parts: list[str] = []
+    if not snippet_ids:
+        parts: list[str] = [
+            "# PHASE 1: Snippet Index (Frontmatter Only)",
+            "# Review the snippets below and select the IDs you need.",
+            "",
+        ]
         ordered = sorted(
             snippets_for_selection,
             key=lambda s: (_scope_rank(_output_scope(s, global_snippets_root=global_snippets_root)), s.snippet_id),
@@ -438,12 +414,16 @@ def build_context_output(
                     ]
                 ).strip()
             )
+        parts.extend(
+            [
+                "",
+                "# ⚠️  IMPORTANT: Call teleclaude__get_context again with the snippet IDs you selected!",
+            ]
+        )
         return "\n".join(parts)
 
     valid_ids = {s.snippet_id for s in snippets}
     selected_ids = [sid for sid in (snippet_ids or []) if sid in valid_ids]
-    if not selected_ids:
-        selected_ids = _parse_selected_ids(corpus, valid_ids=valid_ids)
     resolved = _resolve_requires(selected_ids, snippets, global_snippets_root=global_snippets_root)
     _write_test_output(
         phase="phase2",
