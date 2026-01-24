@@ -4,6 +4,7 @@ import curses
 from datetime import datetime
 
 from teleclaude.cli.models import AgentAvailabilityInfo
+from teleclaude.cli.tui.theme import AGENT_COLORS
 
 
 class Footer:
@@ -21,29 +22,44 @@ class Footer:
         self.agent_availability = agent_availability
 
     def render(self, stdscr: object, row: int, width: int) -> None:
-        """Render footer.
+        """Render footer with right-aligned agent availability.
 
         Args:
             stdscr: Curses screen object
             row: Row to render at
             width: Screen width
         """
-        # Agent availability
-        agent_parts: list[str] = []
+        # Build agent availability parts with their colors
+        agent_parts: list[tuple[str, int]] = []  # (text, color_pair)
         for agent in ["claude", "gemini", "codex"]:
             info = self.agent_availability.get(agent)
             available = info.available if info else True
+
+            # Get color pair for this agent (muted if unavailable, normal if available)
+            agent_colors = AGENT_COLORS.get(agent, {"muted": 0, "normal": 0})
+            color_pair_id = agent_colors["normal"] if available else agent_colors["muted"]
+
             if available:
-                agent_parts.append(f"{agent} ✓")
+                agent_parts.append((f"{agent} ✓", color_pair_id))
             else:
                 until = info.unavailable_until if info else None
                 countdown = self._format_countdown(until) if until else "?"
-                agent_parts.append(f"{agent} ✗ ({countdown})")
+                agent_parts.append((f"{agent} ✗ ({countdown})", color_pair_id))
 
-        footer = " " + "  ".join(agent_parts)
+        # Calculate total width needed for right alignment
+        total_text_width = sum(len(text) for text, _ in agent_parts) + (len(agent_parts) - 1) * 2  # 2 spaces between
+        start_col = max(0, width - total_text_width - 1)  # -1 for right margin
 
+        # Render each agent with its color
+        col = start_col
         try:
-            stdscr.addstr(row, 0, footer[: width - 1])  # type: ignore[attr-defined]
+            for i, (text, color_pair_id) in enumerate(agent_parts):
+                if i > 0:
+                    # Add spacing between agents
+                    stdscr.addstr(row, col, "  ")  # type: ignore[attr-defined]
+                    col += 2
+                stdscr.addstr(row, col, text, curses.color_pair(color_pair_id))  # type: ignore[attr-defined]
+                col += len(text)
         except curses.error:
             pass  # Screen too small
 
