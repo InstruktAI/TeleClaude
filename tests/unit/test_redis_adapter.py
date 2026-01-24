@@ -208,14 +208,17 @@ async def test_discover_peers_skips_self():
 
 
 @pytest.mark.asyncio
-async def test_heartbeat_includes_required_fields(monkeypatch):
+async def test_heartbeat_includes_required_fields():
     """Test heartbeat message includes all required fields."""
+    from teleclaude.core.cache import DaemonCache
+    from teleclaude.core.models import ProjectInfo
     from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
     adapter = RedisTransport(mock_client)
     adapter.computer_name = "TestPC"
     adapter.heartbeat_ttl = 30
+    adapter.cache = DaemonCache()
 
     # Mock Redis setex (used by _send_heartbeat)
     mock_redis = AsyncMock()
@@ -230,10 +233,8 @@ async def test_heartbeat_includes_required_fields(monkeypatch):
     mock_redis.setex = capture_setex
     adapter.redis = mock_redis
 
-    def _fake_digest() -> str:
-        return "digest-123"
-
-    monkeypatch.setattr(adapter, "_compute_projects_digest", _fake_digest)
+    projects = [ProjectInfo(name="Alpha", path="/tmp/alpha")]
+    adapter.cache.apply_projects_snapshot("TestPC", projects)
 
     # Call _send_heartbeat
     await adapter._send_heartbeat()
@@ -247,7 +248,7 @@ async def test_heartbeat_includes_required_fields(monkeypatch):
     assert "computer_name" in heartbeat
     assert "last_seen" in heartbeat
     assert heartbeat["computer_name"] == "TestPC"
-    assert heartbeat["projects_digest"] == "digest-123"
+    assert heartbeat["projects_digest"] == adapter.cache.get_projects_digest("TestPC")
 
 
 @pytest.mark.asyncio
@@ -315,30 +316,22 @@ async def test_connection_error_handling():
     assert peers == []
 
 
-def test_compute_projects_digest_is_deterministic(tmp_path, monkeypatch):
-    """Digest should be deterministic regardless of trusted dir order."""
-    from types import SimpleNamespace
+def test_projects_digest_is_stable_for_same_snapshot(tmp_path):
+    """Digest should remain stable for equivalent project snapshots."""
+    from teleclaude.core.cache import DaemonCache
+    from teleclaude.core.models import ProjectInfo
 
-    from teleclaude.config import config
-    from teleclaude.transport.redis_transport import RedisTransport
+    cache = DaemonCache()
 
-    mock_client = MagicMock()
-    adapter = RedisTransport(mock_client)
+    project_one = ProjectInfo(name="alpha", path=str(tmp_path / "alpha"))
+    project_two = ProjectInfo(name="beta", path=str(tmp_path / "beta"))
 
-    project_one = tmp_path / "alpha"
-    project_two = tmp_path / "beta"
-    project_one.mkdir()
-    project_two.mkdir()
+    cache.apply_projects_snapshot("Local", [project_one, project_two])
+    digest_first = cache.get_projects_digest("Local")
 
-    trusted_dirs = [
-        SimpleNamespace(path=str(project_two)),
-        SimpleNamespace(path=str(project_one)),
-    ]
+    # Same snapshot content, different order
+    changed = cache.apply_projects_snapshot("Local", [project_two, project_one])
+    digest_second = cache.get_projects_digest("Local")
 
-    monkeypatch.setattr(config.computer, "get_all_trusted_dirs", lambda: trusted_dirs)
-    digest_first = adapter._compute_projects_digest()
-
-    trusted_dirs.reverse()
-    digest_second = adapter._compute_projects_digest()
-
+    assert changed is False
     assert digest_first == digest_second

@@ -525,6 +525,9 @@ class APIServer:
                 computer_name = config.computer.name
                 result: list[ProjectDTO] = []
 
+                if self.cache:
+                    self.cache.apply_projects_snapshot(computer_name, raw_projects)
+
                 # Add local projects
                 for p in raw_projects:
                     result.append(

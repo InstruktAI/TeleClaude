@@ -189,6 +189,10 @@ class DaemonCache:
 
         return projects
 
+    def get_projects_digest(self, computer: str) -> str | None:
+        """Get the stored projects digest for a computer."""
+        return self._projects_digest.get(computer)
+
     def get_sessions(self, computer: str | None = None) -> list[SessionSummary]:
         """Get cached sessions, optionally filtered by computer.
 

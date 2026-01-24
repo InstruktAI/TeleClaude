@@ -78,6 +78,7 @@ class DaemonLifecycle:
 
         db.set_client(self.client)
         await self._warm_local_sessions_cache()
+        await self._warm_local_projects_cache()
 
         await self.client.start()
 
@@ -148,6 +149,24 @@ class DaemonLifecycle:
             self.cache.update_session(summary)
 
         logger.info("Seeded cache with %d local sessions", len(sessions))
+
+    async def _warm_local_projects_cache(self) -> None:
+        """Seed cache with current local projects for digest/initial UI state."""
+        try:
+            from teleclaude.core import command_handlers
+
+            projects = await command_handlers.list_projects()
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("Failed to warm projects cache: %s", exc, exc_info=True)
+            return
+
+        if not projects:
+            logger.debug("No local projects to seed in cache")
+            return
+
+        updated = self.cache.apply_projects_snapshot(config.computer.name, projects)
+        if updated:
+            logger.info("Seeded cache with %d local projects", len(projects))
 
     async def shutdown(self) -> None:
         """Stop core components in a defined order."""

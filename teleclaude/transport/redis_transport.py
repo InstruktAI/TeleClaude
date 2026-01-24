@@ -11,13 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import hashlib
 import json
-import os
 import ssl
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable, Optional, cast
 
 from instrukt_ai_logging import get_logger
@@ -1309,7 +1306,10 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 payload["interested_in"] = list(all_data_types)
                 logger.trace("Heartbeat includes interest: %s", all_data_types)
 
-        payload["projects_digest"] = self._compute_projects_digest()
+        if self.cache:
+            digest = self.cache.get_projects_digest(self.computer_name)
+            if digest:
+                payload["projects_digest"] = digest
 
         # Set key with auto-expiry
         redis_client = self._require_redis()
@@ -1318,22 +1318,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             self.heartbeat_ttl,
             json.dumps(payload),
         )
-
-    def _compute_projects_digest(self) -> str:
-        """Compute a deterministic digest for local project paths."""
-        trusted_dirs = config.computer.get_all_trusted_dirs()
-        paths: list[str] = []
-
-        for trusted_dir in trusted_dirs:
-            raw_path = getattr(trusted_dir, "path", None)
-            if not isinstance(raw_path, str):
-                continue
-            expanded_path = os.path.expanduser(os.path.expandvars(raw_path))
-            if Path(expanded_path).exists():
-                paths.append(expanded_path)
-
-        joined = "\n".join(sorted(paths))
-        return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
     # === Event Push (Phase 5) ===
 
