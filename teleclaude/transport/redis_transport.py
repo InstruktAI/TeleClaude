@@ -42,6 +42,7 @@ from teleclaude.core.events import (
     build_agent_payload,
     parse_command_string,
 )
+from teleclaude.core.feedback import get_last_feedback
 from teleclaude.core.models import (
     ChannelMetadata,
     ComputerInfo,
@@ -1493,7 +1494,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
             last_input=session.last_message_sent,
             last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
-            last_output=session.last_feedback_received,
+            last_output=get_last_feedback(session),
             last_output_at=session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None,
             tmux_session_name=session.tmux_session_name,
             initiator_session_id=session.initiator_session_id,
@@ -1520,7 +1521,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
             last_input=session.last_message_sent,
             last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
-            last_output=session.last_feedback_received,
+            last_output=get_last_feedback(session),
             last_output_at=session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None,
             tmux_session_name=session.tmux_session_name,
             initiator_session_id=session.initiator_session_id,

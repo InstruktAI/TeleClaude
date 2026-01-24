@@ -3,9 +3,6 @@
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
-    AgentEventContext,
-    AgentHookEvents,
-    AgentStopPayload,
     EventContext,
     EventType,
     SessionLifecycleContext,
@@ -36,25 +33,15 @@ async def _handle_session_started(event: EventType, context: EventContext) -> No
     await manager.trigger_event("session_start", context.session_id)
 
 
-async def _handle_agent_event(event: EventType, context: EventContext) -> None:
-    """Handle agent_event → speak summary on stop."""
-    if not isinstance(context, AgentEventContext):
-        return
+async def _handle_agent_event(_event: EventType, _context: EventContext) -> None:
+    """Handle agent_event → NO-OP for stop events.
 
-    # Only handle stop events
-    if context.event_type != AgentHookEvents.AGENT_STOP:
-        return
-
-    # Get summary from payload
-    if not isinstance(context.data, AgentStopPayload):
-        return
-
-    summary = context.data.summary
-    if not summary:
-        return
-
-    manager = get_tts_manager()
-    await manager.trigger_event("agent_stop", context.session_id, text=summary)
+    Stop events are handled via SESSION_UPDATED after LLM summarization completes.
+    This avoids speaking raw agent output instead of the summary.
+    """
+    # Stop events are handled by _handle_session_updated after enrichment
+    # Other agent events could be handled here if needed
+    pass
 
 
 async def _handle_session_updated(event: EventType, context: EventContext) -> None:

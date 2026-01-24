@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, cast
 
 from teleclaude.constants import FIELD_ADAPTER_METADATA, FIELD_COMMAND, FIELD_COMPUTER
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
+from teleclaude.core.feedback import get_last_feedback
 from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
@@ -652,7 +653,7 @@ class SessionSummary:
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
             last_input=session.last_message_sent,
             last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
-            last_output=session.last_feedback_received,
+            last_output=get_last_feedback(session),
             last_output_at=session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None,
             tmux_session_name=session.tmux_session_name,
             initiator_session_id=session.initiator_session_id,

@@ -23,6 +23,7 @@ from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.events import FileEventContext, VoiceEventContext
+from teleclaude.core.feedback import get_last_feedback
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.models import (
     AgentResumeArgs,
@@ -299,7 +300,7 @@ async def list_sessions() -> list[SessionSummary]:
                 last_activity=s.last_activity.isoformat() if s.last_activity else None,
                 last_input=s.last_message_sent,
                 last_input_at=s.last_message_sent_at.isoformat() if s.last_message_sent_at else None,
-                last_output=s.last_feedback_received,
+                last_output=get_last_feedback(s),
                 last_output_at=s.last_feedback_received_at.isoformat() if s.last_feedback_received_at else None,
                 tmux_session_name=s.tmux_session_name,
                 initiator_session_id=s.initiator_session_id,
