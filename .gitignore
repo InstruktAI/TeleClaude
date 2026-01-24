@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+uv.*
+.venv
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment & Config
+.env
+config.yml
+!tests/integration/config.yml
+
+# Runtime
+*.pid
+*.db
+*.db-journal
+
+# Logs
+*.log
+logs/
+
+# Caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
+
+# Project-specific
+.history
+reports/
+workspace/
+
+# Backup files
+*.bak*
+
+.claude/data/
+*.local.json
+trees/
+worktrees/
+.state.json
+
+# TeleClaude runtime DB artifacts
+teleclaude.db
+teleclaude.db-wal
+teleclaude.db-shm

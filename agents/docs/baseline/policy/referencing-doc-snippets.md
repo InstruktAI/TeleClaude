@@ -10,6 +10,7 @@
 
 - Inline `@` references are the single enforced mechanism for mandatory reading.
 - A stable global root (`~/.teleclaude/docs`) prevents ambiguity across repos.
+- Global docs are authored via `~/.teleclaude/docs/...` (canonical for all AIs); this path is a symlink to the TeleClaude repository’s `agents/docs`, so edits there update the source of truth without requiring repo-specific paths.
 - Repo-relative `@docs/...` keeps project docs portable and consistent.
 
 ## Scope

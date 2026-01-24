@@ -1,0 +1,323 @@
+[build-system]
+requires = ["setuptools~=69.0", "wheel~=0.42.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "TeleClaude"
+version = "0.1.0"
+license = { text = "GPL-3.0-only" }
+authors = [{ name = "Maurice Faber", email = "maurice@instrukt.ai" }]
+description = "Control terminal sessions on multiple computers remotely via Telegram"
+readme = "README.md"
+classifiers = [
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.11",
+  "Typing :: Typed",
+  "Topic :: Communications :: Chat",
+  "Topic :: System :: Shells",
+]
+keywords = ["telegram", "terminal", "tmux", "remote-control"]
+requires-python = ">=3.11"
+dependencies = [
+    "python-telegram-bot>=22.5",
+    "openai>=2.6.1",
+    "anthropic>=0.42.0",
+    "aiosqlite>=0.21.0",
+    "sqlalchemy>=2.0.0",
+    "sqlmodel>=0.0.16",
+    "greenlet>=3.3.0",
+    "pyyaml>=6.0.3",
+    "python-dotenv>=1.2.1",
+    "aiofiles>=25.1.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "mcp>=1.0.0",
+    "redis>=5.0.0",
+    "psutil>=5.9.0",
+    "instrukt-ai-logger @ git+https://github.com/InstruktAI/python-logger.git@v0.3.5",
+    "telegramify-markdown>=0.5.4",
+    "GitPython>=3.1.0",
+    "nest-asyncio>=1.6.0",
+    "httpx>=0.28.0",
+    "websockets>=12.0",
+    "python-frontmatter>=1.1.0",
+    "sqlalchemy>=2.0.0",
+    "sqlmodel>=0.0.16",
+    "greenlet>=3.3.0",
+    "elevenlabs>=2.31.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "pytest-timeout>=2.2.0",
+    "pytest-xdist>=3.8.0",
+    "aiohttp>=3.9.0",
+    "coverage[toml]>=7.4.0",
+    "ruff>=0.12.0",
+    "pyright>=1.1.0",
+    "pre-commit>=3.6.0",
+    "mypy>=1.8.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["teleclaude*"]
+
+[project.urls]
+homepage = "https://github.com/InstruktAI/TeleClaude"
+"Source Code" = "https://github.com/InstruktAI/TeleClaude"
+"Bug Tracker" = "https://github.com/InstruktAI/TeleClaude/issues"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = [".venv", "venv", ".mypy_cache", ".pytest_cache", "coverage"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint]
+select = [
+  "E",  # pycodestyle errors
+  "F",  # pyflakes
+  "I",  # import sorting
+]
+ignore = [
+  "E501", # line-too-long (formatter handles this in practice)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B018"]
+
+[tool.mypy]
+# MAXIMUM STRICTNESS - No Any, no untyped dict/list, no isinstance abuse
+python_version = "3.11"
+files = ["**/*.py"]
+exclude = ["^venv/", "^.venv/"]
+follow_imports = "silent"  # TODO: Revisit - changed from "skip" to allow pydantic BaseModel resolution
+enable_error_code = ["literal-required"]
+
+# Enable ALL strict mode flags
+strict = true
+strict_equality = true
+no_strict_optional = true
+
+# Additional strictness beyond --strict (ban ALL forms of Any)
+disallow_any_unimported = true  # Ban Any from missing imports
+disallow_any_expr = true  # Ban Any in expressions (catches isinstance abuse)
+disallow_any_decorated = true  # Ban Any from untyped decorators
+disallow_any_explicit = true  # Ban explicit Any annotation
+
+# Import handling
+disable_error_code = [
+  "import-untyped",  # Still allow importing untyped third-party libs
+  "func-returns-value",  # Allow functions that only return None (handlers, etc.)
+  "no-redef", # Disable redefinition error, due to unreliable behavior in if/elif scopes
+]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false  # Allow untyped defs in tests only
+
+[[tool.mypy.overrides]]
+module = [
+  "teleclaude.mcp_server",
+  "teleclaude.mcp.*",
+  "teleclaude.api_server",
+  "teleclaude.adapters.telegram_adapter",
+  "teleclaude.transport.redis_transport",
+  "teleclaude.hooks.receiver",
+  "teleclaude.utils.transcript",
+  "teleclaude.core.agent_parsers",
+  "teleclaude.core.codex_watcher",
+  "teleclaude.config",
+  "teleclaude.core.ux_state",
+  "teleclaude.core.computer_registry",
+]
+disallow_any_expr = false
+disallow_any_unimported = false
+disallow_any_explicit = false
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = "teleclaude.core.computer_registry"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "teleclaude.mcp_server"
+# MCP Tool schemas use untyped dict literals and decorators from the MCP library.
+# The MCP library doesn't provide typed schema builders or decorator stubs.
+# Errors include: untyped decorators, generic type args, attr-defined for duck typing
+disable_error_code = [
+    "misc",
+    "explicit-any",
+    "no-untyped-call",
+    "assignment",
+    "call-overload",
+    "type-arg",
+    "attr-defined",
+    "no-any-return",
+    "unused-ignore",
+]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.transport.redis_transport"
+# Redis client returns Any types that propagate.
+disable_error_code = ["misc", "no-any-return", "attr-defined", "explicit-any", "arg-type", "assignment", "override"]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.api_server"
+# FastAPI decorators and Pydantic models introduce Any-typed boundaries.
+disable_error_code = ["misc", "assignment", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.core.command_handlers"
+# Decorators and dynamic typing cause issues here.
+disable_error_code = ["explicit-any", "misc", "arg-type", "assignment"]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.adapters.base_adapter"
+disable_error_code = ["misc", "explicit-any", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.core.agent_parsers"
+disable_error_code = ["misc", "explicit-any", "arg-type", "assignment"]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.hooks.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "teleclaude.core.summarizer"
+disable_error_code = ["misc", "explicit-any", "arg-type", "assignment", "unused-ignore"]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.cli.tui.*"
+# Curses module doesn't have complete type stubs; stdscr methods return Any.
+disable_error_code = ["misc", "explicit-any", "arg-type", "unused-ignore"]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.cli.api_client"
+# httpx resp.json() returns Any.
+disable_error_code = ["misc", "no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.utils.transcript"
+# External JSON payloads are highly dynamic; validate in code instead of types.
+disable_error_code = ["misc"]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.api.*"
+# FastAPI decorators and Pydantic BaseModel have internal Any types.
+disable_error_code = ["misc", "explicit-any", "arg-type", "unused-ignore"]
+
+[tool.pylint.'MESSAGES CONTROL']
+# CRITICAL: import-outside-toplevel (C0415) is ENABLED and will fail the build
+# ALL imports MUST be at the top of the file
+enable = ["import-outside-toplevel"]
+fail-on = ["import-outside-toplevel"]
+disable = [
+  "missing-docstring",  # TODO: Consider re-enabling - add docs to complex functions
+  "missing-module-docstring",  # TODO: Consider re-enabling - add module-level docs
+  # Code complexity - heavy refactoring needed (TODO: Fix gradually as we touch these files)
+  "too-many-return-statements",  # TODO: Reasonable for validation, review case-by-case
+  "too-many-branches",  # TODO: Use dict-dispatch or strategy pattern for >12 branches (10 violations)
+  "too-many-statements",  # TODO: Extract functions when >50 statements (9 violations)
+  "too-many-public-methods",  # TODO: Split classes with >20 public methods (4 violations)
+  "too-many-lines",  # TODO: Split modules over 1000 lines (5 violations)
+  "too-many-nested-blocks",  # TODO: Extract functions to reduce nesting >5 levels (5 violations)
+  "too-few-public-methods",  # Acceptable - single-method classes are valid (callables, strategies)
+  "too-many-locals",  # Complex functions in mcp_server.py/telegram_adapter.py - would need major refactor
+  "too-many-arguments",  # MCP tool handlers have many parameters - by design
+  "too-many-positional-arguments",  # Same as above
+  # Intentional patterns (TODO: Review each periodically)
+  "broad-exception-caught",  # Daemon robustness - TODO: Ensure all catch blocks log properly
+  "consider-using-with",  # Lock file handle must stay open - TODO: Document each instance
+  "attribute-defined-outside-init",  # Async init pattern - TODO: Verify all use async setup()
+  "protected-access",  # Internal framework use - TODO: Document why needed, fragile on updates
+  "redefined-outer-name",  # Function param shadowing - TODO: Review for clarity
+  "no-else-return",  # Early returns - acceptable style
+  "arguments-renamed",  # Override compatibility - acceptable for interface implementations
+  "ungrouped-imports",  # Import order - handled by isort
+  "unnecessary-ellipsis",  # Required in Protocol definitions - acceptable
+  "global-statement",  # Module-level singletons - TODO: Consider dependency injection instead
+  "redefined-builtin",  # type parameter shadows builtin - acceptable in type-heavy code
+  "line-too-long",  # Documentation - Black handles code lines
+  "unspecified-encoding",  # Default UTF-8 is fine in Python 3.11+
+  "assignment-from-none",  # Optional return values - acceptable pattern
+  "wrong-import-position",  # TYPE_CHECKING guards - acceptable pattern
+]
+
+[tool.pylint.'SIMILARITIES']
+min-similarity-lines = 10  # Flag duplicate blocks of 10+ lines
+
+[tool.pylint.'FORMAT']
+max-line-length = 120
+
+[tool.pylint.typecheck]
+# Decorators that modify function signatures (inject parameters)
+signature-mutators = ["teleclaude.core.command_handlers.with_session"]
+
+[tool.pyproject-fmt]
+indent = 4
+keep_full_version = false
+max_supported_python = "3.14"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+  "-v",
+  "--strict-markers",
+  "--strict-config",
+  "--tb=short",
+]
+markers = [
+  "unit: Unit tests (fast, isolated, mocked)",
+  "integration: Integration tests (slower, real components)",
+  "timeout: Test timeout marker",
+]
+asyncio_mode = "auto"
+filterwarnings = [
+  "ignore::telegram.warnings.PTBDeprecationWarning",
+  "ignore:The default datetime adapter is deprecated:DeprecationWarning:aiosqlite",
+]
+
+[tool.coverage.run]
+source = ["teleclaude"]
+omit = [
+  "*/tests/*",
+  "*/__pycache__/*",
+  "*/.venv/*",
+  "*/venv/*",
+]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+  "@abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "coverage/html"
+
+[tool.coverage.xml]
+output = "coverage/coverage.xml"
+
+[tool.coverage.json]
+output = "coverage/coverage.json"

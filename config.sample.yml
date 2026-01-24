@@ -1,0 +1,153 @@
+computer:
+  name: Mac # Unique computer identifier for multi-computer MCP communication
+  user: { USER } # System user running the daemon (interpolated during make init)
+  role: development # Computer role: development, production, testing, api-server, etc. (shown in MCP computer list)
+  bot_username: teleclaude_mac_bot # Bot username for computer registry (must match TELEGRAM_BOT_USERNAME)
+  is_master: false # Master computer advertises full command list in Telegram autocomplete. Set to true on ONE computer only to avoid duplicates. All computers still handle all commands.
+  default_working_dir: ${WORKING_DIR}
+  timezone: Europe/Amsterdam # Timezone for timestamps (default: Europe/Amsterdam)
+  host: null # Optional hostname/IP for SSH remote execution (null = local computer)
+  # Path to tmux binary or wrapper (default: "tmux"). Use custom wrapper for macOS full disk access:
+  tmux_binary: ${WORKING_DIR}/bin/TmuxLauncher.app/Contents/MacOS/tmux-launcher
+  # Trusted directories with metadata for AI understanding
+  # Format: { name: "identifier", desc: "purpose description", path: "/absolute/path" }
+  # Note: default_working_dir is automatically included with desc "TeleClaude folder"
+  trusted_dirs:
+    - name: documents
+      desc: personal documents
+      path: ${HOME}/Documents
+    - name: projects
+      desc: coding projects
+      path: ${HOME}/Projects
+
+database:
+  path: ${WORKING_DIR}/teleclaude.db
+
+telegram:
+  # Whitelist of trusted bots (security for AI-to-AI communication)
+  trusted_bots:
+    - teleclaude_mac_bot
+    - teleclaude_workstation_bot
+    - teleclaude_server_bot
+    # Add other computer bot usernames here
+
+agents:
+  claude:
+    # Special claude code wrapper to allow full disk access on MacOS. Defaults to "claude --dangerously-skip-permissions --settings ''{"forceLoginMethod": "claudeai"}''".
+    command: '${WORKING_DIR}/bin/ClaudeLauncher.app/Contents/MacOS/claude-launcher --dangerously-skip-permissions --settings ''{"forceLoginMethod": "claudeai"}'''
+  gemini:
+    # Special gemini build to allow full disk access on MacOS. Defaults to "gemini --yolo".
+    command: '${WORKING_DIR}/bin/GeminiLauncher.app/Contents/MacOS/gemini-launcher --yolo'
+  codex:
+    # Special codex build to allow full disk access on MacOS. Defaults to "codex --dangerously-bypass-approvals-and-sandbox --search".
+    command: '${WORKING_DIR}/bin/CodexLauncher.app/Contents/MacOS/codex-launcher --dangerously-bypass-approvals-and-sandbox --search'
+
+# Redis Configuration (for AI-to-AI communication)
+redis:
+  enabled: true # Enable Redis adapter for cross-computer messaging
+  url: redis://redis.srv.instrukt.ai:6379
+  password: ${REDIS_PASSWORD} # Set in .env
+
+# UI Configuration (TUI display settings)
+ui:
+  animations_enabled: true # Enable banner/logo animations
+  animations_periodic_interval: 60 # Seconds between periodic animations
+  animations_subset: [] # Empty list = all animations. Specify names to filter (e.g., ["FullSpectrumCycle", "LetterWave"])
+
+# Summarizer Configuration
+# Controls how agent feedback is processed for TTS and UI display
+summarizer:
+  enabled: true # If true, use LLM to summarize agent output. If false, use raw agent text.
+  nr_of_last_messages_used: 1 # Number of last agent text messages to extract (skips tool_use blocks)
+  max_summary_words: 30 # Target max words for the summary (~1-2 sentences)
+
+# Text-to-Speech Configuration
+tts:
+  enabled: true
+  service_priority:
+    - elevenlabs
+    - macos
+    - openai
+    - pyttsx3
+  events:
+    session_start:
+      enabled: true
+      messages:
+        - "Standing by with grep patterns locked and loaded. What can I find?"
+        - "Warmed up and ready to hunt down that bug!"
+        - "Cache cleared, mind fresh. What's the task?"
+        - "All systems nominal, ready to ship some code!"
+        - "Initialized and ready to make those tests pass. What needs fixing?"
+        - "Compiled with optimism and ready to refactor!"
+        - "Ready to turn coffee into code. Where do we start?"
+        - "Standing by like a well-indexed database!"
+        - "Alert and ready to parse whatever you need. What's up?"
+        - "Primed to help you ship that feature!"
+        - "Spun up and ready to debug. What's broken?"
+        - "Loaded and eager to make things work!"
+        - "Ready to dig into the details. What should I investigate?"
+        - "All systems go for some serious coding!"
+        - "Prepared to tackle whatever you throw at me. What's the challenge?"
+        - "Standing by to help ship something awesome!"
+        - "Ready to make the build green. What needs attention?"
+        - "Warmed up and waiting to assist!"
+        - "Initialized and ready to solve problems. What's the issue?"
+        - "All set to help you build something great!"
+    agent_stop:
+      enabled: true
+      # No message needed - uses summary from agent
+  services:
+    elevenlabs:
+      enabled: true
+      voices:
+        - name: Rachel
+          voice_id: 21m00Tcm4TlvDq8ikWAM
+        - name: George
+          voice_id: JBFqnCBsd6RMkjVDRZzb
+        - name: Matilda
+          voice_id: XrExE9yKIg1WjnnlVkGX
+        - name: Adam
+          voice_id: pNInz6obpgDQGcFmaJgB
+        - name: Charlotte
+          voice_id: XB0fDUnXU5powFXDhCwa
+        - name: Brian
+          voice_id: nPczCjzI2devNBz1zQrb
+        - name: Dorothy
+          voice_id: ThT5KcBeYPX3keUQqHPh
+        - name: Charlie
+          voice_id: IKne3meq5aSn9XLyUdCD
+        - name: James
+          voice_id: ZQe5CZNOzWyzPSCn5a3c
+        - name: Lily
+          voice_id: pFZP5JQG7iQjIQuC4Bku
+        - name: Antoni
+          voice_id: ErXwobaYiN019PkySvjV
+        - name: Grace
+          voice_id: oWAxZDx7w5VEj9dCyTzz
+    openai:
+      enabled: true
+      voices:
+        - name: alloy
+        - name: echo
+        - name: fable
+        - name: nova
+        - name: onyx
+        - name: shimmer
+    macos:
+      enabled: true
+      voices:
+        - name: "Samantha (Enhanced)"
+        - name: "Daniel (Enhanced)"
+        - name: "Ava (Premium)"
+        - name: "Nathan (Enhanced)"
+        - name: "Serena (Premium)"
+        - name: "Tom (Enhanced)"
+        - name: "Moira (Enhanced)"
+        - name: "Karen (Premium)"
+        - name: "Oliver (Enhanced)"
+        - name: "Jamie (Premium)"
+        - name: "Rishi (Enhanced)"
+        - name: "Zoe (Premium)"
+    pyttsx3:
+      enabled: true
+      voices: []

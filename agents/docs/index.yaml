@@ -7,8 +7,7 @@ snippets:
   type: checklist
   scope: domain
   path: docs/software-development/checklist/security-review.md
-  requires:
-  - software-development/standards/security-awareness
+  requires: []
 - id: software-development/failure-modes
   description: Five AI pitfalls to guard against. Trust code over comments, verify
     before concluding, hunt bugs actively, slow down, trace actual values not patterns.
@@ -21,33 +20,28 @@ snippets:
   type: guide
   scope: domain
   path: docs/software-development/guide/code-quality-practices.md
-  requires:
-  - software-development/standards/code-quality
+  requires: []
 - id: software-development/guides/python/core
   description: Python typing, data handling, error patterns, async, idioms. Modern
     syntax, explicit types, pure functions.
   type: guide
   scope: domain
   path: docs/software-development/guides/python/core.md
-  requires:
-  - software-development/standards/code-quality
+  requires: []
 - id: software-development/guides/python/logging
   description: InstruktAI Python logging standard. Logfmt format, dual-level control,
     structured pairs, tail-friendly output.
   type: guide
   scope: domain
   path: docs/software-development/guides/python/logging.md
-  requires:
-  - software-development/guides/python/core
-  - software-development/standards/code-quality
+  requires: []
 - id: software-development/guides/typescript/core
   description: TypeScript strict typing, discriminated unions, type guards, property
     checks. No any, no enum, no default exports.
   type: guide
   scope: domain
   path: docs/software-development/guides/typescript/core.md
-  requires:
-  - software-development/standards/code-quality
+  requires: []
 - id: software-development/principles/architecture/boundary-purity
   description: Preserve domain intent by isolating transport and UI concerns from
     core logic.
@@ -88,9 +82,7 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/documentation/overview.md
-  requires:
-  - software-development/procedure/lifecycle/documentation/sync-docstrings
-  - software-development/procedure/lifecycle/documentation/sync-docs
+  requires: []
 - id: software-development/procedure/lifecycle/documentation/sync-docs
   description: Regenerate docs from code + docs using the taxonomy.
   type: procedure
@@ -127,10 +119,7 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare.md
-  requires:
-  - software-development/procedure/lifecycle/prepare/input-assessment
-  - software-development/procedure/lifecycle/prepare/requirements-analysis
-  - software-development/procedure/lifecycle/prepare/implementation-planning
+  requires: []
 - id: software-development/procedure/lifecycle/prepare/implementation-planning
   description: Analyze or draft implementation-plan.md with approach, files, tasks,
     risks.
@@ -144,8 +133,7 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare/input-assessment.md
-  requires:
-  - software-development/todo-readiness
+  requires: []
 - id: software-development/procedure/lifecycle/prepare/requirements-analysis
   description: Analyze or verify requirements.md content for completeness and clarity.
   type: procedure
@@ -158,18 +146,14 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/review.md
-  requires:
-  - software-development/standards/code-quality
-  - software-development/standards/testing
-  - software-development/standards/linting-requirements
+  requires: []
 - id: software-development/procedure/orchestration
   description: Orchestration loop for the next-work state machine and worker session
     handling.
   type: procedure
   scope: domain
   path: docs/software-development/procedure/orchestration.md
-  requires:
-  - software-development/procedure/lifecycle-overview
+  requires: []
 - id: software-development/procedure/research/3rd-party-research
   description: 'Research third-party docs: search authoritative sources, fetch, summarize,
     and index findings.'
@@ -197,48 +181,42 @@ snippets:
   type: role
   scope: domain
   path: docs/software-development/roles/administrator.md
-  requires:
-  - software-development/procedure/lifecycle-overview
+  requires: []
 - id: software-development/roles/architect
   description: Strategic role. Requirements, architecture, use cases. Break down work,
     create implementation plans, ensure readiness.
   type: role
   scope: domain
   path: docs/software-development/roles/architect.md
-  requires:
-  - software-development/todo-readiness
+  requires: []
 - id: software-development/roles/builder
   description: Tactical implementation. Follow architecture, write code matching requirements,
     pragmatic autonomy, tests after implementation.
   type: role
   scope: domain
   path: docs/software-development/roles/builder.md
-  requires:
-  - software-development/failure-modes
+  requires: []
 - id: software-development/roles/finalizer
   description: Post-review delivery role. Merge, clean up, and log delivery after
     approval.
   type: role
   scope: domain
   path: docs/software-development/roles/finalizer.md
-  requires:
-  - software-development/procedure/lifecycle-overview
+  requires: []
 - id: software-development/roles/fixer
   description: Bug-fixing role. Investigate issues, identify root cause, apply minimal
     fixes, and verify.
   type: role
   scope: domain
   path: docs/software-development/roles/fixer.md
-  requires:
-  - software-development/failure-modes
+  requires: []
 - id: software-development/roles/orchestrator
   description: Supervisory role. Dispatch workers, monitor progress, drive state machine.
     Follow next-work output verbatim.
   type: role
   scope: domain
   path: docs/software-development/roles/orchestrator.md
-  requires:
-  - software-development/procedure/lifecycle-overview
+  requires: []
 - id: software-development/roles/researcher
   description: Research role. Gather authoritative sources, summarize, and index findings.
   type: role
@@ -251,16 +229,14 @@ snippets:
   type: role
   scope: domain
   path: docs/software-development/roles/reviewer.md
-  requires:
-  - software-development/failure-modes
+  requires: []
 - id: software-development/roles/tester
   description: Test-focused role. Improve test quality, fix failures, enforce testing
     standards and coverage.
   type: role
   scope: domain
   path: docs/software-development/roles/tester.md
-  requires:
-  - software-development/standards/testing
+  requires: []
 - id: software-development/standards/code-quality
   description: Architecture, typing, contracts, state management, error handling.
     Generic quality standards for all code.
@@ -274,43 +250,35 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/standards/commits.md
-  requires:
-  - software-development/standards/code-quality
+  requires: []
 - id: software-development/standards/definition-of-done
   description: Baseline quality gates defining when work is truly complete. Functionality,
     quality, testing, security, documentation.
   type: policy
   scope: domain
   path: docs/software-development/standards/definition-of-done.md
-  requires:
-  - software-development/standards/code-quality
-  - software-development/standards/testing
-  - software-development/standards/commits
+  requires: []
 - id: software-development/standards/linting-requirements
   description: Linting and type-checking rules. Required fixes, import rules, and
     suppression limits.
   type: policy
   scope: domain
   path: docs/software-development/standards/linting-requirements.md
-  requires:
-  - software-development/standards/code-quality
+  requires: []
 - id: software-development/standards/security-awareness
   description: Secrets management, input validation, OWASP awareness, secure defaults.
     Never commit secrets, validate boundaries.
   type: policy
   scope: domain
   path: docs/software-development/standards/security-awareness.md
-  requires:
-  - software-development/standards/code-quality
+  requires: []
 - id: software-development/standards/testing
   description: Pre-commit quality gates, test principles, linting, isolation, anti-patterns.
     Hooks-first verification.
   type: policy
   scope: domain
   path: docs/software-development/standards/testing.md
-  requires:
-  - software-development/standards/code-quality
-  - software-development/standards/linting-requirements
+  requires: []
 - id: software-development/todo-readiness
   description: Five criteria for implementation-ready todos. Single-session, verifiable,
     atomic, clear scope, known approach. Guides work breakdown.

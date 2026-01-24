@@ -1,0 +1,43 @@
+{
+  "[python]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    },
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 4
+  },
+  "ruff.importStrategy": "fromEnvironment",
+  "ruff.interpreter": [ "${workspaceFolder}/.venv/bin/python" ],
+  "ruff.enable": true,
+  "ruff.nativeServer": "on",
+  "ruff.configurationPreference": "filesystemFirst",
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "mypy-type-checker.importStrategy": "fromEnvironment",
+  "mypy-type-checker.reportingScope": "workspace",
+  "mypy-type-checker.args": [ "--config-file", "pyproject.toml" ],
+  "mypy-type-checker.path": [ ".venv/bin/mypy" ],
+  "python.analysis.autoImportCompletions": true,
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": [ "tests" ],
+  "files.associations": {
+    "*.yml": "yaml"
+  },
+  "markdownPathCompletion.exclude": {
+    "**/.history/**": true,
+    "**/.venv/**": true
+  },
+  "markdownPathCompletion.include": [
+    "**/*"
+  ],
+  "files.exclude": {
+    "**/.history": false
+  },
+  "jupyter.debugJustMyCode": false,
+  "[dotenv]": {
+    "editor.defaultFormatter": "foxundermoon.shell-format"
+  }
+}

@@ -8,8 +8,13 @@
 @~/.teleclaude/docs/baseline/principles/explicit-inference.md
 @~/.teleclaude/docs/baseline/principles/intent-first-documentation.md
 @~/.teleclaude/docs/baseline/principles/priming.md
+@~/.teleclaude/docs/baseline/procedure/agent-artifact-authoring.md
 @~/.teleclaude/docs/baseline/procedure/agents-authoring.md
 @~/.teleclaude/docs/baseline/procedure/snippet-authoring-sequence.md
 @~/.teleclaude/docs/baseline/procedure/taxonomy-interpretation.md
+@~/.teleclaude/docs/baseline/reference/agent-artifacts.md
+@~/.teleclaude/docs/baseline/reference/agent-schema.md
+@~/.teleclaude/docs/baseline/reference/command-schema.md
+@~/.teleclaude/docs/baseline/reference/skill-schema.md
 @~/.teleclaude/docs/baseline/reference/snippet-authoring-schema.md
 @~/.teleclaude/docs/baseline/reference/snippet-taxonomy.md
