@@ -10,9 +10,9 @@ type: procedure
 
 # Lifecycle Overview — Procedure
 
-The software development lifecycle in this organization follows a deterministic, serial workflow managed by the Orchestrator.
+## Goal
 
-## Lifecycle Index
+The software development lifecycle in this organization follows a deterministic, serial workflow managed by the Orchestrator.
 
 1. Prepare — define scope, requirements, and plan
 2. Build — implement the plan with tests and commits
@@ -21,8 +21,6 @@ The software development lifecycle in this organization follows a deterministic,
 5. Documentation — sync docstrings and docs
 6. Finalize — merge and deliver
 7. Maintenance — infra/dependency/security upkeep
-
-## Lifecycle Phases
 
 ### 1. Prepare
 
@@ -73,14 +71,10 @@ Merge approved work, update delivered log, remove todo folder, clean up worktree
 
 Maintenance covers dependency updates, security patches, and operational upkeep. Procedures are defined separately.
 
-## Key Principles
-
 - **Serial execution**: One phase runs, completes, then the next begins
 - **Deterministic handoffs**: Every step ends cleanly before the next begins
 - **No micromanagement**: Orchestrator dispatches and monitors; workers implement autonomously
 - **Quality gates**: Pre-commit hooks enforce standards; review validates completeness
-
-## State Tracking
 
 Work state lives in `todos/{slug}/state.json` and records:
 
@@ -89,3 +83,27 @@ Work state lives in `todos/{slug}/state.json` and records:
 - `docstrings`: `pending` | `complete`
 - `docs`: `pending` | `complete`
 - `deferrals_processed`: boolean
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

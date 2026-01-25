@@ -1,31 +1,28 @@
-# Agent Transpilation (Local)
+---
+id: reference/agent-transpilation
+type: reference
+scope: global
+description: Rules for transpiling master artifacts into runtime-specific formats.
+---
 
-Required reads
-
-@~/.teleclaude/docs/baseline/reference/agent-artifacts.md
+# Agent Transpilation — Reference
 
 ## What it is
 
 Local rules for converting master artifacts into runtime-specific formats.
 
-## Canonical sources
+## Canonical fields
 
-- `AGENTS.master.md`
-- `commands/*.md`
-- `skills/*/SKILL.md`
+- Inputs: `AGENTS.master.md`, `commands/*.md`, `skills/*/SKILL.md`.
+- Outputs: `dist/claude/*`, `dist/codex/*`, `dist/gemini/*`.
 
-## Runtime mappings
+## Allowed values
 
 - Claude: preserves frontmatter and uses slash commands.
 - Codex: uses prompt files and subject-style arguments.
 - Gemini: uses TOML with argument substitution.
 
-## Placeholders
+## Known caveats
 
 - `{AGENT_PREFIX}` is replaced with runtime-specific prefixes.
-
-## Outputs
-
-- `dist/claude/*`
-- `dist/codex/*`
-- `dist/gemini/*`
+- Generated artifacts should not be edited directly.

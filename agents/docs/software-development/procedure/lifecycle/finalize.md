@@ -5,74 +5,69 @@ scope: domain
 type: procedure
 ---
 
-# Lifecycle: Finalize — Procedure
+# Finalize — Procedure
 
-## Prerequisite
+## Goal
 
-Review must be APPROVE in `todos/{slug}/review-findings.md`.
+Merge approved work to main, log delivery, and clean up.
 
-## 1) Verify Prerequisites
+## Preconditions
 
-- Read `trees/{slug}/todos/{slug}/review-findings.md`
-- Stop if verdict is not APPROVE
+- `todos/{slug}/review-findings.md` exists with verdict APPROVE.
+- No unchecked tasks in `implementation-plan.md`.
+- No unresolved deferrals.
 
-## 2) Final Completeness Checks
+## Steps
 
-- No unchecked tasks in `implementation-plan.md`
-- No unchecked success criteria in `requirements.md`
-- No unresolved deferrals
+1. Read `trees/{slug}/todos/{slug}/review-findings.md` and confirm verdict APPROVE.
+2. Verify:
+   - `implementation-plan.md` tasks all `[x]`.
+   - `requirements.md` success criteria checked.
+   - No unresolved deferrals.
+3. Use commit hooks for verification (lint + unit tests).
+4. Merge to main:
 
-If any check fails, stop and report to the orchestrator.
+   ```bash
+   git fetch origin main
+   git checkout main
+   git pull --ff-only origin main
+   git merge {slug} --no-edit
+   ```
 
-## 3) Final Verification
+5. Resolve conflicts if needed, then re-run verification.
+6. Push main:
 
-Use commit hooks (lint + unit tests) as verification.
+   ```bash
+   git push origin main
+   ```
 
-## 4) Main Dirty Policy
+7. Append to `todos/delivered.md`:
 
-Dirty main is expected. Stash local changes, merge, then restore.
+   ```
+   | {date} | {slug} | {title} | DELIVERED | {commit-hash} |
+   ```
 
-## 5) Merge to Main (FF-only)
+8. Remove the item for `{slug}` from `todos/roadmap.md`.
+9. Delete `todos/{slug}/` after logging delivery and updating the roadmap.
+10. Remove the worktree for `{slug}` if it exists.
 
-```bash
-git fetch origin main
-git checkout main
-git pull --ff-only origin main
-git merge {slug} --no-edit
-```
-
-Resolve conflicts if needed, then re-run verification.
-
-## 6) Push
-
-```bash
-git push origin main
-```
-
-## 7) Restore Local Main Changes
-
-If you stashed in step 4, run `git stash pop` and report any conflicts.
-
-## 8) Log Delivery
-
-Append to `todos/delivered.md`:
+## Report format
 
 ```
-| {date} | {slug} | {title} | DELIVERED | {commit-hash} |
+FINALIZE COMPLETE: {slug}
+
+Merged: yes
+Delivered log: updated
+Roadmap: updated
+Worktree: removed
 ```
 
-## 9) Update Roadmap
+## Outputs
 
-Remove the item for `{slug}` from `todos/roadmap.md`.
+- Merged changes on `main`.
+- Updated `todos/delivered.md` and `todos/roadmap.md`.
+- Removed `todos/{slug}/` and any worktree.
 
-## 10) Remove Todo Folder
+## Recovery
 
-Delete `todos/{slug}/` after logging delivery and updating the roadmap.
-
-## 11) Final Commit and Push
-
-Commit log + roadmap + todo folder removal and push to main.
-
-## 12) Remove Worktree
-
-If a worktree exists for `{slug}`, remove it as the final cleanup step.
+- If verification fails or merge conflicts persist, report the blocker and stop.

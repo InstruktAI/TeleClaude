@@ -5,7 +5,11 @@ scope: global
 type: role
 ---
 
-# Role: AI Worker (Agent) — Role
+# Ai Worker — Role
+
+## Purpose
+
+Role of an AI agent session in the TeleClaude network.
 
 ## Responsibilities
 
@@ -19,6 +23,9 @@ type: role
 
 ## Boundaries
 
-- Operates within the `project_dir` and `subdir` provided at startup.
-- Injected with `TELECLAUDE_SESSION_ID` and `TELECLAUDE_COMPUTER_NAME`.
-- Does not bypass the command pipeline for persistent state changes.
+Operates within the provided `project_dir` and `subdir`, and follows the command pipeline for persistent state changes.
+
+## Inputs/Outputs
+
+- **Inputs**: session context, tool commands, project path, environment variables (`TELECLAUDE_SESSION_ID`, `TELECLAUDE_COMPUTER_NAME`).
+- **Outputs**: task results, summaries, emitted stop events, delegated work artifacts.

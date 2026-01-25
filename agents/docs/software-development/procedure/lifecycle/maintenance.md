@@ -5,7 +5,9 @@ scope: domain
 type: procedure
 ---
 
-# Maintenance Phase — Procedure
+# Maintenance — Procedure
+
+## Goal
 
 Maintenance restores reliability and reduces drift across the repo and its infrastructure.
 
@@ -20,3 +22,27 @@ Outputs
 
 - Verified changes with documented impact.
 - Follow‑up tasks captured and prioritized.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

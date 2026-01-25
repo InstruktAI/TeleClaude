@@ -1,12 +1,23 @@
 # Stateless Command Policy — Policy
 
-Commands are atomic, explicit, and idempotent. They state required setup, perform the work, and end with a verifiable outcome.
+## Rule
 
-## Rules
+- Commands are atomic, explicit, and idempotent.
+- Each command states prerequisites, performs the work, and ends with a verifiable outcome.
 
-- **Make prerequisites explicit**: include required setup as part of the command flow.
-- **Declare the working state**: state what the command relies on and what it produces.
-- **Single responsibility**: one command completes one job end-to-end.
-- **Idempotent execution**: repeat runs converge on the same correct result.
+## Rationale
 
-When sequencing is needed, use orchestration or a state machine to compose commands.
+- Stateless commands are predictable, testable, and safe to re‑run.
+
+## Scope
+
+- Applies to all command definitions and operator guidance.
+
+## Enforcement
+
+- If a command requires setup, include it explicitly in the command flow.
+- If sequencing is required, use orchestration/state machines rather than hidden steps.
+
+## Exceptions
+
+- None.

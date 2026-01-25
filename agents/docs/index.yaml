@@ -1,6 +1,55 @@
 project_root: /Users/Morriz/.teleclaude
-snippets_root: /Users/Morriz/.teleclaude/docs
 snippets:
+- id: general/index
+  description: Entry point for general authoring and agent artifact documentation.
+  type: reference
+  scope: global
+  path: docs/general/index.md
+  requires: []
+- id: general/principles/intent-first-documentation
+  description: Preserve intent, boundaries, and durable reasoning in documentation.
+  type: principles
+  scope: global
+  path: docs/general/principles/intent-first-documentation.md
+  requires: []
+- id: general/principles/priming
+  description: Prime agents with the minimal, role-specific context required to act.
+  type: principles
+  scope: global
+  path: docs/general/principles/priming.md
+  requires: []
+- id: general/procedure/agent-artifact-authoring
+  description: Author agent artifacts (agents, skills, commands) that compile into
+    tool-specific formats.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/agent-artifact-authoring.md
+  requires: []
+- id: general/procedure/agents-authoring
+  description: Author AGENTS.md files that bootstrap required reads and role context.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/agents-authoring.md
+  requires: []
+- id: general/procedure/snippet-authoring-sequence
+  description: Sequence for authoring and validating documentation snippets.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/snippet-authoring-sequence.md
+  requires: []
+- id: general/reference/agent-artifacts
+  description: Minimal schema used for agent artifacts (commands and skills).
+  type: reference
+  scope: global
+  path: docs/general/reference/agent-artifacts.md
+  requires: []
+- id: general/reference/snippet-authoring-schema
+  description: Schema and section requirements for documentation snippets belonging
+    to a taxonomy.
+  type: reference
+  scope: global
+  path: docs/general/reference/snippet-authoring-schema.md
+  requires: []
 - id: software-development/checklist/security-review
   description: Security review checklist for boundary validation, secrets, and access
     controls.
@@ -8,12 +57,24 @@ snippets:
   scope: domain
   path: docs/software-development/checklist/security-review.md
   requires: []
+- id: software-development/concept/agent-artifact-distribution
+  description: How agent artifacts are built and distributed to tool-specific formats.
+  type: concept
+  scope: domain
+  path: docs/software-development/concept/agent-artifact-distribution.md
+  requires: []
 - id: software-development/failure-modes
   description: Five AI pitfalls to guard against. Trust code over comments, verify
     before concluding, hunt bugs actively, slow down, trace actual values not patterns.
   type: concept
   scope: domain
   path: docs/software-development/failure-modes.md
+  requires: []
+- id: software-development/guide/agent-artifacts-quickstart
+  description: Quickstart for authoring and distributing agent artifacts.
+  type: guide
+  scope: domain
+  path: docs/software-development/guide/agent-artifacts-quickstart.md
   requires: []
 - id: software-development/guide/code-quality-practices
   description: Practical guidance for applying code-quality policy in day-to-day work.
@@ -84,7 +145,7 @@ snippets:
   path: docs/software-development/procedure/lifecycle/documentation/overview.md
   requires: []
 - id: software-development/procedure/lifecycle/documentation/sync-docs
-  description: Regenerate docs from code + docs using the taxonomy.
+  description: Regenerate docs from code and existing documentation using the taxonomy.
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/documentation/sync-docs.md
@@ -286,3 +347,4 @@ snippets:
   scope: domain
   path: docs/software-development/todo-readiness.md
   requires: []
+snippets_root: /Users/Morriz/.teleclaude/docs

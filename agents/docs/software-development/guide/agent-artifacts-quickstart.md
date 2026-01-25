@@ -1,31 +1,27 @@
-# Agent Artifacts Quickstart
+---
+id: software-development/guide/agent-artifacts-quickstart
+type: guide
+scope: domain
+description: Quickstart for authoring and distributing agent artifacts.
+---
 
-Required reads
-
-@~/.teleclaude/docs/baseline/reference/agent-artifacts.md
-@~/.teleclaude/docs/software-development/concept/agent-artifact-distribution.md
+# Agent Artifacts Quickstart — Guide
 
 ## Goal
 
-Create agent artifacts in a repo so they are discoverable and distributable
-across supported agent runtimes.
+Get an agent artifact authored and distributed to tool-specific outputs.
 
 ## Steps
 
-1. Create an agent, skill, or command using the canonical paths:
-   - `agents/<name>.md`
-   - `skills/<skill-name>/SKILL.md`
-   - `commands/<name>.md`
-2. Add frontmatter using the appropriate schema and write concise intent.
-3. Keep artifacts focused; split when intent becomes multi-purpose.
-4. Let the watcher/build step generate runtime-specific outputs.
+1. Author or update files under `agents/`.
+2. Validate snippet structure and required reads.
+3. Run the artifact distribution tooling.
 
 ## Outputs
 
-- Source artifacts exist with valid metadata.
-- Generated artifacts are produced for each runtime.
+- Updated source artifacts.
+- Generated runtime artifacts for supported CLIs.
 
 ## Recovery
 
-- If an artifact is not discovered, validate its frontmatter fields.
-- If selection is poor, rewrite `description` to be task- and outcome-focused.
+- If validation fails, fix schema issues and rebuild.

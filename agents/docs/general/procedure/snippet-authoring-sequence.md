@@ -1,0 +1,37 @@
+---
+id: general/procedure/snippet-authoring-sequence
+type: procedure
+scope: global
+description: Sequence for authoring and validating documentation snippets.
+---
+
+# Snippet Authoring Sequence — Procedure
+
+## Goal
+
+Create a new snippet that conforms to schema and is discoverable by tooling.
+
+## Preconditions
+
+- Snippet taxonomy and schema references available.
+- Target docs folder determined.
+
+## Steps
+
+1. Interpret the request through taxonomy: decide the correct type and scope.
+2. Author top-down: broader context should point to narrower details, not the other way around.
+3. Add frontmatter (id, type, scope, description).
+4. Write H1 title with correct type suffix.
+5. Add Required reads if the snippet depends on other snippets.
+6. Add all required sections for the taxonomy type.
+7. Run snippet validation tooling.
+
+## Outputs
+
+- New or updated snippet with correct structure.
+- Updated snippet indexes.
+
+## Recovery
+
+- If validation fails, fix schema violations and re-run indexing.
+- If a circular reference is reported, remove or reorder required reads so dependencies form a tree (acyclic graph). Only one direction should reference the other.

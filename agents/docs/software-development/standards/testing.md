@@ -7,18 +7,14 @@ scope: domain
 type: policy
 ---
 
-# Testing Standards — Policy
+# Testing — Policy
 
-## Required reads
+## Rule
 
-- @software-development/standards/code-quality
-- @software-development/standards/linting-requirements
-
-## Requirements
+- @docs/software-development/standards/code-quality
+- @docs/software-development/standards/linting-requirements
 
 @~/.teleclaude/docs/software-development/standards/code-quality.md
-
-## Pre-Commit Quality Gates
 
 1. **Use pre-commit hooks as the primary verification path**
 2. **Do not run full suites by default** - Run targeted tests only when developing, debugging, or when hooks fail
@@ -32,8 +28,6 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 - Run a broader subset only if targeted tests are inconclusive
 - Avoid running the entire suite unless explicitly required (release, CI parity, or missing hooks)
 
-## Test Quality Principles
-
 - Test behavior, not implementation
 - Prefer one clear expectation per test
 - Keep tests deterministic and fast
@@ -43,11 +37,7 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 - Use clear, descriptive test names
 - Use fixtures for shared setup; keep them small and composable
 
-## Linting & Type Checking
-
 @~/.teleclaude/docs/software-development/standards/linting-requirements.md
-
-## Test Isolation
 
 1. Each test runs independently - no shared state between tests
 2. Tests can run in any order
@@ -56,25 +46,19 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 5. Reset mocks between tests
 6. Clean up global state in teardown
 
-## Testing Anti-Patterns to Avoid
+7. **Flaky tests** - non-deterministic tests that pass/fail randomly
+8. **Slow tests** - tests that take seconds to run (indicates integration, not unit)
+9. **Testing implementation details** - tests that break when refactoring
+10. **Over-mocking** - mocking everything makes tests brittle
+11. **Mega tests** - one test that validates many behaviors
+12. **No assertions** - tests that execute code but don't verify outcomes
+13. **Commented-out tests** - either fix or delete them
 
-1. **Flaky tests** - non-deterministic tests that pass/fail randomly
-2. **Slow tests** - tests that take seconds to run (indicates integration, not unit)
-3. **Testing implementation details** - tests that break when refactoring
-4. **Over-mocking** - mocking everything makes tests brittle
-5. **Mega tests** - one test that validates many behaviors
-6. **No assertions** - tests that execute code but don't verify outcomes
-7. **Commented-out tests** - either fix or delete them
-
-## Continuous Integration Standards
-
-1. All tests run on every commit
-2. Tests must pass before merging to main branch
-3. Linting, type checking, and unit tests run automatically
-4. No commits with `--no-verify` to bypass hooks unless explicitly approved
-5. Keep test suite fast (< 10s for unit tests)
-
-## Pre-Commit Checklist
+14. All tests run on every commit
+15. Tests must pass before merging to main branch
+16. Linting, type checking, and unit tests run automatically
+17. No commits with `--no-verify` to bypass hooks unless explicitly approved
+18. Keep test suite fast (< 10s for unit tests)
 
 - [ ] Pre-commit hooks pass without warnings
 - [ ] No unused imports or variables
@@ -89,3 +73,27 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 - [ ] No commented-out code or tests
 
 **CRITICAL**: Never commit code with failing hooks, lint violations, or type errors.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Rationale
+
+- TBD.
+
+## Scope
+
+- TBD.
+
+## Enforcement
+
+- TBD.
+
+## Exceptions
+
+- TBD.

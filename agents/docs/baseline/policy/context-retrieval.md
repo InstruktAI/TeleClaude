@@ -1,20 +1,22 @@
 # Context Retrieval Policy — Policy
 
-Call `teleclaude__get_context` as your first action when:
+## Rule
 
-- Starting any task or assigned a role
-- Instructed to "read up on", "understand", or research something
-- Writing documentation, creating patterns, or scaffolding projects
-- Making architectural decisions or choosing between approaches
-- Reviewing code, writing tests, or handling errors
-- Debugging, refactoring, or investigating issues
-- Orchestrating other AI workers or following procedures
-- Working with unfamiliar patterns or before committing changes
+- Call `teleclaude__get_context` before any task where missing context could alter decisions.
+- Use the two‑phase flow: index first, then selected snippet IDs.
 
 ## Rationale
 
-Context-gathering is mandatory. Immediate context prevents drift from established policies, procedures, and architectural decisions.
+- Immediate context prevents drift from established policy, architecture, and procedure.
 
 ## Scope
 
-This policy applies to all AI agents across all projects and tasks.
+- Applies to all agents, all projects, and all tasks.
+
+## Enforcement
+
+- If unsure about policies, procedures, roles, or constraints, call get_context before editing or executing.
+
+## Exceptions
+
+- None.

@@ -5,15 +5,13 @@ scope: project
 type: reference
 ---
 
-## Required reads
-
-- @teleclaude/architecture/cache
+# Cache Ttl Matrix — Reference
 
 ## What it is
 
-- TTL and scope matrix for cache refresh behavior.
+- @docs/architecture/cache
 
-## Canonical fields
+- TTL and scope matrix for cache refresh behavior.
 
 - Computers: global scope, TTL 60s.
 - Projects: per-computer scope, TTL 5m.
@@ -21,10 +19,24 @@ type: reference
 - Sessions: per-computer scope, TTL infinite (event-driven).
 - Agent availability: global scope, TTL 30s.
 
+- TTLs are defined in seconds/minutes as listed above.
+
+- Sessions are event-driven and do not use TTL refresh.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Canonical fields
+
+- TBD.
+
 ## Allowed values
 
-- TTLs are defined in seconds/minutes as listed above.
+- TBD.
 
 ## Known caveats
 
-- Sessions are event-driven and do not use TTL refresh.
+- TBD.

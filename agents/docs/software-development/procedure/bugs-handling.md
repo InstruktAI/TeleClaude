@@ -7,19 +7,15 @@ scope: domain
 type: procedure
 ---
 
-# Bugs Handling Procedure — Procedure
+# Bugs Handling — Procedure
 
 ## Goal
 
 Convert raw bug reports into action: fix quickly when safe, otherwise create a todo with clear scope.
 
-## 1) Load Bugs
-
 - Read `todos/bugs.md`.
 - Find unchecked items (`[ ]`).
 - If none, report and stop.
-
-## 2) For Each Bug
 
 ### 2.1 Understand
 
@@ -54,12 +50,32 @@ Convert raw bug reports into action: fix quickly when safe, otherwise create a t
 - Mark `[x]` when fixed
 - Commit one bug per commit
 
-## 3) Report
-
 Summarize fixes and any new todos created.
-
-## Error Handling
 
 - If not reproducible: add note and mark `[?]`
 - If fix causes regression: document and mark `[!]`
 - If stuck: document what was tried and continue
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

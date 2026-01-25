@@ -30,7 +30,6 @@ class SnippetEntry(TypedDict):
 
 class IndexPayload(TypedDict):
     project_root: str
-    snippets_root: str
     snippets: list[SnippetEntry]
 
 
@@ -79,10 +78,8 @@ def _normalize_payload(payload: Mapping[str, object]) -> IndexPayload:
         )
     normalized_snippets.sort(key=lambda entry: entry["id"])
     project_root = payload.get("project_root", "")
-    snippets_root = payload.get("snippets_root", "")
     payload_root = project_root if isinstance(project_root, str) else ""
-    payload_snippets_root = snippets_root if isinstance(snippets_root, str) else ""
-    return {"project_root": payload_root, "snippets_root": payload_snippets_root, "snippets": normalized_snippets}
+    return {"project_root": payload_root, "snippets": normalized_snippets}
 
 
 def validate_index(project_root: Path, snippets_root: Path, index_path: Path) -> list[str]:

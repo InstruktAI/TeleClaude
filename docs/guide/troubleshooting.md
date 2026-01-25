@@ -5,15 +5,13 @@ scope: global
 description: Diagnostic steps for common TeleClaude operational issues.
 ---
 
+# Troubleshooting — Guide
+
 ## Goal
 
 - Diagnose and recover from common TeleClaude operational issues.
 
-## Preconditions
-
 - Access to the host running the daemon.
-
-## Steps
 
 1. Check daemon health with `make status`.
 2. Inspect logs with `instrukt-ai-logs teleclaude --since 30m` and scan for `ERROR`, `mcp-server`, `telegram-adapter`.
@@ -33,12 +31,26 @@ description: Diagnostic steps for common TeleClaude operational issues.
 10. If a session is stuck, send a message with `teleclaude__send_message`. If it remains unresponsive (or MCP is unavailable), call `POST /sessions/{session_id}/agent-restart`.
 11. If instability persists, isolate the last change and revert to a known good state.
 
-## Outputs
-
 - Root cause identified and service restored.
-
-## Recovery
 
 - Restart only via `make restart` and verify with `make status`.
 - Do not use `make stop` during normal recovery.
 - Do not delete `teleclaude.db` outside worktrees.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

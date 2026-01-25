@@ -7,30 +7,46 @@ scope: project
 type: architecture
 ---
 
-## Required reads
-
-- @teleclaude/concept/adapter-types
+# Adapter Client — Architecture
 
 ## Purpose
 
-- Own adapter lifecycle and fan-out delivery to adapters.
+- @docs/concept/adapter-types
 
-## Inputs/Outputs
+- Own adapter lifecycle and fan-out delivery to adapters.
 
 - Inputs: commands and events from core logic that need to reach adapters.
 - Outputs: fan-out delivery to adapters.
-
-## Primary flows
 
 - Fans out output updates to the correct adapters based on last input origin and configuration.
 - Ensures UI channel metadata before first delivery to a non-origin adapter.
 - Applies UI cleanup hooks and observer notifications around user input and AI output.
 
-## Invariants
-
 - Only successfully started adapters are registered.
 - Delivery runs in parallel lanes so one adapter cannot block another.
 
+- Adapter failures are isolated per lane and logged.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Inputs/Outputs
+
+- TBD.
+
+## Invariants
+
+- TBD.
+
+## Primary flows
+
+- TBD.
+
 ## Failure modes
 
-- Adapter failures are isolated per lane and logged.
+- TBD.

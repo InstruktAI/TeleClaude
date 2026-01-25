@@ -2,19 +2,19 @@
 id: teleclaude/concept/glossary
 type: concept
 scope: project
-description: Shared terminology for TeleClaude sessions, adapters, transports, and identifiers.
+description:
+  Shared terminology for TeleClaude sessions, adapters, transports, and
+  identifiers.
 ---
+
+# Glossary — Concept
 
 ## Purpose
 
 - Provide consistent definitions for core TeleClaude terms used across docs and code.
 
-## Inputs/Outputs
-
 - Inputs: terms used in docs, code, and APIs.
 - Outputs: canonical definitions for shared understanding.
-
-## Primary flows
 
 - Session: a tmux-backed execution context tracked in SQLite and surfaced in Telegram/MCP/API.
 - session_id: TeleClaude-generated UUID used as the primary session identifier across adapters.
@@ -28,10 +28,30 @@ description: Shared terminology for TeleClaude sessions, adapters, transports, a
 - session summary: lightweight session DTO used for list views and cache snapshots.
 - session detail: live output and event stream for an active session.
 
+- Definitions in this glossary are the canonical meanings for documentation and code comments.
+
+- Inconsistent terminology causes mismatched expectations across adapters and APIs.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Inputs/Outputs
+
+- TBD.
+
 ## Invariants
 
-- Definitions in this glossary are the canonical meanings for documentation and code comments.
+- TBD.
+
+## Primary flows
+
+- TBD.
 
 ## Failure modes
 
-- Inconsistent terminology causes mismatched expectations across adapters and APIs.
+- TBD.

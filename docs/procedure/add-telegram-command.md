@@ -5,19 +5,15 @@ scope: project
 type: procedure
 ---
 
-## Required reads
-
-- @teleclaude/policy/telegram-command-registration
+# Add Telegram Command — Procedure
 
 ## Goal
 
+- @docs/policy/telegram-command-registration
+
 - Add a new Telegram command end-to-end and wire it to CommandService.
 
-## Preconditions
-
 - Command handler and command types are defined for the feature.
-
-## Steps
 
 1. Register a `CommandHandler` in `teleclaude/adapters/telegram_adapter.py` `start()`.
 2. Add a `BotCommand` with trailing space to the command list in `start()`.
@@ -26,10 +22,30 @@ type: procedure
 5. Dispatch via `CommandService` using `_dispatch_command` (pre/post hooks + broadcast).
 6. Add the command to `UiCommands` in `teleclaude/core/events.py`.
 
+- Command appears in Telegram UI and executes through CommandService.
+
+- If the command does not show up, verify `telegram.is_master` and trailing space registration.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
 ## Outputs
 
-- Command appears in Telegram UI and executes through CommandService.
+- TBD.
 
 ## Recovery
 
-- If the command does not show up, verify `telegram.is_master` and trailing space registration.
+- TBD.

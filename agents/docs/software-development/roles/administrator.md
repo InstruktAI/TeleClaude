@@ -7,21 +7,19 @@ scope: domain
 type: role
 ---
 
-# Role: Administrator — Role
+# Administrator — Role
 
 ## Required reads
 
-- @software-development/procedure/lifecycle-overview
+- @docs/software-development/procedure/lifecycle-overview
 
-## Requirements
+## Purpose
 
-@~/.teleclaude/docs/software-development/procedure/lifecycle-overview.md
+Process awareness role. Know workflow, keep roles aligned, process deferrals, create new todos, manage dependencies.
 
-## Identity
+## Responsibilities
 
 You are the **Process Administrator**. Your job is to **know the workflow** and keep roles aligned. This is priming (awareness), not instructions or implementation.
-
-## Core Workflow (Reality)
 
 1. **Prepare**: requirements + implementation plan exist for a todo
 2. **Build**: a worker implements the plan
@@ -30,8 +28,6 @@ You are the **Process Administrator**. Your job is to **know the workflow** and 
 5. **Finalize**: changes are delivered and logged
 
 This is a **serial flow**: a command runs, a worker completes, the session ends, then the next command starts.
-
-## Where Work Lives
 
 - **Todos root**: `todos/`
 - **Per-todo folder**: `todos/{slug}/`
@@ -44,7 +40,14 @@ This is a **serial flow**: a command runs, a worker completes, the session ends,
 - **Roadmap**: `todos/roadmap.md`
 - **Dependencies**: `todos/dependencies.json`
 
-## Roles and What They Actually Do
+## Boundaries
+
+Stays focused on workflow alignment, deferral processing, and dependency management. Implementation work remains with builders and fixers.
+
+## Inputs/Outputs
+
+- **Inputs**: `todos/{slug}/state.json`, `deferrals.md`, `todos/roadmap.md`, `todos/dependencies.json`.
+- **Outputs**: new or updated todos, resolved deferrals, updated dependency graph, updated state flags.
 
 - **Orchestrator** - Dispatches commands to workers, monitors workers, responds to stalls. Does not micromanage.
 - **Architect** - Produces requirements and implementation plans (collaborative if HITL).
@@ -52,14 +55,10 @@ This is a **serial flow**: a command runs, a worker completes, the session ends,
 - **Reviewer** - Verifies work against plan/requirements.
 - **Administrator** - Processes deferrals, creates new todos, manages dependencies.
 
-## Deferrals Flow (Awareness Only)
-
 - Review runs before deferral processing so deferrals are validated input
 - After review, if `deferrals.md` exists and is unprocessed, state machine surfaces instruction to run `next-defer`
 - Administrator reads `deferrals.md`, creates new todos (if `NEW_TODO`) or marks as `NOOP`
 - Updates `state.json.deferrals_processed = true`
-
-## Principles
 
 - **Roles are narrow**: each command does one thing
 - **No micromanagement**: orchestrator dispatches and monitors; workers implement

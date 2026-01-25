@@ -7,20 +7,16 @@ scope: domain
 type: procedure
 ---
 
-# TypeScript Scaffolding Procedure — Procedure
+# Typescript — Procedure
 
 ## Goal
 
 Create a predictable TypeScript project skeleton with standardized tooling and verification commands.
 
-## Required Artifacts
-
 - `package.json` with standard scripts
 - `tsconfig.json` as compiler source of truth
 - Package manager lockfile (`pnpm-lock.yaml`, `yarn.lock`, or `package-lock.json`)
 - Optional wrapper scripts called by package scripts
-
-## Procedure
 
 1. **Initialize project metadata**
    - Create `package.json` with name, version, and scripts.
@@ -45,8 +41,30 @@ Create a predictable TypeScript project skeleton with standardized tooling and v
    - `pnpm run test`
    - `pnpm run test:e2e` (if applicable)
 
-## Output Criteria
-
 - Standard scripts exist and run successfully.
 - `tsconfig.json` is present and referenced.
 - Lockfile exists and matches package manager.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

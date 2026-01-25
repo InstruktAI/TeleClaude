@@ -5,19 +5,15 @@ scope: project
 type: procedure
 ---
 
-## Required reads
-
-- @teleclaude/concept/adapter-types
+# Add Adapter — Procedure
 
 ## Goal
 
+- @docs/concept/adapter-types
+
 - Add a new adapter and wire it into the daemon.
 
-## Preconditions
-
 - Adapter type and responsibilities are defined.
-
-## Steps
 
 1. Create a new adapter class inheriting `BaseAdapter` (and `UiAdapter` or `RemoteExecutionProtocol` as needed).
 2. Implement `start`/`stop` and required messaging or transport methods.
@@ -25,10 +21,30 @@ type: procedure
 4. Register the adapter in `AdapterClient.start()` based on config.
 5. Add tests to validate routing and adapter behavior.
 
+- Adapter is discoverable, starts successfully, and routes through `AdapterClient`.
+
+- If the adapter does not start, verify config keys and registration in `AdapterClient`.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
 ## Outputs
 
-- Adapter is discoverable, starts successfully, and routes through `AdapterClient`.
+- TBD.
 
 ## Recovery
 
-- If the adapter does not start, verify config keys and registration in `AdapterClient`.
+- TBD.

@@ -7,21 +7,15 @@ scope: domain
 type: procedure
 ---
 
-# Prepare: Input Assessment — Procedure
+# Input Assessment — Procedure
 
-## Required reads
+## Goal
 
-- @software-development/todo-readiness
-
-## Requirements
+- @docs/software-development/todo-readiness
 
 @~/.teleclaude/docs/software-development/todo-readiness.md
 
-## Check for Breakdown Assessment
-
 If `todos/{slug}/input.md` exists and `todos/{slug}/state.json` lacks `breakdown.assessed`, perform readiness assessment.
-
-## Readiness Criteria
 
 1. **Single-session completability**
 2. **Verifiability** (tests or concrete checks)
@@ -50,3 +44,27 @@ Update `todos/{slug}/state.json`:
 ```json
 { "breakdown": { "assessed": true, "todos": [] } }
 ```
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

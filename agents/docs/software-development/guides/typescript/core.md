@@ -7,25 +7,19 @@ scope: domain
 type: guide
 ---
 
-# TypeScript Core Patterns — Guide
+# Core — Guide
 
-## Required reads
+## Goal
 
-- @software-development/standards/code-quality
-
-## Requirements
+- @docs/software-development/standards/code-quality
 
 @~/.teleclaude/docs/software-development/standards/code-quality.md
-
-## Typing
 
 - **Strict mode always** - Enable all strict compiler options
 - **No `any`** - Use `unknown` when type is truly unknown
 - **Explicit return types** - Every function has declared return type
 - **Use type guards** - Narrow types with proper guards (`typeof`, `instanceof`, `in`)
 - **Strict null checks** - Handle `null` and `undefined` explicitly
-
-## Type Declarations
 
 - **Interfaces for shapes** - Use `interface` for object shapes
 - **Types for unions/aliases** - Use `type` for unions, intersections, mapped types
@@ -47,15 +41,11 @@ const config = {
 } as const;
 ```
 
-## Patterns to Avoid
-
 - ❌ **enum** - Use const objects or string literal unions instead
 - ❌ **any** - Use `unknown` or proper types
 - ❌ **Default exports** - Use named exports for better refactoring
 - ❌ **Class-based namespacing** - Use modules/objects instead
 - ❌ **Non-null assertions (!.)** - Handle null explicitly
-
-## Property Checks
 
 - **Use `'prop' in obj`** for type guards and narrowing (TypeScript needs this for type inference)
 - **Use `obj.prop`** for simple truthy checks where type narrowing isn't needed
@@ -72,14 +62,28 @@ if (user.name) {
 }
 ```
 
-## Async Patterns
-
 - Use `Promise.all()` for concurrent operations
 - Use `Promise.allSettled()` when failures shouldn't block
 - Properly type async function returns: `Promise<T>`
 
-## Project Conformance
-
 - Follow project's tsconfig.json strictly
 - Match existing import patterns (absolute vs relative)
 - Conform to project's type organization
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

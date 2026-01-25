@@ -5,24 +5,20 @@ scope: domain
 type: procedure
 ---
 
-# Lifecycle: Fix Review Findings — Procedure
+# Fix Review — Procedure
 
-## 1) Load Review Findings
+## Goal
 
 Read `todos/{slug}/review-findings.md`.
 
 - If missing: stop and report.
 - If verdict already APPROVE: stop and report.
 
-## 2) Parse Issues
-
 Extract:
 
 - Critical issues (must fix)
 - Important issues (should fix)
 - Suggestions (optional)
-
-## 3) Fix Each Issue
 
 For each Critical and Important issue:
 
@@ -31,17 +27,35 @@ For each Critical and Important issue:
 3. Verify via commit hooks (lint + unit tests).
 4. Commit one fix per issue.
 
-## 4) Update Review Findings
-
 Add a "Fixes Applied" section with issue, fix, and commit hash.
 Do not change the verdict.
 
-## 5) Request Re-review
-
 Report summary and readiness for re-review.
-
-## Error Handling
 
 - If unclear: add a clarification comment in review-findings.md and continue.
 - If fix causes regressions: document and continue to next issue.
 - If stuck: document what was tried and continue.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

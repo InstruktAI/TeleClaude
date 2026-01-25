@@ -1,90 +1,85 @@
 ---
-description:
-  Review phase. Verify requirements, code quality, tests, and deliver verdict
-  with findings.
+description: Review phase. Verify requirements, code quality, tests, and deliver verdict with findings.
 id: software-development/procedure/lifecycle/review
 scope: domain
 type: procedure
 ---
 
-# Lifecycle: Review — Procedure
+# Review — Procedure
 
-## Required reads
+## Goal
 
-- @software-development/standards/code-quality
-- @software-development/standards/testing
-- @software-development/standards/linting-requirements
+Verify the implementation against requirements and standards, and deliver a binary verdict with structured findings.
 
-## Requirements
+Required reads:
 
-@~/.teleclaude/docs/software-development/standards/code-quality.md
-@~/.teleclaude/docs/software-development/standards/testing.md
-@~/.teleclaude/docs/software-development/standards/linting-requirements.md
+- @docs/software-development/standards/code-quality
+- @docs/software-development/standards/testing
+- @docs/software-development/standards/linting-requirements
 
-## 1) Determine Slug
+## Preconditions
 
-- If slug provided: use it.
-- If not: read `todos/roadmap.md` and find first `[>]` without `review-findings.md`.
+- `todos/{slug}/requirements.md` exists.
+- `todos/{slug}/implementation-plan.md` exists.
+- Build phase completed for the slug.
 
-## 2) Load Context
+## Steps
 
-Read:
+1. If no slug provided, select the first `[>]` item in `todos/roadmap.md` that lacks `review-findings.md`.
+2. Read:
+   - `todos/{slug}/requirements.md`
+   - `todos/{slug}/implementation-plan.md`
+   - `README.md`, `AGENTS.md`, and `docs/*` for project patterns
+3. Use merge-base to focus review scope:
 
-1. `todos/{slug}/requirements.md`
-2. `todos/{slug}/implementation-plan.md`
-3. `README.md`, `AGENTS.md`, `docs/*` for project patterns
+   ```bash
+   git diff $(git merge-base HEAD main)..HEAD --name-only
+   git diff $(git merge-base HEAD main)..HEAD
+   ```
 
-## 3) Identify Changes
+4. Validate deferrals:
+   - If `deferrals.md` exists, confirm each deferral is justified.
+   - If unjustified, add a finding and set verdict to REQUEST CHANGES.
+5. Ensure all implementation-plan tasks are checked; otherwise, add a finding and set verdict to REQUEST CHANGES.
+6. Run review lanes in parallel where possible:
 
-Use merge-base to avoid comparing against unrelated main commits:
+   | Aspect   | When to use              | Skill                      | Task                              |
+   | -------- | ------------------------ | -------------------------- | --------------------------------- |
+   | code     | Always                   | next-code-reviewer         | Find bugs and pattern violations  |
+   | tests    | Test files changed       | next-test-analyzer         | Evaluate coverage and quality     |
+   | errors   | Error handling changed   | next-silent-failure-hunter | Find silent failures              |
+   | types    | Types added/modified     | next-type-design-analyzer  | Validate type design              |
+   | comments | Comments/docs added      | next-comment-analyzer      | Check accuracy                    |
+   | simplify | After other reviews pass | next-code-simplifier       | Simplify without behavior changes |
 
-```bash
-git diff $(git merge-base HEAD main)..HEAD --name-only
-git diff $(git merge-base HEAD main)..HEAD
+7. Write findings to `todos/{slug}/review-findings.md`.
+8. Set `todos/{slug}/state.json` field `review` to `approved` or `changes_requested`.
+9. Commit the review findings.
+10. Report summary and verdict to the caller.
+
+## Report format
+
+```
+REVIEW COMPLETE: {slug}
+
+Critical:
+- [Issue]
+
+Important:
+- [Issue]
+
+Suggestions:
+- [Issue]
+
+Verdict: APPROVE | REQUEST CHANGES
 ```
 
-## 4) Pre-Review Completeness Checks
+## Outputs
 
-### Deferrals Scrutiny
+- `todos/{slug}/review-findings.md` with structured severity sections.
+- Updated `todos/{slug}/state.json` with review status.
+- A commit containing the review findings.
 
-If `deferrals.md` exists, verify each deferral is justified.
-A deferral is justified only when the decision changes architecture/contracts or needs external input.
-If unjustified, add a finding and set verdict to REQUEST CHANGES.
+## Recovery
 
-### Implementation Plan Complete
-
-If any build task is unchecked, add a finding and set verdict to REQUEST CHANGES.
-
-## 5) Review Lanes
-
-Dispatch review aspects in parallel where possible:
-
-| Aspect   | When to use              | Skill                      | Task                              |
-| -------- | ------------------------ | -------------------------- | --------------------------------- |
-| code     | Always                   | next-code-reviewer         | Find bugs and pattern violations  |
-| tests    | Test files changed       | next-test-analyzer         | Evaluate coverage and quality     |
-| errors   | Error handling changed   | next-silent-failure-hunter | Find silent failures              |
-| types    | Types added/modified     | next-type-design-analyzer  | Validate type design              |
-| comments | Comments/docs added      | next-comment-analyzer      | Check accuracy                    |
-| simplify | After other reviews pass | next-code-simplifier       | Simplify without behavior changes |
-
-## 6) Write Findings
-
-Write to `todos/{slug}/review-findings.md` using structured severity sections and a binary verdict:
-
-- Critical issues (must fix)
-- Important issues (should fix)
-- Suggestions (nice to have)
-- Verdict: APPROVE or REQUEST CHANGES
-
-## 7) Update State
-
-Set `todos/{slug}/state.json` field `review` to `approved` or `changes_requested`.
-
-## 8) Commit
-
-Commit all review findings.
-
-## 9) Report
-
-Report summary and verdict to the caller.
+- If review cannot be completed, report the blocker with context and stop.

@@ -7,21 +7,15 @@ scope: domain
 type: procedure
 ---
 
-# Orchestration Procedure — Procedure
+# Orchestration — Procedure
 
-## Required reads
+## Goal
 
-- @software-development/procedure/lifecycle-overview
-
-## Requirements
+- @docs/software-development/procedure/lifecycle-overview
 
 @~/.teleclaude/docs/software-development/procedure/lifecycle-overview.md
 
-## Preparation Flow
-
 Discussion results go in `todos/{slug}/input.md`. Use the preparation state machine to assess and structure.
-
-## The Orchestration Loop
 
 1. Invoke the work state machine with an optional slug.
 2. Receive instruction block.
@@ -33,8 +27,6 @@ Discussion results go in `todos/{slug}/input.md`. Use the preparation state mach
    - Follow POST_COMPLETION steps
    - Invoke the work state machine again
 5. Repeat until exit condition.
-
-## Handling Worker Sessions
 
 ### When Notification Arrives
 
@@ -57,16 +49,36 @@ Discussion results go in `todos/{slug}/input.md`. Use the preparation state mach
 2. Send guidance pointing to docs, not implementation details.
 3. Start new timer and continue waiting.
 
-## Guidance Principle
-
 - Point workers to `todos/{slug}/requirements.md` or `implementation-plan.md`.
 - Reference project docs or standards.
 - Never dictate specific commands or code.
-
-## Exit Conditions
 
 The loop terminates when the work state machine returns:
 
 - `NO_READY_ITEMS` (run the preparation state machine first)
 - `COMPLETE`
 - Error requiring human intervention
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

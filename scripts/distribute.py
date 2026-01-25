@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Callable, NotRequired, TypedDict, cast
@@ -12,6 +13,8 @@ from frontmatter import Post
 
 SubstitutionMap = dict[str, str]
 Transform = Callable[[Post], str]
+
+INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 
 
 class AgentConfig(TypedDict):
@@ -84,6 +87,50 @@ def process_file(content: str, agent_prefix: str) -> str:
     """Apply substitutions to the file content."""
     content = content.replace("{AGENT_PREFIX}", agent_prefix)
     return content
+
+
+def _resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path | None:
+    if "://" in ref:
+        return None
+    candidate = Path(ref).expanduser()
+    if not candidate.is_absolute():
+        if str(candidate).startswith("docs/"):
+            candidate = (root_path / candidate).resolve()
+        else:
+            candidate = (current_path.parent / candidate).resolve()
+    else:
+        candidate = candidate.resolve()
+    return candidate
+
+
+def expand_inline_refs(content: str, *, project_root: Path) -> str:
+    """Inline @path.md references into the content (Codex speedup)."""
+    seen: set[Path] = set()
+
+    def _expand(text: str, *, current_path: Path, depth: int) -> str:
+        if depth <= 0:
+            return text
+
+        def _replace(match: re.Match[str]) -> str:
+            ref = match.group(1)
+            resolved = _resolve_ref_path(ref, root_path=project_root, current_path=current_path)
+            if not resolved or not resolved.exists():
+                return match.group(0)
+            if resolved in seen:
+                return ""
+            seen.add(resolved)
+            raw = resolved.read_text(encoding="utf-8")
+            post = frontmatter.loads(raw)
+            body = post.content
+            expanded = _expand(body, current_path=resolved, depth=depth - 1).strip()
+            return f"{expanded}\n---\n"
+
+        return INLINE_REF_RE.sub(_replace, text)
+
+    expanded = _expand(content, current_path=project_root / "AGENTS.md", depth=20)
+    expanded = expanded.replace("@~/.teleclaude/docs/", "~/.teleclaude/docs/")
+    expanded = expanded.replace("@docs/", "docs/")
+    return expanded
 
 
 def rewrite_global_index(index_path: str, deploy_root: str) -> None:
@@ -268,6 +315,14 @@ def main() -> None:
             combined_agents_content = "\n\n".join(
                 content for content in (agent_specific_content, *processed_contents) if content
             )
+            if agent_name == "codex":
+                expanded_body = expand_inline_refs(
+                    "\n\n".join(content for content in processed_contents if content),
+                    project_root=Path(project_root),
+                )
+                combined_agents_content = "\n\n".join(
+                    content for content in (agent_specific_content, expanded_body) if content
+                )
             if combined_agents_content:
                 master_dest_dir = os.path.dirname(master_dest_path)
                 if master_dest_dir:

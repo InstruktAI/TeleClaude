@@ -5,9 +5,11 @@ scope: project
 type: architecture
 ---
 
-## Required reads
+# Transport Adapter — Architecture
 
-- @teleclaude/concept/adapter-types
+## Purpose
+
+- @docs/concept/adapter-types
 
 Responsibilities
 
@@ -25,3 +27,27 @@ Invariants
 
 - Transport only moves structured commands and results.
 - Failures must be reported explicitly to the caller.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Inputs/Outputs
+
+- TBD.
+
+## Invariants
+
+- TBD.
+
+## Primary flows
+
+- TBD.
+
+## Failure modes
+
+- TBD.

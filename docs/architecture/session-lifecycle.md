@@ -5,16 +5,14 @@ scope: project
 description: Complete lifecycle of a terminal session from creation to cleanup.
 ---
 
+# Session Lifecycle — Architecture
+
 ## Purpose
 
 - Describe the lifecycle of a session from creation to cleanup.
 
-## Inputs/Outputs
-
 - Inputs: session creation commands, user input, agent output.
 - Outputs: tmux session, persisted metadata, adapter updates.
-
-## Primary flows
 
 ### 1. Creation
 
@@ -40,12 +38,32 @@ description: Complete lifecycle of a terminal session from creation to cleanup.
   - Final summary is posted.
   - Topic is archived or marked inactive.
 
-## Invariants
-
 - `session_id` is stable throughout the lifecycle.
 - `tmux` session name format: `tc_{session_id[:8]}`.
 
-## Failure modes
-
 - Tmux startup failure leaves the session in a failed state.
 - Cleanup failures leave stale tmux sessions or incomplete metadata.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Inputs/Outputs
+
+- TBD.
+
+## Invariants
+
+- TBD.
+
+## Primary flows
+
+- TBD.
+
+## Failure modes
+
+- TBD.

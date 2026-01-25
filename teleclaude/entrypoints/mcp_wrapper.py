@@ -288,7 +288,9 @@ def inject_context(params: MutableMapping[str, object]) -> MutableMapping[str, o
         if env_var is None:
             # Special case: cwd uses os.getcwd()
             if param_name == PARAM_CWD:
-                arguments[param_name] = os.getcwd()
+                injected_cwd = os.getcwd()
+                arguments[param_name] = injected_cwd
+                logger.debug("Injected cwd into MCP tool call", cwd=injected_cwd)
         else:
             env_value = os.environ.get(env_var)
             if env_value:

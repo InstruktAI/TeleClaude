@@ -5,19 +5,15 @@ scope: project
 type: procedure
 ---
 
-## Required reads
-
-- @teleclaude/policy/daemon-availability
+# Restart Daemon — Procedure
 
 ## Goal
 
+- @docs/policy/daemon-availability
+
 - Restart the daemon with minimal downtime and verify it is healthy.
 
-## Preconditions
-
 - You are in the TeleClaude repository.
-
-## Steps
 
 1. Run `make restart`.
 2. Verify the service is running with `make status`.
@@ -26,10 +22,30 @@ type: procedure
    - `~/.teleclaude/logs/monitoring/teleclaude-api-unlink.log`
    - `~/.teleclaude/logs/monitoring/teleclaude-sigterm-watch.log`
 
+- Daemon process restarted and confirmed healthy.
+
+- If the daemon fails to start, review logs and revert recent changes.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
 ## Outputs
 
-- Daemon process restarted and confirmed healthy.
+- TBD.
 
 ## Recovery
 
-- If the daemon fails to start, review logs and revert recent changes.
+- TBD.

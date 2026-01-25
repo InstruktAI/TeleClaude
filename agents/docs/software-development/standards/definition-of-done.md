@@ -7,25 +7,19 @@ scope: domain
 type: policy
 ---
 
-# Definition of Done — Policy
+# Definition Of Done — Policy
 
-## Required reads
+## Rule
 
-- @software-development/standards/code-quality
-- @software-development/standards/testing
-- @software-development/standards/commits
-
-## Requirements
+- @docs/software-development/standards/code-quality
+- @docs/software-development/standards/testing
+- @docs/software-development/standards/commits
 
 @~/.teleclaude/docs/software-development/standards/code-quality.md
 @~/.teleclaude/docs/software-development/standards/testing.md
 @~/.teleclaude/docs/software-development/standards/commits.md
 
-## Purpose
-
 Work is not done when code is written. Work is done when it meets all quality gates and is ready for production.
-
-## Baseline Quality Gates
 
 Before considering ANY work complete, verify ALL criteria are met:
 
@@ -99,8 +93,6 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] Context included in log messages
 - [ ] Error paths logged
 
-## Phase-Specific Gates
-
 ### After Build
 
 - [ ] Implementation matches plan
@@ -122,8 +114,6 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] Delivery logged in todos/delivered.md
 - [ ] Clean working directory
 
-## Red Flags (Never "Done")
-
 Work is NOT done if ANY of these are true:
 
 - ❌ "Tests failing but I'll fix them later"
@@ -135,8 +125,6 @@ Work is NOT done if ANY of these are true:
 - ❌ "Bypassed hooks to commit faster"
 - ❌ "Commented out broken code"
 
-## Definition: "Complete"
-
 Work is complete when:
 
 1. All baseline quality gates pass
@@ -144,3 +132,27 @@ Work is complete when:
 3. No known issues remain
 4. You would be proud to maintain this code yourself
 5. Another developer can understand and modify it
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Rationale
+
+- TBD.
+
+## Scope
+
+- TBD.
+
+## Enforcement
+
+- TBD.
+
+## Exceptions
+
+- TBD.

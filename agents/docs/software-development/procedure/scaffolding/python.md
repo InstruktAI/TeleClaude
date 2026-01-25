@@ -7,20 +7,16 @@ scope: domain
 type: procedure
 ---
 
-# Python Scaffolding Procedure — Procedure
+# Python — Procedure
 
 ## Goal
 
 Create a predictable Python project skeleton with standardized tooling and verification commands.
 
-## Required Artifacts
-
 - `pyproject.toml` (single source of truth for deps and tool config)
 - `Makefile` with standard targets
 - `uv` for dependency/environment management
 - Optional wrapper scripts (called by Makefile): `bin/format.sh`, `bin/lint.sh`, `bin/test.sh`
-
-## Procedure
 
 1. **Initialize project metadata**
    - Create `pyproject.toml` with name, version, Python requirement, and tool configuration sections.
@@ -48,8 +44,30 @@ Create a predictable Python project skeleton with standardized tooling and verif
    - `make test-unit`
    - `make test-e2e` (if applicable)
 
-## Output Criteria
-
 - Makefile targets exist and run successfully.
 - `pyproject.toml` contains tool configuration.
 - `uv sync` works without manual venv setup.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

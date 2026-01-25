@@ -3,10 +3,12 @@
 import subprocess
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from teleclaude.core.next_machine import _prepare_worktree
+from teleclaude.paths import REPO_ROOT
 
 
 class TestWorktreePreparationIntegration:
@@ -17,50 +19,28 @@ class TestWorktreePreparationIntegration:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
 
-            # Create a script-based worktree preparation hook
-            bin_dir = tmp_path / "bin"
-            bin_dir.mkdir(parents=True)
-            script = bin_dir / "worktree-prepare.sh"
-            script.write_text(
-                """#!/usr/bin/env bash
-set -e
-SLUG="$1"
-echo "Preparing worktree for ${SLUG}"
-mkdir -p "trees/${SLUG}"
-echo "Worktree ${SLUG} prepared" > "trees/${SLUG}/status.txt"
-"""
-            )
-            script.chmod(0o755)
-
-            # Execute preparation
-            slug = "test-work-item"
-            _prepare_worktree(str(tmp_path), slug)
-
-            # Verify preparation ran successfully
-            status_file = tmp_path / "trees" / slug / "status.txt"
-            assert status_file.exists()
-            assert status_file.read_text().strip() == f"Worktree {slug} prepared"
+            with patch("teleclaude.core.next_machine.core.subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0, stdout="Prepared")
+                slug = "test-work-item"
+                _prepare_worktree(str(tmp_path), slug)
+                actual_call = mock_run.call_args_list[0]
+                assert actual_call[0][0] == [str(REPO_ROOT / "bin" / "worktree-prepare.sh"), slug]
+                assert actual_call[1]["cwd"] == str(tmp_path)
 
     def test_error_propagation_when_script_fails(self) -> None:
         """Test that errors from worktree-prepare.sh are properly propagated."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
 
-            # Create a script that fails
-            bin_dir = tmp_path / "bin"
-            bin_dir.mkdir(parents=True)
-            script = bin_dir / "worktree-prepare.sh"
-            script.write_text(
-                """#!/usr/bin/env bash
-echo "Preparation failed!" >&2
-exit 1
-"""
-            )
-            script.chmod(0o755)
-
-            # Execute and verify error is raised
-            with pytest.raises(RuntimeError, match="Worktree preparation failed"):
-                _prepare_worktree(str(tmp_path), "test-slug")
+            with patch("teleclaude.core.next_machine.core.subprocess.run") as mock_run:
+                error = subprocess.CalledProcessError(
+                    1, str(REPO_ROOT / "bin" / "worktree-prepare.sh"), output="", stderr="Failed!"
+                )
+                error.stdout = ""
+                error.stderr = "Failed!"
+                mock_run.side_effect = error
+                with pytest.raises(RuntimeError, match="Worktree preparation failed"):
+                    _prepare_worktree(str(tmp_path), "test-slug")
 
     def test_error_propagation_when_target_missing(self) -> None:
         """Test that error is raised when no preparation hook exists."""
@@ -68,8 +48,9 @@ exit 1
             tmp_path = Path(tmpdir)
 
             # Execute and verify error is raised
-            with pytest.raises(RuntimeError, match="Worktree preparation script not found"):
-                _prepare_worktree(str(tmp_path), "test-slug")
+            with patch("teleclaude.core.next_machine.core.Path.exists", return_value=False):
+                with pytest.raises(RuntimeError, match="Worktree preparation script not found"):
+                    _prepare_worktree(str(tmp_path), "test-slug")
 
 
 class TestInstallInitGuards:

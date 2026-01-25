@@ -5,30 +5,46 @@ scope: project
 type: concept
 ---
 
-## Required reads
-
-- @teleclaude/concept/glossary
+# Adapter Types — Concept
 
 ## Purpose
 
-- Clarify the two adapter categories and the responsibilities they carry.
+- @docs/concept/glossary
 
-## Inputs/Outputs
+- Clarify the two adapter categories and the responsibilities they carry.
 
 - Inputs: external user input (UI) or remote transport events.
 - Outputs: normalized command objects or remote command transport.
 
-## Primary flows
-
 - UI adapters handle human-facing messaging, topics, and UX rules.
 - Transport adapters provide cross-computer request/response for remote execution.
-
-## Invariants
 
 - UI adapters do not implement cross-computer execution.
 - Transport adapters do not render human UX or manage message cleanup.
 - AdapterClient is the only component that routes between adapters.
 
+- Mixing responsibilities causes boundary violations and routing bugs.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Inputs/Outputs
+
+- TBD.
+
+## Invariants
+
+- TBD.
+
+## Primary flows
+
+- TBD.
+
 ## Failure modes
 
-- Mixing responsibilities causes boundary violations and routing bugs.
+- TBD.

@@ -1,20 +1,12 @@
-@~/.teleclaude/docs/baseline/policy/autonomy.md
-@~/.teleclaude/docs/baseline/policy/conflict-resolution.md
-@~/.teleclaude/docs/baseline/policy/context-retrieval.md
-@~/.teleclaude/docs/baseline/policy/referencing-doc-snippets.md
-@~/.teleclaude/docs/baseline/policy/stateless-commands.md
-@~/.teleclaude/docs/baseline/policy/version-control-safety.md
-@~/.teleclaude/docs/baseline/principles/autonomy.md
-@~/.teleclaude/docs/baseline/principles/explicit-inference.md
-@~/.teleclaude/docs/baseline/principles/intent-first-documentation.md
-@~/.teleclaude/docs/baseline/principles/priming.md
-@~/.teleclaude/docs/baseline/procedure/agent-artifact-authoring.md
-@~/.teleclaude/docs/baseline/procedure/agents-authoring.md
-@~/.teleclaude/docs/baseline/procedure/snippet-authoring-sequence.md
-@~/.teleclaude/docs/baseline/procedure/taxonomy-interpretation.md
-@~/.teleclaude/docs/baseline/reference/agent-artifacts.md
-@~/.teleclaude/docs/baseline/reference/agent-schema.md
-@~/.teleclaude/docs/baseline/reference/command-schema.md
-@~/.teleclaude/docs/baseline/reference/skill-schema.md
-@~/.teleclaude/docs/baseline/reference/snippet-authoring-schema.md
-@~/.teleclaude/docs/baseline/reference/snippet-taxonomy.md
+# Baseline Index — Index
+
+## Required reads
+
+@/Users/Morriz/.teleclaude/docs/baseline/policy/autonomy.md
+@/Users/Morriz/.teleclaude/docs/baseline/policy/conflict-resolution.md
+@/Users/Morriz/.teleclaude/docs/baseline/policy/context-retrieval.md
+@/Users/Morriz/.teleclaude/docs/baseline/policy/referencing-doc-snippets.md
+@/Users/Morriz/.teleclaude/docs/baseline/policy/stateless-commands.md
+@/Users/Morriz/.teleclaude/docs/baseline/policy/version-control-safety.md
+@/Users/Morriz/.teleclaude/docs/baseline/principles/autonomy.md
+@/Users/Morriz/.teleclaude/docs/baseline/principles/explicit-inference.md

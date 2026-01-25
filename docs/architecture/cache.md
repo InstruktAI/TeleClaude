@@ -7,31 +7,47 @@ scope: project
 type: architecture
 ---
 
-## Required reads
-
-- @teleclaude/concept/resource-models
-- @teleclaude/standard/cache-refresh-strategy
+# Cache — Architecture
 
 ## Purpose
 
-- Provide instant, cached reads for API and remote data views.
+- @docs/concept/resource-models
+- @docs/standard/cache-refresh-strategy
 
-## Inputs/Outputs
+- Provide instant, cached reads for API and remote data views.
 
 - Inputs: cache updates from adapters and daemon events.
 - Outputs: snapshot reads plus update notifications to subscribers.
-
-## Primary flows
 
 - Serve cached data immediately; schedule refresh when TTL expires.
 - Use per-computer digest/version fields to trigger refresh for projects and todos.
 - Sessions are updated by events rather than TTL polling.
 
-## Invariants
-
 - Cache is read-only and not the source of truth.
 - Stale data can be served to keep APIs responsive.
 
+- Missing cache entries return empty lists until refresh completes.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Inputs/Outputs
+
+- TBD.
+
+## Invariants
+
+- TBD.
+
+## Primary flows
+
+- TBD.
+
 ## Failure modes
 
-- Missing cache entries return empty lists until refresh completes.
+- TBD.

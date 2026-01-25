@@ -7,15 +7,11 @@ type: standard
 
 # Cache Refresh Strategy — Standard
 
-## Required reads
+## Rule
 
-- @teleclaude/architecture/cache
-
-## Goal
+- @docs/architecture/cache
 
 Allow remote refresh requests only at explicit moments; serve from cache otherwise.
-
-## Allowed refresh moments
 
 1. **Startup warmup (once per daemon start)**
    - Trigger a remote pull to warm the cache after daemon startup.
@@ -29,11 +25,31 @@ Allow remote refresh requests only at explicit moments; serve from cache otherwi
 4. **TTL expiry on access (per peer + data type)**
    - If cached data is stale and accessed, allow a refresh.
 
-## All other moments
-
 - Serve from cache only. No remote calls.
-
-## Constraints
 
 - Coalesce concurrent refreshes for the same peer + data type.
 - Enforce a cooldown between refreshes per peer + data type.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Rationale
+
+- TBD.
+
+## Scope
+
+- TBD.
+
+## Enforcement
+
+- TBD.
+
+## Exceptions
+
+- TBD.

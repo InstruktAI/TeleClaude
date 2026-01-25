@@ -3,23 +3,22 @@
 ## Rule
 
 - Never use `git checkout`, `git restore`, `git reset`, `git clean`, or delete files unless explicitly instructed by the user.
-- If your task requires editing a file that already has uncommitted changes, stop and ask before modifying it.
-- Only modify files you intentionally touched as part of the request.
+- If a file has uncommitted changes and you must edit it, ask first.
+- Only modify files required by the request.
 
 ## Rationale
 
-- Prevents data loss and accidental overwrite of concurrent work.
-- Keeps changes auditable and attributable to the correct agent or user.
+- Prevents accidental data loss and preserves ownership of in‑progress work.
 
 ## Scope
 
-- Applies to all repositories and all agents, across all tasks.
+- Applies to all repositories and all agents.
 
-## Enforcement or checks
+## Enforcement
 
-- If uncommitted changes exist in a file you need to edit, pause and ask for direction.
-- Do not auto-clean or discard changes to make commits succeed.
+- Stop and ask before touching files with uncommitted changes.
+- Never discard or overwrite uncommitted work unless told to.
 
-## Exceptions or edge cases
+## Exceptions
 
 - None.

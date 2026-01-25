@@ -7,11 +7,11 @@ scope: domain
 type: checklist
 ---
 
-# Security Review Checklist — Checklist
+# Security Review — Checklist
 
-## Required reads
+## Goal
 
-- @software-development/standards/security-awareness
+- @docs/software-development/standards/security-awareness
 
 - [ ] Secrets are not committed or logged.
 - [ ] Inputs are validated at system boundaries.
@@ -19,3 +19,27 @@ type: checklist
 - [ ] Error messages avoid leaking sensitive details.
 - [ ] Safe defaults are enforced for permissions and exposure.
 - [ ] High‑risk changes were escalated for review.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

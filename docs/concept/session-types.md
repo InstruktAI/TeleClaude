@@ -5,16 +5,14 @@ scope: global
 description: Classification of terminal sessions in TeleClaude.
 ---
 
+# Session Types — Concept
+
 ## Purpose
 
 - Classify the session categories used in TeleClaude.
 
-## Inputs/Outputs
-
 - Inputs: session creation commands and launch intents.
 - Outputs: human, AI-to-AI, or worktree session behavior.
-
-## Primary flows
 
 ### 1. Human Session
 
@@ -34,10 +32,30 @@ description: Classification of terminal sessions in TeleClaude.
 - **Initiator**: Agents working on specific todos using git worktrees.
 - **Isolation**: Uses a separate `teleclaude.db` and dedicated project directory to avoid polluting main state.
 
+- Session type is determined at creation and remains stable.
+
+- Misclassified sessions cause incorrect UX cleanup and routing.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Inputs/Outputs
+
+- TBD.
+
 ## Invariants
 
-- Session type is determined at creation and remains stable.
+- TBD.
+
+## Primary flows
+
+- TBD.
 
 ## Failure modes
 
-- Misclassified sessions cause incorrect UX cleanup and routing.
+- TBD.

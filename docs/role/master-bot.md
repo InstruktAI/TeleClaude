@@ -5,20 +5,24 @@ scope: global
 type: role
 ---
 
-# Role: Master Bot — Role
+# Master Bot — Role
+
+## Purpose
+
+Role of the master bot in a multi-computer Telegram supergroup.
 
 ## Responsibilities
 
-1. **Command Registration**: The master bot is the ONLY one that calls Telegram's `setMyCommands` API.
-2. **User Entrypoint**: Provides the autocomplete menu for `/new-session`, `/list-sessions`, etc.
-3. **Status Reporting**: Typically used for global system health checks.
+1. **Command registration**: The master bot calls Telegram's `setMyCommands` API.
+2. **User entrypoint**: Provides the autocomplete menu for `/new-session`, `/list-sessions`, etc.
+3. **Status reporting**: Used for global system health checks.
 4. **Consistency**: Keeps command definitions aligned with UX and adapter behavior.
-
-## Configuration
-
-- `telegram.is_master: true` in `config.yml`.
-- Ensures commands use the "trailing space" pattern.
 
 ## Boundaries
 
-- Message routing and session ownership remain local to each bot.
+Owns command registration only. Message routing and session ownership remain local to each bot.
+
+## Inputs/Outputs
+
+- **Inputs**: `config.yml` (`telegram.is_master: true`), command definitions with trailing-space pattern.
+- **Outputs**: registered command list for the Telegram UI.

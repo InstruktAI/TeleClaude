@@ -12,7 +12,12 @@ Slug given: "$ARGUMENTS"
 
 ---
 
-Read `todos/{slug}/deferrals.md`. For each deferral: decide NEW_TODO or NOOP. Create new todos in roadmap if needed. Mark deferrals as processed.
+## Steps
+
+1. Read `todos/{slug}/deferrals.md`.
+2. For each deferral: decide NEW_TODO or NOOP.
+3. Create new todos in roadmap if needed.
+4. Mark deferrals as processed.
 
 ## Report Completion
 

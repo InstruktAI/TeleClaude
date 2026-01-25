@@ -9,28 +9,44 @@ type: policy
 
 # Security Awareness — Policy
 
-## Required reads
+## Rule
 
-- @software-development/standards/code-quality
-
-## Requirements
+- @docs/software-development/standards/code-quality
 
 @~/.teleclaude/docs/software-development/standards/code-quality.md
 
-## Principle
-
 Security is a baseline constraint. Treat inputs as untrusted, validate at boundaries, and protect secrets by default.
-
-## Rules
 
 - Secrets never enter version control or logs.
 - Validation happens at the boundary, not deep in the core.
 - Defaults are safe; permissions are explicit.
-
-## When to Escalate
 
 Always escalate before:
 
 - Changing authentication or authorization boundaries.
 - Modifying encryption or credential handling.
 - Exposing new external entry points.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Rationale
+
+- TBD.
+
+## Scope
+
+- TBD.
+
+## Enforcement
+
+- TBD.
+
+## Exceptions
+
+- TBD.

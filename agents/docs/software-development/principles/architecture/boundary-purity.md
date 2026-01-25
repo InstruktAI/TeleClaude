@@ -1,9 +1,15 @@
 ---
+description:
+  Preserve domain intent by isolating transport and UI concerns from core
+  logic.
 id: software-development/principles/architecture/boundary-purity
-type: principles
 scope: domain
-description: Preserve domain intent by isolating transport and UI concerns from core logic.
+type: principles
 ---
+
+# Boundary Purity — Principle
+
+## Principle
 
 Principle
 
@@ -21,3 +27,21 @@ Implications
 - Domain policies live in core, not in adapter-specific conditionals.
 - Core types represent domain meaning, not presentation formats.
 - Errors are expressed in domain language and mapped at the boundary.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Rationale
+
+- TBD.
+
+## Implications
+
+- TBD.
+
+## Tensions
+
+- TBD.

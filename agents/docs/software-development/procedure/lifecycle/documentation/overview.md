@@ -5,12 +5,12 @@ scope: domain
 type: procedure
 ---
 
-# Documentation Phase — Procedure
+# Overview — Procedure
 
-## Required reads
+## Goal
 
-- @software-development/procedure/lifecycle/documentation/sync-docstrings
-- @software-development/procedure/lifecycle/documentation/sync-docs
+- @docs/software-development/procedure/lifecycle/documentation/sync-docstrings
+- @docs/software-development/procedure/lifecycle/documentation/sync-docs
 
 Documentation is a distinct lifecycle phase. It ensures the codebase and its inline documentation are aligned before finalization.
 
@@ -20,3 +20,27 @@ Run the phase in order:
 2. **Sync Docs** — regenerate `docs/` from code + docs.
 
 This phase is atomic and idempotent.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

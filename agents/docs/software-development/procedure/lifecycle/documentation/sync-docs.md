@@ -1,5 +1,5 @@
 ---
-description: Regenerate docs from code + docs using the taxonomy.
+description: Regenerate docs from code and existing documentation using the taxonomy.
 id: software-development/procedure/lifecycle/documentation/sync-docs
 scope: domain
 type: procedure
@@ -7,24 +7,36 @@ type: procedure
 
 # Sync Docs — Procedure
 
-## Objective
+## Goal
 
 Regenerate `docs/` from code and existing documentation using the taxonomy lens.
 
-## Rules
+## Preconditions
 
-- **Stateless**: always run end-to-end, no conditional prechecks.
-- **Docs are output only**: never treat `docs/` as input.
-- **Taxonomy**: every snippet uses exactly one taxonomy type and one scope.
-- **Docstring trust**: treat docstrings as the primary summary of behavior; fall back to code/tests if a docstring is missing or unclear.
+- Repository is clean enough to regenerate docs.
+- `docs/` and `docs-3rd/` are available.
 
-## Process
+## Steps
 
 1. Read `README.md`, `AGENTS.md`, and `docs/**/*.md` excluding `docs/` and `docs-3rd/`.
 2. Scan code entrypoints, adapters, state flows, and tests.
-3. Create/refresh docs across the taxonomy.
+3. Create or refresh docs across the taxonomy.
 4. Rebuild `docs/index.yaml` and validate integrity.
 
-## Output
+## Report format
+
+```
+DOCS SYNC COMPLETE
+
+Snippets updated: {count}
+Index rebuilt: yes
+Validation: PASSING
+```
+
+## Outputs
 
 - Updated `docs/` and `docs/index.yaml`.
+
+## Recovery
+
+- If validation fails, report the errors and stop.

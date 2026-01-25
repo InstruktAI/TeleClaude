@@ -7,21 +7,15 @@ scope: domain
 type: policy
 ---
 
-# Commit Standards — Policy
+# Commits — Policy
 
-## Required reads
+## Rule
 
-- @software-development/standards/code-quality
-
-## Requirements
+- @docs/software-development/standards/code-quality
 
 @~/.teleclaude/docs/software-development/standards/code-quality.md
 
-## Pre-Commit Hooks
-
 Pre-commit hooks enforce tests, linting, and formatting automatically.
-
-## When to Commit
 
 Only commit when ALL conditions are met:
 
@@ -30,8 +24,6 @@ Only commit when ALL conditions are met:
 - No debug/temp code
 - All tests pass
 - No lint violations
-
-## Commit Message Format
 
 Use commitizen format:
 
@@ -57,10 +49,32 @@ Co-Authored-By: TeleClaude <noreply@instrukt.ai>
 
 **Subject:** Clear, concise description in imperative mood
 
-## Commit Hygiene
-
 - One logical change per commit
 - Keep commits small and focused
 - Commit message explains WHY, not WHAT (code shows what)
 - Never commit broken code
 - Never use `--no-verify` to bypass hooks
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Rationale
+
+- TBD.
+
+## Scope
+
+- TBD.
+
+## Enforcement
+
+- TBD.
+
+## Exceptions
+
+- TBD.

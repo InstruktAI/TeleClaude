@@ -1,32 +1,33 @@
-# Agent Artifact Distribution
+---
+id: software-development/concept/agent-artifact-distribution
+type: concept
+scope: domain
+description: How agent artifacts are built and distributed to tool-specific formats.
+---
 
-Required reads
-
-@~/.teleclaude/docs/baseline/reference/agent-artifacts.md
+# Agent Artifact Distribution — Concept
 
 ## Purpose
 
-Explain the global model for how agent artifacts are authored once and distributed
-into agent-specific formats.
+Describe how agent artifacts flow from source files into runtime-specific outputs.
 
-## Inputs / Outputs
+## Inputs/Outputs
 
-- Inputs: `agents/`, `skills/`, `commands/` authored in a repo.
-- Outputs: agent-specific artifact bundles generated for supported runtimes.
+- **Inputs**: `agents/` source files.
+- **Outputs**: generated artifacts for supported CLIs.
 
 ## Invariants
 
-- Source artifacts remain the single source of truth.
-- Generated artifacts are derived outputs and should not be edited directly.
-- Distribution preserves intent while adapting syntax for each agent runtime.
+- Source-of-truth lives in `agents/`.
+- Generated artifacts are derived, not edited manually.
 
-## Primary flow
+## Primary flows
 
-1. Author artifacts in the canonical folders.
-2. A watcher or build step converts them into runtime-specific formats.
-3. Generated outputs are placed into each agent runtime's expected location.
+1. Author or update source artifacts.
+2. Run the distribution tooling.
+3. Consume generated artifacts in the target CLI.
 
 ## Failure modes
 
-- Missing or vague metadata reduces discoverability.
-- Editing generated artifacts causes drift and is overwritten by the next build.
+- Generated artifacts drift from sources.
+- Missing artifacts when distribution is not run.

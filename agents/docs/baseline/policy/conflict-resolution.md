@@ -1,10 +1,24 @@
 # Conflict Resolution Rules — Policy
 
-When guidance conflicts, resolve with these priorities:
+## Rule
 
-1. **Specificity** — honor the narrowest, most context‑bound guidance first.
-2. **Intent** — preserve the stated purpose and constraints of the work.
-3. **Applicability** — choose guidance that matches the current stack and task.
-4. **Recency** — prefer material that reflects current behavior.
+- Resolve conflicts by priority: specificity → intent → applicability → recency.
+- Treat documentation as direction; use code to confirm behavior.
 
-Documentation sets direction; code confirms behavior. Use both to keep decisions aligned.
+## Rationale
+
+- Consistent priority prevents indecision and hidden rule‑picking.
+- Code is the ground truth when docs and behavior diverge.
+
+## Scope
+
+- Applies to all agent instructions, project docs, and tool guidance.
+
+## Enforcement
+
+- If two rules conflict, choose the higher‑priority rule and proceed.
+- Note the conflict in the final report if it affects outcomes.
+
+## Exceptions
+
+- None.

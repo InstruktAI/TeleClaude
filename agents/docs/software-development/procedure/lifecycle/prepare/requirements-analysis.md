@@ -5,15 +5,13 @@ scope: domain
 type: procedure
 ---
 
-# Prepare: Requirements Analysis — Procedure
+# Requirements Analysis — Procedure
 
-## When requirements.md Exists
+## Goal
 
 - Confirm the document is complete, unambiguous, and testable.
 - Verify constraints and success criteria are explicit.
 - Identify any gaps that would block implementation planning.
-
-## When requirements.md Is Missing
 
 Analyze and report:
 
@@ -21,3 +19,27 @@ Analyze and report:
 - Derived requirements from existing context.
 - Ambiguities that change scope or design decisions.
 - Constraints that must hold throughout implementation.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

@@ -7,20 +7,16 @@ scope: project
 type: concept
 ---
 
-## Required reads
-
-- @teleclaude/concept/glossary
+# Resource Models — Concept
 
 ## Purpose
 
-- Define the canonical resource concepts used by cache, API, and UI.
+- @docs/concept/glossary
 
-## Inputs/Outputs
+- Define the canonical resource concepts used by cache, API, and UI.
 
 - Inputs: core models and cached snapshots.
 - Outputs: API and UI representations of resources.
-
-## Primary flows
 
 - Computer: identity, status, last_seen, and system stats.
 - Project: trusted directory metadata (name, description, path, computer).
@@ -28,11 +24,31 @@ type: concept
 - Session summary: lightweight state for list views (id, title, status, timestamps, agent info).
 - Agent availability: per-agent readiness for orchestration selection.
 
-## Invariants
-
 - Resource shapes originate from core dataclasses in teleclaude/core/models.py.
 - Project identifiers are derived from full paths, not repo metadata.
 
+- Diverging resource shapes cause cache/API incompatibility.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Inputs/Outputs
+
+- TBD.
+
+## Invariants
+
+- TBD.
+
+## Primary flows
+
+- TBD.
+
 ## Failure modes
 
-- Diverging resource shapes cause cache/API incompatibility.
+- TBD.

@@ -37,8 +37,10 @@ if [ $# -ne 1 ]; then
 fi
 
 SLUG="$1"
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WORKTREE_DIR="$REPO_ROOT/trees/$SLUG"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TOOL_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TARGET_ROOT="$(pwd)"
+WORKTREE_DIR="$TARGET_ROOT/trees/$SLUG"
 
 # Verify we're in the main repo (not a worktree)
 if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
@@ -82,8 +84,8 @@ print_success "Dependencies installed"
 # Step 2: Generate config.yml
 print_info "Generating config.yml..."
 
-if [ ! -f "$REPO_ROOT/config.yml" ]; then
-    print_error "Main config.yml not found: $REPO_ROOT/config.yml"
+if [ ! -f "$TARGET_ROOT/config.yml" ]; then
+    print_error "Main config.yml not found: $TARGET_ROOT/config.yml"
     exit 1
 fi
 
@@ -94,7 +96,7 @@ import sys
 import yaml
 from pathlib import Path
 
-repo_root = Path("$REPO_ROOT")
+repo_root = Path("$TARGET_ROOT")
 worktree_dir = Path("$WORKTREE_DIR")
 main_config_path = repo_root / "config.yml"
 worktree_config_path = worktree_dir / "config.yml"

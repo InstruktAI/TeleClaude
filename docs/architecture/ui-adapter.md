@@ -7,10 +7,12 @@ scope: project
 type: architecture
 ---
 
-## Required reads
+# Ui Adapter — Architecture
 
-- @teleclaude/concept/adapter-types
-- @teleclaude/architecture/ux-message-cleanup
+## Purpose
+
+- @docs/concept/adapter-types
+- @docs/architecture/ux-message-cleanup
 
 Responsibilities
 
@@ -28,3 +30,27 @@ Invariants
 
 - UI adapters do not mutate core state directly.
 - Cleanup rules are enforced consistently for each session.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Inputs/Outputs
+
+- TBD.
+
+## Invariants
+
+- TBD.
+
+## Primary flows
+
+- TBD.
+
+## Failure modes
+
+- TBD.

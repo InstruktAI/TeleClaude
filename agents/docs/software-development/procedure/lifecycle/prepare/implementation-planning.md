@@ -7,15 +7,13 @@ scope: domain
 type: procedure
 ---
 
-# Prepare: Implementation Planning — Procedure
+# Implementation Planning — Procedure
 
-## When implementation-plan.md Exists
+## Goal
 
 - Confirm it reflects current intent and constraints.
 - Verify scope is atomic and testable.
 - Ensure tasks map to concrete edits and verification steps.
-
-## When implementation-plan.md Is Missing
 
 Produce a minimal plan that includes:
 
@@ -23,3 +21,27 @@ Produce a minimal plan that includes:
 - Files expected to change and why.
 - Task sequence with verification points.
 - Risks, unknowns, and assumptions to validate.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

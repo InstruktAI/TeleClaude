@@ -8,20 +8,15 @@ description: Worker command - execute implementation plan, commit per task, veri
 @~/.teleclaude/docs/software-development/roles/builder.md
 @~/.teleclaude/docs/software-development/procedure/lifecycle/build.md
 
-Slug given: "$ARGUMENTS"
+Slug: "$ARGUMENTS"
 
 ---
 
-## Pre-Completion Checklist
+## Steps
 
-Before reporting completion, verify:
-
-1. All tasks in Groups 1-4 are `[x]` in `implementation-plan.md`
-2. Tests pass: `make test`
-3. Lint passes: `make lint`
-4. Working tree is clean: `git status`
-   - If not clean, commit: `git add . && git commit -m "build({slug}): final checkpoint"`
-5. Verify commits exist: `git log --oneline -10`
+1. Execute the build phase for the slug.
+2. Run verification steps required by the build procedure.
+3. Summarize results in the completion report.
 
 ## Report Completion
 

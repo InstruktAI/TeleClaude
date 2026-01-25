@@ -1,5 +1,4 @@
 project_root: /Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude
-snippets_root: /Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude/docs
 snippets:
 - id: architecture/cache-system
   description: Event-driven read-cache architecture using SQLite snapshots.
@@ -69,11 +68,24 @@ snippets:
   scope: global
   path: docs/concept/session-types.md
   requires: []
+- id: docs/procedure/agents-distribution
+  description: Steps to build and distribute agent artifacts in this repository.
+  type: procedure
+  scope: project
+  path: docs/procedure/agents-distribution.md
+  requires: []
 - id: example/ai-to-ai-delegation
   description: Code example of a Master AI delegating a task to a Worker AI.
   type: example
   scope: global
   path: docs/example/ai-to-ai-delegation.md
+  requires: []
+- id: guide/agents-repo-workflow
+  description: Recommended workflow for maintaining agent artifacts and generated
+    outputs in a local agents repository.
+  type: guide
+  scope: project
+  path: docs/guide/agents-repo-workflow.md
   requires: []
 - id: guide/multi-computer-setup
   description: Step-by-step guide for setting up a distributed TeleClaude network.
@@ -141,6 +153,12 @@ snippets:
   type: procedure
   scope: global
   path: docs/procedure/ssh-agent-keychain.md
+  requires: []
+- id: reference/agent-transpilation
+  description: Rules for transpiling master artifacts into runtime-specific formats.
+  type: reference
+  scope: global
+  path: docs/reference/agent-transpilation.md
   requires: []
 - id: role/ai-worker
   description: The role of an AI agent session in the TeleClaude network.

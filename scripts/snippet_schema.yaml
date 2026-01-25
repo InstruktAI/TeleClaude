@@ -51,6 +51,8 @@ sections:
       - Steps
       - Outputs
       - Recovery
+      - Pre-completion checklist
+      - Report format
   guide:
     required:
       - Goal
@@ -136,11 +138,27 @@ sections:
       - Implications
       - Tensions
   role:
-    required: []
-    allowed: []
+    required:
+      - Purpose
+      - Responsibilities
+      - Boundaries
+      - Inputs/Outputs
+    allowed:
+      - Purpose
+      - Responsibilities
+      - Boundaries
+      - Inputs/Outputs
   example:
-    required: []
-    allowed: []
+    required:
+      - Scenario
+      - Steps
+      - Outputs
+      - Notes
+    allowed:
+      - Scenario
+      - Steps
+      - Outputs
+      - Notes
   decision:
     required: []
     allowed: []

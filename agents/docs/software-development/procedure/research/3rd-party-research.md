@@ -7,13 +7,11 @@ scope: domain
 type: procedure
 ---
 
-# 3rd-Party Research Procedure — Procedure
+# 3rd Party Research — Procedure
 
 ## Goal
 
 Collect authoritative documentation, extract actionable facts, and store a concise summary with an index entry.
-
-## Steps
 
 1. **Search**
    - Use the best available search tool for authoritative sources (official docs, specs, vendor references).
@@ -30,8 +28,30 @@ Collect authoritative documentation, extract actionable facts, and store a conci
    - Read the generated summary for correctness and clarity.
    - Confirm the index entry is present and accurate.
 
-## Output Criteria
-
 - Summary is concise and actionable.
 - Sources are linked.
 - Index is updated.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

@@ -7,7 +7,9 @@ scope: domain
 type: policy
 ---
 
-# Code Quality Standards — Policy
+# Code Quality — Policy
+
+## Rule
 
 Principle
 
@@ -29,3 +31,27 @@ Scope
 See also
 
 - @~/.teleclaude/docs/software-development/guide/code-quality-practices.md
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Rationale
+
+- TBD.
+
+## Scope
+
+- TBD.
+
+## Enforcement
+
+- TBD.
+
+## Exceptions
+
+- TBD.

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from teleclaude.core.next_machine import _prepare_worktree, ensure_worktree
+from teleclaude.paths import REPO_ROOT
 
 
 class TestEnsureWorktreeAlwaysPrepares:
@@ -33,12 +34,7 @@ class TestPrepareWorktreeScript:
     @patch("teleclaude.core.next_machine.core.subprocess.run")
     def test_calls_worktree_prepare_script_with_slug(self, mock_run: Mock, tmp_path: Path) -> None:
         """Test that bin/worktree-prepare.sh is called with correct slug."""
-        # Setup
-        bin_dir = tmp_path / "bin"
-        bin_dir.mkdir(parents=True)
-        worktree_script = bin_dir / "worktree-prepare.sh"
-        worktree_script.write_text("#!/usr/bin/env bash\necho 'preparing'\n")
-
+        worktree_script = REPO_ROOT / "bin" / "worktree-prepare.sh"
         mock_run.return_value = MagicMock(returncode=0, stdout="Prepared")
 
         # Execute
@@ -54,21 +50,17 @@ class TestPrepareWorktreeScript:
     @patch("teleclaude.core.next_machine.core.subprocess.run")
     def test_raises_when_worktree_prepare_target_missing(self, mock_run: Mock, tmp_path: Path) -> None:
         """Test that RuntimeError is raised when script is missing."""
-        # Execute & Verify
-        with pytest.raises(
-            RuntimeError,
-            match="Worktree preparation script not found",
-        ):
-            _prepare_worktree(str(tmp_path), "test-slug")
+        with patch("teleclaude.core.next_machine.core.Path.exists", return_value=False):
+            with pytest.raises(
+                RuntimeError,
+                match="Worktree preparation script not found",
+            ):
+                _prepare_worktree(str(tmp_path), "test-slug")
 
     @patch("teleclaude.core.next_machine.core.subprocess.run")
     def test_raises_when_preparation_fails(self, mock_run: Mock, tmp_path: Path) -> None:
         """Test that RuntimeError is raised when worktree preparation fails."""
-        # Setup
-        bin_dir = tmp_path / "bin"
-        bin_dir.mkdir(parents=True)
-        worktree_script = bin_dir / "worktree-prepare.sh"
-        worktree_script.write_text("#!/usr/bin/env bash\necho 'preparing'\n")
+        worktree_script = REPO_ROOT / "bin" / "worktree-prepare.sh"
 
         # Script execution fails
         error = subprocess.CalledProcessError(1, str(worktree_script), output="", stderr="Failed!")
@@ -86,9 +78,9 @@ class TestPrepareWorktreeNoHook:
 
     def test_raises_when_no_makefile_or_package_json(self, tmp_path: Path) -> None:
         """Test that RuntimeError is raised when no preparation hook found."""
-        # Execute & Verify
-        with pytest.raises(
-            RuntimeError,
-            match="Worktree preparation script not found",
-        ):
-            _prepare_worktree(str(tmp_path), "test-slug")
+        with patch("teleclaude.core.next_machine.core.Path.exists", return_value=False):
+            with pytest.raises(
+                RuntimeError,
+                match="Worktree preparation script not found",
+            ):
+                _prepare_worktree(str(tmp_path), "test-slug")

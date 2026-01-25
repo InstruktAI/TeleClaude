@@ -1115,15 +1115,15 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
     Raises:
         RuntimeError: If hook not found or execution fails
     """
-    cwd_path = Path(cwd)
-    worktree_script = cwd_path / "bin" / "worktree-prepare.sh"
+    from teleclaude.paths import REPO_ROOT
 
+    worktree_script = REPO_ROOT / "bin" / "worktree-prepare.sh"
     if not worktree_script.exists():
         msg = f"Worktree preparation script not found: {worktree_script}"
         logger.error(msg)
         raise RuntimeError(msg)
 
-    logger.info("Preparing worktree with: bin/worktree-prepare.sh %s", slug)
+    logger.info("Preparing worktree with: %s %s", worktree_script, slug)
     try:
         result = subprocess.run(
             [str(worktree_script), slug],

@@ -7,11 +7,11 @@ scope: domain
 type: checklist
 ---
 
-# Todo Readiness Criteria — Checklist
+# Todo Readiness — Checklist
+
+## Goal
 
 A todo is ready for implementation when it meets all five criteria. If any criterion fails, apply story splitting patterns to break it down further.
-
-## 1. Single-Session Completability
 
 Can one AI session complete this before context exhaustion?
 
@@ -19,23 +19,17 @@ Can one AI session complete this before context exhaustion?
 - No deep dependency chains requiring multiple investigation phases
 - Scope bounded enough for single worker to hold in context
 
-## 2. Verifiability
-
 Are success criteria concrete and checkable? Can tests prove completion?
 
 - Requirements specify observable outcomes
 - Tests can verify behavior
 - Definition of done is unambiguous
 
-## 3. Atomicity
-
 Can the work be committed without breaking the system? Are there clean boundaries?
 
 - Changes can be integrated incrementally
 - No half-finished states that break builds
 - Clear entry and exit points
-
-## 4. Scope Clarity
 
 Are requirements unambiguous? Does the AI have enough context for pragmatic decisions?
 
@@ -44,15 +38,11 @@ Are requirements unambiguous? Does the AI have enough context for pragmatic deci
 - Architectural patterns clear
 - Worker can make reasonable implementation choices without escalation
 
-## 5. Uncertainty Level
-
 Is the technical approach known, or does this need exploration first?
 
 - Known patterns and solutions apply
 - No significant unknowns requiring research
 - Technology stack is familiar
-
-## When Criteria Fail
 
 If any criterion fails, **don't defer it to the worker** - break it down:
 
@@ -60,3 +50,27 @@ If any criterion fails, **don't defer it to the worker** - break it down:
 - Unclear requirements → Clarify with user before creating implementation plan
 - Unknown approach → Create research todo first, then implementation todo
 - Cross-cutting concerns → Separate infrastructure from feature work
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Preconditions
+
+- TBD.
+
+## Steps
+
+- TBD.
+
+## Outputs
+
+- TBD.
+
+## Recovery
+
+- TBD.

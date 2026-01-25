@@ -1,95 +1,62 @@
 ---
-description:
-  Build phase. Execute implementation plan tasks, commit per task, and
-  manage deferrals.
+description: Build phase. Execute implementation plan tasks, commit per task, and manage deferrals.
 id: software-development/procedure/lifecycle/build
 scope: domain
 type: procedure
 ---
 
-# Lifecycle: Build — Procedure
+# Build — Procedure
 
-## 1) Load Context
+## Goal
 
-Read:
+Execute the implementation plan for a todo and produce verified, review-ready changes.
 
-1. `todos/{slug}/requirements.md` - WHAT to build
-2. `todos/{slug}/implementation-plan.md` - HOW to build it
+## Preconditions
 
-If either file is missing, stop and report error.
+- `todos/{slug}/requirements.md` exists and is readable.
+- `todos/{slug}/implementation-plan.md` exists and is readable.
+- The todo scope is implementable in one build phase.
 
-## 2) Assess Current State
+## Steps
 
-Parse the implementation plan:
+1. Read `requirements.md` to confirm intent and constraints.
+2. Read `implementation-plan.md` and identify unchecked tasks.
+3. Execute tasks sequentially:
+   - Implement the task.
+   - Commit changes for the task (one commit per task).
+   - Update the task checkbox to `[x]` and include that change in the same commit.
+4. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
 
-- Identify tasks already done `[x]`
-- Identify tasks pending `[ ]`
-- Focus on Groups 1-4 only (build tasks)
+## Pre-completion checklist
 
-## 3) Execute Task Groups
+1. All tasks in `implementation-plan.md` are `[x]`.
+2. Tests pass: `make test`.
+3. Lint passes: `make lint`.
+4. Working tree is clean: `git status`.
+   - If not clean, commit: `git add . && git commit -m "build({slug}): final checkpoint"`.
+5. Verify commits exist: `git log --oneline -10`.
 
-Work through Groups 1-4 sequentially.
-
-### Parallel Tasks
-
-Tasks marked `**PARALLEL**` can run simultaneously. Execute them together and wait for all to complete.
-
-### Sequential Tasks
-
-Tasks marked `**SEQUENTIAL**` or `**DEPENDS:**` must run one at a time in order.
-
-### Per-Task Workflow
-
-1. Understand the task from `implementation-plan.md`.
-2. Make code changes.
-3. Commit to trigger hooks (lint + unit tests).
-4. If hooks fail: fix issues and re-attempt the commit until hooks pass.
-5. Update checkbox `[ ]` -> `[x]` in `implementation-plan.md`.
-6. Commit code + checkbox update together.
-
-**Important:** One commit per completed task.
-
-## 4) Deferrals (Out-of-Scope Only)
-
-If work seems out of scope:
-
-1. Decide if it can be solved pragmatically using existing patterns.
-2. Only defer when the decision changes architecture/contracts or requires external input.
-
-If deferring, create `todos/{slug}/deferrals.md`:
-
-```markdown
-# Deferred Work
-
-## [Item Title]
-
-**Why deferred:** [Why truly out-of-scope or blocked]
-
-**Decision needed:** [What choice or input is required]
-
-**Suggested outcome:** NEW_TODO | NOOP
-
-**Notes:** [Optional]
-```
-
-Continue working after writing deferrals.md.
-
-## 5) Pre-Completion Checks
-
-- Confirm all build tasks are checked.
-- Ensure no task is marked "deferred" in the plan.
-
-## 6) Report Completion
+## Report format
 
 ```
-Build complete for {slug}
+BUILD COMPLETE: {slug}
+
 Tasks completed: {count}
 Commits made: {count}
 Tests: PASSING
+Lint: PASSING
+
 Ready for review.
 ```
 
-## Error Handling
+## Outputs
 
-- If a task fails: log error in implementation-plan.md notes, attempt fix.
-- If stuck after 2 attempts: stop and report blocker.
+- Code changes implementing the plan.
+- Updated `implementation-plan.md` with checked tasks.
+- Commits for each task.
+- Optional `deferrals.md` when scope must be escalated.
+
+## Recovery
+
+- If a task fails, log the error in `implementation-plan.md` notes and retry.
+- If stuck after two attempts, stop and report the blocker.

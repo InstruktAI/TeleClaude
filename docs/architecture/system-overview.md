@@ -13,8 +13,6 @@ type: architecture
 
 TeleClaude acts as a "dumb pipe" terminal bridge between UI adapters (Telegram, TUI, MCP) and tmux execution environments.
 
-## Inputs/Outputs
-
 - Inputs: user commands from adapters, transport events, and API requests.
 - Outputs: tmux execution, adapter feedback, and cached API responses.
 
@@ -83,8 +81,6 @@ flowchart LR
     Redis --> RedisIngress
 ```
 
-## Component Layers
-
 1. **Service Interfaces**:
    - **Telegram Adapter**: Normalizes chat interactions.
    - **MCP Server**: Stdio-based interface for AI agents.
@@ -100,18 +96,36 @@ flowchart LR
    - **Next Machine**: Stateless state machine for complex project-based workflows.
    - **Agent Coordinator**: Single source of truth for routing agent lifecycle hooks.
 
-## Invariants
-
 - Core is decoupled from adapter specifics via Python Protocols.
 - All state changes are event-driven.
 - Durable execution via Outbox pattern (hook_outbox, rest_outbox).
-
-## Primary flows
 
 - Adapters normalize input into command objects.
 - Commands are queued, executed, and persisted.
 - Output polling emits events routed back to adapters and cache.
 
+- Adapter startup failures prevent end-to-end command flow.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Inputs/Outputs
+
+- TBD.
+
+## Invariants
+
+- TBD.
+
+## Primary flows
+
+- TBD.
+
 ## Failure modes
 
-- Adapter startup failures prevent end-to-end command flow.
+- TBD.

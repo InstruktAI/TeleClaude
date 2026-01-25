@@ -25,8 +25,22 @@ _HEADER_LINE = re.compile(r"^#{1,6}\s+")
 _REQUIRED_READ_LINE = re.compile(r"^\s*-\s*@(\S+)\s*$")
 _H1_LINE = re.compile(r"^#\s+")
 _H2_LINE = re.compile(r"^##\s+")
+_INLINE_REF_LINE = re.compile(r"^\\s*(?:-\\s*)?@\\S+")
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "snippet_schema.yaml"
+
+
+def _teleclaude_root(keep_tilde: bool) -> str:
+    """Return teleclaude root path. Expands ~ by default."""
+    if keep_tilde:
+        return "~/.teleclaude"
+    return str(Path.home() / ".teleclaude")
+
+
+def _get_allowed_ref_prefixes(keep_tilde: bool) -> tuple[str, str]:
+    """Return allowed reference prefixes, optionally expanding tilde."""
+    root = _teleclaude_root(keep_tilde)
+    return (f"@{root}/docs/", "@docs/")
 
 
 class GlobalSchemaConfig(TypedDict, total=False):
@@ -228,7 +242,7 @@ def _normalize_title(
     return "\n".join(lines) + ("\n" if content.endswith("\n") else "")
 
 
-def _normalize_titles(snippets_root: Path) -> None:
+def _normalize_titles(snippets_root: Path, keep_tilde: bool) -> None:
     for path in sorted(snippets_root.rglob("*.md")):
         if path.name == "index.yaml":
             continue
@@ -249,24 +263,41 @@ def _normalize_titles(snippets_root: Path) -> None:
         else:
             body = text
         updated = _normalize_title(path, body, declared_type)
+        full_content = text
         if updated != body:
             if text.lstrip().startswith("---"):
                 try:
                     post = frontmatter.loads(text)
                     post.content = updated
-                    path.write_text(frontmatter.dumps(post), encoding="utf-8")
+                    full_content = frontmatter.dumps(post)
+                    path.write_text(full_content, encoding="utf-8")
                 except Exception as exc:
                     _warn("title_write_failed", path=str(path), error=str(exc))
-                continue
-            try:
-                path.write_text(updated, encoding="utf-8")
-            except Exception as exc:
-                _warn("title_write_failed", path=str(path), error=str(exc))
-        _validate_snippet_format(path, updated if updated != body else body)
+                    full_content = text
+            else:
+                try:
+                    full_content = updated
+                    path.write_text(full_content, encoding="utf-8")
+                except Exception as exc:
+                    _warn("title_write_failed", path=str(path), error=str(exc))
+                    full_content = text
+        _validate_snippet_format(path, full_content, keep_tilde)
 
 
-def _validate_snippet_format(path: Path, content: str) -> None:
-    lines = content.splitlines()
+def _validate_snippet_format(path: Path, content: str, keep_tilde: bool) -> None:
+    has_frontmatter = content.lstrip().startswith("---")
+    if has_frontmatter:
+        try:
+            post = frontmatter.loads(content)
+            meta = post.metadata or {}
+            body = post.content
+        except Exception:
+            meta = {}
+            body = content
+    else:
+        meta = {}
+        body = content
+    lines = body.splitlines()
     if _SCHEMA["global_"].get("require_h1", True):
         first_non_empty = next((line for line in lines if line.strip()), "")
         if not _H1_LINE.match(first_non_empty):
@@ -305,15 +336,24 @@ def _validate_snippet_format(path: Path, content: str) -> None:
         if last_h2 != "see also":
             _warn("snippet_see_also_not_last", path=str(path))
 
+    allowed_prefixes = _get_allowed_ref_prefixes(keep_tilde)
+    for line in lines:
+        if not _INLINE_REF_LINE.match(line):
+            continue
+        ref = line.strip().lstrip("-").strip()
+        if not ref.startswith(allowed_prefixes):
+            _warn("snippet_invalid_inline_ref", path=str(path), ref=ref)
+
     snippet_type = None
-    if content.lstrip().startswith("---"):
-        try:
-            post = frontmatter.loads(content)
-            meta = post.metadata or {}
-            if isinstance(meta.get("type"), str):
-                snippet_type = meta.get("type")
-        except Exception:
-            snippet_type = None
+    if isinstance(meta.get("type"), str):
+        snippet_type = meta.get("type")
+    if "baseline" not in path.parts:
+        if not has_frontmatter:
+            _warn("snippet_missing_frontmatter", path=str(path))
+        else:
+            for field in ("id", "type", "scope", "description"):
+                if not isinstance(meta.get(field), str) or not meta.get(field):
+                    _warn("snippet_missing_frontmatter_field", path=str(path), field=field)
     if not snippet_type:
         snippet_type = _infer_type_from_path(path)
     if snippet_type:
@@ -324,12 +364,11 @@ def _validate_snippet_format(path: Path, content: str) -> None:
         for req in required:
             if req not in normalized_titles:
                 _warn("snippet_missing_required_section", path=str(path), section=req)
-        if allowed:
-            for title in normalized_titles:
-                if title in ("required reads", "see also"):
-                    continue
-                if title not in allowed:
-                    _warn("snippet_unknown_section", path=str(path), section=title)
+        for title in normalized_titles:
+            if title in ("required reads", "see also"):
+                continue
+            if title not in allowed:
+                _warn("snippet_unknown_section", path=str(path), section=title)
 
 
 class SnippetEntry(TypedDict):
@@ -403,33 +442,43 @@ def _strip_baseline_frontmatter(project_root: Path) -> list[str]:
     return violations
 
 
-def _write_baseline_index(project_root: Path) -> None:
+def _write_baseline_index(project_root: Path, keep_tilde: bool) -> None:
     baseline_root = project_root / "agents" / "docs" / "baseline"
     if not baseline_root.exists():
         return
+    root = _teleclaude_root(keep_tilde)
     entries: list[str] = []
     for path in sorted(baseline_root.rglob("*.md")):
         if path.name == "index.md":
             continue
         rel = path.relative_to(baseline_root).as_posix()
-        entries.append(f"@~/.teleclaude/docs/baseline/{rel}")
+        entries.append(f"@{root}/docs/baseline/{rel}")
     if not entries:
         return
     baseline_index = baseline_root / "index.md"
-    baseline_index.write_text("\n".join(entries) + "\n", encoding="utf-8")
+    content = "\n".join(
+        [
+            "# Baseline Index — Index",
+            "",
+            "## Required reads",
+            "",
+            *entries,
+            "",
+        ]
+    )
+    baseline_index.write_text(content, encoding="utf-8")
 
 
-def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload:
+def build_index_payload(project_root: Path, snippets_root: Path, keep_tilde: bool) -> IndexPayload:
     violations = _strip_baseline_frontmatter(project_root)
     if violations:
         logger.warning("baseline_frontmatter_removed", paths=violations)
         print("Unexpected baseline frontmatter was found and cleaned.")
-    _write_baseline_index(project_root)
-    _normalize_titles(snippets_root)
+    _write_baseline_index(project_root, keep_tilde)
+    _normalize_titles(snippets_root, keep_tilde)
     if not snippets_root.exists():
         return {
             "project_root": str(project_root),
-            "snippets_root": str(snippets_root),
             "snippets": [],
         }
 
@@ -439,7 +488,6 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
     if not snippet_files:
         return {
             "project_root": str(project_root),
-            "snippets_root": str(snippets_root),
             "snippets": [],
         }
     for file_path in snippet_files:
@@ -482,19 +530,53 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
     snippets.sort(key=lambda entry: entry["id"])
     payload: IndexPayload = {
         "project_root": str(project_root),
-        "snippets_root": str(snippets_root),
         "snippets": snippets,
     }
+    _detect_cycles(payload)
     return payload
 
 
-def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
+def _detect_cycles(payload: IndexPayload) -> None:
+    graph: dict[str, list[str]] = {}
+    for entry in payload.get("snippets", []):
+        graph[entry["id"]] = list(entry.get("requires", []))
+
+    visited: set[str] = set()
+    in_stack: set[str] = set()
+    stack: list[str] = []
+
+    def visit(node: str) -> None:
+        if node in in_stack:
+            idx = stack.index(node) if node in stack else 0
+            cycle = stack[idx:] + [node]
+            _warn(
+                "snippet_circular_reference",
+                cycle=" -> ".join(cycle),
+                hint="Fix circular references first.",
+            )
+            return
+        if node in visited:
+            return
+        visited.add(node)
+        in_stack.add(node)
+        stack.append(node)
+        for nxt in graph.get(node, []):
+            if nxt in graph:
+                visit(nxt)
+        stack.pop()
+        in_stack.remove(node)
+
+    for node in graph:
+        visit(node)
+
+
+def write_index_yaml(project_root: Path, snippets_root: Path, keep_tilde: bool) -> Path:
     target = snippets_root / "index.yaml"
-    payload = build_index_payload(project_root, snippets_root)
+    payload = build_index_payload(project_root, snippets_root, keep_tilde)
     if snippets_root == project_root / "agents" / "docs" and project_root == REPO_ROOT:
-        global_root = Path.home() / ".teleclaude"
-        payload["project_root"] = str(global_root)
-        payload["snippets_root"] = str(global_root / "docs")
+        root = _teleclaude_root(keep_tilde)
+        payload["project_root"] = root
+        payload["snippets_root"] = f"{root}/docs"
         for snippet in payload["snippets"]:
             if snippet["path"].startswith("agents/docs/"):
                 snippet["path"] = snippet["path"].replace("agents/docs/", "docs/", 1)
@@ -515,6 +597,11 @@ def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build snippet indexes from docs/ and agents/docs/.")
     parser.add_argument("--project-root", default=str(Path.cwd()), help="Project root (default: cwd)")
+    parser.add_argument(
+        "--keep-tilde",
+        action="store_true",
+        help="Keep ~ notation instead of expanding to absolute HOME path (default: expand)",
+    )
     args = parser.parse_args()
 
     project_root = Path(args.project_root).expanduser().resolve()
@@ -525,7 +612,7 @@ def main() -> None:
         return
     written: list[Path] = []
     for snippets_root in roots:
-        written.append(write_index_yaml(project_root, snippets_root))
+        written.append(write_index_yaml(project_root, snippets_root, args.keep_tilde))
     for path in written:
         logger.info("index_written", path=str(path))
         print(str(path))

@@ -5,6 +5,8 @@ scope: project
 description: Automatic cleanup of Telegram message clutter for a clean UI.
 ---
 
+# Ux Message Cleanup — Policy
+
 ## Rule
 
 - Track user input and feedback messages for deletion to keep Telegram topics clean.
@@ -12,20 +14,36 @@ description: Automatic cleanup of Telegram message clutter for a clean UI.
 - Never delete persistent AI results or file artifacts.
 - Use tracking APIs instead of raw `reply_text`.
 
-## Rationale
-
 - Prevents clutter, keeps session context readable, and avoids message spam.
 
-## Scope
-
 - Applies to all Telegram UI adapter flows and message responses.
-
-## Enforcement or checks
 
 - Verify cleanup flows delete user_input messages on next input.
 - Verify feedback cleanup runs before sending new feedback.
 - Audit usage of `db.add_pending_deletion` in adapter responses.
 
-## Exceptions or edge cases
-
 - Persistent AI results and file artifacts are never deleted.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Rationale
+
+- TBD.
+
+## Scope
+
+- TBD.
+
+## Enforcement
+
+- TBD.
+
+## Exceptions
+
+- TBD.

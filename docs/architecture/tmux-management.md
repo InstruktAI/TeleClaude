@@ -5,30 +5,46 @@ scope: project
 type: architecture
 ---
 
-## Required reads
-
-- @teleclaude/concept/shell-readiness
+# Tmux Management — Architecture
 
 ## Purpose
 
-- Describe how TeleClaude manages tmux sessions and input injection.
+- @docs/concept/shell-readiness
 
-## Inputs/Outputs
+- Describe how TeleClaude manages tmux sessions and input injection.
 
 - Inputs: commands, control keys, and session creation requests.
 - Outputs: tmux sessions, captured output, and shell-ready signals.
-
-## Primary flows
 
 - Session names are derived from session_id with a stable prefix.
 - Each session gets a dedicated TMPDIR to avoid filesystem watcher issues.
 - tmux commands enforce timeouts to prevent hangs.
 
-## Invariants
-
 - Session tmp directories are created under ~/.teleclaude/tmp/sessions by default.
 - Shell readiness is determined by comparing the tmux command to the user shell.
 
+- tmux command timeouts can leave sessions unresponsive until restarted.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+- TBD.
+
+## Inputs/Outputs
+
+- TBD.
+
+## Invariants
+
+- TBD.
+
+## Primary flows
+
+- TBD.
+
 ## Failure modes
 
-- tmux command timeouts can leave sessions unresponsive until restarted.
+- TBD.
