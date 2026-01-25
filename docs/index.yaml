@@ -35,9 +35,9 @@ snippets:
 - id: concept/session-types
   description: Classification of terminal sessions in TeleClaude.
   path: docs/project/concept/session-types.md
-- id: docs/procedure/agents-distribution
+- id: docs/procedure/agent-artifact-distribution
   description: Steps to build and distribute agent artifacts in this repository.
-  path: docs/project/procedure/agents-distribution.md
+  path: docs/project/procedure/agent-artifact-distribution.md
 - id: example/ai-to-ai-delegation
   description: Code example of a Master AI delegating a task to a Worker AI.
   path: docs/project/example/ai-to-ai-delegation.md
@@ -77,10 +77,6 @@ snippets:
   description: Schema and section requirements for documentation snippets belonging
     to a taxonomy.
   path: docs/global/general/reference/snippet-authoring-schema.md
-- id: guide/agents-repo-workflow
-  description: Recommended workflow for maintaining agent artifacts and generated
-    outputs in a local agents repository.
-  path: docs/project/guide/agents-repo-workflow.md
 - id: guide/multi-computer-setup
   description: Step-by-step guide for setting up a distributed TeleClaude network.
   path: docs/project/guide/multi-computer-setup.md

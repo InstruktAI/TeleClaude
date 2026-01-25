@@ -1,29 +1,28 @@
 ---
 description: Steps to build and distribute agent artifacts in this repository.
-id: docs/procedure/agents-distribution
+id: docs/procedure/agent-artifact-distribution
 scope: project
 type: procedure
 ---
 
-# Agents Distribution — Procedure
+# Agent Artifact Distribution — Procedure
 
 ## Goal
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/concept/agent-artifact-distribution.md
-- @~/.teleclaude/docs/software-development/guide/agent-artifacts-quickstart.md
+- @docs/general/concept/normalized-agent-artifacts
 
 Build and distribute agent artifacts in this repository.
 
 ## Preconditions
 
-- Source artifacts exist in `commands/`, `skills/`, and `AGENTS.master.md`.
+- Global and/or project agent sources exist.
 
 ## Steps
 
-1. Author or update source artifacts in `commands/`, `skills/`, and `AGENTS.master.md`.
-2. Run the local distribution script to generate runtime-specific outputs.
+1. Update the appropriate scope (global or project).
+2. Run the distribution script to generate runtime-specific outputs.
 3. Deploy generated outputs to local agent runtimes.
 
 ```

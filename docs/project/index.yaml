@@ -69,24 +69,17 @@ snippets:
   scope: global
   path: docs/project/concept/session-types.md
   source_project: TeleClaude
-- id: docs/procedure/agents-distribution
+- id: docs/procedure/agent-artifact-distribution
   description: Steps to build and distribute agent artifacts in this repository.
   type: procedure
   scope: project
-  path: docs/project/procedure/agents-distribution.md
+  path: docs/project/procedure/agent-artifact-distribution.md
   source_project: TeleClaude
 - id: example/ai-to-ai-delegation
   description: Code example of a Master AI delegating a task to a Worker AI.
   type: example
   scope: global
   path: docs/project/example/ai-to-ai-delegation.md
-  source_project: TeleClaude
-- id: guide/agents-repo-workflow
-  description: Recommended workflow for maintaining agent artifacts and generated
-    outputs in a local agents repository.
-  type: guide
-  scope: project
-  path: docs/project/guide/agents-repo-workflow.md
   source_project: TeleClaude
 - id: guide/multi-computer-setup
   description: Step-by-step guide for setting up a distributed TeleClaude network.

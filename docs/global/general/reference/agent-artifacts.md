@@ -9,7 +9,8 @@ description: Minimal schema used for agent artifacts (commands and skills).
 
 ## What it is
 
-Defines the minimal, shared schema for agent artifacts in this repo. Commands and skills use the same frontmatter pattern and freeform bodies; the intent differs by file location, not by schema.
+Defines the minimal, shared schema for agent artifacts. Commands and skills use the
+same frontmatter pattern and freeform bodies; the intent differs by scope, not schema.
 
 ## Canonical fields
 
@@ -29,7 +30,7 @@ Defines the minimal, shared schema for agent artifacts in this repo. Commands an
 ## Known caveats
 
 - Commands and skills share the same minimal schema; do not invent extra frontmatter fields.
-- Use the file location to convey intent:
-  - `agents/commands/*.md` for commands.
-  - `agents/skills/*/SKILL.md` for skills.
+- Scope is conveyed by location:
+  - **Global scope**: `TeleClaude/agents/commands/*.md`, `TeleClaude/agents/skills/*/SKILL.md`
+  - **Project scope**: `<project>/.agents/commands/*.md`, `<project>/.agents/skills/*/SKILL.md`
 - Keep prompts concise to avoid bloated agent context.
