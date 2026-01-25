@@ -1,7 +1,5 @@
 ---
-description:
-  AdapterClient centralizes adapter lifecycle, UI/transport routing, and
-  cross-computer requests.
+description: AdapterClient centralizes UI adapter lifecycle, delivery, and cross-computer routing.
 id: teleclaude/architecture/adapter-client
 scope: project
 type: architecture
@@ -43,7 +41,7 @@ flowchart TB
 - Domain events from core (SESSION_STARTED, OUTPUT_UPDATE, SESSION_CLOSED, etc.)
 - Commands and events from core logic that need delivery to adapters
 - Adapter registration calls during startup
-- UI/transport protocol queries (get transport adapter, discover peers)
+- UI protocol queries and transport routing (discover peers)
 - Deletion requests (pending user input, feedback messages)
 
 **Outputs:**
@@ -52,7 +50,7 @@ flowchart TB
 - Fan-out delivery to adapters
 - UI channel creation requests (fire-and-forget)
 - Deletion operations for message cleanup
-- Cross-computer command routing via transport adapters
+- Cross-computer command routing via Redis transport
 
 ## Invariants
 
@@ -134,7 +132,7 @@ sequenceDiagram
     participant RemoteComputer
 
     MasterAI->>AC: start_session(computer="raspi")
-    AC->>AC: get_transport_adapter()
+    AC->>AC: select transport (Redis)
     AC->>Redis: send_request(computer, command)
     Redis->>RemoteComputer: Transport event
     RemoteComputer->>Redis: Response
@@ -146,7 +144,7 @@ sequenceDiagram
 
 - **Adapter Crash During Delivery**: Adapter raises exception. AC logs error and continues to other adapters. Failed adapter skipped on future events until daemon restart.
 - **Channel Metadata Missing**: Attempting to send to non-origin adapter without channel fails. AC creates channel (fire-and-forget) and queues message for retry.
-- **Transport Adapter Unavailable**: Cross-computer command fails immediately. Returns error to caller. Local operations unaffected.
+- **Transport Unavailable**: Cross-computer command fails immediately. Returns error to caller. Local operations unaffected.
 - **Cleanup Hook Failure**: Pre/post hooks fail to delete messages or track IDs. Stale messages accumulate in UI. Does not block message delivery.
 - **Parallel Delivery Timeout**: One adapter blocks indefinitely. Other adapters complete normally. Stuck adapter logged and skipped.
 - **Discovery Failure**: No remote computers found. Commands targeting specific computer fail with "not found" error. Local sessions continue.

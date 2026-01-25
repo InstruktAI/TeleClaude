@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import random
 import ssl
 import time
 from datetime import datetime, timezone
@@ -123,7 +124,10 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         self._session_events_poll_task: Optional[asyncio.Task[object]] = None
         self._peer_refresh_task: Optional[asyncio.Task[object]] = None
         self._connection_task: Optional[asyncio.Task[object]] = None
+        self._reconnect_task: Optional[asyncio.Task[object]] = None
         self._running = False
+        self._redis_ready = asyncio.Event()
+        self._redis_last_error: str | None = None
 
         # Extract Redis configuration from global config
         self.redis_url = config.redis.url
@@ -156,6 +160,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         # Initialize redis client placeholder (actual connection established in start)
         self.redis: Redis = self._create_redis_client()
+        self._redis_ready.clear()
 
         # Idle poll logging throttling (avoid tail spam at DEBUG level)
         self._idle_poll_last_log_at: float | None = None
@@ -249,7 +254,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
     async def _ensure_connection_and_start_tasks(self) -> None:
         """Connect and launch background tasks with retry, without blocking daemon startup."""
 
-        await self._connect_with_backoff()
+        self._schedule_reconnect("startup")
+        await self._await_redis_ready()
 
         if not self._running:
             return
@@ -447,7 +453,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             logger.warning("Cache unavailable, skipping peer refresh from heartbeats")
             return
 
-        redis_client = self._require_redis()
+        redis_client = await self._get_redis()
         keys: object = await scan_keys(redis_client, b"computer:*:heartbeat")
         if not keys:
             return
@@ -506,45 +512,62 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         )
         return redis_client
 
-    def _require_redis(self) -> Redis:
-        """Return initialized Redis client or raise for clearer errors."""
+    async def _await_redis_ready(self) -> None:
+        """Wait until Redis connection is ready or transport stops."""
+        while self._running:
+            await self._redis_ready.wait()
+            if self.redis:
+                return
+        raise RuntimeError("Redis transport stopped")
+
+    async def _get_redis(self) -> Redis:
+        """Return a connected Redis client (waits for readiness)."""
+        await self._await_redis_ready()
         return self.redis
 
-    async def _connect_with_backoff(self) -> None:
-        """Attempt to connect to Redis with capped exponential backoff."""
+    def _schedule_reconnect(self, reason: str, error: Exception | None = None) -> None:
+        """Ensure a single reconnect loop is running."""
+        if not self._running:
+            return
+        self._redis_ready.clear()
+        if error is not None:
+            self._redis_last_error = str(error)
+        if self._reconnect_task and not self._reconnect_task.done():
+            return
+        logger.warning("Redis connection unhealthy; scheduling reconnect (reason=%s)", reason)
+        if self.task_registry:
+            self._reconnect_task = self.task_registry.spawn(self._reconnect_loop(reason), name="redis-reconnect")
+        else:
+            self._reconnect_task = asyncio.create_task(self._reconnect_loop(reason), name="redis-reconnect")
+            self._reconnect_task.add_done_callback(self._log_task_exception)
 
-        delay = 1
-        while self._running:
-            try:
-                self.redis = self._create_redis_client()
-                await self.redis.ping()  # pyright: ignore[reportGeneralTypeIssues]
-                logger.info("Redis connection successful")
-                return
-            except Exception as e:  # broad to keep daemon alive until Redis returns
-                logger.error("Failed to connect to Redis (retry in %ss): %s", delay, e)
-                await asyncio.sleep(delay)
-                delay = min(delay * 2, 10)
-
-        logger.info("Stopped redis connection attempts (adapter no longer running)")
-
-    async def _reconnect_with_backoff(self) -> None:
-        """Reconnect the Redis client after a connection failure."""
-
-        delay = 1
+    async def _reconnect_loop(self, reason: str) -> None:
+        """Reconnect loop with capped backoff and jitter."""
+        delay = 1.0
         while self._running:
             try:
                 if self.redis:
                     await self.redis.aclose()
                 self.redis = self._create_redis_client()
                 await self.redis.ping()  # pyright: ignore[reportGeneralTypeIssues]
-                logger.info("Redis reconnection successful")
+                self._redis_ready.set()
+                logger.info("Redis connection ready (reason=%s)", reason)
                 return
-            except Exception as e:  # broad to avoid crash loops
-                logger.error("Redis reconnection failed (retry in %ss): %s", delay, e)
-                await asyncio.sleep(delay)
-                delay = min(delay * 2, 10)
+            except Exception as exc:  # broad to avoid crash loops
+                logger.error("Redis reconnection failed (retry in %ss): %s", int(delay), exc)
+                await asyncio.sleep(delay + random.random())
+                delay = min(delay * 2.0, 10.0)
 
         logger.info("Stopped redis reconnection attempts (adapter no longer running)")
+
+    async def _handle_redis_error(self, context: str, exc: Exception) -> None:
+        """Centralize Redis error handling and recovery."""
+        logger.error("%s: %s", context, exc)
+        self._schedule_reconnect(context, exc)
+        try:
+            await self._await_redis_ready()
+        except RuntimeError:
+            return
 
     async def stop(self) -> None:
         """Stop adapter and cleanup resources."""
@@ -558,6 +581,12 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             self._connection_task.cancel()
             try:
                 await self._connection_task
+            except asyncio.CancelledError:
+                pass
+        if self._reconnect_task:
+            self._reconnect_task.cancel()
+            try:
+                await self._reconnect_task
             except asyncio.CancelledError:
                 pass
 
@@ -760,7 +789,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             continue operating in single-computer mode when Redis is down.
         """
 
-        redis_client = self._require_redis()
+        redis_client = await self._get_redis()
 
         try:
             # Find all heartbeat keys using non-blocking SCAN
@@ -791,6 +820,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         except Exception as e:
             logger.error("Failed to get online computers: %s", e)
+            self._schedule_reconnect("get_online_computers", e)
             return []
 
     async def discover_peers(self) -> list[PeerInfo]:  # pylint: disable=too-many-locals
@@ -807,7 +837,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         """
         logger.trace(">>> discover_peers() called, self.redis=%s", "present" if self.redis else "None")
 
-        redis_client = self._require_redis()
+        redis_client = await self._get_redis()
 
         try:
             # Find all heartbeat keys using non-blocking SCAN
@@ -912,6 +942,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         except Exception as e:
             logger.error("Failed to discover peers: %s", e)
+            self._schedule_reconnect("discover_peers", e)
             return []
 
     def get_max_message_length(self) -> int:
@@ -955,7 +986,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 #     last_id,
                 # )
 
-                redis_client = self._require_redis()
+                redis_client = await self._get_redis()
                 messages: list[tuple[bytes, list[tuple[bytes, dict[bytes, bytes]]]]] = await redis_client.xread(
                     {message_stream.encode("utf-8"): last_id},
                     block=1000,  # Block for 1 second
@@ -1005,8 +1036,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("Message polling error: %s", e)
-                await self._reconnect_with_backoff()
+                await self._handle_redis_error("Message polling error", e)
 
     async def _handle_incoming_message(self, message_id: str, data: dict[bytes, bytes]) -> Any:
         """Handle incoming message from Redis stream.
@@ -1279,8 +1309,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("Heartbeat failed: %s", e)
-                await self._reconnect_with_backoff()
+                await self._handle_redis_error("Heartbeat failed", e)
 
     async def _send_heartbeat(self) -> None:
         """Send minimal Redis key with TTL as heartbeat (presence ping + interest advertising)."""
@@ -1312,7 +1341,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 payload["projects_digest"] = digest
 
         # Set key with auto-expiry
-        redis_client = self._require_redis()
+        redis_client = await self._get_redis()
         await redis_client.setex(
             key,
             self.heartbeat_ttl,
@@ -1370,7 +1399,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             }
 
             # Push to each interested peer
-            redis_client = self._require_redis()
+            redis_client = await self._get_redis()
             for computer in interested:
                 stream_key = f"session_events:{computer}"
                 try:
@@ -1402,7 +1431,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             continue operating in single-computer mode when Redis is down.
         """
         try:
-            redis_client = self._require_redis()
+            redis_client = await self._get_redis()
 
             # Scan all heartbeat keys using non-blocking SCAN
             keys: object = await scan_keys(redis_client, b"computer:*:heartbeat")
@@ -1454,6 +1483,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             return interested_computers
         except Exception as e:
             logger.error("Failed to get interested computers: %s", e)
+            self._schedule_reconnect("get_interested_computers", e)
             return []
 
     async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
@@ -1773,7 +1803,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                     initial_pull_done = True
 
                 # Read from session events stream
-                redis_client = self._require_redis()
+                redis_client = await self._get_redis()
                 messages = await redis_client.xread(
                     {stream_key.encode("utf-8"): last_id},
                     block=1000,
@@ -1824,8 +1854,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                                 )
 
             except Exception as e:
-                logger.error("Session events polling error: %s", e, exc_info=True)
-                await asyncio.sleep(5)  # Back off on error
+                await self._handle_redis_error("Session events polling error", e)
 
         logger.info("Stopped session events polling")
 
@@ -1856,7 +1885,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         data = json.dumps(observation_data)
 
         # Set key with TTL - auto-expires after duration
-        redis_client = self._require_redis()
+        redis_client = await self._get_redis()
         await redis_client.setex(key, duration_seconds, data)
         logger.info(
             "Signaled observation: %s observing %s on %s for %ds",
@@ -1877,7 +1906,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         """
 
         key = f"observation:{self.computer_name}:{session_id}"
-        redis_client = self._require_redis()
+        redis_client = await self._get_redis()
         exists = await redis_client.exists(key)
         return bool(exists)
 
@@ -1937,7 +1966,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         # Send to Redis stream - XADD returns unique message_id
         # This message_id is used for response correlation (receiver sends response to output:{message_id})
-        redis_client = self._require_redis()
+        redis_client = await self._get_redis()
         message_id_bytes: bytes = await redis_client.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]
         message_id = message_id_bytes.decode("utf-8")
 
@@ -1971,7 +2000,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             len(data),
         )
 
-        redis_client = self._require_redis()
+        redis_client = await self._get_redis()
         response_id_bytes: bytes = await redis_client.xadd(
             output_stream,
             {
@@ -2033,7 +2062,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                     poll=poll_count,
                     elapsed_s=round(elapsed, 1),
                 )
-                redis_client = self._require_redis()
+                redis_client = await self._get_redis()
                 messages = await redis_client.xread({output_stream.encode("utf-8"): b"0"}, block=100, count=1)
 
                 if messages:
@@ -2091,7 +2120,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         # Send to Redis stream
         logger.debug("Sending system command to %s: %s", computer_name, command)
-        redis_client = self._require_redis()
+        redis_client = await self._get_redis()
         message_id_bytes: bytes = await redis_client.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]
 
         logger.info("Sent system command to %s: %s", computer_name, command)
@@ -2109,7 +2138,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         """
 
         status_key = f"system_status:{computer_name}:{command}"
-        redis_client = self._require_redis()
+        redis_client = await self._get_redis()
         data = await redis_client.get(status_key)
 
         if not data:

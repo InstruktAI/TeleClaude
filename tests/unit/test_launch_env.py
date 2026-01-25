@@ -13,5 +13,5 @@ def test_wrapper_prefixes_venv_path() -> None:
 def test_launchd_template_prefixes_venv_path() -> None:
     """Test that the launchd template prepends the venv bin directory."""
     repo_root = Path(__file__).resolve().parents[2]
-    template = (repo_root / "config" / "ai.instrukt.teleclaude.daemon.plist.template").read_text(encoding="utf-8")
+    template = (repo_root / "templates" / "ai.instrukt.teleclaude.daemon.plist").read_text(encoding="utf-8")
     assert "<string>.venv/bin:{{PATH}}</string>" in template

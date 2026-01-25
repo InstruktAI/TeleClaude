@@ -422,7 +422,7 @@ EOF
 install_launchd_service() {
     local service_name="ai.instrukt.teleclaude.daemon"
     local plist_file="$HOME/Library/LaunchAgents/${service_name}.plist"
-    local template_file="$INSTALL_DIR/config/ai.instrukt.teleclaude.daemon.plist.template"
+    local template_file="$INSTALL_DIR/templates/ai.instrukt.teleclaude.daemon.plist"
 
     # Create LaunchAgents directory if needed
     mkdir -p "$HOME/Library/LaunchAgents"

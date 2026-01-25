@@ -24,8 +24,8 @@ type: architecture
 - Heartbeats maintain a registry of online computers with TTL-based expiry.
 - Project and todo digests trigger cache refresh on peers.
 
-- Transport adapter implements RemoteExecutionProtocol for request/response.
-- Transport adapter never performs UI messaging.
+- Redis transport implements RemoteExecutionProtocol for request/response.
+- Redis transport never performs UI messaging.
 - Redis is optional; Telegram multi-computer operation does not require it.
 
 ```mermaid
@@ -61,6 +61,7 @@ flowchart LR
 - **One-Shot Responses**: Response streams are created per-message and auto-expire after TTL.
 - **Heartbeat TTL**: Computer registry entries expire after 60s without heartbeat; marks computer offline.
 - **Digest-Driven Refresh**: Projects/todos cache refreshes only when heartbeat digest changes, not on every beat.
+- **Single Connection Lifecycle**: Redis connection is managed by one reconnect loop; all tasks wait on readiness.
 
 ## Primary flows
 
@@ -125,10 +126,11 @@ sequenceDiagram
 
 ## Failure modes
 
-- **Redis Unavailable**: Daemon starts without Redis adapter. Cross-computer commands fail. Local and Telegram operations unaffected.
+- **Redis Unavailable**: Daemon starts without Redis transport. Cross-computer commands fail. Local and Telegram operations unaffected.
 - **Network Partition**: Computer heartbeats stop arriving. Registry marks computer offline after TTL. Commands to partitioned computer timeout.
 - **Stream Accumulation**: If consumer lags, streams grow beyond MAXLEN. Oldest messages trimmed. Commands may be lost if not processed in time.
 - **Response Stream Collision**: Extremely rare. Two messages with same ID overwrite response stream. Mitigated by UUID message IDs.
 - **Digest False Positive**: Digest unchanged but content actually changed. Next TTL-based refresh corrects it (max 5min delay).
 - **Heartbeat Storm**: Many computers restart simultaneously and publish heartbeats. Redis handles gracefully; cache refresh tasks may queue.
+- **Reconnect Storm Prevention**: Redis reconnects are serialized; tasks wait on readiness to avoid connection floods.
 - **Stale Registry**: Computer dies without sending offline heartbeat. Registry shows online until TTL expires (max 60s stale window).

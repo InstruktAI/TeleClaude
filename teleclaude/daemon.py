@@ -1414,7 +1414,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         redis_transport: RedisTransport = redis_transport_base
         status_key = f"system_status:{config.computer.name}:deploy"
-        redis_client = redis_transport._require_redis()
+        redis_client = await redis_transport._get_redis()
 
         async def update_status(payload: DeployStatusPayload | DeployErrorPayload) -> None:
             await redis_client.set(status_key, json.dumps(payload))

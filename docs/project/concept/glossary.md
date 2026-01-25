@@ -21,7 +21,7 @@ description:
 - native_session_id: agent-native identifier captured from hook payloads (Claude/Gemini/Codex).
 - origin adapter: the adapter that created the session (for example, telegram).
 - UI adapter: an adapter with human-facing UX responsibilities (Telegram).
-- transport adapter: an adapter that supports cross-computer execution (Redis Streams).
+- transport: infrastructure for cross-computer execution and discovery (Redis Streams).
 - computer name: the configured identity for a daemon instance (config.computer.name).
 - project_path: the base project directory assigned to a session.
 - subdir: optional relative path for a worktree or subfolder within project_path.

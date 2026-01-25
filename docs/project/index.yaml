@@ -180,8 +180,8 @@ snippets:
   path: docs/project/role/master-bot.md
   source_project: TeleClaude
 - id: teleclaude/architecture/adapter-client
-  description: AdapterClient centralizes adapter lifecycle, UI/transport routing,
-    and cross-computer requests.
+  description: AdapterClient centralizes UI adapter lifecycle, delivery, and cross-computer
+    routing.
   type: architecture
   scope: project
   path: docs/project/architecture/adapter-client.md
@@ -258,13 +258,6 @@ snippets:
   scope: project
   path: docs/project/architecture/tmux-management.md
   source_project: TeleClaude
-- id: teleclaude/architecture/transport-adapter
-  description: Transport adapters handle cross-computer request/response and peer
-    discovery.
-  type: architecture
-  scope: project
-  path: docs/project/architecture/transport-adapter.md
-  source_project: TeleClaude
 - id: teleclaude/architecture/ui-adapter
   description: UI adapters translate human inputs into events and render outputs with
     UX rules.
@@ -273,7 +266,7 @@ snippets:
   path: docs/project/architecture/ui-adapter.md
   source_project: TeleClaude
 - id: teleclaude/concept/adapter-types
-  description: Distinction between UI adapters and transport adapters in TeleClaude.
+  description: Distinction between UI adapters and transport infrastructure in TeleClaude.
   type: concept
   scope: project
   path: docs/project/concept/adapter-types.md

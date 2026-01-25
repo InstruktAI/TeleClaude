@@ -32,7 +32,7 @@ Provide a single, authoritative runbook for observing, diagnosing, and recoverin
 
 - System daemon (socket watcher): `/Library/LaunchDaemons/ai.instrukt.teleclaude.socketwatch.plist`
 - User agent (API watcher): `~/Library/LaunchAgents/ai.instrukt.teleclaude.api-watch.plist`
-- Daemon service: configured via `config/ai.instrukt.teleclaude.daemon.plist.template`
+- Daemon service: configured via `templates/ai.instrukt.teleclaude.daemon.plist`
 
 ### Watcher scripts
 
