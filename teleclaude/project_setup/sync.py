@@ -16,8 +16,6 @@ def sync_project_artifacts(project_root: Path) -> None:
         project_root: Path to the project root directory.
     """
     env = os.environ.copy()
-    env["TELECLAUDE_DOCS_AUTOMATION"] = "1"
-
     commands = [
         [
             "uv",
@@ -109,8 +107,6 @@ def _install_launchd_watch(project_root: Path) -> None:
     <dict>
       <key>PATH</key>
       <string>{launchd_path}</string>
-      <key>TELECLAUDE_DOCS_AUTOMATION</key>
-      <string>1</string>
     </dict>
     <key>WatchPaths</key>
     <array>
@@ -158,7 +154,6 @@ Description=TeleClaude docs sync ({project_root})
 [Service]
 Type=oneshot
 WorkingDirectory={project_root}
-Environment=TELECLAUDE_DOCS_AUTOMATION=1
 ExecStart=/bin/bash -lc '{command}'
 """
 

@@ -4,5 +4,4 @@ Description=TeleClaude docs sync ({{PROJECT_ROOT}})
 [Service]
 Type=oneshot
 WorkingDirectory={{PROJECT_ROOT}}
-Environment=TELECLAUDE_DOCS_AUTOMATION=1
 ExecStart=/bin/bash -lc '{{COMMAND}}'

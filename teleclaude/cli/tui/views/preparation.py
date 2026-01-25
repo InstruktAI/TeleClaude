@@ -598,7 +598,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         slug = item.todo.slug
         self._launch_session_split(
             item,
-            f"/prime-orchestrator {slug}",
+            f"/next-work {slug}",
             stdscr,
         )
 

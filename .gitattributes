@@ -1,3 +1,5 @@
 docs/project/**/*.md filter=teleclaude-docs
 docs/global/**/*.md filter=teleclaude-docs
 docs/*/index.yaml filter=teleclaude-docs
+docs/**/*.md filter=teleclaude-docs
+agents/docs/**/*.md filter=teleclaude-docs

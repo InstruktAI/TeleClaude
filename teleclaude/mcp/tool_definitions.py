@@ -37,9 +37,11 @@ def get_tool_definitions() -> list[Tool]:
                 "Phase 1: Call with no parameters (or with areas filter) to return snippet index with IDs and descriptions. "
                 "Phase 2: Call with snippet_ids parameter to retrieve full snippet content. "
                 "Always start with phase 1 when you are unsure which snippets apply. ALWAYS use phase 2 when you found interesting snippets! "
+                "Use when you need policy/procedure/role/checklist/reference etc context beyond what you already have. "
                 "Example triggers: ",
-                "- you need policy/procedure/role/checklist/reference etc context beyond what you already have "
-                "- you're asked to apply some expertise or perform a role.",
+                "- Take the role of / act as orchestrator/architect/builder/reviewer/maintainer. ",
+                "- Write/update doc snippets. ",
+                "- Put on your architect/reviewer/researcher hat. ",
             ),
             inputSchema={
                 "type": "object",

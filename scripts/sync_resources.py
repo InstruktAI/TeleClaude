@@ -916,7 +916,7 @@ def main() -> None:
     for path in written:
         logger.info("index_written", path=str(path))
         print(str(path))
-    warn_only = args.warn_only or bool(os.getenv("TELECLAUDE_DOCS_AUTOMATION"))
+    warn_only = args.warn_only
     if _WARNINGS:
         print(f"Snippet validation warnings: {len(_WARNINGS)}")
         for warning in _WARNINGS:
