@@ -11,7 +11,7 @@ type: procedure
 
 ## Goal
 
-- @docs/software-development/checklist/todo-readiness
+- @docs/software-development/policy/definition-of-ready
 
 If `todos/{slug}/input.md` exists and `todos/{slug}/state.json` lacks `breakdown.assessed`, perform readiness assessment.
 

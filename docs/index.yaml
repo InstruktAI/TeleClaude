@@ -228,7 +228,7 @@ snippets:
     create implementation plans, ensure readiness.
   path: docs/global/software-development/roles/architect.md
   requires:
-  - docs/global/software-development/roles/docs/software-development/todo-readiness
+  - docs/global/software-development/roles/docs/software-development/policy/definition-of-ready
 - id: software-development/roles/builder
   description: Tactical implementation. Follow architecture, write code matching requirements,
     pragmatic autonomy, tests after implementation.
@@ -280,6 +280,10 @@ snippets:
   description: Baseline quality gates defining when work is truly complete. Functionality,
     quality, testing, security, documentation.
   path: docs/global/software-development/standards/definition-of-done.md
+- id: software-development/policy/definition-of-ready
+  description: Definition of Ready gates for work items before they enter implementation.
+    Establishes required inputs, scope clarity, and verification readiness.
+  path: docs/global/software-development/policy/definition-of-ready.md
 - id: software-development/standards/linting-requirements
   description: Linting and type-checking rules. Required fixes, import rules, and
     suppression limits.
@@ -292,10 +296,6 @@ snippets:
   description: Pre-commit quality gates, test principles, linting, isolation, anti-patterns.
     Hooks-first verification.
   path: docs/global/software-development/standards/testing.md
-- id: software-development/todo-readiness
-  description: Five criteria for implementation-ready todos. Single-session, verifiable,
-    atomic, clear scope, known approach. Guides work breakdown.
-  path: docs/global/software-development/todo-readiness.md
 - id: standard/modeling-policy
   description: Standards for data modeling, validation, and resource representation.
   path: docs/project/standard/modeling-policy.md

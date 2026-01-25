@@ -11,7 +11,7 @@ type: role
 
 ## Required reads
 
-- @docs/software-development/checklist/todo-readiness
+- @docs/software-development/policy/definition-of-ready
 
 ## Purpose
 
