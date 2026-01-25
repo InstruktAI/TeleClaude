@@ -11,25 +11,30 @@ type: procedure
 
 ## Goal
 
-Collect authoritative documentation, extract actionable facts, and store a concise summary with an index entry.
+Collect authoritative documentation, extract actionable facts, and store a concise summary as
+internal documentation. Third-party documentation must never be referenced directly by agent
+artifacts.
 
 1. **Search**
-   - Use the best available search tool for authoritative sources (official docs, specs, vendor references).
+   - Use authoritative sources. Acceptable sources are web links or Context7 snippet IDs.
+   - Prefer primary docs and official vendor references.
 
 2. **Fetch & Analyze**
-   - Prefer primary sources.
    - Extract key facts, configuration, schemas, and constraints.
+   - Separate facts from hypotheses. Do not publish hypotheses as facts.
 
 3. **Summarize & Index**
-   - Create a concise markdown summary.
-   - Update the docs index so the new entry is discoverable.
+   - Create a concise markdown summary as an internal snippet.
+   - Add a **Sources** section listing web links or Context7 snippet IDs.
+   - Update docs/index.yaml so the new entry is discoverable.
 
 4. **Verify**
-   - Read the generated summary for correctness and clarity.
+   - Read the summary for correctness and clarity.
    - Confirm the index entry is present and accurate.
+   - If no valid sources were found, do not write a summary; report the gap instead.
 
 - Summary is concise and actionable.
-- Sources are linked.
+- Sources are listed under a **Sources** section as web links or Context7 snippet IDs.
 - Index is updated.
 
 - TBD.
@@ -42,16 +47,21 @@ Collect authoritative documentation, extract actionable facts, and store a conci
 
 ## Preconditions
 
-- TBD.
+- The task has a clear research brief.
+- At least one authoritative source is available (web link or Context7 snippet ID).
 
 ## Steps
 
-- TBD.
+- Identify sources (web or Context7) and record them.
+- Draft an internal snippet that captures only validated facts.
+- Add sources to a **Sources** section.
+- Rebuild docs/index.yaml and validate.
 
 ## Outputs
 
-- TBD.
+- Internal documentation snippet with sources listed in **Sources**.
 
 ## Recovery
 
-- TBD.
+- If sources are missing or inconclusive, do not publish a snippet. Report the gap and
+  request clarification or additional sources.

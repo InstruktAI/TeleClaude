@@ -48,6 +48,7 @@ logger = get_logger(__name__)
 # WebSocket update polling interval in milliseconds
 WS_POLL_INTERVAL_MS = 100
 WS_HEAL_REFRESH_S = 5.0
+API_DISCONNECT_GRACE_S = 15.0
 
 # Mouse mask for curses - clicks, double-clicks, scroll wheel (NOT drag to allow text selection)
 MOUSE_MASK = (
@@ -184,6 +185,9 @@ class TelecApp:
         self._session_status_cache: dict[str, str] = {}
         self._last_active_pane_id: str | None = None
         self._last_ws_heal = time.monotonic()
+        self._refresh_error_since: float | None = None
+        self._refresh_error_notified = False
+        self._refresh_error_escalated = False
 
         # Animation system
         self.animation_engine = AnimationEngine()
@@ -291,9 +295,46 @@ class TelecApp:
             # Update footer with new availability
             self.footer = Footer(self.agent_availability)
             logger.debug("Data refresh complete")
+            self._refresh_error_since = None
+            self._refresh_error_notified = False
+            self._refresh_error_escalated = False
         except Exception as e:
-            logger.error("Failed to refresh data: %s", e, exc_info=True)
-            self.notify(f"Refresh failed: {e}", NotificationLevel.ERROR)
+            now = time.monotonic()
+            if self._refresh_error_since is None:
+                self._refresh_error_since = now
+                self._refresh_error_notified = False
+                self._refresh_error_escalated = False
+
+            elapsed = now - self._refresh_error_since
+            if elapsed < API_DISCONNECT_GRACE_S:
+                if not self._refresh_error_notified:
+                    self.notify(
+                        "API temporarily unavailable; retrying...",
+                        NotificationLevel.INFO,
+                    )
+                    self._refresh_error_notified = True
+                logger.debug(
+                    "Refresh failed within grace window (%.1fs): %s",
+                    elapsed,
+                    e,
+                )
+                return
+
+            if not self._refresh_error_escalated:
+                logger.error(
+                    "Failed to refresh data (after %.1fs): %s",
+                    elapsed,
+                    e,
+                    exc_info=True,
+                )
+                self.notify(f"Refresh failed: {e}", NotificationLevel.ERROR)
+                self._refresh_error_escalated = True
+            else:
+                logger.debug(
+                    "Refresh still failing after grace window (%.1fs): %s",
+                    elapsed,
+                    e,
+                )
 
     def notify(self, message: str, level: NotificationLevel = NotificationLevel.INFO) -> None:
         """Show a temporary notification.

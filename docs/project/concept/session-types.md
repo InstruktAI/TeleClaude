@@ -9,10 +9,7 @@ description: Classification of terminal sessions in TeleClaude.
 
 ## Purpose
 
-- Classify the session categories used in TeleClaude.
-
-- Inputs: session creation commands and launch intents.
-- Outputs: human, AI-to-AI, or worktree session behavior.
+Classify the session categories used in TeleClaude.
 
 ### 1. Human Session
 
@@ -36,17 +33,10 @@ description: Classification of terminal sessions in TeleClaude.
 
 - Misclassified sessions cause incorrect UX cleanup and routing.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Inputs/Outputs
 
-- TBD.
+- Inputs: session creation commands and launch intents.
+- Outputs: human, AI-to-AI, or worktree session behavior.
 
 ## Invariants
 

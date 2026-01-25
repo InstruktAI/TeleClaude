@@ -9,6 +9,8 @@ Extracted from mcp_server.py for maintainability.
 
 from mcp.types import Tool
 
+from teleclaude.constants import TAXONOMY_TYPES
+
 # Reusable instruction for AI-to-AI session management (appended to tool descriptions)
 REMOTE_AI_TIMER_INSTRUCTION = (
     "**After dispatching:** "
@@ -31,11 +33,13 @@ def get_tool_definitions() -> list[Tool]:
             title="TeleClaude: Get Context",
             description=(
                 "Two-phase snippet retrieval. "
-                "You will use this tool to get important context before starting any work. "
+                "You will use this tool to get important context before starting work TO AVOID MISTAKES BASED IN ASSUMPTIONS! "
                 "Phase 1: Call with no parameters (or with areas filter) to return snippet index with IDs and descriptions. "
                 "Phase 2: Call with snippet_ids parameter to retrieve full snippet content. "
                 "Always start with phase 1 when you are unsure which snippets apply. ALWAYS use phase 2 when you found interesting snippets! "
-                "Use when you need policy/procedure/role/checklist/reference etc context beyond what you already have."
+                "Example triggers: ",
+                "- you need policy/procedure/role/checklist/reference etc context beyond what you already have "
+                "- you're asked to apply some expertise or perform a role.",
             ),
             inputSchema={
                 "type": "object",
@@ -44,19 +48,7 @@ def get_tool_definitions() -> list[Tool]:
                         "type": "array",
                         "items": {
                             "type": "string",
-                            "enum": [
-                                "policy",
-                                "standard",
-                                "guide",
-                                "procedure",
-                                "role",
-                                "checklist",
-                                "reference",
-                                "concept",
-                                "architecture",
-                                "example",
-                                "principles",
-                            ],
+                            "enum": TAXONOMY_TYPES,
                         },
                         "description": "Phase 1 only: Taxonomy types to filter index (omit for all types). Ignored in Phase 2.",
                     },

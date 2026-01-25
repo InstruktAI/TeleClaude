@@ -11,7 +11,7 @@ type: role
 
 ## Required reads
 
-- @docs/software-development/standards/testing
+- @docs/software-development/policy/testing
 
 ## Purpose
 

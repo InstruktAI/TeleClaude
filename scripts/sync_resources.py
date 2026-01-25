@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Mapping, NotRequired, TypedDict
@@ -17,15 +18,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from teleclaude.constants import TYPE_SUFFIX as _TYPE_SUFFIX
+
 logger = get_logger(__name__)
 _WARNINGS: list[dict[str, str]] = []
 
 _REQUIRED_READS_HEADER = re.compile(r"^##\s+Required reads\s*$", re.IGNORECASE)
+_SOURCES_HEADER = re.compile(r"^##\s+Sources\s*$", re.IGNORECASE)
 _HEADER_LINE = re.compile(r"^#{1,6}\s+")
 _REQUIRED_READ_LINE = re.compile(r"^\s*-\s*@(\S+)\s*$")
 _H1_LINE = re.compile(r"^#\s+")
 _H2_LINE = re.compile(r"^##\s+")
 _INLINE_REF_LINE = re.compile(r"^\\s*(?:-\\s*)?@\\S+")
+_CODE_FENCE_LINE = re.compile(r"^```")
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "snippet_schema.yaml"
 
@@ -41,14 +46,152 @@ def _get_allowed_ref_prefixes() -> tuple[str, str]:
     return (f"@{root}/docs/", "@docs/")
 
 
+def _is_third_party_snippet(path: Path) -> bool:
+    return "third-party" in path.parts
+
+
+def _extract_sources_section(lines: list[str]) -> list[str]:
+    sources: list[str] = []
+    in_sources = False
+    for line in lines:
+        if _SOURCES_HEADER.match(line):
+            in_sources = True
+            continue
+        if in_sources and _H2_LINE.match(line):
+            break
+        if in_sources:
+            stripped = line.strip()
+            if stripped.startswith("- "):
+                sources.append(stripped[2:].strip())
+    return [s for s in sources if s]
+
+
+def _is_context7_id(value: str) -> bool:
+    return value.startswith("/api/library/") or value.startswith("/org/")
+
+
+def _is_web_url(value: str) -> bool:
+    return value.startswith("http://") or value.startswith("https://")
+
+
+def _check_url_alive(url: str, *, timeout: int = 8) -> bool:
+    try:
+        result = subprocess.run(
+            [
+                "curl",
+                "-sS",
+                "-I",
+                "-L",
+                "--max-time",
+                str(timeout),
+                url,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return False
+    return result.returncode == 0
+
+
+def _iter_inline_refs(lines: list[str]) -> list[str]:
+    refs: list[str] = []
+    in_code_block = False
+    for line in lines:
+        if _CODE_FENCE_LINE.match(line.strip()):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
+        if not _INLINE_REF_LINE.match(line):
+            continue
+        ref = line.strip().lstrip("-").strip()
+        refs.append(ref)
+    return refs
+
+
+def _resolve_inline_ref(project_root: Path, snippet_path: Path, ref: str) -> Path | None:
+    if not ref.startswith("@"):
+        return None
+    target = ref[1:]
+    if target.startswith("~"):
+        return Path(target).expanduser()
+    if target.startswith("/"):
+        return Path(target)
+    if target.startswith("./") or target.startswith("../"):
+        return (snippet_path.parent / target).resolve()
+    return (project_root / target).resolve()
+
+
+def _collect_inline_ref_errors(project_root: Path, snippet_path: Path, lines: list[str]) -> list[dict[str, str]]:
+    errors: list[dict[str, str]] = []
+    allowed_prefixes = _get_allowed_ref_prefixes()
+    for ref in _iter_inline_refs(lines):
+        if not ref.startswith(allowed_prefixes):
+            errors.append({"code": "snippet_invalid_inline_ref", "path": str(snippet_path), "ref": ref})
+            continue
+        resolved = _resolve_inline_ref(project_root, snippet_path, ref)
+        if resolved is None:
+            errors.append({"code": "snippet_invalid_inline_ref", "path": str(snippet_path), "ref": ref})
+            continue
+        if not resolved.exists():
+            errors.append(
+                {
+                    "code": "snippet_inline_ref_missing",
+                    "path": str(snippet_path),
+                    "ref": ref,
+                    "resolved": str(resolved),
+                }
+            )
+            continue
+        if not resolved.is_file():
+            errors.append(
+                {
+                    "code": "snippet_inline_ref_not_file",
+                    "path": str(snippet_path),
+                    "ref": ref,
+                    "resolved": str(resolved),
+                }
+            )
+    return errors
+
+
+def _validate_third_party_docs(project_root: Path) -> None:
+    third_party_root = project_root / "docs" / "third-party"
+    if not third_party_root.exists():
+        return
+    for path in sorted(third_party_root.rglob("*.md")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception as exc:
+            _warn("third_party_read_failed", path=str(path), error=str(exc))
+            continue
+        lines = text.splitlines()
+        sources = _extract_sources_section(lines)
+        if not sources:
+            _warn("third_party_missing_sources", path=str(path))
+            continue
+        for source in sources:
+            if _is_context7_id(source):
+                continue
+            if _is_web_url(source):
+                if not _check_url_alive(source):
+                    _warn("third_party_source_unreachable", path=str(path), source=source)
+                continue
+            _warn("third_party_source_invalid", path=str(path), source=source)
+
+
 class GlobalSchemaConfig(TypedDict, total=False):
     required_reads_title: str
     see_also_title: str
+    sources_title: str
     require_h1: bool
     require_h1_first: bool
     require_required_reads: bool
     required_reads_header_level: int
     see_also_header_level: int
+    sources_header_level: int
     allow_h3: bool
 
 
@@ -62,26 +205,6 @@ class SchemaConfig(TypedDict):
     sections: dict[str, SectionSchema]
 
 
-_TYPE_SUFFIX = {
-    "policy": "Policy",
-    "procedure": "Procedure",
-    "reference": "Reference",
-    "principles": "Principle",
-    "principle": "Principle",
-    "standard": "Standard",
-    "guide": "Guide",
-    "checklist": "Checklist",
-    "role": "Role",
-    "concept": "Concept",
-    "architecture": "Architecture",
-    "example": "Example",
-    "decision": "Decision",
-    "incident": "Incident",
-    "timeline": "Timeline",
-    "faq": "FAQ",
-}
-
-
 def _resolve_requires(
     file_path: Path,
     requires: list[str],
@@ -93,7 +216,6 @@ def _resolve_requires(
     for req in requires:
         if not isinstance(req, str):
             continue
-        # If requires already looks like a snippet id, keep it.
         if not req.endswith(".md"):
             resolved.append(req)
             continue
@@ -169,6 +291,7 @@ def _load_schema() -> SchemaConfig:
             if key in {
                 "required_reads_title",
                 "see_also_title",
+                "sources_title",
             } and isinstance(value, str):
                 global_cfg[key] = value
             elif key in {
@@ -181,6 +304,7 @@ def _load_schema() -> SchemaConfig:
             elif key in {
                 "required_reads_header_level",
                 "see_also_header_level",
+                "sources_header_level",
             } and isinstance(value, int):
                 global_cfg[key] = value
 
@@ -240,7 +364,7 @@ def _normalize_title(
     return "\n".join(lines) + ("\n" if content.endswith("\n") else "")
 
 
-def _normalize_titles(snippets_root: Path) -> None:
+def _normalize_titles(snippets_root: Path, project_root: Path) -> None:
     for path in sorted(snippets_root.rglob("*.md")):
         if path.name == "index.yaml":
             continue
@@ -279,10 +403,10 @@ def _normalize_titles(snippets_root: Path) -> None:
                 except Exception as exc:
                     _warn("title_write_failed", path=str(path), error=str(exc))
                     full_content = text
-        _validate_snippet_format(path, full_content)
+        _validate_snippet_format(path, full_content, project_root)
 
 
-def _validate_snippet_format(path: Path, content: str) -> None:
+def _validate_snippet_format(path: Path, content: str, project_root: Path) -> None:
     has_frontmatter = content.lstrip().startswith("---")
     if has_frontmatter:
         try:
@@ -308,10 +432,17 @@ def _validate_snippet_format(path: Path, content: str) -> None:
 
     required_reads_found = False
     required_reads_header_idx = None
+    sources_found = False
+    sources_header_idx = None
     for idx, line in enumerate(lines):
         if _REQUIRED_READS_HEADER.match(line):
             required_reads_found = True
             required_reads_header_idx = idx
+            break
+    for idx, line in enumerate(lines):
+        if _SOURCES_HEADER.match(line):
+            sources_found = True
+            sources_header_idx = idx
             break
     if _SCHEMA["global_"].get("require_required_reads", True):
         if not required_reads_found:
@@ -333,14 +464,12 @@ def _validate_snippet_format(path: Path, content: str) -> None:
         last_h2 = normalized_titles[-1] if normalized_titles else ""
         if last_h2 != "see also":
             _warn("snippet_see_also_not_last", path=str(path))
+    if sources_found and sources_header_idx is not None:
+        if not lines[sources_header_idx].startswith("## "):
+            _warn("snippet_sources_header_level", path=str(path))
 
-    allowed_prefixes = _get_allowed_ref_prefixes()
-    for line in lines:
-        if not _INLINE_REF_LINE.match(line):
-            continue
-        ref = line.strip().lstrip("-").strip()
-        if not ref.startswith(allowed_prefixes):
-            _warn("snippet_invalid_inline_ref", path=str(path), ref=ref)
+    for error in _collect_inline_ref_errors(project_root, path, lines):
+        _warn(error["code"], **{k: v for k, v in error.items() if k != "code"})
 
     snippet_type = None
     if isinstance(meta.get("type"), str):
@@ -352,6 +481,18 @@ def _validate_snippet_format(path: Path, content: str) -> None:
             for field in ("id", "type", "scope", "description"):
                 if not isinstance(meta.get(field), str) or not meta.get(field):
                     _warn("snippet_missing_frontmatter_field", path=str(path), field=field)
+    if _is_third_party_snippet(path):
+        sources = _extract_sources_section(lines)
+        if not sources:
+            _warn("snippet_missing_sources", path=str(path))
+        for source in sources:
+            if _is_context7_id(source):
+                continue
+            if _is_web_url(source):
+                if not _check_url_alive(source):
+                    _warn("snippet_source_unreachable", path=str(path), source=source)
+                continue
+            _warn("snippet_source_invalid", path=str(path), source=source)
     if not snippet_type:
         snippet_type = _infer_type_from_path(path)
     if snippet_type:
@@ -363,7 +504,7 @@ def _validate_snippet_format(path: Path, content: str) -> None:
             if req not in normalized_titles:
                 _warn("snippet_missing_required_section", path=str(path), section=req)
         for title in normalized_titles:
-            if title in ("required reads", "see also"):
+            if title in ("required reads", "see also", "sources"):
                 continue
             if title not in allowed:
                 _warn("snippet_unknown_section", path=str(path), section=title)
@@ -375,7 +516,7 @@ class SnippetEntry(TypedDict):
     type: str
     scope: str
     path: str
-    requires: list[str]
+    requires: NotRequired[list[str]]
     source_project: NotRequired[str]  # Added for tracking ownership in global docs
 
 
@@ -474,13 +615,29 @@ def _write_baseline_index(project_root: Path) -> None:
     baseline_index.write_text(content, encoding="utf-8")
 
 
+def _remove_non_baseline_indexes(snippets_root: Path) -> list[str]:
+    removed: list[str] = []
+    for path in sorted(snippets_root.rglob("index.md")):
+        if "baseline" in path.parts:
+            continue
+        try:
+            path.unlink()
+            removed.append(str(path))
+            logger.warning("index_removed", path=str(path))
+            print(f"Removed unnecessary index.md: {path}. Avoid creating index.md files outside baseline.")
+        except Exception as exc:
+            logger.warning("index_remove_failed", path=str(path), error=str(exc))
+    return removed
+
+
 def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload:
     violations = _strip_baseline_frontmatter(project_root)
     if violations:
         logger.warning("baseline_frontmatter_removed", paths=violations)
         print("Unexpected baseline frontmatter was found and cleaned.")
     _write_baseline_index(project_root)
-    _normalize_titles(snippets_root)
+    _remove_non_baseline_indexes(snippets_root)
+    _normalize_titles(snippets_root, project_root)
     if not snippets_root.exists():
         return {
             "project_root": str(project_root),
@@ -519,7 +676,7 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
         ):
             continue
         requires_list = _extract_required_reads(post.content)
-        requires = _resolve_requires(file_path, requires_list, snippets_root, project_root, snippet_path_to_id)
+        resolved_refs = _resolve_requires(file_path, requires_list, snippets_root, project_root, snippet_path_to_id)
         try:
             relative_path = str(file_path.relative_to(project_root))
         except ValueError:
@@ -530,8 +687,9 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             "type": snippet_type,
             "scope": snippet_scope,
             "path": relative_path,
-            "requires": requires,
         }
+        if resolved_refs:
+            entry["requires"] = resolved_refs
         snippets.append(entry)
 
     snippets.sort(key=lambda entry: entry["id"])
@@ -592,6 +750,40 @@ def _get_project_name(project_root: Path) -> str:
         except Exception:
             pass
     return project_root.name
+
+
+def _detect_cycles(payload: IndexPayload) -> None:
+    graph: dict[str, list[str]] = {}
+    for entry in payload.get("snippets", []):
+        graph[entry["id"]] = list(entry.get("requires", []))
+
+    visited: set[str] = set()
+    in_stack: set[str] = set()
+    stack: list[str] = []
+
+    def visit(node: str) -> None:
+        if node in in_stack:
+            idx = stack.index(node) if node in stack else 0
+            cycle = stack[idx:] + [node]
+            _warn(
+                "snippet_circular_reference",
+                cycle=" -> ".join(cycle),
+                hint="Fix circular references first.",
+            )
+            return
+        if node in visited:
+            return
+        visited.add(node)
+        in_stack.add(node)
+        stack.append(node)
+        for nxt in graph.get(node, []):
+            if nxt in graph:
+                visit(nxt)
+        stack.pop()
+        in_stack.remove(node)
+
+    for node in graph:
+        visit(node)
 
 
 def _check_global_collisions(
@@ -679,42 +871,12 @@ def _check_global_collisions(
         raise SystemExit("\n".join(error_msg))
 
 
-def _detect_cycles(payload: IndexPayload) -> None:
-    graph: dict[str, list[str]] = {}
-    for entry in payload.get("snippets", []):
-        graph[entry["id"]] = list(entry.get("requires", []))
-
-    visited: set[str] = set()
-    in_stack: set[str] = set()
-    stack: list[str] = []
-
-    def visit(node: str) -> None:
-        if node in in_stack:
-            idx = stack.index(node) if node in stack else 0
-            cycle = stack[idx:] + [node]
-            _warn(
-                "snippet_circular_reference",
-                cycle=" -> ".join(cycle),
-                hint="Fix circular references first.",
-            )
-            return
-        if node in visited:
-            return
-        visited.add(node)
-        in_stack.add(node)
-        stack.append(node)
-        for nxt in graph.get(node, []):
-            if nxt in graph:
-                visit(nxt)
-        stack.pop()
-        in_stack.remove(node)
-
-    for node in graph:
-        visit(node)
-
-
 def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
     target = snippets_root / "index.yaml"
+    if "third-party" in snippets_root.parts:
+        if target.exists():
+            target.unlink()
+        return target
     payload = build_index_payload(project_root, snippets_root)
     # Note: build_index_payload now returns portable paths with tilde by default
     if not payload["snippets"]:
@@ -734,10 +896,16 @@ def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build snippet indexes with portable paths.")
     parser.add_argument("--project-root", default=str(Path.cwd()), help="Project root (default: cwd)")
+    parser.add_argument(
+        "--warn-only",
+        action="store_true",
+        help="Best-effort mode: report warnings but do not exit non-zero.",
+    )
     args = parser.parse_args()
 
     project_root = Path(args.project_root).expanduser().resolve()
     _ensure_project_config(project_root)
+    _validate_third_party_docs(project_root)
     roots = _iter_snippet_roots(project_root)
     if not roots:
         logger.info("no_snippet_roots", project_root=str(project_root))
@@ -748,12 +916,13 @@ def main() -> None:
     for path in written:
         logger.info("index_written", path=str(path))
         print(str(path))
+    warn_only = args.warn_only or bool(os.getenv("TELECLAUDE_DOCS_AUTOMATION"))
     if _WARNINGS:
         print(f"Snippet validation warnings: {len(_WARNINGS)}")
         for warning in _WARNINGS:
             details = " ".join(f"{k}={v}" for k, v in warning.items() if k not in {"code"})
             print(f"- {warning['code']} {details}".strip())
-        if not os.getenv("TELECLAUDE_DOCS_AUTOMATION"):
+        if not warn_only:
             raise SystemExit(1)
 
 

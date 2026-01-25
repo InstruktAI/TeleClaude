@@ -127,6 +127,15 @@ def build_snippet_index(project_root: Path, *, snippets_dir: Path | None = None)
         logger.warning("Snippets directory missing", path=str(snippets_root))
         return []
 
+    for index_path in sorted(snippets_root.rglob("index.md")):
+        if "baseline" in index_path.parts:
+            continue
+        try:
+            index_path.unlink()
+            logger.warning("index_removed", path=str(index_path))
+        except Exception as exc:
+            logger.warning("index_remove_failed", path=str(index_path), error=str(exc))
+
     entries: list[SnippetEntry] = []
     for file_path in sorted(snippets_root.rglob("*.md")):
         if "baseline" in str(file_path):
@@ -145,14 +154,13 @@ def build_snippet_index(project_root: Path, *, snippets_dir: Path | None = None)
             relative_path = str(file_path.relative_to(root))
         except ValueError:
             relative_path = str(file_path)
-        entries.append(
-            SnippetEntry(
-                snippet_id=snippet_id,
-                description=description,
-                path=relative_path,
-                requires=requires,
-            )
+        entry = SnippetEntry(
+            snippet_id=snippet_id,
+            description=description,
+            path=relative_path,
+            requires=requires,
         )
+        entries.append(entry)
 
     entries.sort(key=lambda entry: entry.snippet_id)
     return entries
@@ -161,17 +169,19 @@ def build_snippet_index(project_root: Path, *, snippets_dir: Path | None = None)
 def build_index_payload(project_root: Path) -> IndexPayload:
     """Build the YAML payload for docs/index.yaml."""
     entries = build_snippet_index(project_root)
+    snippets_payload: list[dict[str, object]] = []
+    for entry in entries:
+        item: dict[str, object] = {
+            "id": entry.snippet_id,
+            "description": entry.description,
+            "path": entry.path,
+        }
+        if entry.requires:
+            item["requires"] = entry.requires
+        snippets_payload.append(item)
     payload: IndexPayload = {
         "project_root": str(project_root.resolve()),
-        "snippets": [
-            {
-                "id": entry.snippet_id,
-                "description": entry.description,
-                "path": entry.path,
-                "requires": entry.requires,
-            }
-            for entry in entries
-        ],
+        "snippets": snippets_payload,
     }
     return payload
 

@@ -11,9 +11,7 @@ type: procedure
 
 ## Goal
 
-- @docs/software-development/todo-readiness
-
-@~/.teleclaude/docs/software-development/todo-readiness.md
+- @docs/software-development/checklist/todo-readiness
 
 If `todos/{slug}/input.md` exists and `todos/{slug}/state.json` lacks `breakdown.assessed`, perform readiness assessment.
 

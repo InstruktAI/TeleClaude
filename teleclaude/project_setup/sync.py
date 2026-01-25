@@ -24,6 +24,7 @@ def sync_project_artifacts(project_root: Path) -> None:
             "run",
             "--quiet",
             "scripts/sync_resources.py",
+            "--warn-only",
             "--project-root",
             str(project_root),
         ],
@@ -70,7 +71,7 @@ def _install_launchd_watch(project_root: Path) -> None:
 
     command = (
         f"cd {project_root} && "
-        f"uv run --quiet scripts/sync_resources.py --project-root {project_root} && "
+        f"uv run --quiet scripts/sync_resources.py --warn-only --project-root {project_root} && "
         f"uv run --quiet scripts/distribute.py --project-root {project_root} --deploy"
     )
     watch_paths = [
@@ -138,7 +139,7 @@ def _install_systemd_watch(project_root: Path) -> None:
 
     command = (
         f"cd {project_root} && "
-        f"uv run --quiet scripts/sync_resources.py --project-root {project_root} && "
+        f"uv run --quiet scripts/sync_resources.py --warn-only --project-root {project_root} && "
         f"uv run --quiet scripts/distribute.py --project-root {project_root} --deploy"
     )
 

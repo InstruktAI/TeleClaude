@@ -12,7 +12,7 @@ type: guide
 ## Goal
 
 - @docs/software-development/guides/python/core
-- @docs/software-development/standards/code-quality
+- @docs/software-development/policy/code-quality
 
 @~/.teleclaude/docs/software-development/guides/python/core.md
 @~/.teleclaude/docs/software-development/standards/code-quality.md

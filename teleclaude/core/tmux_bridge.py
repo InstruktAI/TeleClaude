@@ -960,9 +960,12 @@ async def capture_pane(session_name: str) -> str:
         )
         return ""
 
+    except SubprocessTimeoutError as e:
+        logger.error("Timeout capturing pane from session %s: %s", session_name, e)
+        raise
     except Exception as e:
         logger.error("Exception capturing pane from session %s: %s", session_name, e)
-        return ""
+        raise
 
 
 async def kill_session(session_name: str) -> bool:
@@ -1074,9 +1077,12 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
 
         return result.returncode == 0
 
+    except SubprocessTimeoutError as e:
+        logger.error("Timeout in session_exists for %s: %s", session_name, e)
+        raise
     except Exception as e:
         logger.error("Exception in session_exists for %s: %s", session_name, e)
-        return False
+        raise
 
 
 async def get_current_command(session_name: str) -> Optional[str]:
@@ -1157,8 +1163,12 @@ async def is_pane_dead(session_name: str) -> bool:
         if not panes:
             return False
         return all(int(pane) == 1 for pane in panes if pane.isdigit())
-    except Exception:
-        return False
+    except SubprocessTimeoutError as e:
+        logger.error("Timeout checking pane_dead for %s: %s", session_name, e)
+        raise
+    except Exception as e:
+        logger.error("Exception checking pane_dead for %s: %s", session_name, e)
+        raise
 
 
 async def get_session_pane_id(session_name: str) -> Optional[str]:

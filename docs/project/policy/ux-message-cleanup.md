@@ -9,41 +9,69 @@ description: Automatic cleanup of Telegram message clutter for a clean UI.
 
 ## Rule
 
-- Track user input and feedback messages for deletion to keep Telegram topics clean.
-- Use `pending_deletions` with `deletion_type` to distinguish user input vs feedback.
-- Never delete persistent AI results or file artifacts.
-- Use tracking APIs instead of raw `reply_text`.
+Track user input and feedback messages for automatic deletion to keep Telegram topics clean and focused on AI output.
 
-- Prevents clutter, keeps session context readable, and avoids message spam.
+**Message Categories**:
 
-- Applies to all Telegram UI adapter flows and message responses.
+- **User Input**: Text messages, voice transcriptions, file notifications sent by user → deleted on next input
+- **Feedback**: Confirmation messages ("✅ Sent to AI", "🎤 Transcribing...") → deleted on next feedback
+- **Output**: AI response messages → NEVER deleted, edited in-place
+- **Artifacts**: File uploads, result documents → NEVER deleted
 
-- Verify cleanup flows delete user_input messages on next input.
-- Verify feedback cleanup runs before sending new feedback.
-- Audit usage of `db.add_pending_deletion` in adapter responses.
+**Cleanup Triggers**:
 
-- Persistent AI results and file artifacts are never deleted.
+- `CleanupTrigger.NEXT_NOTICE`: Delete on next feedback message
+- `CleanupTrigger.NEXT_INPUT`: Delete on next user input (currently unused - all use NEXT_NOTICE)
+- `CleanupTrigger.TURN_COMPLETE`: Delete when AI finishes turn (future extension)
+- `CleanupTrigger.MANUAL`: No automatic deletion
 
-- TBD.
+**Implementation**:
 
-- TBD.
-
-- TBD.
-
-- TBD.
+- Store message_id in `pending_deletions` table with session_id
+- Query and delete all pending messages before sending new feedback
+- Clear `pending_deletions` after successful deletion
 
 ## Rationale
 
-- TBD.
+Without cleanup, Telegram topics become cluttered with:
+
+- Redundant user messages (visible in AI output anyway)
+- Stale feedback ("Sending..." when already sent)
+- Repeated confirmations creating visual noise
+
+Clean topics keep focus on the AI conversation and make session history scannable.
 
 ## Scope
 
-- TBD.
+Applies to:
+
+- All UI adapters (Telegram, future Slack/WhatsApp)
+- User message handlers in input_handlers.py
+- Feedback emission in adapter_client.py and ui_adapter.py
+- Voice message transcription flows
+
+Does NOT apply to:
+
+- Transport adapters (Redis - no UI messages)
+- API adapter (no persistent message history)
+- MCP adapter (stdio-based, no message concepts)
 
 ## Enforcement
 
-- TBD.
+**Code patterns**:
+
+- Use `AdapterClient.send_message(..., cleanup_trigger=CleanupTrigger.NEXT_NOTICE)` for feedback
+- Call `AdapterClient.pre_handle_command(session, origin)` before processing user input
+- Never use raw Telegram `reply_text` - always route through tracking APIs
+
+**Testing**:
+
+- Verify `pending_deletions` table populated when sending feedback
+- Verify deletion occurs before next feedback (no duplicate confirmations visible)
+- Verify output messages never appear in `pending_deletions`
 
 ## Exceptions
 
-- TBD.
+- **AI-to-AI sessions**: No feedback messages sent (listeners handle notifications instead)
+- **Persistent artifacts**: Files uploaded by AI, result documents, logs → never tracked for deletion
+- **Output messages**: Single persistent message per session, edited in-place → never deleted until session closes

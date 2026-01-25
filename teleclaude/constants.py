@@ -5,6 +5,35 @@ This module defines shared constants to ensure consistency.
 
 from enum import Enum
 
+# Taxonomy Types (single source of truth)
+# Used for snippet categorization and get_context filtering
+TAXONOMY_TYPES = [
+    "policy",
+    "guide",
+    "procedure",
+    "role",
+    "checklist",
+    "reference",
+    "concept",
+    "architecture",
+    "example",
+    "principle",
+]
+
+# Display suffix mapping for snippet types
+TYPE_SUFFIX = {
+    "policy": "Policy",
+    "procedure": "Procedure",
+    "reference": "Reference",
+    "principle": "Principle",
+    "guide": "Guide",
+    "checklist": "Checklist",
+    "role": "Role",
+    "concept": "Concept",
+    "architecture": "Architecture",
+    "example": "Example",
+}
+
 # MCP Configuration
 MCP_SOCKET_PATH = "/tmp/teleclaude.sock"
 API_SOCKET_PATH = "/tmp/teleclaude-api.sock"

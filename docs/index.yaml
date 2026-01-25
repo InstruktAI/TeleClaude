@@ -1,882 +1,414 @@
-project_root: ~/Documents/Workspace/InstruktAI/TeleClaude
-snippets_root: ~/Documents/Workspace/InstruktAI/TeleClaude/docs
+project_root: /Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude
 snippets:
 - id: architecture/cache-system
   description: Event-driven read-cache architecture using SQLite snapshots.
-  type: architecture
-  scope: project
   path: docs/project/architecture/cache-system.md
-  requires: []
-  source_project: TeleClaude
 - id: architecture/mcp-layer
   description: Resilient two-layer MCP architecture for AI-to-AI communication.
-  type: architecture
-  scope: global
   path: docs/project/architecture/mcp-layer.md
-  requires: []
-  source_project: TeleClaude
 - id: architecture/next-machine
   description: Stateless state machine for orchestrating multi-phase project workflows.
-  type: architecture
-  scope: global
   path: docs/project/architecture/next-machine.md
-  requires: []
-  source_project: TeleClaude
 - id: architecture/output-polling
   description: Mechanism for real-time terminal output capture and streaming.
-  type: architecture
-  scope: project
   path: docs/project/architecture/output-polling.md
-  requires: []
-  source_project: TeleClaude
 - id: architecture/session-lifecycle
   description: Complete lifecycle of a terminal session from creation to cleanup.
-  type: architecture
-  scope: project
   path: docs/project/architecture/session-lifecycle.md
-  requires: []
-  source_project: TeleClaude
 - id: architecture/system-overview
   description: High-level architectural blueprint of TeleClaude components and data
     flow.
-  type: architecture
-  scope: global
   path: docs/project/architecture/system-overview.md
-  requires: []
-  source_project: TeleClaude
 - id: checklist/multi-computer-readiness
   description: Verification steps before enabling multi-computer orchestration.
-  type: checklist
-  scope: global
   path: docs/project/checklist/multi-computer-readiness.md
-  requires: []
-  source_project: TeleClaude
 - id: concept/durable-execution
   description: Reliability mechanism using the Outbox pattern in SQLite.
-  type: concept
-  scope: global
   path: docs/project/concept/durable-execution.md
-  requires: []
-  source_project: TeleClaude
 - id: concept/git-worktrees
   description: Use of git worktrees for isolated agent development and testing.
-  type: concept
-  scope: project
   path: docs/project/concept/git-worktrees.md
-  requires: []
-  source_project: TeleClaude
 - id: concept/multi-computer-addressing
   description: How computers and sessions are addressed in a distributed TeleClaude
     network.
-  type: concept
-  scope: global
   path: docs/project/concept/multi-computer-addressing.md
-  requires: []
-  source_project: TeleClaude
 - id: concept/session-types
   description: Classification of terminal sessions in TeleClaude.
-  type: concept
-  scope: global
   path: docs/project/concept/session-types.md
-  requires: []
-  source_project: TeleClaude
 - id: docs/procedure/agents-distribution
   description: Steps to build and distribute agent artifacts in this repository.
-  type: procedure
-  scope: project
   path: docs/project/procedure/agents-distribution.md
-  requires: []
-  source_project: TeleClaude
 - id: example/ai-to-ai-delegation
   description: Code example of a Master AI delegating a task to a Worker AI.
-  type: example
-  scope: global
   path: docs/project/example/ai-to-ai-delegation.md
-  requires: []
-  source_project: TeleClaude
-- id: general/index
-  description: Entry point for general authoring and agent artifact documentation.
-  type: reference
-  scope: global
-  path: docs/global/general/index.md
-  requires: []
-  source_project: TeleClaude
+- id: general/concept/normalized-agent-artifacts
+  description: Normalized agent artifact primitives and how they map to supported
+    CLIs.
+  path: docs/global/general/concept/normalized-agent-artifacts.md
 - id: general/policy/referencing-doc-snippets
   description: Policy for referencing documentation snippets in AI agent prompts.
-  type: policy
-  scope: global
   path: docs/global/general/policy/referencing-doc-snippets.md
-  requires: []
-  source_project: TeleClaude
 - id: general/policy/stateless-agent-commands
   description: Policy for defining stateless AI agent commands.
-  type: policy
-  scope: global
   path: docs/global/general/policy/stateless-agent-commands.md
-  requires: []
-  source_project: TeleClaude
 - id: general/principles/intent-first-documentation
   description: Preserve intent, boundaries, and durable reasoning in documentation.
-  type: principles
-  scope: global
   path: docs/global/general/principles/intent-first-documentation.md
-  requires: []
-  source_project: TeleClaude
 - id: general/principles/priming
   description: Prime agents with the minimal, role-specific context required to act.
-  type: principles
-  scope: global
   path: docs/global/general/principles/priming.md
-  requires: []
-  source_project: TeleClaude
 - id: general/procedure/agent-artifact-authoring
   description: Author agent artifacts (agents, skills, commands) that compile into
     tool-specific formats.
-  type: procedure
-  scope: global
   path: docs/global/general/procedure/agent-artifact-authoring.md
-  requires: []
-  source_project: TeleClaude
 - id: general/procedure/agents-authoring
   description: Author AGENTS.md files that bootstrap required reads and role context.
-  type: procedure
-  scope: global
   path: docs/global/general/procedure/agents-authoring.md
-  requires: []
-  source_project: TeleClaude
 - id: general/procedure/agents-md-authoring
   description: Author AGENTS.md files that bootstrap required reads and role context.
-  type: procedure
-  scope: global
   path: docs/global/general/procedure/agents-md-authoring.md
-  requires: []
-  source_project: TeleClaude
 - id: general/procedure/snippet-authoring-sequence
   description: Sequence for authoring and validating documentation snippets.
-  type: procedure
-  scope: global
   path: docs/global/general/procedure/snippet-authoring-sequence.md
-  requires: []
-  source_project: TeleClaude
 - id: general/reference/agent-artifacts
   description: Minimal schema used for agent artifacts (commands and skills).
-  type: reference
-  scope: global
   path: docs/global/general/reference/agent-artifacts.md
-  requires: []
-  source_project: TeleClaude
 - id: general/reference/snippet-authoring-schema
   description: Schema and section requirements for documentation snippets belonging
     to a taxonomy.
-  type: reference
-  scope: global
   path: docs/global/general/reference/snippet-authoring-schema.md
-  requires: []
-  source_project: TeleClaude
 - id: guide/agents-repo-workflow
   description: Recommended workflow for maintaining agent artifacts and generated
     outputs in a local agents repository.
-  type: guide
-  scope: project
   path: docs/project/guide/agents-repo-workflow.md
-  requires: []
-  source_project: TeleClaude
 - id: guide/multi-computer-setup
   description: Step-by-step guide for setting up a distributed TeleClaude network.
-  type: guide
-  scope: global
   path: docs/project/guide/multi-computer-setup.md
-  requires: []
-  source_project: TeleClaude
 - id: guide/troubleshooting
   description: Diagnostic steps for common TeleClaude operational issues.
-  type: guide
-  scope: global
   path: docs/project/guide/troubleshooting.md
-  requires: []
-  source_project: TeleClaude
 - id: policy/adapter-boundaries
   description: Strict separation between adapters and core logic.
-  type: policy
-  scope: project
   path: docs/project/policy/adapter-boundaries.md
-  requires: []
-  source_project: TeleClaude
 - id: policy/agent-service-control
   description: Guardrails for agent-run service control in this repo.
-  type: policy
-  scope: project
   path: docs/project/policy/agent-service-control.md
-  requires: []
-  source_project: TeleClaude
 - id: policy/master-bot-registration
   description: Policy for Telegram command registration in multi-computer setups.
-  type: policy
-  scope: global
   path: docs/project/policy/master-bot-registration.md
-  requires: []
-  source_project: TeleClaude
 - id: policy/mcp-connection-resilience
   description: Architecture policy for MCP connection handling and zero-downtime restarts.
-  type: policy
-  scope: global
   path: docs/project/policy/mcp-connection-resilience.md
-  requires: []
-  source_project: TeleClaude
 - id: policy/single-database
   description: Guaranteed single database file usage for the daemon to prevent data
     fragmentation.
-  type: policy
-  scope: project
   path: docs/project/policy/single-database.md
-  requires: []
-  source_project: TeleClaude
 - id: policy/ux-message-cleanup
   description: Automatic cleanup of Telegram message clutter for a clean UI.
-  type: policy
-  scope: project
   path: docs/project/policy/ux-message-cleanup.md
-  requires: []
-  source_project: TeleClaude
 - id: procedure/rsync-development
   description: High-speed iteration workflow using rsync instead of git push/pull.
-  type: procedure
-  scope: project
   path: docs/project/procedure/rsync-development.md
-  requires: []
-  source_project: TeleClaude
 - id: procedure/service-management
   description: Standard commands for managing the TeleClaude daemon service.
-  type: procedure
-  scope: project
   path: docs/project/procedure/service-management.md
-  requires: []
-  source_project: TeleClaude
 - id: procedure/ssh-agent-keychain
   description: Procedure for configuring persistent SSH agent access for the daemon.
-  type: procedure
-  scope: global
   path: docs/project/procedure/ssh-agent-keychain.md
-  requires: []
-  source_project: TeleClaude
-- id: reference/agent-transpilation
-  description: Rules for transpiling master artifacts into runtime-specific formats.
-  type: reference
-  scope: global
-  path: docs/project/reference/agent-transpilation.md
-  requires: []
-  source_project: TeleClaude
 - id: role/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
-  type: role
-  scope: global
   path: docs/project/role/ai-worker.md
-  requires: []
-  source_project: TeleClaude
 - id: role/master-bot
   description: The role of the master bot in a multi-computer Telegram supergroup.
-  type: role
-  scope: global
   path: docs/project/role/master-bot.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/checklist/security-review
   description: Security review checklist for boundary validation, secrets, and access
     controls.
-  type: checklist
-  scope: domain
   path: docs/global/software-development/checklist/security-review.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/concept/agent-artifact-distribution
   description: How agent artifacts are built and distributed to tool-specific formats.
-  type: concept
-  scope: domain
   path: docs/global/software-development/concept/agent-artifact-distribution.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/failure-modes
   description: Five AI pitfalls to guard against. Trust code over comments, verify
     before concluding, hunt bugs actively, slow down, trace actual values not patterns.
-  type: concept
-  scope: domain
   path: docs/global/software-development/failure-modes.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/guide/agent-artifacts-quickstart
   description: Quickstart for authoring and distributing agent artifacts.
-  type: guide
-  scope: domain
   path: docs/global/software-development/guide/agent-artifacts-quickstart.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/guide/code-quality-practices
   description: Practical guidance for applying code-quality policy in day-to-day work.
-  type: guide
-  scope: domain
   path: docs/global/software-development/guide/code-quality-practices.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/guides/python/core
   description: Python typing, data handling, error patterns, async, idioms. Modern
     syntax, explicit types, pure functions.
-  type: guide
-  scope: domain
   path: docs/global/software-development/guides/python/core.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/guides/python/logging
   description: InstruktAI Python logging standard. Logfmt format, dual-level control,
     structured pairs, tail-friendly output.
-  type: guide
-  scope: domain
   path: docs/global/software-development/guides/python/logging.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/guides/typescript/core
   description: TypeScript strict typing, discriminated unions, type guards, property
     checks. No any, no enum, no default exports.
-  type: guide
-  scope: domain
   path: docs/global/software-development/guides/typescript/core.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/principles/architecture/boundary-purity
   description: Preserve domain intent by isolating transport and UI concerns from
     core logic.
-  type: principles
-  scope: domain
   path: docs/global/software-development/principles/architecture/boundary-purity.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/bugs-handling
   description: Triage bugs, decide quick fixes vs new todos, and track resolution
     in bugs.md.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/bugs-handling.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle-overview
   description: Deterministic software development lifecycle with prepare, build, review,
     fix, documentation, finalize, and maintenance phases. Serial workflow managed
     by Orchestrator.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle-overview.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/build
   description: Build phase. Execute implementation plan tasks, commit per task, and
     manage deferrals.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/build.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/deferrals
   description: Process deferrals, create new todos, and mark deferrals as processed.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/deferrals.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/documentation/overview
   description: Documentation phase ensuring inline docstrings and docs match the code.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/documentation/overview.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/documentation/sync-docs
   description: Regenerate docs from code and existing documentation using the taxonomy.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/documentation/sync-docs.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/documentation/sync-docstrings
   description: Update inline docstrings and comments to match current code behavior.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/documentation/sync-docstrings.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/finalize
   description: Finalize phase. Verify approval, merge to main, log delivery, and cleanup.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/finalize.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/fix-review
   description: Fix phase. Address review findings with minimal changes and re-verify.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/fix-review.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/maintenance
   description: Maintenance phase for repo-wide upkeep (security, dependencies, infra).
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/maintenance.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare
   description: Prepare phase entry point. Decide roadmap focus, assess input readiness,
     and review requirements/plan.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/prepare.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/implementation-planning
   description: Analyze or draft implementation-plan.md with approach, files, tasks,
     risks.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/prepare/implementation-planning.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/input-assessment
   description: Assess input.md readiness using Definition of Ready criteria and decide
     whether to split.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/prepare/input-assessment.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/requirements-analysis
   description: Analyze or verify requirements.md content for completeness and clarity.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/prepare/requirements-analysis.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/review
   description: Review phase. Verify requirements, code quality, tests, and deliver
     verdict with findings.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/lifecycle/review.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/orchestration
   description: Orchestration loop for the next-work state machine and worker session
     handling.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/orchestration.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/research/3rd-party-research
   description: 'Research third-party docs: search authoritative sources, fetch, summarize,
     and index findings.'
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/research/3rd-party-research.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/scaffolding/python
   description: Scaffold a Python repo with standard tooling, Makefile targets, and
     uv-managed dependencies.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/scaffolding/python.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/procedure/scaffolding/typescript
   description: Scaffold a TypeScript repo with standard package scripts, tooling,
     and compiler config.
-  type: procedure
-  scope: domain
   path: docs/global/software-development/procedure/scaffolding/typescript.md
-  requires: []
-  source_project: TeleClaude
-- id: software-development/roles/administrator
-  description: Process awareness role. Know workflow, keep roles aligned, process
-    deferrals, create new todos, manage dependencies.
-  type: role
-  scope: domain
-  path: docs/global/software-development/roles/administrator.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/roles/architect
   description: Strategic role. Requirements, architecture, use cases. Break down work,
     create implementation plans, ensure readiness.
-  type: role
-  scope: domain
   path: docs/global/software-development/roles/architect.md
-  requires: []
-  source_project: TeleClaude
+  requires:
+  - docs/global/software-development/roles/docs/software-development/todo-readiness
 - id: software-development/roles/builder
   description: Tactical implementation. Follow architecture, write code matching requirements,
     pragmatic autonomy, tests after implementation.
-  type: role
-  scope: domain
   path: docs/global/software-development/roles/builder.md
-  requires: []
-  source_project: TeleClaude
+  requires:
+  - docs/global/software-development/roles/docs/software-development/failure-modes
 - id: software-development/roles/finalizer
   description: Post-review delivery role. Merge, clean up, and log delivery after
     approval.
-  type: role
-  scope: domain
   path: docs/global/software-development/roles/finalizer.md
-  requires: []
-  source_project: TeleClaude
+  requires:
+  - docs/global/software-development/roles/docs/software-development/procedure/lifecycle-overview
 - id: software-development/roles/fixer
   description: Bug-fixing role. Investigate issues, identify root cause, apply minimal
     fixes, and verify.
-  type: role
-  scope: domain
   path: docs/global/software-development/roles/fixer.md
-  requires: []
-  source_project: TeleClaude
+  requires:
+  - docs/global/software-development/roles/docs/software-development/failure-modes
 - id: software-development/roles/orchestrator
   description: Supervisory role. Dispatch workers, monitor progress, drive state machine.
     Follow next-work output verbatim.
-  type: role
-  scope: domain
   path: docs/global/software-development/roles/orchestrator.md
-  requires: []
-  source_project: TeleClaude
+  requires:
+  - docs/global/software-development/roles/docs/software-development/procedure/lifecycle-overview
 - id: software-development/roles/researcher
   description: Research role. Gather authoritative sources, summarize, and index findings.
-  type: role
-  scope: domain
   path: docs/global/software-development/roles/researcher.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/roles/reviewer
   description: Evaluative role. Assess code against requirements and standards, parallel
     review lanes, structured findings, binary verdict.
-  type: role
-  scope: domain
   path: docs/global/software-development/roles/reviewer.md
-  requires: []
-  source_project: TeleClaude
+  requires:
+  - docs/global/software-development/roles/docs/software-development/failure-modes
 - id: software-development/roles/tester
   description: Test-focused role. Improve test quality, fix failures, enforce testing
     standards and coverage.
-  type: role
-  scope: domain
   path: docs/global/software-development/roles/tester.md
-  requires: []
-  source_project: TeleClaude
+  requires:
+  - docs/global/software-development/roles/docs/software-development/standards/testing
 - id: software-development/standards/code-quality
   description: Architecture, typing, contracts, state management, error handling.
     Generic quality standards for all code.
-  type: policy
-  scope: domain
   path: docs/global/software-development/standards/code-quality.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/standards/commits
   description: Commitizen format, attribution, when to commit. Atomic commits, hooks
     verify quality.
-  type: policy
-  scope: domain
   path: docs/global/software-development/standards/commits.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/standards/definition-of-done
   description: Baseline quality gates defining when work is truly complete. Functionality,
     quality, testing, security, documentation.
-  type: policy
-  scope: domain
   path: docs/global/software-development/standards/definition-of-done.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/standards/linting-requirements
   description: Linting and type-checking rules. Required fixes, import rules, and
     suppression limits.
-  type: policy
-  scope: domain
   path: docs/global/software-development/standards/linting-requirements.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/standards/security-awareness
   description: Secrets management, input validation, OWASP awareness, secure defaults.
     Never commit secrets, validate boundaries.
-  type: policy
-  scope: domain
   path: docs/global/software-development/standards/security-awareness.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/standards/testing
   description: Pre-commit quality gates, test principles, linting, isolation, anti-patterns.
     Hooks-first verification.
-  type: policy
-  scope: domain
   path: docs/global/software-development/standards/testing.md
-  requires: []
-  source_project: TeleClaude
 - id: software-development/todo-readiness
   description: Five criteria for implementation-ready todos. Single-session, verifiable,
     atomic, clear scope, known approach. Guides work breakdown.
-  type: checklist
-  scope: domain
   path: docs/global/software-development/todo-readiness.md
-  requires: []
-  source_project: TeleClaude
 - id: standard/modeling-policy
   description: Standards for data modeling, validation, and resource representation.
-  type: standard
-  scope: project
   path: docs/project/standard/modeling-policy.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/adapter-client
   description: AdapterClient centralizes adapter lifecycle, UI/transport routing,
     and cross-computer requests.
-  type: architecture
-  scope: project
   path: docs/project/architecture/adapter-client.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/api-server
   description: Local HTTP and WebSocket API that reads from cache and routes writes
     through the command pipeline.
-  type: architecture
-  scope: project
   path: docs/project/architecture/api-server.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/cache
   description: DaemonCache snapshot layer for computers, projects, todos, sessions,
     and agent availability.
-  type: architecture
-  scope: project
   path: docs/project/architecture/cache.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/context-index
   description: Snippet index generation that produces docs/index.yaml from snippet
     frontmatter.
-  type: architecture
-  scope: project
   path: docs/project/architecture/context-index.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/context-selection
   description: Context selection pipeline that picks relevant docs for MCP get_context.
-  type: architecture
-  scope: project
   path: docs/project/architecture/context-selection.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/daemon
   description: Daemon orchestration responsibilities, boundaries, and background services.
-  type: architecture
-  scope: project
   path: docs/project/architecture/daemon.md
-  requires: []
-  source_project: TeleClaude
-- id: teleclaude/architecture/daemon-lifecycle
-  description: Daemon startup, background task orchestration, and graceful shutdown
-    behavior.
-  type: architecture
-  scope: project
-  path: docs/project/architecture/daemon-lifecycle.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/database
   description: SQLite persistence for sessions, hook outbox, UX state, and agent metadata.
-  type: architecture
-  scope: project
   path: docs/project/architecture/database.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/outbox
   description: Durable outbox table for agent hook events.
-  type: architecture
-  scope: project
   path: docs/project/architecture/outbox.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/redis-transport
   description: Redis Streams transport for cross-computer request/response and peer
     discovery.
-  type: architecture
-  scope: project
   path: docs/project/architecture/redis-transport.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/session-listeners
   description: In-memory listener registry that notifies callers when target sessions
     stop.
-  type: architecture
-  scope: project
   path: docs/project/architecture/session-listeners.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/telegram-adapter
   description: Telegram UI adapter that maps topics to sessions and enforces UX cleanup
     rules.
-  type: architecture
-  scope: project
   path: docs/project/architecture/telegram-adapter.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/tmux-management
   description: Tmux session orchestration, input injection, and per-session temp directories.
-  type: architecture
-  scope: project
   path: docs/project/architecture/tmux-management.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/transport-adapter
   description: Transport adapters handle cross-computer request/response and peer
     discovery.
-  type: architecture
-  scope: project
   path: docs/project/architecture/transport-adapter.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/architecture/ui-adapter
   description: UI adapters translate human inputs into events and render outputs with
     UX rules.
-  type: architecture
-  scope: project
   path: docs/project/architecture/ui-adapter.md
-  requires: []
-  source_project: TeleClaude
-- id: teleclaude/architecture/ux-message-cleanup
-  description: Message deletion tracking for clean Telegram UX (user input and feedback).
-  type: architecture
-  scope: project
-  path: docs/project/architecture/ux-message-cleanup.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/concept/adapter-types
   description: Distinction between UI adapters and transport adapters in TeleClaude.
-  type: concept
-  scope: project
   path: docs/project/concept/adapter-types.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/concept/command-modes
   description: Sync, async, and hybrid command response modes used across TeleClaude
     interfaces.
-  type: concept
-  scope: project
   path: docs/project/concept/command-modes.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/concept/glossary
   description: Shared terminology for TeleClaude sessions, adapters, transports, and
     identifiers.
-  type: concept
-  scope: project
   path: docs/project/concept/glossary.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/concept/resource-models
   description: Core resource shapes for computers, projects, todos, sessions, and
     agent availability.
-  type: concept
-  scope: project
   path: docs/project/concept/resource-models.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/concept/shell-readiness
   description: How TeleClaude detects command completion without explicit exit markers.
-  type: concept
-  scope: project
   path: docs/project/concept/shell-readiness.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/guide/ai-to-ai-operations
   description: Recommended flow for delegating work using TeleClaude MCP tools.
-  type: guide
-  scope: project
   path: docs/project/guide/ai-to-ai-operations.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/guide/ssh-agent-deployments
   description: Configure SSH agent access for automated git operations and deployments.
-  type: guide
-  scope: project
   path: docs/project/guide/ssh-agent-deployments.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/policy/daemon-availability
   description: The TeleClaude daemon must stay up; restarts must be brief and verified.
-  type: policy
-  scope: project
   path: docs/project/policy/daemon-availability.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/procedure/add-adapter
   description: Steps to add a new adapter implementation and wire it into the daemon.
-  type: procedure
-  scope: project
   path: docs/project/procedure/add-adapter.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/procedure/add-telegram-command
   description: Steps to add a new Telegram command end-to-end.
-  type: procedure
-  scope: project
   path: docs/project/procedure/add-telegram-command.md
-  requires: []
-  source_project: TeleClaude
+- id: teleclaude/procedure/daemon-lifecycle
+  description: Daemon startup, background task orchestration, and graceful shutdown
+    behavior.
+  path: docs/project/procedure/daemon-lifecycle.md
 - id: teleclaude/procedure/out-of-band-telegram-alerts
   description: Send Telegram alerts when the daemon is down using standalone scripts.
-  type: procedure
-  scope: project
   path: docs/project/procedure/out-of-band-telegram-alerts.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/procedure/restart-daemon
   description: Controlled daemon restart with verification and log checks.
-  type: procedure
-  scope: project
   path: docs/project/procedure/restart-daemon.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/reference/cache-ttl-matrix
   description: TTL and scope matrix for cache refresh behavior.
-  type: reference
-  scope: project
   path: docs/project/reference/cache-ttl-matrix.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/reference/command-contracts
   description: Command contract highlights for session creation, messaging, and agent
     control.
-  type: reference
-  scope: project
   path: docs/project/reference/command-contracts.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/reference/command-surface
   description: Command surface contract for TeleClaude client interfaces.
-  type: reference
-  scope: project
   path: docs/project/reference/command-surface.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/reference/event-types
   description: TeleClaude event names used between adapters, daemon, and clients.
-  type: reference
-  scope: project
   path: docs/project/reference/event-types.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/standard/cache-contract
   description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
-  type: standard
-  scope: project
   path: docs/project/standard/cache-contract.md
-  requires: []
-  source_project: TeleClaude
 - id: teleclaude/standard/cache-refresh-strategy
   description: Allowed moments for remote cache refresh requests.
-  type: standard
-  scope: project
   path: docs/project/standard/cache-refresh-strategy.md
-  requires: []
-  source_project: TeleClaude

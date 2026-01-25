@@ -11,7 +11,7 @@ type: checklist
 
 ## Goal
 
-- @docs/software-development/standards/security-awareness
+- @docs/software-development/policy/security-awareness
 
 - [ ] Secrets are not committed or logged.
 - [ ] Inputs are validated at system boundaries.

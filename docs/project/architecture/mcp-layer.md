@@ -12,9 +12,6 @@ description: Resilient two-layer MCP architecture for AI-to-AI communication.
 - Provide a resilient MCP interface for AI-to-AI communication.
 - Preserve tool contract stability across daemon restarts.
 
-- Inputs: MCP tool calls from AI clients.
-- Outputs: tool responses routed through the daemon command pipeline.
-
 - Clients connect via `bin/mcp-wrapper.py` (stdio entrypoint).
 - Wrapper connects to the daemon via Unix socket and injects `caller_session_id`.
 - Handshake responses are cached to avoid client restarts during daemon reconnects.
@@ -22,29 +19,106 @@ description: Resilient two-layer MCP architecture for AI-to-AI communication.
 - MCP Client ↔ Stdio Wrapper ↔ Unix Socket ↔ Daemon Backend ↔ Command Pipeline.
 - Wrapper returns cached handshake responses while backend reconnects.
 
-- If the backend is unavailable, wrapper buffers/awaits until the socket returns.
-- If the socket is unavailable, the wrapper retries without requiring client restart.
+```mermaid
+flowchart LR
+    AIClient["AI Client<br/>(Claude, etc)"]
+    Wrapper["mcp-wrapper.py<br/>(Stdio Proxy)"]
+    Socket["Unix Socket<br/>(/tmp/teleclaude.sock)"]
+    Backend["MCP Backend<br/>(Daemon)"]
+    CommandPipeline["Command Pipeline"]
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
+    AIClient <-->|stdio| Wrapper
+    Wrapper <-->|socket| Socket
+    Socket <--> Backend
+    Backend --> CommandPipeline
+```
 
 ## Inputs/Outputs
 
-- TBD.
+**Inputs:**
+
+- MCP protocol messages from AI client (via stdio)
+- Tool call requests with parameters
+- Session ID injection from environment (`TMPDIR/teleclaude_session_id`)
+- Backend reconnection events
+
+**Outputs:**
+
+- Tool results and errors to AI client
+- Cached handshake responses (tools, prompts, resources)
+- Background reconnection attempts to daemon
+- Logging to stderr (throttled, non-blocking)
 
 ## Invariants
 
-- TBD.
+- **Zero-Downtime Reconnection**: Client never restarts due to backend unavailability; wrapper handles reconnection transparently.
+- **Cached Handshake**: `initialize` response cached and replayed during backend reconnection without refetching.
+- **Session ID Injection**: Every tool call includes `caller_session_id` from environment; enables AI-to-AI coordination.
+- **Stdio Isolation**: Wrapper logs only to stderr; stdout reserved for MCP protocol.
+- **Graceful Degradation**: If backend is down, wrapper returns error responses but remains connected to client.
 
 ## Primary flows
 
-- TBD.
+### 1. Normal Tool Call (Backend Available)
+
+```mermaid
+sequenceDiagram
+    participant AI as AI Client
+    participant W as Wrapper
+    participant D as Daemon
+    participant P as Command Pipeline
+
+    AI->>W: initialize
+    W->>D: Connect to socket
+    D->>W: tools list + handshake
+    W->>W: Cache handshake
+    W->>AI: Return handshake
+
+    AI->>W: call teleclaude__start_session
+    W->>W: Inject caller_session_id
+    W->>D: Forward tool call
+    D->>P: Execute command
+    P->>D: Result
+    D->>W: Tool result
+    W->>AI: Return result
+```
+
+### 2. Backend Restart (Client Stays Connected)
+
+```mermaid
+sequenceDiagram
+    participant AI as AI Client
+    participant W as Wrapper
+    participant D as Daemon (restart)
+
+    Note over AI,W: Client connected, working
+    W->>D: Socket write fails
+    W->>W: Detect disconnect
+    Note over W: Return cached handshake on initialize
+
+    loop Reconnection attempts
+        W->>D: Try reconnect (500ms interval)
+    end
+
+    D->>W: Socket ready
+    W->>D: Reconnect successful
+    Note over AI,W: Client never knew
+
+    AI->>W: Next tool call
+    W->>D: Forward normally
+```
+
+### 3. Slow Backend Response
+
+- Wrapper blocks on socket read until response arrives
+- AI client sees normal latency
+- No timeout imposed by wrapper; daemon is responsible for command timeouts
 
 ## Failure modes
 
-- TBD.
+- **Socket File Missing**: Wrapper logs error and retries connection. Returns error to client if call attempted during downtime.
+- **Daemon Crash During Call**: Socket closes mid-request. Wrapper returns error to client, begins reconnection loop.
+- **Handshake Cache Stale**: If daemon schema changes drastically, cached handshake may be outdated. Mitigated by clearing cache on major version bump.
+- **Session ID Not Injected**: AI-to-AI coordination fails. Tool calls succeed but lack context. Indicates environment setup issue.
+- **Stderr Log Overflow**: Throttled logging prevents runaway log spam. Silent drop of excess logs during high error rates.
+- **Reconnection Storm**: Multiple wrappers reconnect simultaneously after daemon restart. Socket connection queue may saturate. Daemon handles FIFO.

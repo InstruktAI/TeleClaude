@@ -17,13 +17,15 @@ Defines the required structure and section headings for documentation snippets.
 - Title: H1 with type suffix.
 - Required reads: H2 `Required reads` with inline `@` references when needed.
 - Body: required H2 sections per taxonomy.
+- Required for third-party docs: H2 `Sources` with web links or Context7 snippet IDs.
 - Optional: H2 `See also` for soft references.
 
 ## Allowed values
 
-- `type`: policy, standard, guide, procedure, role, checklist, reference, concept, architecture, example, principles.
+- `type`: policy, standard, guide, procedure, role, checklist, reference, concept, architecture, example, principles (canonical list maintained in `teleclaude/constants.py:TAXONOMY_TYPES`).
 - `scope`: global, domain, project.
 - Procedure sections may include optional: `Pre-completion checklist`, `Report format`.
+- **Architecture snippets** should include Mermaid diagrams where visual representation aids understanding. Place diagrams immediately after the Purpose section or within Primary flows. Use flowcharts for data flow, sequence diagrams for interactions, and class diagrams for structural relationships.
 
 ## Known caveats
 

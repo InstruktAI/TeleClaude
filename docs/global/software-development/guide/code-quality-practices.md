@@ -9,7 +9,7 @@ type: guide
 
 ## Goal
 
-- @docs/software-development/standards/code-quality
+- @docs/software-development/policy/code-quality
 
 - Follow the repository’s configuration and established conventions.
 - Introduce new patterns only when they are required by the intent.

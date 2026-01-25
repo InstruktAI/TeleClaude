@@ -1,4 +1,4 @@
-# Index
+# Project baseline
 
 ## Required reads
 

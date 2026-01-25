@@ -13,9 +13,9 @@ Verify the implementation against requirements and standards, and deliver a bina
 
 Required reads:
 
-- @docs/software-development/standards/code-quality
-- @docs/software-development/standards/testing
-- @docs/software-development/standards/linting-requirements
+- @docs/software-development/policy/code-quality
+- @docs/software-development/policy/testing
+- @docs/software-development/policy/linting-requirements
 
 ## Preconditions
 

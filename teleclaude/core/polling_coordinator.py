@@ -217,6 +217,20 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                         "Terminated session %s after tmux exit",
                         event.session_id[:8],
                     )
+    except Exception as exc:
+        logger.error("Polling failed for session %s: %s", session_id[:8], exc)
+        try:
+            await adapter_client.send_error_feedback(
+                session_id,
+                f"Polling error: {exc}",
+            )
+        except Exception as feedback_exc:
+            logger.error(
+                "Failed to send error feedback for session %s: %s",
+                session_id[:8],
+                feedback_exc,
+            )
+        raise
 
     finally:
         # Cleanup state

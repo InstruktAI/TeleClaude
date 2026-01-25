@@ -11,7 +11,7 @@ type: role
 
 ## Required reads
 
-- @docs/software-development/failure-modes
+- @docs/software-development/principle/failure-modes
 
 ## Purpose
 

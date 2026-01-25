@@ -17,6 +17,10 @@ Research role. Gather authoritative sources, summarize, and index findings.
 2. **Fact extraction** — capture constraints, configuration, and required behaviors.
 3. **Synthesis** — produce concise, decision‑ready summaries.
 4. **Indexing** — ensure findings are stored where they can be rediscovered.
+5. **Separation** — third-party sources only inform internal snippets; never reference
+   third-party docs directly from agent artifacts.
+6. **Evidence gate** — publish research only when at least one valid source is available
+   (web link or Context7 snippet ID).
 
 ## Boundaries
 

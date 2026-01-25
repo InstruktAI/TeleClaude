@@ -1,50 +1,105 @@
 version: 1
 
 global:
-  required_reads_title: "Required reads"
-  see_also_title: "See also"
+  required_reads_title: 'Required reads'
+  see_also_title: 'See also'
+  sources_title: 'Sources'
+  sources_header_level: 2
   require_h1: true
   require_h1_first: true
-  require_required_reads: true
+  require_required_reads: false
   required_reads_header_level: 2
   see_also_header_level: 2
   allow_h3: false
-  require_required_reads: false
 
 sections:
-  policy:
-    required:
-      - Rule
-      - Rationale
-      - Scope
-      - Enforcement
-      - Exceptions
+  architecture:
     allowed:
-      - Rule
-      - Rationale
-      - Scope
-      - Enforcement
-      - Exceptions
-  standard:
+      - Purpose
+      - Inputs/Outputs
+      - Invariants
+      - Primary flows
+      - Failure modes
     required:
-      - Rule
-      - Rationale
-      - Scope
-      - Enforcement
-      - Exceptions
+      - Purpose
+      - Inputs/Outputs
+      - Invariants
+      - Primary flows
+      - Failure modes
+  checklist:
     allowed:
-      - Rule
-      - Rationale
-      - Scope
-      - Enforcement
-      - Exceptions
-  procedure:
+      - Goal
+      - Preconditions
+      - Steps
+      - Outputs
+      - Recovery
     required:
       - Goal
       - Preconditions
       - Steps
       - Outputs
       - Recovery
+  concept:
+    allowed:
+      - Purpose
+      - Inputs/Outputs
+      - Invariants
+      - Primary flows
+      - Failure modes
+    required:
+      - Purpose
+      - Inputs/Outputs
+      - Invariants
+      - Primary flows
+      - Failure modes
+  example:
+    allowed:
+      - Scenario
+      - Steps
+      - Outputs
+      - Notes
+    required:
+      - Scenario
+      - Steps
+      - Outputs
+      - Notes
+  guide:
+    allowed:
+      - Goal
+      - Preconditions
+      - Steps
+      - Outputs
+      - Recovery
+    required:
+      - Goal
+      - Steps
+      - Outputs
+      - Recovery
+  policy:
+    allowed:
+      - Rule
+      - Rationale
+      - Scope
+      - Enforcement
+      - Exceptions
+    required:
+      - Rule
+      - Rationale
+      - Scope
+      - Enforcement
+      - Exceptions
+  principle:
+    allowed:
+      - Principle
+      - Rationale
+      - Implications
+      - Tensions
+    required:
+      - Principle
+      - Rationale
+      - Implications
+      - Tensions
+  procedure:
     allowed:
       - Goal
       - Preconditions
@@ -53,119 +108,29 @@ sections:
       - Recovery
       - Pre-completion checklist
       - Report format
-  guide:
     required:
-      - Goal
-      - Steps
-      - Outputs
-      - Recovery
-    allowed:
-      - Goal
-      - Preconditions
-      - Steps
-      - Outputs
-      - Recovery
-  checklist:
-    required:
-      - Goal
-      - Preconditions
-      - Steps
-      - Outputs
-      - Recovery
-    allowed:
       - Goal
       - Preconditions
       - Steps
       - Outputs
       - Recovery
   reference:
-    required:
-      - What it is
-      - Canonical fields
-      - Allowed values
-      - Known caveats
     allowed:
       - What it is
       - Canonical fields
       - Allowed values
       - Known caveats
-  concept:
     required:
-      - Purpose
-      - Inputs/Outputs
-      - Invariants
-      - Primary flows
-      - Failure modes
-    allowed:
-      - Purpose
-      - Inputs/Outputs
-      - Invariants
-      - Primary flows
-      - Failure modes
-  architecture:
-    required:
-      - Purpose
-      - Inputs/Outputs
-      - Invariants
-      - Primary flows
-      - Failure modes
-    allowed:
-      - Purpose
-      - Inputs/Outputs
-      - Invariants
-      - Primary flows
-      - Failure modes
-  principles:
-    required:
-      - Principle
-      - Rationale
-      - Implications
-      - Tensions
-    allowed:
-      - Principle
-      - Rationale
-      - Implications
-      - Tensions
-  principle:
-    required:
-      - Principle
-      - Rationale
-      - Implications
-      - Tensions
-    allowed:
-      - Principle
-      - Rationale
-      - Implications
-      - Tensions
+      - What it is
+      - Canonical fields
+      - Allowed values
+      - Known caveats
   role:
-    required:
-      - Purpose
-      - Responsibilities
-      - Boundaries
     allowed:
       - Purpose
       - Responsibilities
       - Boundaries
-  example:
     required:
-      - Scenario
-      - Steps
-      - Outputs
-      - Notes
-    allowed:
-      - Scenario
-      - Steps
-      - Outputs
-      - Notes
-  decision:
-    required: []
-    allowed: []
-  incident:
-    required: []
-    allowed: []
-  timeline:
-    required: []
-    allowed: []
-  faq:
-    required: []
-    allowed: []
+      - Purpose
+      - Responsibilities
+      - Boundaries

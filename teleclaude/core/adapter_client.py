@@ -93,6 +93,31 @@ class AdapterClient:
             (adapter_type, adapter) for adapter_type, adapter in self.adapters.items() if isinstance(adapter, UiAdapter)
         ]
 
+    async def send_error_feedback(self, session_id: str, error_message: str) -> None:
+        """Send error feedback to all UI adapters, surfacing failures."""
+        ui_adapters = self._ui_adapters()
+        if not ui_adapters:
+            logger.warning("No UI adapters available for error feedback (session %s)", session_id[:8])
+            return
+
+        results = await asyncio.gather(
+            *[adapter.send_error_feedback(session_id, error_message) for _, adapter in ui_adapters],
+            return_exceptions=True,
+        )
+        first_error: Exception | None = None
+        for (adapter_type, _), result in zip(ui_adapters, results):
+            if isinstance(result, Exception):
+                logger.error(
+                    "Error feedback failed for adapter %s session %s: %s",
+                    adapter_type,
+                    session_id[:8],
+                    result,
+                )
+                if first_error is None:
+                    first_error = result
+        if first_error is not None:
+            raise first_error
+
     async def _broadcast_to_ui_adapters(
         self,
         session: "Session",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.context_index import sync_resources
+from scripts.sync_resources import build_index_payload
 
 
 def _write(path: Path, content: str) -> None:
@@ -14,10 +14,12 @@ def test_sync_resources_resolves_requires(tmp_path: Path) -> None:
     project_root = tmp_path
     snippets_root = project_root / "docs"
 
-    base = "---\nid: domain/base\ndescription: Base snippet\n---\n# Base\n\nBase content\n"
+    base = "---\nid: domain/base\ntype: reference\nscope: project\ndescription: Base snippet\n---\n# Base\n\nBase content\n"
     child = (
         "---\n"
         "id: domain/child\n"
+        "type: reference\n"
+        "scope: project\n"
         "description: Child snippet\n"
         "---\n"
         "# Child\n\n"
@@ -30,9 +32,10 @@ def test_sync_resources_resolves_requires(tmp_path: Path) -> None:
     _write(snippets_root / "domain" / "child.md", child)
     _write(snippets_root / "baseline" / "identity.md", "# Baseline\n")
 
-    entries = sync_resources(project_root)
-    ids = [entry.snippet_id for entry in entries]
+    payload = build_index_payload(project_root, snippets_root)
+    entries = payload["snippets"]
+    ids = [entry["id"] for entry in entries]
 
     assert ids == ["domain/base", "domain/child"]
-    child_entry = next(entry for entry in entries if entry.snippet_id == "domain/child")
-    assert child_entry.requires == ["docs/domain/base.md"]
+    child_entry = next(entry for entry in entries if entry["id"] == "domain/child")
+    assert child_entry["requires"] == ["domain/base"]

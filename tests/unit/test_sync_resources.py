@@ -52,10 +52,9 @@ def test_agents_docs_index_uses_global_paths(tmp_path: Path, monkeypatch: pytest
     index_path = bsi.write_index_yaml(tmp_path, agents_docs)
     payload = index_path.read_text(encoding="utf-8")
 
-    home = Path.home()
-    assert f"project_root: {home / '.teleclaude'}" in payload
-    assert f"snippets_root: {home / '.teleclaude' / 'docs'}" in payload
-    assert "path: docs/" in payload
+    assert "project_root: ~/.teleclaude" in payload
+    assert "snippets_root: ~/.teleclaude/docs" in payload
+    assert "path: agents/docs/" in payload
 
 
 @pytest.mark.unit

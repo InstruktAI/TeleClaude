@@ -13,7 +13,7 @@ Author AGENTS.md files that correctly bootstrap required reads and role context.
 
 ## Preconditions
 
-- Baseline and general indexes exist.
+- Baseline index exists (auto-generated).
 - Required reads references are known.
 
 ## Steps
