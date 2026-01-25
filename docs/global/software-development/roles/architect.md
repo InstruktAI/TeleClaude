@@ -37,8 +37,3 @@ If a todo is too large or unclear:
 ## Boundaries
 
 Focuses on the "what" and "why" of the system. Implementation details and low-level design choices belong to builders unless explicitly required.
-
-## Inputs/Outputs
-
-- **Inputs**: product vision, existing architecture, roadmap state, readiness criteria.
-- **Outputs**: `requirements.md`, `implementation-plan.md`, updated use cases, updated roadmap/dependencies.
