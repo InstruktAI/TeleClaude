@@ -155,6 +155,12 @@ snippets:
   scope: global
   path: docs/project/procedure/ssh-agent-keychain.md
   source_project: TeleClaude
+- id: reference/agent-artifact-automation
+  description: Automation that rebuilds and deploys agent artifacts when sources change.
+  type: reference
+  scope: project
+  path: docs/project/reference/agent-artifact-automation.md
+  source_project: TeleClaude
 - id: role/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
   type: role
