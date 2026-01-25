@@ -21,8 +21,3 @@ Research role. Gather authoritative sources, summarize, and index findings.
 ## Boundaries
 
 Keeps research grounded in authoritative sources and focuses on actionable facts rather than speculative conclusions.
-
-## Inputs/Outputs
-
-- **Inputs**: research questions, topic scope, required citation standards.
-- **Outputs**: summaries highlighting constraints and trade‑offs, validated references, indexed artifacts aligned to taxonomy.

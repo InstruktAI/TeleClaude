@@ -26,8 +26,3 @@ Post-review delivery role. Merge, clean up, and log delivery after approval.
 ## Boundaries
 
 Finalizes only approved work, keeps local main safe, and preserves existing changes while completing delivery.
-
-## Inputs/Outputs
-
-- **Inputs**: approval verdict, completed todo folder, git state, roadmap/delivered logs.
-- **Outputs**: merged code, updated delivered logs, cleaned worktrees.

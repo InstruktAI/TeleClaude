@@ -28,8 +28,3 @@ Test-focused role. Improve test quality, fix failures, enforce testing standards
 ## Boundaries
 
 Focuses on test code and verification. Production changes only when required for a proven bug fix.
-
-## Inputs/Outputs
-
-- **Inputs**: failing tests, lint/type errors, testing standards.
-- **Outputs**: stabilized test suite, improved coverage, verified passes.

@@ -31,22 +31,6 @@ Workflow steps (each step is done by one worker):
 
 This is a **serial flow**: a command runs, a worker completes, the session ends, then the next command starts.
 
-- **Todos root**: `todos/`
-- **Per-todo folder**: `todos/{slug}/`
-  - `input.md` (brief)
-  - `requirements.md`
-  - `implementation-plan.md`
-  - `deferrals.md` (optional)
-  - `breakdown.md` (optional)
-  - `state.json` (process state)
-- **Roadmap**: `todos/roadmap.md`
-- **Dependencies**: `todos/dependencies.json`
-
-- Review runs before deferral processing so deferrals are validated input
-- After review, if `deferrals.md` exists and is unprocessed, state machine surfaces instruction to run `next-defer`
-- Administrator reads `deferrals.md`, creates new todos (if `NEW_TODO`) or marks as `NOOP`
-- Updates `state.json.deferrals_processed = true`
-
 ## Boundaries
 
 Stays focused on workflow alignment, deferral processing, and dependency management. Implementation work remains with builders and fixers.

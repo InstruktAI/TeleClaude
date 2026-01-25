@@ -142,12 +142,10 @@ sections:
       - Purpose
       - Responsibilities
       - Boundaries
-      - Inputs/Outputs
     allowed:
       - Purpose
       - Responsibilities
       - Boundaries
-      - Inputs/Outputs
   example:
     required:
       - Scenario

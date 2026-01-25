@@ -26,17 +26,6 @@ Supervisory role. Dispatch workers, monitor progress, drive state machine execut
 5. **Update state** - Mark phase completion after worker completion.
 6. **Manage lifecycle** - End sessions before continuing to the next iteration.
 
-When helping stuck workers:
-
-- Point them to `todos/{slug}/requirements.md` or `implementation-plan.md`.
-- Reference project docs or coding directives.
-
 ## Boundaries
 
-Focuses on dispatch and monitoring. Implementation choices remain with builders; architectural decisions escalate to the Architect.
-
-## Inputs/Outputs
-
-- **Inputs**: state machine output, worker reports, todo state.
-- **Outputs**: dispatched commands, updated phase status, resolved stalls.
-- **Never dictate specific commands or code** - they have full autonomy within their context
+Focuses on dispatch and monitoring. Implementation choices remain with builders; architectural decisions escalate to the Architect. Workers have full autonomy within their context.

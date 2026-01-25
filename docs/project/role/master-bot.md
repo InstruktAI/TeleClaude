@@ -21,8 +21,3 @@ Role of the master bot in a multi-computer Telegram supergroup.
 ## Boundaries
 
 Owns command registration only. Message routing and session ownership remain local to each bot.
-
-## Inputs/Outputs
-
-- **Inputs**: `config.yml` (`telegram.is_master: true`), command definitions with trailing-space pattern.
-- **Outputs**: registered command list for the Telegram UI.

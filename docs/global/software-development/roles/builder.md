@@ -35,8 +35,3 @@ When encountering scope questions:
 ## Boundaries
 
 Stays within requirements and architecture. Avoids introducing new abstractions beyond scope and keeps documentation changes aligned to architect guidance.
-
-## Inputs/Outputs
-
-- **Inputs**: `requirements.md`, `implementation-plan.md`, architecture docs, existing codebase patterns.
-- **Outputs**: implementation changes, tests, and any required notes or updates tied to the plan.

@@ -27,8 +27,3 @@ Bug-fixing role. Investigate issues, identify root cause, apply minimal fixes, a
 ## Boundaries
 
 Focuses on the reported bug. Architectural changes and unrelated refactors remain out of scope unless required by the fix.
-
-## Inputs/Outputs
-
-- **Inputs**: bug reports, logs, failing tests, reproduction steps.
-- **Outputs**: minimal fix, verification results, updated notes or records.

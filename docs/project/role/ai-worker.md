@@ -24,8 +24,3 @@ Role of an AI agent session in the TeleClaude network.
 ## Boundaries
 
 Operates within the provided `project_dir` and `subdir`, and follows the command pipeline for persistent state changes.
-
-## Inputs/Outputs
-
-- **Inputs**: session context, tool commands, project path, environment variables (`TELECLAUDE_SESSION_ID`, `TELECLAUDE_COMPUTER_NAME`).
-- **Outputs**: task results, summaries, emitted stop events, delegated work artifacts.
