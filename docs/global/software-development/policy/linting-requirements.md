@@ -9,11 +9,11 @@ type: policy
 
 # Linting Requirements — Policy
 
-## Rule
-
-- @docs/software-development/policy/code-quality
+## Required reads
 
 @~/.teleclaude/docs/software-development/standards/code-quality.md
+
+## Rule
 
 1. **Fix all lint violations before commit**
 2. **Do not suppress lint errors** unless explicitly approved and documented
@@ -33,26 +33,25 @@ type: policy
 
 **CRITICAL**: Never commit with lint or type-check failures.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
+- Prefer smallest viable suppression; scope to a single line when unavoidable.
+- Suppressions must not hide real defects (unused code, unreachable branches).
+- Keep lint configuration centralized; do not add ad hoc per-file overrides.
+- Keep lint/tooling versions pinned to project config.
 
 ## Rationale
 
-- TBD.
+- Linting enforces consistent style and eliminates avoidable defects.
+- Type-checking prevents runtime errors and documents intent.
 
 ## Scope
 
-- TBD.
+- Applies to all languages with configured linters/type-checkers in the repo.
 
 ## Enforcement
 
-- TBD.
+- Pre-commit hooks and CI block merges on lint/type errors.
+- Reviewers must reject unjustified suppressions.
 
 ## Exceptions
 
-- TBD.
+- Third-party constraints or legacy code may allow scoped suppressions with documented follow-ups.

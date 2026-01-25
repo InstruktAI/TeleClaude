@@ -11,7 +11,7 @@ type: role
 
 ## Required reads
 
-- @docs/software-development/policy/testing
+- @~/.teleclaude/docs/software-development/policy/testing
 
 ## Purpose
 

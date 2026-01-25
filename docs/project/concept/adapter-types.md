@@ -9,42 +9,32 @@ type: concept
 
 ## Purpose
 
-- @docs/concept/glossary
+- @docs/project/concept/glossary.md
 
 - Clarify the two adapter categories and the responsibilities they carry.
-
-- Inputs: external user input (UI) or remote transport events.
-- Outputs: normalized command objects or remote command transport.
-
 - UI adapters handle human-facing messaging, topics, and UX rules.
 - Transport adapters provide cross-computer request/response for remote execution.
-
-- UI adapters do not implement cross-computer execution.
-- Transport adapters do not render human UX or manage message cleanup.
 - AdapterClient is the only component that routes between adapters.
-
-- Mixing responsibilities causes boundary violations and routing bugs.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
 
 ## Inputs/Outputs
 
-- TBD.
+- **Inputs**: external user input (UI adapters) or remote transport events (transport adapters).
+- **Outputs**: normalized command objects (UI) or remote command transport payloads (transport).
 
 ## Invariants
 
-- TBD.
+- UI adapters do not implement cross-computer execution.
+- Transport adapters do not render human UX or manage message cleanup.
+- Adapter boundaries are enforced by AdapterClient routing rules.
 
 ## Primary flows
 
-- TBD.
+- **UI input flow**: user input → UI adapter → command object → core.
+- **Remote command flow**: transport adapter → command object → core → response stream.
+- **Output fan-out**: core events → AdapterClient → UI + transport adapters.
 
 ## Failure modes
 
-- TBD.
+- Mixed responsibilities cause routing bugs and duplicate outputs.
+- Missing adapter registration drops output updates for that channel.
+- Transport adapter misroutes responses when correlation IDs are missing.

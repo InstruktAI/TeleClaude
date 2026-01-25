@@ -213,11 +213,15 @@ def _resolve_requires(
     snippet_path_to_id: dict[str, str],
 ) -> list[str]:
     resolved: list[str] = []
+    home_prefix = str(Path.home())
     for req in requires:
         if not isinstance(req, str):
             continue
         if not req.endswith(".md"):
-            resolved.append(req)
+            if req.startswith(home_prefix):
+                resolved.append(req.replace(home_prefix, "~", 1))
+            else:
+                resolved.append(req)
             continue
         candidate = Path(req).expanduser()
         if not candidate.is_absolute():
@@ -230,7 +234,10 @@ def _resolve_requires(
             try:
                 resolved.append(str(absolute.relative_to(project_root)))
             except ValueError:
-                resolved.append(str(absolute))
+                abs_str = str(absolute)
+                if abs_str.startswith(home_prefix):
+                    abs_str = abs_str.replace(home_prefix, "~", 1)
+                resolved.append(abs_str)
             continue
         snippet_id = snippet_path_to_id.get(rel_to_snippets.as_posix())
         resolved.append(snippet_id if snippet_id else str(rel_to_snippets))

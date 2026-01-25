@@ -28,26 +28,22 @@ Signals
 
 - Missing completion signals leave callers waiting indefinitely.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Inputs/Outputs
 
-- TBD.
+- **Inputs**: command requests over API, MCP, or adapters.
+- **Outputs**: synchronous responses or asynchronous event signals.
 
 ## Invariants
 
-- TBD.
+- Each async command must emit at least one completion signal.
+- Sync commands must not exceed configured SLA timeouts.
 
 ## Primary flows
 
-- TBD.
+- API request → immediate response (sync) or acceptance token (async).
+- Event bus publishes completion → adapters notify clients.
 
 ## Failure modes
 
-- TBD.
+- Missing events cause clients to wait or poll indefinitely.
+- Misclassified mode causes timeouts or duplicated responses.

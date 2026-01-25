@@ -31,26 +31,22 @@ description:
 
 - Stale registry data can route commands to offline machines.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Inputs/Outputs
 
-- TBD.
+- **Inputs**: `(computer, session_id)` targeting info and transport events.
+- **Outputs**: routed commands and session-level addressing across the network.
 
 ## Invariants
 
-- TBD.
+- `computer_name` is unique per installation.
+- `(computer, session_id)` uniquely identifies a session.
 
 ## Primary flows
 
-- TBD.
+- Local command → direct daemon call when `computer="local"`.
+- Remote command → Redis transport routes to target computer stream.
 
 ## Failure modes
 
-- TBD.
+- Stale registry data routes commands to offline machines.
+- Missing heartbeat data hides valid peers.

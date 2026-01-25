@@ -7,7 +7,7 @@ type: policy
 
 # Cache Contract — Policy
 
-## Required reads:
+## Required reads
 
 - @docs/project/architecture/cache.md
 
@@ -17,23 +17,22 @@ type: policy
 - Cache refresh is asynchronous and driven by TTL/digest invalidation.
 - Cache updates are published to WebSocket subscribers.
 - Session state is updated via events, not polling.
-- Ensures fast reads and consistent client behavior without blocking on live fetches.
-- Applies to all API handlers and cache consumers.
-- Verify API handlers read from cache only.
-- Verify cache refresh logic is asynchronous.
-- Confirm WebSocket updates originate from cache changes.
+- Cache is read-only to API handlers; no direct DB reads in handlers.
 
 ## Rationale
 
-- TBD.
+- Ensures fast reads and consistent client behavior without blocking on live fetches.
+- Separates read paths from refresh paths to avoid user-visible latency spikes.
 
 ## Scope
 
-- TBD.
+- Applies to all API handlers and cache consumers.
 
 ## Enforcement
 
-- TBD.
+- Verify API handlers read from cache only.
+- Verify cache refresh logic is asynchronous.
+- Confirm WebSocket updates originate from cache changes.
 
 ## Exceptions
 

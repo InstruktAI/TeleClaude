@@ -9,37 +9,27 @@ description: Normalized agent artifact primitives and how they map to supported 
 
 ## Purpose
 
-Define the median, tool-agnostic artifact set that serves as the single source of truth for
-Claude Code, Gemini CLI, and Codex CLI integrations.
+Define the single source of truth for agent configuration so we can generate
+compatible files for Claude, Codex, and Gemini without duplicating work.
 
 ## Inputs/Outputs
 
-**Inputs (source of truth):**
-
-- **Agents**: `AGENTS.master.md`
-- **Commands**: `agents/commands/*.md`
-- **Skills**: `agents/skills/*/SKILL.md`
-
-**Outputs (generated):**
-
-- `dist/claude/*`
-- `dist/gemini/*`
-- `dist/codex/*`
-
-## Primary flows
-
-1. Author normalized artifacts under `agents/`.
-2. Run distribution to generate CLI-specific outputs.
-3. Consume generated outputs in each CLI.
+- **Inputs**: normalized sources (`AGENTS.master.md`, `agents/commands/*.md`, `agents/skills/*/SKILL.md`).
+- **Outputs**: generated CLI files under `dist/claude/*`, `dist/codex/*`, `dist/gemini/*`.
 
 ## Invariants
 
-- The normalized primitives are the single source of truth.
-- Generated outputs are derived and must be regenerated on change.
-- CLI-specific capabilities that do not fit the median schema must live in adapter-specific
-  overlays, not in the normalized sources.
+- Normalized sources are the only editable source of truth.
+- Generated outputs are never edited manually.
+- CLI-specific features that do not fit the shared schema live in CLI overlays.
 
-## Failure modes
+## Primary flows
 
-- Artifacts drift when distribution is skipped.
+1. Edit normalized sources in `.agents/`, `agents/` or `AGENTS.master.md`.
+2. Run the distribution script to generate runtime outputs.
+3. Use generated outputs in each CLI.
+
+## Failure Modes
+
+- Outputs drift when distribution is skipped.
 - CLI-specific fields leak into normalized sources and break other runtimes.

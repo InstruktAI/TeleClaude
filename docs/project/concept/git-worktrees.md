@@ -23,26 +23,21 @@ Provides agents with a clean, isolated environment for implementation and testin
 
 - Missing worktree tracking breaks visibility and task automation.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Inputs/Outputs
 
-- TBD.
+- **Inputs**: worktree creation from the main repository.
+- **Outputs**: isolated working directory and database.
 
 ## Invariants
 
-- TBD.
+- Each worktree has an isolated `teleclaude.db`.
+- Worktree paths must be registered in git for discovery.
 
 ## Primary flows
 
-- TBD.
+- `git worktree add` → set `TELECLAUDE_WORKING_DIR` → run commands in worktree.
 
 ## Failure modes
 
-- TBD.
+- Untracked worktrees are invisible to tooling and automation.
+- Shared database between worktrees causes state contamination.

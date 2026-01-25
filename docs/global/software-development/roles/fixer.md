@@ -11,7 +11,7 @@ type: role
 
 ## Required reads
 
-- @docs/software-development/principle/failure-modes
+- @~/.teleclaude/docs/software-development/principle/failure-modes
 
 ## Purpose
 

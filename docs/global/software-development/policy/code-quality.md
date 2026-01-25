@@ -32,26 +32,26 @@ See also
 
 - @~/.teleclaude/docs/software-development/guide/code-quality-practices.md
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
+- Prefer simple, readable implementations over cleverness.
+- Require tests or explicit justification for untested changes.
+- Avoid hidden side effects; document mutation and I/O explicitly.
+- Use types to express intent; narrow types at boundaries.
 
 ## Rationale
 
-- TBD.
+- Clear contracts reduce regressions and ease refactors.
+- Explicit invariants make failures diagnosable and safe to recover.
+- Consistent patterns allow cross-team tooling and automation.
 
 ## Scope
 
-- TBD.
+- Applies to all production code, scripts, and automation that can impact users or data.
 
 ## Enforcement
 
-- TBD.
+- Automated checks (lint, typecheck, tests) must pass before merge.
+- Code review must verify contract clarity, error handling, and test coverage.
 
 ## Exceptions
 
-- TBD.
+- Emergency fixes may bypass normal breadth with explicit incident notes and follow-up tasks.

@@ -45,26 +45,22 @@ Create a predictable TypeScript project skeleton with standardized tooling and v
 - `tsconfig.json` is present and referenced.
 - Lockfile exists and matches package manager.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Preconditions
 
-- TBD.
+- Project directory initialized and package manager selected.
+- Node version is available and configured.
 
 ## Steps
 
-- TBD.
+1. Create the package structure and `tsconfig.json`.
+2. Add lint/format/test scripts to `package.json`.
+3. Install dependencies and generate lockfile.
+4. Run the standard scripts to validate the scaffold.
 
 ## Outputs
 
-- TBD.
+- TypeScript project scaffolded with runnable tooling.
 
 ## Recovery
 
-- TBD.
+- If scripts fail, fix config or dependencies and rerun verification.

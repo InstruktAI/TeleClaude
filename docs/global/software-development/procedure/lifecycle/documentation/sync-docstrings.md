@@ -23,34 +23,22 @@ Align inline documentation (docstrings/JSDoc/comments) with actual code behavior
 - **Consistency**: align terminology with existing docs and type names.
 - **Fast scan**: use `rg` to locate docstrings/comments, then capture a small code window to confirm behavior.
 
+## Preconditions
+
+- Code changes are complete and tests pass.
+
+## Steps
+
 1. Inventory docstrings/JSDoc/comments for public modules, classes, and functions.
 2. Read the corresponding code and tests to confirm behavior.
 3. Update docstrings to match inputs, outputs, invariants, side effects, and errors.
 4. Remove aspirational or speculative language.
 5. Flag unclear behavior with an **Open Questions** note if evidence is missing.
 
-- Updated docstrings in code.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-## Preconditions
-
-- TBD.
-
-## Steps
-
-- TBD.
-
 ## Outputs
 
-- TBD.
+- Updated docstrings in code.
 
 ## Recovery
 
-- TBD.
+- If behavior is unclear, pause and request clarification before documenting.

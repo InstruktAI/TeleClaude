@@ -56,26 +56,24 @@ Summarize fixes and any new todos created.
 - If fix causes regression: document and mark `[!]`
 - If stuck: document what was tried and continue
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Preconditions
 
-- TBD.
+- Bug report exists with reproduction steps or evidence.
+- Access to the repository and relevant test environment.
 
 ## Steps
 
-- TBD.
+- Triage the report and attempt to reproduce.
+- Record the bug in `todos/bugs.md` with severity and scope.
+- Decide quick fix vs roadmap item.
+- Apply fix or create a new work item and update roadmap.
 
 ## Outputs
 
-- TBD.
+- Updated `todos/bugs.md` and/or a new roadmap item.
+- Fix committed if resolved.
 
 ## Recovery
 
-- TBD.
+- If not reproducible, mark with `[?]` and document attempts.
+- If regression occurs, mark `[!]` and create follow-up tasks.

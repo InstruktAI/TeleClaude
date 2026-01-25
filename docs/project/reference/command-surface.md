@@ -20,20 +20,19 @@ description: Command surface contract for TeleClaude client interfaces.
 - Command semantics remain stable; changes require documentation updates.
 - Commands are available according to adapter registration and master-bot policy.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Canonical fields
 
-- TBD.
+- `command`: command name (string).
+- `session_id`: target session identifier (optional for list/create).
+- `payload`: command-specific data (dict/object).
+- `source`: adapter or client origin (optional).
+- `created_at`: timestamp when issued.
 
 ## Allowed values
 
-- TBD.
+- `command`: `start_session`, `send_message`, `end_session`, `get_session_data`, `run_agent_command`, `stop_notifications`, `list_sessions`, `list_projects`.
 
 ## Known caveats
 
-- TBD.
+- Some commands are adapter-specific (e.g., Telegram-only UX actions).
+- Availability depends on adapter registration and permissions.

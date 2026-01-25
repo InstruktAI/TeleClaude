@@ -13,9 +13,9 @@ Verify the implementation against requirements and standards, and deliver a bina
 
 Required reads:
 
-- @docs/software-development/policy/code-quality
-- @docs/software-development/policy/testing
-- @docs/software-development/policy/linting-requirements
+- @~/.teleclaude/docs/software-development/policy/code-quality
+- @~/.teleclaude/docs/software-development/policy/testing
+- @~/.teleclaude/docs/software-development/policy/linting-requirements
 
 ## Preconditions
 

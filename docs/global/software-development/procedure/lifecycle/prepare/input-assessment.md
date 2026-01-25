@@ -11,7 +11,7 @@ type: procedure
 
 ## Goal
 
-- @docs/software-development/policy/definition-of-ready
+- @~/.teleclaude/docs/software-development/policy/definition-of-ready
 
 If `todos/{slug}/input.md` exists and `todos/{slug}/state.json` lacks `breakdown.assessed`, perform readiness assessment.
 
@@ -23,46 +23,34 @@ If `todos/{slug}/input.md` exists and `todos/{slug}/state.json` lacks `breakdown
 
 If any criterion fails, apply story-splitting patterns.
 
-### If Breakdown Is Needed
-
-1. Create focused todos: `todos/{slug}-1/`, `todos/{slug}-2/`, etc.
-2. Each new `input.md` is a clean briefing (intended outcome only).
-3. Update `todos/dependencies.json`: add `"{slug}": ["{slug}-1", "{slug}-2"]`.
-4. Update `todos/roadmap.md`: insert new slugs before `{slug}`.
-5. Create `todos/{slug}/breakdown.md` with split reasoning.
-6. Update `todos/{slug}/state.json`:
-   ```json
-   { "breakdown": { "assessed": true, "todos": ["{slug}-1", "{slug}-2"] } }
-   ```
-
-### If No Breakdown Is Needed
-
-Update `todos/{slug}/state.json`:
-
-```json
-{ "breakdown": { "assessed": true, "todos": [] } }
-```
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Preconditions
 
-- TBD.
+- `todos/{slug}/input.md` exists.
+- `todos/{slug}/state.json` exists.
 
 ## Steps
 
-- TBD.
+1. Assess readiness against the five criteria (single-session, verifiable, atomic, clear scope, known approach).
+2. If breakdown is needed:
+   - Create focused todos: `todos/{slug}-1/`, `todos/{slug}-2/`, etc.
+   - Each new `input.md` is a clean briefing (intended outcome only).
+   - Update `todos/dependencies.json` with the new slugs.
+   - Update `todos/roadmap.md` to insert new slugs before `{slug}`.
+   - Create `todos/{slug}/breakdown.md` with split reasoning.
+   - Update `todos/{slug}/state.json`:
+     ```json
+     { "breakdown": { "assessed": true, "todos": ["{slug}-1", "{slug}-2"] } }
+     ```
+3. If no breakdown is needed, update `todos/{slug}/state.json`:
+   ```json
+   { "breakdown": { "assessed": true, "todos": [] } }
+   ```
 
 ## Outputs
 
-- TBD.
+- `state.json` updated with breakdown assessment.
+- New todos created if needed.
 
 ## Recovery
 
-- TBD.
+- If input is insufficient, request clarification and pause preparation.

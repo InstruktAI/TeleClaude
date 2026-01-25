@@ -48,26 +48,22 @@ Create a predictable Python project skeleton with standardized tooling and verif
 - `pyproject.toml` contains tool configuration.
 - `uv sync` works without manual venv setup.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Preconditions
 
-- TBD.
+- Project directory is created and initialized.
+- Python version and tooling (uv) are available.
 
 ## Steps
 
-- TBD.
+1. Create the basic package/module structure.
+2. Add `pyproject.toml` with formatting, linting, and typing tools.
+3. Add Makefile targets for format/lint/test.
+4. Run `uv sync` and verify tooling works.
 
 ## Outputs
 
-- TBD.
+- Python project scaffolded with runnable tooling.
 
 ## Recovery
 
-- TBD.
+- If a tool fails, fix config and rerun the scaffold verification steps.

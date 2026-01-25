@@ -20,26 +20,21 @@ Analyze and report:
 - Ambiguities that change scope or design decisions.
 - Constraints that must hold throughout implementation.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Preconditions
 
-- TBD.
+- `todos/{slug}/requirements.md` exists or needs to be drafted.
 
 ## Steps
 
-- TBD.
+1. Read requirements and supporting context.
+2. Identify missing or ambiguous requirements.
+3. Confirm success criteria and constraints are testable.
+4. Report gaps and propose clarifications.
 
 ## Outputs
 
-- TBD.
+- Requirements analysis summary with explicit questions or confirmations.
 
 ## Recovery
 
-- TBD.
+- If requirements are incomplete, pause and request clarification before planning.

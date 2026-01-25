@@ -11,41 +11,24 @@ description: Classification of terminal sessions in TeleClaude.
 
 Classify the session categories used in TeleClaude.
 
-### 1. Human Session
-
-- **Initiator**: A human user via Telegram or `telec` CLI.
-- **Interaction**: Direct command input, live terminal output.
-- **Clutter Control**: Active cleanup of inputs and feedback messages.
-
-### 2. AI-to-AI Session
-
-- **Initiator**: An AI agent via MCP tools (`teleclaude__start_session`).
-- **Interaction**: Programmatic message passing, stop events with summaries.
-- **Identification**: Annotated in Telegram (e.g., `macbook/claude -> workstation/claude`).
-- **Clutter Control**: Skips feedback messages (listeners receive summaries directly).
-
-### 3. Worktree Session
-
-- **Initiator**: Agents working on specific todos using git worktrees.
-- **Isolation**: Uses a separate `teleclaude.db` and dedicated project directory to avoid polluting main state.
-
-- Session type is determined at creation and remains stable.
-
-- Misclassified sessions cause incorrect UX cleanup and routing.
+- **Human session**: initiated by a human via Telegram or `telec` CLI; direct input/output with cleanup.
+- **AI-to-AI session**: initiated by MCP tools; programmatic messaging and stop summaries.
+- **Worktree session**: initiated by agents in git worktrees; isolated `teleclaude.db`.
 
 ## Inputs/Outputs
 
-- Inputs: session creation commands and launch intents.
-- Outputs: human, AI-to-AI, or worktree session behavior.
+- **Inputs**: session creation commands and launch intents.
+- **Outputs**: human, AI-to-AI, or worktree session behavior.
 
 ## Invariants
 
-- TBD.
+- Session type is determined at creation and remains stable.
+- Type controls UX cleanup and listener behavior.
 
 ## Primary flows
 
-- TBD.
+- Session create command includes type intent → launcher configures adapters accordingly.
 
 ## Failure modes
 
-- TBD.
+- Misclassified sessions cause incorrect UX cleanup and routing.

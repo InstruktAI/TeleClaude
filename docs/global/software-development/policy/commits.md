@@ -9,11 +9,11 @@ type: policy
 
 # Commits — Policy
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/standards/code-quality.md
+
 ## Rule
-
-- @docs/software-development/policy/code-quality
-
-@~/.teleclaude/docs/software-development/standards/code-quality.md
 
 Pre-commit hooks enforce tests, linting, and formatting automatically.
 
@@ -54,27 +54,25 @@ Co-Authored-By: TeleClaude <noreply@instrukt.ai>
 - Commit message explains WHY, not WHAT (code shows what)
 - Never commit broken code
 - Never use `--no-verify` to bypass hooks
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
+- Update or add tests when behavior changes.
+- Include migration notes when schema or data shape changes.
+- Avoid committing generated artifacts unless explicitly required.
+- Squash noisy fixups before merge to keep history readable.
 
 ## Rationale
 
-- TBD.
+- Consistent commits enable reliable rollbacks and audits.
+- Commit messages drive automated release notes and changelogs.
 
 ## Scope
 
-- TBD.
+- Applies to all repositories and all contributors (human or AI).
 
 ## Enforcement
 
-- TBD.
+- Pre-commit hooks and CI validate format, tests, and linting.
+- Reviews reject commits that violate the format or atomicity.
 
 ## Exceptions
 
-- TBD.
+- Emergency production fixes may allow minimal commits with a follow-up cleanup task.

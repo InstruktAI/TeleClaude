@@ -9,9 +9,19 @@ type: checklist
 
 # Security Review — Checklist
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/security-awareness
+
 ## Goal
 
-- @docs/software-development/policy/security-awareness
+- Verify security-critical changes meet baseline policy.
+
+## Preconditions
+
+- Relevant code changes are identified and ready for review.
+
+## Steps
 
 - [ ] Secrets are not committed or logged.
 - [ ] Inputs are validated at system boundaries.
@@ -20,26 +30,10 @@ type: checklist
 - [ ] Safe defaults are enforced for permissions and exposure.
 - [ ] High‑risk changes were escalated for review.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-## Preconditions
-
-- TBD.
-
-## Steps
-
-- TBD.
-
 ## Outputs
 
-- TBD.
+- Security review completed or escalation required.
 
 ## Recovery
 
-- TBD.
+- If any check fails, block merge and file follow-up tasks.

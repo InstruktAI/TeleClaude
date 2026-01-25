@@ -118,7 +118,7 @@ def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object]) -> li
         "concept",
         "architecture",
         "example",
-        "principles",
+        "principle",
     ]
     snippet_type = metadata.get("type")
     if isinstance(snippet_type, str) and snippet_type not in valid_types:

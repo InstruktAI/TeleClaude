@@ -7,13 +7,19 @@ description: Verification steps before enabling multi-computer orchestration.
 
 # Multi Computer Readiness — Checklist
 
-## Goal
+## Required reads
 
-- @docs/procedure/ssh-agent-keychain
+- @docs/project/procedure/ssh-agent-keychain.md
+
+## Goal
 
 - Verify readiness for multi-computer orchestration.
 
+## Preconditions
+
 - TeleClaude is installed on each computer.
+
+## Steps
 
 - [ ] Unique computer names set in `config.yml`.
 - [ ] Each computer uses a unique bot token.
@@ -23,30 +29,10 @@ description: Verification steps before enabling multi-computer orchestration.
 - [ ] SSH agent/keychain configured and keys unlocked on remotes.
 - [ ] Project paths added to `trusted_dirs` for MCP visibility.
 
-- Multi-computer setup can operate without command collisions.
-
-- If a check fails, fix configuration and re-run the checklist before enabling orchestration.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-## Preconditions
-
-- TBD.
-
-## Steps
-
-- TBD.
-
 ## Outputs
 
-- TBD.
+- Multi-computer setup can operate without command collisions.
 
 ## Recovery
 
-- TBD.
+- If a check fails, fix configuration and re-run the checklist before enabling orchestration.

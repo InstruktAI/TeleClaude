@@ -29,9 +29,15 @@ repos:
     name: Check for hardcoded HOME paths in docs
     entry: bash -c
     args:
-    - 'git diff --cached --name-only --diff-filter=ACM | grep ''\.md$'' | xargs -r
-      grep -l "@/Users/\|@/home/" && echo "ERROR: Hardcoded HOME paths found in docs.
-      Run ''telec init'' to set up filters." && exit 1 || true'
+    - 'files=$(git diff --cached --name-only --diff-filter=ACM -- "*.md"); matches=""; for f in $files; do git show ":$f" | grep -q "@/Users/|@/home/" && matches="$matches $f"; done; if [ -n "$matches" ]; then printf "%s\n" "$matches"; echo "ERROR: Hardcoded HOME paths found in docs. Run ''telec init'' to set up filters."; exit 1; fi'
     language: system
     files: \.md$
     pass_filenames: false
+  - id: teleclaude-docs-validate
+    name: Validate docs (sync_resources strict)
+    entry: bash -c
+    args:
+    - 'uv run --quiet scripts/sync_resources.py --project-root "$PWD"'
+    language: system
+    pass_filenames: false
+    files: ^(docs/|scripts/snippet_schema\.yaml|scripts/sync_resources\.py|teleclaude/constants\.py)

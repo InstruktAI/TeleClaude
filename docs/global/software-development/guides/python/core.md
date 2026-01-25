@@ -9,54 +9,39 @@ type: guide
 
 # Core — Guide
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/standards/code-quality.md
+
 ## Goal
 
-- @docs/software-development/policy/code-quality
-
-@~/.teleclaude/docs/software-development/standards/code-quality.md
-
-- Type everything. No untyped dicts. No implicit `Any`
-- Every function has explicit parameter and return types
-- Use structured data models (dataclass, TypedDict, Protocol) for all non-trivial data
-- Modern type syntax: `list[str]`, `dict[str, int]`, `str | None`
-
-- Do not mutate inputs in place; return new values unless the interface explicitly requires mutation
-- Validate at system boundaries; keep core logic pure and testable
-- Prefer dataclasses and protocols for structure
-- Avoid mutable defaults
-
-- Errors are part of the contract: raise with context or return a defined Result/Option
-- Never swallow exceptions silently
-- Use specific exception types, not bare `Exception`
-
-- Use async only when required by I/O
-- Do not mix sync/async flows without clear boundaries
-- Use `asyncio.gather()` for concurrent operations
-- Use async context managers for resources
-
-- Use dict-based dispatch over long if/elif chains
-- Use generators for streaming or large data
-- Use context managers for resource handling
-- Avoid star imports or classes used for namespacing
-
-- Follow project formatter and linter rules exactly
-- All imports at module top level (no import-outside-toplevel)
-- Conform to existing naming and patterns
-
-- TBD.
-
-- TBD.
-
-- TBD.
+- Apply consistent Python practices for typing, structure, and error handling.
 
 ## Steps
 
-- TBD.
+- Type everything. No untyped dicts. No implicit `Any`.
+- Every function has explicit parameter and return types.
+- Use structured data models (dataclass, TypedDict, Protocol) for non-trivial data.
+- Use modern type syntax: `list[str]`, `dict[str, int]`, `str | None`.
+- Do not mutate inputs in place unless the interface explicitly requires it.
+- Validate at system boundaries; keep core logic pure and testable.
+- Prefer dataclasses and protocols for structure; avoid mutable defaults.
+- Errors are part of the contract: raise with context or return a defined Result/Option.
+- Never swallow exceptions silently; use specific exception types.
+- Use async only when required by I/O; keep sync/async boundaries explicit.
+- Use `asyncio.gather()` for concurrency; use async context managers for resources.
+- Prefer dict-based dispatch over long if/elif chains.
+- Use generators for streaming or large data.
+- Use context managers for resource handling.
+- Avoid star imports or classes used for namespacing.
+- Follow project formatter and linter rules exactly.
+- Keep all imports at module top level.
+- Conform to existing naming and patterns.
 
 ## Outputs
 
-- TBD.
+- Python changes that conform to project typing and structure practices.
 
 ## Recovery
 
-- TBD.
+- Refactor or simplify any change that violates the guide before merge.

@@ -22,20 +22,19 @@ description: TeleClaude event names used between adapters, daemon, and clients.
 
 - Adapter/client handling differs by event type; only publish supported events.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Canonical fields
 
-- TBD.
+- `event_type`: string event name (e.g., `session_started`).
+- `session_id`: UUID for the session (optional for system events).
+- `payload`: event-specific data (dict/object).
+- `created_at`: timestamp (ISO 8601) when emitted.
 
 ## Allowed values
 
-- TBD.
+- `session_started`, `session_updated`, `session_closed`, `agent_event`, `error`, `system_command`.
+- `agent_event` payload types: `session_start`, `prompt`, `stop`, `notification`, `session_end`, `error`.
 
 ## Known caveats
 
-- TBD.
+- Some adapters emit adapter-specific metadata in payload; consumers must ignore unknown fields.
+- `error` events may omit `session_id` when failure is global.

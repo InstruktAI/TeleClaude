@@ -9,13 +9,18 @@ type: procedure
 
 ## Goal
 
-Required reads
+## Required reads
 
-@~/.teleclaude/docs/baseline/procedure/agent-artifact-authoring.md
-@~/.teleclaude/docs/software-development/concept/agent-artifact-distribution.md
-@~/.teleclaude/docs/software-development/guide/agent-artifacts-quickstart.md
+- @~/.teleclaude/docs/software-development/concept/agent-artifact-distribution.md
+- @~/.teleclaude/docs/software-development/guide/agent-artifacts-quickstart.md
 
 Build and distribute agent artifacts in this repository.
+
+## Preconditions
+
+- Source artifacts exist in `commands/`, `skills/`, and `AGENTS.master.md`.
+
+## Steps
 
 1. Author or update source artifacts in `commands/`, `skills/`, and `AGENTS.master.md`.
 2. Run the local distribution script to generate runtime-specific outputs.
@@ -26,32 +31,12 @@ Build and distribute agent artifacts in this repository.
 ./scripts/distribute.py --deploy
 ```
 
+## Outputs
+
 - Generated artifacts under `dist/`.
 - Deployed artifacts under each agent runtime directory.
 
-- If outputs are wrong, fix the source artifacts and rerun distribution.
-- Do not edit generated files directly.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-## Preconditions
-
-- TBD.
-
-## Steps
-
-- TBD.
-
-## Outputs
-
-- TBD.
-
 ## Recovery
 
-- TBD.
+- If outputs are wrong, fix the source artifacts and rerun distribution.
+- Do not edit generated files directly.

@@ -11,7 +11,7 @@ type: role
 
 ## Required reads
 
-- @docs/software-development/policy/definition-of-ready
+- @~/.teleclaude/docs/software-development/policy/definition-of-ready
 
 ## Purpose
 

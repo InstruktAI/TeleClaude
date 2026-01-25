@@ -22,26 +22,20 @@ Produce a minimal plan that includes:
 - Task sequence with verification points.
 - Risks, unknowns, and assumptions to validate.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Preconditions
 
-- TBD.
+- Requirements analysis complete or in progress.
 
 ## Steps
 
-- TBD.
+1. Draft or update `implementation-plan.md`.
+2. Map tasks to concrete file edits and validation steps.
+3. Identify risks and assumptions that need confirmation.
 
 ## Outputs
 
-- TBD.
+- Implementation plan ready for build phase.
 
 ## Recovery
 
-- TBD.
+- If planning is blocked, request missing information before proceeding.

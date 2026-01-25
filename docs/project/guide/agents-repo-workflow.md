@@ -11,32 +11,22 @@ type: guide
 
 ## Goal
 
-Required reads
+## Required reads
 
-@docs/procedure/agents-distribution.md
+- @docs/project/procedure/agents-distribution.md
 
 Maintain agent artifacts and keep generated outputs in sync.
+
+## Steps
 
 1. Edit source artifacts only (`AGENTS.master.md`, `commands/`, `skills/`).
 2. Run distribution to regenerate outputs.
 3. Validate outputs by spot-checking generated files.
 
-- If generated outputs drift, rerun distribution from source artifacts.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-## Steps
-
-- TBD.
-
 ## Outputs
 
-- TBD.
+- Generated agent artifacts match source definitions.
 
 ## Recovery
 
-- TBD.
+- If generated outputs drift, rerun distribution from source artifacts.

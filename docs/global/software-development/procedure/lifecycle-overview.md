@@ -84,26 +84,23 @@ Work state lives in `todos/{slug}/state.json` and records:
 - `docs`: `pending` | `complete`
 - `deferrals_processed`: boolean
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Preconditions
 
-- TBD.
+- Work item exists in `todos/roadmap.md`.
+- `requirements.md` and `implementation-plan.md` are present.
 
 ## Steps
 
-- TBD.
+1. Run preparation to validate requirements and plan.
+2. Execute build phase to implement changes.
+3. Run review phase; address findings in fix phase if needed.
+4. Finalize by updating docs, docstrings, and state.
 
 ## Outputs
 
-- TBD.
+- Updated `state.json` reflecting phase progression.
+- Work item marked delivered when complete.
 
 ## Recovery
 
-- TBD.
+- If blocked, record deferrals and reschedule the work item.

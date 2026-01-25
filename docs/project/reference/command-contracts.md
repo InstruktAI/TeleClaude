@@ -21,20 +21,20 @@ description:
 
 - Commands are rejected when the target session is missing or closed.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Canonical fields
 
-- TBD.
+- `command`: command name.
+- `session_id`: target session UUID (required for send/end).
+- `payload`: command-specific data (message, agent, computer, etc.).
+- `request_id`: unique correlation id for transport requests.
+- `source`: originating adapter/client.
 
 ## Allowed values
 
-- TBD.
+- `command`: `start_session`, `send_message`, `end_session`, `run_agent_command`, `get_session_data`.
+- `payload.intent`: `user_message`, `system_command`, `agent_control` (where applicable).
 
 ## Known caveats
 
-- TBD.
+- Transport layer may wrap commands in request/response envelopes.
+- Missing or invalid `session_id` leads to immediate rejection.

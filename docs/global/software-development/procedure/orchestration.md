@@ -11,7 +11,7 @@ type: procedure
 
 ## Goal
 
-- @docs/software-development/procedure/lifecycle-overview
+- @~/.teleclaude/docs/software-development/procedure/lifecycle-overview
 
 @~/.teleclaude/docs/software-development/procedure/lifecycle-overview.md
 
@@ -59,26 +59,22 @@ The loop terminates when the work state machine returns:
 - `COMPLETE`
 - Error requiring human intervention
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Preconditions
 
-- TBD.
+- Work item state machine is available and in a known phase.
+- Worker session is running or ready to be dispatched.
 
 ## Steps
 
-- TBD.
+1. Dispatch the worker with the appropriate state machine command.
+2. Start a timer and wait for completion.
+3. On timer expiry, inspect session output and decide next action.
+4. Provide guidance using docs when workers are blocked.
 
 ## Outputs
 
-- TBD.
+- Work item progresses through phases with documented status.
 
 ## Recovery
 
-- TBD.
+- If the worker stalls, request a summary and restart with clearer instructions.

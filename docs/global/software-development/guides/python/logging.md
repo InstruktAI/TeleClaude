@@ -9,13 +9,12 @@ type: guide
 
 # Logging — Guide
 
-## Goal
-
-- @docs/software-development/guides/python/core
-- @docs/software-development/policy/code-quality
+## Required reads
 
 @~/.teleclaude/docs/software-development/guides/python/core.md
 @~/.teleclaude/docs/software-development/standards/code-quality.md
+
+## Goal
 
 Use the shared InstruktAI logger to keep logs readable, tail-friendly, and free of third-party spam.
 
@@ -91,20 +90,17 @@ Changes target path to: `$INSTRUKT_AI_LOG_ROOT/{app}/{app}.log`
 - Entire payloads in production (use TRACE if needed)
 - Success/failure of every minor operation (aggregate instead)
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Steps
 
-- TBD.
+1. Configure logging once at process start with `configure_logging(...)`.
+2. Use structured key/value logging via the shared logger.
+3. Set `{ENV_PREFIX}_LOG_LEVEL` and third-party log filters as needed.
+4. Avoid logging secrets or full payloads.
 
 ## Outputs
 
-- TBD.
+- Logs are consistent, searchable, and safe for production usage.
 
 ## Recovery
 
-- TBD.
+- If logs are noisy or missing, adjust log levels and logger prefixes, then re-check output.

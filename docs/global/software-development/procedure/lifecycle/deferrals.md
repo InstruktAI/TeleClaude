@@ -9,50 +9,29 @@ type: procedure
 
 ## Goal
 
-1. Read `todos/{slug}/deferrals.md` (stop if missing).
-2. Read `todos/{slug}/state.json` and ensure `deferrals_processed` is not true.
-
-For each entry:
-
-- If `Suggested outcome` is `NEW_TODO`:
-  - Create a new todo slug derived from the title.
-  - Create `todos/{new_slug}/input.md` with Title, Why deferred, Decision needed, and link to original slug.
-  - Add `{new_slug}` to `todos/roadmap.md` (pending `[ ]`).
-  - If new todo depends on `{slug}`, add dependency in `todos/dependencies.json`.
-  - Mark deferral entry as processed with the new slug.
-
-- If `Suggested outcome` is `NOOP`:
-  - Mark deferral entry as processed.
-
-Update `todos/{slug}/state.json`:
-
-- Set `deferrals_processed` to true.
-- Store `deferrals_hash` as SHA256 of `deferrals.md`.
-
-Commit all changes (new todos, roadmap, dependencies, state.json, deferrals.md).
-
-Report summary of actions taken (new todos created, NOOPs).
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
+- Process deferrals into new todos or mark as no-ops, then record completion.
 
 ## Preconditions
 
-- TBD.
+- `todos/{slug}/deferrals.md` exists.
+- `todos/{slug}/state.json` exists and `deferrals_processed` is false.
 
 ## Steps
 
-- TBD.
+1. Read `todos/{slug}/deferrals.md` and `todos/{slug}/state.json`.
+2. For each deferral entry:
+   - If `Suggested outcome` is `NEW_TODO`, create a new todo with `input.md`, add to roadmap, and add dependencies if needed.
+   - If `Suggested outcome` is `NOOP`, mark the entry as processed.
+3. Update `state.json`:
+   - Set `deferrals_processed` to true.
+   - Store `deferrals_hash` as SHA256 of `deferrals.md`.
+4. Commit all changes and report a summary.
 
 ## Outputs
 
-- TBD.
+- Deferrals processed and recorded.
+- New todos created when required.
 
 ## Recovery
 
-- TBD.
+- If deferrals file is missing, stop and report; do not mark processed.

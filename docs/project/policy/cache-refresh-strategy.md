@@ -9,7 +9,7 @@ type: policy
 
 ## Rule
 
-- @docs/architecture/cache
+- @docs/project/architecture/cache.md
 
 Allow remote refresh requests only at explicit moments; serve from cache otherwise.
 
@@ -29,27 +29,23 @@ Allow remote refresh requests only at explicit moments; serve from cache otherwi
 
 - Coalesce concurrent refreshes for the same peer + data type.
 - Enforce a cooldown between refreshes per peer + data type.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
+- Prefer event-driven updates over TTL whenever available.
+- Never block API responses waiting for refresh completion.
 
 ## Rationale
 
-- TBD.
+- Limits remote load while keeping cache reasonably fresh.
+- Predictable refresh windows reduce thundering-herd behavior.
 
 ## Scope
 
-- TBD.
+- Applies to all cacheable resources (projects, todos, sessions, computers).
 
 ## Enforcement
 
-- TBD.
+- Cache handler must reject refresh requests outside the allowed triggers.
+- Telemetry should surface refresh counts per peer and data type.
 
 ## Exceptions
 
-- TBD.
+- Emergency refreshes may be run manually with explicit operator approval.

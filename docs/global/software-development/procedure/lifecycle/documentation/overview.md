@@ -9,8 +9,8 @@ type: procedure
 
 ## Goal
 
-- @docs/software-development/procedure/lifecycle/documentation/sync-docstrings
-- @docs/software-development/procedure/lifecycle/documentation/sync-docs
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docstrings
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docs
 
 Documentation is a distinct lifecycle phase. It ensures the codebase and its inline documentation are aligned before finalization.
 
@@ -21,26 +21,20 @@ Run the phase in order:
 
 This phase is atomic and idempotent.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Preconditions
 
-- TBD.
+- Code changes are complete and tested.
 
 ## Steps
 
-- TBD.
+1. Run docstring synchronization.
+2. Run docs synchronization and validation.
+3. Review outputs for completeness.
 
 ## Outputs
 
-- TBD.
+- Docstrings and docs aligned with code changes.
 
 ## Recovery
 
-- TBD.
+- If sync fails, fix docstrings/docs and rerun the phase.

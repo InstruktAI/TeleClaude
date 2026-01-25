@@ -9,11 +9,13 @@ type: procedure
 
 # Prepare — Procedure
 
-## Goal
+## Required reads
 
-- @docs/software-development/procedure/lifecycle/prepare/input-assessment
-- @docs/software-development/procedure/lifecycle/prepare/requirements-analysis
-- @docs/software-development/procedure/lifecycle/prepare/implementation-planning
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/input-assessment
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/requirements-analysis
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/implementation-planning
+
+## Goal
 
 1. Read `todos/roadmap.md`.
 2. Report current items and recommendations:
@@ -21,10 +23,6 @@ type: procedure
    - What should be prioritized and why?
    - Any items that need clarification?
 3. Discuss with the orchestrator until a slug is chosen.
-
-@~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/input-assessment.md
-@~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/requirements-analysis.md
-@~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/implementation-planning.md
 
 ```
 ANALYSIS: {slug}
@@ -53,26 +51,22 @@ PREPARED: {slug}
 Ready for implementation.
 ```
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Preconditions
 
-- TBD.
+- `todos/roadmap.md` exists and is readable.
+- Target slug folder exists or can be created.
 
 ## Steps
 
-- TBD.
+1. Review roadmap and identify candidate slugs.
+2. Run input assessment and requirements analysis for the chosen slug.
+3. Review or draft the implementation plan.
+4. Confirm readiness with the orchestrator and return `PREPARED`.
 
 ## Outputs
 
-- TBD.
+- Preparation report and selected slug marked ready for implementation.
 
 ## Recovery
 
-- TBD.
+- If no ready items, return `NO_READY_ITEMS` and recommend next preparation tasks.

@@ -11,7 +11,11 @@ description: Standard commands for managing the TeleClaude daemon service.
 
 - Manage daemon lifecycle safely and consistently.
 
+## Preconditions
+
 - You are in the TeleClaude repository.
+
+## Steps
 
 1. Start service: `make start`.
 2. Stop service (emergency only): `make stop`.
@@ -19,30 +23,10 @@ description: Standard commands for managing the TeleClaude daemon service.
 4. Check status: `make status`.
 5. Review logs: `instrukt-ai-logs teleclaude --since 2m`.
 
-- Service state updated and verified.
-
-- If the daemon crash-loops, use `make stop`, inspect logs, and fix the root cause before restarting.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-## Preconditions
-
-- TBD.
-
-## Steps
-
-- TBD.
-
 ## Outputs
 
-- TBD.
+- Service state updated and verified.
 
 ## Recovery
 
-- TBD.
+- If the daemon crash-loops, use `make stop`, inspect logs, and fix the root cause before restarting.

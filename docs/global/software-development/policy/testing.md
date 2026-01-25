@@ -9,12 +9,12 @@ type: policy
 
 # Testing — Policy
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/code-quality
+- @~/.teleclaude/docs/software-development/policy/linting-requirements
+
 ## Rule
-
-- @docs/software-development/policy/code-quality
-- @docs/software-development/policy/linting-requirements
-
-@~/.teleclaude/docs/software-development/standards/code-quality.md
 
 1. **Use pre-commit hooks as the primary verification path**
 2. **Do not run full suites by default** - Run targeted tests only when developing, debugging, or when hooks fail
@@ -74,26 +74,25 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 
 **CRITICAL**: Never commit code with failing hooks, lint violations, or type errors.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
+- Prefer deterministic tests; control time, randomness, and external I/O.
+- Separate unit tests from integration tests; document how to run each.
+- Mock external services; never hit production by default.
+- Keep fixtures minimal and reusable.
 
 ## Rationale
 
-- TBD.
+- Tests protect behavior and enable safe refactors.
+- Fast, deterministic suites keep feedback loops short.
 
 ## Scope
 
-- TBD.
+- Applies to all repositories and all changes that alter behavior.
 
 ## Enforcement
 
-- TBD.
+- Pre-commit hooks and CI gate merges on test results.
+- Reviews reject changes without adequate coverage justification.
 
 ## Exceptions
 
-- TBD.
+- Emergency fixes may allow minimal testing with explicit follow-up tasks.

@@ -9,15 +9,13 @@ type: policy
 
 # Definition Of Done — Policy
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/standards/code-quality.md
+- @~/.teleclaude/docs/software-development/standards/testing.md
+- @~/.teleclaude/docs/software-development/standards/commits.md
+
 ## Rule
-
-- @docs/software-development/policy/code-quality
-- @docs/software-development/policy/testing
-- @docs/software-development/policy/commits
-
-@~/.teleclaude/docs/software-development/standards/code-quality.md
-@~/.teleclaude/docs/software-development/standards/testing.md
-@~/.teleclaude/docs/software-development/standards/commits.md
 
 Work is not done when code is written. Work is done when it meets all quality gates and is ready for production.
 
@@ -133,26 +131,25 @@ Work is complete when:
 4. You would be proud to maintain this code yourself
 5. Another developer can understand and modify it
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
+- Docs updated for any new behavior or interfaces.
+- Observability updated if behavior affects production signals.
+- Backward-compatibility impacts are documented and communicated.
+- Follow-up tasks are recorded when scope is intentionally deferred.
 
 ## Rationale
 
-- TBD.
+- A consistent DoD prevents “almost done” work from leaking into production.
+- Explicit gates reduce regressions and hidden operational costs.
 
 ## Scope
 
-- TBD.
+- Applies to all features, bug fixes, and doc changes merged to main.
 
 ## Enforcement
 
-- TBD.
+- CI and reviewers must confirm DoD checks before approval.
+- Work items are not marked delivered until DoD is satisfied.
 
 ## Exceptions
 
-- TBD.
+- Emergency hotfixes may defer non-critical DoD items with explicit follow-up tickets.

@@ -9,11 +9,11 @@ type: policy
 
 # Security Awareness — Policy
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/standards/code-quality.md
+
 ## Rule
-
-- @docs/software-development/policy/code-quality
-
-@~/.teleclaude/docs/software-development/standards/code-quality.md
 
 Security is a baseline constraint. Treat inputs as untrusted, validate at boundaries, and protect secrets by default.
 
@@ -27,26 +27,25 @@ Always escalate before:
 - Modifying encryption or credential handling.
 - Exposing new external entry points.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
+- Do not log secrets, tokens, or raw payloads containing credentials.
+- Sanitize user input and apply allowlists where feasible.
+- Use least-privilege defaults for access controls and file permissions.
+- Prefer proven libraries over custom security implementations.
 
 ## Rationale
 
-- TBD.
+- Security failures are costly and often irreversible; prevention is cheaper than remediation.
+- Clear guardrails reduce accidental exposure and privilege escalation.
 
 ## Scope
 
-- TBD.
+- Applies to all code paths that handle user input, credentials, or external integrations.
 
 ## Enforcement
 
-- TBD.
+- Security-sensitive changes require explicit review and documented approvals.
+- Automated secret scanning and linting must pass before merge.
 
 ## Exceptions
 
-- TBD.
+- Emergency mitigations may bypass some steps with an incident record and follow-up review.

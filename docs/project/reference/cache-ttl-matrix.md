@@ -9,7 +9,7 @@ type: reference
 
 ## What it is
 
-- @docs/architecture/cache
+- @docs/project/architecture/cache.md
 
 - TTL and scope matrix for cache refresh behavior.
 
@@ -23,20 +23,19 @@ type: reference
 
 - Sessions are event-driven and do not use TTL refresh.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Canonical fields
 
-- TBD.
+- `resource`: cache resource name (computers, projects, todos, sessions, agent_availability).
+- `scope`: global, per-computer, or per-project.
+- `ttl`: time-to-live duration.
+- `refresh_trigger`: ttl, digest, or event-driven.
 
 ## Allowed values
 
-- TBD.
+- `scope`: `global`, `per-computer`, `per-project`.
+- `refresh_trigger`: `ttl`, `digest`, `event`.
 
 ## Known caveats
 
-- TBD.
+- TTLs are defaults; digest changes can trigger earlier refreshes.
+- Sessions ignore TTL and rely solely on events.

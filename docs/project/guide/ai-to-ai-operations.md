@@ -9,12 +9,18 @@ type: guide
 
 ## Goal
 
-- @docs/reference/mcp-tools
-- @docs/concept/session-types
+- @docs/project/reference/command-surface.md
+- @docs/project/reference/command-contracts.md
+- @docs/project/concept/session-types.md
 
 - Delegate work to remote AI sessions safely and predictably.
 
+## Preconditions
+
 - Target computer is online and reachable.
+- Target project path is trusted and available.
+
+## Steps
 
 1. List computers to confirm the target is online.
 2. List projects to select a trusted project path.
@@ -24,24 +30,11 @@ type: guide
 6. End sessions when work completes.
 7. If context is near capacity, request a summary, end, and restart fresh.
 
-- Delegated work executed in a monitored remote session.
-
-- If a session is unresponsive, end it and start a new one on the target.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-## Steps
-
-- TBD.
-
 ## Outputs
 
-- TBD.
+- Delegated work executed in a monitored remote session.
+- Session metadata and outputs recorded in the database.
 
 ## Recovery
 
-- TBD.
+- If a session is unresponsive, end it and start a new one on the target.

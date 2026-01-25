@@ -22,26 +22,21 @@ description: How TeleClaude detects command completion without explicit exit mar
 
 - Misidentified shell names can cause premature or delayed completion detection.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Inputs/Outputs
 
-- TBD.
+- **Inputs**: tmux pane command state.
+- **Outputs**: completion signal when shell resumes control.
 
 ## Invariants
 
-- TBD.
+- Shell readiness is inferred, not explicitly signaled by the process.
+- Only the foreground command determines readiness.
 
 ## Primary flows
 
-- TBD.
+- Poll tmux pane current command → compare to configured shell → mark ready when matched.
 
 ## Failure modes
 
-- TBD.
+- Incorrect shell configuration causes stuck or early completion.
+- Long-running shell wrappers hide the real shell command name.

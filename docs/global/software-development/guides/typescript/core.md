@@ -9,11 +9,11 @@ type: guide
 
 # Core — Guide
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/standards/code-quality.md
+
 ## Goal
-
-- @docs/software-development/policy/code-quality
-
-@~/.teleclaude/docs/software-development/standards/code-quality.md
 
 - **Strict mode always** - Enable all strict compiler options
 - **No `any`** - Use `unknown` when type is truly unknown
@@ -70,20 +70,18 @@ if (user.name) {
 - Match existing import patterns (absolute vs relative)
 - Conform to project's type organization
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Steps
 
-- TBD.
+1. Type every public function and exported value.
+2. Use type guards to narrow before access.
+3. Prefer immutable data and pure functions where feasible.
+4. Use Promise utilities intentionally (`all` vs `allSettled`).
+5. Follow project tsconfig and import conventions.
 
 ## Outputs
 
-- TBD.
+- TypeScript changes that align with repository typing and style constraints.
 
 ## Recovery
 
-- TBD.
+- If type errors appear, narrow types or refactor until the change is type-safe.

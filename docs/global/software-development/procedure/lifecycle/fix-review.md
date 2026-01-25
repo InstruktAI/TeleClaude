@@ -36,26 +36,21 @@ Report summary and readiness for re-review.
 - If fix causes regressions: document and continue to next issue.
 - If stuck: document what was tried and continue.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Preconditions
 
-- TBD.
+- `todos/{slug}/review-findings.md` exists with a non-APPROVE verdict.
 
 ## Steps
 
-- TBD.
+1. Read review findings and categorize issues.
+2. Apply minimal fixes for Critical and Important issues.
+3. Verify via lint/unit tests after each fix.
+4. Record fixes with commit hashes in review-findings.
 
 ## Outputs
 
-- TBD.
+- Updated review findings with fixes applied and ready for re-review.
 
 ## Recovery
 
-- TBD.
+- If a fix is blocked, document the blocker and request guidance.

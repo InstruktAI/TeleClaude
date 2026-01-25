@@ -9,11 +9,15 @@ type: procedure
 
 ## Goal
 
-- @docs/policy/daemon-availability
+- @docs/project/policy/daemon-availability.md
 
 - Send Telegram alerts when the daemon or MCP tools are unavailable.
 
+## Preconditions
+
 - Telegram bot token configured for the alert scripts.
+
+## Steps
 
 1. Use `bin/send_telegram.py` for a one-off ops message to the configured username (`TELEGRAM_ALERT_USERNAME`).
 2. Use `bin/notify_agents.py` for structured alerts with auto-topic selection and backoff.
@@ -21,31 +25,11 @@ type: procedure
 
 Note: these scripts are not wired by default; you must schedule them (cron/launchd/systemd) for automated alerts.
 
+## Outputs
+
 - Alert delivered without relying on the daemon.
 - Backoff state persisted under `logs/monitoring`.
 
-- If delivery fails, verify bot token and `TELEGRAM_ALERT_USERNAME`, then retry with `bin/send_telegram.py`.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
-## Preconditions
-
-- TBD.
-
-## Steps
-
-- TBD.
-
-## Outputs
-
-- TBD.
-
 ## Recovery
 
-- TBD.
+- If delivery fails, verify bot token and `TELEGRAM_ALERT_USERNAME`, then retry with `bin/send_telegram.py`.

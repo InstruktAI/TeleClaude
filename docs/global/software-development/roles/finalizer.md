@@ -9,7 +9,7 @@ type: role
 
 ## Required reads
 
-- @docs/software-development/procedure/lifecycle-overview
+- @~/.teleclaude/docs/software-development/procedure/lifecycle-overview
 
 ## Purpose
 

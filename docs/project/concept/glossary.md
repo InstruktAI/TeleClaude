@@ -32,26 +32,20 @@ description:
 
 - Inconsistent terminology causes mismatched expectations across adapters and APIs.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Inputs/Outputs
 
-- TBD.
+- **Inputs**: terms used in docs, code, and APIs.
+- **Outputs**: canonical definitions for shared understanding.
 
 ## Invariants
 
-- TBD.
+- Glossary definitions override ad hoc terminology in other docs.
+- Terms should remain stable; changes require cross-doc updates.
 
 ## Primary flows
 
-- TBD.
+- Docs and APIs reference glossary terms to avoid ambiguous naming.
 
 ## Failure modes
 
-- TBD.
+- Divergent terminology causes adapter incompatibilities and API confusion.

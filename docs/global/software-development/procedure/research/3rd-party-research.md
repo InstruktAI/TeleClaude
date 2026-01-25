@@ -37,14 +37,6 @@ artifacts.
 - Sources are listed under a **Sources** section as web links or Context7 snippet IDs.
 - Index is updated.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Preconditions
 
 - The task has a clear research brief.

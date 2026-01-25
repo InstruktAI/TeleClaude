@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, TypedDict, cast
+from typing import Iterable, NotRequired, TypedDict, cast
 
 import yaml
 from instrukt_ai_logging import get_logger
@@ -36,7 +36,7 @@ class SnippetIndexEntry(TypedDict):
     id: str
     description: str
     path: str
-    requires: list[str]
+    requires: NotRequired[list[str]]
 
 
 class IndexPayload(TypedDict):
@@ -169,9 +169,9 @@ def build_snippet_index(project_root: Path, *, snippets_dir: Path | None = None)
 def build_index_payload(project_root: Path) -> IndexPayload:
     """Build the YAML payload for docs/index.yaml."""
     entries = build_snippet_index(project_root)
-    snippets_payload: list[dict[str, object]] = []
+    snippets_payload: list[SnippetIndexEntry] = []
     for entry in entries:
-        item: dict[str, object] = {
+        item: SnippetIndexEntry = {
             "id": entry.snippet_id,
             "description": entry.description,
             "path": entry.path,

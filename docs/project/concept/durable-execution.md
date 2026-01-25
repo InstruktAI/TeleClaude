@@ -11,37 +11,30 @@ type: concept
 
 Ensures that commands and events are never lost, even if the daemon crashes or the network is interrupted.
 
-- Inputs: commands and hook events written to outbox tables.
-- Outputs: durable processing by daemon workers.
-
-1. **rest_outbox**: Captures commands from durable clients (like `telec`). The client retries until the outbox record is acknowledged.
-2. **hook_outbox**: Captures agent lifecycle events (e.g., turn completed). The `mcp-wrapper` or hook script writes to this outbox to ensure the daemon processes the event eventually.
+- **rest_outbox**: captures commands from durable clients; clients retry until acknowledged.
+- **hook_outbox**: captures agent lifecycle events written by hook scripts or wrappers.
 
 - State transitions and outbox entries are committed atomically.
 - Daemon workers continuously monitor outboxes for pending work.
 
 - Outbox backlog grows if workers are down or stalled.
 
-- TBD.
-
-- TBD.
-
-- TBD.
-
-- TBD.
-
 ## Inputs/Outputs
 
-- TBD.
+- **Inputs**: commands and hook events written to outbox tables.
+- **Outputs**: durable processing by daemon workers.
 
 ## Invariants
 
-- TBD.
+- Outbox writes are transactional with state updates.
+- Entries are processed at-least-once until marked delivered.
 
 ## Primary flows
 
-- TBD.
+- Client writes command → outbox row → daemon worker executes → mark delivered.
+- Hook writes event → outbox row → daemon worker handles → mark delivered.
 
 ## Failure modes
 
-- TBD.
+- Worker stalls cause backlog growth and delayed processing.
+- Lock contention can slow delivery; retries handle contention.

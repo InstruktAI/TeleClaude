@@ -65,7 +65,7 @@ flowchart TD
     Comp1[Computer 1]
     Comp2[Computer 2]
     Comp3[Computer 3]
-    Redis[(Redis)]
+    Redis["Redis"]
     Stream1[messages:comp1]
     Stream2[messages:comp2]
     Stream3[messages:comp3]
