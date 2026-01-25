@@ -7,7 +7,7 @@ scope: domain
 type: role
 ---
 
-# Role: Orchestrator
+# Role: Orchestrator — Role
 
 ## Required reads
 

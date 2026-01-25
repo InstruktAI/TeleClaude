@@ -5,7 +5,7 @@ scope: project
 type: standard
 ---
 
-# Cache Refresh Strategy
+# Cache Refresh Strategy — Standard
 
 ## Required reads
 

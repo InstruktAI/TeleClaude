@@ -1,11 +1,11 @@
 ---
-id: concept/durable-execution
-type: concept
-scope: global
 description: Reliability mechanism using the Outbox pattern in SQLite.
+id: concept/durable-execution
+scope: global
+type: concept
 ---
 
-# Durable Execution
+# Durable Execution — Concept
 
 ## Purpose
 

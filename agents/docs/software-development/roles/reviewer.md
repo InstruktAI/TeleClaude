@@ -7,7 +7,7 @@ scope: domain
 type: role
 ---
 
-# Role: Reviewer
+# Role: Reviewer — Role
 
 ## Required reads
 

@@ -1,0 +1,12 @@
+[Unit]
+Description=TeleClaude docs watch ({{PROJECT_ROOT}})
+
+[Path]
+PathModified={{PROJECT_ROOT}}/.agents
+PathModified={{PROJECT_ROOT}}/docs
+PathModified={{PROJECT_ROOT}}/agents/docs
+PathModified={{PROJECT_ROOT}}/teleclaude.yml
+Unit={{UNIT_ID}}.service
+
+[Install]
+WantedBy=default.target

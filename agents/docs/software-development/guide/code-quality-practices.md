@@ -5,7 +5,7 @@ scope: domain
 type: guide
 ---
 
-# Code Quality Practices
+# Code Quality Practices — Guide
 
 ## Required reads
 

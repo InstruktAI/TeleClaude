@@ -1,4 +1,4 @@
-# Agent Artifacts (Overview)
+# Agent Artifacts (Overview) — Reference
 
 Required reads
 

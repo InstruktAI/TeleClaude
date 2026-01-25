@@ -7,7 +7,7 @@ scope: domain
 type: concept
 ---
 
-# AI Failure Modes
+# AI Failure Modes — Concept
 
 You are prone to these failure modes. Guard against them:
 

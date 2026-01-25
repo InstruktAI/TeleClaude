@@ -7,7 +7,7 @@ scope: domain
 type: procedure
 ---
 
-# Lifecycle: Prepare
+# Lifecycle: Prepare — Procedure
 
 ## Required reads
 

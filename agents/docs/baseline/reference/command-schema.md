@@ -1,4 +1,4 @@
-# Command Schema
+# Command Schema — Reference
 
 Required reads
 

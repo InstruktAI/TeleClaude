@@ -1,11 +1,13 @@
 ---
-description: Security review checklist for boundary validation, secrets, and access controls.
+description:
+  Security review checklist for boundary validation, secrets, and access
+  controls.
 id: software-development/checklist/security-review
 scope: domain
 type: checklist
 ---
 
-# Security Review Checklist
+# Security Review Checklist — Checklist
 
 ## Required reads
 

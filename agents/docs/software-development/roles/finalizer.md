@@ -1,12 +1,11 @@
 ---
-description: Post-review delivery role. Merge, clean up, and log delivery
-  after approval.
+description: Post-review delivery role. Merge, clean up, and log delivery after approval.
 id: software-development/roles/finalizer
 scope: domain
 type: role
 ---
 
-# Role: Finalizer
+# Role: Finalizer — Role
 
 ## Required reads
 

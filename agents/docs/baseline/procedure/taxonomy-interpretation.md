@@ -1,4 +1,4 @@
-# Taxonomy Interpretation Procedure
+# Taxonomy Interpretation Procedure — Procedure
 
 Use the taxonomy list as a lens for interpreting requests and organizing docs.
 

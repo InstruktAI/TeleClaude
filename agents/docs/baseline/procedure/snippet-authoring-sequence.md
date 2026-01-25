@@ -1,4 +1,4 @@
-# Snippet Authoring Sequence (10 Steps)
+# Snippet Authoring Sequence (10 Steps) — Procedure
 
 ## Required reads
 

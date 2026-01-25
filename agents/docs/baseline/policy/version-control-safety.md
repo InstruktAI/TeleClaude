@@ -1,4 +1,4 @@
-# Version Control Safety Policy
+# Version Control Safety Policy — Policy
 
 ## Rule
 

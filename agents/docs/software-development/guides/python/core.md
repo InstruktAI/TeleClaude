@@ -7,7 +7,7 @@ scope: domain
 type: guide
 ---
 
-# Python Core Patterns
+# Python Core Patterns — Guide
 
 ## Required reads
 

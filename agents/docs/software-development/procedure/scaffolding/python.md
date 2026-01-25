@@ -7,7 +7,7 @@ scope: domain
 type: procedure
 ---
 
-# Python Scaffolding Procedure
+# Python Scaffolding Procedure — Procedure
 
 ## Goal
 

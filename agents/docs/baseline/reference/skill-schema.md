@@ -1,4 +1,4 @@
-# Skill Schema
+# Skill Schema — Reference
 
 Required reads
 

@@ -1,11 +1,11 @@
 ---
-id: architecture/next-machine
-type: architecture
-scope: global
 description: Stateless state machine for orchestrating multi-phase project workflows.
+id: architecture/next-machine
+scope: global
+type: architecture
 ---
 
-# Next Machine Architecture
+# Next Machine Architecture — Architecture
 
 ## Purpose
 

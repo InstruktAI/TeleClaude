@@ -7,7 +7,7 @@ scope: domain
 type: procedure
 ---
 
-# Orchestration Procedure
+# Orchestration Procedure — Procedure
 
 ## Required reads
 

@@ -1,4 +1,4 @@
-# Snippet Taxonomy
+# Snippet Taxonomy — Reference
 
 Always interpret requests through the taxonomy below. Use the most appropriate type(s) when selecting context.
 

@@ -1,11 +1,11 @@
 ---
-id: software-development/procedure/lifecycle/documentation/sync-docs
-type: procedure
-scope: domain
 description: Regenerate docs from code + docs using the taxonomy.
+id: software-development/procedure/lifecycle/documentation/sync-docs
+scope: domain
+type: procedure
 ---
 
-# Sync Docs
+# Sync Docs — Procedure
 
 ## Objective
 

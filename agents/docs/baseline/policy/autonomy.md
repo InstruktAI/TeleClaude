@@ -1,4 +1,4 @@
-# Autonomy and Escalation Policy
+# Autonomy and Escalation Policy — Policy
 
 This is the single source of truth for when to proceed autonomously and when to ask.
 If any other instruction conflicts with this policy, this policy wins.

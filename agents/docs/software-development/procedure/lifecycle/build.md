@@ -7,7 +7,7 @@ scope: domain
 type: procedure
 ---
 
-# Lifecycle: Build
+# Lifecycle: Build — Procedure
 
 ## 1) Load Context
 

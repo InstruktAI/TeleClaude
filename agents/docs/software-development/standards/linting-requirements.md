@@ -7,7 +7,7 @@ scope: domain
 type: policy
 ---
 
-# Linting & Type-Checking Requirements
+# Linting & Type-Checking Requirements — Policy
 
 ## Required reads
 

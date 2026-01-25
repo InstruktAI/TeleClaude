@@ -5,7 +5,7 @@ scope: domain
 type: procedure
 ---
 
-# Lifecycle: Deferrals Processing
+# Lifecycle: Deferrals Processing — Procedure
 
 ## 1) Load Context
 

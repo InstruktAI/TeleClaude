@@ -7,7 +7,7 @@ scope: domain
 type: policy
 ---
 
-# Testing Standards
+# Testing Standards — Policy
 
 ## Required reads
 

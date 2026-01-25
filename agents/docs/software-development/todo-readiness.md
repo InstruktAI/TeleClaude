@@ -7,7 +7,7 @@ scope: domain
 type: checklist
 ---
 
-# Todo Readiness Criteria
+# Todo Readiness Criteria — Checklist
 
 A todo is ready for implementation when it meets all five criteria. If any criterion fails, apply story splitting patterns to break it down further.
 

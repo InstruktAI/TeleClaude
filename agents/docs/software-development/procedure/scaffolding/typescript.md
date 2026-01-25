@@ -7,7 +7,7 @@ scope: domain
 type: procedure
 ---
 
-# TypeScript Scaffolding Procedure
+# TypeScript Scaffolding Procedure — Procedure
 
 ## Goal
 

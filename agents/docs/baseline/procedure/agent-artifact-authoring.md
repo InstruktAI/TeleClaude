@@ -1,4 +1,4 @@
-# Agent Artifact Authoring
+# Agent Artifact Authoring — Procedure
 
 Required reads
 

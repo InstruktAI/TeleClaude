@@ -1,11 +1,11 @@
 ---
-id: software-development/procedure/lifecycle/maintenance
-type: procedure
-scope: domain
 description: Maintenance phase for repo-wide upkeep (security, dependencies, infra).
+id: software-development/procedure/lifecycle/maintenance
+scope: domain
+type: procedure
 ---
 
-# Maintenance Phase
+# Maintenance Phase — Procedure
 
 Maintenance restores reliability and reduces drift across the repo and its infrastructure.
 

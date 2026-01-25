@@ -1,11 +1,13 @@
 ---
+description:
+  Analyze or draft implementation-plan.md with approach, files, tasks,
+  risks.
 id: software-development/procedure/lifecycle/prepare/implementation-planning
-type: procedure
 scope: domain
-description: Analyze or draft implementation-plan.md with approach, files, tasks, risks.
+type: procedure
 ---
 
-# Prepare: Implementation Planning
+# Prepare: Implementation Planning — Procedure
 
 ## When implementation-plan.md Exists
 

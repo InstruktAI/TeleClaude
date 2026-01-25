@@ -1,4 +1,4 @@
-# Conflict Resolution Rules
+# Conflict Resolution Rules — Policy
 
 When guidance conflicts, resolve with these priorities:
 

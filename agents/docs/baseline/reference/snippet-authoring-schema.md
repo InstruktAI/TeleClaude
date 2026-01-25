@@ -1,4 +1,4 @@
-# Snippet authoring schema
+# Snippet authoring schema — Reference
 
 ONLY for NON baseline snippets will we write ON THE TOP the frontmatter fields:
 

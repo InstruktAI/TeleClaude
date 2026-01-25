@@ -1,4 +1,4 @@
-# Stateless Command Policy
+# Stateless Command Policy — Policy
 
 Commands are atomic, explicit, and idempotent. They state required setup, perform the work, and end with a verifiable outcome.
 

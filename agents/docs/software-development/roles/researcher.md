@@ -5,7 +5,7 @@ scope: domain
 type: role
 ---
 
-# Role: Researcher
+# Role: Researcher — Role
 
 ## Identity
 

@@ -5,7 +5,7 @@ scope: project
 type: policy
 ---
 
-# Agent Service-Control Guardrails
+# Agent Service-Control Guardrails — Policy
 
 - **Allowed lifecycle command:** `make restart` and `make status` (use `make stop` and `make start` only when troubleshoooting daemon issues).
 - **Allowed checks:** `make status`, `instrukt-ai-logs teleclaude --since <window> -g <str>`.

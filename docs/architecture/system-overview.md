@@ -1,11 +1,13 @@
 ---
+description:
+  High-level architectural blueprint of TeleClaude components and data
+  flow.
 id: architecture/system-overview
-type: architecture
 scope: global
-description: High-level architectural blueprint of TeleClaude components and data flow.
+type: architecture
 ---
 
-# System Overview
+# System Overview — Architecture
 
 ## Purpose
 

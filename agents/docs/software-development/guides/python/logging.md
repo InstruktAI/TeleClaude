@@ -7,7 +7,7 @@ scope: domain
 type: guide
 ---
 
-# Python Logging (InstruktAI Standard)
+# Python Logging (InstruktAI Standard) — Guide
 
 ## Required reads
 

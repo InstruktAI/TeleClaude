@@ -7,7 +7,7 @@ scope: domain
 type: procedure
 ---
 
-# Lifecycle: Review
+# Lifecycle: Review — Procedure
 
 ## Required reads
 

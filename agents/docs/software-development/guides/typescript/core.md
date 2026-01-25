@@ -7,7 +7,7 @@ scope: domain
 type: guide
 ---
 
-# TypeScript Core Patterns
+# TypeScript Core Patterns — Guide
 
 ## Required reads
 

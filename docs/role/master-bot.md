@@ -1,11 +1,11 @@
 ---
-id: role/master-bot
-type: role
-scope: global
 description: The role of the master bot in a multi-computer Telegram supergroup.
+id: role/master-bot
+scope: global
+type: role
 ---
 
-# Role: Master Bot
+# Role: Master Bot — Role
 
 ## Responsibilities
 

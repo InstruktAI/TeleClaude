@@ -1,11 +1,11 @@
 ---
-id: concept/git-worktrees
-type: concept
-scope: project
 description: Use of git worktrees for isolated agent development and testing.
+id: concept/git-worktrees
+scope: project
+type: concept
 ---
 
-# Git Worktrees for Agents
+# Git Worktrees for Agents — Concept
 
 ## Purpose
 

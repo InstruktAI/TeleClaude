@@ -7,7 +7,7 @@ scope: domain
 type: policy
 ---
 
-# Security Awareness
+# Security Awareness — Policy
 
 ## Required reads
 

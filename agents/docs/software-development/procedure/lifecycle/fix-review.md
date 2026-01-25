@@ -5,7 +5,7 @@ scope: domain
 type: procedure
 ---
 
-# Lifecycle: Fix Review Findings
+# Lifecycle: Fix Review Findings — Procedure
 
 ## 1) Load Review Findings
 

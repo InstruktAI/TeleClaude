@@ -5,7 +5,7 @@ scope: domain
 type: procedure
 ---
 
-# Lifecycle: Finalize
+# Lifecycle: Finalize — Procedure
 
 ## Prerequisite
 

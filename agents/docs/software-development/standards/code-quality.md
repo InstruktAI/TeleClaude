@@ -7,7 +7,7 @@ scope: domain
 type: policy
 ---
 
-# Code Quality Standards
+# Code Quality Standards — Policy
 
 Principle
 

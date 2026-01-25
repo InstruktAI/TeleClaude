@@ -7,7 +7,7 @@ scope: domain
 type: role
 ---
 
-# Role: Architect
+# Role: Architect — Role
 
 ## Required reads
 

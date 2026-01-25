@@ -7,7 +7,7 @@ scope: domain
 type: procedure
 ---
 
-# Prepare: Input Assessment
+# Prepare: Input Assessment — Procedure
 
 ## Required reads
 

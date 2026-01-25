@@ -1,11 +1,11 @@
 ---
-id: architecture/output-polling
-type: architecture
-scope: project
 description: Mechanism for real-time terminal output capture and streaming.
+id: architecture/output-polling
+scope: project
+type: architecture
 ---
 
-# Output Polling Architecture
+# Output Polling Architecture — Architecture
 
 ## Purpose
 

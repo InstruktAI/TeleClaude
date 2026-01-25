@@ -7,7 +7,7 @@ scope: domain
 type: role
 ---
 
-# Role: Administrator
+# Role: Administrator — Role
 
 ## Required reads
 

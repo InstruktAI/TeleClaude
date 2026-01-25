@@ -7,7 +7,7 @@ scope: domain
 type: policy
 ---
 
-# Definition of Done
+# Definition of Done — Policy
 
 ## Required reads
 

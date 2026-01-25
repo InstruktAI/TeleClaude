@@ -1,4 +1,4 @@
-# Referencing Doc Snippets Policy
+# Referencing Doc Snippets Policy — Policy
 
 ## Rule
 

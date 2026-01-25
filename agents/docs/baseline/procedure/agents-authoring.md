@@ -1,4 +1,4 @@
-# AGENTS.md Authoring
+# AGENTS.md Authoring — Procedure
 
 Required reads
 

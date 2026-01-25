@@ -1,11 +1,11 @@
 ---
-id: role/ai-worker
-type: role
-scope: global
 description: The role of an AI agent session in the TeleClaude network.
+id: role/ai-worker
+scope: global
+type: role
 ---
 
-# Role: AI Worker (Agent)
+# Role: AI Worker (Agent) — Role
 
 ## Responsibilities
 

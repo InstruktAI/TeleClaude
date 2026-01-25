@@ -1,11 +1,11 @@
 ---
-id: software-development/procedure/lifecycle/prepare/requirements-analysis
-type: procedure
-scope: domain
 description: Analyze or verify requirements.md content for completeness and clarity.
+id: software-development/procedure/lifecycle/prepare/requirements-analysis
+scope: domain
+type: procedure
 ---
 
-# Prepare: Requirements Analysis
+# Prepare: Requirements Analysis — Procedure
 
 ## When requirements.md Exists
 

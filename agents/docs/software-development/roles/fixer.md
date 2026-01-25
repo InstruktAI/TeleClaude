@@ -7,7 +7,7 @@ scope: domain
 type: role
 ---
 
-# Role: Fixer
+# Role: Fixer — Role
 
 ## Required reads
 

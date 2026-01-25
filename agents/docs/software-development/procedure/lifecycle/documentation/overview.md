@@ -1,12 +1,11 @@
 ---
-description: Documentation phase ensuring inline docstrings and docs match the
-  code.
+description: Documentation phase ensuring inline docstrings and docs match the code.
 id: software-development/procedure/lifecycle/documentation/overview
 scope: domain
 type: procedure
 ---
 
-# Documentation Phase
+# Documentation Phase — Procedure
 
 ## Required reads
 

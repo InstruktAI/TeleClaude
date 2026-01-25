@@ -1,4 +1,4 @@
-# Context Retrieval Policy
+# Context Retrieval Policy — Policy
 
 Call `teleclaude__get_context` as your first action when:
 

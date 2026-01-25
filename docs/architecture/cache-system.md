@@ -1,11 +1,11 @@
 ---
-id: architecture/cache-system
-type: architecture
-scope: project
 description: Event-driven read-cache architecture using SQLite snapshots.
+id: architecture/cache-system
+scope: project
+type: architecture
 ---
 
-# Cache Architecture
+# Cache Architecture — Architecture
 
 ## Purpose
 

@@ -7,7 +7,7 @@ scope: domain
 type: policy
 ---
 
-# Commit Standards
+# Commit Standards — Policy
 
 ## Required reads
 

@@ -7,7 +7,7 @@ scope: domain
 type: procedure
 ---
 
-# Bugs Handling Procedure
+# Bugs Handling Procedure — Procedure
 
 ## Goal
 
