@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-from scripts.build_snippet_index import _iter_snippet_roots, build_index_payload
+from scripts.sync_resources import _iter_snippet_roots, build_index_payload
 
 logger = get_logger(__name__)
 

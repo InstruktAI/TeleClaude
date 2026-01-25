@@ -1,0 +1,316 @@
+"""Unit tests for session cleanup utilities."""
+
+from __future__ import annotations
+
+import os
+import shutil
+import signal
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+
+from teleclaude.core import session_cleanup
+from teleclaude.core.session_cleanup import (
+    cleanup_all_stale_sessions,
+    cleanup_orphan_mcp_wrappers,
+    cleanup_orphan_workspaces,
+    cleanup_stale_session,
+)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_stale_session_detects_missing_tmux():
+    """Paranoid test that cleanup_stale_session detects missing tmux and cleans up."""
+    mock_session = MagicMock()
+    mock_session.session_id = "stale-session-123"
+    mock_session.tmux_session_name = "tc_stale"
+    mock_session.last_input_origin = "telegram"
+    mock_session.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+
+    mock_adapter_client = MagicMock()
+
+    with (
+        patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
+        patch("teleclaude.core.session_cleanup.tmux_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
+        patch("teleclaude.core.session_cleanup.terminate_session", new_callable=AsyncMock) as mock_terminate,
+    ):
+        mock_get.return_value = mock_session
+        mock_exists.return_value = False
+        mock_terminate.return_value = True
+
+        result = await cleanup_stale_session("stale-session-123", mock_adapter_client)
+
+    assert result is True
+    mock_terminate.assert_called_once_with(
+        "stale-session-123",
+        mock_adapter_client,
+        reason="stale",
+        session=mock_session,
+        kill_tmux=False,
+        delete_db=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_cleanup_stale_session_skips_healthy_session():
+    """Paranoid test that cleanup_stale_session skips healthy sessions."""
+    mock_session = MagicMock()
+    mock_session.session_id = "healthy-session-123"
+    mock_session.tmux_session_name = "tc_healthy"
+    mock_session.last_input_origin = "telegram"
+    mock_session.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+
+    mock_adapter_client = MagicMock()
+
+    with (
+        patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
+        patch("teleclaude.core.session_cleanup.tmux_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
+    ):
+        mock_get.return_value = mock_session
+        mock_exists.return_value = True
+
+        result = await cleanup_stale_session("healthy-session-123", mock_adapter_client)
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_cleanup_all_stale_sessions_processes_all():
+    """Paranoid test that cleanup_all_stale_sessions processes all active sessions."""
+    mock_sessions = []
+    for i in range(3):
+        s = MagicMock()
+        s.session_id = f"session-{i}"
+        s.tmux_session_name = f"tc_session_{i}"
+        s.last_input_origin = "telegram"
+        s.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        mock_sessions.append(s)
+
+    mock_adapter_client = MagicMock()
+
+    stale_sessions = {"tc_session_0", "tc_session_2"}
+
+    async def mock_session_exists(name):
+        return name not in stale_sessions
+
+    with (
+        patch("teleclaude.core.session_cleanup.db.get_active_sessions", new_callable=AsyncMock) as mock_get_active,
+        patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
+        patch("teleclaude.core.session_cleanup.tmux_bridge.session_exists", side_effect=mock_session_exists),
+        patch("teleclaude.core.session_cleanup.terminate_session", new_callable=AsyncMock) as mock_terminate,
+    ):
+        mock_get_active.return_value = mock_sessions
+        mock_get.side_effect = lambda sid: next((s for s in mock_sessions if s.session_id == sid), None)
+        mock_terminate.return_value = True
+
+        count = await cleanup_all_stale_sessions(mock_adapter_client)
+
+    assert count == 2
+    assert mock_terminate.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_cleanup_all_stale_sessions_handles_empty_list():
+    """Paranoid test that cleanup_all_stale_sessions handles no active sessions."""
+    mock_adapter_client = MagicMock()
+
+    with patch("teleclaude.core.session_cleanup.db.get_active_sessions", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = []
+
+        count = await cleanup_all_stale_sessions(mock_adapter_client)
+
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_cleanup_orphan_workspaces_removes_orphans(tmp_path: Path):
+    """Paranoid test that cleanup_orphan_workspaces removes directories not in DB."""
+    # Create orphan workspace directories
+    orphan1 = tmp_path / "orphan-session-1"
+    orphan2 = tmp_path / "orphan-session-2"
+    orphan1.mkdir()
+    orphan2.mkdir()
+
+    # Create a file in one of them to ensure rmtree works
+    (orphan1 / "tmux.txt").write_text("some output")
+
+    # Mock db.get_all_sessions to return empty (no known sessions)
+    mock_sessions: list[MagicMock] = []
+
+    with (
+        patch("teleclaude.core.session_cleanup.db.get_all_sessions", new_callable=AsyncMock) as mock_db,
+        patch("teleclaude.core.session_cleanup.OUTPUT_DIR", tmp_path),
+    ):
+        mock_db.return_value = mock_sessions
+
+        removed = await cleanup_orphan_workspaces()
+
+    assert removed == 2
+    assert not orphan1.exists()
+    assert not orphan2.exists()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_orphan_workspaces_keeps_known_sessions(tmp_path: Path):
+    """Paranoid test that cleanup_orphan_workspaces keeps directories that exist in DB."""
+    known_session_id = "known-session-123"
+
+    # Create workspace for known session
+    known_dir = tmp_path / known_session_id
+    known_dir.mkdir()
+    (known_dir / "tmux.txt").write_text("session output")
+
+    # Create orphan workspace
+    orphan_dir = tmp_path / "orphan-session"
+    orphan_dir.mkdir()
+
+    # Mock db to return the known session
+    mock_session = MagicMock()
+    mock_session.session_id = known_session_id
+
+    with (
+        patch("teleclaude.core.session_cleanup.db.get_all_sessions", new_callable=AsyncMock) as mock_db,
+        patch("teleclaude.core.session_cleanup.OUTPUT_DIR", tmp_path),
+    ):
+        mock_db.return_value = [mock_session]
+
+        removed = await cleanup_orphan_workspaces()
+
+    assert removed == 1
+    assert known_dir.exists()  # Should NOT be removed
+    assert not orphan_dir.exists()  # Should be removed
+
+
+@pytest.mark.asyncio
+async def test_cleanup_orphan_workspaces_handles_missing_directory():
+    """Paranoid test that cleanup_orphan_workspaces handles missing workspace directory."""
+    nonexistent_path = Path("/nonexistent/workspace/path")
+
+    with patch("teleclaude.core.session_cleanup.OUTPUT_DIR", nonexistent_path):
+        removed = await cleanup_orphan_workspaces()
+
+    assert removed == 0
+
+
+@pytest.mark.asyncio
+@patch("teleclaude.core.session_cleanup.subprocess.run")
+@patch("teleclaude.core.session_cleanup.os.kill")
+async def test_cleanup_orphan_mcp_wrappers_kills_ppid1(mock_kill, mock_run):
+    """Test that orphaned MCP wrappers with PPID 1 are terminated."""
+    mock_run.return_value = MagicMock(
+        stdout=" 111 1 /usr/bin/python /path/bin/mcp-wrapper.py\n 222 2 /usr/bin/python /path/bin/mcp-wrapper.py\n"
+    )
+
+    killed = await cleanup_orphan_mcp_wrappers()
+
+    assert killed == 1
+    mock_kill.assert_called_once_with(111, signal.SIGTERM)
+
+
+@pytest.mark.asyncio
+@patch("teleclaude.core.session_cleanup.subprocess.run")
+async def test_cleanup_orphan_mcp_wrappers_noop(mock_run):
+    """Test that cleanup_orphan_mcp_wrappers skips non-orphaned processes."""
+    mock_run.return_value = MagicMock(stdout=" 111 2 /usr/bin/python /path/bin/mcp-wrapper.py\n")
+
+    killed = await cleanup_orphan_mcp_wrappers()
+
+    assert killed == 0
+
+
+@pytest.mark.asyncio
+async def test_terminate_session_deletes_db_and_resources():
+    """Paranoid test that terminate_session deletes resources and DB record via observable effects."""
+    mock_session = MagicMock()
+    mock_session.session_id = "session-123"
+    mock_session.tmux_session_name = "tc_session"
+    mock_session.last_input_origin = "telegram"
+
+    adapter_client = MagicMock()
+
+    with (
+        patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
+        patch("teleclaude.core.session_cleanup.db.delete_session", new_callable=AsyncMock) as mock_delete,
+        patch("teleclaude.core.session_cleanup.tmux_bridge.kill_session", new_callable=AsyncMock) as mock_kill,
+        patch("teleclaude.core.session_cleanup.cleanup_session_resources", new_callable=AsyncMock) as mock_cleanup,
+    ):
+        mock_get.return_value = mock_session
+        mock_kill.return_value = True
+
+        result = await session_cleanup.terminate_session(
+            "session-123",
+            adapter_client,
+            reason="test",
+            session=mock_session,
+            delete_db=True,
+        )
+
+    assert result is True
+    mock_kill.assert_called_once_with("tc_session")
+    mock_cleanup.assert_called_once_with(mock_session, adapter_client, delete_channel=True)
+    mock_delete.assert_called_once_with("session-123")
+
+
+@pytest.mark.asyncio
+async def test_terminate_session_kills_tmux_for_terminal_origin():
+    """Test that terminal-origin sessions use tmux kill on termination."""
+    mock_session = MagicMock()
+    mock_session.session_id = "session-456"
+    mock_session.tmux_session_name = "terminal:deadbeef"
+    mock_session.last_input_origin = "terminal"
+
+    adapter_client = MagicMock()
+
+    with (
+        patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
+        patch("teleclaude.core.session_cleanup.db.delete_session", new_callable=AsyncMock) as mock_delete,
+        patch("teleclaude.core.session_cleanup.tmux_bridge.kill_session", new_callable=AsyncMock) as mock_kill,
+        patch("teleclaude.core.session_cleanup.cleanup_session_resources", new_callable=AsyncMock) as mock_cleanup,
+    ):
+        mock_get.return_value = mock_session
+
+        result = await session_cleanup.terminate_session(
+            "session-456",
+            adapter_client,
+            reason="test",
+            session=mock_session,
+            delete_db=True,
+        )
+
+    assert result is True
+    mock_kill.assert_called_once_with("terminal:deadbeef")
+    mock_cleanup.assert_called_once_with(mock_session, adapter_client, delete_channel=True)
+    mock_delete.assert_called_once_with("session-456")
+
+
+@pytest.mark.asyncio
+async def test_cleanup_session_resources_uses_to_thread_for_rmtree(monkeypatch, tmp_path: Path) -> None:
+    """Test that cleanup_session_resources offloads rmtree via asyncio.to_thread."""
+    called = {}
+
+    async def fake_to_thread(func, *args, **kwargs):
+        called["func"] = func
+        called["args"] = args
+        return func(*args, **kwargs)
+
+    async def noop_async(*_args, **_kwargs):
+        return None
+
+    (tmp_path / "file.txt").write_text("data")
+
+    monkeypatch.setattr(session_cleanup.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(session_cleanup, "get_session_output_dir", lambda _sid: tmp_path)
+    adapter_client = SimpleNamespace(delete_channel=AsyncMock())
+    session = SimpleNamespace(session_id="sess-1")
+
+    await session_cleanup.cleanup_session_resources(session, adapter_client)
+
+    adapter_client.delete_channel.assert_called_once_with(session)
+    assert called["func"] is shutil.rmtree
+    assert called["args"][0] == tmp_path
+    assert not tmp_path.exists()

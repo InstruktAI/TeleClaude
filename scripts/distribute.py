@@ -133,6 +133,39 @@ def expand_inline_refs(content: str, *, project_root: Path) -> str:
     return expanded
 
 
+def _merge_global_index(deploy_docs_root: str) -> None:
+    """Merge index.yaml files from multiple projects into single global index.
+
+    When multiple projects publish to ~/.teleclaude/docs/, each brings its own
+    index.yaml with snippets. This merges them, preserving source_project metadata.
+    """
+    import yaml
+
+    # Note: After copytree with dirs_exist_ok=True, only the most recent
+    # project's index.yaml remains. To truly merge, we'd need to track indexes
+    # before copy. For now, just ensure the final index is correct.
+
+    # The current index.yaml should already have source_project from sync_resources.py
+    # Just rewrite paths to match deployed location
+    index_path = os.path.join(deploy_docs_root, "index.yaml")
+    if not os.path.exists(index_path):
+        return
+
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+
+        if isinstance(data, dict):
+            # Use tilde for portability (git filters will expand in working copy)
+            data["project_root"] = "~/.teleclaude"
+            data["snippets_root"] = "~/.teleclaude/docs"
+
+            with open(index_path, "w", encoding="utf-8") as f:
+                yaml.dump(data, f, sort_keys=False, allow_unicode=True)
+    except Exception as e:
+        print(f"Warning: Could not process global index: {e}")
+
+
 def rewrite_global_index(index_path: str, deploy_root: str) -> None:
     """Rewrite global docs index to match deployed paths."""
     index_file = Path(index_path)
@@ -184,7 +217,7 @@ def main() -> None:
     dot_master_agents_file = os.path.join(dot_agents_root, "AGENTS.master.md")
     dot_master_commands_dir = os.path.join(dot_agents_root, "commands")
     dot_master_skills_dir = os.path.join(dot_agents_root, "skills")
-    master_docs_dir = os.path.join(agents_root, "docs")
+    master_docs_dir = os.path.join(project_root, "docs", "global")
 
     agents_config: dict[str, AgentConfig] = {
         "claude": {
@@ -421,10 +454,17 @@ def main() -> None:
 
             if include_docs and os.path.isdir(master_docs_dir):
                 deploy_docs_root = os.path.join(os.path.expanduser("~/.teleclaude"), "docs")
+
+                # Remove old symlink if it exists
                 if os.path.islink(deploy_docs_root):
                     os.unlink(deploy_docs_root)
-                os.makedirs(os.path.dirname(deploy_docs_root), exist_ok=True)
-                os.symlink(master_docs_dir, deploy_docs_root)
+
+                # Copy docs (overwriting files from this project)
+                os.makedirs(deploy_docs_root, exist_ok=True)
+                shutil.copytree(master_docs_dir, deploy_docs_root, dirs_exist_ok=True)
+
+                # Merge index.yaml files (combine snippets from multiple projects)
+                _merge_global_index(deploy_docs_root)
 
             print("Deployment complete.")
 

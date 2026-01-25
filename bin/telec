@@ -1,0 +1,17 @@
+#!/bin/bash
+# TeleClaude terminal CLI wrapper (runs in current terminal).
+set -euo pipefail
+
+SOURCE="$0"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  TARGET="$(readlink "$SOURCE")"
+  if [[ "$TARGET" == /* ]]; then
+    SOURCE="$TARGET"
+  else
+    SOURCE="$DIR/$TARGET"
+  fi
+done
+
+INSTALL_DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+exec "$INSTALL_DIR/.venv/bin/python" -m teleclaude.cli.telec "$@"

@@ -1,0 +1,37 @@
+repos:
+- repo: https://github.com/commitizen-tools/commitizen
+  rev: v3.14.1
+  hooks:
+  - id: commitizen
+- repo: local
+  hooks:
+  - id: format
+    name: Format (bin/format.sh)
+    entry: ./bin/format.sh
+    language: system
+    pass_filenames: true
+    require_serial: true
+  - id: lint
+    name: Lint (make lint)
+    entry: make lint
+    language: system
+    pass_filenames: false
+  - id: test
+    name: Run tests
+    entry: make test
+    language: system
+    pass_filenames: false
+    stages:
+    - manual
+- repo: local
+  hooks:
+  - id: teleclaude-docs-check
+    name: Check for hardcoded HOME paths in docs
+    entry: bash -c
+    args:
+    - 'git diff --cached --name-only --diff-filter=ACM | grep ''\.md$'' | xargs -r
+      grep -l "@/Users/\|@/home/" && echo "ERROR: Hardcoded HOME paths found in docs.
+      Run ''telec init'' to set up filters." && exit 1 || true'
+    language: system
+    files: \.md$
+    pass_filenames: false

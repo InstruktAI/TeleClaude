@@ -1,0 +1,266 @@
+"""API request/response models for API server."""
+
+from typing import TYPE_CHECKING, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    from teleclaude.core.models import SessionSummary
+
+
+class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to create a new session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    computer: str = Field(..., min_length=2)
+    project_path: str = Field(..., min_length=2)
+    launch_kind: Literal["empty", "agent", "agent_then_message", "agent_resume"] = "agent"
+    agent: Literal["claude", "gemini", "codex"] | None = None
+    thinking_mode: Literal["fast", "med", "slow"] | None = None
+    title: str | None = None
+    message: str | None = None
+    auto_command: str | None = None
+    native_session_id: str | None = None
+    subdir: str | None = None
+
+
+class CreateSessionResponseDTO(BaseModel):  # type: ignore[explicit-any]
+    """Response from session creation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["success", "error"]
+    session_id: str
+    tmux_session_name: str
+    agent: Literal["claude", "gemini", "codex"] | None = None
+    error: str | None = None
+
+
+class SendMessageRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to send a message to a session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    message: str = Field(..., min_length=1)
+
+
+class VoiceInputRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to send a voice input to a session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    file_path: str = Field(..., min_length=1)
+    duration: float | None = None
+    message_id: str | None = None
+    message_thread_id: int | None = None
+
+
+class FileUploadRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to send a file input to a session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    file_path: str = Field(..., min_length=1)
+    filename: str = Field(..., min_length=1)
+    caption: str | None = None
+    file_size: int = 0
+
+
+class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
+    """DTO for session summary in lists."""
+
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+    last_input_origin: str | None = None
+    title: str
+    project_path: str | None = None
+    subdir: str | None = None
+    thinking_mode: str | None = None
+    active_agent: str | None = None
+    status: str
+    created_at: str | None = None
+    last_activity: str | None = None
+    last_input: str | None = None
+    last_input_at: str | None = None
+    last_output: str | None = None
+    last_output_at: str | None = None
+    tmux_session_name: str | None = None
+    initiator_session_id: str | None = None
+    computer: str | None = None
+
+    @classmethod
+    def from_core(cls, summary: "SessionSummary", computer: str | None = None) -> "SessionSummaryDTO":
+        """Map from core SessionSummary dataclass."""
+        return cls(
+            session_id=summary.session_id,
+            last_input_origin=summary.last_input_origin,
+            title=summary.title,
+            project_path=summary.project_path,
+            subdir=summary.subdir,
+            thinking_mode=summary.thinking_mode,
+            active_agent=summary.active_agent,
+            status=summary.status,
+            created_at=summary.created_at,
+            last_activity=summary.last_activity,
+            last_input=summary.last_input,
+            last_input_at=summary.last_input_at,
+            last_output=summary.last_output,
+            last_output_at=summary.last_output_at,
+            tmux_session_name=summary.tmux_session_name,
+            initiator_session_id=summary.initiator_session_id,
+            computer=computer,
+        )
+
+
+class ComputerDTO(BaseModel):  # type: ignore[explicit-any]
+    """DTO for computer info."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    status: str
+    user: str | None = None
+    host: str | None = None
+    is_local: bool
+    tmux_binary: str | None = None
+
+
+class ProjectDTO(BaseModel):  # type: ignore[explicit-any]
+    """DTO for project info."""
+
+    model_config = ConfigDict(frozen=True)
+
+    computer: str
+    name: str
+    path: str
+    description: str | None = None
+
+
+class TodoDTO(BaseModel):  # type: ignore[explicit-any]
+    """DTO for todo info."""
+
+    model_config = ConfigDict(frozen=True)
+
+    slug: str
+    status: str
+    description: str | None = None
+    computer: str | None = None
+    project_path: str | None = None
+    has_requirements: bool
+    has_impl_plan: bool
+    build_status: str | None = None
+    review_status: str | None = None
+
+
+class ProjectWithTodosDTO(ProjectDTO):  # type: ignore[explicit-any]
+    """DTO for project with its todos."""
+
+    model_config = ConfigDict(frozen=True)
+
+    todos: list[TodoDTO] = Field(default_factory=list)
+
+
+class AgentAvailabilityDTO(BaseModel):  # type: ignore[explicit-any]
+    """DTO for agent availability."""
+
+    model_config = ConfigDict(frozen=True)
+
+    agent: Literal["claude", "gemini", "codex"]
+    available: bool | None
+    unavailable_until: str | None = None
+    reason: str | None = None
+    error: str | None = None
+
+
+# WebSocket Event DTOs
+
+
+class SessionsInitialDataDTO(BaseModel):  # type: ignore[explicit-any]
+    """Data for sessions_initial event."""
+
+    model_config = ConfigDict(frozen=True)
+
+    sessions: list[SessionSummaryDTO]
+    computer: str | None = None
+
+
+class SessionsInitialEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for initial sessions list."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["sessions_initial"] = "sessions_initial"
+    data: SessionsInitialDataDTO
+
+
+class ProjectsInitialDataDTO(BaseModel):  # type: ignore[explicit-any]
+    """Data for projects_initial event."""
+
+    model_config = ConfigDict(frozen=True)
+
+    projects: list[ProjectDTO | ProjectWithTodosDTO]
+    computer: str | None = None
+
+
+class ProjectsInitialEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for initial projects list."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["projects_initial", "preparation_initial"]
+    data: ProjectsInitialDataDTO
+
+
+class SessionStartedEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for session creation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["session_started"]
+    data: SessionSummaryDTO
+
+
+class SessionUpdatedEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for session updates."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["session_updated"]
+    data: SessionSummaryDTO
+
+
+class SessionClosedDataDTO(BaseModel):  # type: ignore[explicit-any]
+    """Data for session_closed event."""
+
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+
+
+class SessionClosedEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for session closure."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["session_closed"] = "session_closed"
+    data: SessionClosedDataDTO
+
+
+class RefreshDataDTO(BaseModel):  # type: ignore[explicit-any]
+    """Data for refresh events."""
+
+    model_config = ConfigDict(frozen=True)
+
+    computer: str | None = None
+    project_path: str | None = None
+
+
+class RefreshEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for generic refreshes."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["computer_updated", "project_updated", "projects_updated", "todos_updated"]
+    data: RefreshDataDTO
