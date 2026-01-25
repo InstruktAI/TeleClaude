@@ -48,6 +48,7 @@ flowchart LR
 
 - **Unique IDs**: Each snippet has globally unique ID; collisions detected and rejected.
 - **Stable Paths**: Global docs use `~/.teleclaude/docs`, project docs use absolute or tilde-expanded paths.
+- **Path Normalization**: The `teleclaude-docs` git filter smudges portable `@~/.teleclaude` references into local absolute paths and cleans them back on commit.
 - **Acyclic Requires**: Circular dependencies detected and reported as warnings.
 - **Type Validation**: Snippet types must match canonical taxonomy from `teleclaude/constants.py:TAXONOMY_TYPES`.
 - **Schema Compliance**: All snippets validated against `scripts/snippet_schema.yaml` required sections.
@@ -99,11 +100,10 @@ For each snippet:
 
 ### 4. Global vs Project Distinction
 
-| Location             | Path in Index            | Usage                     |
-| -------------------- | ------------------------ | ------------------------- |
-| `docs/global/`       | `~/.teleclaude/docs/...` | Baseline, shared policies |
-| `docs/project/`      | `~/path/to/project/...`  | Project-specific docs     |
-| `agents/docs/` (old) | `~/.teleclaude/docs/...` | Legacy, treated as global |
+| Location        | Path in Index            | Usage                     |
+| --------------- | ------------------------ | ------------------------- |
+| `docs/global/`  | `~/.teleclaude/docs/...` | Baseline, shared policies |
+| `docs/project/` | `~/path/to/project/...`  | Project-specific docs     |
 
 ## Failure modes
 

@@ -161,6 +161,12 @@ snippets:
   scope: project
   path: docs/project/reference/agent-artifact-automation.md
   source_project: TeleClaude
+- id: reference/git-docs-filter
+  description: Git filter that normalizes doc paths for local use and portable commits.
+  type: reference
+  scope: project
+  path: docs/project/reference/git-docs-filter.md
+  source_project: TeleClaude
 - id: role/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
   type: role

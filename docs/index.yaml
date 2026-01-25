@@ -86,6 +86,9 @@ snippets:
 - id: policy/adapter-boundaries
   description: Strict separation between adapters and core logic.
   path: docs/project/policy/adapter-boundaries.md
+- id: reference/git-docs-filter
+  description: Git filter that normalizes doc paths for local use and portable commits.
+  path: docs/project/reference/git-docs-filter.md
 - id: policy/agent-service-control
   description: Guardrails for agent-run service control in this repo.
   path: docs/project/policy/agent-service-control.md
