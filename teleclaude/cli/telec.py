@@ -14,6 +14,7 @@ from teleclaude.cli.models import CreateSessionResult
 from teleclaude.config import config
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE
 from teleclaude.logging_config import setup_logging
+from teleclaude.paths import REPO_ROOT
 
 TMUX_ENV_KEY = "TMUX"
 TUI_ENV_KEY = "TELEC_TUI_SESSION"
@@ -168,6 +169,8 @@ def _init_project(project_root: Path) -> None:
 
 
 def _sync_project_artifacts(project_root: Path) -> None:
+    env = os.environ.copy()
+    env["TELECLAUDE_DOCS_AUTOMATION"] = "1"
     commands = [
         [
             "uv",
@@ -188,7 +191,7 @@ def _sync_project_artifacts(project_root: Path) -> None:
         ],
     ]
     for cmd in commands:
-        subprocess.run(cmd, cwd=project_root, check=True)
+        subprocess.run(cmd, cwd=project_root, check=True, env=env)
 
 
 def _install_docs_watch(project_root: Path) -> None:
@@ -217,9 +220,19 @@ def _install_launchd_watch(project_root: Path) -> None:
         project_root / "agents" / "docs",
         project_root / "teleclaude.yml",
     ]
-    watch_entries = "\n".join(f"        <string>{path}</string>" for path in watch_paths)
+    watch_entries = "\n".join(f"      <string>{path}</string>" for path in watch_paths)
     launchd_path = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
-    plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+    template_path = REPO_ROOT / "templates" / "ai.instrukt.teleclaude.docs-watch.plist"
+    if template_path.exists():
+        template = template_path.read_text(encoding="utf-8")
+        plist_content = (
+            template.replace("{{LABEL}}", label)
+            .replace("{{COMMAND}}", command)
+            .replace("{{PATH}}", launchd_path)
+            .replace("{{WATCH_PATHS}}", watch_entries)
+        )
+    else:
+        plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
@@ -235,6 +248,8 @@ def _install_launchd_watch(project_root: Path) -> None:
     <dict>
       <key>PATH</key>
       <string>{launchd_path}</string>
+      <key>TELECLAUDE_DOCS_AUTOMATION</key>
+      <string>1</string>
     </dict>
     <key>WatchPaths</key>
     <array>
@@ -265,15 +280,28 @@ def _install_systemd_watch(project_root: Path) -> None:
         f"uv run --quiet scripts/build_snippet_index.py --project-root {project_root} && "
         f"uv run --quiet scripts/distribute.py --project-root {project_root} --deploy"
     )
-    service_content = f"""[Unit]
+    service_template_path = REPO_ROOT / "templates" / "teleclaude-docs-watch.service"
+    path_template_path = REPO_ROOT / "templates" / "teleclaude-docs-watch.path"
+    if service_template_path.exists():
+        service_template = service_template_path.read_text(encoding="utf-8")
+        service_content = service_template.replace("{{PROJECT_ROOT}}", str(project_root)).replace(
+            "{{COMMAND}}", command
+        )
+    else:
+        service_content = f"""[Unit]
 Description=TeleClaude docs sync ({project_root})
 
 [Service]
 Type=oneshot
 WorkingDirectory={project_root}
+Environment=TELECLAUDE_DOCS_AUTOMATION=1
 ExecStart=/bin/bash -lc '{command}'
 """
-    path_content = f"""[Unit]
+    if path_template_path.exists():
+        path_template = path_template_path.read_text(encoding="utf-8")
+        path_content = path_template.replace("{{PROJECT_ROOT}}", str(project_root)).replace("{{UNIT_ID}}", unit_id)
+    else:
+        path_content = f"""[Unit]
 Description=TeleClaude docs watch ({project_root})
 
 [Path]

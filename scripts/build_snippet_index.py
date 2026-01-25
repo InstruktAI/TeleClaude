@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -17,10 +18,56 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 logger = get_logger(__name__)
+_WARNINGS: list[dict[str, str]] = []
 
 _REQUIRED_READS_HEADER = re.compile(r"^##\s+Required reads\s*$", re.IGNORECASE)
 _HEADER_LINE = re.compile(r"^#{1,6}\s+")
 _REQUIRED_READ_LINE = re.compile(r"^\s*-\s*@(\S+)\s*$")
+_H1_LINE = re.compile(r"^#\s+")
+_H2_LINE = re.compile(r"^##\s+")
+
+_SCHEMA_PATH = Path(__file__).resolve().parent / "snippet_schema.yaml"
+
+
+class GlobalSchemaConfig(TypedDict, total=False):
+    required_reads_title: str
+    see_also_title: str
+    require_h1: bool
+    require_h1_first: bool
+    require_required_reads: bool
+    required_reads_header_level: int
+    see_also_header_level: int
+    allow_h3: bool
+
+
+class SectionSchema(TypedDict):
+    required: list[str]
+    allowed: list[str]
+
+
+class SchemaConfig(TypedDict):
+    global_: GlobalSchemaConfig
+    sections: dict[str, SectionSchema]
+
+
+_TYPE_SUFFIX = {
+    "policy": "Policy",
+    "procedure": "Procedure",
+    "reference": "Reference",
+    "principles": "Principle",
+    "principle": "Principle",
+    "standard": "Standard",
+    "guide": "Guide",
+    "checklist": "Checklist",
+    "role": "Role",
+    "concept": "Concept",
+    "architecture": "Architecture",
+    "example": "Example",
+    "decision": "Decision",
+    "incident": "Incident",
+    "timeline": "Timeline",
+    "faq": "FAQ",
+}
 
 
 def _resolve_requires(
@@ -76,6 +123,213 @@ def _extract_required_reads(content: str) -> list[str]:
         if match:
             refs.append(match.group(1))
     return refs
+
+
+def _warn(code: str, path: str, **kwargs: str) -> None:
+    payload = {"code": code, "path": path}
+    payload.update({k: str(v) for k, v in kwargs.items()})
+    _WARNINGS.append(payload)
+    logger.warning(code, **payload)
+
+
+def _normalize_section_title(title: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9]+", " ", title).strip().lower()
+    return re.sub(r"\s+", " ", cleaned)
+
+
+def _as_str_list(value: object) -> list[str]:
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return list(value)
+    return []
+
+
+def _load_schema() -> SchemaConfig:
+    if not _SCHEMA_PATH.exists():
+        return {"global_": {}, "sections": {}}
+    raw = yaml.safe_load(_SCHEMA_PATH.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        return {"global_": {}, "sections": {}}
+
+    global_raw = raw.get("global", {})
+    global_cfg: GlobalSchemaConfig = {}
+    if isinstance(global_raw, dict):
+        for key, value in global_raw.items():
+            if key in {
+                "required_reads_title",
+                "see_also_title",
+            } and isinstance(value, str):
+                global_cfg[key] = value
+            elif key in {
+                "require_h1",
+                "require_h1_first",
+                "require_required_reads",
+                "allow_h3",
+            } and isinstance(value, bool):
+                global_cfg[key] = value
+            elif key in {
+                "required_reads_header_level",
+                "see_also_header_level",
+            } and isinstance(value, int):
+                global_cfg[key] = value
+
+    sections_raw = raw.get("sections", {})
+    sections: dict[str, SectionSchema] = {}
+    if isinstance(sections_raw, dict):
+        for section_name, section_raw in sections_raw.items():
+            if not isinstance(section_raw, dict):
+                continue
+            required = _as_str_list(section_raw.get("required"))
+            allowed = _as_str_list(section_raw.get("allowed"))
+            sections[str(section_name)] = {"required": required, "allowed": allowed}
+
+    return {"global_": global_cfg, "sections": sections}
+
+
+_SCHEMA = _load_schema()
+
+
+def _infer_type_from_path(file_path: Path) -> str | None:
+    parts = [p for p in file_path.parts]
+    try:
+        baseline_idx = parts.index("baseline")
+    except ValueError:
+        return None
+    if baseline_idx + 1 >= len(parts):
+        return None
+    folder = parts[baseline_idx + 1]
+    return folder if folder in _TYPE_SUFFIX else None
+
+
+def _normalize_title(
+    file_path: Path,
+    content: str,
+    declared_type: str | None,
+) -> str:
+    suffix = _TYPE_SUFFIX.get((declared_type or "").lower())
+    if not suffix:
+        inferred = _infer_type_from_path(file_path)
+        suffix = _TYPE_SUFFIX.get(inferred) if inferred else None
+    if not suffix:
+        return content
+    lines = content.splitlines()
+    if not lines:
+        return content
+    if not _H1_LINE.match(lines[0]):
+        return content
+    title = lines[0].lstrip("#").strip()
+    expected = f" — {suffix}"
+    if title.endswith(expected):
+        return content
+    if " — " in title:
+        base = title.split(" — ")[0].strip()
+    else:
+        base = title
+    lines[0] = f"# {base}{expected}"
+    return "\n".join(lines) + ("\n" if content.endswith("\n") else "")
+
+
+def _normalize_titles(snippets_root: Path) -> None:
+    for path in sorted(snippets_root.rglob("*.md")):
+        if path.name == "index.yaml":
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception as exc:
+            _warn("title_read_failed", path=str(path), error=str(exc))
+            continue
+        declared_type = None
+        if text.lstrip().startswith("---"):
+            try:
+                post = frontmatter.loads(text)
+                meta = post.metadata or {}
+                declared_type = meta.get("type") if isinstance(meta.get("type"), str) else None
+                body = post.content
+            except Exception:
+                body = text
+        else:
+            body = text
+        updated = _normalize_title(path, body, declared_type)
+        if updated != body:
+            if text.lstrip().startswith("---"):
+                try:
+                    post = frontmatter.loads(text)
+                    post.content = updated
+                    path.write_text(frontmatter.dumps(post), encoding="utf-8")
+                except Exception as exc:
+                    _warn("title_write_failed", path=str(path), error=str(exc))
+                continue
+            try:
+                path.write_text(updated, encoding="utf-8")
+            except Exception as exc:
+                _warn("title_write_failed", path=str(path), error=str(exc))
+        _validate_snippet_format(path, updated if updated != body else body)
+
+
+def _validate_snippet_format(path: Path, content: str) -> None:
+    lines = content.splitlines()
+    if _SCHEMA["global_"].get("require_h1", True):
+        first_non_empty = next((line for line in lines if line.strip()), "")
+        if not _H1_LINE.match(first_non_empty):
+            _warn("snippet_missing_h1", path=str(path))
+        if _SCHEMA["global_"].get("require_h1_first", True):
+            if first_non_empty and not _H1_LINE.match(first_non_empty):
+                _warn("snippet_h1_not_first", path=str(path))
+    if not any(_H2_LINE.match(line) for line in lines):
+        _warn("snippet_missing_h2", path=str(path))
+
+    required_reads_found = False
+    required_reads_header_idx = None
+    for idx, line in enumerate(lines):
+        if _REQUIRED_READS_HEADER.match(line):
+            required_reads_found = True
+            required_reads_header_idx = idx
+            break
+    if _SCHEMA["global_"].get("require_required_reads", True):
+        if not required_reads_found:
+            _warn("snippet_required_reads_missing", path=str(path))
+        if required_reads_found and required_reads_header_idx is not None:
+            if not lines[required_reads_header_idx].startswith("## "):
+                _warn("snippet_required_reads_header_level", path=str(path))
+            h2_indices = [i for i, line in enumerate(lines) if _H2_LINE.match(line)]
+            if h2_indices and h2_indices[0] != required_reads_header_idx:
+                _warn("snippet_required_reads_not_first_h2", path=str(path))
+
+    h2_titles: list[str] = []
+    for line in lines:
+        if _H2_LINE.match(line):
+            h2_titles.append(line.lstrip("#").strip())
+    normalized_titles = [_normalize_section_title(t) for t in h2_titles]
+
+    if "see also" in normalized_titles:
+        last_h2 = normalized_titles[-1] if normalized_titles else ""
+        if last_h2 != "see also":
+            _warn("snippet_see_also_not_last", path=str(path))
+
+    snippet_type = None
+    if content.lstrip().startswith("---"):
+        try:
+            post = frontmatter.loads(content)
+            meta = post.metadata or {}
+            if isinstance(meta.get("type"), str):
+                snippet_type = meta.get("type")
+        except Exception:
+            snippet_type = None
+    if not snippet_type:
+        snippet_type = _infer_type_from_path(path)
+    if snippet_type:
+        type_key = snippet_type.lower()
+        section_rules = _SCHEMA["sections"].get(type_key, {})
+        required = [_normalize_section_title(s) for s in section_rules.get("required", [])]
+        allowed = [_normalize_section_title(s) for s in section_rules.get("allowed", [])]
+        for req in required:
+            if req not in normalized_titles:
+                _warn("snippet_missing_required_section", path=str(path), section=req)
+        if allowed:
+            for title in normalized_titles:
+                if title in ("required reads", "see also"):
+                    continue
+                if title not in allowed:
+                    _warn("snippet_unknown_section", path=str(path), section=title)
 
 
 class SnippetEntry(TypedDict):
@@ -171,6 +425,7 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
         logger.warning("baseline_frontmatter_removed", paths=violations)
         print("Unexpected baseline frontmatter was found and cleaned.")
     _write_baseline_index(project_root)
+    _normalize_titles(snippets_root)
     if not snippets_root.exists():
         return {
             "project_root": str(project_root),
@@ -274,6 +529,13 @@ def main() -> None:
     for path in written:
         logger.info("index_written", path=str(path))
         print(str(path))
+    if _WARNINGS:
+        print(f"Snippet validation warnings: {len(_WARNINGS)}")
+        for warning in _WARNINGS:
+            details = " ".join(f"{k}={v}" for k, v in warning.items() if k not in {"code"})
+            print(f"- {warning['code']} {details}".strip())
+        if not os.getenv("TELECLAUDE_DOCS_AUTOMATION"):
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

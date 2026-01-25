@@ -2,6 +2,7 @@
 
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Callable
 
 import pytest
@@ -39,6 +40,18 @@ def _reset_event_bus():
     yield
     event_bus.clear()
     reset_command_service()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_tui_state(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):
+    """Isolate TUI sticky state from user ~/.teleclaude/tui_state.json."""
+    from teleclaude import paths
+    from teleclaude.cli.tui.views import sessions as sessions_view
+
+    tui_state = tmp_path / "tui_state.json"
+    monkeypatch.setattr(paths, "TUI_STATE_PATH", tui_state)
+    monkeypatch.setattr(sessions_view, "TUI_STATE_PATH", tui_state)
+    yield
 
 
 # TUI Test Fixtures

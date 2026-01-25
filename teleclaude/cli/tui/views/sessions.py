@@ -18,9 +18,7 @@ from teleclaude.cli.models import (
     ProjectWithTodosInfo,
     SessionInfo,
 )
-from teleclaude.cli.models import (
-    ComputerInfo as ApiComputerInfo,
-)
+from teleclaude.cli.models import ComputerInfo as ApiComputerInfo
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.theme import AGENT_COLORS
@@ -36,13 +34,7 @@ from teleclaude.cli.tui.tree import (
     is_project_node,
     is_session_node,
 )
-from teleclaude.cli.tui.types import (
-    ActivePane,
-    CursesWindow,
-    FocusLevelType,
-    NodeType,
-    StickySessionInfo,
-)
+from teleclaude.cli.tui.types import ActivePane, CursesWindow, FocusLevelType, NodeType, StickySessionInfo
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
 from teleclaude.paths import TUI_STATE_PATH
@@ -1342,7 +1334,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Store visible height for scroll calculations
         self._visible_height = height
 
-        logger.debug(
+        logger.trace(
             "SessionsView.render: start_row=%d, height=%d, width=%d, flat_items=%d, scroll=%d",
             start_row,
             height,
@@ -1374,7 +1366,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if i < self.scroll_offset:
                 continue
             if row >= start_row + height:
-                logger.debug("render: stopped at row %d (out of space), rendered %d items", row, items_rendered)
                 break  # No more space
 
             last_rendered = i
@@ -1391,7 +1382,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Track rendered range for scroll calculations
         self._last_rendered_range = (first_rendered, last_rendered)
 
-        logger.debug(
+        logger.trace(
             "render: rendered %d of %d items (scroll_offset=%d)",
             items_rendered,
             len(self.flat_items),
