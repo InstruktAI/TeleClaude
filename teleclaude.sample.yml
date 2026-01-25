@@ -1,8 +1,7 @@
 # teleclaude.yml
 # business:
 #   domains:
-#     general: docs  # default (general domain)
-#     software-development: docs  # default (software-development domain)
+#     software-development: docs  # default
 #     # If you publish multiple domains, split docs by domain folders:
 #     # social-media: docs/social-media
 #     # fintech: docs/fintech

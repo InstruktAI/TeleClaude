@@ -363,6 +363,8 @@ def build_context_output(
         if global_snippets_root in snippet.path.parents:
             if snippet.snippet_id.startswith("baseline/"):
                 return True
+            if snippet.snippet_id.startswith("general/"):
+                return True
             return any(snippet.snippet_id.startswith(f"{domain}/") for domain in domains)
         if snippet.scope == "project":
             return any(
