@@ -13,9 +13,10 @@ Get an agent artifact authored and distributed to tool-specific outputs.
 
 ## Steps
 
-1. Author or update files under `agents/`.
-2. Validate snippet structure and required reads.
-3. Run the artifact distribution tooling.
+1. Choose the scope (global or project) for the artifact.
+2. Author or update the artifact in the chosen scope.
+3. Validate snippet structure and required reads.
+4. Run the artifact distribution tooling.
 
 ## Outputs
 

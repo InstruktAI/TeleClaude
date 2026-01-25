@@ -13,17 +13,17 @@ Describe how agent artifacts flow from source files into runtime-specific output
 
 ## Inputs/Outputs
 
-- **Inputs**: `agents/` source files.
+- **Inputs**: agent artifacts authored in global or project scope.
 - **Outputs**: generated artifacts for supported CLIs.
 
 ## Invariants
 
-- Source-of-truth lives in `agents/`.
+- Source-of-truth lives in scope-specific sources (global or project).
 - Generated artifacts are derived, not edited manually.
 
 ## Primary flows
 
-1. Author or update source artifacts.
+1. Author or update source artifacts in the appropriate scope.
 2. Run the distribution tooling.
 3. Consume generated artifacts in the target CLI.
 

@@ -14,7 +14,7 @@ Create or update agent artifacts that follow the schema and compile correctly fo
 ## Preconditions
 
 - Artifact schema references are available.
-- Target repository includes an `agents/` directory with the artifact folders.
+- Target repository includes global or project artifact scopes.
 
 ## Steps
 
@@ -26,7 +26,7 @@ Create or update agent artifacts that follow the schema and compile correctly fo
 
 ## Outputs
 
-- Updated artifact files in `agents/`.
+- Updated artifact files in the selected scope.
 - Updated generated artifacts in tool-specific output folders.
 
 ## Recovery
