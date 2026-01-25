@@ -167,7 +167,7 @@ sequenceDiagram
 - **SQLite Lock Failure**: Another daemon instance is running. Refuses to start. Indicates configuration or deployment issue.
 - **Migration Failure**: Database schema incompatible. Manual intervention required. No automatic rollback.
 - **Critical Adapter Failure (API/MCP)**: Daemon continues without that interface. Clients see connection refused.
-- **Redis Unavailable**: Multi-computer features disabled. Local operations continue. No automatic reconnection retry.
+- **Redis Unavailable**: Multi-computer features disabled. Local operations continue. Redis transport retries via a single reconnect loop; tasks wait on readiness.
 - **Cache Warmup Timeout**: Daemon fails to start. Indicates database corruption or resource exhaustion.
 - **Unclean Shutdown (SIGKILL)**: Hooks and commands may be partially processed. Next startup recovers from outbox.
 - **Worker Task Crash**: Background worker stops. Dependent features stall (e.g., no output polling = frozen sessions). Daemon logs error but continues.
