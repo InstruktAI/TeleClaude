@@ -5,16 +5,52 @@ import argparse
 import os
 import re
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Callable, NotRequired, TypedDict, cast
 
 import frontmatter
+import yaml
 from frontmatter import Post
+from frontmatter.default_handlers import YAMLHandler
 
 SubstitutionMap = dict[str, str]
 Transform = Callable[[Post], str]
 
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
+
+
+class StableYAMLHandler(YAMLHandler):
+    """Frontmatter YAML handler with stable ordering and wide line width."""
+
+    def export(self, metadata: dict[str, object], **kwargs: object) -> str:  # guard: loose-dict - frontmatter contract
+        return yaml.safe_dump(
+            metadata,
+            sort_keys=False,
+            width=1000,
+            default_flow_style=False,
+            allow_unicode=True,
+        ).rstrip()
+
+
+_FRONTMATTER_HANDLER = StableYAMLHandler()
+
+
+def dump_frontmatter(post: Post) -> str:
+    """Serialize frontmatter using the stable YAML handler."""
+    return frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER)
+
+
+def _format_markdown(paths: list[str]) -> None:
+    """Format markdown outputs using the repo prettier setup."""
+    md_files = [p for p in paths if p.endswith(".md") and os.path.exists(p)]
+    if not md_files:
+        return
+    prettier = shutil.which("prettier")
+    if prettier:
+        subprocess.run([prettier, "--write", *md_files], check=False)
+        return
+    subprocess.run(["npx", "--yes", "prettier", "--write", *md_files], check=False)
 
 
 class AgentConfig(TypedDict):
@@ -34,7 +70,7 @@ class AgentConfig(TypedDict):
 def transform_to_codex(post: Post) -> str:
     """Transform a post to the Codex format (same as Claude - standard YAML frontmatter)."""
     # Codex uses the same format as Claude: standard Markdown with YAML frontmatter
-    return frontmatter.dumps(post)
+    return dump_frontmatter(post)
 
 
 def transform_to_gemini(post: Post) -> str:
@@ -53,7 +89,7 @@ def transform_skill_to_claude(post: Post, name: str) -> str:
     """Transform a skill post to Claude format."""
     description = post.metadata.get("description", "")
     transformed_post = Post(post.content, name=name, description=description)
-    return frontmatter.dumps(transformed_post)
+    return dump_frontmatter(transformed_post)
 
 
 def transform_skill_to_codex(post: Post, name: str) -> str:
@@ -62,7 +98,7 @@ def transform_skill_to_codex(post: Post, name: str) -> str:
     metadata["name"] = name
     metadata["description"] = metadata.get("description", "")
     transformed_post = Post(post.content, **metadata)
-    return frontmatter.dumps(transformed_post)
+    return dump_frontmatter(transformed_post)
 
 
 def transform_skill_to_gemini(post: Post, name: str) -> str:
@@ -231,7 +267,7 @@ def main() -> None:
             "deploy_commands_dest": os.path.join(os.path.expanduser("~/.claude"), "commands"),
             "deploy_skills_dest": os.path.join(os.path.expanduser("~/.claude"), "skills"),
             "ext": ".md",
-            "transform": lambda p: frontmatter.dumps(p),
+            "transform": dump_frontmatter,
         },
         "codex": {
             "check_dir": os.path.expanduser("~/.codex"),
@@ -303,6 +339,7 @@ def main() -> None:
         agent_master_contents: list[str] = []
         command_files: list[str] = []
         skill_dirs: list[str] = []
+        markdown_outputs: list[str] = []
         for source in sources:
             if os.path.isfile(source["master"]) and source["label"] != ".agents":
                 with open(source["master"], "r") as f:
@@ -362,6 +399,7 @@ def main() -> None:
                     os.makedirs(master_dest_dir, exist_ok=True)
                 with open(master_dest_path, "w") as f:
                     f.write(combined_agents_content)
+                markdown_outputs.append(master_dest_path)
 
             if command_files:
                 os.makedirs(commands_dest_path, exist_ok=True)
@@ -382,8 +420,11 @@ def main() -> None:
                         transformed_content = config["transform"](post)
                         base_name = os.path.splitext(command_file)[0]
                         output_filename = f"{base_name}{config['ext']}"
-                        with open(os.path.join(commands_dest_path, output_filename), "w") as out_f:
+                        output_path = os.path.join(commands_dest_path, output_filename)
+                        with open(output_path, "w") as out_f:
                             out_f.write(transformed_content + "\n")
+                        if output_filename.endswith(".md"):
+                            markdown_outputs.append(output_path)
                     except Exception as e:
                         print(f"Error processing file {command_file} for agent {agent_name}: {e}")
 
@@ -416,12 +457,11 @@ def main() -> None:
                         output_dir = os.path.join(skills_dest_path, skill_dir)
                         os.makedirs(output_dir, exist_ok=True)
                         output_filename = f"SKILL{config['skills_ext']}"
-
-                        with open(
-                            os.path.join(output_dir, output_filename),
-                            "w",
-                        ) as out_f:
+                        output_path = os.path.join(output_dir, output_filename)
+                        with open(output_path, "w") as out_f:
                             out_f.write(transformed_content + "\n")
+                        if output_filename.endswith(".md"):
+                            markdown_outputs.append(output_path)
                     except Exception as e:
                         print(f"Error processing skill {skill_dir} for agent {agent_name}: {e}")
 
@@ -436,6 +476,8 @@ def main() -> None:
                 os.path.join(docs_dist, "index.yaml"),
                 os.path.join(dist_dir, "teleclaude"),
             )
+
+        _format_markdown(markdown_outputs)
 
         print("\nTranspilation complete.")
 

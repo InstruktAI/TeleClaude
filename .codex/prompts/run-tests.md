@@ -1,8 +1,6 @@
 ---
-argument-hint: "[--csv <path>]"
-description:
-  Run the context-selection test matrix against teleclaude__get_context
-  outputs.
+description: Run the context-selection test matrix against teleclaude__get_context outputs.
+argument-hint: '[--csv <path>]'
 ---
 
 # Run Context Selection Tests
