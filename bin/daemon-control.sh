@@ -277,13 +277,23 @@ PY
     check_api_endpoint() {
         local socket_path="$1"
         local endpoint="$2"
+        if command -v curl >/dev/null 2>&1; then
+            local status
+            status=$(curl -s -o /dev/null -w "%{http_code}" --unix-socket "$socket_path" "http://localhost${endpoint}") || status=""
+            if [ "$status" = "200" ]; then
+                echo "ok"
+            else
+                echo "fail"
+            fi
+            return 0
+        fi
         python3 - <<PY 2>/dev/null
 import socket, sys
 path = "$socket_path"
 endpoint = "$endpoint"
 try:
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(0.8)
+    s.settimeout(2.0)
     s.connect(path)
     req = f"GET {endpoint} HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n"
     s.sendall(req.encode("utf-8"))
@@ -306,7 +316,7 @@ PY
 
     # MCP socket health
     if [ -S "$MCP_SOCKET" ] && command -v python3 >/dev/null 2>&1; then
-        MCP_HEALTH=$(check_unix_socket "$MCP_SOCKET")
+        MCP_HEALTH=$(check_unix_socket "$MCP_SOCKET" || true)
         if [ "$MCP_HEALTH" = "ok" ]; then
             log_info "MCP socket: HEALTHY ($MCP_SOCKET)"
         elif [ "$MCP_HEALTH" = "blocked" ]; then
@@ -322,17 +332,17 @@ PY
 
     # API socket health + read checks
     if [ -S "$API_SOCKET" ] && command -v python3 >/dev/null 2>&1; then
-        API_SOCKET_HEALTH=$(check_unix_socket "$API_SOCKET")
+        API_SOCKET_HEALTH=$(check_unix_socket "$API_SOCKET" || true)
         if [ "$API_SOCKET_HEALTH" = "ok" ]; then
             log_info "API socket: HEALTHY ($API_SOCKET)"
-            API_HEALTH=$(check_api_endpoint "$API_SOCKET" "/health")
+            API_HEALTH=$(check_api_endpoint "$API_SOCKET" "/health" || true)
             if [ "$API_HEALTH" = "ok" ]; then
                 log_info "API /health: OK"
             else
                 log_warn "API /health: FAIL"
                 overall_ok=1
             fi
-            API_READ=$(check_api_endpoint "$API_SOCKET" "/computers")
+            API_READ=$(check_api_endpoint "$API_SOCKET" "/computers" || true)
             if [ "$API_READ" = "ok" ]; then
                 log_info "API read (/computers): OK"
             else
