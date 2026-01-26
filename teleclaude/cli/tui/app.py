@@ -960,17 +960,20 @@ class TelecApp:
         # Update animations
         self.animation_engine.update()
 
-        # Calculate total pane count (1 TUI pane + session panes)
+        # Calculate pane counts (1 TUI pane + session panes)
         sessions_view = self.views.get(1)
         total_panes = 1  # TUI pane
+        banner_panes = 1  # TUI pane + sticky sessions only (stable across previews)
         if isinstance(sessions_view, SessionsView):
-            total_panes += len(sessions_view.sticky_sessions)
+            sticky_count = len(sessions_view.sticky_sessions)
+            total_panes += sticky_count
+            banner_panes += sticky_count
             preview = sessions_view._preview
             if preview and not any(s.session_id == preview.session_id for s in sessions_view.sticky_sessions):
                 total_panes += 1  # Active session not in sticky list
 
         # Hide banner for 4 or 6 panes (optimizes vertical space for grid layouts)
-        show_banner = total_panes not in (4, 6)
+        show_banner = banner_panes not in (4, 6)
         if show_banner:
             render_banner(stdscr, 0, width, self.animation_engine)
 
