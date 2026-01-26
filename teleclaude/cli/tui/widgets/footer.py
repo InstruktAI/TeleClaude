@@ -48,7 +48,24 @@ class Footer:
 
         # Calculate total width needed for right alignment
         total_text_width = sum(len(text) for text, _ in agent_parts) + (len(agent_parts) - 1) * 2  # 2 spaces between
-        start_col = max(0, width - total_text_width - 1)  # -1 for right margin
+        max_width = max(0, width - 1)  # avoid last-column writes
+        if max_width == 0:
+            return
+
+        # If overflow, drop leftmost parts until it fits (keep right aligned)
+        if total_text_width > max_width:
+            trimmed: list[tuple[str, int]] = []
+            used = 0
+            for text, color in reversed(agent_parts):
+                needed = len(text) if not trimmed else len(text) + 2
+                if used + needed > max_width:
+                    break
+                trimmed.append((text, color))
+                used += needed
+            agent_parts = list(reversed(trimmed))
+            total_text_width = used
+
+        start_col = max(0, max_width - total_text_width)  # right align within safe width
 
         # Render each agent with its color
         col = start_col
