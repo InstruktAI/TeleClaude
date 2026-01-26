@@ -1451,14 +1451,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if remaining <= 0:
             return 0
 
-        def _safe_addstr(target_row: int, text: str, attr: int, offset: int) -> None:
-            is_last_row = (remaining - offset) <= 1
-            max_width = max(0, width - 1) if is_last_row else width
-            if max_width == 0:
-                return
-            line = text[:max_width]
-            if not is_last_row:
-                line = line.ljust(width)
+        def _safe_addstr(target_row: int, text: str, attr: int) -> None:
+            line = text[:width].ljust(width)
             try:
                 stdscr.addstr(target_row, 0, line, attr)  # type: ignore[attr-defined]
             except curses.error as e:
@@ -1539,7 +1533,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Line 2 (expanded only): ID + last activity time
         activity_time = _format_time(session.last_activity)
         line2 = f"{detail_indent}[{activity_time}] ID: {session_id}"
-        _safe_addstr(row + lines_used, line2, normal_attr, lines_used)
+        _safe_addstr(row + lines_used, line2, normal_attr)
         self._row_to_id_item[row + lines_used] = item
         lines_used += 1
         if lines_used >= remaining:
@@ -1557,7 +1551,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             input_text = last_input.replace("\n", " ")[:60]
             input_time = _format_time(last_input_at)
             line3 = f"{detail_indent}[{input_time}] in: {input_text}"
-            _safe_addstr(row + lines_used, line3, input_attr, lines_used)
+            _safe_addstr(row + lines_used, line3, input_attr)
             lines_used += 1
             if lines_used >= remaining:
                 return lines_used
@@ -1572,7 +1566,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             output_text = last_output.replace("\n", " ")[:60]
             output_time = _format_time(last_output_at)
             line4 = f"{detail_indent}[{output_time}] out: {output_text}"
-            _safe_addstr(row + lines_used, line4, output_attr, lines_used)
+            _safe_addstr(row + lines_used, line4, output_attr)
             lines_used += 1
 
         return lines_used
