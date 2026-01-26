@@ -723,12 +723,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 )
         return None
 
-    def _toggle_sticky(self, session_id: str, show_child: bool) -> None:
+    def _toggle_sticky(self, session_id: str, show_child: bool, *, clear_preview: bool = False) -> None:
         """Toggle sticky state for a session (max 5 sessions).
 
         Args:
             session_id: Session ID to toggle
             show_child: Whether to show child session (False for parent-only mode)
+            clear_preview: Whether to clear preview before toggling sticky
         """
         # Find existing sticky entry (check session_id only, ignore show_child)
         existing_idx = None
@@ -747,7 +748,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             logger.error("BUG: Attempted to add duplicate session_id %s to sticky list", session_id[:8])
             return
 
-        self.controller.dispatch(Intent(IntentType.TOGGLE_STICKY, {"session_id": session_id, "show_child": show_child}))
+        intents = [Intent(IntentType.TOGGLE_STICKY, {"session_id": session_id, "show_child": show_child})]
+        if clear_preview and self._preview:
+            intents.insert(0, Intent(IntentType.CLEAR_PREVIEW))
+        self.controller.dispatch_batch(intents)
         logger.info(
             "Toggled sticky: %s (show_child=%s, total=%d)",
             session_id[:8],
@@ -761,7 +765,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Persist sticky state immediately (defensive persistence)
         self.save_sticky_state()
 
-    def _activate_session(self, item: SessionNode) -> None:
+    def _activate_session(self, item: SessionNode, *, clear_preview: bool = False) -> None:
         """Activate a single session (single-click or Enter from arrows).
 
         Shows the session in preview mode without affecting sticky panes.
@@ -769,6 +773,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         Args:
             item: Session node to activate
+            clear_preview: Whether to clear preview before activating
         """
         session = item.data.session
         session_id = session.session_id
@@ -796,7 +801,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
             return
 
-        self.controller.dispatch(Intent(IntentType.SET_PREVIEW, {"session_id": session_id, "show_child": True}))
+        intents = [Intent(IntentType.SET_PREVIEW, {"session_id": session_id, "show_child": True})]
+        if clear_preview and self._preview:
+            intents.insert(0, Intent(IntentType.CLEAR_PREVIEW))
+        self.controller.dispatch_batch(intents)
         logger.debug(
             "_activate_session: showing session in active pane (sticky_count=%d)",
             len(self.sticky_sessions),
@@ -1141,15 +1149,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # DOUBLE CLICK - toggle sticky
             if clicked_id_line:
                 # ID line → parent only, no child
-                if self._preview:
-                    self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
-                self._toggle_sticky(session_id, show_child=False)
+                self._toggle_sticky(session_id, show_child=False, clear_preview=True)
                 logger.debug("Double-click on ID line: toggled sticky (parent-only) for %s", session_id[:8])
             else:
                 # Title/other line → parent + child
-                if self._preview:
-                    self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
-                self._toggle_sticky(session_id, show_child=True)
+                self._toggle_sticky(session_id, show_child=True, clear_preview=True)
                 logger.debug("Double-click on title: toggled sticky (parent+child) for %s", session_id[:8])
 
             logger.trace(
@@ -1172,9 +1176,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Activate session immediately on single click
         if is_session_node(item):
-            if self._preview:
-                self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
-            self._activate_session(item)
+            self._activate_session(item, clear_preview=True)
             self._focus_selected_pane()  # Focus the pane (sticky or active)
 
         logger.trace(
