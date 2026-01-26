@@ -114,6 +114,35 @@ sequenceDiagram
 - AI client sees normal latency
 - No timeout imposed by wrapper; daemon is responsible for command timeouts
 
+### Wrapper State Transitions
+
+```mermaid
+stateDiagram-v2
+    [*] --> Startup
+    Startup --> WaitingForBackend: launch wrapper
+    WaitingForBackend --> Connected: socket connect OK
+    WaitingForBackend --> WaitingForBackend: connect retry/backoff
+
+    Connected --> Connected: tools/list + normal tool calls
+    Connected --> Resyncing: backend restart or EOF
+    Resyncing --> WaitingForBackend: schedule reconnect
+    Resyncing --> Connected: backend handshake resynced
+
+    Connected --> Degraded: backend down during request
+    Degraded --> WaitingForBackend: reconnect loop
+    Degraded --> Connected: backend recovered
+
+    Connected --> Shutdown: client EOF / termination
+    WaitingForBackend --> Shutdown: client EOF / termination
+    Degraded --> Shutdown: client EOF / termination
+```
+
+### Notes
+
+- Wrapper stays alive even when backend is unavailable; it retries and preserves client connection.
+- Handshake caching allows the client to continue without restarting during reconnects.
+- Tool call flow only proceeds in `Connected`; in other states the wrapper returns errors or cached responses.
+
 ## Failure modes
 
 - **Socket File Missing**: Wrapper logs error and retries connection. Returns error to client if call attempted during downtime.

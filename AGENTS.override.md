@@ -4,6 +4,8 @@
 
 This file provides guidance to agents when working with code in this repository.
 
+# Project Baseline — Index
+
 ---
 
 # Agent Service Control — Policy

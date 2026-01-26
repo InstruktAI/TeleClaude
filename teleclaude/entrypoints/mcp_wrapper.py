@@ -8,9 +8,11 @@ Uses a last-known-good tools list from the backend when the daemon is down.
 
 import asyncio
 import fcntl
+import hashlib
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import threading
@@ -18,6 +20,7 @@ import time
 from pathlib import Path
 from typing import MutableMapping, TypedDict
 
+from dotenv import load_dotenv
 from instrukt_ai_logging import configure_logging, get_logger
 
 from teleclaude.constants import MAIN_MODULE
@@ -27,9 +30,22 @@ PARAM_CWD = "cwd"
 RESULT_KEY = "result"
 EMPTY_STRING = ""
 
+# Force TRACE for this wrapper process only (do not affect daemon/env files).
+os.environ["TELECLAUDE_LOG_LEVEL"] = "TRACE"
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_env_path = os.getenv("TELECLAUDE_ENV_PATH")
+_dotenv_path = Path(_env_path).expanduser() if _env_path else _PROJECT_ROOT / ".env"
+if not _dotenv_path.is_absolute():
+    _dotenv_path = (_PROJECT_ROOT / _dotenv_path).resolve()
+load_dotenv(_dotenv_path)
+
 configure_logging("teleclaude")
 
 logger = get_logger("teleclaude.mcp_wrapper")
+# Force TRACE for this wrapper process only (do not affect global env / daemon).
+_TRACE_LEVEL = getattr(logging, "TRACE", logging.DEBUG)
+logger.setLevel(_TRACE_LEVEL)
 
 MCP_SOCKET = "/tmp/teleclaude.sock"
 # Map parameter names to env var names. Special value None means use os.getcwd()
@@ -87,6 +103,11 @@ class _QueueItem(TypedDict):
     attempts: int
 
 
+class _RoleMarkerRequest(TypedDict):
+    role: str
+    computer: str | None
+
+
 def _jsonrpc_error_response(request_id: object, message: str) -> bytes:
     payload = {
         "jsonrpc": "2.0",
@@ -97,6 +118,15 @@ def _jsonrpc_error_response(request_id: object, message: str) -> bytes:
         },
     }
     return (json.dumps(payload) + "\n").encode("utf-8")
+
+
+def _preview_bytes(raw: bytes, limit: int = 240) -> str:
+    if not raw:
+        return ""
+    text = raw.decode("utf-8", errors="replace")
+    if len(text) > limit:
+        return text[:limit] + "...(truncated)"
+    return text
 
 
 def _extract_request_meta(raw_line: bytes) -> tuple[object | None, str | None, str | None]:
@@ -116,6 +146,34 @@ def _extract_request_meta(raw_line: bytes) -> tuple[object | None, str | None, s
     return msg.get("id"), method, tool_name
 
 
+def _extract_session_id_from_result(result: object) -> str | None:
+    if not isinstance(result, dict):
+        return None
+    session_id = result.get("session_id")
+    if isinstance(session_id, str) and session_id:
+        return session_id
+    content = result.get("content")
+    if not isinstance(content, list):
+        return None
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") != "text":
+            continue
+        text = item.get("text")
+        if not isinstance(text, str):
+            continue
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(payload, dict):
+            session_id = payload.get("session_id")
+            if isinstance(session_id, str) and session_id:
+                return session_id
+    return None
+
+
 def _read_session_id_marker() -> str | None:
     """Read TeleClaude session ID from the per-session TMPDIR marker file."""
     tmpdir_value = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")
@@ -127,6 +185,87 @@ def _read_session_id_marker() -> str | None:
     except OSError:
         return None
     return value or None
+
+
+def _read_role_marker() -> str | None:
+    """Read TeleClaude role from the per-session TMPDIR marker file."""
+    tmpdir_value = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")
+    if not tmpdir_value:
+        return None
+    marker = Path(tmpdir_value) / "teleclaude_role"
+    try:
+        value = marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return value or None
+
+
+def _get_session_tmp_basedir() -> Path:
+    override = os.environ.get("TELECLAUDE_SESSION_TMPDIR_BASE")
+    if override:
+        return Path(override).expanduser()
+    return Path(os.path.expanduser("~/.teleclaude/tmp/sessions"))
+
+
+def _safe_path_component(value: str) -> str:
+    if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", value):
+        return value
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
+
+
+def _role_marker_path(session_id: str) -> Path:
+    safe_id = _safe_path_component(session_id)
+    base_dir = _get_session_tmp_basedir()
+    return base_dir / safe_id / "teleclaude_role"
+
+
+def _write_role_marker(session_id: str, role: str) -> bool:
+    marker = _role_marker_path(session_id)
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(role, encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
+async def _write_role_marker_with_wait(session_id: str, role: str, timeout_s: float = 10.0) -> bool:
+    marker = _role_marker_path(session_id)
+    ready_file = marker.parent / "teleclaude_session_id"
+    logger.trace(
+        "mcp_wrapper: role marker wait",
+        session_id=session_id[:8],
+        marker=str(marker),
+        timeout_s=timeout_s,
+    )
+    start = time.monotonic()
+    while time.monotonic() - start < timeout_s:
+        if marker.parent.exists() and ready_file.exists():
+            logger.trace(
+                "mcp_wrapper: role marker ready",
+                session_id=session_id[:8],
+                marker_dir=str(marker.parent),
+                ready_file=str(ready_file),
+            )
+            return _write_role_marker(session_id, role)
+        await asyncio.sleep(0.1)
+    return False
+
+
+def _derive_role_from_command(command: str) -> str | None:
+    if not command.startswith("/next-"):
+        return None
+    normalized = command[1:]
+    role_map = {
+        "next-prepare": "architect",
+        "next-build": "builder",
+        "next-review": "reviewer",
+        "next-fix-review": "fixer",
+        "next-finalize": "finalizer",
+        "next-bugs": "builder",
+        "next-defer": "architect",
+    }
+    return role_map.get(normalized)
 
 
 def _get_response_timeout(method: str | None, tool_name: str | None) -> float:
@@ -237,7 +376,22 @@ def refresh_tool_cache_if_needed(force: bool = False) -> None:
 
 
 def _build_initialize_response(request_id: object) -> bytes:
+    from teleclaude.mcp.role_tools import filter_tool_names
+
+    # Read role and filter tools
+    role = _read_role_marker() or "orchestrator"
     tool_names = _tool_names_from_cache(TOOL_LIST_CACHE)
+    if tool_names:
+        before_count = len(tool_names)
+        tool_names = filter_tool_names(role, tool_names)
+        if role != "orchestrator" and before_count != len(tool_names):
+            logger.info(
+                "mcp_wrapper: filtered initialize tools",
+                role=role,
+                before=before_count,
+                after=len(tool_names),
+            )
+
     result = {
         "protocolVersion": "2024-11-05",
         "capabilities": {"tools": {}},
@@ -288,9 +442,7 @@ def inject_context(params: MutableMapping[str, object]) -> MutableMapping[str, o
         if env_var is None:
             # Special case: cwd uses os.getcwd()
             if param_name == PARAM_CWD:
-                injected_cwd = os.getcwd()
-                arguments[param_name] = injected_cwd
-                logger.debug("Injected cwd into MCP tool call", cwd=injected_cwd)
+                arguments[param_name] = os.getcwd()
         else:
             env_value = os.environ.get(env_var)
             if env_value:
@@ -346,6 +498,7 @@ class MCPProxy:
         self._pending_requests: dict[object, float] = {}
         self._timed_out_requests: dict[object, float] = {}
         self._pending_started: dict[object, float] = {}
+        self._pending_role_markers: dict[object, _RoleMarkerRequest] = {}
 
         self._client_initialize_request: bytes | None = None
         self._client_initialize_id: object | None = None
@@ -664,6 +817,8 @@ class MCPProxy:
 
     async def _send_tools_list_cached(self, request_id: object) -> None:
         """Send cached tools/list response without touching the backend."""
+        from teleclaude.mcp.role_tools import filter_tool_specs
+
         tools_list = TOOL_LIST_CACHE
         if not tools_list:
             await self._send_error(
@@ -671,6 +826,19 @@ class MCPProxy:
                 "TeleClaude backend unavailable and no cached tools list is available. Please retry.",
             )
             return
+
+        # Filter tools based on role
+        role = _read_role_marker() or "orchestrator"
+        before_count = len(tools_list)
+        tools_list = filter_tool_specs(role, tools_list)
+        if role != "orchestrator" and before_count != len(tools_list):
+            logger.info(
+                "mcp_wrapper: filtered cached tools list",
+                role=role,
+                before=before_count,
+                after=len(tools_list),
+            )
+
         try:
             sys.stdout.buffer.write(_jsonrpc_tools_list_response(request_id, tools_list))
             sys.stdout.buffer.flush()
@@ -683,6 +851,7 @@ class MCPProxy:
         self._pending_requests.pop(request_id, None)
         self._timed_out_requests[request_id] = now
         started_at = self._pending_started.pop(request_id, None)
+        self._pending_role_markers.pop(request_id, None)
         if started_at is not None:
             logger.debug(
                 "Wrapper request failed",
@@ -729,13 +898,81 @@ class MCPProxy:
                     self.shutdown.set()
                     break
 
+                logger.trace(
+                    "mcp_wrapper: stdin raw",
+                    bytes_len=len(line),
+                    preview=_preview_bytes(line),
+                )
                 request_id, method, tool_name = _extract_request_meta(line)
+                logger.trace(
+                    "mcp_wrapper: stdin meta",
+                    request_id=request_id,
+                    method=method,
+                    tool_name=tool_name,
+                )
 
                 if method == McpMethod.TOOLS_LIST.value and request_id is not None:
                     refresh_tool_cache_if_needed()
                     if not self.connected.is_set() or not self.writer:
                         await self._send_tools_list_cached(request_id)
                         continue
+
+                if (
+                    method == McpMethod.TOOLS_CALL.value
+                    and tool_name == "teleclaude__run_agent_command"
+                    and request_id is not None
+                ):
+                    try:
+                        msg = json.loads(line.decode())
+                    except json.JSONDecodeError:
+                        logger.trace(
+                            "mcp_wrapper: run_agent_command parse failed",
+                            request_id=request_id,
+                        )
+                        msg = None
+                    if isinstance(msg, dict):
+                        params = msg.get("params")
+                        if isinstance(params, dict):
+                            arguments = params.get("arguments")
+                            if isinstance(arguments, dict):
+                                command = arguments.get("command")
+                                computer = arguments.get("computer")
+                                logger.trace(
+                                    "mcp_wrapper: run_agent_command observed",
+                                    request_id=request_id,
+                                    command=command,
+                                    computer=computer,
+                                )
+                                role = _derive_role_from_command(command) if isinstance(command, str) else None
+                                if role and (computer in (None, "", "local")):
+                                    logger.trace(
+                                        "mcp_wrapper: pending role marker queued",
+                                        request_id=request_id,
+                                        role=role,
+                                        computer=computer,
+                                    )
+                                    self._pending_role_markers[request_id] = {
+                                        "role": role,
+                                        "computer": computer if isinstance(computer, str) else None,
+                                    }
+
+                # Enforce tool access policy at call time
+                if method == McpMethod.TOOLS_CALL.value and tool_name and request_id is not None:
+                    from teleclaude.mcp.role_tools import is_tool_allowed
+
+                    role = _read_role_marker() or "orchestrator"
+                    if not is_tool_allowed(role, tool_name):
+                        logger.warning(
+                            "mcp_wrapper: tool call blocked",
+                            role=role,
+                            tool_name=tool_name,
+                        )
+                        await self._send_error(
+                            request_id,
+                            f"Tool '{tool_name}' is not available for role '{role}'",
+                        )
+                        continue
+
                 response_timeout = _get_response_timeout(method, tool_name)
 
                 # Process message (inject context)
@@ -920,6 +1157,11 @@ class MCPProxy:
                         await asyncio.sleep(RECONNECT_DELAY)
                         continue
 
+                    logger.trace(
+                        "mcp_wrapper: socket raw",
+                        bytes_len=len(line),
+                        preview=_preview_bytes(line),
+                    )
                     # Swallow backend initialize response during resync so the client
                     # doesn't see a second initialize response after daemon restart.
                     try:
@@ -937,16 +1179,71 @@ class MCPProxy:
 
                     if isinstance(msg, dict):
                         response_id = msg.get("id")
+                        if response_id in self._pending_role_markers:
+                            marker_req = self._pending_role_markers.pop(response_id, None)
+                            logger.trace(
+                                "mcp_wrapper: run_agent_command response observed",
+                                request_id=response_id,
+                                has_marker_req=bool(marker_req),
+                            )
+                            if marker_req and isinstance(msg.get(RESULT_KEY), dict):
+                                session_id = _extract_session_id_from_result(msg[RESULT_KEY])
+                                logger.trace(
+                                    "mcp_wrapper: run_agent_command session_id",
+                                    request_id=response_id,
+                                    session_id=session_id if isinstance(session_id, str) else None,
+                                )
+                                if isinstance(session_id, str):
+                                    ok = await _write_role_marker_with_wait(session_id, marker_req["role"], 10.0)
+                                    if ok:
+                                        logger.info(
+                                            "mcp_wrapper: wrote role marker",
+                                            role=marker_req["role"],
+                                            session_id=session_id[:8],
+                                        )
+                                    else:
+                                        logger.error(
+                                            "mcp_wrapper: role marker timeout",
+                                            role=marker_req["role"],
+                                            session_id=session_id[:8],
+                                        )
+                                        await self._send_error(
+                                            response_id,
+                                            "Session creation timed out; permission checks unavailable.",
+                                        )
+                                        continue
+                        elif isinstance(msg.get(RESULT_KEY), dict) and isinstance(
+                            _extract_session_id_from_result(msg[RESULT_KEY]), str
+                        ):
+                            session_id = _extract_session_id_from_result(msg[RESULT_KEY])
+                            logger.trace(
+                                "mcp_wrapper: session_id response without pending marker",
+                                request_id=response_id,
+                                session_id=session_id[:8] if isinstance(session_id, str) else None,
+                            )
                         if (
                             RESULT_KEY in msg
                             and isinstance(msg.get(RESULT_KEY), dict)
                             and isinstance(msg[RESULT_KEY].get("tools"), list)
                         ):
                             # Cache tools/list response for startup fallbacks.
+                            from teleclaude.mcp.role_tools import filter_tool_specs
+
                             tools = msg[RESULT_KEY]["tools"]
                             if isinstance(tools, list):
                                 updated = _update_tool_cache(tools, "backend")
                                 if updated is not None:
+                                    # Filter tools based on role
+                                    role = _read_role_marker() or "orchestrator"
+                                    before_count = len(updated)
+                                    updated = filter_tool_specs(role, updated)
+                                    if role != "orchestrator" and before_count != len(updated):
+                                        logger.info(
+                                            "mcp_wrapper: filtered backend tools list",
+                                            role=role,
+                                            before=before_count,
+                                            after=len(updated),
+                                        )
                                     msg[RESULT_KEY]["tools"] = updated
                         if response_id in self._pending_requests:
                             self._pending_requests.pop(response_id, None)
