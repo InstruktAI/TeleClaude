@@ -24,7 +24,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.api_server import APIServer
 from teleclaude.config import config  # config.py loads .env at import time
-from teleclaude.constants import MCP_SOCKET_PATH
+from teleclaude.constants import MCP_SOCKET_PATH, UI_MESSAGE_MAX_CHARS
 from teleclaude.core import (
     polling_coordinator,
     session_cleanup,
@@ -164,7 +164,6 @@ AGENT_START_POLL_INTERVAL_S = 0.5
 AGENT_START_SETTLE_DELAY_S = 0.5  # Initial delay after process starts
 AGENT_START_CONFIRM_ENTER_DELAY_S = 1.0
 AGENT_START_CONFIRM_ENTER_ATTEMPTS = 4
-AGENT_START_OUTPUT_TAIL_CHARS = 4000
 AGENT_START_OUTPUT_POLL_INTERVAL_S = 0.2
 AGENT_START_OUTPUT_CHANGE_TIMEOUT_S = 2.5
 AGENT_START_ENTER_INTER_DELAY_S = 0.2
@@ -1225,7 +1224,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         output = await tmux_bridge.capture_pane(session.tmux_session_name)
         if not output:
             return "", ""
-        tail = output[-AGENT_START_OUTPUT_TAIL_CHARS:]
+        tail = output[-UI_MESSAGE_MAX_CHARS:]
         digest = hashlib.sha256(tail.encode("utf-8", errors="replace")).hexdigest()
         return tail, digest
 

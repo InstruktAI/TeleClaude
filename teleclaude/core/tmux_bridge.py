@@ -21,6 +21,7 @@ import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.agents import AgentName
 
 logger = get_logger(__name__)
@@ -942,7 +943,16 @@ async def capture_pane(session_name: str) -> str:
         # -p = print to stdout
         # -S - = capture entire scrollback buffer (from beginning to end)
         # -J = preserve trailing spaces (better for capturing exact output)
-        cmd = [config.computer.tmux_binary, "capture-pane", "-t", session_name, "-p", "-J", "-S", "-"]
+        cmd = [
+            config.computer.tmux_binary,
+            "capture-pane",
+            "-t",
+            session_name,
+            "-p",
+            "-J",
+            "-S",
+            f"-{UI_MESSAGE_MAX_CHARS}",
+        ]
 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE

@@ -64,7 +64,7 @@ def command_retry(
                     if hasattr(e, "retry_after"):
                         if attempt < max_retries - 1:
                             retry_after = getattr(e, "retry_after")  # type: ignore[misc]
-                            logger.warning(
+                            logger.debug(
                                 "%s: Rate limited, retrying in %ss (attempt %d/%d)",
                                 func.__name__,
                                 retry_after,  # type: ignore[misc]
@@ -75,11 +75,7 @@ def command_retry(
                             excluded_wait_time += retry_after  # type: ignore[misc]  # Don't count wait against timeout
                             last_exception = e
                         else:
-                            logger.error(
-                                "%s: Rate limit exceeded after %d attempts",
-                                func.__name__,
-                                max_retries,
-                            )
+                            logger.debug("%s: Rate limit exceeded after %d attempts", func.__name__, max_retries)
                             raise
 
                     # Check for network errors

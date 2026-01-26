@@ -251,39 +251,109 @@ status_daemon() {
         fi
     fi
 
-    # Health via socket connection (works even when process inspection is restricted)
-    SOCKET_PATH="/tmp/teleclaude.sock"
-    if [ -S "$SOCKET_PATH" ] && command -v python3 >/dev/null 2>&1; then
-        HEALTH_RESULT=$(
-            python3 -c "
-import socket
-import sys
+    # Component health checks (sockets + API reads)
+    MCP_SOCKET="/tmp/teleclaude.sock"
+    API_SOCKET="/tmp/teleclaude-api.sock"
+    overall_ok=0
+
+    check_unix_socket() {
+        local socket_path="$1"
+        python3 - <<PY 2>/dev/null
+import socket, sys
+path = "$socket_path"
 try:
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.settimeout(0.5)
-    s.connect('$SOCKET_PATH')
+    s.connect(path)
     s.close()
-    print('ok')
+    print("ok")
 except PermissionError:
-    print('blocked')
+    print("blocked")
 except Exception:
-    print('fail')
-" 2>/dev/null || echo "fail"
-        )
-        if [ "$HEALTH_RESULT" = "ok" ]; then
-            log_info "Daemon health: HEALTHY (MCP socket responding)"
-            return 0
+    print("fail")
+PY
+    }
+
+    check_api_endpoint() {
+        local socket_path="$1"
+        local endpoint="$2"
+        python3 - <<PY 2>/dev/null
+import socket, sys
+path = "$socket_path"
+endpoint = "$endpoint"
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(0.8)
+    s.connect(path)
+    req = f"GET {endpoint} HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n"
+    s.sendall(req.encode("utf-8"))
+    data = b""
+    while True:
+        chunk = s.recv(4096)
+        if not chunk:
+            break
+        data += chunk
+    s.close()
+    first = data.split(b\"\\r\\n\", 1)[0].decode(\"utf-8\", \"ignore\")
+    if \" 200 \" in first or first.endswith(\" 200\"):
+        print(\"ok\")
+    else:
+        print(\"fail\")
+except Exception:
+    print(\"fail\")
+PY
+    }
+
+    # MCP socket health
+    if [ -S "$MCP_SOCKET" ] && command -v python3 >/dev/null 2>&1; then
+        MCP_HEALTH=$(check_unix_socket "$MCP_SOCKET")
+        if [ "$MCP_HEALTH" = "ok" ]; then
+            log_info "MCP socket: HEALTHY ($MCP_SOCKET)"
+        elif [ "$MCP_HEALTH" = "blocked" ]; then
+            log_warn "MCP socket: UNKNOWN (blocked by environment)"
+        else
+            log_warn "MCP socket: NOT responding"
+            overall_ok=1
         fi
-        if [ "$HEALTH_RESULT" = "blocked" ]; then
-            log_warn "Daemon health: UNKNOWN (socket check blocked by current environment)"
-            return 0
-        fi
-        log_warn "Daemon health: MCP socket not responding"
     else
-        log_warn "Daemon health: MCP socket missing"
+        log_warn "MCP socket: MISSING ($MCP_SOCKET)"
+        overall_ok=1
     fi
 
-    log_warn "Daemon appears to be down. Check logs: instrukt-ai-logs teleclaude --since 5m"
+    # API socket health + read checks
+    if [ -S "$API_SOCKET" ] && command -v python3 >/dev/null 2>&1; then
+        API_SOCKET_HEALTH=$(check_unix_socket "$API_SOCKET")
+        if [ "$API_SOCKET_HEALTH" = "ok" ]; then
+            log_info "API socket: HEALTHY ($API_SOCKET)"
+            API_HEALTH=$(check_api_endpoint "$API_SOCKET" "/health")
+            if [ "$API_HEALTH" = "ok" ]; then
+                log_info "API /health: OK"
+            else
+                log_warn "API /health: FAIL"
+                overall_ok=1
+            fi
+            API_READ=$(check_api_endpoint "$API_SOCKET" "/computers")
+            if [ "$API_READ" = "ok" ]; then
+                log_info "API read (/computers): OK"
+            else
+                log_warn "API read (/computers): FAIL"
+                overall_ok=1
+            fi
+        else
+            log_warn "API socket: UNHEALTHY ($API_SOCKET)"
+            overall_ok=1
+        fi
+    else
+        log_warn "API socket: MISSING ($API_SOCKET)"
+        overall_ok=1
+    fi
+
+    if [ $overall_ok -eq 0 ]; then
+        log_info "Daemon health: HEALTHY (all components responding)"
+        return 0
+    fi
+
+    log_warn "Daemon health: DEGRADED. Check logs: instrukt-ai-logs teleclaude --since 5m"
     return 1
 }
 

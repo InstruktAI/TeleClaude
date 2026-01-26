@@ -205,10 +205,7 @@ class OutputPoller:
                     last_output_changed_at = time.time()
                     current_update_interval = global_update_interval
                     pending_output = True
-                    try:
-                        output_file.write_text(current_cleaned, encoding="utf-8")
-                    except Exception as exc:
-                        logger.warning("Failed to write output file %s: %s", output_file, exc)
+                    # Output file persistence removed; downloads now use native session logs.
 
                 # Check if enough time elapsed since last yield (wall-clock, not tick-based)
                 current_time = time.time()

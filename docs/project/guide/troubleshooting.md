@@ -1,8 +1,8 @@
 ---
-id: guide/troubleshooting
-type: guide
-scope: project
 description: Comprehensive operations runbook for TeleClaude troubleshooting and observability.
+id: project/guide/troubleshooting
+scope: project
+type: guide
 ---
 
 # Ops Troubleshooting — Guide
@@ -113,6 +113,11 @@ tail -n 50 ~/.teleclaude/logs/monitoring/teleclaude-sigterm-watch.log
 - **Likely causes**:
   - `/tmp/teleclaude.sock` missing
   - Daemon restart or MCP server failure
+
+### Noise to ignore (not incidents)
+
+- Telegram edit retries due to rate limits (429 / RetryAfter)
+- ElevenLabs `401 quota_exceeded`
 
 ### Diagnostics flow (decision tree)
 

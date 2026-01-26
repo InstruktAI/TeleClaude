@@ -237,6 +237,14 @@ class MessageOperationsMixin:
                 elapsed,
             )
             return True
+        except RetryAfter as e:
+            logger.debug(
+                "[TELEGRAM %s] Rate limited, edit_message deferred: %s",
+                session.session_id[:8],
+                e,
+            )
+            # Keep output_message_id so we can retry on next update without creating new messages.
+            return True
         except BadRequest as e:
             # "Message is not modified" is benign - message exists, just unchanged
             # Return True to prevent clearing output_message_id (which would cause new messages)
@@ -295,7 +303,10 @@ class MessageOperationsMixin:
         except BadRequest as e:
             logger.warning("Failed to delete message %s: %s", message_id, e)
             return False
-        except (NetworkError, TimedOut, RetryAfter, ConnectionError, TimeoutError) as e:
+        except RetryAfter as e:
+            logger.debug("Rate limited deleting message %s: %s", message_id, e)
+            return False
+        except (NetworkError, TimedOut, ConnectionError, TimeoutError) as e:
             logger.error("Failed to delete message %s after retries: %s", message_id, e)
             return False
         except Exception as e:

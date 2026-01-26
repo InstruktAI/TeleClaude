@@ -4,6 +4,7 @@ Provides instant reads for API endpoints and emits change events when data updat
 """
 
 import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Generic, TypeVar
@@ -88,6 +89,7 @@ class DaemonCache:
         self._todos_digest: dict[str, str] = {}
         self._projects_version: dict[str, int] = {}
         self._todos_version: dict[str, int] = {}
+        self._computers_digest: dict[str, str] = {}
 
         # Change subscribers: callbacks notified when cache updates
         self._subscribers: set[Callable[[str, object], None]] = set()
@@ -291,7 +293,16 @@ class DaemonCache:
             computer: Computer info object
         """
         name = computer.name
+        digest = self._computer_fingerprint(computer)
+        existing = self._computers.get(name)
+        if existing and self._computers_digest.get(name) == digest:
+            # Refresh timestamp without spamming change notifications.
+            existing.data = computer
+            existing.cached_at = datetime.now(timezone.utc)
+            return
+
         self._computers[name] = CachedItem(computer)
+        self._computers_digest[name] = digest
         logger.debug("Updated computer cache: %s", name)
         self._notify("computer_updated", computer)
 
@@ -426,6 +437,10 @@ class DaemonCache:
             )
         joined = "\n".join(parts)
         return hashlib.sha256(joined.encode("utf-8")).hexdigest()
+
+    def _computer_fingerprint(self, computer: ComputerInfo) -> str:
+        payload = json.dumps(computer.to_dict(), sort_keys=True, default=str)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def _todos_fingerprint(self, todos_by_project: dict[str, list[TodoInfo]]) -> str:
         def _todo_key(todo: TodoInfo) -> str:

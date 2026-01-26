@@ -87,13 +87,6 @@ snippets:
   scope: global
   path: docs/project/guide/multi-computer-setup.md
   source_project: TeleClaude
-- id: guide/troubleshooting
-  description: Comprehensive operations runbook for TeleClaude troubleshooting and
-    observability.
-  type: guide
-  scope: project
-  path: docs/project/guide/troubleshooting.md
-  source_project: TeleClaude
 - id: policy/adapter-boundaries
   description: Strict separation between adapters and core logic.
   type: policy
@@ -155,6 +148,13 @@ snippets:
   type: procedure
   scope: global
   path: docs/project/procedure/ssh-agent-keychain.md
+  source_project: TeleClaude
+- id: project/guide/troubleshooting
+  description: Comprehensive operations runbook for TeleClaude troubleshooting and
+    observability.
+  type: guide
+  scope: project
+  path: docs/project/guide/troubleshooting.md
   source_project: TeleClaude
 - id: reference/agent-artifact-automation
   description: Automation that rebuilds and deploys agent artifacts when sources change.

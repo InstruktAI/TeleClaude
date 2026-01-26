@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 import time
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 from zoneinfo import ZoneInfo
@@ -68,6 +69,9 @@ class UiAdapter(BaseAdapter):
         """
         # Set client (BaseAdapter has no __init__, just requires this attribute)
         self.client = client
+
+        # Track last rendered output per session to avoid no-op edits.
+        self._last_output_digests: dict[str, str] = {}
 
         # Register event listeners
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
@@ -274,6 +278,14 @@ class UiAdapter(BaseAdapter):
             metadata.parse_mode = "MarkdownV2" if self.ADAPTER_KEY == AdapterType.TELEGRAM.value else "Markdown"
 
         # Try to edit existing message
+        display_digest = sha256(display_output.encode("utf-8")).hexdigest()
+        if self._last_output_digests.get(session.session_id) == display_digest:
+            logger.trace(
+                "[UI_SEND_OUTPUT] Skipping update for session %s (content unchanged)",
+                session.session_id[:8],
+            )
+            return await self._get_output_message_id(session)
+
         edit_result = await self._try_edit_output_message(session, display_output, metadata)
         logger.debug(
             "[UI_SEND_OUTPUT] Edit attempt for session %s: result=%s",
@@ -283,6 +295,7 @@ class UiAdapter(BaseAdapter):
         if edit_result:
             # Edit succeeded, return existing message_id
             message_id = await self._get_output_message_id(session)
+            self._last_output_digests[session.session_id] = display_digest
             logger.debug(
                 "[UI_SEND_OUTPUT] Edit succeeded, message_id=%s for session %s",
                 message_id,
@@ -303,6 +316,7 @@ class UiAdapter(BaseAdapter):
         )
         if new_id:
             await self._store_output_message_id(session, new_id)
+            self._last_output_digests[session.session_id] = display_digest
         return new_id
 
     def format_message(self, tmux_output: str, status_line: str) -> str:
