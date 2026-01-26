@@ -1,8 +1,10 @@
 # AGENTS.md
 
-# Project baseline
+## Purpose
 
-## Required reads
+This file provides guidance to agents when working with code in this repository.
+
+---
 
 # Agent Service Control — Policy
 
@@ -117,12 +119,3 @@
 ## Exceptions
 
 - None; bypassing the wrapper breaks resilience guarantees.
-
----
-
----
-
-## Purpose
-
-This file provides guidance to agents when working with code in this repository.
-It is intentionally kept minimal to avoid duplication of documentation content.
