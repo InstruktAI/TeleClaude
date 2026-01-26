@@ -59,7 +59,13 @@ def get_tool_definitions() -> list[Tool]:
                             "type": "string",
                             "enum": TAXONOMY_TYPES,
                         },
-                        "description": "Phase 1 only: Taxonomy types to filter index (omit for all types). Ignored in Phase 2.",
+                        "description": (
+                            "Phase 1 only: Filter by taxonomy type. "
+                            "Allowed types: policy, guide, procedure, role, checklist, reference, concept, "
+                            "architecture, example, principle. "
+                            'Example: {"areas":["guide","policy"]}. '
+                            "Ignored in Phase 2."
+                        ),
                     },
                     "snippet_ids": {
                         "type": "array",
@@ -131,9 +137,8 @@ def get_tool_definitions() -> list[Tool]:
                         "type": ["string", "null"],
                         "description": (
                             "Which computer(s) to query: "
-                            "'local' (default) = this computer only, "
-                            "None = all computers, "
-                            "'name' = specific remote computer"
+                            "'local' (default) or a specific computer name. "
+                            "Omit this field to query all computers."
                         ),
                         "default": "local",
                     },
@@ -211,7 +216,7 @@ def get_tool_definitions() -> list[Tool]:
             description=(
                 "Send message to an existing AI Agent session. "
                 "Use teleclaude__list_sessions to find session IDs. "
-                "For slash commands, prefer teleclaude__run_agent_command instead. "
+                "For agent commands, prefer teleclaude__run_agent_command instead. "
                 f"{REMOTE_AI_TIMER_INSTRUCTION}"
             ),
             inputSchema={
@@ -229,7 +234,7 @@ def get_tool_definitions() -> list[Tool]:
                     },
                     "message": {
                         "type": "string",
-                        "description": "Message or command to send to Claude Code",
+                        "description": "Message to send to the agent session",
                     },
                 },
                 "required": ["computer", "session_id", "message"],
@@ -239,11 +244,9 @@ def get_tool_definitions() -> list[Tool]:
             name="teleclaude__run_agent_command",
             title="TeleClaude: Run Agent Command",
             description=(
-                "Run a slash command on an AI agent session. "
-                "Two modes: (1) If session_id provided, sends command to existing session. "
-                "(2) If session_id not provided, starts a new session with the command. "
+                "Start a new AI agent session and give it a slash command to execute. "
                 "Supports all agent types (Claude, Gemini, Codex) and worktree subfolders. "
-                "Commands are for AI slash commands (e.g., 'compact', 'next-work'), not shell commands. "
+                "Commands are agent commands, not shell commands. "
                 f"{REMOTE_AI_TIMER_INSTRUCTION}"
             ),
             inputSchema={
@@ -255,24 +258,17 @@ def get_tool_definitions() -> list[Tool]:
                     },
                     "command": {
                         "type": "string",
-                        "description": ("Command name without leading / (e.g., 'next-work', 'compact', 'help')"),
+                        "description": "Agent command with leading '/' (e.g., '/next-work')",
                     },
                     "args": {
                         "type": "string",
                         "description": "Optional arguments for the command",
                         "default": "",
                     },
-                    "session_id": {
-                        "type": "string",
-                        "description": (
-                            "Optional: send command to existing session. "
-                            "If omitted, starts a new session with the command."
-                        ),
-                    },
                     "project": {
                         "type": "string",
                         "description": (
-                            "Project directory path. Required when starting new session (no session_id). "
+                            "Project directory path for the new agent session. "
                             "Use teleclaude__list_projects to discover available projects."
                         ),
                     },
@@ -306,7 +302,7 @@ def get_tool_definitions() -> list[Tool]:
             name="teleclaude__get_session_data",
             title="TeleClaude: Get Session Data",
             description=(
-                "Retrieve session data from a remote computer's Claude Code session. "
+                "Retrieve session data from a local or remote agent session. "
                 "Reads from the claude_session_file which contains complete session history. "
                 "By default returns last 2000 chars. Start with the default; increase tail_chars only when needed. "
                 "Use timestamp filters (inclusive) to scrub through history; ISO 8601 UTC "
@@ -357,6 +353,7 @@ def get_tool_definitions() -> list[Tool]:
                         "description": (
                             "Max characters to return from end of transcript. Default: 2000. "
                             "Keep the default unless you need more context; use timestamps for paging. "
+                            "Use a small value first, then increase if needed. "
                             "Set to 0 for unlimited request, but responses are capped at 48,000 chars. "
                             "Use since_timestamp / until_timestamp to fetch more."
                         ),
@@ -555,7 +552,8 @@ def get_tool_definitions() -> list[Tool]:
             description=(
                 "Mark a work phase as complete/approved in state.json. "
                 "Updates trees/{slug}/todos/{slug}/state.json and commits the change. "
-                "Call this after a worker completes build or review phases."
+                "Call this after a worker completes build or review phases. "
+                "Use after a phase completes to keep state in sync."
             ),
             inputSchema={
                 "type": "object",

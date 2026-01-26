@@ -533,7 +533,6 @@ class MCPHandlersMixin:
         computer: str,
         command: str,
         args: str = "",
-        session_id: str | None = None,
         project: str | None = None,
         agent: str = "claude",
         subfolder: str = "",
@@ -541,6 +540,8 @@ class MCPHandlersMixin:
         thinking_mode: ThinkingMode = ThinkingMode.SLOW,
     ) -> RunAgentCommandResult:
         """Run a slash command on an AI agent session."""
+        if not command.startswith("/"):
+            return {"status": "error", "message": "command must start with '/'"}
         normalized_cmd = command.lstrip("/")
         agent_key = agent.strip().lower()
         if agent_key.startswith("codex") and not normalized_cmd.startswith("prompts:"):
@@ -548,15 +549,8 @@ class MCPHandlersMixin:
         normalized_args = args.strip()
         full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
 
-        if session_id:
-            chunks = [
-                chunk
-                async for chunk in self.teleclaude__send_message(computer, session_id, full_command, caller_session_id)
-            ]
-            return {"status": "sent", "session_id": session_id, "message": "".join(chunks)}
-
         if not project:
-            return {"status": "error", "message": "project required when session_id not provided"}
+            return {"status": "error", "message": "project required"}
 
         title = full_command
         quoted_command = shlex.quote(full_command)

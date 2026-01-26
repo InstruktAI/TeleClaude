@@ -208,7 +208,11 @@ def format_tool_call(
     """Format a literal tool call for the orchestrator to execute."""
     # Codex requires /prompts: prefix for custom commands
     agent_key = agent.strip().lower()
-    formatted_command = f"/prompts:{command}" if agent_key.startswith(AgentName.CODEX.value) else command
+    raw_command = command.lstrip("/")
+    if agent_key.startswith(AgentName.CODEX.value):
+        formatted_command = f"/prompts:{raw_command}"
+    else:
+        formatted_command = f"/{raw_command}"
 
     # Get post-completion instructions for this command
     post_completion = POST_COMPLETION.get(command, "")

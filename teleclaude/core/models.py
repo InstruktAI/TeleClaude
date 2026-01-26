@@ -540,7 +540,6 @@ class RunAgentCommandArgs:
     computer: str
     command: str
     args: str = ""
-    session_id: Optional[str] = None
     project: Optional[str] = None
     agent: str = "claude"
     thinking_mode: ThinkingMode = ThinkingMode.SLOW
@@ -563,14 +562,12 @@ class RunAgentCommandArgs:
             raise ValueError("thinking_mode must be one of: fast, med, slow")
         thinking_mode = ThinkingMode(thinking_mode_raw)
 
-        session_id_arg = arguments.get("session_id")
         project_arg = arguments.get("project")
 
         return cls(
             computer=str(arguments[FIELD_COMPUTER]),
             command=str(arguments[FIELD_COMMAND]),
             args=str(arguments.get("args", "")),
-            session_id=str(session_id_arg) if session_id_arg else None,
             project=str(project_arg) if project_arg else None,
             agent=str(arguments.get("agent", "claude")),
             thinking_mode=thinking_mode,
