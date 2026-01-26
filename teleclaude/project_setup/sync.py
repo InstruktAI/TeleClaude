@@ -73,6 +73,7 @@ def _install_launchd_watch(project_root: Path) -> None:
         f"uv run --quiet scripts/distribute.py --project-root {project_root} --deploy"
     )
     watch_paths = [
+        project_root / "AGENTS.md",
         project_root / ".agents",
         project_root / "docs" / "project",
         project_root / "docs" / "global",
@@ -165,6 +166,7 @@ ExecStart=/bin/bash -lc '{command}'
 Description=TeleClaude docs watch ({project_root})
 
 [Path]
+PathModified={project_root}/AGENTS.md
 PathModified={project_root}/.agents
 PathModified={project_root}/docs
 PathModified={project_root}/agents/docs

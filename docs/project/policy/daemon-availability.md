@@ -11,7 +11,6 @@ description: The TeleClaude daemon must stay up; restarts must be brief and veri
 
 - The daemon is a 24/7 service; downtime is not acceptable outside controlled restarts.
 - After any change needing a restart, call `make restart` and observe success, or verify with `make status`.
-- Do not use `make stop` during normal development.
 - During instability, keep SIGTERM/socket monitoring enabled and retain logs under `~/.teleclaude/logs/monitoring`.
 - Verify key services after restart (MCP socket, API port, adapters).
 
@@ -32,4 +31,4 @@ description: The TeleClaude daemon must stay up; restarts must be brief and veri
 
 ## Exceptions
 
-- Use `make stop` only in emergencies when the daemon is crashing or unstable.
+- None.

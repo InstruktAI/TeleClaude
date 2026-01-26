@@ -85,7 +85,7 @@ Mapping rules (Gemini):
   - Requires `data.transcript_path` (native transcript path).
 - `AfterAgent` → `event_type = "stop"` (fires when agent loop ends = turn completion)
   - **TODO(2025-01):** Using Gemini CLI nightly (0.24.0) for AfterAgent fix (fires once per turn).
-    When stable release includes fix from PR #15651/#15701, switch back: `npm install -g @google/gemini-cli@latest`
+    When stable release includes fix from PR #15651/#15701, switch back: `npm install --grep @google/gemini-cli@latest`
     Track: https://github.com/google-gemini/gemini-cli/issues/15712
   - **Update:** Also triggers extraction of last user input from transcript to update `last_message_sent` in the database.
   - **Update:** Also triggers extraction of last user input from transcript to update `last_message_sent` in the database.

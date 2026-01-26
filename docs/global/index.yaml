@@ -18,14 +18,6 @@ snippets:
   requires:
   - ~/.teleclaude/docs/software-development/policy/testing
   source_project: TeleClaude
-- id: general/policy/stateless-agent-commands
-  description: Policy for defining stateless AI agent commands.
-  type: policy
-  scope: global
-  path: docs/global/general/policy/stateless-agent-commands.md
-  requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
-  source_project: TeleClaude
 - id: general/principle/intent-first-documentation
   description: Preserve intent, boundaries, and durable reasoning in documentation.
   type: principle

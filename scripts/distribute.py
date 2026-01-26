@@ -132,6 +132,15 @@ def _resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path 
     if not candidate.is_absolute():
         if str(candidate).startswith("docs/"):
             candidate = (root_path / candidate).resolve()
+            if not candidate.exists():
+                tail = Path(ref).relative_to("docs")
+                project_candidate = (root_path / "docs" / "project" / tail).resolve()
+                if project_candidate.exists():
+                    candidate = project_candidate
+                else:
+                    global_candidate = (root_path / "docs" / "global" / tail).resolve()
+                    if global_candidate.exists():
+                        candidate = global_candidate
         else:
             candidate = (current_path.parent / candidate).resolve()
     else:
@@ -311,7 +320,13 @@ def main() -> None:
             "master": dot_master_agents_file,
             "commands": dot_master_commands_dir,
             "skills": dot_master_skills_dir,
-        }
+        },
+        {
+            "label": "AGENTS.md",
+            "master": os.path.join(project_root, "AGENTS.md"),
+            "commands": os.path.join(project_root, ".agents", "__none__"),
+            "skills": os.path.join(project_root, ".agents", "__none__"),
+        },
     ]
 
     def _existing_sources(source_list: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -331,6 +346,8 @@ def main() -> None:
         dist_dir: str,
         deploy_root: str,
         include_docs: bool,
+        emit_repo_codex: bool,
+        deploy_enabled: bool,
     ) -> None:
         if os.path.exists(dist_dir):
             shutil.rmtree(dist_dir)
@@ -400,6 +417,11 @@ def main() -> None:
                 with open(master_dest_path, "w") as f:
                     f.write(combined_agents_content)
                 markdown_outputs.append(master_dest_path)
+                if emit_repo_codex and agent_name == "codex":
+                    repo_override_path = os.path.join(project_root, "AGENTS.override.md")
+                    with open(repo_override_path, "w") as f:
+                        f.write(combined_agents_content)
+                    markdown_outputs.append(repo_override_path)
 
             if command_files:
                 os.makedirs(commands_dest_path, exist_ok=True)
@@ -481,7 +503,7 @@ def main() -> None:
 
         print("\nTranspilation complete.")
 
-        if args.deploy:
+        if args.deploy and deploy_enabled:
             print("Deploying files...")
             for agent_name in built_agents:
                 config = agents_config[agent_name]
@@ -517,6 +539,8 @@ def main() -> None:
             dist_dir=os.path.join(project_root, "dist", "global"),
             deploy_root=os.path.expanduser("~"),
             include_docs=True,
+            emit_repo_codex=False,
+            deploy_enabled=True,
         )
 
     if local_sources:
@@ -526,6 +550,8 @@ def main() -> None:
             dist_dir=os.path.join(project_root, "dist", "local"),
             deploy_root=project_root,
             include_docs=False,
+            emit_repo_codex=True,
+            deploy_enabled=False,
         )
 
 

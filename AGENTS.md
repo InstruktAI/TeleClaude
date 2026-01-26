@@ -1,9 +1,6 @@
 # AGENTS.md
 
-## Required reads
-
-@~/.teleclaude/docs/baseline/index.md
-@docs/baseline/index.md
+@docs/project/baseline/index.md
 
 ## Purpose
 

@@ -101,7 +101,8 @@ snippets:
   path: docs/project/policy/adapter-boundaries.md
   source_project: TeleClaude
 - id: policy/agent-service-control
-  description: Guardrails for agent-run service control in this repo.
+  description: Defines which service/daemon commands agents may run, which are conditional,
+    and which are prohibited in this repo.
   type: policy
   scope: project
   path: docs/project/policy/agent-service-control.md

@@ -127,27 +127,11 @@ class RedisConfig:
     enabled: bool
     url: str
     password: str | None
-
-    # Internal settings exposed as properties (not configurable by user)
-    @property
-    def max_connections(self) -> int:
-        return REDIS_MAX_CONNECTIONS
-
-    @property
-    def socket_timeout(self) -> int:
-        return REDIS_SOCKET_TIMEOUT
-
-    @property
-    def message_stream_maxlen(self) -> int:
-        return REDIS_MESSAGE_STREAM_MAXLEN
-
-    @property
-    def output_stream_maxlen(self) -> int:
-        return REDIS_OUTPUT_STREAM_MAXLEN
-
-    @property
-    def output_stream_ttl(self) -> int:
-        return REDIS_OUTPUT_STREAM_TTL
+    max_connections: int
+    socket_timeout: int
+    message_stream_maxlen: int
+    output_stream_maxlen: int
+    output_stream_ttl: int
 
 
 @dataclass
@@ -251,6 +235,11 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
         "enabled": False,
         "url": "redis://localhost:6379",
         "password": None,
+        "max_connections": REDIS_MAX_CONNECTIONS,
+        "socket_timeout": REDIS_SOCKET_TIMEOUT,
+        "message_stream_maxlen": REDIS_MESSAGE_STREAM_MAXLEN,
+        "output_stream_maxlen": REDIS_OUTPUT_STREAM_MAXLEN,
+        "output_stream_ttl": REDIS_OUTPUT_STREAM_TTL,
     },
     "telegram": {
         "trusted_bots": [],
@@ -471,6 +460,11 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
             enabled=bool(redis_raw["enabled"]),  # type: ignore[index,misc]
             url=str(redis_raw["url"]),  # type: ignore[index,misc]
             password=str(redis_raw["password"]) if redis_raw["password"] else None,  # type: ignore[index,misc]
+            max_connections=int(redis_raw.get("max_connections", REDIS_MAX_CONNECTIONS)),  # type: ignore[index,misc]
+            socket_timeout=int(redis_raw.get("socket_timeout", REDIS_SOCKET_TIMEOUT)),  # type: ignore[index,misc]
+            message_stream_maxlen=int(redis_raw.get("message_stream_maxlen", REDIS_MESSAGE_STREAM_MAXLEN)),  # type: ignore[index,misc]
+            output_stream_maxlen=int(redis_raw.get("output_stream_maxlen", REDIS_OUTPUT_STREAM_MAXLEN)),  # type: ignore[index,misc]
+            output_stream_ttl=int(redis_raw.get("output_stream_ttl", REDIS_OUTPUT_STREAM_TTL)),  # type: ignore[index,misc]
         ),
         telegram=TelegramConfig(
             trusted_bots=list(tg_raw["trusted_bots"]),  # type: ignore[index,misc]
