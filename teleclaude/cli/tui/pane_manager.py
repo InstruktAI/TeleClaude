@@ -190,6 +190,8 @@ class TmuxPaneManager:
         self._active_child_computer = child_computer
 
         if self._layout_is_unchanged():
+            if active_spec and self.state.parent_session != active_spec.tmux_session_name:
+                self._update_active_pane(active_spec)
             if child_tmux != self.state.child_session:
                 self.update_child_session(child_tmux, child_computer)
             if focus and active_spec:
@@ -513,13 +515,38 @@ class TmuxPaneManager:
         layout = LAYOUT_SPECS.get(total_panes)
         if not layout:
             return None
-        spec_keys = tuple((spec.tmux_session_name, "sticky" if spec.is_sticky else "active") for spec in session_specs)
+        spec_keys = tuple(
+            (
+                spec.tmux_session_name if spec.is_sticky else "active",
+                "sticky" if spec.is_sticky else "active",
+            )
+            for spec in session_specs
+        )
         return (
             layout.rows,
             layout.cols,
             tuple(tuple(row) for row in layout.grid),
             spec_keys,
         )
+
+    def _update_active_pane(self, active_spec: SessionPaneSpec) -> None:
+        """Swap the active pane content without rebuilding layout."""
+        if not self._in_tmux:
+            return
+        if not self.state.parent_pane_id or not self._get_pane_exists(self.state.parent_pane_id):
+            self._render_layout()
+            return
+
+        attach_cmd = self._build_attach_cmd(active_spec.tmux_session_name, active_spec.computer_info)
+        self._run_tmux("respawn-pane", "-t", self.state.parent_pane_id, attach_cmd)
+
+        stale_ids = [sid for sid, pid in self.state.session_to_pane.items() if pid == self.state.parent_pane_id]
+        for sid in stale_ids:
+            self.state.session_to_pane.pop(sid, None)
+        self.state.session_to_pane[active_spec.session_id] = self.state.parent_pane_id
+        self.state.parent_session = active_spec.tmux_session_name
+
+        self._set_pane_background(self.state.parent_pane_id, active_spec.tmux_session_name, active_spec.active_agent)
 
     def _layout_is_unchanged(self) -> bool:
         signature = self._compute_layout_signature()
