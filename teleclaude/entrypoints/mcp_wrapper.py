@@ -1157,11 +1157,26 @@ class MCPProxy:
                         await asyncio.sleep(RECONNECT_DELAY)
                         continue
 
+                    modified = False
                     logger.trace(
                         "mcp_wrapper: socket raw",
                         bytes_len=len(line),
                         preview=_preview_bytes(line),
                     )
+                    # Fast path: avoid JSON parsing when nothing needs inspection.
+                    # We only parse if we might need to filter tools, handle pending requests/markers,
+                    # or suppress a backend init response during resync.
+                    if (
+                        not self._suppress_backend_init_messages
+                        and not self._pending_role_markers
+                        and not self._pending_requests
+                        and not self._timed_out_requests
+                        and b'"tools"' not in line
+                        and b'"id"' not in line
+                    ):
+                        sys.stdout.buffer.write(line)
+                        sys.stdout.buffer.flush()
+                        continue
                     # Swallow backend initialize response during resync so the client
                     # doesn't see a second initialize response after daemon restart.
                     try:
@@ -1245,6 +1260,7 @@ class MCPProxy:
                                             after=len(updated),
                                         )
                                     msg[RESULT_KEY]["tools"] = updated
+                                    modified = True
                         if response_id in self._pending_requests:
                             self._pending_requests.pop(response_id, None)
                             started_at = self._pending_started.pop(response_id, None)
@@ -1266,6 +1282,8 @@ class MCPProxy:
                                 )
                             continue
 
+                    if modified and isinstance(msg, dict):
+                        line = (json.dumps(msg) + "\n").encode("utf-8")
                     sys.stdout.buffer.write(line)
                     sys.stdout.buffer.flush()
                 except (ConnectionResetError, BrokenPipeError):

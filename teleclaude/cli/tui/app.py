@@ -1008,22 +1008,24 @@ class TelecApp:
         toast_row = tab_row + TabBar.HEIGHT
         self._render_notification(stdscr, width, toast_row)
 
-        # Row height-4: Separator
+        # Row height-4: Separator (avoid last-column writes)
         separator_attr = get_tab_line_attr()
-        stdscr.addstr(height - 4, 0, "─" * width, separator_attr)  # type: ignore[attr-defined]
+        line_width = max(0, width - 1)
+        stdscr.addstr(height - 4, 0, "─" * line_width, separator_attr)  # type: ignore[attr-defined]
 
         # Row height-3: Action bar (view-specific)
         action_bar = current.get_action_bar() if current else ""
-        stdscr.addstr(height - 3, 0, action_bar[:width])  # type: ignore[attr-defined]
+        stdscr.addstr(height - 3, 0, action_bar[:line_width])  # type: ignore[attr-defined]
 
         # Row height-2: Global shortcuts bar
         global_bar = "[+/-] Expand/Collapse  [r] Refresh  [q] Quit"
-        stdscr.addstr(height - 2, 0, global_bar[:width], curses.A_DIM)  # type: ignore[attr-defined]
+        stdscr.addstr(height - 2, 0, global_bar[:line_width], curses.A_DIM)  # type: ignore[attr-defined]
 
         # Row height-1: Footer
-        if self.footer:
-            self.footer.render(stdscr, height - 1, width)
+        if self.footer and line_width > 0:
+            self.footer.render(stdscr, height - 1, line_width)
 
+        stdscr.move(0, 0)  # type: ignore[attr-defined]
         stdscr.refresh()  # type: ignore[attr-defined]
 
     def _render_breadcrumb(self, stdscr: object, row: int, width: int) -> None:
