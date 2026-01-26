@@ -245,6 +245,16 @@ def _merge_global_index(deploy_docs_root: str) -> None:
             # Use tilde for portability (git filters will expand in working copy)
             data["project_root"] = "~/.teleclaude"
             data["snippets_root"] = "~/.teleclaude/docs"
+            snippets = data.get("snippets")
+            if isinstance(snippets, list):
+                for entry in snippets:
+                    if not isinstance(entry, dict):
+                        continue
+                    path = entry.get("path")
+                    if not isinstance(path, str):
+                        continue
+                    if path.startswith("docs/global/"):
+                        entry["path"] = path.replace("docs/global/", "docs/", 1)
 
             with open(index_path, "w", encoding="utf-8") as f:
                 yaml.dump(data, f, sort_keys=False, allow_unicode=True)
