@@ -40,8 +40,8 @@ class ScrollableViewMixin(Generic[T]):
     """
 
     flat_items: list[T]
-    selected_index: int
-    scroll_offset: int
+    selected_index: int | property
+    scroll_offset: int | property
     _last_rendered_range: tuple[int, int]
 
     def move_up(self) -> None:

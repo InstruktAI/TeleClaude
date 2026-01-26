@@ -15,6 +15,8 @@ import pytest
 
 from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.app import FocusContext
+from teleclaude.cli.tui.controller import TuiController
+from teleclaude.cli.tui.state import TuiState
 from teleclaude.cli.tui.tree import ProjectNode, SessionDisplayInfo, SessionNode
 from teleclaude.cli.tui.types import ActivePane, NodeType
 from teleclaude.cli.tui.views.sessions import SessionsView
@@ -64,7 +66,16 @@ async def test_refresh_updates_activity_state_marks_idle_when_activity_is_old():
         def fromisoformat(cls, date_string: str) -> datetime:
             return datetime.fromisoformat(date_string)
 
-    view = SessionsView(api=AsyncMock(), agent_availability={}, focus=FocusContext(), pane_manager=DummyPaneManager())
+    state = TuiState()
+    controller = TuiController(state, DummyPaneManager(), lambda _name: None)
+    view = SessionsView(
+        api=AsyncMock(),
+        agent_availability={},
+        focus=FocusContext(),
+        pane_manager=DummyPaneManager(),
+        state=state,
+        controller=controller,
+    )
     old_activity = (fixed_now - timedelta(seconds=61)).isoformat()
 
     sessions = [
@@ -94,7 +105,16 @@ async def test_handle_enter_on_session_toggles_pane():
     """Test that handle_enter on a session triggers the preview pane toggle."""
     pane_manager = DummyPaneManager()
     api = AsyncMock()
-    view = SessionsView(api=api, agent_availability={}, focus=FocusContext(), pane_manager=pane_manager)
+    state = TuiState()
+    controller = TuiController(state, pane_manager, lambda _name: None)
+    view = SessionsView(
+        api=api,
+        agent_availability={},
+        focus=FocusContext(),
+        pane_manager=pane_manager,
+        state=state,
+        controller=controller,
+    )
 
     # Setup state needed for toggle
     session = SessionInfo(
@@ -143,7 +163,16 @@ async def test_handle_enter_on_session_toggles_pane():
 def test_open_project_sessions_sets_sticky_list():
     """Project shortcut should sticky project sessions (up to 5) and apply layout."""
     pane_manager = DummyPaneManager()
-    view = SessionsView(api=AsyncMock(), agent_availability={}, focus=FocusContext(), pane_manager=pane_manager)
+    state = TuiState()
+    controller = TuiController(state, pane_manager, lambda _name: None)
+    view = SessionsView(
+        api=AsyncMock(),
+        agent_availability={},
+        focus=FocusContext(),
+        pane_manager=pane_manager,
+        state=state,
+        controller=controller,
+    )
 
     project = ProjectInfo(computer="local", name="TeleClaude", path="/repo")
     sessions = [

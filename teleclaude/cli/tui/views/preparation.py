@@ -1,4 +1,8 @@
-"""Preparation view - shows planned work from todos/roadmap.md."""
+"""Preparation view - shows planned work from todos/roadmap.md.
+
+Required reads:
+- @docs/project/architecture/tui-state-layout.md
+"""
 
 from __future__ import annotations
 
@@ -23,8 +27,10 @@ from teleclaude.cli.models import (
 from teleclaude.cli.models import (
     ComputerInfo as ApiComputerInfo,
 )
+from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
+from teleclaude.cli.tui.state import Intent, IntentType, TuiState
 from teleclaude.cli.tui.todos import TodoItem, parse_roadmap
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NodeType, TodoFileFlag, TodoStatus
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
@@ -154,6 +160,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         agent_availability: dict[str, AgentAvailabilityInfo],
         focus: FocusContext,
         pane_manager: TmuxPaneManager,
+        state: TuiState,
+        controller: TuiController,
         notify: Callable[[str, str], None] | None = None,
     ):
         """Initialize preparation view.
@@ -167,16 +175,12 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         self.agent_availability = agent_availability
         self.focus = focus
         self.pane_manager = pane_manager
+        self.state = state
+        self.controller = controller
         self.notify = notify
         # Tree structure
         self.tree: list[PrepTreeNode] = []
         self.flat_items: list[PrepTreeNode] = []
-        self.selected_index = 0
-        self.scroll_offset = 0
-        # Expanded todos (show file children)
-        self.expanded_todos: set[str] = set()
-        # Track file viewer/editor pane (only one at a time)
-        self._file_pane_id: str | None = None
         # Row-to-item mapping for mouse click handling (built during render)
         self._row_to_item: dict[int, int] = {}
         # Signal for app to trigger data refresh
@@ -187,6 +191,38 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         self._visible_height: int = 20  # Default, updated in render
         # Track rendered item range for scroll calculations
         self._last_rendered_range: tuple[int, int] = (0, 0)
+
+    @property
+    def selected_index(self) -> int:
+        return self.state.preparation.selected_index
+
+    @selected_index.setter
+    def selected_index(self, value: int) -> None:
+        self.state.preparation.selected_index = value
+
+    @property
+    def scroll_offset(self) -> int:
+        return self.state.preparation.scroll_offset
+
+    @scroll_offset.setter
+    def scroll_offset(self, value: int) -> None:
+        self.state.preparation.scroll_offset = value
+
+    @property
+    def expanded_todos(self) -> set[str]:
+        return self.state.preparation.expanded_todos
+
+    @expanded_todos.setter
+    def expanded_todos(self, value: set[str]) -> None:
+        self.state.preparation.expanded_todos = value
+
+    @property
+    def _file_pane_id(self) -> str | None:
+        return self.state.preparation.file_pane_id
+
+    @_file_pane_id.setter
+    def _file_pane_id(self, value: str | None) -> None:
+        self.state.preparation.file_pane_id = value
 
     async def refresh(
         self,
@@ -213,6 +249,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         # Extract todos from projects (already fetched by API in one call)
         local_computer = config.computer.name
         todos_by_project: dict[str, list[TodoItem]] = {}
+        todo_ids: set[str] = set()
 
         for project in projects:
             path = project.path
@@ -236,6 +273,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                     )
                     for todo in project.todos
                 ]
+            for todo in todos_by_project[path]:
+                todo_ids.add(todo.slug)
 
         # Aggregate todo and project counts per computer for badges
         project_by_path: dict[str, str] = {}
@@ -263,6 +302,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         self.tree = self._build_tree(enriched_computers, projects, todos_by_project)
         logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
+        if todo_ids:
+            self.controller.dispatch(Intent(IntentType.SYNC_TODOS, {"todo_ids": list(todo_ids)}))
 
     def _build_tree(
         self,
@@ -502,7 +543,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         if _is_file_node(item):
             slug = item.data.slug
             if slug in self.expanded_todos:
-                self.expanded_todos.discard(slug)
+                self.controller.dispatch(Intent(IntentType.COLLAPSE_TODO, {"todo_id": slug}))
                 self.rebuild_for_focus()
                 logger.debug("collapse_selected: collapsed file's parent todo %s", slug)
                 return True
@@ -512,7 +553,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         if _is_todo_node(item):
             slug = item.data.todo.slug
             if slug in self.expanded_todos:
-                self.expanded_todos.discard(slug)
+                self.controller.dispatch(Intent(IntentType.COLLAPSE_TODO, {"todo_id": slug}))
                 self.rebuild_for_focus()
                 logger.debug("collapse_selected: collapsed todo %s", slug)
                 return True
@@ -545,7 +586,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             # Expand todo to show file children
             slug = item.data.todo.slug
             if slug not in self.expanded_todos:
-                self.expanded_todos.add(slug)
+                self.controller.dispatch(Intent(IntentType.EXPAND_TODO, {"todo_id": slug}))
                 self.rebuild_for_focus()
                 logger.debug("drill_down: expanded todo %s", slug)
                 return True
@@ -558,17 +599,19 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         """Expand all todos."""
         logger.debug("expand_all: expanding all todos (currently %d items)", len(self.flat_items))
         count = 0
+        todo_ids: list[str] = []
         for item in self.flat_items:
             if _is_todo_node(item):
-                self.expanded_todos.add(item.data.todo.slug)
+                todo_ids.append(item.data.todo.slug)
                 count += 1
+        self.controller.dispatch(Intent(IntentType.EXPAND_ALL_TODOS, {"todo_ids": todo_ids}))
         logger.debug("expand_all: expanded %d todos, now expanded_todos=%s", count, self.expanded_todos)
         self.rebuild_for_focus()
 
     def collapse_all(self) -> None:
         """Collapse all todos."""
         logger.debug("collapse_all: clearing expanded_todos (was %s)", self.expanded_todos)
-        self.expanded_todos.clear()
+        self.controller.dispatch(Intent(IntentType.COLLAPSE_ALL_TODOS))
         self.rebuild_for_focus()
 
     def handle_enter(self, stdscr: CursesWindow) -> None:
@@ -719,7 +762,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         )
         if self._file_pane_id in result.stdout.split("\n"):
             subprocess.run([tmux, "kill-pane", "-t", self._file_pane_id], check=False)
-        self._file_pane_id = None
+        self.controller.dispatch(Intent(IntentType.CLEAR_FILE_PANE_ID))
 
     def _open_file_pane(self, cmd: str) -> None:
         """Open a file in a tmux split pane, closing any existing file pane first.
@@ -738,7 +781,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             check=False,
         )
         if result.stdout.strip():
-            self._file_pane_id = result.stdout.strip()
+            self.controller.dispatch(Intent(IntentType.SET_FILE_PANE_ID, {"pane_id": result.stdout.strip()}))
 
     def _view_file(self, item: PrepFileDisplayInfo, stdscr: CursesWindow) -> None:
         """View a file in glow (or less as fallback) in a tmux split pane.

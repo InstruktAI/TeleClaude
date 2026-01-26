@@ -149,6 +149,13 @@ snippets:
   scope: global
   path: docs/project/procedure/ssh-agent-keychain.md
   source_project: TeleClaude
+- id: project/architecture/tui-state-layout
+  description: State-driven layout model for the Telec TUI sessions and preparation
+    views.
+  type: architecture
+  scope: project
+  path: docs/project/architecture/tui-state-layout.md
+  source_project: TeleClaude
 - id: project/guide/troubleshooting
   description: Comprehensive operations runbook for TeleClaude troubleshooting and
     observability.

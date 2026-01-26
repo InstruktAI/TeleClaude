@@ -10,6 +10,8 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.cli.models import CreateSessionResult
 from teleclaude.cli.tui.app import FocusContext
+from teleclaude.cli.tui.controller import TuiController
+from teleclaude.cli.tui.state import TuiState
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.views.preparation import PreparationView, PrepTodoDisplayInfo, PrepTodoNode
 
@@ -57,7 +59,16 @@ def test_handle_enter_on_ready_todo_splits_tmux_in_tmux_env():
     pane_manager = Mock()
     pane_manager.is_available = False  # Force attach_tmux_from_result / fallback path
 
-    view = PreparationView(api=api, agent_availability={}, focus=FocusContext(), pane_manager=pane_manager)
+    state = TuiState()
+    controller = TuiController(state, pane_manager, lambda _name: None)
+    view = PreparationView(
+        api=api,
+        agent_availability={},
+        focus=FocusContext(),
+        pane_manager=pane_manager,
+        state=state,
+        controller=controller,
+    )
     screen = DummyScreen()
 
     view.flat_items = [

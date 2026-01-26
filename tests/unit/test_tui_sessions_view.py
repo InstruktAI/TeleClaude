@@ -9,6 +9,8 @@ from teleclaude.cli.models import (
     ProjectWithTodosInfo,
     SessionInfo,
 )
+from teleclaude.cli.tui.controller import TuiController
+from teleclaude.cli.tui.state import TuiState
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     ComputerNode,
@@ -59,11 +61,15 @@ def mock_pane_manager():
 @pytest.fixture
 def sessions_view(mock_focus, mock_pane_manager):
     """Create SessionsView instance for testing."""
+    state = TuiState()
+    controller = TuiController(state, mock_pane_manager, lambda _name: None)
     view = SessionsView(
         api=None,  # Not needed for render tests
         agent_availability={},
         focus=mock_focus,
         pane_manager=mock_pane_manager,
+        state=state,
+        controller=controller,
     )
     # Ensure tests are isolated from persisted sticky state on disk.
     view.sticky_sessions = []
@@ -314,11 +320,15 @@ class TestSessionsViewLogic:
                 self.args = (tmux_session_name, active_agent, child_tmux_session_name, computer_info)
 
         pane_manager = MockPaneManager()
+        state = TuiState()
+        controller = TuiController(state, pane_manager, lambda _name: None)
         view = SessionsView(
             api=None,
             agent_availability={},
             focus=mock_focus,
             pane_manager=pane_manager,
+            state=state,
+            controller=controller,
         )
         view.sticky_sessions = []
         view._computers = [
@@ -425,6 +435,7 @@ class TestSessionsViewLogic:
 
         class MockPaneManager:
             def __init__(self):
+                self.is_available = True
                 self.toggle_called = False
                 self.show_sticky_called = False
                 self.sticky_sessions = []
@@ -448,11 +459,15 @@ class TestSessionsViewLogic:
                 return None
 
         pane_manager = MockPaneManager()
+        state = TuiState()
+        controller = TuiController(state, pane_manager, lambda _name: None)
         view = SessionsView(
             api=None,
             agent_availability={},
             focus=mock_focus,
             pane_manager=pane_manager,
+            state=state,
+            controller=controller,
         )
         view.sticky_sessions = []
         view._computers = [

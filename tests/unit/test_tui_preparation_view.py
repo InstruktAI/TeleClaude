@@ -3,6 +3,8 @@
 import pytest
 
 from teleclaude.cli.models import ComputerInfo, CreateSessionResult, ProjectWithTodosInfo
+from teleclaude.cli.tui.controller import TuiController
+from teleclaude.cli.tui.state import TuiState
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.views.preparation import (
     PreparationView,
@@ -39,11 +41,16 @@ def prep_view(mock_focus):
         def is_available(self) -> bool:
             return False
 
+    pane_manager = MockPaneManager()
+    state = TuiState()
+    controller = TuiController(state, pane_manager, lambda _name: None)
     return PreparationView(
         api=None,  # Not needed for render tests
         agent_availability={},
         focus=mock_focus,
-        pane_manager=MockPaneManager(),
+        pane_manager=pane_manager,
+        state=state,
+        controller=controller,
     )
 
 
@@ -230,11 +237,15 @@ class TestPreparationViewLogic:
                 self.args = (tmux_session_name, active_agent, child_tmux_session_name, computer_info)
 
         pane_manager = MockPaneManager()
+        state = TuiState()
+        controller = TuiController(state, pane_manager, lambda _name: None)
         view = PreparationView(
             api=None,
             agent_availability={},
             focus=mock_focus,
             pane_manager=pane_manager,
+            state=state,
+            controller=controller,
         )
         view._computers = [
             ComputerInfo(

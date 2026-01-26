@@ -1,4 +1,8 @@
-"""Main TUI application with view switching."""
+"""Main TUI application with view switching.
+
+Required reads:
+- @docs/project/architecture/tui-state-layout.md
+"""
 
 import asyncio
 import curses
@@ -25,10 +29,15 @@ from teleclaude.cli.models import (
     TodoInfo,
     WsEvent,
 )
+from teleclaude.cli.models import (
+    ComputerInfo as ApiComputerInfo,
+)
 from teleclaude.cli.tui.animation_colors import palette_registry
 from teleclaude.cli.tui.animation_engine import AnimationEngine
 from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger
-from teleclaude.cli.tui.pane_manager import TmuxPaneManager
+from teleclaude.cli.tui.controller import TuiController
+from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
+from teleclaude.cli.tui.state import Intent, IntentType, TuiState
 from teleclaude.cli.tui.theme import get_tab_line_attr, init_colors
 from teleclaude.cli.tui.tree import is_computer_node, is_session_node
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NotificationLevel
@@ -175,6 +184,9 @@ class TelecApp:
         self.focus = FocusContext()  # Shared focus across views
         self.notification: Notification | None = None
         self.pane_manager = TmuxPaneManager()
+        self.state = TuiState()
+        self._computers: list[ApiComputerInfo] = []
+        self.controller = TuiController(self.state, self.pane_manager, self._get_computer_info)
         # Content area bounds for mouse click handling
         self._content_start: int = 0
         self._content_height: int = 0
@@ -206,6 +218,8 @@ class TelecApp:
             self.agent_availability,
             self.focus,
             self.pane_manager,
+            self.state,
+            self.controller,
             notify=self.notify,
         )
         self.views[2] = PreparationView(
@@ -213,6 +227,8 @@ class TelecApp:
             self.agent_availability,
             self.focus,
             self.pane_manager,
+            self.state,
+            self.controller,
             notify=self.notify,
         )
 
@@ -273,7 +289,14 @@ class TelecApp:
                 len(sessions),
             )
 
+            self._computers = computers
             self.pane_manager.update_session_catalog(sessions)
+            self.controller.update_sessions(sessions)
+            self.controller.dispatch(
+                Intent(IntentType.SYNC_SESSIONS, {"session_ids": [s.session_id for s in sessions]})
+            )
+            if fetch_todos:
+                self.controller.dispatch(Intent(IntentType.SYNC_TODOS, {"todo_ids": [t.slug for t in todos]}))
 
             # Update in-place so views keep the same shared dict reference.
             self.agent_availability.clear()
@@ -287,10 +310,6 @@ class TelecApp:
                     view_num,
                     len(view.flat_items),
                 )
-
-            sessions_view = self.views.get(1)
-            if isinstance(sessions_view, SessionsView):
-                sessions_view.sync_layout()
 
             # Update footer with new availability
             self.footer = Footer(self.agent_availability)
@@ -365,18 +384,18 @@ class TelecApp:
             self._subscribed_computers.add(current)
             asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
-    def update_session_panes(self) -> None:
-        """Hide session panes when leaving Sessions view.
-
-        Called when view is switched. Pane toggling within Sessions view
-        is handled by SessionsView.handle_enter().
-        """
-        if not self.pane_manager.is_available:
-            return
-
-        # Hide panes when not in Sessions view
-        if self.current_view != 1:
-            self.pane_manager.hide_sessions()
+    def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
+        """Get SSH connection info for a computer."""
+        for comp in self._computers:
+            if comp.name == computer_name:
+                return ComputerInfo(
+                    name=computer_name,
+                    is_local=comp.is_local,
+                    user=comp.user,
+                    host=comp.host,
+                    tmux_binary=comp.tmux_binary,
+                )
+        return None
 
     def cleanup(self) -> None:
         """Clean up resources before exit."""
@@ -534,7 +553,10 @@ class TelecApp:
             return
 
         sessions_view._sessions = [s for s in sessions_view._sessions if s.session_id != session_id]
-        sessions_view.sync_layout()
+        self.controller.update_sessions(sessions_view._sessions)
+        self.controller.dispatch(
+            Intent(IntentType.SYNC_SESSIONS, {"session_ids": [s.session_id for s in sessions_view._sessions]})
+        )
         logger.debug("Session %s removed", session_id[:8])
 
     def run(self, stdscr: CursesWindow) -> None:
@@ -922,8 +944,7 @@ class TelecApp:
                 )
                 if view_num == 2:
                     asyncio.get_event_loop().run_until_complete(self.refresh_data(include_todos=True))
-            # Update panes (shows sessions in view 1, hides in view 2)
-            self.update_session_panes()
+            # Panes remain unchanged across view switches.
         else:
             logger.warning("Attempted to switch to non-existent view %d", view_num)
 
@@ -944,9 +965,8 @@ class TelecApp:
         total_panes = 1  # TUI pane
         if isinstance(sessions_view, SessionsView):
             total_panes += len(sessions_view.sticky_sessions)
-            if sessions_view._active_session_id and not any(
-                s.session_id == sessions_view._active_session_id for s in sessions_view.sticky_sessions
-            ):
+            preview = sessions_view._preview
+            if preview and not any(s.session_id == preview.session_id for s in sessions_view.sticky_sessions):
                 total_panes += 1  # Active session not in sticky list
 
         # Hide banner for 4 or 6 panes (optimizes vertical space for grid layouts)

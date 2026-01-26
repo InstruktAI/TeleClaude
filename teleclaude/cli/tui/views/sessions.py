@@ -1,4 +1,8 @@
-"""Sessions view - shows running AI sessions."""
+"""Sessions view - shows running AI sessions.
+
+Required reads:
+- @docs/project/architecture/tui-state-layout.md
+"""
 
 from __future__ import annotations
 
@@ -19,8 +23,10 @@ from teleclaude.cli.models import (
     SessionInfo,
 )
 from teleclaude.cli.models import ComputerInfo as ApiComputerInfo
+from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
+from teleclaude.cli.tui.state import Intent, IntentType, PreviewState, TuiState
 from teleclaude.cli.tui.theme import AGENT_COLORS
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
@@ -71,6 +77,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         agent_availability: dict[str, AgentAvailabilityInfo],
         focus: FocusContext,
         pane_manager: TmuxPaneManager,
+        state: TuiState,
+        controller: TuiController,
         notify: Callable[[str, str], None] | None = None,
     ):
         """Initialize sessions view.
@@ -85,12 +93,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self.agent_availability = agent_availability
         self.focus = focus
         self.pane_manager = pane_manager
+        self.state = state
+        self.controller = controller
         self.notify = notify
         self.tree: list[TreeNode] = []
         self.flat_items: list[TreeNode] = []
-        self.selected_index = 0
-        self.scroll_offset = 0
-        self.collapsed_sessions: set[str] = set()  # Session IDs that are collapsed
         # State tracking for color coding (detect changes between refreshes)
         self._prev_state: dict[str, dict[str, str]] = {}  # session_id -> {input, output}
         self._active_field: dict[str, ActivePane] = {}
@@ -112,13 +119,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._visible_height: int = 20  # Default, updated in render
         # Track rendered item range for scroll calculations
         self._last_rendered_range: tuple[int, int] = (0, 0)
-        # Sticky session state (max 5 sessions across 3 lanes)
-        self.sticky_sessions: list[StickySessionInfo] = []
-        self._active_session_id: str | None = None
-        self._active_child_session_id: str | None = None
         self._last_click_time: dict[int, float] = {}  # screen_row -> timestamp
         self._double_click_threshold = 0.4  # seconds
-        self._selection_method: str = "arrow"  # "arrow" | "click"
         self._pending_select_session_id: str | None = None
 
         # Load persisted sticky sessions
@@ -148,6 +150,54 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             logger.warning("Failed to load TUI state from %s: %s", TUI_STATE_PATH, e)
             self.sticky_sessions = []
+
+    @property
+    def selected_index(self) -> int:
+        return self.state.sessions.selected_index
+
+    @selected_index.setter
+    def selected_index(self, value: int) -> None:
+        self.state.sessions.selected_index = value
+
+    @property
+    def scroll_offset(self) -> int:
+        return self.state.sessions.scroll_offset
+
+    @scroll_offset.setter
+    def scroll_offset(self, value: int) -> None:
+        self.state.sessions.scroll_offset = value
+
+    @property
+    def collapsed_sessions(self) -> set[str]:
+        return self.state.sessions.collapsed_sessions
+
+    @collapsed_sessions.setter
+    def collapsed_sessions(self, value: set[str]) -> None:
+        self.state.sessions.collapsed_sessions = value
+
+    @property
+    def sticky_sessions(self) -> list[StickySessionInfo]:
+        return self.state.sessions.sticky_sessions
+
+    @sticky_sessions.setter
+    def sticky_sessions(self, value: list[StickySessionInfo]) -> None:
+        self.state.sessions.sticky_sessions = value
+
+    @property
+    def _preview(self) -> PreviewState | None:
+        return self.state.sessions.preview
+
+    @_preview.setter
+    def _preview(self, value: PreviewState | None) -> None:
+        self.state.sessions.preview = value
+
+    @property
+    def _selection_method(self) -> str:
+        return self.state.sessions.selection_method
+
+    @_selection_method.setter
+    def _selection_method(self, value: str) -> None:
+        self.state.sessions.selection_method = value
 
     def save_sticky_state(self) -> None:
         """Save sticky session state to ~/.teleclaude/tui_state.json."""
@@ -190,6 +240,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Store sessions for child lookup
         self._sessions = sessions
+        self.controller.update_sessions(sessions)
+        self.controller.dispatch(Intent(IntentType.SYNC_SESSIONS, {"session_ids": [s.session_id for s in sessions]}))
         # Store computers for SSH connection lookup
         self._computers = computers
 
@@ -261,7 +313,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         for idx, item in enumerate(self.flat_items):
             if is_session_node(item) and item.data.session.session_id == target:
                 self.selected_index = idx
-                self._selection_method = "click"
+                self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
                 if self.selected_index < self.scroll_offset:
                     self.scroll_offset = self.selected_index
                 else:
@@ -388,22 +440,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     def sync_layout(self) -> None:
         """Sync pane layout with current session list."""
         session_ids = {session.session_id for session in self._sessions}
-        if self._active_session_id and self._active_session_id not in session_ids:
-            self._active_session_id = None
-            self._active_child_session_id = None
-        if self._active_child_session_id and self._active_child_session_id not in session_ids:
-            self._active_child_session_id = None
-
-        if self.sticky_sessions:
-            self.sticky_sessions = [s for s in self.sticky_sessions if s.session_id in session_ids]
-
-        self.pane_manager.apply_layout(
-            active_session_id=self._active_session_id,
-            sticky_session_ids=[s.session_id for s in self.sticky_sessions],
-            child_session_id=self._active_child_session_id,
-            get_computer_info=self._get_computer_info,
-            focus=False,
-        )
+        self.controller.dispatch(Intent(IntentType.SYNC_SESSIONS, {"session_ids": list(session_ids)}))
 
     def rebuild_for_focus(self) -> None:
         """Rebuild flat_items based on current focus context."""
@@ -501,9 +538,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         selected = self.flat_items[self.selected_index]
         if is_session_node(selected):
             # Show toggle state in action bar
-            tmux_session = selected.data.session.tmux_session_name or ""
-            is_previewing = self.pane_manager.active_session == tmux_session
-            preview_action = "[Enter] Hide Preview" if is_previewing else "[Enter] Preview"
+            preview_action = "[Enter] Preview"
             return f"{back_hint}{preview_action}  [←/→] Collapse/Expand  [R] Restart  [k] Kill"
         if is_project_node(selected):
             # Check if any sessions for this project are sticky
@@ -533,12 +568,12 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     def move_up(self) -> None:
         """Move selection up (arrow key navigation)."""
         super().move_up()
-        self._selection_method = "arrow"
+        self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "arrow"}))
 
     def move_down(self) -> None:
         """Move selection down (arrow key navigation)."""
         super().move_down()
-        self._selection_method = "arrow"
+        self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "arrow"}))
 
     def _focus_selected_pane(self) -> None:
         """Focus the pane for currently selected session."""
@@ -579,7 +614,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # Expand this session (if not already expanded)
             session_id = item.data.session.session_id
             if session_id in self.collapsed_sessions:
-                self.collapsed_sessions.discard(session_id)
+                self.controller.dispatch(Intent(IntentType.EXPAND_SESSION, {"session_id": session_id}))
                 logger.debug("drill_down: expanded session %s", session_id[:8])
                 return True
             logger.debug("drill_down: session already expanded")
@@ -604,7 +639,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if is_session_node(item):
             session_id = item.data.session.session_id
             if session_id not in self.collapsed_sessions:
-                self.collapsed_sessions.add(session_id)
+                self.controller.dispatch(Intent(IntentType.COLLAPSE_SESSION, {"session_id": session_id}))
                 logger.debug("collapse_selected: collapsed session %s", session_id[:8])
                 return True
             logger.debug("collapse_selected: session already collapsed")
@@ -615,12 +650,15 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     def expand_all(self) -> None:
         """Expand all sessions (show input/output)."""
         logger.debug("expand_all: clearing collapsed_sessions (was %d)", len(self.collapsed_sessions))
-        self.collapsed_sessions.clear()
+        self.controller.dispatch(Intent(IntentType.EXPAND_ALL_SESSIONS))
 
     def collapse_all(self) -> None:
         """Collapse all sessions (hide input/output)."""
         logger.debug("collapse_all: collecting all session IDs")
         self._collect_all_session_ids(self.tree)
+        self.controller.dispatch(
+            Intent(IntentType.COLLAPSE_ALL_SESSIONS, {"session_ids": list(self.collapsed_sessions)})
+        )
         logger.debug("collapse_all: collapsed_sessions now has %d entries", len(self.collapsed_sessions))
 
     def _collect_all_session_ids(self, nodes: list[TreeNode]) -> None:
@@ -699,36 +737,23 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 existing_idx = i
                 break
 
-        if existing_idx is not None:
-            # Remove from sticky
-            removed = self.sticky_sessions.pop(existing_idx)
-            logger.info(
-                "REMOVED STICKY: %s (was show_child=%s, now count=%d, remaining=%s)",
-                session_id[:8],
-                removed.show_child,
-                len(self.sticky_sessions),
-                [s.session_id[:8] for s in self.sticky_sessions],
-            )
-        elif len(self.sticky_sessions) < 5:
-            # Double-check: no duplicates allowed (defensive)
-            if any(s.session_id == session_id for s in self.sticky_sessions):
-                logger.error("BUG: Attempted to add duplicate session_id %s to sticky list", session_id[:8])
-                return
-
-            # Add to sticky with child preference
-            self.sticky_sessions.append(StickySessionInfo(session_id, show_child))
-            logger.info(
-                "Added sticky: %s (show_child=%s, total=%d)",
-                session_id[:8],
-                show_child,
-                len(self.sticky_sessions),
-            )
-        else:
+        if existing_idx is None and len(self.sticky_sessions) >= 5:
             # Max 5 reached
             if self.notify:
                 self.notify("warning", "Maximum 5 sticky sessions")
             logger.warning("Cannot add sticky session %s: maximum 5 reached", session_id[:8])
             return
+        if existing_idx is None and any(s.session_id == session_id for s in self.sticky_sessions):
+            logger.error("BUG: Attempted to add duplicate session_id %s to sticky list", session_id[:8])
+            return
+
+        self.controller.dispatch(Intent(IntentType.TOGGLE_STICKY, {"session_id": session_id, "show_child": show_child}))
+        logger.info(
+            "Toggled sticky: %s (show_child=%s, total=%d)",
+            session_id[:8],
+            show_child,
+            len(self.sticky_sessions),
+        )
 
         # Rebuild panes with new sticky set
         self._rebuild_sticky_panes()
@@ -768,34 +793,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 "_activate_session: session %s ALREADY STICKY, hiding active pane",
                 session_id[:8],
             )
-            self._active_session_id = None
-            self._active_child_session_id = None
-            self.pane_manager.apply_layout(
-                active_session_id=None,
-                sticky_session_ids=[s.session_id for s in self.sticky_sessions],
-                child_session_id=None,
-                get_computer_info=self._get_computer_info,
-            )
+            self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
             return
 
-        # Find child session if exists
-        child_session_id: str | None = None
-        for sess in self._sessions:
-            if sess.initiator_session_id == session_id:
-                child_session_id = sess.session_id
-                break
-
-        self._active_session_id = session_id
-        self._active_child_session_id = child_session_id
-
-        # Apply deterministic layout
-        self.pane_manager.apply_layout(
-            active_session_id=self._active_session_id,
-            sticky_session_ids=[s.session_id for s in self.sticky_sessions],
-            child_session_id=self._active_child_session_id,
-            get_computer_info=self._get_computer_info,
-            focus=False,
-        )
+        self.controller.dispatch(Intent(IntentType.SET_PREVIEW, {"session_id": session_id, "show_child": True}))
         logger.debug(
             "_activate_session: showing session in active pane (sticky_count=%d)",
             len(self.sticky_sessions),
@@ -805,13 +806,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         """Rebuild pane layout based on sticky sessions."""
         if not self.sticky_sessions:
             # No sticky sessions - clear all panes
-            self.pane_manager.apply_layout(
-                active_session_id=self._active_session_id,
-                sticky_session_ids=[],
-                child_session_id=self._active_child_session_id,
-                get_computer_info=self._get_computer_info,
-                focus=False,
-            )
+            self.controller.apply_layout(focus=False)
             logger.debug("_rebuild_sticky_panes: no sticky sessions, hiding all panes")
             return
 
@@ -832,14 +827,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             len(sticky_session_infos),
         )
 
-        # Apply deterministic layout
-        self.pane_manager.apply_layout(
-            active_session_id=self._active_session_id,
-            sticky_session_ids=[s.session_id for s in self.sticky_sessions],
-            child_session_id=self._active_child_session_id,
-            get_computer_info=self._get_computer_info,
-            focus=False,
-        )
+        self.controller.apply_layout(focus=False)
 
     def _toggle_session_pane(self, item: SessionNode) -> None:
         """Toggle session preview pane visibility.
@@ -1016,8 +1004,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if sticky_project_sessions:
             # Toggle OFF: Remove all sticky sessions for this project
             self.sticky_sessions = [s for s in self.sticky_sessions if s.session_id not in project_session_ids]
-            self._active_session_id = None
-            self._active_child_session_id = None
+            self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
             self._rebuild_sticky_panes()
             self.save_sticky_state()
             logger.info("_open_project_sessions: closed %d sticky sessions for project", len(sticky_project_sessions))
@@ -1036,8 +1023,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             self.notify("warning", f"Showing first {max_sticky} sessions (max 5 sticky panes)")
 
         self.sticky_sessions = [StickySessionInfo(session.session_id, True) for session in tmux_sessions[:max_sticky]]
-        self._active_session_id = None
-        self._active_child_session_id = None
+        self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
         self._rebuild_sticky_panes()
         self.save_sticky_state()
 
@@ -1171,13 +1157,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             )
             # Select the item but don't activate (sticky toggle is the action)
             self.selected_index = item_idx
-            self._selection_method = "click"
+            self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
             self._focus_selected_pane()  # Focus the sticky pane
             return True
 
         # SINGLE CLICK - select and activate
         self.selected_index = item_idx
-        self._selection_method = "click"
+        self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
         self._id_row_clicked = screen_row in self._row_to_id_item
 
         # Activate session immediately on single click
