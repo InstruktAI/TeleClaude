@@ -9,6 +9,7 @@ import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import TYPE_CHECKING, Callable, Sequence, TypeGuard
 
 from instrukt_ai_logging import get_logger
@@ -474,6 +475,13 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             return TodoStatus(status)
         except ValueError:
             return None
+
+    @staticmethod
+    def _format_enum_value(value: object) -> str:
+        """Format enum values for display."""
+        if isinstance(value, Enum):
+            return str(value.value)
+        return str(value)
 
     # move_up() and move_down() inherited from ScrollableViewMixin
 
@@ -943,7 +951,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             marker = "[ ]"
         else:
             marker = self.STATUS_MARKERS.get(status_enum, "[ ]")
-        status_label = item.data.todo.status
+        status_label = status_enum.value if status_enum is not None else self._format_enum_value(item.data.todo.status)
 
         line = f"{indent}{marker} {indicator} {slug}  [{status_label}]"
         lines = [line[:width]]
@@ -952,8 +960,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         build_status = item.data.todo.build_status
         review_status = item.data.todo.review_status
         if build_status or review_status:
-            build_str = str(build_status) if build_status else "-"
-            review_str = str(review_status) if review_status else "-"
+            build_str = self._format_enum_value(build_status) if build_status else "-"
+            review_str = self._format_enum_value(review_status) if review_status else "-"
             state_line = f"{indent}      Build: {build_str}  Review: {review_str}"
             lines.append(state_line[:width])
 
@@ -1102,7 +1110,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             marker = "[ ]"
         else:
             marker = self.STATUS_MARKERS.get(status_enum, "[ ]")
-        status_label = item.data.todo.status
+        status_label = status_enum.value if status_enum is not None else self._format_enum_value(item.data.todo.status)
 
         line = f"{indent}{marker} {indicator} {slug}  [{status_label}]"
         try:
@@ -1114,8 +1122,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         build_status = item.data.todo.build_status
         review_status = item.data.todo.review_status
         if build_status or review_status:
-            build_str = str(build_status) if build_status else "-"
-            review_str = str(review_status) if review_status else "-"
+            build_str = self._format_enum_value(build_status) if build_status else "-"
+            review_str = self._format_enum_value(review_status) if review_status else "-"
             state_line = f"{indent}      Build: {build_str}  Review: {review_str}"
             try:
                 stdscr.addstr(row + 1, 0, state_line[:width], curses.A_DIM)  # type: ignore[attr-defined]

@@ -269,6 +269,9 @@ def rewrite_global_index(index_path: str, deploy_root: str) -> None:
         if "path: agents/docs/" in line:
             new_lines.append(line.replace("path: agents/docs/", "path: docs/"))
             continue
+        if "path: docs/global/" in line:
+            new_lines.append(line.replace("path: docs/global/", "path: docs/"))
+            continue
         new_lines.append(line)
     index_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
