@@ -148,9 +148,10 @@ def _resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path 
     return candidate
 
 
-def expand_inline_refs(content: str, *, project_root: Path) -> str:
+def expand_inline_refs(content: str, *, project_root: Path, current_path: Path) -> str:
     """Inline @path.md references into the content (Codex speedup)."""
     seen: set[Path] = set()
+    content = _strip_required_reads(content)
 
     def _expand(text: str, *, current_path: Path, depth: int) -> str:
         if depth <= 0:
@@ -167,15 +168,55 @@ def expand_inline_refs(content: str, *, project_root: Path) -> str:
             raw = resolved.read_text(encoding="utf-8")
             post = frontmatter.loads(raw)
             body = post.content
+            if resolved.name == "index.md":
+                expanded = _expand(body, current_path=resolved, depth=depth - 1).strip()
+                expanded = _strip_required_reads(expanded).strip()
+                return f"{expanded}\n" if expanded else ""
             expanded = _expand(body, current_path=resolved, depth=depth - 1).strip()
-            return f"{expanded}\n---\n"
+            expanded = _strip_required_reads(expanded)
+            expanded = _strip_specific_h1(expanded, "Project baseline").strip()
+            if not expanded:
+                return ""
+            return f"---\n\n{expanded}\n"
 
         return INLINE_REF_RE.sub(_replace, text)
 
-    expanded = _expand(content, current_path=project_root / "AGENTS.md", depth=20)
+    expanded = _expand(content, current_path=current_path, depth=20)
     expanded = expanded.replace("@~/.teleclaude/docs/", "~/.teleclaude/docs/")
     expanded = expanded.replace("@docs/", "docs/")
     return expanded
+
+
+def _strip_required_reads(content: str) -> str:
+    """Remove Required Reads section after inlining references."""
+    lines = content.splitlines()
+    output: list[str] = []
+    in_required_reads = False
+
+    for line in lines:
+        if not in_required_reads and line.strip().lower() == "## required reads":
+            in_required_reads = True
+            continue
+        if in_required_reads:
+            stripped = line.strip()
+            if stripped:
+                # End the section once we hit the first non-empty line after the header.
+                in_required_reads = False
+                output.append(line)
+            continue
+        output.append(line)
+
+    return "\n".join(output).rstrip() + "\n"
+
+
+def _strip_specific_h1(content: str, title: str) -> str:
+    """Remove a specific leading H1 heading to avoid redundant titles in inlined docs."""
+    lines = content.splitlines()
+    if not lines:
+        return content
+    if lines[0].strip() == f"# {title}":
+        return "\n".join(lines[1:]).lstrip("\n")
+    return content
 
 
 def _merge_global_index(deploy_docs_root: str) -> None:
@@ -406,6 +447,7 @@ def main() -> None:
                 expanded_body = expand_inline_refs(
                     "\n\n".join(content for content in processed_contents if content),
                     project_root=Path(project_root),
+                    current_path=Path(project_root) / "AGENTS.md",
                 )
                 combined_agents_content = "\n\n".join(
                     content for content in (agent_specific_content, expanded_body) if content
@@ -439,6 +481,12 @@ def main() -> None:
                     try:
                         post = frontmatter.load(f)
                         post.content = process_file(post.content, config["prefix"])
+                        if agent_name == "codex":
+                            post.content = expand_inline_refs(
+                                post.content,
+                                project_root=Path(project_root),
+                                current_path=Path(command_path),
+                            )
                         transformed_content = config["transform"](post)
                         base_name = os.path.splitext(command_file)[0]
                         output_filename = f"{base_name}{config['ext']}"
@@ -472,6 +520,11 @@ def main() -> None:
                         if agent_name == "claude":
                             transformed_content = transform_skill_to_claude(post, skill_name)
                         elif agent_name == "codex":
+                            post.content = expand_inline_refs(
+                                post.content,
+                                project_root=Path(project_root),
+                                current_path=Path(skill_path),
+                            )
                             transformed_content = transform_skill_to_codex(post, skill_name)
                         else:
                             transformed_content = transform_skill_to_gemini(post, skill_name)
