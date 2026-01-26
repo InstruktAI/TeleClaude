@@ -40,6 +40,7 @@ class TuiController:
         self.pane_manager = pane_manager
         self._get_computer_info = get_computer_info
         self._sessions: list[SessionInfo] = []
+        self._last_layout: LayoutState | None = None
 
     def update_sessions(self, sessions: list[SessionInfo]) -> None:
         """Update session catalog used for layout derivation."""
@@ -67,6 +68,9 @@ class TuiController:
         if not self.pane_manager.is_available:
             return
         layout = self._derive_layout()
+        if not focus and self._last_layout == layout:
+            return
+        self._last_layout = layout
         self.pane_manager.apply_layout(
             active_session_id=layout.active_session_id,
             sticky_session_ids=layout.sticky_session_ids,
