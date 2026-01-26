@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.models import SessionInfo
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
-from teleclaude.cli.tui.state import Intent, TuiState, reduce_state
+from teleclaude.cli.tui.state import Intent, IntentType, TuiState, reduce_state
 
 logger = get_logger(__name__)
 
@@ -49,17 +49,13 @@ class TuiController:
     def dispatch(self, intent: Intent) -> None:
         """Apply intent to state and update layout if needed."""
         reduce_state(self.state, intent)
-        if intent.type.name.startswith("SYNC_"):
+        if intent.type is IntentType.SYNC_SESSIONS:
             self.apply_layout(focus=False)
             return
-        if intent.type.name in {
-            "SET_PREVIEW",
-            "CLEAR_PREVIEW",
-            "TOGGLE_STICKY",
-            "COLLAPSE_SESSION",
-            "EXPAND_SESSION",
-            "EXPAND_ALL_SESSIONS",
-            "COLLAPSE_ALL_SESSIONS",
+        if intent.type in {
+            IntentType.SET_PREVIEW,
+            IntentType.CLEAR_PREVIEW,
+            IntentType.TOGGLE_STICKY,
         }:
             self.apply_layout(focus=False)
 
