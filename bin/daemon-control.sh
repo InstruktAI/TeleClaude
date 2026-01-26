@@ -381,11 +381,10 @@ restart_daemon() {
             return 1
         }
 
-        # Verify PID changed (kickstart -k should restart the job).
+        # PID may remain unchanged on some macOS restarts; verify via health instead.
         NEW_PID=$(launchctl print "$domain/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
         if [ -n "$OLD_PID" ] && [ -n "$NEW_PID" ] && [ "$NEW_PID" = "$OLD_PID" ]; then
-            log_error "launchctl kickstart did not restart the job (pid unchanged: $NEW_PID)"
-            return 1
+            log_warn "launchctl kickstart pid unchanged ($NEW_PID); verifying health"
         fi
     else
         sudo systemctl restart "$SERVICE_LABEL"
@@ -393,8 +392,13 @@ restart_daemon() {
 
     # Wait for daemon to come up (up to 10 seconds)
     if wait_for_daemon 10 "$OLD_PID"; then
-        PID=$(cat "$PID_FILE")
-        log_info "Daemon restarted successfully (PID: $PID)"
+        if [ "$PLATFORM" = "macos" ]; then
+            PID=$(launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
+        fi
+        if [ -z "${PID:-}" ] && [ -f "$PID_FILE" ]; then
+            PID=$(cat "$PID_FILE")
+        fi
+        log_info "Daemon restarted successfully (PID: ${PID:-unknown})"
         EXIT_CODE=0
     else
         log_error "Restart failed. Try: make kill to hard kill the daemon. You may have to stop the mcp process separately."
