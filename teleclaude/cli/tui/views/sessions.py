@@ -1141,10 +1141,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # DOUBLE CLICK - toggle sticky
             if clicked_id_line:
                 # ID line → parent only, no child
+                if self._preview:
+                    self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
                 self._toggle_sticky(session_id, show_child=False)
                 logger.debug("Double-click on ID line: toggled sticky (parent-only) for %s", session_id[:8])
             else:
                 # Title/other line → parent + child
+                if self._preview:
+                    self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
                 self._toggle_sticky(session_id, show_child=True)
                 logger.debug("Double-click on title: toggled sticky (parent+child) for %s", session_id[:8])
 
@@ -1168,6 +1172,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Activate session immediately on single click
         if is_session_node(item):
+            if self._preview:
+                self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
             self._activate_session(item)
             self._focus_selected_pane()  # Focus the pane (sticky or active)
 
