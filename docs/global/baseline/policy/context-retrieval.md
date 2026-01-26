@@ -2,6 +2,7 @@
 
 ## Rule
 
+- Use `teleclaude__get_context` as the default entry point for information discovery.
 - Call `teleclaude__get_context` before any task where missing context could alter decisions.
 - Use the two‑phase flow: index first, then selected snippet IDs.
 

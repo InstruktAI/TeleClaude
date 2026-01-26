@@ -1,3 +1,7 @@
+# Project Baseline — Index
+
+## Required reads
+
 @docs/policy/agent-service-control.md
 @docs/policy/daemon-availability.md
 @docs/policy/single-database.md
