@@ -1166,7 +1166,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # Select the item but don't activate (sticky toggle is the action)
             self.selected_index = item_idx
             self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
-            self._focus_selected_pane()  # Focus the sticky pane
             return True
 
         # SINGLE CLICK - select and activate
@@ -1176,8 +1175,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Activate session immediately on single click
         if is_session_node(item):
-            self._activate_session(item, clear_preview=True)
-            self._focus_selected_pane()  # Focus the pane (sticky or active)
+            session_id = item.data.session.session_id
+            is_sticky = any(sticky.session_id == session_id for sticky in self.sticky_sessions)
+            if not is_sticky:
+                self._activate_session(item, clear_preview=True)
 
         logger.trace(
             "sessions_click",
