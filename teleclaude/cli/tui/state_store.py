@@ -37,6 +37,9 @@ def load_sticky_state(state: TuiState) -> None:
             )
             for item in sticky_docs
         ]
+        expanded_todos = data.get("expanded_todos", [])
+        if isinstance(expanded_todos, list):
+            state.preparation.expanded_todos = set(str(item) for item in expanded_todos)
 
         logger.info(
             "Loaded %d sticky sessions, %d sticky docs from %s",
@@ -62,15 +65,17 @@ def save_sticky_state(state: TuiState) -> None:
             "sticky_docs": [
                 {"doc_id": d.doc_id, "command": d.command, "title": d.title} for d in state.preparation.sticky_previews
             ],
+            "expanded_todos": sorted(state.preparation.expanded_todos),
         }
 
         with open(TUI_STATE_PATH, "w", encoding="utf-8") as f:
             json.dump(state_data, f, indent=2)
 
         logger.debug(
-            "Saved %d sticky sessions, %d sticky docs to %s",
+            "Saved %d sticky sessions, %d sticky docs, %d expanded todos to %s",
             len(state.sessions.sticky_sessions),
             len(state.preparation.sticky_previews),
+            len(state.preparation.expanded_todos),
             TUI_STATE_PATH,
         )
     except (OSError, IOError) as e:

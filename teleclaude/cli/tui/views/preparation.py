@@ -558,6 +558,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             if slug in self.expanded_todos:
                 self.controller.dispatch(Intent(IntentType.COLLAPSE_TODO, {"todo_id": slug}))
                 self.rebuild_for_focus()
+                save_sticky_state(self.state)
                 logger.debug("collapse_selected: collapsed file's parent todo %s", slug)
                 return True
             logger.debug("collapse_selected: file's parent todo not expanded")
@@ -568,6 +569,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             if slug in self.expanded_todos:
                 self.controller.dispatch(Intent(IntentType.COLLAPSE_TODO, {"todo_id": slug}))
                 self.rebuild_for_focus()
+                save_sticky_state(self.state)
                 logger.debug("collapse_selected: collapsed todo %s", slug)
                 return True
             logger.debug("collapse_selected: todo already collapsed")
@@ -601,6 +603,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             if slug not in self.expanded_todos:
                 self.controller.dispatch(Intent(IntentType.EXPAND_TODO, {"todo_id": slug}))
                 self.rebuild_for_focus()
+                save_sticky_state(self.state)
                 logger.debug("drill_down: expanded todo %s", slug)
                 return True
             logger.debug("drill_down: todo already expanded")
@@ -620,12 +623,14 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         self.controller.dispatch(Intent(IntentType.EXPAND_ALL_TODOS, {"todo_ids": todo_ids}))
         logger.debug("expand_all: expanded %d todos, now expanded_todos=%s", count, self.expanded_todos)
         self.rebuild_for_focus()
+        save_sticky_state(self.state)
 
     def collapse_all(self) -> None:
         """Collapse all todos."""
         logger.debug("collapse_all: clearing expanded_todos (was %s)", self.expanded_todos)
         self.controller.dispatch(Intent(IntentType.COLLAPSE_ALL_TODOS))
         self.rebuild_for_focus()
+        save_sticky_state(self.state)
 
     def handle_enter(self, stdscr: CursesWindow) -> None:
         """Handle Enter key.
@@ -1286,6 +1291,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         indent = "  " * item.depth
         display_name = item.data.display_name
         exists = item.data.exists
+        filepath = os.path.join(item.data.project_path, item.data.slug, item.data.filename)
 
         # Dimmed if file doesn't exist, normal otherwise
         if selected:
@@ -1295,9 +1301,28 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         else:
             attr = 0
 
-        line = f"{indent}{index}. {display_name}"
+        sticky_position = None
+        for i, sticky in enumerate(self._sticky_previews):
+            if sticky.doc_id == filepath:
+                sticky_position = i + 1
+                break
+
+        if sticky_position is not None:
+            idx_text = f"[{sticky_position}]"
+            idx_attr = curses.A_REVERSE | curses.A_BOLD
+        else:
+            idx_text = f"{index}."
+            idx_attr = attr
+
         try:
-            stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
+            col = 0
+            if indent:
+                stdscr.addstr(row, col, indent, attr)  # type: ignore[attr-defined]
+                col += len(indent)
+            stdscr.addstr(row, col, idx_text, idx_attr if not selected else curses.A_REVERSE)  # type: ignore[attr-defined]
+            col += len(idx_text)
+            remainder = f" {display_name}"
+            stdscr.addstr(row, col, remainder[: max(0, width - col)], attr)  # type: ignore[attr-defined]
         except curses.error:
             pass
 
