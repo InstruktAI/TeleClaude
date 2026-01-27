@@ -315,9 +315,11 @@ class TestSessionsViewLogic:
                 self.called = False
                 self.args = None
 
-            def show_session(self, tmux_session_name, active_agent, child_tmux_session_name, computer_info):
+            def show_session(
+                self, tmux_session_name, active_agent, child_tmux_session_name, computer_info, session_id=None
+            ):
                 self.called = True
-                self.args = (tmux_session_name, active_agent, child_tmux_session_name, computer_info)
+                self.args = (tmux_session_name, active_agent, child_tmux_session_name, computer_info, session_id)
 
         pane_manager = MockPaneManager()
         state = TuiState()
@@ -444,7 +446,9 @@ class TestSessionsViewLogic:
             def toggle_session(self, tmux_session_name, active_agent, child_tmux_session_name, computer_info):
                 self.toggle_called = True
 
-            def show_session(self, tmux_session_name, active_agent, child_tmux_session_name, computer_info):
+            def show_session(
+                self, tmux_session_name, active_agent, child_tmux_session_name, computer_info, session_id=None
+            ):
                 self.toggle_called = True
 
             def show_sticky_sessions(self, sticky_sessions, all_sessions, get_computer_info):

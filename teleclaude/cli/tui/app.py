@@ -448,7 +448,7 @@ class TelecApp:
                 sessions_view = self.views.get(1)
                 if isinstance(sessions_view, SessionsView):
                     sessions_view.request_select_session(event.data.session_id)
-                asyncio.get_event_loop().run_until_complete(self.refresh_data())
+                asyncio.get_event_loop().run_until_complete(self.refresh_data(include_todos=False))
 
             elif isinstance(event, SessionUpdatedEvent):
                 updated_session = event.data
@@ -472,10 +472,10 @@ class TelecApp:
                         NotificationLevel.INFO,
                     )
                 self._session_status_cache[updated_session.session_id] = new_status
-                asyncio.get_event_loop().run_until_complete(self.refresh_data())
+                asyncio.get_event_loop().run_until_complete(self.refresh_data(include_todos=False))
 
             elif isinstance(event, SessionClosedEvent):
-                asyncio.get_event_loop().run_until_complete(self.refresh_data())
+                asyncio.get_event_loop().run_until_complete(self.refresh_data(include_todos=False))
 
             else:
                 # For now, trigger a full refresh for computer/project updates

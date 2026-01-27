@@ -842,7 +842,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                     break
 
         # Toggle pane visibility (handles both local and remote via SSH)
-        self.pane_manager.toggle_session(tmux_session, agent, child_tmux_session, computer_info)
+        self.pane_manager.toggle_session(
+            tmux_session,
+            agent,
+            child_tmux_session,
+            computer_info,
+            session_id=session_id,
+        )
 
     def _show_single_session_pane(self, item: SessionNode) -> None:
         """Show only the selected session in the side pane (no child split)."""
@@ -856,7 +862,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return
 
         computer_info = self._get_computer_info(computer_name)
-        self.pane_manager.show_session(tmux_session, agent, None, computer_info)
+        self.pane_manager.show_session(
+            tmux_session,
+            agent,
+            None,
+            computer_info,
+            session_id=session.session_id,
+        )
 
     def _start_session_for_project(self, stdscr: CursesWindow, project: ProjectInfo) -> None:
         """Open modal to start session on project.
@@ -905,7 +917,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         if self.pane_manager.is_available:
             computer_info = self._get_computer_info(computer)
-            self.pane_manager.show_session(tmux_session_name, agent, None, computer_info)
+            self.pane_manager.show_session(
+                tmux_session_name,
+                agent,
+                None,
+                computer_info,
+                session_id=result.session_id,
+            )
         else:
             attach_tmux_from_result(result, stdscr)
 

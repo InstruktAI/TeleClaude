@@ -384,6 +384,7 @@ class TmuxPaneManager:
         active_agent: str,
         child_tmux_session_name: str | None = None,
         computer_info: ComputerInfo | None = None,
+        session_id: str | None = None,
     ) -> None:
         """Show a session (and optionally its child) in the active/preview pane.
 
@@ -409,8 +410,9 @@ class TmuxPaneManager:
             len(self._sticky_specs),
         )
 
+        spec_session_id = session_id or tmux_session_name
         self._active_spec = SessionPaneSpec(
-            session_id=tmux_session_name,
+            session_id=spec_session_id,
             tmux_session_name=tmux_session_name,
             computer_info=computer_info,
             is_sticky=False,
@@ -421,7 +423,7 @@ class TmuxPaneManager:
         if self._layout_is_unchanged():
             if child_tmux_session_name != self.state.child_session:
                 self.update_child_session(child_tmux_session_name, computer_info)
-            self.focus_pane_for_session(tmux_session_name)
+            self.focus_pane_for_session(spec_session_id)
             return
         self._render_layout()
 
@@ -444,6 +446,7 @@ class TmuxPaneManager:
         active_agent: str,
         child_tmux_session_name: str | None = None,
         computer_info: ComputerInfo | None = None,
+        session_id: str | None = None,
     ) -> bool:
         """Toggle active/preview session pane visibility.
 
@@ -483,7 +486,13 @@ class TmuxPaneManager:
 
         # Otherwise show it
         logger.debug("toggle_session: showing session")
-        self.show_session(tmux_session_name, active_agent, child_tmux_session_name, computer_info)
+        self.show_session(
+            tmux_session_name,
+            active_agent,
+            child_tmux_session_name,
+            computer_info,
+            session_id=session_id,
+        )
         return True
 
     @property
