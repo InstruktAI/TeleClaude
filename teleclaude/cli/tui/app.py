@@ -609,6 +609,9 @@ class TelecApp:
 
             # Always render to advance animations, even during idle periods
             self._render(stdscr)
+            current = self.views.get(self.current_view)
+            if current:
+                current.flush_deferred_actions()
 
     def _consume_theme_refresh(self) -> bool:
         if self._theme_refresh_requested:

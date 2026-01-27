@@ -504,6 +504,8 @@ class TestSessionsViewLogic:
         # First click - single click activates (no sticky sessions)
         assert view.handle_click(10, is_double_click=False) is True
         assert view.selected_index == 0
+        if hasattr(view, "flush_deferred_actions"):
+            view.flush_deferred_actions()
         assert pane_manager.apply_called is True
 
         # Second click as double-click on ID line
