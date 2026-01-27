@@ -532,12 +532,6 @@ class TmuxPaneManager:
         session_specs: list[SessionPaneSpec] = list(self._sticky_specs)
         if self._active_spec and not any(spec.session_id == self._active_spec.session_id for spec in session_specs):
             session_specs.append(self._active_spec)
-        if len(session_specs) > 5 and self._active_spec:
-            # Keep active preview; drop the last sticky spec to make room.
-            for idx in range(len(session_specs) - 1, -1, -1):
-                if session_specs[idx].is_sticky and session_specs[idx].session_id != self._active_spec.session_id:
-                    session_specs.pop(idx)
-                    break
         if len(session_specs) > 5:
             session_specs = session_specs[:5]
         return session_specs

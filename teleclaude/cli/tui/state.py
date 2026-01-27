@@ -121,6 +121,13 @@ class IntentPayload(TypedDict, total=False):
     title: str
 
 
+MAX_STICKY_PANES = 5
+
+
+def _sticky_count(state: TuiState) -> int:
+    return len(state.sessions.sticky_sessions) + len(state.preparation.sticky_previews)
+
+
 def reduce_state(state: TuiState, intent: Intent) -> None:
     """Apply intent to state (pure state mutation only)."""
     t = intent.type
@@ -130,6 +137,8 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         session_id = p.get("session_id")
         show_child = bool(p.get("show_child", True))
         if session_id:
+            if _sticky_count(state) >= MAX_STICKY_PANES:
+                return
             state.sessions.preview = PreviewState(session_id=session_id, show_child=show_child)
             state.preparation.preview = None
         return
@@ -151,6 +160,8 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         if existing_idx is not None:
             state.sessions.sticky_sessions.pop(existing_idx)
         else:
+            if _sticky_count(state) >= MAX_STICKY_PANES:
+                return
             state.sessions.sticky_sessions.append(StickySessionInfo(session_id, show_child))
             if state.sessions.preview and state.sessions.preview.session_id == session_id:
                 state.sessions.preview = None
@@ -161,6 +172,8 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         command = p.get("command")
         title = p.get("title") or ""
         if doc_id and command:
+            if _sticky_count(state) >= MAX_STICKY_PANES:
+                return
             state.preparation.preview = DocPreviewState(doc_id=doc_id, command=command, title=title)
             state.sessions.preview = None
         return
@@ -183,6 +196,8 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         if existing_idx is not None:
             state.preparation.sticky_previews.pop(existing_idx)
         else:
+            if _sticky_count(state) >= MAX_STICKY_PANES:
+                return
             state.preparation.sticky_previews.append(DocStickyInfo(doc_id, command, title))
             if state.preparation.preview and state.preparation.preview.doc_id == doc_id:
                 state.preparation.preview = None
