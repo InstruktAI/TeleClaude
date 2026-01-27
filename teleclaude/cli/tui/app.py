@@ -295,9 +295,6 @@ class TelecApp:
             self.controller.dispatch(
                 Intent(IntentType.SYNC_SESSIONS, {"session_ids": [s.session_id for s in sessions]})
             )
-            if fetch_todos:
-                self.controller.dispatch(Intent(IntentType.SYNC_TODOS, {"todo_ids": [t.slug for t in todos]}))
-
             # Update in-place so views keep the same shared dict reference.
             self.agent_availability.clear()
             self.agent_availability.update(availability)
