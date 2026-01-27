@@ -31,6 +31,7 @@ from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.state import DocPreviewState, DocStickyInfo, Intent, IntentType, TuiState
+from teleclaude.cli.tui.state_store import save_sticky_state
 from teleclaude.cli.tui.todos import TodoItem, parse_roadmap
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NodeType, TodoFileFlag, TodoStatus
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
@@ -807,7 +808,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             item.filename,
         )
         cmd = self._build_view_command(filepath)
-        self.controller.dispatch(
+        intents = [
             Intent(
                 IntentType.SET_PREP_PREVIEW,
                 {
@@ -816,7 +817,10 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                     "title": item.display_name,
                 },
             )
-        )
+        ]
+        if self._preview and self._preview.doc_id != filepath:
+            intents.insert(0, Intent(IntentType.CLEAR_PREP_PREVIEW))
+        self.controller.dispatch_batch(intents)
 
     def _toggle_doc_sticky(self, item: PrepFileDisplayInfo) -> None:
         filepath = os.path.join(
@@ -844,6 +848,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                 },
             )
         )
+        save_sticky_state(self.state)
 
     def _view_file(self, item: PrepFileDisplayInfo, stdscr: CursesWindow) -> None:
         """View a file in glow (or less as fallback) in a tmux split pane.

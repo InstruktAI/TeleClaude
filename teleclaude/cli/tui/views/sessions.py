@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import curses
-import json
 import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Callable
@@ -27,6 +26,7 @@ from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.state import DocStickyInfo, Intent, IntentType, PreviewState, TuiState
+from teleclaude.cli.tui.state_store import load_sticky_state, save_sticky_state
 from teleclaude.cli.tui.theme import AGENT_COLORS
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
@@ -43,7 +43,9 @@ from teleclaude.cli.tui.tree import (
 from teleclaude.cli.tui.types import ActivePane, CursesWindow, FocusLevelType, NodeType, StickySessionInfo
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
-from teleclaude.paths import TUI_STATE_PATH
+from teleclaude.paths import TUI_STATE_PATH as _TUI_STATE_PATH
+
+TUI_STATE_PATH = _TUI_STATE_PATH
 
 if TYPE_CHECKING:
     from teleclaude.cli.api_client import TelecAPIClient
@@ -123,33 +125,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._double_click_threshold = 0.4  # seconds
         self._pending_select_session_id: str | None = None
 
-        # Load persisted sticky sessions
-        self.load_sticky_state()
-
-    def load_sticky_state(self) -> None:
-        """Load sticky session state from ~/.teleclaude/tui_state.json."""
-        if not TUI_STATE_PATH.exists():
-            logger.debug("No TUI state file found, starting with empty sticky sessions")
-            return
-
-        try:
-            with open(TUI_STATE_PATH, encoding="utf-8") as f:
-                data = json.load(f)
-
-            sticky_data = data.get("sticky_sessions", [])
-            self.sticky_sessions = [
-                StickySessionInfo(session_id=item["session_id"], show_child=item.get("show_child", True))
-                for item in sticky_data
-            ]
-            logger.info(
-                "Loaded %d sticky sessions from %s: %s",
-                len(self.sticky_sessions),
-                TUI_STATE_PATH,
-                [s.session_id[:8] for s in self.sticky_sessions],
-            )
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
-            logger.warning("Failed to load TUI state from %s: %s", TUI_STATE_PATH, e)
-            self.sticky_sessions = []
+        # Load persisted sticky state (sessions + docs)
+        load_sticky_state(self.state)
 
     @property
     def selected_index(self) -> int:
@@ -204,23 +181,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         return self.state.preparation.sticky_previews
 
     def save_sticky_state(self) -> None:
-        """Save sticky session state to ~/.teleclaude/tui_state.json."""
-        try:
-            # Ensure parent directory exists
-            TUI_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-            state_data = {
-                "sticky_sessions": [
-                    {"session_id": s.session_id, "show_child": s.show_child} for s in self.sticky_sessions
-                ]
-            }
-
-            with open(TUI_STATE_PATH, "w", encoding="utf-8") as f:
-                json.dump(state_data, f, indent=2)
-
-            logger.debug("Saved %d sticky sessions to %s", len(self.sticky_sessions), TUI_STATE_PATH)
-        except (OSError, IOError) as e:
-            logger.error("Failed to save TUI state to %s: %s", TUI_STATE_PATH, e)
+        """Save sticky state to ~/.teleclaude/tui_state.json."""
+        save_sticky_state(self.state)
 
     async def refresh(
         self,
