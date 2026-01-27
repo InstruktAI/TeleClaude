@@ -239,6 +239,11 @@ class TelecApp:
 
         # Now refresh to populate views with data
         await self.refresh_data()
+        if self.pane_manager.is_available and (
+            self.state.sessions.sticky_sessions or self.state.preparation.sticky_previews
+        ):
+            # Rehydrate sticky panes after initial data load.
+            self.controller.apply_layout(focus=False)
 
         # Start WebSocket connection for push updates
         self.api.start_websocket(
