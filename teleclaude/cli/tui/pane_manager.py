@@ -215,6 +215,34 @@ class TmuxPaneManager:
         self._active_child_tmux = child_tmux
         self._active_child_computer = child_computer
 
+        total_panes = 1 + len(self._build_session_specs())
+        new_layout = LAYOUT_SPECS.get(total_panes)
+        new_grid_sig: tuple[object, ...] | None = None
+        if new_layout:
+            new_grid_sig = (new_layout.rows, new_layout.cols, tuple(tuple(row) for row in new_layout.grid))
+        signature = self._compute_layout_signature()
+
+        # Promote the current active pane to sticky without respawning, when only sticky toggled.
+        if (
+            not active_spec
+            and self.state.parent_spec_id
+            and self.state.parent_pane_id
+            and self.state.parent_spec_id in sticky_session_ids
+            and new_grid_sig
+            and self._layout_signature
+            and self._layout_signature[:3] == new_grid_sig
+        ):
+            parent_id = self.state.parent_pane_id
+            session_id = self.state.parent_spec_id
+            if parent_id not in self.state.sticky_pane_ids:
+                self.state.sticky_pane_ids.append(parent_id)
+            if session_id not in self.state.sticky_session_to_pane:
+                self.state.sticky_session_to_pane[session_id] = parent_id
+            self._layout_signature = signature
+            if child_tmux != self.state.child_session:
+                self.update_child_session(child_tmux, child_computer)
+            return
+
         if self._layout_is_unchanged():
             if active_spec and self.state.parent_spec_id != active_spec.session_id:
                 self._update_active_pane(active_spec)
