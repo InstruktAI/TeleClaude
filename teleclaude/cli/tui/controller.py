@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.models import SessionInfo
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
-from teleclaude.cli.tui.state import Intent, IntentType, TuiState, reduce_state
+from teleclaude.cli.tui.state import DocPreviewState, DocStickyInfo, Intent, IntentType, TuiState, reduce_state
 
 logger = get_logger(__name__)
 
@@ -25,6 +25,8 @@ class LayoutState:
     active_session_id: str | None
     child_session_id: str | None
     sticky_session_ids: list[str]
+    active_doc_preview: DocPreviewState | None
+    sticky_doc_previews: list[DocStickyInfo]
 
 
 class TuiController:
@@ -56,6 +58,9 @@ class TuiController:
             IntentType.SET_PREVIEW,
             IntentType.CLEAR_PREVIEW,
             IntentType.TOGGLE_STICKY,
+            IntentType.SET_PREP_PREVIEW,
+            IntentType.CLEAR_PREP_PREVIEW,
+            IntentType.TOGGLE_PREP_STICKY,
         }:
             self.apply_layout(focus=False)
 
@@ -70,6 +75,9 @@ class TuiController:
                 IntentType.SET_PREVIEW,
                 IntentType.CLEAR_PREVIEW,
                 IntentType.TOGGLE_STICKY,
+                IntentType.SET_PREP_PREVIEW,
+                IntentType.CLEAR_PREP_PREVIEW,
+                IntentType.TOGGLE_PREP_STICKY,
             }:
                 needs_layout = True
         if needs_layout:
@@ -88,6 +96,8 @@ class TuiController:
             sticky_session_ids=layout.sticky_session_ids,
             child_session_id=layout.child_session_id,
             get_computer_info=self._get_computer_info,
+            active_doc_preview=layout.active_doc_preview,
+            sticky_doc_previews=layout.sticky_doc_previews,
             focus=focus,
         )
 
@@ -98,10 +108,14 @@ class TuiController:
         if preview and preview.show_child:
             child_session_id = self._find_child_session_id(preview.session_id)
         sticky_session_ids = [s.session_id for s in self.state.sessions.sticky_sessions]
+        active_doc_preview = self.state.preparation.preview
+        sticky_doc_previews = list(self.state.preparation.sticky_previews)
         return LayoutState(
             active_session_id=active_session_id,
             child_session_id=child_session_id,
             sticky_session_ids=sticky_session_ids,
+            active_doc_preview=active_doc_preview,
+            sticky_doc_previews=sticky_doc_previews,
         )
 
     def _find_child_session_id(self, parent_session_id: str) -> str | None:

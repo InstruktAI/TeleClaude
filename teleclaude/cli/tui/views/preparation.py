@@ -30,7 +30,7 @@ from teleclaude.cli.models import (
 from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
-from teleclaude.cli.tui.state import Intent, IntentType, TuiState
+from teleclaude.cli.tui.state import DocPreviewState, DocStickyInfo, Intent, IntentType, TuiState
 from teleclaude.cli.tui.todos import TodoItem, parse_roadmap
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NodeType, TodoFileFlag, TodoStatus
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
@@ -223,6 +223,18 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
     @_file_pane_id.setter
     def _file_pane_id(self, value: str | None) -> None:
         self.state.preparation.file_pane_id = value
+
+    @property
+    def _preview(self) -> DocPreviewState | None:
+        return self.state.preparation.preview
+
+    @_preview.setter
+    def _preview(self, value: DocPreviewState | None) -> None:
+        self.state.preparation.preview = value
+
+    @property
+    def _sticky_previews(self) -> list[DocStickyInfo]:
+        return self.state.preparation.sticky_previews
 
     async def refresh(
         self,
@@ -498,7 +510,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         if _is_file_node(item):
             # File actions
             if item.data.exists:
-                return f"{back_hint}[v] View  [e] Edit"
+                return f"{back_hint}[Enter] Preview  [c] Close Preview  [e] Edit"
             return f"{back_hint}[e] Create"
         if _is_todo_node(item):
             if item.data.todo.status == TodoStatus.READY:
@@ -783,6 +795,56 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         if result.stdout.strip():
             self.controller.dispatch(Intent(IntentType.SET_FILE_PANE_ID, {"pane_id": result.stdout.strip()}))
 
+    def _build_view_command(self, filepath: str) -> str:
+        viewer = "glow -p" if shutil.which("glow") else "less"
+        return f"{viewer} {shlex.quote(filepath)}"
+
+    def _open_doc_preview(self, item: PrepFileDisplayInfo) -> None:
+        filepath = os.path.join(
+            item.project_path,
+            "todos",
+            item.slug,
+            item.filename,
+        )
+        cmd = self._build_view_command(filepath)
+        self.controller.dispatch(
+            Intent(
+                IntentType.SET_PREP_PREVIEW,
+                {
+                    "doc_id": filepath,
+                    "command": cmd,
+                    "title": item.display_name,
+                },
+            )
+        )
+
+    def _toggle_doc_sticky(self, item: PrepFileDisplayInfo) -> None:
+        filepath = os.path.join(
+            item.project_path,
+            "todos",
+            item.slug,
+            item.filename,
+        )
+        existing = any(sticky.doc_id == filepath for sticky in self._sticky_previews)
+        combined = len(self._sticky_previews) + len(self.state.sessions.sticky_sessions)
+        if not existing and combined >= 5:
+            if self.notify:
+                self.notify("warning", "Maximum 5 sticky panes")
+            logger.warning("Cannot add sticky doc preview: maximum 5 reached")
+            return
+
+        cmd = self._build_view_command(filepath)
+        self.controller.dispatch(
+            Intent(
+                IntentType.TOGGLE_PREP_STICKY,
+                {
+                    "doc_id": filepath,
+                    "command": cmd,
+                    "title": item.display_name,
+                },
+            )
+        )
+
     def _view_file(self, item: PrepFileDisplayInfo, stdscr: CursesWindow) -> None:
         """View a file in glow (or less as fallback) in a tmux split pane.
 
@@ -797,11 +859,9 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             item.filename,
         )
 
-        # If in tmux, open in split pane (closes existing file pane first)
+        # If in tmux, open in preview pane (layout-managed)
         if os.environ.get("TMUX"):
-            viewer = "glow -p" if shutil.which("glow") else "less"
-            cmd = f"{viewer} {shlex.quote(filepath)}"
-            self._open_file_pane(cmd)
+            self._open_doc_preview(item)
             return
 
         # Fallback: take over terminal if not in tmux
@@ -872,6 +932,9 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
 
         # File-specific actions
         if _is_file_node(item):
+            if key == ord("c"):
+                self.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW))
+                return
             if key == ord("v") and item.data.exists:
                 logger.debug("handle_key: viewing file")
                 self._view_file(item.data, stdscr)
@@ -887,7 +950,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             elif key == ord("p"):
                 self._prepare(item.data, stdscr)
 
-    def handle_click(self, screen_row: int, is_double_click: bool = False) -> bool:  # noqa: ARG002
+    def handle_click(self, screen_row: int, is_double_click: bool = False) -> bool:
         """Handle mouse click at screen row.
 
         Args:
@@ -900,6 +963,12 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         item_idx = self._row_to_item.get(screen_row)
         if item_idx is not None:
             self.selected_index = item_idx
+            item = self.flat_items[item_idx]
+            if _is_file_node(item) and item.data.exists:
+                if is_double_click:
+                    self._toggle_doc_sticky(item.data)
+                else:
+                    self._open_doc_preview(item.data)
             return True
         return False
 

@@ -14,6 +14,7 @@ from teleclaude.config import config
 
 if TYPE_CHECKING:
     from teleclaude.cli.models import SessionInfo
+    from teleclaude.cli.tui.state import DocPreviewState, DocStickyInfo
 
 logger = get_logger(__name__)
 
@@ -50,6 +51,7 @@ class PaneState:
     child_pane_id: str | None = None
     parent_session: str | None = None
     child_session: str | None = None
+    parent_spec_id: str | None = None
 
     def __post_init__(self) -> None:
         """Initialize mutable fields."""
@@ -65,13 +67,14 @@ class PaneState:
 
 @dataclass
 class SessionPaneSpec:
-    """Session pane description for layout planning."""
+    """Pane description for layout planning."""
 
     session_id: str
-    tmux_session_name: str
+    tmux_session_name: str | None
     computer_info: ComputerInfo | None
     is_sticky: bool
     active_agent: str = ""
+    command: str | None = None
 
 
 LayoutCell = Literal["T"] | int | None
@@ -140,11 +143,14 @@ class TmuxPaneManager:
         sticky_session_ids: list[str],
         child_session_id: str | None,
         get_computer_info: Callable[[str], ComputerInfo | None],
+        active_doc_preview: "DocPreviewState | None" = None,
+        sticky_doc_previews: list["DocStickyInfo"] | None = None,
         focus: bool = True,
     ) -> None:
         """Apply a deterministic layout from session ids."""
         if not self._in_tmux:
             return
+        sticky_doc_previews = sticky_doc_previews or []
 
         sticky_specs: list[SessionPaneSpec] = []
         for session_id in sticky_session_ids:
@@ -163,6 +169,17 @@ class TmuxPaneManager:
                     active_agent=session.active_agent,
                 )
             )
+        for doc in sticky_doc_previews:
+            sticky_specs.append(
+                SessionPaneSpec(
+                    session_id=f"doc:{doc.doc_id}",
+                    tmux_session_name=None,
+                    computer_info=None,
+                    is_sticky=True,
+                    active_agent="",
+                    command=doc.command,
+                )
+            )
 
         active_spec: SessionPaneSpec | None = None
         if active_session_id:
@@ -175,6 +192,15 @@ class TmuxPaneManager:
                     is_sticky=False,
                     active_agent=session.active_agent,
                 )
+        elif active_doc_preview:
+            active_spec = SessionPaneSpec(
+                session_id=f"doc:{active_doc_preview.doc_id}",
+                tmux_session_name=None,
+                computer_info=None,
+                is_sticky=False,
+                active_agent="",
+                command=active_doc_preview.command,
+            )
 
         child_tmux: str | None = None
         child_computer: ComputerInfo | None = None
@@ -190,7 +216,7 @@ class TmuxPaneManager:
         self._active_child_computer = child_computer
 
         if self._layout_is_unchanged():
-            if active_spec and self.state.parent_session != active_spec.tmux_session_name:
+            if active_spec and self.state.parent_spec_id != active_spec.session_id:
                 self._update_active_pane(active_spec)
             if child_tmux != self.state.child_session:
                 self.update_child_session(child_tmux, child_computer)
@@ -406,6 +432,7 @@ class TmuxPaneManager:
         self.state.child_pane_id = None
         self.state.parent_session = None
         self.state.child_session = None
+        self.state.parent_spec_id = None
         logger.debug("hide_sessions: cleared active pane")
 
     def toggle_session(
@@ -471,6 +498,7 @@ class TmuxPaneManager:
         self.state.parent_pane_id = None
         self.state.child_session = None
         self.state.parent_session = None
+        self.state.parent_spec_id = None
 
     def _cleanup_all_session_panes(self) -> None:
         """Clean up all session panes (active + sticky)."""
@@ -498,12 +526,11 @@ class TmuxPaneManager:
         self.state.child_pane_id = None
         self.state.parent_session = None
         self.state.child_session = None
+        self.state.parent_spec_id = None
 
     def _build_session_specs(self) -> list[SessionPaneSpec]:
         session_specs: list[SessionPaneSpec] = list(self._sticky_specs)
-        if self._active_spec and not any(
-            spec.tmux_session_name == self._active_spec.tmux_session_name for spec in session_specs
-        ):
+        if self._active_spec and not any(spec.session_id == self._active_spec.session_id for spec in session_specs):
             session_specs.append(self._active_spec)
         if len(session_specs) > 5:
             session_specs = session_specs[:5]
@@ -517,7 +544,7 @@ class TmuxPaneManager:
             return None
         spec_keys = tuple(
             (
-                spec.tmux_session_name if spec.is_sticky else "active",
+                (spec.tmux_session_name or spec.command) if spec.is_sticky else "active",
                 "sticky" if spec.is_sticky else "active",
             )
             for spec in session_specs
@@ -537,7 +564,7 @@ class TmuxPaneManager:
             self._render_layout()
             return
 
-        attach_cmd = self._build_attach_cmd(active_spec.tmux_session_name, active_spec.computer_info)
+        attach_cmd = self._build_pane_command(active_spec)
         self._run_tmux("respawn-pane", "-t", self.state.parent_pane_id, attach_cmd)
 
         stale_ids = [sid for sid, pid in self.state.session_to_pane.items() if pid == self.state.parent_pane_id]
@@ -545,8 +572,12 @@ class TmuxPaneManager:
             self.state.session_to_pane.pop(sid, None)
         self.state.session_to_pane[active_spec.session_id] = self.state.parent_pane_id
         self.state.parent_session = active_spec.tmux_session_name
+        self.state.parent_spec_id = active_spec.session_id
 
-        self._set_pane_background(self.state.parent_pane_id, active_spec.tmux_session_name, active_spec.active_agent)
+        if active_spec.tmux_session_name:
+            self._set_pane_background(
+                self.state.parent_pane_id, active_spec.tmux_session_name, active_spec.active_agent
+            )
 
     def _layout_is_unchanged(self) -> bool:
         signature = self._compute_layout_signature()
@@ -593,7 +624,7 @@ class TmuxPaneManager:
             spec = get_spec(cell)
             if not spec:
                 continue
-            attach_cmd = self._build_attach_cmd(spec.tmux_session_name, spec.computer_info)
+            attach_cmd = self._build_pane_command(spec)
             if col == 1:
                 split_args = ["-t", self._tui_pane_id, "-h"]
                 if layout.cols == 2 and total_panes <= 3:
@@ -635,7 +666,7 @@ class TmuxPaneManager:
                 target_pane = col_top_panes[col]
                 if not target_pane:
                     continue
-                attach_cmd = self._build_attach_cmd(spec.tmux_session_name, spec.computer_info)
+                attach_cmd = self._build_pane_command(spec)
                 pane_id = self._run_tmux(
                     "split-window",
                     "-t",
@@ -654,6 +685,7 @@ class TmuxPaneManager:
             if active_pane_id:
                 self.state.parent_pane_id = active_pane_id
                 self.state.parent_session = self._active_spec.tmux_session_name
+                self.state.parent_spec_id = self._active_spec.session_id
                 if self._active_child_tmux:
                     child_attach_cmd = self._build_attach_cmd(
                         self._active_child_tmux,
@@ -676,15 +708,16 @@ class TmuxPaneManager:
         self._layout_signature = self._compute_layout_signature()
 
     def _track_session_pane(self, spec: SessionPaneSpec, pane_id: str) -> None:
-        """Track pane ids for session lookup and cleanup."""
+        """Track pane ids for lookup and cleanup."""
         self.state.session_pane_ids.append(pane_id)
         self.state.session_to_pane[spec.session_id] = pane_id
         if spec.is_sticky:
             self.state.sticky_pane_ids.append(pane_id)
             self.state.sticky_session_to_pane[spec.session_id] = pane_id
 
-        # Apply agent-colored background haze
-        self._set_pane_background(pane_id, spec.tmux_session_name, spec.active_agent)
+        # Apply agent-colored background haze for session panes only
+        if spec.tmux_session_name:
+            self._set_pane_background(pane_id, spec.tmux_session_name, spec.active_agent)
 
     def _set_pane_background(self, pane_id: str, tmux_session_name: str, agent: str) -> None:
         """Set per-pane background color and status bar with agent haze.
@@ -734,14 +767,20 @@ class TmuxPaneManager:
         # Re-apply colors to sticky session panes
         for spec in self._sticky_specs:
             pane_id = self.state.session_to_pane.get(spec.session_id)
-            if pane_id and self._get_pane_exists(pane_id):
+            if pane_id and self._get_pane_exists(pane_id) and spec.tmux_session_name:
                 self._set_pane_background(pane_id, spec.tmux_session_name, spec.active_agent)
 
         # Re-apply colors to active session pane
-        if self._active_spec:
+        if self._active_spec and self._active_spec.tmux_session_name:
             pane_id = self.state.session_to_pane.get(self._active_spec.session_id)
             if pane_id and self._get_pane_exists(pane_id):
                 self._set_pane_background(pane_id, self._active_spec.tmux_session_name, self._active_spec.active_agent)
+
+    def _build_pane_command(self, spec: SessionPaneSpec) -> str:
+        """Build the command used to populate a pane."""
+        if spec.command:
+            return spec.command
+        return self._build_attach_cmd(spec.tmux_session_name or "", spec.computer_info)
 
     def update_child_session(
         self,

@@ -26,7 +26,7 @@ from teleclaude.cli.models import ComputerInfo as ApiComputerInfo
 from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
-from teleclaude.cli.tui.state import Intent, IntentType, PreviewState, TuiState
+from teleclaude.cli.tui.state import DocStickyInfo, Intent, IntentType, PreviewState, TuiState
 from teleclaude.cli.tui.theme import AGENT_COLORS
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
@@ -198,6 +198,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     @_selection_method.setter
     def _selection_method(self, value: str) -> None:
         self.state.sessions.selection_method = value
+
+    @property
+    def _prep_sticky_previews(self) -> list[DocStickyInfo]:
+        return self.state.preparation.sticky_previews
 
     def save_sticky_state(self) -> None:
         """Save sticky session state to ~/.teleclaude/tui_state.json."""
@@ -738,7 +742,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 existing_idx = i
                 break
 
-        if existing_idx is None and len(self.sticky_sessions) >= 5:
+        if existing_idx is None and (len(self.sticky_sessions) + len(self._prep_sticky_previews)) >= 5:
             # Max 5 reached
             if self.notify:
                 self.notify("warning", "Maximum 5 sticky sessions")

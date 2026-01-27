@@ -21,6 +21,24 @@ class PreviewState:
     show_child: bool = True
 
 
+@dataclass(frozen=True)
+class DocPreviewState:
+    """Active document preview state for the side pane."""
+
+    doc_id: str
+    command: str
+    title: str
+
+
+@dataclass(frozen=True)
+class DocStickyInfo:
+    """Sticky document preview entry."""
+
+    doc_id: str
+    command: str
+    title: str
+
+
 @dataclass
 class SessionViewState:
     """State for Sessions view."""
@@ -41,6 +59,8 @@ class PreparationViewState:
     scroll_offset: int = 0
     expanded_todos: set[str] = field(default_factory=set)
     file_pane_id: str | None = None
+    preview: DocPreviewState | None = None
+    sticky_previews: list[DocStickyInfo] = field(default_factory=list)
 
 
 @dataclass
@@ -57,6 +77,9 @@ class IntentType(str, Enum):
     SET_PREVIEW = "set_preview"
     CLEAR_PREVIEW = "clear_preview"
     TOGGLE_STICKY = "toggle_sticky"
+    SET_PREP_PREVIEW = "set_prep_preview"
+    CLEAR_PREP_PREVIEW = "clear_prep_preview"
+    TOGGLE_PREP_STICKY = "toggle_prep_sticky"
     COLLAPSE_SESSION = "collapse_session"
     EXPAND_SESSION = "expand_session"
     EXPAND_ALL_SESSIONS = "expand_all_sessions"
@@ -93,6 +116,9 @@ class IntentPayload(TypedDict, total=False):
     offset: int
     method: str
     pane_id: str
+    doc_id: str
+    command: str
+    title: str
 
 
 def reduce_state(state: TuiState, intent: Intent) -> None:
@@ -105,6 +131,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         show_child = bool(p.get("show_child", True))
         if session_id:
             state.sessions.preview = PreviewState(session_id=session_id, show_child=show_child)
+            state.preparation.preview = None
         return
 
     if t is IntentType.CLEAR_PREVIEW:
@@ -127,6 +154,38 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.sticky_sessions.append(StickySessionInfo(session_id, show_child))
             if state.sessions.preview and state.sessions.preview.session_id == session_id:
                 state.sessions.preview = None
+        return
+
+    if t is IntentType.SET_PREP_PREVIEW:
+        doc_id = p.get("doc_id")
+        command = p.get("command")
+        title = p.get("title") or ""
+        if doc_id and command:
+            state.preparation.preview = DocPreviewState(doc_id=doc_id, command=command, title=title)
+            state.sessions.preview = None
+        return
+
+    if t is IntentType.CLEAR_PREP_PREVIEW:
+        state.preparation.preview = None
+        return
+
+    if t is IntentType.TOGGLE_PREP_STICKY:
+        doc_id = p.get("doc_id")
+        command = p.get("command")
+        title = p.get("title") or ""
+        if not doc_id or not command:
+            return
+        existing_idx = None
+        for idx, sticky in enumerate(state.preparation.sticky_previews):
+            if sticky.doc_id == doc_id:
+                existing_idx = idx
+                break
+        if existing_idx is not None:
+            state.preparation.sticky_previews.pop(existing_idx)
+        else:
+            state.preparation.sticky_previews.append(DocStickyInfo(doc_id, command, title))
+            if state.preparation.preview and state.preparation.preview.doc_id == doc_id:
+                state.preparation.preview = None
         return
 
     if t is IntentType.COLLAPSE_SESSION:
