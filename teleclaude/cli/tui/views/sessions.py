@@ -1135,15 +1135,22 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             self._focus_selected_pane()  # Focus the sticky pane
             return True
 
-        # SINGLE CLICK - select and activate
+        # SINGLE CLICK - select and activate (preview lane) or highlight sticky (sticky lane)
         self.selected_index = item_idx
         self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
         self._id_row_clicked = screen_row in self._row_to_id_item
 
         # Activate session immediately on single click
         if is_session_node(item):
-            self._activate_session(item, clear_preview=True)
-            self._focus_selected_pane()  # Focus the pane (sticky or active)
+            session_id = item.data.session.session_id
+            is_sticky = any(sticky.session_id == session_id for sticky in self.sticky_sessions)
+            if is_sticky:
+                if self._preview:
+                    self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
+                self._focus_selected_pane()  # Focus sticky pane only
+            else:
+                self._activate_session(item, clear_preview=False)
+                self._focus_selected_pane()  # Focus active preview pane
 
         logger.trace(
             "sessions_click",

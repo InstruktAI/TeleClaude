@@ -973,7 +973,19 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                 if is_double_click:
                     self._toggle_doc_sticky(item.data)
                 else:
-                    self._open_doc_preview(item.data)
+                    filepath = os.path.join(
+                        item.data.project_path,
+                        "todos",
+                        item.data.slug,
+                        item.data.filename,
+                    )
+                    is_sticky = any(sticky.doc_id == filepath for sticky in self._sticky_previews)
+                    if is_sticky:
+                        if self._preview:
+                            self.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW))
+                        self.pane_manager.focus_pane_for_session(f"doc:{filepath}")
+                    else:
+                        self._open_doc_preview(item.data)
             return True
         return False
 
