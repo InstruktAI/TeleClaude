@@ -216,7 +216,10 @@ class TmuxPaneManager:
         self._active_child_computer = child_computer
 
         if self._layout_is_unchanged():
-            if active_spec and self.state.parent_spec_id != active_spec.session_id:
+            if active_spec and (
+                self.state.parent_spec_id != active_spec.session_id
+                or self.state.parent_session != active_spec.tmux_session_name
+            ):
                 self._update_active_pane(active_spec)
             if child_tmux != self.state.child_session:
                 self.update_child_session(child_tmux, child_computer)
