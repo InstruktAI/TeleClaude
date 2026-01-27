@@ -50,10 +50,14 @@ class TuiController:
 
     def dispatch(self, intent: Intent) -> None:
         """Apply intent to state and update layout if needed."""
-        reduce_state(self.state, intent)
         if intent.type is IntentType.SYNC_SESSIONS:
-            self.apply_layout(focus=False)
+            before_preview = self.state.sessions.preview
+            before_sticky = list(self.state.sessions.sticky_sessions)
+            reduce_state(self.state, intent)
+            if self.state.sessions.preview != before_preview or self.state.sessions.sticky_sessions != before_sticky:
+                self.apply_layout(focus=False)
             return
+        reduce_state(self.state, intent)
         if intent.type in {
             IntentType.SET_PREVIEW,
             IntentType.CLEAR_PREVIEW,
