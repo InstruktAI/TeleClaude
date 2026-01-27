@@ -714,10 +714,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             logger.error("BUG: Attempted to add duplicate session_id %s to sticky list", session_id[:8])
             return
 
-        intents = [Intent(IntentType.TOGGLE_STICKY, {"session_id": session_id, "show_child": show_child})]
         if clear_preview and self._preview:
-            intents.insert(0, Intent(IntentType.CLEAR_PREVIEW))
-        self.controller.dispatch_batch(intents)
+            self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
+        self.controller.dispatch(Intent(IntentType.TOGGLE_STICKY, {"session_id": session_id, "show_child": show_child}))
         logger.info(
             "Toggled sticky: %s (show_child=%s, total=%d)",
             session_id[:8],
@@ -767,10 +766,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
             return
 
-        intents = [Intent(IntentType.SET_PREVIEW, {"session_id": session_id, "show_child": True})]
         if clear_preview and self._preview:
-            intents.insert(0, Intent(IntentType.CLEAR_PREVIEW))
-        self.controller.dispatch_batch(intents)
+            self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
+        self.controller.dispatch(Intent(IntentType.SET_PREVIEW, {"session_id": session_id, "show_child": True}))
         logger.debug(
             "_activate_session: showing session in active pane (sticky_count=%d)",
             len(self.sticky_sessions),

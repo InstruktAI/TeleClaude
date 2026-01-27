@@ -64,25 +64,6 @@ class TuiController:
         }:
             self.apply_layout(focus=False)
 
-    def dispatch_batch(self, intents: list[Intent]) -> None:
-        """Apply multiple intents and update layout once if needed."""
-        needs_layout = False
-        for intent in intents:
-            reduce_state(self.state, intent)
-            if intent.type is IntentType.SYNC_SESSIONS:
-                needs_layout = True
-            if intent.type in {
-                IntentType.SET_PREVIEW,
-                IntentType.CLEAR_PREVIEW,
-                IntentType.TOGGLE_STICKY,
-                IntentType.SET_PREP_PREVIEW,
-                IntentType.CLEAR_PREP_PREVIEW,
-                IntentType.TOGGLE_PREP_STICKY,
-            }:
-                needs_layout = True
-        if needs_layout:
-            self.apply_layout(focus=False)
-
     def apply_layout(self, *, focus: bool = False) -> None:
         """Apply pane layout derived from current state."""
         if not self.pane_manager.is_available:

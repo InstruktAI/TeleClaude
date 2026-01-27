@@ -808,7 +808,9 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             item.filename,
         )
         cmd = self._build_view_command(filepath)
-        intents = [
+        if self._preview and self._preview.doc_id != filepath:
+            self.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW))
+        self.controller.dispatch(
             Intent(
                 IntentType.SET_PREP_PREVIEW,
                 {
@@ -817,10 +819,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                     "title": item.display_name,
                 },
             )
-        ]
-        if self._preview and self._preview.doc_id != filepath:
-            intents.insert(0, Intent(IntentType.CLEAR_PREP_PREVIEW))
-        self.controller.dispatch_batch(intents)
+        )
 
     def _toggle_doc_sticky(self, item: PrepFileDisplayInfo) -> None:
         filepath = os.path.join(
