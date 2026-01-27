@@ -568,7 +568,8 @@ class TmuxPaneManager:
             return
 
         attach_cmd = self._build_pane_command(active_spec)
-        self._run_tmux("respawn-pane", "-t", self.state.parent_pane_id, attach_cmd)
+        # Force replace running process; without -k, respawn-pane can no-op.
+        self._run_tmux("respawn-pane", "-k", "-t", self.state.parent_pane_id, attach_cmd)
 
         stale_ids = [sid for sid, pid in self.state.session_to_pane.items() if pid == self.state.parent_pane_id]
         for sid in stale_ids:
