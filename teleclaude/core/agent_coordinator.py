@@ -45,21 +45,21 @@ class AgentCoordinator:
         native_session_id = payload.session_id
         native_log_file = payload.transcript_path
 
-        update_kwargs: dict[str, object] = {  # noqa: loose-dict - Dynamic session updates
-            "native_session_id": str(native_session_id),
-            "native_log_file": str(native_log_file),
-        }
+        update_kwargs: dict[str, object] = {}  # noqa: loose-dict - Dynamic session updates
+        if native_session_id:
+            update_kwargs["native_session_id"] = str(native_session_id)
+        if native_log_file:
+            update_kwargs["native_log_file"] = str(native_log_file)
+        if update_kwargs:
+            await db.update_session(context.session_id, **update_kwargs)
 
-        await db.update_session(context.session_id, **update_kwargs)
-
-        # Copy voice assignment if available
         voice = await db.get_voice(context.session_id)
         if voice:
-            await db.assign_voice(str(native_session_id), voice)
+            await db.assign_voice(context.session_id, voice)
             logger.debug(
-                "Copied voice from service '%s' to native_session_id %s",
+                "Reaffirmed voice from service '%s' for teleclaude_session_id %s",
                 voice.service_name,
-                str(native_session_id)[:8],
+                context.session_id[:8],
             )
 
         logger.info(
