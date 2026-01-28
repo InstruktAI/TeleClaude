@@ -297,6 +297,12 @@ def _configure_json_agent_hooks(
         tools_cfg["enableHooks"] = True
         settings["tools"] = tools_cfg
 
+        hooks_cfg = settings.get("hooks")
+        if not isinstance(hooks_cfg, dict):
+            hooks_cfg = {}
+        hooks_cfg["enabled"] = True
+        settings["hooks"] = hooks_cfg
+
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
 

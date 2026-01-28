@@ -12,7 +12,7 @@ import shlex
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Awaitable, Callable, Optional, TypedDict, cast
+from typing import Awaitable, Callable, Optional, TypedDict, TypeVar, cast
 
 import psutil
 from instrukt_ai_logging import get_logger
@@ -22,7 +22,8 @@ from teleclaude.core import tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.db import db
-from teleclaude.core.events import FileEventContext, VoiceEventContext
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import ErrorEventContext, FileEventContext, TeleClaudeEvents, VoiceEventContext
 from teleclaude.core.feedback import get_last_feedback
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.models import (
@@ -93,13 +94,16 @@ StartPollingFunc = Callable[[str, str], Awaitable[None]]
 
 
 # Decorator to inject session from context (removes boilerplate)
+R = TypeVar("R")
+
+
 def with_session(
-    func: Callable[..., Awaitable[None]],
-) -> Callable[..., Awaitable[None]]:
+    func: Callable[..., Awaitable[R]],
+) -> Callable[..., Awaitable[R]]:
     """Decorator that extracts and injects session from a command object."""
 
     @functools.wraps(func)
-    async def wrapper(cmd: object, *args: object, **kwargs: object) -> None:
+    async def wrapper(cmd: object, *args: object, **kwargs: object) -> R:
         if not hasattr(cmd, "session_id"):
             raise ValueError(f"Object {type(cmd).__name__} missing session_id")
 
@@ -108,7 +112,7 @@ def with_session(
         if session is None:
             raise RuntimeError(f"Session {session_id} not found - this should not happen")
 
-        await func(session, cmd, *args, **kwargs)
+        return await func(session, cmd, *args, **kwargs)
 
     return wrapper
 
@@ -1395,7 +1399,7 @@ async def agent_restart(
     cmd: RestartAgentCommand,
     client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
-) -> None:
+) -> tuple[bool, str | None]:
     """Restart an AI agent in the session by resuming the native session.
 
     Requires native_session_id to be present (fail fast otherwise).
@@ -1405,22 +1409,52 @@ async def agent_restart(
 
     target_agent = cmd.agent_name or active_agent
     if not target_agent:
+        error = "Cannot restart agent: no active agent for this session."
+        logger.error(
+            "agent_restart blocked (session=%s): %s",
+            session.session_id[:8],
+            error,
+        )
+        event_bus.emit(
+            TeleClaudeEvents.ERROR,
+            ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
+        )
         await client.send_message(
             session,
-            "❌ Cannot restart agent: no active agent for this session.",
+            f"❌ {error}",
         )
-        return
+        return False, error
 
     if not native_session_id:
+        error = "Cannot restart agent: no native session ID stored. Start the agent first."
+        logger.error(
+            "agent_restart blocked (session=%s): %s",
+            session.session_id[:8],
+            error,
+        )
+        event_bus.emit(
+            TeleClaudeEvents.ERROR,
+            ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
+        )
         await client.send_message(
             session,
-            "❌ Cannot restart agent: no native session ID stored. Start the agent first.",
+            f"❌ {error}",
         )
-        return
+        return False, error
 
     if not config.agents.get(target_agent):
-        await client.send_message(session, f"❌ Unknown agent: {target_agent}")
-        return
+        error = f"Unknown agent: {target_agent}"
+        logger.error(
+            "agent_restart blocked (session=%s): %s",
+            session.session_id[:8],
+            error,
+        )
+        event_bus.emit(
+            TeleClaudeEvents.ERROR,
+            ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
+        )
+        await client.send_message(session, f"❌ {error}")
+        return False, error
 
     logger.info(
         "Restarting agent %s in session %s (tmux: %s)",
@@ -1438,11 +1472,20 @@ async def agent_restart(
 
     ready = await tmux_io.wait_for_shell_ready(session)
     if not ready:
+        error = "Agent did not exit after SIGINT. Restart aborted."
+        logger.error(
+            "agent_restart failed to stop process (session=%s)",
+            session.session_id[:8],
+        )
+        event_bus.emit(
+            TeleClaudeEvents.ERROR,
+            ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
+        )
         await client.send_message(
             session,
-            "❌ Agent did not exit after SIGINT. Restart aborted.",
+            f"❌ {error}",
         )
-        return
+        return False, error
 
     restart_cmd = get_agent_command(
         agent=target_agent,
@@ -1452,6 +1495,7 @@ async def agent_restart(
     )
 
     await execute_terminal_command(session.session_id, restart_cmd, None, True)
+    return True, None
 
 
 @with_session

@@ -14,6 +14,9 @@ from teleclaude.api_models import (
     CreateSessionResponseDTO as CreateSessionResult,
 )
 from teleclaude.api_models import (
+    ErrorEventDTO as ErrorEvent,
+)
+from teleclaude.api_models import (
     ProjectDTO as ProjectInfo,
 )
 from teleclaude.api_models import (
@@ -64,6 +67,7 @@ __all__ = [
     "ProjectsInitialData",
     "ProjectsInitialEvent",
     "ProjectWithTodosInfo",
+    "ErrorEvent",
     "RefreshData",
     "RefreshEvent",
     "SessionClosedData",
@@ -94,6 +98,7 @@ WsEvent: TypeAlias = Union[
     SessionUpdatedEvent,
     SessionClosedEvent,
     RefreshEvent,
+    ErrorEvent,
 ]
 
 

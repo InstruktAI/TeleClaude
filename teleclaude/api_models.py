@@ -264,3 +264,22 @@ class RefreshEventDTO(BaseModel):  # type: ignore[explicit-any]
 
     event: Literal["computer_updated", "project_updated", "projects_updated", "todos_updated"]
     data: RefreshDataDTO
+
+
+class ErrorEventDataDTO(BaseModel):  # type: ignore[explicit-any]
+    """Data for error events."""
+
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+    message: str
+    source: str | None = None
+
+
+class ErrorEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for errors."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["error"] = "error"
+    data: ErrorEventDataDTO

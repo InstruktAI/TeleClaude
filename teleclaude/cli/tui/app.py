@@ -18,6 +18,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.models import (
     AgentAvailabilityInfo,
+    ErrorEvent,
     ProjectInfo,
     ProjectsInitialEvent,
     ProjectWithTodosInfo,
@@ -476,6 +477,9 @@ class TelecApp:
 
             elif isinstance(event, SessionClosedEvent):
                 asyncio.get_event_loop().run_until_complete(self.refresh_data(include_todos=False))
+
+            elif isinstance(event, ErrorEvent):
+                self.notify(event.data.message, NotificationLevel.ERROR)
 
             else:
                 # For now, trigger a full refresh for computer/project updates

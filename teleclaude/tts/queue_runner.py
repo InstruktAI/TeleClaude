@@ -12,7 +12,11 @@ from teleclaude.tts import backends
 logger = get_logger(__name__)
 
 
-def run_tts_with_lock(text: str, service_chain: list[tuple[str, str | None]], session_id: str) -> bool:
+def run_tts_with_lock(
+    text: str,
+    service_chain: list[tuple[str, str | None]],
+    session_id: str,
+) -> tuple[bool, str | None, str | None]:
     """
     Run TTS services with fallback while holding exclusive lock.
 
@@ -24,7 +28,7 @@ def run_tts_with_lock(text: str, service_chain: list[tuple[str, str | None]], se
         session_id: Session ID for logging
 
     Returns:
-        True if any service succeeded, False if all failed
+        Tuple of (success, service_name, voice_param) for the first successful service.
     """
     # Use system /tmp for playback lock
     lock_dir = Path(tempfile.gettempdir()) / "teleclaude_tts"
@@ -55,7 +59,7 @@ def run_tts_with_lock(text: str, service_chain: list[tuple[str, str | None]], se
                             f"TTS succeeded: {service_name}",
                             extra={"session_id": session_id[:8]},
                         )
-                        return True
+                        return True, service_name, voice_param
                 except Exception as e:
                     logger.debug(
                         f"TTS service failed: {service_name}: {e}",
@@ -72,15 +76,19 @@ def run_tts_with_lock(text: str, service_chain: list[tuple[str, str | None]], se
                 "All TTS services failed",
                 extra={"session_id": session_id[:8]},
             )
-        return False
+        return False, None, None
     except Exception as e:
         logger.error(
             f"TTS lock error: {e}",
             extra={"session_id": session_id[:8]},
         )
-        return False
+        return False, None, None
 
 
-async def run_tts_with_lock_async(text: str, service_chain: list[tuple[str, str | None]], session_id: str) -> bool:
+async def run_tts_with_lock_async(
+    text: str,
+    service_chain: list[tuple[str, str | None]],
+    session_id: str,
+) -> tuple[bool, str | None, str | None]:
     """Run TTS in a background thread to avoid blocking the event loop."""
     return await asyncio.to_thread(run_tts_with_lock, text, service_chain, session_id)

@@ -45,7 +45,7 @@ from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
+from teleclaude.core.events import ErrorEventContext, SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSummary
 from teleclaude.transport.redis_transport import RedisTransport
 
@@ -107,6 +107,7 @@ class APIServer:
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated_event)
         event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started_event)
         event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed_event)
+        event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error_event)
 
         # Set cache through property to trigger subscription
         self.cache = cache
@@ -173,6 +174,22 @@ class APIServer:
             logger.warning("Cache unavailable, cannot remove session from cache")
             return
         self.cache.remove_session(context.session_id)
+
+    async def _handle_error_event(
+        self,
+        _event: str,
+        context: ErrorEventContext,
+    ) -> None:
+        """Broadcast error events to WS clients."""
+        payload = {
+            "event": "error",
+            "data": {
+                "session_id": context.session_id,
+                "message": context.message,
+                "source": context.source,
+            },
+        }
+        self._broadcast_payload("error", payload)
 
     def _setup_routes(self) -> None:
         """Set up all HTTP endpoints."""
@@ -469,8 +486,13 @@ class APIServer:
                     {"session_id": session_id, "args": []},
                     metadata,
                 )
-                await get_command_service().restart_agent(cmd)
+                ok, error = await get_command_service().restart_agent(cmd)
+                if not ok:
+                    detail = error or "Restart failed"
+                    raise HTTPException(status_code=409, detail=detail)
                 return {"status": "ok"}
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error("agent_restart failed for session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to restart agent: {e}") from e

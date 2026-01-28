@@ -194,12 +194,10 @@ class SummarizerConfig:
 
     Attributes:
         enabled: If True, run LLM summarizer. If False, skip summarization entirely.
-        nr_of_last_messages_used: Number of last agent text messages to extract for display.
         max_summary_words: Target maximum words for the summary output.
     """
 
     enabled: bool = True
-    nr_of_last_messages_used: int = 1
     max_summary_words: int = 30
 
 
@@ -293,7 +291,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
     },
     "summarizer": {
         "enabled": True,
-        "nr_of_last_messages_used": 1,
         "max_summary_words": 30,
     },
 }
@@ -478,9 +475,6 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
         summarizer=SummarizerConfig(
             enabled=bool(summarizer_raw.get("enabled", True)) if isinstance(summarizer_raw, dict) else True,
-            nr_of_last_messages_used=int(summarizer_raw.get("nr_of_last_messages_used", 1))
-            if isinstance(summarizer_raw, dict)
-            else 1,
             max_summary_words=int(summarizer_raw.get("max_summary_words", 30))
             if isinstance(summarizer_raw, dict)
             else 30,

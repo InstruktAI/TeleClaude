@@ -984,7 +984,17 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         try:
             stat = transcript_file.stat()
         except FileNotFoundError:
-            logger.debug("Skipping enrichment for session %s: transcript missing", session_id[:8])
+            message = f"Transcript not found: {transcript_path}"
+            logger.error("Summarizer failed for session %s: %s", session_id[:8], message)
+            event_bus.emit(
+                TeleClaudeEvents.ERROR,
+                ErrorEventContext(
+                    session_id=session_id,
+                    message=message,
+                    source="summarizer",
+                    details={"transcript_path": transcript_path},
+                ),
+            )
             return
 
         fingerprint = f"{transcript_path}:{stat.st_size}:{stat.st_mtime_ns}"
@@ -1003,22 +1013,48 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         title: str | None = None
         summary: str | None = None
-        raw_transcript: str | None = None
+        raw_transcript = extract_last_agent_message(transcript_path, agent_name, 1)
+        if not raw_transcript:
+            message = f"No agent output found in transcript: {transcript_path}"
+            logger.error("Summarizer failed for session %s: %s", session_id[:8], message)
+            event_bus.emit(
+                TeleClaudeEvents.ERROR,
+                ErrorEventContext(
+                    session_id=session_id,
+                    message=message,
+                    source="summarizer",
+                    details={"transcript_path": transcript_path},
+                ),
+            )
+            return
 
         if config.summarizer.enabled:
             # 1. AI Summarization
             try:
                 title, summary, raw_transcript = await summarize(agent_name, transcript_path)
+            except FileNotFoundError:
+                message = f"Transcript not found: {transcript_path}"
+                logger.error("Summarization failed for session %s: %s", session_id[:8], message)
+                event_bus.emit(
+                    TeleClaudeEvents.ERROR,
+                    ErrorEventContext(
+                        session_id=session_id,
+                        message=message,
+                        source="summarizer",
+                        details={"transcript_path": transcript_path},
+                    ),
+                )
             except Exception as sum_err:
-                logger.warning("Summarization failed for %s: %s", session_id[:8], sum_err)
-                # Continue without summary - still try to capture raw_transcript
-
-        if not raw_transcript:
-            nr_messages = config.summarizer.nr_of_last_messages_used
-            raw_transcript = extract_last_agent_message(transcript_path, agent_name, nr_messages)
-        if not raw_transcript:
-            logger.debug("No agent text found in transcript for %s", session_id[:8])
-            return
+                logger.error("Summarization failed for %s: %s", session_id[:8], sum_err)
+                event_bus.emit(
+                    TeleClaudeEvents.ERROR,
+                    ErrorEventContext(
+                        session_id=session_id,
+                        message=str(sum_err),
+                        source="summarizer",
+                        details={"transcript_path": transcript_path},
+                    ),
+                )
 
         # 2. Enrich payload for downstream coordinator
         if summary:

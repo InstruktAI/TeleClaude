@@ -100,7 +100,7 @@ class TTSManager:
         """
         # Try to get existing voice assignment
         voice = await db.get_voice(session_id)
-        if voice and voice.service_name and voice.voice_name:
+        if voice and voice.service_name:
             logger.debug(
                 f"Using stored voice: {voice.voice_name} from {voice.service_name}",
                 extra={"session_id": session_id[:8]},
@@ -174,6 +174,7 @@ class TTSManager:
         service_chain.append((voice.service_name, voice.voice_name))
 
         # Then add fallback services (different from assigned service)
+        assignment_row = await db.get_voice_assignment_row(session_id)
         priority = self.tts_config.service_priority or [
             "elevenlabs",
             "openai",
@@ -185,11 +186,19 @@ class TTSManager:
                 continue  # Skip - already added as primary
             service_cfg = self.tts_config.services.get(service_name)
             if service_cfg and service_cfg.enabled:
-                if service_cfg.voices:
-                    fallback_voice = random.choice(service_cfg.voices)
-                    service_chain.append((service_name, fallback_voice.voice_id or fallback_voice.name))
-                else:
-                    service_chain.append((service_name, None))
+                fallback_voice: Optional[str] = None
+                if assignment_row:
+                    if service_name == "elevenlabs":
+                        fallback_voice = assignment_row.elevenlabs_id or None
+                    elif service_name == "openai":
+                        fallback_voice = assignment_row.openai_voice or None
+                    elif service_name == "macos":
+                        fallback_voice = assignment_row.macos_voice or None
+                if not fallback_voice and service_cfg.voices:
+                    random_voice = random.choice(service_cfg.voices)
+                    fallback_voice = random_voice.voice_id or random_voice.name
+                    await db.set_service_voice(session_id, service_name, fallback_voice)
+                service_chain.append((service_name, fallback_voice))
 
         logger.debug(
             f"TTS triggered for {event_name}: {text_to_speak[:50]}...",
@@ -197,5 +206,34 @@ class TTSManager:
         )
 
         # Queue TTS (non-blocking)
-        asyncio.create_task(run_tts_with_lock_async(text_to_speak, service_chain, session_id))
+        task = asyncio.create_task(run_tts_with_lock_async(text_to_speak, service_chain, session_id))
+        task.add_done_callback(
+            lambda t: asyncio.create_task(self._handle_tts_result(t, session_id, voice.service_name))
+        )
         return True
+
+    async def _handle_tts_result(
+        self,
+        task: asyncio.Task[tuple[bool, str | None, str | None]],
+        session_id: str,
+        primary_service: str,
+    ) -> None:
+        """Persist fallback voice when a non-primary service succeeds."""
+        try:
+            success, used_service, used_voice = task.result()
+        except Exception as exc:  # noqa: BLE001 - background task failure should not crash
+            logger.error("TTS task failed: %s", exc, extra={"session_id": session_id[:8]})
+            return
+
+        if not success or not used_service:
+            return
+        if used_service == primary_service:
+            return
+
+        await db.assign_voice(session_id, VoiceConfig(service_name=used_service, voice_name=used_voice or ""))
+        logger.info(
+            "Promoted fallback voice %s from %s for session %s",
+            used_voice or "default",
+            used_service,
+            session_id[:8],
+        )
