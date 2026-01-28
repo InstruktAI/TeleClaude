@@ -1134,11 +1134,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # DOUBLE CLICK - toggle sticky
             if clicked_id_line:
                 # ID line → parent only, no child
-                self._toggle_sticky(session_id, show_child=False, clear_preview=False)
+                self._toggle_sticky(session_id, show_child=False, clear_preview=True)
                 logger.debug("Double-click on ID line: toggled sticky (parent-only) for %s", session_id[:8])
             else:
                 # Title/other line → parent + child
-                self._toggle_sticky(session_id, show_child=True, clear_preview=False)
+                self._toggle_sticky(session_id, show_child=True, clear_preview=True)
                 logger.debug("Double-click on title: toggled sticky (parent+child) for %s", session_id[:8])
 
             logger.trace(
