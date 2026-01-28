@@ -72,7 +72,6 @@ tts:
   events:
     session_start:
       enabled: true
-      message: null
     agent_stop:
       enabled: true
       # No message needed - uses summary from agent
