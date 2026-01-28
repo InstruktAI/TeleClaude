@@ -1,5 +1,6 @@
 """TTS Queue Runner - ensures sequential playback with file locking."""
 
+import asyncio
 import fcntl
 import tempfile
 from pathlib import Path
@@ -71,11 +72,15 @@ def run_tts_with_lock(text: str, service_chain: list[tuple[str, str | None]], se
                 "All TTS services failed",
                 extra={"session_id": session_id[:8]},
             )
-            return False
-
+        return False
     except Exception as e:
         logger.error(
             f"TTS lock error: {e}",
             extra={"session_id": session_id[:8]},
         )
         return False
+
+
+async def run_tts_with_lock_async(text: str, service_chain: list[tuple[str, str | None]], session_id: str) -> bool:
+    """Run TTS in a background thread to avoid blocking the event loop."""
+    return await asyncio.to_thread(run_tts_with_lock, text, service_chain, session_id)

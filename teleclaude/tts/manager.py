@@ -1,5 +1,6 @@
 """TTS Manager - unified interface for TTS across TeleClaude."""
 
+import asyncio
 import random
 from typing import Optional
 
@@ -8,7 +9,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import TTSConfig, config
 from teleclaude.core.db import db
 from teleclaude.core.voice_assignment import VoiceConfig
-from teleclaude.tts.queue_runner import run_tts_with_lock
+from teleclaude.tts.queue_runner import run_tts_with_lock_async
 
 SESSION_START_MESSAGES = [
     "Standing by with grep patterns locked and loaded. What can I find?",
@@ -196,4 +197,5 @@ class TTSManager:
         )
 
         # Queue TTS (non-blocking)
-        return run_tts_with_lock(text_to_speak, service_chain, session_id)
+        asyncio.create_task(run_tts_with_lock_async(text_to_speak, service_chain, session_id))
+        return True
