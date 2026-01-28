@@ -10,6 +10,29 @@ from teleclaude.core.db import db
 from teleclaude.core.voice_assignment import VoiceConfig
 from teleclaude.tts.queue_runner import run_tts_with_lock
 
+SESSION_START_MESSAGES = [
+    "Standing by with grep patterns locked and loaded. What can I find?",
+    "Warmed up and ready to hunt down that bug!",
+    "Cache cleared, mind fresh. What's the task?",
+    "All systems nominal, ready to ship some code!",
+    "Initialized and ready to make those tests pass. What needs fixing?",
+    "Compiled with optimism and ready to refactor!",
+    "Ready to turn coffee into code. Where do we start?",
+    "Standing by like a well-indexed database!",
+    "Alert and ready to parse whatever you need. What's up?",
+    "Primed to help you ship that feature!",
+    "Spun up and ready to debug. What's broken?",
+    "Loaded and eager to make things work!",
+    "Ready to dig into the details. What should I investigate?",
+    "All systems go for some serious coding!",
+    "Prepared to tackle whatever you throw at me. What's the challenge?",
+    "Standing by to help ship something awesome!",
+    "Ready to make the build green. What needs attention?",
+    "Warmed up and waiting to assist!",
+    "Initialized and ready to solve problems. What's the issue?",
+    "All set to help you build something great!",
+]
+
 logger = get_logger(__name__)
 
 
@@ -123,9 +146,11 @@ class TTSManager:
             logger.debug(f"Event {event_name} disabled or not configured")
             return False
 
-        # Use custom text, or pick from messages list, or use single message
+        # Use custom text, or built-in session_start messages, or config messages, or single message
         if text:
             text_to_speak = text
+        elif event_name == "session_start":
+            text_to_speak = random.choice(SESSION_START_MESSAGES)
         elif event_cfg.messages:
             text_to_speak = random.choice(event_cfg.messages)
         else:
