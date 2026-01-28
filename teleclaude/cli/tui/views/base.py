@@ -23,10 +23,6 @@ class BaseView:
         """
         raise NotImplementedError(f"{self.__class__.__name__} must implement get_render_lines()")
 
-    def flush_deferred_actions(self) -> None:
-        """Run deferred actions after a render pass (optional)."""
-        return
-
 
 T = TypeVar("T")
 

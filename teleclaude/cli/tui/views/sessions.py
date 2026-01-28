@@ -124,7 +124,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_click_time: dict[int, float] = {}  # screen_row -> timestamp
         self._double_click_threshold = 0.4  # seconds
         self._pending_select_session_id: str | None = None
-        self._pending_activation_session_id: str | None = None
 
         # Load persisted sticky state (sessions + docs)
         load_sticky_state(self.state)
@@ -1169,7 +1168,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                     self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
                 self._focus_selected_pane()  # Focus sticky pane only
             else:
-                self._pending_activation_session_id = session_id
+                self._activate_session(item, clear_preview=False)
+                self._focus_selected_pane()  # Focus active preview pane
 
         logger.trace(
             "sessions_click",
@@ -1179,18 +1179,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             duration_ms=int((time.perf_counter() - click_start) * 1000),
         )
         return True
-
-    def flush_deferred_actions(self) -> None:
-        """Apply deferred actions after the UI has rendered."""
-        session_id = self._pending_activation_session_id
-        if not session_id:
-            return
-        self._pending_activation_session_id = None
-        for item in self.flat_items:
-            if is_session_node(item) and item.data.session.session_id == session_id:
-                self._activate_session(item, clear_preview=False)
-                self._focus_selected_pane()
-                return
 
     def get_render_lines(self, width: int, height: int) -> list[str]:
         """Return lines this view would render (testable without curses).
