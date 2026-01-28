@@ -603,7 +603,7 @@ class TmuxPaneManager:
 
         switched = False
         if active_spec.tmux_session_name:
-            switched = self._switch_pane_client(self.state.parent_pane_id, active_spec.tmux_session_name)
+            switched = self._switch_attached_tmux_session(self.state.parent_pane_id, active_spec.tmux_session_name)
         if not switched:
             attach_cmd = self._build_pane_command(active_spec)
             # Force replace running process; without -k, respawn-pane can no-op.
@@ -621,26 +621,20 @@ class TmuxPaneManager:
                 self.state.parent_pane_id, active_spec.tmux_session_name, active_spec.active_agent
             )
 
-    def _switch_pane_client(self, pane_id: str, tmux_session_name: str) -> bool:
-        """Switch nested tmux client for a pane without sending keys."""
+    def _switch_attached_tmux_session(self, pane_id: str, tmux_session_name: str) -> bool:
+        """Switch attached tmux session inside a pane without respawning."""
         if not pane_id:
             return False
-        pane_tty = self._run_tmux("display-message", "-p", "-t", pane_id, "#{pane_tty}")
-        if not pane_tty:
-            return False
-        clients = self._run_tmux("list-clients", "-F", "#{client_tty} #{client_name}")
-        target_client = None
-        for line in clients.splitlines():
-            try:
-                tty, client_name = line.split(" ", 1)
-            except ValueError:
-                continue
-            if tty == pane_tty:
-                target_client = client_name
-                break
-        if not target_client:
-            return False
-        self._run_tmux("switch-client", "-c", target_client, "-t", tmux_session_name)
+        # Send prefix + command to the attached tmux client.
+        self._run_tmux(
+            "send-keys",
+            "-t",
+            pane_id,
+            "C-b",
+            ":",
+            f"switch-client -t {tmux_session_name}",
+            "C-m",
+        )
         return True
 
     def _layout_is_unchanged(self) -> bool:
