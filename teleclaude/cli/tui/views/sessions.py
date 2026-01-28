@@ -260,6 +260,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
         self._apply_pending_selection()
+        if self.pane_manager.is_available and self.sticky_sessions and not self.pane_manager.state.sticky_pane_ids:
+            self.controller.apply_layout(focus=False)
 
     def request_select_session(self, session_id: str) -> bool:
         """Request that a session be selected once it appears in the tree."""
