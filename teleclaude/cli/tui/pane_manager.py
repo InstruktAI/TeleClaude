@@ -601,13 +601,9 @@ class TmuxPaneManager:
             self._render_layout()
             return
 
-        switched = False
-        if active_spec.tmux_session_name:
-            switched = self._switch_pane_client(self.state.parent_pane_id, active_spec.tmux_session_name)
-        if not switched:
-            attach_cmd = self._build_pane_command(active_spec)
-            # Force replace running process; without -k, respawn-pane can no-op.
-            self._run_tmux("respawn-pane", "-k", "-t", self.state.parent_pane_id, attach_cmd)
+        attach_cmd = self._build_pane_command(active_spec)
+        # Force replace running process; without -k, respawn-pane can no-op.
+        self._run_tmux("respawn-pane", "-k", "-t", self.state.parent_pane_id, attach_cmd)
 
         stale_ids = [sid for sid, pid in self.state.session_to_pane.items() if pid == self.state.parent_pane_id]
         for sid in stale_ids:
@@ -620,26 +616,6 @@ class TmuxPaneManager:
             self._set_pane_background(
                 self.state.parent_pane_id, active_spec.tmux_session_name, active_spec.active_agent
             )
-
-    def _switch_pane_client(self, pane_id: str, tmux_session_name: str) -> bool:
-        """Switch nested tmux client in-place to avoid respawning the pane."""
-        pane_tty = self._run_tmux("display-message", "-p", "-t", pane_id, "#{pane_tty}")
-        if not pane_tty:
-            return False
-        clients = self._run_tmux("list-clients", "-F", "#{client_tty} #{client_name}")
-        target_client = None
-        for line in clients.splitlines():
-            try:
-                tty, client_name = line.split(" ", 1)
-            except ValueError:
-                continue
-            if tty == pane_tty:
-                target_client = client_name
-                break
-        if not target_client:
-            return False
-        self._run_tmux("switch-client", "-c", target_client, "-t", tmux_session_name)
-        return True
 
     def _layout_is_unchanged(self) -> bool:
         signature = self._compute_layout_signature()
