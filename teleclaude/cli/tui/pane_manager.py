@@ -739,19 +739,31 @@ class TmuxPaneManager:
         """
         # Set inactive pane background (10% haze) and foreground (agent normal color)
         bg_color = theme.get_agent_pane_background(agent)
-        normal_color_code = theme.get_agent_normal_color(agent)
-        self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg=colour{normal_color_code},bg={bg_color}")
+        if theme.get_current_mode():  # dark mode
+            fg_color_code = theme.get_agent_normal_color(agent)
+        else:  # light mode: use darkest variant for contrast
+            fg_color_code = theme.get_agent_highlight_color(agent)
+        self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg=colour{fg_color_code},bg={bg_color}")
 
         # Set active pane foreground (agent normal color) with terminal default background
-        normal_color_code = theme.get_agent_normal_color(agent)
         if theme.get_current_mode():  # dark mode
             terminal_bg = theme.get_terminal_background()
             self._run_tmux(
-                "set", "-p", "-t", pane_id, "window-active-style", f"fg=colour{normal_color_code},bg={terminal_bg}"
+                "set",
+                "-p",
+                "-t",
+                pane_id,
+                "window-active-style",
+                f"fg=colour{fg_color_code},bg={terminal_bg}",
             )
         else:  # light mode - use 'terminal' to get iTerm background
             self._run_tmux(
-                "set", "-p", "-t", pane_id, "window-active-style", f"fg=colour{normal_color_code},bg=terminal"
+                "set",
+                "-p",
+                "-t",
+                pane_id,
+                "window-active-style",
+                f"fg=colour{fg_color_code},bg=terminal",
             )
 
         # Set status bar to use terminal default background (no haze)
