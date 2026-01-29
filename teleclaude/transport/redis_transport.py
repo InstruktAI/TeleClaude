@@ -896,6 +896,15 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                         if status == "error":
                             error_msg: object = envelope.get("error")
                             logger.warning("Computer %s returned error: %s", computer_name, error_msg)
+                            if "Unknown redis command: get_computer_info" in str(error_msg):
+                                peers.append(
+                                    PeerInfo(
+                                        name=computer_name,
+                                        status="online",
+                                        last_seen=last_seen_dt,
+                                        adapter_type="redis",
+                                    )
+                                )
                             continue
 
                         # Extract data from success envelope
@@ -1061,6 +1070,21 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 response_json = json.dumps(result)
                 await self.send_response(message_id, response_json)
                 return
+            if cmd_name in {"list_sessions", "list_projects", "list_projects_with_todos", "get_computer_info"}:
+                from teleclaude.core import command_handlers
+
+                if cmd_name == "list_sessions":
+                    payload = [summary.to_dict() for summary in await command_handlers.list_sessions()]
+                elif cmd_name == "list_projects":
+                    payload = [project.to_dict() for project in await command_handlers.list_projects()]
+                elif cmd_name == "list_projects_with_todos":
+                    payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
+                else:
+                    payload = (await command_handlers.get_computer_info()).to_dict()
+
+                response_json = json.dumps({"status": "success", "data": payload})
+                await self.send_response(message_id, response_json)
+                return
 
             # Normalize via mapper
             command = CommandMapper.map_redis_input(
@@ -1218,9 +1242,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         msg_type = data.get(b"type", b"").decode("utf-8")
         session_id = data.get(b"session_id", b"").decode("utf-8") or None
         command = data.get(b"command", b"").decode("utf-8")
-        origin = data.get(b"origin", b"").decode("utf-8")
-        if not origin:
-            raise ValueError("Redis message missing origin")
+        origin = data.get(b"origin", b"").decode("utf-8") or "redis"
 
         channel_metadata: dict[str, object] | None = None
         if b"channel_metadata" in data:
@@ -1961,8 +1983,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             data[b"channel_metadata"] = json.dumps(metadata.channel_metadata).encode("utf-8")
         if metadata.launch_intent:
             data[b"launch_intent"] = json.dumps(metadata.launch_intent.to_dict()).encode("utf-8")
-        if metadata.origin:
-            data[b"origin"] = metadata.origin.encode("utf-8")
+        origin = metadata.origin or "redis"
+        data[b"origin"] = origin.encode("utf-8")
 
         # Send to Redis stream - XADD returns unique message_id
         # This message_id is used for response correlation (receiver sends response to output:{message_id})
