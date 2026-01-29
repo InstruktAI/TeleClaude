@@ -64,6 +64,7 @@ summarizer:
 tts:
   enabled: true
   service_priority:
+    - qwen3
     - elevenlabs
     - macos
     - openai
@@ -126,6 +127,18 @@ tts:
         - name: "Jamie (Premium)"
         - name: "Rishi (Enhanced)"
         - name: "Zoe (Premium)"
+    qwen3:
+      enabled: true
+      voices:
+        - name: serena
+        - name: vivian
+        - name: uncle_fu
+        - name: ryan
+        - name: aiden
+        - name: ono_anna
+        - name: sohee
+        - name: eric
+        - name: dylan
     pyttsx3:
       enabled: true
       voices: []

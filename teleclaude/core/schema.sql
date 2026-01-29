@@ -43,11 +43,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 -- Records expire after 7 days (cleaned up by daemon.cleanup_stale_voice_assignments)
 CREATE TABLE IF NOT EXISTS voice_assignments (
     id TEXT PRIMARY KEY,  -- Either teleclaude_session_id or native_session_id
-    voice_name TEXT,
-    elevenlabs_id TEXT DEFAULT '',
-    macos_voice TEXT DEFAULT '',
-    openai_voice TEXT DEFAULT '',
     service_name TEXT,
+    voice TEXT DEFAULT '',
     assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

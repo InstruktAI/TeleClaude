@@ -2,7 +2,7 @@
 
 ## Required reads
 
-@docs/policy/agent-service-control.md
-@docs/policy/daemon-availability.md
-@docs/policy/single-database.md
-@docs/policy/mcp-connection-resilience.md
+@docs/project/policy/agent-service-control.md
+@docs/project/policy/daemon-availability.md
+@docs/project/policy/single-database.md
+@docs/project/policy/mcp-connection-resilience.md

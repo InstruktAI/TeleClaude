@@ -29,12 +29,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-VOICE_COLUMN_BY_SERVICE: dict[str, str] = {
-    "elevenlabs": "elevenlabs_id",
-    "openai": "openai_voice",
-    "macos": "macos_voice",
-}
-
 
 class HookOutboxRow(TypedDict):
     id: int
@@ -805,37 +799,25 @@ class Db:
             voice_id: Either teleclaude session ID or Agent session ID
             voice: VoiceConfig to assign
         """
-        service_column = VOICE_COLUMN_BY_SERVICE.get(voice.service_name)
         async with self._session() as db_session:
-            if service_column:
-                stmt = text(
-                    "INSERT INTO voice_assignments (id, service_name, voice_name, assigned_at, {service_column}) "
-                    "VALUES (:id, :service_name, :voice_name, CURRENT_TIMESTAMP, :voice_name) "
-                    "ON CONFLICT(id) DO UPDATE SET "
-                    "service_name = excluded.service_name, "
-                    "voice_name = excluded.voice_name, "
-                    "{service_column} = excluded.{service_column}, "
-                    "assigned_at = CURRENT_TIMESTAMP".format(service_column=service_column)
-                )
-            else:
-                stmt = text(
-                    "INSERT INTO voice_assignments (id, service_name, voice_name, assigned_at) "
-                    "VALUES (:id, :service_name, :voice_name, CURRENT_TIMESTAMP) "
-                    "ON CONFLICT(id) DO UPDATE SET "
-                    "service_name = excluded.service_name, "
-                    "voice_name = excluded.voice_name, "
-                    "assigned_at = CURRENT_TIMESTAMP"
-                )
+            stmt = text(
+                "INSERT INTO voice_assignments (id, service_name, voice, assigned_at) "
+                "VALUES (:id, :service_name, :voice, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "service_name = excluded.service_name, "
+                "voice = excluded.voice, "
+                "assigned_at = CURRENT_TIMESTAMP"
+            )
             await db_session.exec(
                 stmt,
                 params={
                     "id": voice_id,
                     "service_name": voice.service_name,
-                    "voice_name": voice.voice_name,
+                    "voice": voice.voice,
                 },
             )
             await db_session.commit()
-        logger.debug("Assigned voice '%s' from service '%s' to %s", voice.voice_name, voice.service_name, voice_id[:8])
+        logger.debug("Assigned voice '%s' from service '%s' to %s", voice.voice, voice.service_name, voice_id[:8])
 
     async def get_voice(self, voice_id: str) -> Optional[VoiceConfig]:
         """Get voice assignment by ID.
@@ -850,53 +832,31 @@ class Db:
             row = await db_session.get(db_models.VoiceAssignment, voice_id)
             if not row:
                 return None
-            if row.service_name:
-                voice_name = row.voice_name or ""
-            elif row.elevenlabs_id:
-                voice_name = row.elevenlabs_id or ""
-            elif row.openai_voice:
-                voice_name = row.openai_voice or ""
-            elif row.macos_voice:
-                voice_name = row.macos_voice or ""
-            else:
-                voice_name = row.voice_name or ""
             return VoiceConfig(
                 service_name=row.service_name or "",
-                voice_name=voice_name,
+                voice=row.voice or "",
             )
 
-    async def get_voice_assignment_row(self, voice_id: str) -> Optional[db_models.VoiceAssignment]:
-        """Get raw voice assignment row for a session."""
-        async with self._session() as db_session:
-            return await db_session.get(db_models.VoiceAssignment, voice_id)
+    async def get_voices_in_use(self) -> set[tuple[str, str]]:
+        """Get all (service_name, voice) pairs assigned to active sessions.
 
-    async def set_service_voice(self, voice_id: str, service_name: str, voice_name: str) -> None:
-        """Persist a service-specific voice for a session without changing primary service."""
-        if not voice_name:
-            return
-        service_column = VOICE_COLUMN_BY_SERVICE.get(service_name)
-        if not service_column:
-            return
+        Returns:
+            Set of (service_name, voice) tuples currently in use.
+        """
+        from sqlmodel import select
+
+        stmt = (
+            select(db_models.VoiceAssignment.service_name, db_models.VoiceAssignment.voice)
+            .join(db_models.Session, db_models.VoiceAssignment.id == db_models.Session.session_id)
+            .where(
+                db_models.Session.closed_at.is_(None),
+                db_models.Session.lifecycle_status == "active",
+                db_models.VoiceAssignment.service_name.is_not(None),
+            )
+        )
         async with self._session() as db_session:
-            stmt = text(
-                "INSERT INTO voice_assignments (id, voice_name, {service_column}, assigned_at) "
-                "VALUES (:id, :voice_name, :voice_name, CURRENT_TIMESTAMP) "
-                "ON CONFLICT(id) DO UPDATE SET "
-                "{service_column} = excluded.{service_column}, "
-                "voice_name = CASE "
-                "WHEN voice_name IS NULL OR voice_name = '' THEN excluded.voice_name "
-                "ELSE voice_name "
-                "END, "
-                "assigned_at = CURRENT_TIMESTAMP".format(service_column=service_column)
-            )
-            await db_session.exec(
-                stmt,
-                params={
-                    "id": voice_id,
-                    "voice_name": voice_name,
-                },
-            )
-            await db_session.commit()
+            result = await db_session.exec(stmt)
+            return {(row[0], row[1] or "") for row in result.all()}
 
     async def cleanup_stale_voice_assignments(self, max_age_days: int = 7) -> int:
         """Delete voice assignments older than max_age_days.

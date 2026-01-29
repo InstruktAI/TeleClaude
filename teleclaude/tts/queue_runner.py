@@ -56,7 +56,7 @@ def run_tts_with_lock(
                 try:
                     if backend.speak(text, voice_param):
                         logger.debug(
-                            f"TTS succeeded: {service_name}",
+                            f"TTS succeeded: {service_name} voice={voice_param}",
                             extra={"session_id": session_id[:8]},
                         )
                         return True, service_name, voice_param

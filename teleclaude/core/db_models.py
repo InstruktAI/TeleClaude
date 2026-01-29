@@ -57,11 +57,8 @@ class VoiceAssignment(SQLModel, table=True):
     __table_args__ = {"extend_existing": True}
 
     id: str = Field(primary_key=True)
-    voice_name: Optional[str] = None
-    elevenlabs_id: Optional[str] = ""
-    macos_voice: Optional[str] = ""
-    openai_voice: Optional[str] = ""
     service_name: Optional[str] = None
+    voice: Optional[str] = ""
     assigned_at: Optional[datetime] = None
 
 

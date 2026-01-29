@@ -57,15 +57,18 @@ class TTSManager:
 
         return config.tts
 
-    def get_random_voice_for_session(self) -> tuple[str, Optional[str]] | None:
+    async def get_random_voice_for_session(self) -> tuple[str, Optional[str]] | None:
         """
-        Get a random voice from enabled services.
+        Get a random voice from enabled services, excluding voices already in use
+        by active sessions.
 
         Returns:
             Tuple of (service_name, voice_id_or_name) or None if no voices configured
         """
         if not self.enabled:
             return None
+
+        voices_in_use = await db.get_voices_in_use()
 
         # Priority order: use configured service_priority or default fallback
         priority = self.tts_config.service_priority or [
@@ -75,18 +78,22 @@ class TTSManager:
             "pyttsx3",
         ]
 
-        # Try services in priority order until we find one with voices
+        # Try services in priority order until we find one with available voices
         for service_name in priority:
             service_cfg = self.tts_config.services.get(service_name)
             if service_cfg and service_cfg.enabled and service_cfg.voices:
-                # Pick random voice from this service
-                voice = random.choice(service_cfg.voices)
+                # Filter out voices already assigned to active sessions
+                available = [v for v in service_cfg.voices if (service_name, v.voice_id or v.name) not in voices_in_use]
+                if not available:
+                    logger.debug("All %s voices in use, trying next service", service_name)
+                    continue
+                voice = random.choice(available)
                 logger.info(
                     f"Assigned voice: {voice.name} from service {service_name}",
                 )
                 return (service_name, voice.voice_id or voice.name)
 
-        logger.debug("No TTS services with voices enabled")
+        logger.debug("No TTS services with available voices")
         return None
 
     async def _get_or_assign_voice(self, session_id: str) -> Optional[VoiceConfig]:
@@ -102,18 +109,18 @@ class TTSManager:
         voice = await db.get_voice(session_id)
         if voice and voice.service_name:
             logger.debug(
-                f"Using stored voice: {voice.voice_name} from {voice.service_name}",
+                f"Using stored voice: {voice.voice} from {voice.service_name}",
                 extra={"session_id": session_id[:8]},
             )
             return voice
 
         # No voice assigned yet - pick one and store it
-        voice_result = self.get_random_voice_for_session()
+        voice_result = await self.get_random_voice_for_session()
         if not voice_result:
             return None
 
         service_name, voice_param = voice_result
-        new_voice = VoiceConfig(service_name=service_name, voice_name=voice_param or "")
+        new_voice = VoiceConfig(service_name=service_name, voice=voice_param or "")
         await db.assign_voice(session_id, new_voice)
         logger.info(
             f"Assigned new voice: {voice_param} from {service_name}",
@@ -171,10 +178,9 @@ class TTSManager:
         service_chain: list[tuple[str, Optional[str]]] = []
 
         # First, add the session's assigned voice
-        service_chain.append((voice.service_name, voice.voice_name))
+        service_chain.append((voice.service_name, voice.voice))
 
         # Then add fallback services (different from assigned service)
-        assignment_row = await db.get_voice_assignment_row(session_id)
         priority = self.tts_config.service_priority or [
             "elevenlabs",
             "openai",
@@ -187,17 +193,9 @@ class TTSManager:
             service_cfg = self.tts_config.services.get(service_name)
             if service_cfg and service_cfg.enabled:
                 fallback_voice: Optional[str] = None
-                if assignment_row:
-                    if service_name == "elevenlabs":
-                        fallback_voice = assignment_row.elevenlabs_id or None
-                    elif service_name == "openai":
-                        fallback_voice = assignment_row.openai_voice or None
-                    elif service_name == "macos":
-                        fallback_voice = assignment_row.macos_voice or None
-                if not fallback_voice and service_cfg.voices:
+                if service_cfg.voices:
                     random_voice = random.choice(service_cfg.voices)
                     fallback_voice = random_voice.voice_id or random_voice.name
-                    await db.set_service_voice(session_id, service_name, fallback_voice)
                 service_chain.append((service_name, fallback_voice))
 
         logger.debug(
@@ -230,7 +228,7 @@ class TTSManager:
         if used_service == primary_service:
             return
 
-        await db.assign_voice(session_id, VoiceConfig(service_name=used_service, voice_name=used_voice or ""))
+        await db.assign_voice(session_id, VoiceConfig(service_name=used_service, voice=used_voice or ""))
         logger.info(
             "Promoted fallback voice %s from %s for session %s",
             used_voice or "default",

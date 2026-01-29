@@ -241,7 +241,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     title = await ensure_unique_title(base_title)
 
     # Assign random voice for TTS
-    voice = get_random_voice()
+    voice = await get_random_voice()
     if voice:
         await db.assign_voice(session_id, voice)
 

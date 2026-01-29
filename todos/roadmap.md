@@ -12,6 +12,12 @@
 
 Implement role-filtered MCP endpoints so workers can only access appropriate tools via marker file injection.
 
+## Eliminate Raw SQL from DB Layer
+
+- [ ] db-raw-sql-cleanup
+
+Convert inline SQL in db.py to SQLModel/SQLAlchemy ORM and enforce via pre-commit hook.
+
 ## Test Suite Quality Cleanup
 
 - [ ] repo-cleanup
