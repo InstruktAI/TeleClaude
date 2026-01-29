@@ -2134,6 +2134,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             b"command": command.encode("utf-8"),
             b"timestamp": str(time.time()).encode("utf-8"),
             b"from_computer": self.computer_name.encode("utf-8"),
+            b"origin": b"redis",
         }
 
         # Add args as JSON if provided
