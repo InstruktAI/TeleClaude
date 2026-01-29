@@ -104,11 +104,15 @@ class DaemonLifecycle:
             redis_transport: RedisTransport = redis_transport_base
             if redis_transport.redis:
                 status_key = f"system_status:{config.computer.name}:deploy"
-                try:
-                    status_data = await redis_transport.redis.get(status_key)
-                except Exception as exc:  # pylint: disable=broad-exception-caught
-                    logger.error("Failed to read deploy status from Redis: %s", exc, exc_info=True)
+                if not redis_transport._redis_ready.is_set():  # pylint: disable=protected-access
+                    logger.warning("Redis not ready; skipping deploy status check")
                     status_data = None
+                else:
+                    try:
+                        status_data = await asyncio.wait_for(redis_transport.redis.get(status_key), timeout=1.0)
+                    except Exception as exc:  # pylint: disable=broad-exception-caught
+                        logger.error("Failed to read deploy status from Redis: %s", exc, exc_info=True)
+                        status_data = None
                 if status_data:
                     try:
                         status_raw: object = json.loads(status_data.decode("utf-8"))  # type: ignore[misc]
