@@ -370,7 +370,8 @@ def get_tool_definitions() -> list[Tool]:
                 "Provide an optional list of computers; if omitted or empty, deploys to all remote "
                 "computers except self. Use this after committing changes to update machines. "
                 "**Workflow**: commit changes -> push to GitHub -> call this tool. "
-                "Returns deployment status for each computer (success, deploying, error)."
+                "Returns deployment status for each computer (success, deploying, error). "
+                "If deploy fails due to remote local changes, assume stale rsync artifacts and perform a clean checkout on the remote before retrying."
             ),
             inputSchema={
                 "type": "object",
