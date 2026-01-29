@@ -1015,6 +1015,7 @@ class AdapterClient:
         self,
         message_id: str,
         timeout: float = 3.0,
+        target_computer: str | None = None,
     ) -> str:
         """Read single response from request (for ephemeral request/response).
 
@@ -1024,6 +1025,7 @@ class AdapterClient:
         Args:
             message_id: Stream entry ID from the original request
             timeout: Maximum time to wait for response (seconds, default 3.0)
+            target_computer: Optional target computer for namespaced response stream
 
         Returns:
             Response data as string
@@ -1033,7 +1035,7 @@ class AdapterClient:
             TimeoutError: If no response received within timeout
         """
         transport = self._get_transport_adapter()
-        return await transport.read_response(message_id, timeout)
+        return await transport.read_response(message_id, timeout, target_computer)
 
     def _get_transport_adapter(self) -> RemoteExecutionProtocol:
         """Get first adapter that supports remote execution.

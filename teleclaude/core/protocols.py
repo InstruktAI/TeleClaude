@@ -59,7 +59,7 @@ class RemoteExecutionProtocol(Protocol):
         """
         ...
 
-    async def read_response(self, message_id: str, timeout: float = 3.0) -> str:
+    async def read_response(self, message_id: str, timeout: float = 3.0, target_computer: str | None = None) -> str:
         """Read response from ephemeral request (non-streaming).
 
         Used for one-shot queries like list_projects, get_computer_info.

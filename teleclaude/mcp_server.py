@@ -220,7 +220,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
         )
 
         try:
-            response_data = await self.client.read_response(message_id, timeout=timeout)
+            response_data = await self.client.read_response(message_id, timeout=timeout, target_computer=computer)
             envelope = json.loads(response_data.strip())
 
             if envelope.get("status") == ResultStatus.ERROR.value:

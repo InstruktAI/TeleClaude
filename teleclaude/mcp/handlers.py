@@ -391,7 +391,7 @@ class MCPHandlersMixin:
         message_id = await self.client.send_request(computer_name=computer, command="/new_session", metadata=metadata)
 
         try:
-            response_data = await self.client.read_response(message_id, timeout=5.0)
+            response_data = await self.client.read_response(message_id, timeout=5.0, target_computer=computer)
             envelope = json.loads(response_data.strip())
 
             if envelope.get("status") == "error":
@@ -669,7 +669,7 @@ class MCPHandlersMixin:
         message_id = await self.client.send_request(computer_name=computer, command="/new_session", metadata=metadata)
 
         try:
-            response_data = await self.client.read_response(message_id, timeout=5.0)
+            response_data = await self.client.read_response(message_id, timeout=5.0, target_computer=computer)
             envelope = json.loads(response_data.strip())
 
             if envelope.get("status") == "error":

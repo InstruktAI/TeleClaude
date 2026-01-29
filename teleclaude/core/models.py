@@ -589,6 +589,7 @@ class RedisInboundMessage:
     title: Optional[str] = None
     origin: Optional[str] = None
     launch_intent: Optional[Dict[str, object]] = None  # guard: loose-dict
+    reply_stream: Optional[str] = None
 
 
 @dataclass

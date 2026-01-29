@@ -87,12 +87,12 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
     Architecture:
     - Each computer polls its message stream: messages:{computer_name}
-    - Request/response replies are sent on output:{message_id} streams
+    - Request/response replies are sent on output:{computer}:{message_id} streams
     - Computer registry uses Redis keys with TTL for heartbeats
 
     Message flow:
     - Comp1 → XADD messages:comp2 → Comp2 polls → executes message
-    - Comp2 → XADD output:{message_id} → Comp1 reads response for request/response
+    - Comp2 → XADD output:{computer}:{message_id} → Comp1 reads response for request/response
     """
 
     _ALLOWED_REFRESH_REASONS = {"startup", "digest", "interest", "ttl"}
@@ -885,7 +885,9 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                         message_id = await self.send_request(computer_name, "get_computer_info", MessageMetadata())
 
                         # Wait for response (short timeout) - use read_response for one-shot query
-                        response_data = await self.client.read_response(message_id, timeout=3.0)
+                        response_data = await self.client.read_response(
+                            message_id, timeout=3.0, target_computer=computer_name
+                        )
                         envelope_obj: object = json.loads(response_data.strip())
                         if not isinstance(envelope_obj, dict):
                             continue
@@ -1051,7 +1053,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         """Handle incoming message from Redis stream.
 
         Args:
-            message_id: Redis stream entry ID (used for response correlation via output:{message_id})
+            message_id: Redis stream entry ID (used for response correlation via output:{computer}:{message_id})
             data: Message data dict from Redis stream
         """
         try:
@@ -1601,7 +1603,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 message_id = await self.send_request(computer_name, "list_sessions", MessageMetadata())
 
                 # Wait for response with short timeout
-                response_data = await self.client.read_response(message_id, timeout=3.0)
+                response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer_name)
                 envelope_obj: object = json.loads(response_data.strip())
 
                 if not isinstance(envelope_obj, dict):
@@ -1658,7 +1660,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             message_id = await self.send_request(computer, "list_projects", MessageMetadata())
 
             # Wait for response with short timeout
-            response_data = await self.client.read_response(message_id, timeout=3.0)
+            response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer)
             envelope_obj: object = json.loads(response_data.strip())
 
             if not isinstance(envelope_obj, dict):
@@ -1709,7 +1711,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         try:
             message_id = await self.send_request(computer, "list_projects_with_todos", MessageMetadata())
 
-            response_data = await self.client.read_response(message_id, timeout=5.0)
+            response_data = await self.client.read_response(message_id, timeout=5.0, target_computer=computer)
             envelope_obj: object = json.loads(response_data.strip())
 
             if not isinstance(envelope_obj, dict):
@@ -1769,7 +1771,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             message_id = await self.send_request(computer, "list_todos", MessageMetadata(), args=[project_path])
 
             # Wait for response with short timeout
-            response_data = await self.client.read_response(message_id, timeout=3.0)
+            response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer)
             envelope_obj: object = json.loads(response_data.strip())
 
             if not isinstance(envelope_obj, dict):
@@ -1987,7 +1989,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         data[b"origin"] = origin.encode("utf-8")
 
         # Send to Redis stream - XADD returns unique message_id
-        # This message_id is used for response correlation (receiver sends response to output:{message_id})
+        # This message_id is used for response correlation (receiver sends response to output:{computer}:{message_id})
         redis_client = await self._get_redis()
         message_id_bytes: bytes = await redis_client.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]
         message_id = message_id_bytes.decode("utf-8")
@@ -2014,7 +2016,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             Redis stream entry ID of the response
         """
 
-        output_stream = f"output:{message_id}"
+        output_stream = f"output:{self.computer_name}:{message_id}"
         logger.debug(
             "send_response() sending to stream=%s for message_id=%s (data_length=%d)",
             output_stream,
@@ -2041,7 +2043,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         )
         return response_id_bytes.decode("utf-8")
 
-    async def read_response(self, message_id: str, timeout: float = 3.0) -> str:
+    async def read_response(self, message_id: str, timeout: float = 3.0, target_computer: str | None = None) -> str:
         """Read response from ephemeral request (non-streaming).
 
         Used for one-shot request/response like list_projects, get_computer_info.
@@ -2058,7 +2060,10 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             TimeoutError: If no response received within timeout
         """
 
-        output_stream = f"output:{message_id}"
+        if target_computer:
+            output_stream = f"output:{target_computer}:{message_id}"
+        else:
+            output_stream = f"output:{message_id}"
         start_time = time.time()
         logger.trace("Redis response wait", stream=output_stream, timeout_s=timeout)
 
