@@ -9,6 +9,7 @@ import curses
 import os
 import queue
 import signal
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
@@ -195,6 +196,7 @@ class TelecApp:
         self._ws_queue: queue.Queue[WsEvent] = queue.Queue()
         self._subscribed_computers: set[str] = set()
         self._theme_refresh_requested = False
+        self._reload_requested = False
         self._session_status_cache: dict[str, str] = {}
         self._last_active_pane_id: str | None = None
         self._last_ws_heal = time.monotonic()
@@ -596,6 +598,9 @@ class TelecApp:
                 # Re-apply agent colors after theme change
                 self.pane_manager.reapply_agent_colors()
                 self._render(stdscr)
+                if self._consume_reload_request():
+                    self._reload_self()
+                    return
                 continue
 
             if key != -1:
@@ -612,6 +617,12 @@ class TelecApp:
     def _consume_theme_refresh(self) -> bool:
         if self._theme_refresh_requested:
             self._theme_refresh_requested = False
+            return True
+        return False
+
+    def _consume_reload_request(self) -> bool:
+        if self._reload_requested:
+            self._reload_requested = False
             return True
         return False
 
@@ -660,8 +671,15 @@ class TelecApp:
 
         def _handle_signal(_signum: int, _frame: object | None) -> None:
             self._theme_refresh_requested = True
+            self._reload_requested = True
 
         signal.signal(signal.SIGUSR1, _handle_signal)
+        logger.debug("Installed SIGUSR1 handler for appearance reload")
+
+    def _reload_self(self) -> None:
+        logger.debug("Reloading TUI process")
+        self.cleanup()
+        os.execv(sys.executable, [sys.executable, "-m", "teleclaude.cli.telec", *sys.argv[1:]])
 
     def _handle_key(self, key: int, stdscr: CursesWindow) -> None:
         """Handle key press.
