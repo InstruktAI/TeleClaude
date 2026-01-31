@@ -1,5 +1,5 @@
 ---
-id: teleclaude/reference/event-types
+id: project/reference/event-types
 type: reference
 scope: project
 description: TeleClaude event names used between adapters, daemon, and clients.

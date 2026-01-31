@@ -1,6 +1,6 @@
 ---
 description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
-id: teleclaude/policy/cache-contract
+id: project/policy/cache-contract
 scope: project
 type: policy
 ---
@@ -11,7 +11,7 @@ type: policy
 
 - @docs/project/architecture/cache.md
 
-## Rule
+## Rules
 
 - API reads return cached data immediately.
 - Cache refresh is asynchronous and driven by TTL/digest invalidation.

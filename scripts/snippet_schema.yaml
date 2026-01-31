@@ -28,30 +28,22 @@ sections:
       - Failure modes
   checklist:
     allowed:
-      - Goal
+      - Purpose
       - Preconditions
-      - Steps
-      - Outputs
+      - Checks
       - Recovery
     required:
-      - Goal
+      - Purpose
       - Preconditions
-      - Steps
-      - Outputs
+      - Checks
       - Recovery
   concept:
     allowed:
-      - Purpose
-      - Inputs/Outputs
-      - Invariants
-      - Primary flows
-      - Failure modes
+      - What
+      - Why
     required:
-      - Purpose
-      - Inputs/Outputs
-      - Invariants
-      - Primary flows
-      - Failure modes
+      - What
+      - Why
   example:
     allowed:
       - Scenario
@@ -66,24 +58,23 @@ sections:
   guide:
     allowed:
       - Goal
-      - Preconditions
-      - Steps
-      - Outputs
-      - Recovery
+      - Context
+      - Approach
+      - Pitfalls
     required:
       - Goal
-      - Steps
-      - Outputs
-      - Recovery
+      - Context
+      - Approach
+      - Pitfalls
   policy:
     allowed:
-      - Rule
+      - Rules
       - Rationale
       - Scope
       - Enforcement
       - Exceptions
     required:
-      - Rule
+      - Rules
       - Rationale
       - Scope
       - Enforcement

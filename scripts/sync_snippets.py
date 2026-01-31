@@ -18,8 +18,10 @@ from scripts.sync_resources import (
     _collect_inline_ref_errors,
     _iter_snippet_roots,
     _validate_third_party_docs,
+    _write_third_party_index,
     build_index_payload,
 )
+from teleclaude.snippet_validation import load_domains
 
 logger = get_logger(__name__)
 
@@ -89,6 +91,7 @@ def _normalize_payload(payload: Mapping[str, object]) -> IndexPayload:
 
 def validate_index(project_root: Path, snippets_root: Path, index_path: Path) -> list[str]:
     errors: list[str] = []
+    domains = load_domains(project_root)
     yaml_payload = _normalize_payload(_load_index_yaml(index_path))
     rebuilt_payload = _normalize_payload(build_index_payload(project_root, snippets_root))
 
@@ -125,7 +128,7 @@ def validate_index(project_root: Path, snippets_root: Path, index_path: Path) ->
         if not isinstance(snippet_scope, str):
             errors.append(f"Invalid scope in snippet frontmatter: {entry['path']}")
         lines = post.content.splitlines()
-        for error in _collect_inline_ref_errors(project_root, snippet_path, lines):
+        for error in _collect_inline_ref_errors(project_root, snippet_path, lines, domains=domains):
             details = " ".join(f"{k}={v}" for k, v in error.items() if k != "code")
             errors.append(f"{error['code']} {details}".strip())
 
@@ -139,6 +142,7 @@ def main() -> None:
 
     project_root = Path(args.project_root).expanduser().resolve()
     _validate_third_party_docs(project_root)
+    _write_third_party_index(project_root)
     roots = _iter_snippet_roots(project_root)
     if not roots:
         logger.info("no_snippet_roots", project_root=str(project_root))

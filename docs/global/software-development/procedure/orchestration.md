@@ -1,6 +1,5 @@
 ---
-description:
-  Orchestration loop for the next-work state machine and worker session
+description: Orchestration loop for the next-work state machine and worker session
   handling.
 id: software-development/procedure/orchestration
 scope: domain
@@ -9,11 +8,11 @@ type: procedure
 
 # Orchestration — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/procedure/lifecycle-overview.md
+
 ## Goal
-
-- @~/.teleclaude/docs/software-development/procedure/lifecycle-overview
-
-@~/.teleclaude/docs/software-development/procedure/lifecycle-overview.md
 
 Discussion results go in `todos/{slug}/input.md`. Use the preparation state machine to assess and structure.
 

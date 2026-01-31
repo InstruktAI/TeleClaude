@@ -1,5 +1,5 @@
 ---
-id: example/ai-to-ai-delegation
+id: project/example/ai-to-ai-delegation
 type: example
 scope: global
 description: Code example of a Master AI delegating a task to a Worker AI.

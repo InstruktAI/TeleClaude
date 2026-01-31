@@ -9,8 +9,8 @@ type: procedure
 
 ## Goal
 
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docstrings
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docs
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docstrings.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docs.md
 
 Documentation is a distinct lifecycle phase. It ensures the codebase and its inline documentation are aligned before finalization.
 

@@ -1,15 +1,17 @@
 ---
 description: Steps to add a new Telegram command end-to-end.
-id: teleclaude/procedure/add-telegram-command
+id: project/procedure/add-telegram-command
 scope: project
 type: procedure
 ---
 
 # Add Telegram Command — Procedure
 
-## Goal
+## Required reads
 
 - @docs/project/policy/telegram-command-registration.md
+
+## Goal
 
 - Add a new Telegram command end-to-end and wire it to CommandService.
 

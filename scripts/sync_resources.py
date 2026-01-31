@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import subprocess
 import sys
@@ -19,17 +18,25 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from teleclaude.constants import TYPE_SUFFIX as _TYPE_SUFFIX
+from teleclaude.snippet_validation import (
+    expected_snippet_id_for_path,
+    load_domains,
+    validate_inline_ref_format,
+    validate_snippet_id_format,
+)
 
 logger = get_logger(__name__)
 _WARNINGS: list[dict[str, str]] = []
+_LOG_WARNINGS = True
 
 _REQUIRED_READS_HEADER = re.compile(r"^##\s+Required reads\s*$", re.IGNORECASE)
 _SOURCES_HEADER = re.compile(r"^##\s+Sources\s*$", re.IGNORECASE)
+_SEE_ALSO_HEADER = re.compile(r"^##\s+See also\s*$", re.IGNORECASE)
 _HEADER_LINE = re.compile(r"^#{1,6}\s+")
 _REQUIRED_READ_LINE = re.compile(r"^\s*-\s*@(\S+)\s*$")
 _H1_LINE = re.compile(r"^#\s+")
 _H2_LINE = re.compile(r"^##\s+")
-_INLINE_REF_LINE = re.compile(r"^\\s*(?:-\\s*)?@\\S+")
+_INLINE_REF_LINE = re.compile(r"^\s*(?:-\s*)?@\S+")
 _CODE_FENCE_LINE = re.compile(r"^```")
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "snippet_schema.yaml"
@@ -41,9 +48,9 @@ def _teleclaude_root() -> str:
 
 
 def _get_allowed_ref_prefixes() -> tuple[str, str]:
-    """Return allowed reference prefixes with tilde (portable)."""
-    root = _teleclaude_root()
-    return (f"@{root}/docs/", "@docs/")
+    """Return allowed reference prefixes (absolute home + repo-relative)."""
+    abs_root = str(Path.home() / ".teleclaude")
+    return (f"@{abs_root}/docs/", "@docs/")
 
 
 def _is_third_party_snippet(path: Path) -> bool:
@@ -124,12 +131,25 @@ def _resolve_inline_ref(project_root: Path, snippet_path: Path, ref: str) -> Pat
     return (project_root / target).resolve()
 
 
-def _collect_inline_ref_errors(project_root: Path, snippet_path: Path, lines: list[str]) -> list[dict[str, str]]:
+def _collect_inline_ref_errors(
+    project_root: Path, snippet_path: Path, lines: list[str], *, domains: set[str]
+) -> list[dict[str, str]]:
     errors: list[dict[str, str]] = []
     allowed_prefixes = _get_allowed_ref_prefixes()
     for ref in _iter_inline_refs(lines):
         if not ref.startswith(allowed_prefixes):
             errors.append({"code": "snippet_invalid_inline_ref", "path": str(snippet_path), "ref": ref})
+            continue
+        format_error = validate_inline_ref_format(ref, domains=domains)
+        if format_error:
+            errors.append(
+                {
+                    "code": "snippet_inline_ref_format_invalid",
+                    "path": str(snippet_path),
+                    "ref": ref,
+                    "reason": format_error,
+                }
+            )
             continue
         resolved = _resolve_inline_ref(project_root, snippet_path, ref)
         if resolved is None:
@@ -162,6 +182,8 @@ def _validate_third_party_docs(project_root: Path) -> None:
     if not third_party_root.exists():
         return
     for path in sorted(third_party_root.rglob("*.md")):
+        if path.name == "index.md":
+            continue
         try:
             text = path.read_text(encoding="utf-8")
         except Exception as exc:
@@ -170,7 +192,6 @@ def _validate_third_party_docs(project_root: Path) -> None:
         lines = text.splitlines()
         sources = _extract_sources_section(lines)
         if not sources:
-            _warn("third_party_missing_sources", path=str(path))
             continue
         for source in sources:
             if _is_context7_id(source):
@@ -270,7 +291,8 @@ def _warn(code: str, path: str = "", **kwargs: str) -> None:
     payload = {"code": code, "path": path}
     payload.update({k: str(v) for k, v in kwargs.items()})
     _WARNINGS.append(payload)
-    logger.warning(code, **payload)
+    if _LOG_WARNINGS:
+        logger.warning(code, **payload)
 
 
 def _normalize_section_title(title: str) -> str:
@@ -371,7 +393,7 @@ def _normalize_title(
     return "\n".join(lines) + ("\n" if content.endswith("\n") else "")
 
 
-def _normalize_titles(snippets_root: Path, project_root: Path) -> None:
+def _normalize_titles(snippets_root: Path, project_root: Path, *, domains: set[str]) -> None:
     for path in sorted(snippets_root.rglob("*.md")):
         if path.name == "index.yaml":
             continue
@@ -410,10 +432,16 @@ def _normalize_titles(snippets_root: Path, project_root: Path) -> None:
                 except Exception as exc:
                     _warn("title_write_failed", path=str(path), error=str(exc))
                     full_content = text
-        _validate_snippet_format(path, full_content, project_root)
+        _validate_snippet_format(path, full_content, project_root, domains=domains)
 
 
-def _validate_snippet_format(path: Path, content: str, project_root: Path) -> None:
+def _validate_snippet_format(path: Path, content: str, project_root: Path, *, domains: set[str]) -> None:
+    if path.name == "index.md" and "baseline" in path.parts:
+        lines = [line for line in content.splitlines() if line.strip()]
+        for line in lines:
+            if not line.startswith("@"):
+                _warn("snippet_baseline_index_invalid_line", path=str(path), line=line)
+        return
     has_frontmatter = content.lstrip().startswith("---")
     if has_frontmatter:
         try:
@@ -427,6 +455,23 @@ def _validate_snippet_format(path: Path, content: str, project_root: Path) -> No
         meta = {}
         body = content
     lines = body.splitlines()
+
+    expected_id, path_error = expected_snippet_id_for_path(path, project_root=project_root, domains=domains)
+    if path_error:
+        _warn("snippet_invalid_path", path=str(path), reason=path_error)
+
+    parsed_id = None
+    if isinstance(meta.get("id"), str):
+        parsed_id, id_error = validate_snippet_id_format(meta["id"], domains=domains)
+        if id_error:
+            _warn("snippet_invalid_id_format", path=str(path), reason=id_error, snippet_id=meta["id"])
+    if expected_id and parsed_id and parsed_id.value() != expected_id:
+        _warn(
+            "snippet_id_path_mismatch",
+            path=str(path),
+            expected_id=expected_id,
+            snippet_id=parsed_id.value(),
+        )
     if _SCHEMA["global_"].get("require_h1", True):
         first_non_empty = next((line for line in lines if line.strip()), "")
         if not _H1_LINE.match(first_non_empty):
@@ -439,12 +484,17 @@ def _validate_snippet_format(path: Path, content: str, project_root: Path) -> No
 
     required_reads_found = False
     required_reads_header_idx = None
+    required_reads_text_header = False
     sources_found = False
     sources_header_idx = None
     for idx, line in enumerate(lines):
         if _REQUIRED_READS_HEADER.match(line):
             required_reads_found = True
             required_reads_header_idx = idx
+            break
+    for line in lines:
+        if line.strip().lower() == "required reads:":
+            required_reads_text_header = True
             break
     for idx, line in enumerate(lines):
         if _SOURCES_HEADER.match(line):
@@ -454,12 +504,39 @@ def _validate_snippet_format(path: Path, content: str, project_root: Path) -> No
     if _SCHEMA["global_"].get("require_required_reads", True):
         if not required_reads_found:
             _warn("snippet_required_reads_missing", path=str(path))
+        if required_reads_text_header:
+            _warn("snippet_required_reads_text_header", path=str(path))
         if required_reads_found and required_reads_header_idx is not None:
             if not lines[required_reads_header_idx].startswith("## "):
                 _warn("snippet_required_reads_header_level", path=str(path))
             h2_indices = [i for i, line in enumerate(lines) if _H2_LINE.match(line)]
             if h2_indices and h2_indices[0] != required_reads_header_idx:
                 _warn("snippet_required_reads_not_first_h2", path=str(path))
+        in_required_reads = False
+        in_see_also = False
+        in_code_block = False
+        for line in lines:
+            if _CODE_FENCE_LINE.match(line.strip()):
+                in_code_block = not in_code_block
+                continue
+            if in_code_block:
+                continue
+            if _REQUIRED_READS_HEADER.match(line):
+                in_required_reads = True
+                in_see_also = False
+                continue
+            if _SEE_ALSO_HEADER.match(line):
+                in_required_reads = False
+                in_see_also = True
+                continue
+            if _H2_LINE.match(line):
+                in_required_reads = False
+                in_see_also = False
+            if "@" in line:
+                if in_see_also:
+                    _warn("snippet_see_also_inline_ref", path=str(path), line=line.strip())
+                elif not in_required_reads:
+                    _warn("snippet_required_reads_outside_section", path=str(path), line=line.strip())
 
     h2_titles: list[str] = []
     for line in lines:
@@ -475,7 +552,7 @@ def _validate_snippet_format(path: Path, content: str, project_root: Path) -> No
         if not lines[sources_header_idx].startswith("## "):
             _warn("snippet_sources_header_level", path=str(path))
 
-    for error in _collect_inline_ref_errors(project_root, path, lines):
+    for error in _collect_inline_ref_errors(project_root, path, lines, domains=domains):
         _warn(error["code"], **{k: v for k, v in error.items() if k != "code"})
 
     snippet_type = None
@@ -611,15 +688,36 @@ def _write_baseline_index(project_root: Path) -> None:
     baseline_index = baseline_root / "index.md"
     content = "\n".join(
         [
-            "# Baseline Index — Index",
-            "",
-            "## Required reads",
-            "",
             *entries,
             "",
         ]
     )
     baseline_index.write_text(content, encoding="utf-8")
+
+
+def _write_third_party_index(project_root: Path) -> None:
+    third_party_root = project_root / "docs" / "third-party"
+    if not third_party_root.exists():
+        return
+    entries: list[str] = []
+    docs_root = project_root / "docs"
+    for path in sorted(third_party_root.rglob("*.md")):
+        if path.name == "index.md":
+            continue
+        try:
+            rel = path.relative_to(docs_root).as_posix()
+        except ValueError:
+            continue
+        entries.append(f"@docs/{rel}")
+    if not entries:
+        return
+    index_path = third_party_root / "index.md"
+    content = "\n".join([*entries, ""])
+    if index_path.exists():
+        existing = index_path.read_text(encoding="utf-8")
+        if existing == content:
+            return
+    index_path.write_text(content, encoding="utf-8")
 
 
 def _remove_non_baseline_indexes(snippets_root: Path) -> list[str]:
@@ -644,7 +742,8 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
         print("Unexpected baseline frontmatter was found and cleaned.")
     _write_baseline_index(project_root)
     _remove_non_baseline_indexes(snippets_root)
-    _normalize_titles(snippets_root, project_root)
+    domains = load_domains(project_root)
+    _normalize_titles(snippets_root, project_root, domains=domains)
     if not snippets_root.exists():
         return {
             "project_root": str(project_root),
@@ -761,8 +860,10 @@ def _get_project_name(project_root: Path) -> str:
 
 def _detect_cycles(payload: IndexPayload) -> None:
     graph: dict[str, list[str]] = {}
+    id_to_path: dict[str, str] = {}
     for entry in payload.get("snippets", []):
         graph[entry["id"]] = list(entry.get("requires", []))
+        id_to_path[entry["id"]] = entry.get("path", "")
 
     visited: set[str] = set()
     in_stack: set[str] = set()
@@ -772,8 +873,10 @@ def _detect_cycles(payload: IndexPayload) -> None:
         if node in in_stack:
             idx = stack.index(node) if node in stack else 0
             cycle = stack[idx:] + [node]
+            path = id_to_path.get(cycle[0], "")
             _warn(
                 "snippet_circular_reference",
+                path=path,
                 cycle=" -> ".join(cycle),
                 hint="Fix circular references first.",
             )
@@ -909,10 +1012,14 @@ def main() -> None:
         help="Best-effort mode: report warnings but do not exit non-zero.",
     )
     args = parser.parse_args()
+    global _LOG_WARNINGS
+    if args.warn_only:
+        _LOG_WARNINGS = False
 
     project_root = Path(args.project_root).expanduser().resolve()
     _ensure_project_config(project_root)
     _validate_third_party_docs(project_root)
+    _write_third_party_index(project_root)
     roots = _iter_snippet_roots(project_root)
     if not roots:
         logger.info("no_snippet_roots", project_root=str(project_root))
@@ -922,13 +1029,36 @@ def main() -> None:
         written.append(write_index_yaml(project_root, snippets_root))
     for path in written:
         logger.info("index_written", path=str(path))
-        print(str(path))
+        if not args.warn_only:
+            print(str(path))
     warn_only = args.warn_only
     if _WARNINGS:
         print(f"Snippet validation warnings: {len(_WARNINGS)}")
+        grouped: dict[str, list[dict[str, str]]] = {}
         for warning in _WARNINGS:
-            details = " ".join(f"{k}={v}" for k, v in warning.items() if k not in {"code"})
-            print(f"- {warning['code']} {details}".strip())
+            grouped.setdefault(warning["code"], []).append(warning)
+        for code, items in grouped.items():
+            reason_groups: dict[str, list[str]] = {}
+            no_reason: list[str] = []
+            for warning in items:
+                path = warning.get("path", "")
+                if not path:
+                    continue
+                reason = warning.get("reason")
+                if reason:
+                    reason_groups.setdefault(reason, []).append(path)
+                else:
+                    no_reason.append(path)
+            if no_reason:
+                print(f"{code}:")
+                for path in no_reason:
+                    print(f"- {path}")
+            for reason, paths in reason_groups.items():
+                if not paths:
+                    continue
+                print(f"{code}/{reason}:")
+                for path in paths:
+                    print(f"- {path}")
         if not warn_only:
             raise SystemExit(1)
 

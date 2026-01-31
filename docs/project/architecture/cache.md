@@ -1,8 +1,7 @@
 ---
-description:
-  DaemonCache snapshot layer for computers, projects, todos, sessions,
+description: DaemonCache snapshot layer for computers, projects, todos, sessions,
   and agent availability.
-id: teleclaude/architecture/cache
+id: project/architecture/cache
 scope: project
 type: architecture
 ---
@@ -11,17 +10,15 @@ type: architecture
 
 ## Required reads
 
-- @docs/project/concept/resource-models.md
-- @docs/project/standard/cache-refresh-strategy.md
+- @docs/project/architecture/cache-system.md
 
 ## Purpose
 
-- Provide instant, cached reads for API and remote data views.
+Provide instant, cached reads for API and remote data views.
 
 - Serve cached data immediately; schedule refresh when TTL expires.
 - Use per-computer digest/version fields to trigger refresh for projects and todos.
 - Sessions are updated by events rather than TTL polling.
-
 - Cache is read-only and not the source of truth.
 - Stale data can be served to keep APIs responsive.
 

@@ -1,5 +1,5 @@
 ---
-id: teleclaude/policy/daemon-availability
+id: project/policy/daemon-availability
 type: policy
 scope: project
 description: The TeleClaude daemon must stay up; restarts must be brief and verified.
@@ -7,7 +7,7 @@ description: The TeleClaude daemon must stay up; restarts must be brief and veri
 
 # Daemon Availability — Policy
 
-## Rule
+## Rules
 
 - The daemon is a 24/7 service; downtime is not acceptable outside controlled restarts.
 - After any change needing a restart, call `make restart` and observe success, or verify with `make status`.

@@ -1,6 +1,6 @@
 ---
 description: Durable outbox table for agent hook events.
-id: teleclaude/architecture/outbox
+id: project/architecture/outbox
 scope: project
 type: architecture
 ---

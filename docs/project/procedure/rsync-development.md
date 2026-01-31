@@ -1,5 +1,5 @@
 ---
-id: procedure/rsync-development
+id: project/procedure/rsync-development
 type: procedure
 scope: project
 description: High-speed iteration workflow using rsync instead of git push/pull.
@@ -9,7 +9,7 @@ description: High-speed iteration workflow using rsync instead of git push/pull.
 
 ## Goal
 
-- Sync changes to a remote computer quickly during active development.
+Sync changes to a remote computer quickly during active development.
 
 ## Preconditions
 

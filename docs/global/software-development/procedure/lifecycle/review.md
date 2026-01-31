@@ -7,15 +7,15 @@ type: procedure
 
 # Review — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/code-quality.md
+- @~/.teleclaude/docs/software-development/policy/testing.md
+- @~/.teleclaude/docs/software-development/policy/linting-requirements.md
+
 ## Goal
 
 Verify the implementation against requirements and standards, and deliver a binary verdict with structured findings.
-
-Required reads:
-
-- @~/.teleclaude/docs/software-development/policy/code-quality
-- @~/.teleclaude/docs/software-development/policy/testing
-- @~/.teleclaude/docs/software-development/policy/linting-requirements
 
 ## Preconditions
 

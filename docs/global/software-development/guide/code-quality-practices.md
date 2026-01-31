@@ -7,15 +7,21 @@ type: guide
 
 # Code Quality Practices — Guide
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/code-quality.md
+
 ## Goal
 
-- @~/.teleclaude/docs/software-development/policy/code-quality
+Apply code-quality policy consistently in daily work.
 
-- Apply code-quality policy consistently in daily work.
+## Context
 
-## Steps
+The code-quality policy defines what good code looks like. This guide translates those principles into concrete habits: how to structure modules, handle errors, manage state, and reason about concurrency in practice.
 
-- Follow the repository’s configuration and established conventions.
+## Approach
+
+- Follow the repository's configuration and established conventions.
 - Introduce new patterns only when they are required by the intent.
 - Keep one responsibility per module, function, or class.
 - Separate core logic from interfaces and operational concerns.
@@ -24,7 +30,7 @@ type: guide
 - Preserve signature fidelity across all call chains.
 - Use structured models to make illegal states unrepresentable.
 - Assign explicit ownership to state and its lifecycle.
-- Avoid implicit global state or import‑time side effects.
+- Avoid implicit global state or import-time side effects.
 - Pass dependencies explicitly and keep boundaries visible.
 - Fail fast on contract violations with clear diagnostics.
 - Keep recovery logic explicit and minimal.
@@ -35,10 +41,8 @@ type: guide
 - Log boundary events and failures with enough context to diagnose.
 - Prefer clarity over volume; log what changes decisions.
 
-## Outputs
+## Pitfalls
 
-- Code changes that align with repository conventions and explicit contracts.
-
-## Recovery
-
-- If a change violates the policy, refactor or simplify until it meets the baseline.
+- Over-engineering: adding abstractions, configurability, or error handling for scenarios that don't exist yet.
+- Inconsistency: following different conventions in different parts of the same codebase.
+- Implicit contracts: relying on undocumented behavior or import order instead of explicit dependencies.

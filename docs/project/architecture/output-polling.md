@@ -1,6 +1,6 @@
 ---
 description: Mechanism for real-time terminal output capture and streaming.
-id: architecture/output-polling
+id: project/architecture/output-polling
 scope: project
 type: architecture
 ---

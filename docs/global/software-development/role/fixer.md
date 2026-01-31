@@ -1,8 +1,7 @@
 ---
-description:
-  Bug-fixing role. Investigate issues, identify root cause, apply minimal
+description: Bug-fixing role. Investigate issues, identify root cause, apply minimal
   fixes, and verify.
-id: software-development/roles/fixer
+id: software-development/role/fixer
 scope: domain
 type: role
 ---
@@ -11,7 +10,7 @@ type: role
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/principle/failure-modes
+- @~/.teleclaude/docs/software-development/principle/failure-modes.md
 
 ## Purpose
 

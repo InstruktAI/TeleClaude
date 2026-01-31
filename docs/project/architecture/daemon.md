@@ -1,6 +1,6 @@
 ---
 description: Daemon orchestration responsibilities, boundaries, and background services.
-id: teleclaude/architecture/daemon
+id: project/architecture/daemon
 scope: project
 type: architecture
 ---

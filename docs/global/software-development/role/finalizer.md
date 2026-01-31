@@ -1,6 +1,6 @@
 ---
 description: Post-review delivery role. Merge, clean up, and log delivery after approval.
-id: software-development/roles/finalizer
+id: software-development/role/finalizer
 scope: domain
 type: role
 ---
@@ -9,7 +9,7 @@ type: role
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/procedure/lifecycle-overview
+- @~/.teleclaude/docs/software-development/procedure/lifecycle-overview.md
 
 ## Purpose
 

@@ -1,15 +1,11 @@
 ---
 description: AdapterClient centralizes UI adapter lifecycle, delivery, and cross-computer routing.
-id: teleclaude/architecture/adapter-client
+id: project/architecture/adapter-client
 scope: project
 type: architecture
 ---
 
 # Adapter Client — Architecture
-
-## Required reads
-
-- @docs/project/concept/adapter-types.md
 
 ## Purpose
 

@@ -1,8 +1,7 @@
 ---
-description:
-  TypeScript strict typing, discriminated unions, type guards, property
+description: TypeScript strict typing, discriminated unions, type guards, property
   checks. No any, no enum, no default exports.
-id: software-development/guides/typescript/core
+id: software-development/guide/typescript/core
 scope: domain
 type: guide
 ---
@@ -11,7 +10,7 @@ type: guide
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/standards/code-quality.md
+- @~/.teleclaude/docs/software-development/policy/code-quality.md
 
 ## Goal
 
@@ -29,10 +28,10 @@ type: guide
 ```typescript
 // Discriminated union example
 type State =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "success"; data: string }
-  | { status: "error"; error: Error };
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'success'; data: string }
+  | { status: 'error'; error: Error };
 
 // Const assertion example
 const config = {
@@ -52,7 +51,7 @@ const config = {
 
 ```typescript
 // Type guard - TypeScript narrows the type
-if ("data" in response) {
+if ('data' in response) {
   console.log(response.data); // TypeScript knows data exists
 }
 
@@ -70,7 +69,12 @@ if (user.name) {
 - Match existing import patterns (absolute vs relative)
 - Conform to project's type organization
 
-## Steps
+## Context
+
+- Applies to all TypeScript code in the repository.
+- These rules keep types explicit and refactors safe.
+
+## Approach
 
 1. Type every public function and exported value.
 2. Use type guards to narrow before access.
@@ -78,10 +82,7 @@ if (user.name) {
 4. Use Promise utilities intentionally (`all` vs `allSettled`).
 5. Follow project tsconfig and import conventions.
 
-## Outputs
+## Pitfalls
 
-- TypeScript changes that align with repository typing and style constraints.
-
-## Recovery
-
+- Implicit `any` and default exports reduce type safety and refactorability.
 - If type errors appear, narrow types or refactor until the change is type-safe.

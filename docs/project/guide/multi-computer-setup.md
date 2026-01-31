@@ -1,24 +1,25 @@
 ---
-id: guide/multi-computer-setup
+id: project/guide/multi-computer-setup
 type: guide
-scope: global
-description: Step-by-step guide for setting up a distributed TeleClaude network.
+scope: project
+description: Guide for setting up a distributed TeleClaude network.
 ---
 
 # Multi Computer Setup — Guide
 
-## Goal
+## Required reads
 
 - @docs/project/checklist/multi-computer-readiness.md
 
-- Set up a distributed TeleClaude deployment across multiple computers.
+## Goal
 
-## Preconditions
+Set up a distributed TeleClaude deployment across multiple computers.
 
-- Telegram supergroup and bot tokens are available.
-- Redis is available if AI-to-AI collaboration is required.
+## Context
 
-## Steps
+TeleClaude can operate across multiple machines, each running its own daemon with a unique Telegram bot. Computers discover each other via Redis heartbeats and route commands through Redis Streams. Exactly one computer acts as the Telegram master (handles shared group interactions), while all computers can host AI sessions.
+
+## Approach
 
 1. Create a unique Telegram bot per computer and add all bots as admins to a Topics-enabled supergroup.
 2. Install on each machine with `make install && make init`.
@@ -27,10 +28,9 @@ description: Step-by-step guide for setting up a distributed TeleClaude network.
 5. Verify `make status` on all nodes.
 6. Use `teleclaude__list_computers()` to confirm network discovery.
 
-## Outputs
+## Pitfalls
 
-- Multi-computer network is online and visible to AI sessions.
-
-## Recovery
-
-- If discovery fails, re-check bot tokens, Redis connectivity, and `trusted_dirs`.
+- Multiple computers with `telegram.is_master: true` — causes duplicate command handling and message collisions.
+- Reusing bot tokens across computers — Telegram will deliver updates to only one instance.
+- Missing `trusted_dirs` entries — MCP tools won't expose projects on that computer.
+- Redis unreachable — cross-computer commands silently fail; local operations still work.

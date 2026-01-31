@@ -1,5 +1,5 @@
 ---
-id: policy/master-bot-registration
+id: project/policy/master-bot-registration
 type: policy
 scope: global
 description: Policy for Telegram command registration in multi-computer setups.
@@ -7,7 +7,7 @@ description: Policy for Telegram command registration in multi-computer setups.
 
 # Master Bot Registration — Policy
 
-## Rule
+## Rules
 
 - Only one bot (the master) registers Telegram commands in a multi-computer supergroup.
 - Configure `telegram.is_master: true` on the master and `false` on all others.

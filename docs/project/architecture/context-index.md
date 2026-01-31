@@ -1,5 +1,5 @@
 ---
-id: teleclaude/architecture/context-index
+id: project/architecture/context-index
 type: architecture
 scope: project
 description: Snippet index generation that produces docs/index.yaml from snippet frontmatter.

@@ -1,13 +1,13 @@
 ---
 description: Defines which service/daemon commands agents may run, which are conditional, and which are prohibited in this repo.
-id: policy/agent-service-control
+id: project/policy/agent-service-control
 scope: project
 type: policy
 ---
 
 # Agent Service Control — Policy
 
-## Rule
+## Rules
 
 - **Allowed lifecycle commands:** `make restart`, `make status`.
 - **Allowed checks:** `make status`, `instrukt-ai-logs teleclaude --since <window> --grep <str>`.

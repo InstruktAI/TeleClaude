@@ -1,8 +1,7 @@
 ---
-description:
-  Strategic role. Requirements, architecture, use cases. Break down work,
+description: Strategic role. Requirements, architecture, use cases. Break down work,
   create implementation plans, ensure readiness.
-id: software-development/roles/architect
+id: software-development/role/architect
 scope: domain
 type: role
 ---
@@ -11,7 +10,7 @@ type: role
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/policy/definition-of-ready
+- @~/.teleclaude/docs/software-development/policy/definition-of-ready.md
 
 ## Purpose
 

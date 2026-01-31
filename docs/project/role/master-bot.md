@@ -1,6 +1,6 @@
 ---
 description: The role of the master bot in a multi-computer Telegram supergroup.
-id: role/master-bot
+id: project/role/master-bot
 scope: global
 type: role
 ---

@@ -1,6 +1,6 @@
 # Referencing Doc Snippets Policy — Policy
 
-## Rule
+## Rules
 
 - Use inline `@` references for all **required reads**.
 - Global doc references must use `@~/.teleclaude/docs/...`.

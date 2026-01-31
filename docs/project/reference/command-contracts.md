@@ -1,9 +1,8 @@
 ---
-id: teleclaude/reference/command-contracts
+id: project/reference/command-contracts
 type: reference
 scope: project
-description:
-  Command contract highlights for session creation, messaging, and agent
+description: Command contract highlights for session creation, messaging, and agent
   control.
 ---
 

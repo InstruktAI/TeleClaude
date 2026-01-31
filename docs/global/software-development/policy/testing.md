@@ -1,6 +1,5 @@
 ---
-description:
-  Pre-commit quality gates, test principles, linting, isolation, anti-patterns.
+description: Pre-commit quality gates, test principles, linting, isolation, anti-patterns.
   Hooks-first verification.
 id: software-development/policy/testing
 scope: domain
@@ -11,10 +10,10 @@ type: policy
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/policy/code-quality
-- @~/.teleclaude/docs/software-development/policy/linting-requirements
+- @~/.teleclaude/docs/software-development/policy/code-quality.md
+- @~/.teleclaude/docs/software-development/policy/linting-requirements.md
 
-## Rule
+## Rules
 
 1. **Use pre-commit hooks as the primary verification path**
 2. **Do not run full suites by default** - Run targeted tests only when developing, debugging, or when hooks fail
@@ -37,7 +36,7 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 - Use clear, descriptive test names
 - Use fixtures for shared setup; keep them small and composable
 
-@~/.teleclaude/docs/software-development/standards/linting-requirements.md
+@~/.teleclaude/docs/software-development/policy/linting-requirements.md
 
 1. Each test runs independently - no shared state between tests
 2. Tests can run in any order

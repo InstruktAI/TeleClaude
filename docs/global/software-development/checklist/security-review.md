@@ -1,7 +1,5 @@
 ---
-description:
-  Security review checklist for boundary validation, secrets, and access
-  controls.
+description: Security review checklist for boundary validation, secrets, and access controls.
 id: software-development/checklist/security-review
 scope: domain
 type: checklist
@@ -11,28 +9,24 @@ type: checklist
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/policy/security-awareness
+- @~/.teleclaude/docs/software-development/policy/security-awareness.md
 
-## Goal
+## Purpose
 
-- Verify security-critical changes meet baseline policy.
+Verify that security-critical changes meet baseline policy before merging.
 
 ## Preconditions
 
 - Relevant code changes are identified and ready for review.
 
-## Steps
+## Checks
 
 - [ ] Secrets are not committed or logged.
 - [ ] Inputs are validated at system boundaries.
 - [ ] Access control checks exist on sensitive operations.
 - [ ] Error messages avoid leaking sensitive details.
 - [ ] Safe defaults are enforced for permissions and exposure.
-- [ ] High‑risk changes were escalated for review.
-
-## Outputs
-
-- Security review completed or escalation required.
+- [ ] High-risk changes were escalated for review.
 
 ## Recovery
 

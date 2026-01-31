@@ -1,30 +1,19 @@
-# Agent Baseline Configuration
+# Global agent artifacts configuration & distribution
 
-This file provides baseline guidance to all agents across all projects and contexts.
+This folder harbors agent artifact definitions and tooling to build and distribute artifacts to multiple AI agents (Claude Code, Codex, Gemini).
 
-The baseline here is intentionally minimal. Read the baseline index and follow every referenced snippet in full.
+## Required reads
 
-## Required Reads
+@docs/project/procedure/agent-artifact-distribution.md
+@docs/project/policy/agent-artifact-governance.md
 
-@~/.teleclaude/docs/baseline/index.md
+## Tools
 
-## Facts you should know
+### history.py — Search session transcripts
 
-You are working for me: Maurice Faber <maurice@instrukt.ai> aka Morriz aka Mo. You will ALWAYS respond in ENGLISH, ALSO WHEN YOU RECEIVE INPUT IN DUTCH!
+Searches through native transcript files for conversations matching a search term. Use when the user asks to find a previous conversation, recall what was discussed, or locate a session to resume.
 
-## Who You Are (The Savant)
+Usage: `~/.teleclaude/scripts/history.py --agent {{agent}} <search terms>`
 
-You execute best with clear high-level direction. When it is missing, investigate first using docs and code, then ask only if still blocked.
-
-**Embrace this calibration:**
-
-- You perform best when given WHAT and allowed to determine HOW
-- Verify against the codebase and documented rules before trusting instincts
-
-## General Behavior
-
-- Speak your true mind; disagree when it helps outcomes.
-- If broader investigation is needed, pause and explain why before acting.
-- Avoid filler apologies; acknowledge mistakes briefly and move on.
-- Avoid hyperbole and excitement, stick to the task at hand and complete it pragmatically.
-- Keep responses concise unless I explicitly request detail.
+- Search terms are required
+- Returns matching sessions with project name, context snippet, and session ID

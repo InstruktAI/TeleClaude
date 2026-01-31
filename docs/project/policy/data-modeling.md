@@ -1,5 +1,5 @@
 ---
-id: policy/data-modeling
+id: project/policy/data-modeling
 type: policy
 scope: project
 description: Data modeling, validation, and resource representation rules.
@@ -7,7 +7,7 @@ description: Data modeling, validation, and resource representation rules.
 
 # Data Modeling — Policy
 
-## Rule
+## Rules
 
 - Core models are dataclasses in `teleclaude/core/models.py`.
 - Pydantic validation is used only at system boundaries (API, WS, MCP).

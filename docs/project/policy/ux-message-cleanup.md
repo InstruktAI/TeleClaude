@@ -1,5 +1,5 @@
 ---
-id: policy/ux-message-cleanup
+id: project/policy/ux-message-cleanup
 type: policy
 scope: project
 description: Automatic cleanup of Telegram message clutter for a clean UI.
@@ -7,7 +7,7 @@ description: Automatic cleanup of Telegram message clutter for a clean UI.
 
 # Ux Message Cleanup — Policy
 
-## Rule
+## Rules
 
 Track user input and feedback messages for automatic deletion to keep Telegram topics clean and focused on AI output.
 

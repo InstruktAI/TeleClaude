@@ -1,15 +1,14 @@
 ---
-id: policy/single-database
+id: project/policy/single-database
 type: policy
 scope: project
-description:
-  Guaranteed single database file usage for the daemon to prevent data
+description: Guaranteed single database file usage for the daemon to prevent data
   fragmentation.
 ---
 
 # Single Database — Policy
 
-## Rule
+## Rules
 
 - The daemon uses a single SQLite file: `teleclaude.db` at the project root.
 - The database path is `${WORKING_DIR}/teleclaude.db` in `config.yml`.

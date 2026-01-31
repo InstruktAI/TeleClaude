@@ -1,17 +1,19 @@
 ---
 description: Controlled daemon restart with verification and log checks.
-id: teleclaude/procedure/restart-daemon
+id: project/procedure/restart-daemon
 scope: project
 type: procedure
 ---
 
 # Restart Daemon — Procedure
 
-## Goal
+## Required reads
 
 - @docs/project/policy/daemon-availability.md
 
-- Restart the daemon with minimal downtime and verify it is healthy.
+## Goal
+
+Restart the daemon with minimal downtime and verify it is healthy.
 
 ## Preconditions
 

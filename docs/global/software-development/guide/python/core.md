@@ -1,8 +1,7 @@
 ---
-description:
-  Python typing, data handling, error patterns, async, idioms. Modern syntax,
+description: Python typing, data handling, error patterns, async, idioms. Modern syntax,
   explicit types, pure functions.
-id: software-development/guides/python/core
+id: software-development/guide/python/core
 scope: domain
 type: guide
 ---
@@ -11,13 +10,18 @@ type: guide
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/standards/code-quality.md
+- @~/.teleclaude/docs/software-development/policy/code-quality.md
 
 ## Goal
 
 - Apply consistent Python practices for typing, structure, and error handling.
 
-## Steps
+## Context
+
+- This guide applies to all Python code in the repository, including scripts and tooling.
+- Use these practices to keep types explicit and behavior predictable for reviewers and agents.
+
+## Approach
 
 - Type everything. No untyped dicts. No implicit `Any`.
 - Every function has explicit parameter and return types.
@@ -38,10 +42,8 @@ type: guide
 - Keep all imports at module top level.
 - Conform to existing naming and patterns.
 
-## Outputs
+## Pitfalls
 
-- Python changes that conform to project typing and structure practices.
-
-## Recovery
-
-- Refactor or simplify any change that violates the guide before merge.
+- Inconsistent typing (implicit `Any`, mutable defaults) makes refactors unsafe.
+- Catch‑all exceptions or swallowed errors hide failures and break contracts.
+- If a change violates the guide, refactor before merge.

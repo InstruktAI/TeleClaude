@@ -1,6 +1,5 @@
 ---
-description:
-  Baseline quality gates defining when work is truly complete. Functionality,
+description: Baseline quality gates defining when work is truly complete. Functionality,
   quality, testing, security, documentation.
 id: software-development/policy/definition-of-done
 scope: domain
@@ -11,11 +10,11 @@ type: policy
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/standards/code-quality.md
-- @~/.teleclaude/docs/software-development/standards/testing.md
-- @~/.teleclaude/docs/software-development/standards/commits.md
+- @~/.teleclaude/docs/software-development/policy/code-quality.md
+- @~/.teleclaude/docs/software-development/policy/testing.md
+- @~/.teleclaude/docs/software-development/policy/commits.md
 
-## Rule
+## Rules
 
 Work is not done when code is written. Work is done when it meets all quality gates and is ready for production.
 

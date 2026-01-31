@@ -1,4 +1,4 @@
-# Claude Code Agents (Subagents)
+# Claude Code Sub-Agents
 
 ## Overview
 
@@ -10,7 +10,6 @@ command.
 
 Subagent definitions can come from:
 
-- `--agents` CLI JSON (highest priority)
 - `.claude/agents/` in the project
 - `~/.claude/agents/` for personal agents
 - `<plugin>/agents/` for plugin agents

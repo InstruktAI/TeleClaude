@@ -1,8 +1,7 @@
 ---
-description:
-  Evaluative role. Assess code against requirements and standards, parallel
+description: Evaluative role. Assess code against requirements and standards, parallel
   review lanes, structured findings, binary verdict.
-id: software-development/roles/reviewer
+id: software-development/role/reviewer
 scope: domain
 type: role
 ---
@@ -11,7 +10,7 @@ type: role
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/principle/failure-modes
+- @~/.teleclaude/docs/software-development/principle/failure-modes.md
 
 ## Purpose
 

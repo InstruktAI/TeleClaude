@@ -1,6 +1,6 @@
 # Version Control Safety Policy — Policy
 
-## Rule
+## Rules
 
 - Never use `git checkout`, `git restore`, `git reset`, `git clean`, or delete files unless explicitly instructed by the user.
 - If a file has uncommitted changes and you must edit it, ask first.

@@ -1,5 +1,5 @@
 ---
-id: procedure/service-management
+id: project/procedure/service-management
 type: procedure
 scope: project
 description: Standard commands for managing the TeleClaude daemon service.
@@ -9,7 +9,7 @@ description: Standard commands for managing the TeleClaude daemon service.
 
 ## Goal
 
-- Manage daemon lifecycle safely and consistently.
+Manage daemon lifecycle safely and consistently.
 
 ## Preconditions
 

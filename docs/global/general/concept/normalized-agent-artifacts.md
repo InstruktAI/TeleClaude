@@ -7,37 +7,22 @@ description: Normalized agent artifact primitives and how they map to supported 
 
 # Normalized Agent Artifacts — Concept
 
-## Purpose
+## What
 
-Define the single source of truth for agent configuration so we can generate
-compatible files for Claude, Codex, and Gemini without duplicating work.
+Normalized agent artifacts are the shared, source‑of‑truth files we author to describe
+agent behavior, their artifacts such as sub‑agents, commands, skills, and related configuration
+in one consistent format.
+They live in two scopes—global and project—so organization‑wide guidance and project‑specific
+behavior can coexist without overwriting each other. These sources are intentionally
+human‑authored and stable; the agent‑specific outputs are derived from them and treated
+as build artifacts rather than hand‑edited files.
 
-## Inputs/Outputs
+## Why
 
-- **Inputs**: normalized sources in two scopes:
-  - **Global scope**: `TeleClaude/agents/` (global agents, commands, skills).
-  - **Project scope**: `<project>/.agents/` (project agents, commands, skills).
-- **Outputs**: generated CLI files under `dist/claude/*`, `dist/codex/*`, `dist/gemini/*`.
-
-## Invariants
-
-- Global and project scopes are separate; each has its own sources.
-- Normalized sources are the only editable source of truth.
-- Generated outputs are never edited manually.
-- CLI-specific features that do not fit the shared schema live in CLI overlays.
-
-## Primary flows
-
-1. Edit normalized sources in the appropriate scope (global or project).
-2. Run the distribution script to generate runtime outputs.
-3. Use generated outputs in each CLI.
-
-## Failure Modes
-
-- Outputs drift when distribution is skipped.
-- CLI-specific fields leak into normalized sources and break other runtimes.
-
-## See also
-
-- docs/general/reference/agent-artifacts
-- docs/project/procedure/agent-artifact-distribution
+We normalize because we need a repeatable, maintainable way to keep multiple agent
+runtimes aligned without copying the same intent into multiple formats. The problem is
+that each runtime expects different file shapes and supports different features, which
+creates drift and inconsistency when we author them separately. A normalized source
+solves that by keeping the intent in one place and letting us emit only what each runtime
+can actually use. That reduces duplication, prevents accidental divergence, and makes
+changes safer: you update the source once and reliably regenerate every output.

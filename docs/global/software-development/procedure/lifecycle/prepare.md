@@ -1,6 +1,5 @@
 ---
-description:
-  Prepare phase entry point. Decide roadmap focus, assess input readiness,
+description: Prepare phase entry point. Decide roadmap focus, assess input readiness,
   and review requirements/plan.
 id: software-development/procedure/lifecycle/prepare
 scope: domain
@@ -11,9 +10,9 @@ type: procedure
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/input-assessment
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/requirements-analysis
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/implementation-planning
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/input-assessment.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/requirements-analysis.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/implementation-planning.md
 
 ## Goal
 

@@ -1,6 +1,6 @@
 ---
 description: Context selection pipeline that picks relevant docs for MCP get_context.
-id: teleclaude/architecture/context-selection
+id: project/architecture/context-selection
 scope: project
 type: architecture
 ---

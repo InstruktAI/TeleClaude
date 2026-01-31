@@ -1,6 +1,6 @@
 ---
 description: Event-driven read-cache architecture using SQLite snapshots.
-id: architecture/cache-system
+id: project/architecture/cache-system
 scope: project
 type: architecture
 ---
@@ -56,6 +56,10 @@ flowchart TB
 - **Event-Driven Sessions**: Session updates bypass TTL; only domain events update session cache.
 - **Digest Invalidation**: Projects and todos use heartbeat digest changes to override TTL and force refresh.
 - **Warmup Completeness**: Cache fully populated during daemon startup before adapters start.
+
+- **Refresh triggers**: allow refresh only on startup warmup, heartbeat digest change, first subscription interest, or TTL expiry on access.
+- **Refresh constraints**: deny refresh requests outside those triggers, coalesce per peer + data type, enforce cooldowns, and never block API responses.
+- **Emergency refresh**: requires explicit operator approval.
 
 ## Primary flows
 

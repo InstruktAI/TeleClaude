@@ -1,6 +1,6 @@
 ---
 description: The role of an AI agent session in the TeleClaude network.
-id: role/ai-worker
+id: project/role/ai-worker
 scope: global
 type: role
 ---

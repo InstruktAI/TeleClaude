@@ -1,6 +1,5 @@
 ---
-description:
-  Secrets management, input validation, OWASP awareness, secure defaults.
+description: Secrets management, input validation, OWASP awareness, secure defaults.
   Never commit secrets, validate boundaries.
 id: software-development/policy/security-awareness
 scope: domain
@@ -11,9 +10,9 @@ type: policy
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/standards/code-quality.md
+- @~/.teleclaude/docs/software-development/policy/code-quality.md
 
-## Rule
+## Rules
 
 Security is a baseline constraint. Treat inputs as untrusted, validate at boundaries, and protect secrets by default.
 

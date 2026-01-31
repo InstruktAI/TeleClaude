@@ -1,6 +1,5 @@
 ---
-description:
-  Assess input.md readiness using Definition of Ready criteria and decide
+description: Assess input.md readiness using Definition of Ready criteria and decide
   whether to split.
 id: software-development/procedure/lifecycle/prepare/input-assessment
 scope: domain
@@ -11,7 +10,7 @@ type: procedure
 
 ## Goal
 
-- @~/.teleclaude/docs/software-development/policy/definition-of-ready
+- @~/.teleclaude/docs/software-development/policy/definition-of-ready.md
 
 If `todos/{slug}/input.md` exists and `todos/{slug}/state.json` lacks `breakdown.assessed`, perform readiness assessment.
 

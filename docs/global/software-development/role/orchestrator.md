@@ -1,8 +1,7 @@
 ---
-description:
-  Supervisory role. Dispatch workers, monitor progress, drive state machine.
+description: Supervisory role. Dispatch workers, monitor progress, drive state machine.
   Follow next-work output verbatim.
-id: software-development/roles/orchestrator
+id: software-development/role/orchestrator
 scope: domain
 type: role
 ---
@@ -11,7 +10,7 @@ type: role
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/procedure/lifecycle-overview
+- @~/.teleclaude/docs/software-development/procedure/lifecycle-overview.md
 
 ## Purpose
 

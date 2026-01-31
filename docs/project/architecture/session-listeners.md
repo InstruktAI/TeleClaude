@@ -1,29 +1,22 @@
 ---
-description:
-  In-memory listener registry that notifies callers when target sessions
+description: In-memory listener registry that notifies callers when target sessions
   stop.
-id: teleclaude/architecture/session-listeners
+id: project/architecture/session-listeners
 scope: project
 type: architecture
 ---
 
 # Session Listeners — Architecture
 
-## Required reads
-
-- @docs/project/concept/session-types.md
-
 ## Purpose
 
-- Allow AI sessions to wait on other sessions and receive stop notifications.
+Allow AI sessions to wait on other sessions and receive stop notifications.
 
 - Callers register a one-shot listener per target session.
 - Stop events pop listeners and inject a notification into caller tmux sessions.
 - Listeners are cleaned up when callers end or unsubscribe.
-
 - Only one listener per caller-target pair.
 - Listeners are in-memory and not persisted across daemon restarts.
-
 - Daemon restarts drop listeners; callers must re-register.
 
 ## Inputs/Outputs

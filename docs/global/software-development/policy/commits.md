@@ -1,6 +1,5 @@
 ---
-description:
-  Commitizen format, attribution, when to commit. Atomic commits, hooks
+description: Commitizen format, attribution, when to commit. Atomic commits, hooks
   verify quality.
 id: software-development/policy/commits
 scope: domain
@@ -11,9 +10,9 @@ type: policy
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/standards/code-quality.md
+- @~/.teleclaude/docs/software-development/policy/code-quality.md
 
-## Rule
+## Rules
 
 Pre-commit hooks enforce tests, linting, and formatting automatically.
 

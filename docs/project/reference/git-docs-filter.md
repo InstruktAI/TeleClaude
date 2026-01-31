@@ -1,34 +1,36 @@
 ---
-id: reference/git-docs-filter
+id: project/reference/git-docs-filter
 type: reference
 scope: project
-description: Git filter that normalizes doc paths for local use and portable commits.
+description: Git filter that expands tilde paths for agents and normalizes them for portable commits.
 ---
 
 # Git Docs Filter — Reference
 
 ## What it is
 
-The `teleclaude-docs` git filter normalizes doc paths so:
+The `teleclaude-docs` git filter ensures doc `@` references work for both agents and version control:
 
-- Working copies use local absolute paths for convenience.
-- Commits remain portable by storing `@~/.teleclaude/...` paths.
+- **Smudge** (on checkout): expands `@~/.teleclaude` to the local absolute path (e.g., `@/Users/mo/.teleclaude`). Agents resolve absolute paths reliably; tilde paths cause lookup failures.
+- **Clean** (on commit): normalizes local absolute paths back to `@~/.teleclaude` so commits remain portable across machines.
 
-This filter applies to docs and index files via `.gitattributes`.
+Configured via `.gitattributes` on all `docs/**/*.md`, `agents/docs/**/*.md`, and `docs/*/index.yaml` files.
 
 ## Canonical fields
 
 - **Filter name**: `teleclaude-docs`
-- **Smudge**: replace `@~/.teleclaude` with the local absolute path
-- **Clean**: replace local absolute path with `@~/.teleclaude`
-- **Applies to**: docs markdown and docs index YAML
+- **Smudge command**: `sed "s|@~/.teleclaude|@{home}/.teleclaude|g"`
+- **Clean command**: reverse substitution back to `@~/.teleclaude`
+- **Required**: `true` (git will refuse to checkout if filter is missing)
+- **Setup**: `telec init` configures the filter in local git config
 
 ## Allowed values
 
-- None.
+- Only `@~/.teleclaude` paths are stored in commits.
+- Only absolute paths appear in working copies.
 
 ## Known caveats
 
-- If the filter is missing locally, commits may capture absolute paths.
-- If the local home path changes, re-run doc tooling to re-normalize.
-- The filter is configured in the repository git config (not in the docs).
+- If the filter is not configured locally (missing `telec init`), commits may capture absolute paths and a pre-commit hook will reject them.
+- If the local home path changes, re-run `telec init` to reconfigure the filter.
+- The filter lives in local git config, not in `.gitconfig` — each clone needs initialization.

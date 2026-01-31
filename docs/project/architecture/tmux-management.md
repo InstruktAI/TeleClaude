@@ -1,24 +1,19 @@
 ---
 description: Tmux session orchestration, input injection, and per-session temp directories.
-id: teleclaude/architecture/tmux-management
+id: project/architecture/tmux-management
 scope: project
 type: architecture
 ---
 
 # Tmux Management — Architecture
 
-## Required reads
-
-- @docs/project/concept/shell-readiness.md
-
 ## Purpose
 
-- Describe how TeleClaude manages tmux sessions and input injection.
+Describe how TeleClaude manages tmux sessions and input injection.
 
 - Session names are derived from session_id with a stable prefix.
 - Each session gets a dedicated TMPDIR to avoid filesystem watcher issues.
 - tmux commands enforce timeouts to prevent hangs.
-
 - Session tmp directories are created under ~/.teleclaude/tmp/sessions by default.
 - Shell readiness is determined by comparing the tmux command to the user shell.
 

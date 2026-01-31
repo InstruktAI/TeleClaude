@@ -1,8 +1,7 @@
 ---
-description:
-  Local HTTP and WebSocket API that reads from cache and routes writes
+description: Local HTTP and WebSocket API that reads from cache and routes writes
   through the command pipeline.
-id: teleclaude/architecture/api-server
+id: project/architecture/api-server
 scope: project
 type: architecture
 ---
@@ -12,16 +11,15 @@ type: architecture
 ## Required reads
 
 - @docs/project/architecture/cache.md
-- @docs/project/concept/resource-models.md
 - @docs/project/reference/event-types.md
 
 ## Purpose
 
-- Provide a resource-first API for TUI and CLI clients.
+Provide a resource-first API for TUI and CLI clients.
+
 - Read endpoints return cached data immediately (local-only if cache is absent).
 - Write endpoints map to explicit command objects via CommandService.
 - WebSocket subscriptions drive cache interest tracking and refresh pushes.
-
 - API handlers do not fetch remote data directly; cache owns refresh.
 - Session updates are merged from local DB and cached remote summaries.
 

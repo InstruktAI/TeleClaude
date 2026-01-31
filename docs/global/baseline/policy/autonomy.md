@@ -1,6 +1,6 @@
 # Autonomy and Escalation Policy — Policy
 
-## Rule
+## Rules
 
 - Proceed autonomously when the action is required, safe, reversible, and in scope.
 - Escalate only for destructive/irreversible changes, security/access changes, high‑cost actions, out‑of‑scope work, or ambiguous intent.

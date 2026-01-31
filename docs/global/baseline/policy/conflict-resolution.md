@@ -1,6 +1,6 @@
 # Conflict Resolution Rules — Policy
 
-## Rule
+## Rules
 
 - Resolve conflicts by priority: specificity → intent → applicability → recency.
 - Treat documentation as direction; use code to confirm behavior.

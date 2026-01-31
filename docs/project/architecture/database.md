@@ -1,5 +1,5 @@
 ---
-id: teleclaude/architecture/database
+id: project/architecture/database
 type: architecture
 scope: project
 description: SQLite persistence for sessions, hook outbox, UX state, and agent metadata.

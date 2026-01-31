@@ -1,8 +1,7 @@
 ---
-description:
-  Tactical implementation. Follow architecture, write code matching requirements,
+description: Tactical implementation. Follow architecture, write code matching requirements,
   pragmatic autonomy, tests after implementation.
-id: software-development/roles/builder
+id: software-development/role/builder
 scope: domain
 type: role
 ---
@@ -11,7 +10,7 @@ type: role
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/principle/failure-modes
+- @~/.teleclaude/docs/software-development/principle/failure-modes.md
 
 ## Purpose
 

@@ -1,6 +1,5 @@
 ---
-description:
-  Linting and type-checking rules. Required fixes, import rules, and suppression
+description: Linting and type-checking rules. Required fixes, import rules, and suppression
   limits.
 id: software-development/policy/linting-requirements
 scope: domain
@@ -11,9 +10,9 @@ type: policy
 
 ## Required reads
 
-@~/.teleclaude/docs/software-development/standards/code-quality.md
+@~/.teleclaude/docs/software-development/policy/code-quality.md
 
-## Rule
+## Rules
 
 1. **Fix all lint violations before commit**
 2. **Do not suppress lint errors** unless explicitly approved and documented

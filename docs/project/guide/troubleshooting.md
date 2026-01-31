@@ -9,48 +9,13 @@ type: guide
 
 ## Goal
 
-Provide a single, authoritative runbook for observing, diagnosing, and recovering TeleClaude when the stack is unstable.
+Diagnose and recover TeleClaude when the stack is unstable.
 
-## Steps
+## Context
 
-### Scope
+TeleClaude runs as a daemon managed by launchd, with multiple sockets (API, MCP), watchers, and optional Redis transport. Instability typically manifests as API timeouts, connection refused errors, or MCP unresponsiveness. Diagnosis requires correlating three log sources in order: SIGTERM watcher, API socket watcher, and daemon log.
 
-- TeleClaude daemon lifecycle and launchd management
-- API socket availability and TUI/API client behavior
-- MCP socket availability and wrapper connectivity
-- Redis transport connectivity and peer refresh behavior
-- Watcher scripts and monitoring logs
-
-### Quick entry points
-
-- Fast checklist: `docs/project/guide/troubleshooting.md`
-- Restart procedure: use `make restart` and verify with `make status`
-
-### System inventory (installed components)
-
-### Launchd jobs
-
-- System daemon (socket watcher): `/Library/LaunchDaemons/ai.instrukt.teleclaude.socketwatch.plist`
-- User agent (API watcher): `~/Library/LaunchAgents/ai.instrukt.teleclaude.api-watch.plist`
-- Daemon service: configured via `templates/ai.instrukt.teleclaude.daemon.plist`
-
-### Watcher scripts
-
-- API unlink watcher: `~/.teleclaude/scripts/teleclaude-unlink-watch.sh`
-- SIGTERM watcher: `~/.teleclaude/scripts/teleclaude-sigterm-watch.sh`
-
-### Core runtime
-
-- Daemon log: `/var/log/instrukt-ai/teleclaude/teleclaude.log`
-- SQLite DB: `teleclaude.db` (repo root)
-- PID file: `teleclaude.pid` (repo root)
-
-### Sockets
-
-- API socket: `/tmp/teleclaude-api.sock`
-- MCP socket: `/tmp/teleclaude.sock`
-
-### Artifact map (paths you always check)
+Key artifacts:
 
 | Artifact           | Purpose                   | Path                                                         |
 | ------------------ | ------------------------- | ------------------------------------------------------------ |
@@ -60,93 +25,70 @@ Provide a single, authoritative runbook for observing, diagnosing, and recoverin
 | API socket         | Local API availability    | `/tmp/teleclaude-api.sock`                                   |
 | MCP socket         | MCP availability          | `/tmp/teleclaude.sock`                                       |
 | Daemon PID         | Stale PID detection       | `teleclaude.pid`                                             |
-| Redis errors       | Transport failures        | `/var/log/instrukt-ai/teleclaude/teleclaude.log`             |
 
-### Watcher health checks
+Launchd services:
 
-### Confirm watchers are running
+- System daemon (socket watcher): `/Library/LaunchDaemons/ai.instrukt.teleclaude.socketwatch.plist`
+- User agent (API watcher): `~/Library/LaunchAgents/ai.instrukt.teleclaude.api-watch.plist`
+- Daemon service: configured via `templates/ai.instrukt.teleclaude.daemon.plist`
 
-```bash
-ps -axww -o pid,ppid,command | rg "teleclaude-unlink-watch"
-ps -axww -o pid,ppid,command | rg "teleclaude-sigterm-watch"
-```
+## Approach
 
-### Confirm watcher output is updating
+### Failure signatures
 
-```bash
-tail -n 50 ~/.teleclaude/logs/monitoring/teleclaude-api-unlink.log
-tail -n 50 ~/.teleclaude/logs/monitoring/teleclaude-sigterm-watch.log
-```
+**API timeouts in TUI:**
 
-### If watcher output is stale
+- Symptom: `Failed to refresh data: API request timed out`
+- Likely causes: API socket unavailable or rebind in progress, daemon restart, event loop stall.
 
-- Re-bootstrap launchd jobs (see Recovery section).
-- Verify the script paths in the plists match the actual script locations.
+**API connection refused:**
 
-### Failure signatures (symptoms → likely cause)
+- Symptom: `ConnectError: [Errno 61] Connection refused`
+- Likely causes: `/tmp/teleclaude-api.sock` missing, daemon not running.
 
-### API timeouts in TUI
+**Redis errors:**
 
-- **Symptom**: `Failed to refresh data: API request timed out`
-- **Likely causes**:
-  - API socket unavailable or rebind in progress
-  - Daemon restart
-  - Event loop stalls / overload
+- Symptom: `Too many connections`, `Connection closed by server`, SSL close-notify errors.
+- Likely causes: Redis connection pool exhaustion, upstream throttling.
 
-### API connection refused
+**MCP timeouts:**
 
-- **Symptom**: `ConnectError: [Errno 61] Connection refused`
-- **Likely causes**:
-  - `/tmp/teleclaude-api.sock` missing
-  - Daemon not running or restarting
+- Symptom: MCP calls time out, `mcp-wrapper` connection refused.
+- Likely causes: `/tmp/teleclaude.sock` missing, daemon restart or MCP server failure.
 
-### Redis errors
+**Noise to ignore (not incidents):**
 
-- **Symptom**: `Too many connections`, `Connection closed by server`, SSL close-notify errors
-- **Likely causes**:
-  - Redis connection pool exhaustion
-  - Upstream throttling or transport instability
+- Telegram edit retries due to rate limits (429 / RetryAfter).
+- ElevenLabs `401 quota_exceeded`.
 
-### MCP timeouts
+### Diagnostics flow
 
-- **Symptom**: MCP calls time out; `mcp-wrapper` connection refused
-- **Likely causes**:
-  - `/tmp/teleclaude.sock` missing
-  - Daemon restart or MCP server failure
+1. **API timeout observed** — check `/tmp/teleclaude-api.sock`, check `teleclaude-api-unlink.log` for recent UNLINK/BIND, check `teleclaude-sigterm-watch.log` for daemon exits, check `teleclaude.log` for API server start/metrics.
 
-### Noise to ignore (not incidents)
+2. **Redis transport errors** — scan `teleclaude.log` for `redis_transport` errors, check for bursts of `Too many connections`, confirm whether errors align with daemon restarts.
 
-- Telegram edit retries due to rate limits (429 / RetryAfter)
-- ElevenLabs `401 quota_exceeded`
+3. **MCP socket issues** — check `/tmp/teleclaude.sock`, scan `teleclaude.log` for MCP socket health probes.
 
-### Diagnostics flow (decision tree)
+### Correlation routine
 
-1. **API timeout observed**
-   - Check `/tmp/teleclaude-api.sock`
-   - Check `teleclaude-api-unlink.log` for recent UNLINK/BIND
-   - Check `teleclaude-sigterm-watch.log` for daemon exits
-   - Check `teleclaude.log` for API server start/metrics
+When incidents occur, correlate these three sources in order:
 
-2. **Redis transport errors**
-   - Scan `teleclaude.log` for `redis_transport` errors
-   - Check for bursts of `Too many connections`
-   - Check for SSL close-notify errors
-   - Confirm whether errors align with daemon restarts
+1. SIGTERM watcher (`~/.teleclaude/logs/monitoring/teleclaude-sigterm-watch.log`)
+2. API socket watcher (`~/.teleclaude/logs/monitoring/teleclaude-api-unlink.log`)
+3. Daemon log (`/var/log/instrukt-ai/teleclaude/teleclaude.log`)
 
-3. **MCP socket issues**
-   - Check `/tmp/teleclaude.sock`
-   - Scan `teleclaude.log` for MCP socket health probes
+The root cause usually shows up as a daemon exit + socket unlink/bind + client timeout in a short time window.
 
-### Recovery (safe ops)
+### Recovery
 
-### Controlled restart
+Controlled restart:
 
 ```bash
 make restart
 make status
 ```
 
-### Re-bootstrap watcher services
+Re-bootstrap watcher services:
 
 ```bash
 sudo launchctl bootout system/ai.instrukt.teleclaude.socketwatch 2>/dev/null || true
@@ -156,48 +98,31 @@ launchctl bootout gui/$(id -u)/ai.instrukt.teleclaude.api-watch 2>/dev/null || t
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.instrukt.teleclaude.api-watch.plist
 ```
 
-### Stale PID recovery
-
-If `make status` says NOT running but a daemon‑already‑running error appears:
+Stale PID recovery (if `make status` says NOT running but a daemon-already-running error appears):
 
 ```bash
 rm -f teleclaude.pid
 ```
 
-### Correlation routine (root cause)
+### Health checks
 
-When incidents occur, always correlate these three sources in order:
+Confirm watchers are running:
 
-1. **SIGTERM watcher**  
-   `~/.teleclaude/logs/monitoring/teleclaude-sigterm-watch.log`
+```bash
+ps -axww -o pid,ppid,command | rg "teleclaude-unlink-watch"
+ps -axww -o pid,ppid,command | rg "teleclaude-sigterm-watch"
+```
 
-2. **API socket watcher**  
-   `~/.teleclaude/logs/monitoring/teleclaude-api-unlink.log`
+Confirm watcher output is updating:
 
-3. **Daemon log**  
-   `/var/log/instrukt-ai/teleclaude/teleclaude.log`
+```bash
+tail -n 50 ~/.teleclaude/logs/monitoring/teleclaude-api-unlink.log
+tail -n 50 ~/.teleclaude/logs/monitoring/teleclaude-sigterm-watch.log
+```
 
-The root cause usually shows up as a **daemon exit + socket unlink/bind + client timeout** in a short time window.
+## Pitfalls
 
-### Maintenance checklist (lifecycle)
-
-- [ ] Watchers alive and logging
-- [ ] API socket present
-- [ ] MCP socket present
-- [ ] No recurring Redis connection errors
-- [ ] Daemon uptime stable (no rapid restart cycles)
-
-### Guardrails
-
-## Outputs
-
-- Incident stabilized or degraded mode understood.
-- Root cause correlated across logs and watchers.
-
-## Recovery
-
-- Use the Recovery steps above to restore service.
-
-- Restart only via `make restart`
-- Avoid deleting `teleclaude.db` outside worktrees
-- Do not ignore watcher drift; fix paths immediately
+- Restarting without checking logs first — you'll lose the evidence of what went wrong.
+- Deleting `teleclaude.db` outside of worktrees — destroys session history and state.
+- Ignoring watcher drift — if watcher script paths in plists don't match actual locations, monitoring silently stops.
+- Assuming Redis errors are TeleClaude bugs — they're usually upstream throttling or network issues.

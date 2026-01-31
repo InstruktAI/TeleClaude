@@ -15,6 +15,18 @@ from typing import Mapping
 
 import frontmatter
 
+# Allow repo imports for shared validation utilities.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from teleclaude.constants import TAXONOMY_TYPES  # noqa: E402
+from teleclaude.snippet_validation import (  # noqa: E402
+    expected_snippet_id_for_path,
+    load_domains,
+    validate_snippet_id_format,
+)
+
 # Directories to scan for markdown files
 MARKDOWN_DIRS = [
     "docs",  # Main documentation
@@ -91,7 +103,7 @@ def _find_line_number(content: str, block: str) -> int:
         return 0
 
 
-def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object]) -> list[str]:
+def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object], *, domains: set[str]) -> list[str]:
     """Validate frontmatter completeness and correctness.
 
     Returns:
@@ -107,19 +119,7 @@ def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object]) -> li
             errors.append(f"{file_path}: Missing or invalid '{field}' in frontmatter")
 
     # Validate type against taxonomy
-    valid_types = [
-        "policy",
-        "standard",
-        "guide",
-        "procedure",
-        "role",
-        "checklist",
-        "reference",
-        "concept",
-        "architecture",
-        "example",
-        "principle",
-    ]
+    valid_types = list(TAXONOMY_TYPES)
     snippet_type = metadata.get("type")
     if isinstance(snippet_type, str) and snippet_type not in valid_types:
         errors.append(f"{file_path}: Invalid type '{snippet_type}'. Must be one of: {', '.join(valid_types)}")
@@ -129,6 +129,17 @@ def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object]) -> li
     scope = metadata.get("scope")
     if isinstance(scope, str) and scope not in valid_scopes:
         errors.append(f"{file_path}: Invalid scope '{scope}'. Must be one of: {', '.join(valid_scopes)}")
+
+    snippet_id = metadata.get("id")
+    if isinstance(snippet_id, str):
+        parsed_id, id_error = validate_snippet_id_format(snippet_id, domains=domains)
+        if id_error:
+            errors.append(f"{file_path}: Invalid snippet id '{snippet_id}' ({id_error})")
+        expected_id, path_error = expected_snippet_id_for_path(file_path, project_root=REPO_ROOT, domains=domains)
+        if path_error:
+            errors.append(f"{file_path}: Invalid doc path ({path_error})")
+        elif expected_id and parsed_id and parsed_id.value() != expected_id:
+            errors.append(f"{file_path}: Snippet id '{snippet_id}' does not match path '{expected_id}'")
 
     return errors
 
@@ -158,8 +169,9 @@ def main() -> int:
     Returns:
         0 if all validations pass, 1 if errors found
     """
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = REPO_ROOT
     markdown_files = _find_markdown_files(repo_root)
+    domains = load_domains(repo_root)
 
     if not markdown_files:
         return 0
@@ -186,7 +198,7 @@ def main() -> int:
                 # Only validate frontmatter for snippet docs (skip baseline, README, etc.)
                 # Baseline docs don't have frontmatter by design
                 if "baseline" not in str(file_path) and metadata:
-                    frontmatter_errors = _validate_frontmatter(file_path, metadata)
+                    frontmatter_errors = _validate_frontmatter(file_path, metadata, domains=domains)
                     all_errors.extend(frontmatter_errors)
             except Exception as exc:
                 all_errors.append(f"{file_path}: Failed to parse frontmatter: {exc}")

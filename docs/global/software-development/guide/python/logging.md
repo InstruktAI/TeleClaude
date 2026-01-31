@@ -1,8 +1,7 @@
 ---
-description:
-  InstruktAI Python logging standard. Logfmt format, dual-level control,
+description: InstruktAI Python logging standard. Logfmt format, dual-level control,
   structured pairs, tail-friendly output.
-id: software-development/guides/python/logging
+id: software-development/guide/python/logging
 scope: domain
 type: guide
 ---
@@ -11,12 +10,17 @@ type: guide
 
 ## Required reads
 
-@~/.teleclaude/docs/software-development/guides/python/core.md
-@~/.teleclaude/docs/software-development/standards/code-quality.md
+- @~/.teleclaude/docs/software-development/guide/python/core.md
+- @~/.teleclaude/docs/software-development/policy/code-quality.md
 
 ## Goal
 
 Use the shared InstruktAI logger to keep logs readable, tail-friendly, and free of third-party spam.
+
+## Context
+
+- Applies to all Python services and scripts that emit logs.
+- Standardization keeps logs searchable for operators and agents.
 
 - PyPI package: `instruktai-python-logger`
 - Import module: `instrukt_ai_logging`
@@ -90,17 +94,14 @@ Changes target path to: `$INSTRUKT_AI_LOG_ROOT/{app}/{app}.log`
 - Entire payloads in production (use TRACE if needed)
 - Success/failure of every minor operation (aggregate instead)
 
-## Steps
+## Approach
 
 1. Configure logging once at process start with `configure_logging(...)`.
 2. Use structured key/value logging via the shared logger.
 3. Set `{ENV_PREFIX}_LOG_LEVEL` and third-party log filters as needed.
 4. Avoid logging secrets or full payloads.
 
-## Outputs
+## Pitfalls
 
-- Logs are consistent, searchable, and safe for production usage.
-
-## Recovery
-
-- If logs are noisy or missing, adjust log levels and logger prefixes, then re-check output.
+- Noisy logs hide important signals; tune levels and logger filters.
+- Missing logs usually mean loggers are misconfigured or filtered out.

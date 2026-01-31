@@ -1,6 +1,14 @@
 project_root: ~/.teleclaude
 snippets_root: ~/.teleclaude/docs
 snippets:
+- id: general/concept/documentation-snippets
+  description: Modular documentation system for selective context delivery to AI agents.
+  type: concept
+  scope: global
+  path: docs/global/general/concept/documentation-snippets.md
+  requires:
+  - ~/.teleclaude/docs/software-development/policy/testing.md
+  source_project: TeleClaude
 - id: general/concept/normalized-agent-artifacts
   description: Normalized agent artifact primitives and how they map to supported
     CLIs.
@@ -8,7 +16,7 @@ snippets:
   scope: global
   path: docs/global/general/concept/normalized-agent-artifacts.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: general/policy/referencing-doc-snippets
   description: Policy for referencing documentation snippets in AI agent prompts.
@@ -16,7 +24,7 @@ snippets:
   scope: global
   path: docs/global/general/policy/referencing-doc-snippets.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: general/principle/intent-first-documentation
   description: Preserve intent, boundaries, and durable reasoning in documentation.
@@ -24,7 +32,7 @@ snippets:
   scope: global
   path: docs/global/general/principle/intent-first-documentation.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: general/principle/priming
   description: Prime agents with the minimal, role-specific context required to act.
@@ -32,7 +40,7 @@ snippets:
   scope: global
   path: docs/global/general/principle/priming.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: general/procedure/agent-artifact-authoring
   description: Author agent artifacts (agents, skills, commands) that compile into
@@ -41,7 +49,7 @@ snippets:
   scope: global
   path: docs/global/general/procedure/agent-artifact-authoring.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: general/procedure/agents-authoring
   description: Author AGENTS.md files that bootstrap required reads and role context.
@@ -49,7 +57,7 @@ snippets:
   scope: global
   path: docs/global/general/procedure/agents-authoring.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: general/procedure/agents-md-authoring
   description: Author AGENTS.md files that bootstrap required reads and role context.
@@ -57,7 +65,7 @@ snippets:
   scope: global
   path: docs/global/general/procedure/agents-md-authoring.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: general/procedure/snippet-authoring-sequence
   description: Sequence for authoring and validating documentation snippets.
@@ -65,7 +73,7 @@ snippets:
   scope: global
   path: docs/global/general/procedure/snippet-authoring-sequence.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: general/reference/agent-artifacts
   description: Minimal schema used for agent artifacts (commands and skills).
@@ -73,7 +81,7 @@ snippets:
   scope: global
   path: docs/global/general/reference/agent-artifacts.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: general/reference/snippet-authoring-schema
   description: Schema and section requirements for documentation snippets belonging
@@ -82,7 +90,7 @@ snippets:
   scope: global
   path: docs/global/general/reference/snippet-authoring-schema.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/checklist/security-review
   description: Security review checklist for boundary validation, secrets, and access
@@ -91,15 +99,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/checklist/security-review.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
-  source_project: TeleClaude
-- id: software-development/concept/agent-artifact-distribution
-  description: How agent artifacts are built and distributed to tool-specific formats.
-  type: concept
-  scope: domain
-  path: docs/global/software-development/concept/agent-artifact-distribution.md
-  requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/guide/agent-artifacts-quickstart
   description: Quickstart for authoring and distributing agent artifacts.
@@ -107,7 +107,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/guide/agent-artifacts-quickstart.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/guide/code-quality-practices
   description: Practical guidance for applying code-quality policy in day-to-day work.
@@ -115,34 +115,34 @@ snippets:
   scope: domain
   path: docs/global/software-development/guide/code-quality-practices.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
-- id: software-development/guides/python/core
+- id: software-development/guide/python/core
   description: Python typing, data handling, error patterns, async, idioms. Modern
     syntax, explicit types, pure functions.
   type: guide
   scope: domain
-  path: docs/global/software-development/guides/python/core.md
+  path: docs/global/software-development/guide/python/core.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
-- id: software-development/guides/python/logging
+- id: software-development/guide/python/logging
   description: InstruktAI Python logging standard. Logfmt format, dual-level control,
     structured pairs, tail-friendly output.
   type: guide
   scope: domain
-  path: docs/global/software-development/guides/python/logging.md
+  path: docs/global/software-development/guide/python/logging.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
-- id: software-development/guides/typescript/core
+- id: software-development/guide/typescript/core
   description: TypeScript strict typing, discriminated unions, type guards, property
     checks. No any, no enum, no default exports.
   type: guide
   scope: domain
-  path: docs/global/software-development/guides/typescript/core.md
+  path: docs/global/software-development/guide/typescript/core.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/policy/code-quality
   description: Architecture, typing, contracts, state management, error handling.
@@ -151,7 +151,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/policy/code-quality.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/policy/commits
   description: Commitizen format, attribution, when to commit. Atomic commits, hooks
@@ -160,7 +160,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/policy/commits.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/policy/definition-of-done
   description: Baseline quality gates defining when work is truly complete. Functionality,
@@ -169,7 +169,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/policy/definition-of-done.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/policy/definition-of-ready
   description: Definition of Ready gates for work items before they enter implementation.
@@ -178,7 +178,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/policy/definition-of-ready.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/policy/linting-requirements
   description: Linting and type-checking rules. Required fixes, import rules, and
@@ -187,7 +187,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/policy/linting-requirements.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/policy/security-awareness
   description: Secrets management, input validation, OWASP awareness, secure defaults.
@@ -196,7 +196,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/policy/security-awareness.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/policy/testing
   description: Pre-commit quality gates, test principles, linting, isolation, anti-patterns.
@@ -205,7 +205,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/policy/testing.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/principle/architecture-boundary-purity
   description: Preserve domain intent by isolating transport and UI concerns from
@@ -214,7 +214,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/principle/architecture-boundary-purity.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/principle/failure-modes
   description: Five AI pitfalls to guard against. Trust code over comments, verify
@@ -223,7 +223,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/principle/failure-modes.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/bugs-handling
   description: Triage bugs, decide quick fixes vs new todos, and track resolution
@@ -232,7 +232,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/bugs-handling.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle-overview
   description: Deterministic software development lifecycle with prepare, build, review,
@@ -242,7 +242,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle-overview.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/build
   description: Build phase. Execute implementation plan tasks, commit per task, and
@@ -251,7 +251,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/build.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/deferrals
   description: Process deferrals, create new todos, and mark deferrals as processed.
@@ -259,7 +259,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/deferrals.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/documentation/overview
   description: Documentation phase ensuring inline docstrings and docs match the code.
@@ -267,7 +267,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/documentation/overview.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/documentation/sync-docs
   description: Regenerate docs from code and existing documentation using the taxonomy.
@@ -275,7 +275,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/documentation/sync-docs.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/documentation/sync-docstrings
   description: Update inline docstrings and comments to match current code behavior.
@@ -283,7 +283,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/documentation/sync-docstrings.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/finalize
   description: Finalize phase. Verify approval, merge to main, log delivery, and cleanup.
@@ -291,7 +291,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/finalize.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/fix-review
   description: Fix phase. Address review findings with minimal changes and re-verify.
@@ -299,7 +299,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/fix-review.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/maintenance
   description: Maintenance phase for repo-wide upkeep (security, dependencies, infra).
@@ -307,7 +307,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/maintenance.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare
   description: Prepare phase entry point. Decide roadmap focus, assess input readiness,
@@ -316,7 +316,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/prepare.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/implementation-planning
   description: Analyze or draft implementation-plan.md with approach, files, tasks,
@@ -325,7 +325,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/prepare/implementation-planning.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/input-assessment
   description: Assess input.md readiness using Definition of Ready criteria and decide
@@ -334,7 +334,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/prepare/input-assessment.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/requirements-analysis
   description: Analyze or verify requirements.md content for completeness and clarity.
@@ -342,7 +342,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/prepare/requirements-analysis.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/review
   description: Review phase. Verify requirements, code quality, tests, and deliver
@@ -351,7 +351,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/lifecycle/review.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/orchestration
   description: Orchestration loop for the next-work state machine and worker session
@@ -360,7 +360,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/orchestration.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/research/3rd-party-research
   description: 'Research third-party docs: search authoritative sources, fetch, summarize,
@@ -369,7 +369,7 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/research/3rd-party-research.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/python
   description: Scaffold a Python repo with standard tooling, Makefile targets, and
@@ -378,85 +378,108 @@ snippets:
   scope: domain
   path: docs/global/software-development/procedure/scaffolding/python.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/typescript
-  description: Scaffold a TypeScript repo with standard package scripts, tooling,
-    and compiler config.
+  description: Base TypeScript project scaffolding policy.
   type: procedure
   scope: domain
   path: docs/global/software-development/procedure/scaffolding/typescript.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
-- id: software-development/roles/architect
+- id: software-development/procedure/scaffolding/typescript-platforms/next-js
+  description: Next.js TypeScript project scaffolding policy.
+  type: procedure
+  scope: domain
+  path: docs/global/software-development/procedure/scaffolding/typescript-platforms/next-js.md
+  requires:
+  - ~/.teleclaude/docs/software-development/policy/testing.md
+  source_project: TeleClaude
+- id: software-development/procedure/scaffolding/typescript-platforms/node-js
+  description: Node.js/CLI TypeScript project scaffolding policy.
+  type: procedure
+  scope: domain
+  path: docs/global/software-development/procedure/scaffolding/typescript-platforms/node-js.md
+  requires:
+  - ~/.teleclaude/docs/software-development/policy/testing.md
+  source_project: TeleClaude
+- id: software-development/procedure/scaffolding/typescript-platforms/vite
+  description: Vite + React TypeScript project scaffolding policy.
+  type: procedure
+  scope: domain
+  path: docs/global/software-development/procedure/scaffolding/typescript-platforms/vite.md
+  requires:
+  - ~/.teleclaude/docs/software-development/policy/testing.md
+  source_project: TeleClaude
+- id: software-development/role/architect
   description: Strategic role. Requirements, architecture, use cases. Break down work,
     create implementation plans, ensure readiness.
   type: role
   scope: domain
-  path: docs/global/software-development/roles/architect.md
+  path: docs/global/software-development/role/architect.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
-- id: software-development/roles/builder
+- id: software-development/role/builder
   description: Tactical implementation. Follow architecture, write code matching requirements,
     pragmatic autonomy, tests after implementation.
   type: role
   scope: domain
-  path: docs/global/software-development/roles/builder.md
+  path: docs/global/software-development/role/builder.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
-- id: software-development/roles/finalizer
+- id: software-development/role/finalizer
   description: Post-review delivery role. Merge, clean up, and log delivery after
     approval.
   type: role
   scope: domain
-  path: docs/global/software-development/roles/finalizer.md
+  path: docs/global/software-development/role/finalizer.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
-- id: software-development/roles/fixer
+- id: software-development/role/fixer
   description: Bug-fixing role. Investigate issues, identify root cause, apply minimal
     fixes, and verify.
   type: role
   scope: domain
-  path: docs/global/software-development/roles/fixer.md
+  path: docs/global/software-development/role/fixer.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
-- id: software-development/roles/orchestrator
+- id: software-development/role/orchestrator
   description: Supervisory role. Dispatch workers, monitor progress, drive state machine.
     Follow next-work output verbatim.
   type: role
   scope: domain
-  path: docs/global/software-development/roles/orchestrator.md
+  path: docs/global/software-development/role/orchestrator.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
-- id: software-development/roles/researcher
+- id: software-development/role/researcher
   description: Research role. Gather authoritative sources, summarize, and index findings.
   type: role
   scope: domain
-  path: docs/global/software-development/roles/researcher.md
+  path: docs/global/software-development/role/researcher.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
-- id: software-development/roles/reviewer
+- id: software-development/role/reviewer
   description: Evaluative role. Assess code against requirements and standards, parallel
     review lanes, structured findings, binary verdict.
   type: role
   scope: domain
-  path: docs/global/software-development/roles/reviewer.md
+  path: docs/global/software-development/role/reviewer.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude
-- id: software-development/roles/tester
+- id: software-development/role/tester
   description: Test-focused role. Improve test quality, fix failures, enforce testing
     standards and coverage.
   type: role
   scope: domain
-  path: docs/global/software-development/roles/tester.md
+  path: docs/global/software-development/role/tester.md
   requires:
-  - ~/.teleclaude/docs/software-development/policy/testing
+  - ~/.teleclaude/docs/software-development/policy/testing.md
   source_project: TeleClaude

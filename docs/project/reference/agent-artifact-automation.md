@@ -1,5 +1,5 @@
 ---
-id: reference/agent-artifact-automation
+id: project/reference/agent-artifact-automation
 type: reference
 scope: project
 description: Automation that rebuilds and deploys agent artifacts when sources change.

@@ -1,6 +1,5 @@
 ---
-description:
-  Architecture, typing, contracts, state management, error handling. Generic
+description: Architecture, typing, contracts, state management, error handling. Generic
   quality standards for all code.
 id: software-development/policy/code-quality
 scope: domain
@@ -9,13 +8,11 @@ type: policy
 
 # Code Quality — Policy
 
-## Rule
+## Rules
 
-Principle
+Code quality is enforced through explicit contracts, stable boundaries, and verifiable outcomes.
 
-- Code quality is enforced through explicit contracts, stable boundaries, and verifiable outcomes.
-
-Rules
+Rules:
 
 - Honor repository configuration and established conventions.
 - Encode invariants explicitly and validate at boundaries.

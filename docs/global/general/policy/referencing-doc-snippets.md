@@ -7,7 +7,7 @@ description: Policy for referencing documentation snippets in AI agent prompts.
 
 # Referencing Doc Snippets — Policy
 
-## Rule
+## Rules
 
 - Use inline `@` references for all **required reads**.
 - Global doc references must use `@~/.teleclaude/docs/...`.

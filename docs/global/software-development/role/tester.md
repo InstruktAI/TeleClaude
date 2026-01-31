@@ -1,8 +1,7 @@
 ---
-description:
-  Test-focused role. Improve test quality, fix failures, enforce testing
+description: Test-focused role. Improve test quality, fix failures, enforce testing
   standards and coverage.
-id: software-development/roles/tester
+id: software-development/role/tester
 scope: domain
 type: role
 ---
@@ -11,7 +10,7 @@ type: role
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/policy/testing
+- @~/.teleclaude/docs/software-development/policy/testing.md
 
 ## Purpose
 

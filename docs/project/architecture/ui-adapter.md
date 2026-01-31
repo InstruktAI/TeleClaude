@@ -1,8 +1,7 @@
 ---
-description:
-  UI adapters translate human inputs into events and render outputs with
+description: UI adapters translate human inputs into events and render outputs with
   UX rules.
-id: teleclaude/architecture/ui-adapter
+id: project/architecture/ui-adapter
 scope: project
 type: architecture
 ---
@@ -11,7 +10,6 @@ type: architecture
 
 ## Required reads
 
-- @docs/project/concept/adapter-types.md
 - @docs/project/policy/ux-message-cleanup.md
 
 ## Purpose

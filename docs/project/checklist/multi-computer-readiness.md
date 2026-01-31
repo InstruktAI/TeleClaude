@@ -1,5 +1,5 @@
 ---
-id: checklist/multi-computer-readiness
+id: project/checklist/multi-computer-readiness
 type: checklist
 scope: global
 description: Verification steps before enabling multi-computer orchestration.
@@ -11,15 +11,15 @@ description: Verification steps before enabling multi-computer orchestration.
 
 - @docs/project/procedure/ssh-agent-keychain.md
 
-## Goal
+## Purpose
 
-- Verify readiness for multi-computer orchestration.
+Verify that all computers are correctly configured before enabling multi-computer orchestration.
 
 ## Preconditions
 
 - TeleClaude is installed on each computer.
 
-## Steps
+## Checks
 
 - [ ] Unique computer names set in `config.yml`.
 - [ ] Each computer uses a unique bot token.
@@ -28,10 +28,6 @@ description: Verification steps before enabling multi-computer orchestration.
 - [ ] Exactly one computer has `telegram.is_master: true`.
 - [ ] SSH agent/keychain configured and keys unlocked on remotes.
 - [ ] Project paths added to `trusted_dirs` for MCP visibility.
-
-## Outputs
-
-- Multi-computer setup can operate without command collisions.
 
 ## Recovery
 

@@ -1,5 +1,5 @@
 ---
-id: architecture/session-lifecycle
+id: project/architecture/session-lifecycle
 type: architecture
 scope: project
 description: Complete lifecycle of a terminal session from creation to cleanup.

@@ -1,5 +1,5 @@
 ---
-id: procedure/ssh-agent-keychain
+id: project/procedure/ssh-agent-keychain
 type: procedure
 scope: global
 description: Procedure for configuring persistent SSH agent access for the daemon.
@@ -9,7 +9,7 @@ description: Procedure for configuring persistent SSH agent access for the daemo
 
 ## Goal
 
-- Ensure the daemon has persistent SSH agent access for automated git operations.
+Ensure the daemon has persistent SSH agent access for automated git operations.
 
 ## Preconditions
 

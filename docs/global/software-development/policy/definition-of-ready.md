@@ -1,6 +1,5 @@
 ---
-description:
-  Definition of Ready gates for work items before they enter implementation.
+description: Definition of Ready gates for work items before they enter implementation.
   Establishes required inputs, scope clarity, and verification readiness.
 id: software-development/policy/definition-of-ready
 scope: domain
@@ -9,7 +8,7 @@ type: policy
 
 # Definition Of Ready — Policy
 
-## Rule
+## Rules
 
 A todo is **Ready** only when all gates below are satisfied. If any gate fails,
 the item is blocked until it is clarified, split, or deferred.

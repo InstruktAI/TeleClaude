@@ -1,6 +1,6 @@
 ---
 description: Research role. Gather authoritative sources, summarize, and index findings.
-id: software-development/roles/researcher
+id: software-development/role/researcher
 scope: domain
 type: role
 ---

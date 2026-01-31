@@ -1,5 +1,5 @@
 ---
-id: policy/adapter-boundaries
+id: project/policy/adapter-boundaries
 type: policy
 scope: project
 description: Strict separation between adapters and core logic.
@@ -7,7 +7,7 @@ description: Strict separation between adapters and core logic.
 
 # Adapter Boundaries — Policy
 
-## Rule
+## Rules
 
 - Adapters normalize external inputs into explicit command objects before entering core logic.
 - Adapter-specific types and APIs do not enter the core.

@@ -1,5 +1,5 @@
 ---
-id: teleclaude/reference/command-surface
+id: project/reference/command-surface
 type: reference
 scope: project
 description: Command surface contract for TeleClaude client interfaces.
