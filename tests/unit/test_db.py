@@ -610,8 +610,8 @@ class TestVoiceAssignments:
     @pytest.mark.asyncio
     async def test_assign_voice_upsert_overwrites_existing(self, test_db):
         voice_id = "voice-session-1"
-        first_voice = VoiceConfig(service_name="service-a", voice_name="alpha")
-        second_voice = VoiceConfig(service_name="service-b", voice_name="beta")
+        first_voice = VoiceConfig(service_name="service-a", voice="alpha")
+        second_voice = VoiceConfig(service_name="service-b", voice="beta")
 
         await test_db.assign_voice(voice_id, first_voice)
         await test_db.assign_voice(voice_id, second_voice)
@@ -619,4 +619,4 @@ class TestVoiceAssignments:
         assigned = await test_db.get_voice(voice_id)
         assert assigned is not None
         assert assigned.service_name == "service-b"
-        assert assigned.voice_name == "beta"
+        assert assigned.voice == "beta"

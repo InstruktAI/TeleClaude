@@ -124,7 +124,8 @@ async def terminate_session(
     if kill_tmux is None:
         kill_tmux = True
 
-    if kill_tmux:
+    # Headless sessions have no tmux — skip kill to avoid errors.
+    if kill_tmux and session.tmux_session_name:
         try:
             killed = await tmux_bridge.kill_session(session.tmux_session_name)
             if killed:
@@ -163,6 +164,11 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
         if session_age < 10.0:
             logger.debug("Session %s is too young (%.1fs), skipping stale check", session_id[:8], session_age)
             return False
+
+    # Headless sessions have no tmux — they are never "stale" by tmux check;
+    # they get cleaned up by the 72h inactivity sweep instead.
+    if not session.tmux_session_name:
+        return False
 
     exists = await tmux_bridge.session_exists(session.tmux_session_name)
     if exists:

@@ -526,7 +526,7 @@ async def test_run_agent_command_passes_mode_for_new_session(mock_mcp_server):
 
     result = await server.teleclaude__run_agent_command(
         computer="local",
-        command="next-work",
+        command="/next-work",
         args="",
         project="/home/user/project",
         agent="codex",
@@ -543,135 +543,33 @@ async def test_run_agent_command_passes_mode_for_new_session(mock_mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_run_agent_command_ignores_mode_when_session_provided(mock_mcp_server):
-    """Test that run_agent_command ignores thinking_mode when session_id provided."""
+async def test_run_agent_command_rejects_without_slash(mock_mcp_server):
+    """Test that run_agent_command rejects commands without leading /."""
     server = mock_mcp_server
-
-    async def fake_send_message(*_args, **_kwargs):
-        yield "sent"
-
-    server.teleclaude__send_message = fake_send_message
-    server.teleclaude__start_session = AsyncMock()
 
     result = await server.teleclaude__run_agent_command(
         computer="local",
         command="next-work",
-        session_id="existing-session",
-        thinking_mode=ThinkingMode.FAST,
+        project="/home/user/project",
         caller_session_id=CALLER_SESSION_ID,
     )
 
-    assert result["status"] == "sent"
-    server.teleclaude__start_session.assert_not_called()
+    assert result["status"] == "error"
+    assert "must start with '/'" in result["message"]
 
 
 # --- run_agent_command tests ---
 
 
 @pytest.mark.asyncio
-async def test_run_agent_command_normalizes_leading_slash(mock_mcp_server):
-    """Test that run_agent_command strips leading / from command."""
-    server = mock_mcp_server
-    sent: dict[str, str] = {}
-
-    async def fake_send_message(_computer, _session_id, message, _caller_session_id=None):
-        sent["message"] = message
-        yield "sent"
-
-    server.teleclaude__send_message = fake_send_message
-
-    # Call with leading slash - should be normalized
-    result = await server.teleclaude__run_agent_command(
-        computer="local",
-        command="/compact",
-        session_id="test-session-123",
-        caller_session_id=CALLER_SESSION_ID,
-    )
-
-    assert result["status"] == "sent"
-    assert sent["message"] == "/compact"
-
-
-@pytest.mark.asyncio
-async def test_run_agent_command_without_leading_slash(mock_mcp_server):
-    """Test that run_agent_command adds / to command without leading slash."""
-    server = mock_mcp_server
-    sent: dict[str, str] = {}
-
-    async def fake_send_message(_computer, _session_id, message, _caller_session_id=None):
-        sent["message"] = message
-        yield "sent"
-
-    server.teleclaude__send_message = fake_send_message
-
-    result = await server.teleclaude__run_agent_command(
-        computer="local",
-        command="compact",
-        session_id="test-session-123",
-        caller_session_id=CALLER_SESSION_ID,
-    )
-
-    assert result["status"] == "sent"
-    assert sent["message"] == "/compact"
-
-
-@pytest.mark.asyncio
-async def test_run_agent_command_with_args(mock_mcp_server):
-    """Test that run_agent_command appends args to command."""
-    server = mock_mcp_server
-    sent: dict[str, str] = {}
-
-    async def fake_send_message(_computer, _session_id, message, _caller_session_id=None):
-        sent["message"] = message
-        yield "sent"
-
-    server.teleclaude__send_message = fake_send_message
-
-    result = await server.teleclaude__run_agent_command(
-        computer="local",
-        command="next-work",
-        args="my-feature",
-        session_id="test-session-123",
-        caller_session_id=CALLER_SESSION_ID,
-    )
-
-    assert result["status"] == "sent"
-    assert sent["message"] == "/next-work my-feature"
-
-
-@pytest.mark.asyncio
-async def test_run_agent_command_adds_prompts_prefix_for_codex(mock_mcp_server):
-    """Test that codex commands are prefixed with /prompts:."""
-    server = mock_mcp_server
-    sent: dict[str, str] = {}
-
-    async def fake_send_message(_computer, _session_id, message, _caller_session_id=None):
-        sent["message"] = message
-        yield "sent"
-
-    server.teleclaude__send_message = fake_send_message
-
-    result = await server.teleclaude__run_agent_command(
-        computer="local",
-        command="next-work",
-        session_id="test-session-123",
-        agent="codex",
-        caller_session_id=CALLER_SESSION_ID,
-    )
-
-    assert result["status"] == "sent"
-    assert sent["message"] == "/prompts:next-work"
-
-
-@pytest.mark.asyncio
 async def test_run_agent_command_starts_new_session(mock_mcp_server):
-    """Test that run_agent_command starts new session when session_id not provided."""
+    """Test that run_agent_command creates a new session."""
     server = mock_mcp_server
     server.command_service.create_session = AsyncMock(return_value={"session_id": "new-session-789"})
 
     result = await server.teleclaude__run_agent_command(
         computer="local",
-        command="next-work",
+        command="/next-work",
         project="/home/user/project",
         caller_session_id=CALLER_SESSION_ID,
     )
@@ -681,15 +579,13 @@ async def test_run_agent_command_starts_new_session(mock_mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_run_agent_command_requires_project_for_new_session(mock_mcp_server):
-    """Test that run_agent_command returns error if project missing for new session."""
+async def test_run_agent_command_requires_project(mock_mcp_server):
+    """Test that run_agent_command returns error if project missing."""
     server = mock_mcp_server
 
     result = await server.teleclaude__run_agent_command(
         computer="local",
-        command="next-work",
-        session_id=None,
-        project=None,
+        command="/next-work",
         caller_session_id=CALLER_SESSION_ID,
     )
 
@@ -705,14 +601,13 @@ async def test_run_agent_command_with_subfolder(mock_mcp_server):
 
     result = await server.teleclaude__run_agent_command(
         computer="local",
-        command="next-work",
+        command="/next-work",
         project="/home/user/project",
         subfolder="worktrees/feat",
         caller_session_id=CALLER_SESSION_ID,
     )
 
     assert result["status"] == "success"
-    # Metadata check
     call_args = server.command_service.create_session.call_args_list[0]
     cmd = call_args.args[0]
     assert cmd.subdir == "worktrees/feat"
@@ -726,16 +621,55 @@ async def test_run_agent_command_with_agent_type(mock_mcp_server):
 
     await server.teleclaude__run_agent_command(
         computer="local",
-        command="next-work",
+        command="/next-work",
         project="/home/user/project",
         agent="gemini",
         caller_session_id=CALLER_SESSION_ID,
     )
 
-    # Check auto_command on command
     call_args = server.command_service.create_session.call_args
     cmd = call_args.args[0]
     assert "gemini" in cmd.auto_command
+
+
+@pytest.mark.asyncio
+async def test_run_agent_command_adds_prompts_prefix_for_codex(mock_mcp_server):
+    """Test that codex commands are prefixed with /prompts: in auto_command."""
+    server = mock_mcp_server
+    server.command_service.create_session = AsyncMock(return_value={"session_id": "sess-codex"})
+
+    result = await server.teleclaude__run_agent_command(
+        computer="local",
+        command="/next-work",
+        project="/home/user/project",
+        agent="codex",
+        caller_session_id=CALLER_SESSION_ID,
+    )
+
+    assert result["status"] == "success"
+    call_args = server.command_service.create_session.call_args
+    cmd = call_args.args[0]
+    assert "prompts:next-work" in cmd.auto_command
+
+
+@pytest.mark.asyncio
+async def test_run_agent_command_with_args(mock_mcp_server):
+    """Test that run_agent_command appends args to command."""
+    server = mock_mcp_server
+    server.command_service.create_session = AsyncMock(return_value={"session_id": "sess-args"})
+
+    result = await server.teleclaude__run_agent_command(
+        computer="local",
+        command="/next-work",
+        args="my-feature",
+        project="/home/user/project",
+        caller_session_id=CALLER_SESSION_ID,
+    )
+
+    assert result["status"] == "success"
+    call_args = server.command_service.create_session.call_args
+    cmd = call_args.args[0]
+    assert "my-feature" in cmd.title
 
 
 @pytest.mark.asyncio

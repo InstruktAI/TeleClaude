@@ -692,7 +692,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if update_kwargs:
             await db.update_session(session_id, **update_kwargs)
 
-        await self._ensure_output_polling(session)
+        # Headless sessions have no tmux — skip output polling to avoid spawning one.
+        if session.tmux_session_name:
+            await self._ensure_output_polling(session)
 
         if event_type not in AgentHookEvents.ALL:
             logger.debug("Transcript capture event handled", event=event_type, session=session_id[:8])
@@ -1979,7 +1981,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Clean up sessions inactive for 72+ hours."""
         try:
             cutoff_time = datetime.now(timezone.utc) - timedelta(hours=72)
-            sessions = await db.list_sessions(include_closed=True)
+            # Include headless sessions so they get cleaned up after 72h too.
+            sessions = await db.list_sessions(include_closed=True, include_headless=True)
 
             for session in sessions:
                 # Check last_activity timestamp

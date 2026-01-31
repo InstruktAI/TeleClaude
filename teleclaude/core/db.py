@@ -357,6 +357,7 @@ class Db:
         last_input_origin: Optional[str] = None,
         include_closed: bool = False,
         include_initializing: bool = False,
+        include_headless: bool = False,
     ) -> list[Session]:
         """List sessions with optional filters.
 
@@ -364,17 +365,27 @@ class Db:
             computer_name: Filter by computer name
             last_input_origin: Filter by last input origin (telegram, redis, cli)
             include_closed: Include closed sessions when True
+            include_headless: Include headless sessions (standalone, no tmux) when True
 
         Returns:
             List of Session objects
         """
+        from sqlalchemy import or_
         from sqlmodel import select
 
         stmt = select(db_models.Session)
         if not include_closed:
             stmt = stmt.where(db_models.Session.closed_at.is_(None))
+        # Lifecycle filter: by default only "active" sessions are returned.
+        # include_initializing adds non-active statuses; include_headless adds "headless"
+        # (standalone sessions with no tmux, used for TTS/summarization).
         if not include_initializing:
-            stmt = stmt.where(db_models.Session.lifecycle_status == "active")
+            allowed = [db_models.Session.lifecycle_status == "active"]
+            if include_headless:
+                allowed.append(db_models.Session.lifecycle_status == "headless")
+            stmt = stmt.where(or_(*allowed))
+        elif not include_headless:
+            stmt = stmt.where(db_models.Session.lifecycle_status != "headless")
         if computer_name:
             stmt = stmt.where(db_models.Session.computer_name == computer_name)
         if last_input_origin:
@@ -695,6 +706,8 @@ class Db:
         stmt = select(db_models.Session).where(db_models.Session.title.like(f"{pattern}%"))
         if not include_closed:
             stmt = stmt.where(db_models.Session.closed_at.is_(None))
+        # Exclude headless sessions (standalone TTS/summarization, no tmux).
+        stmt = stmt.where(db_models.Session.lifecycle_status != "headless")
         stmt = stmt.order_by(db_models.Session.created_at.desc())
         async with self._session() as db_session:
             result = await db_session.exec(stmt)

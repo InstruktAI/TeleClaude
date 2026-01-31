@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     session_id TEXT PRIMARY KEY,
     computer_name TEXT NOT NULL,
     title TEXT,
-    tmux_session_name TEXT NOT NULL,
+    tmux_session_name TEXT,  -- NULL for headless sessions (standalone TTS/summarization)
     last_input_origin TEXT NOT NULL DEFAULT 'telegram',  -- Most recent input origin (e.g., "telegram", "cli")
     adapter_metadata TEXT,  -- JSON string for platform-specific data
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -31,8 +31,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_feedback_received_at TEXT,
     last_feedback_summary TEXT,  -- LLM-generated summary of last_feedback_received
     working_slug TEXT,  -- Slug of work item this session is working on (from state machine)
-    lifecycle_status TEXT DEFAULT 'active',
-    UNIQUE(computer_name, tmux_session_name)
+    lifecycle_status TEXT DEFAULT 'active'
+    -- No unique constraint on (computer_name, tmux_session_name): tmux enforces
+    -- its own name uniqueness, and headless sessions have NULL tmux_session_name.
 );
 
 -- Voice assignments for TTS (persists across tmux session restarts)

@@ -114,7 +114,7 @@ async def test_next_prepare_autonomous_dispatch():
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
         assert "teleclaude__run_agent_command" in result
         assert f'args="{slug}"' in result
-        assert 'command="next-prepare"' in result
+        assert 'command="/next-prepare"' in result
 
 
 @pytest.mark.asyncio
@@ -309,7 +309,7 @@ def test_format_tool_call_claude_no_prefix():
         subfolder="trees/test-slug",
         next_call="teleclaude__next_work",
     )
-    assert 'command="next-build"' in result
+    assert 'command="/next-build"' in result
     assert "/prompts:" not in result
     assert "execution script" in result
     assert "do not re-read" in result
@@ -326,7 +326,7 @@ def test_format_tool_call_gemini_no_prefix():
         subfolder="trees/test-slug",
         next_call="teleclaude__next_work",
     )
-    assert 'command="next-review"' in result
+    assert 'command="/next-review"' in result
     assert "/prompts:" not in result
 
 

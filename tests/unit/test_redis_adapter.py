@@ -42,7 +42,7 @@ async def test_discover_peers_parses_heartbeat_data():
             }
         ).encode("utf-8")
     )
-    adapter.redis = mock_redis
+    adapter._get_redis = AsyncMock(return_value=mock_redis)
 
     # Mock send_request to return a message ID
     adapter.send_request = AsyncMock(return_value="msg-123-request-id")
@@ -117,7 +117,8 @@ async def test_startup_populates_initial_cache():
     adapter = RedisTransport(mock_client)
     adapter._running = True
 
-    adapter._connect_with_backoff = AsyncMock()
+    adapter._schedule_reconnect = MagicMock()
+    adapter._await_redis_ready = AsyncMock()
     adapter._populate_initial_cache = AsyncMock()
 
     def spawn(coro, name=None):  # noqa: ARG001
@@ -145,7 +146,7 @@ async def test_discover_peers_handles_invalid_json():
     mock_redis = AsyncMock()
     mock_redis.scan = AsyncMock(return_value=(0, [b"computer:RemotePC:heartbeat"]))
     mock_redis.get = AsyncMock(return_value=b"not valid json {{{")
-    adapter.redis = mock_redis
+    adapter._get_redis = AsyncMock(return_value=mock_redis)
 
     # Should not crash, just return empty list
     peers = await adapter.discover_peers()
@@ -200,7 +201,7 @@ async def test_discover_peers_skips_self():
             }
         ).encode("utf-8")
     )
-    adapter.redis = mock_redis
+    adapter._get_redis = AsyncMock(return_value=mock_redis)
 
     # Should skip self
     peers = await adapter.discover_peers()
@@ -231,7 +232,7 @@ async def test_heartbeat_includes_required_fields():
         return True
 
     mock_redis.setex = capture_setex
-    adapter.redis = mock_redis
+    adapter._get_redis = AsyncMock(return_value=mock_redis)
 
     projects = [ProjectInfo(name="Alpha", path="/tmp/alpha")]
     adapter.cache.apply_projects_snapshot("TestPC", projects)
@@ -274,7 +275,7 @@ async def test_send_message_adds_to_stream():
 
     mock_redis = AsyncMock()
     mock_redis.xadd = capture_xadd
-    adapter.redis = mock_redis
+    adapter._get_redis = AsyncMock(return_value=mock_redis)
 
     # Create test session with proper adapter_metadata
     session = Session(
@@ -309,7 +310,7 @@ async def test_connection_error_handling():
     # Mock Redis to raise connection error
     mock_redis = AsyncMock()
     mock_redis.scan = AsyncMock(side_effect=ConnectionError("Connection refused"))
-    adapter.redis = mock_redis
+    adapter._get_redis = AsyncMock(return_value=mock_redis)
 
     # Should handle error gracefully and return empty list
     peers = await adapter.discover_peers()

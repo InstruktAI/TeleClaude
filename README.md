@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-331%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-852%20passed-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen.svg)](coverage/html/index.html)
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Type Checking](https://img.shields.io/badge/type%20checking-mypy-blue.svg)](http://mypy-lang.org/)
@@ -25,6 +25,7 @@ TeleClaude is a terminal and agent orchestration layer. It doesn’t run its own
 - 📋 **Organized with Topics** - Each session gets its own Telegram topic for clean organization
 - 🔄 **Live output streaming** - See command output in real-time with smart editing (dual-mode: human vs AI)
 - 🎤 **Voice input** - Speak commands, auto-transcribed with Whisper
+- 🔊 **Text-to-speech** - Audible session events with multi-backend fallback (ElevenLabs, OpenAI, macOS, pyttsx3, Qwen3)
 - 📎 **File uploads** - Send documents and photos directly to Agents for analysis
 
 ## Quick Start
@@ -394,6 +395,45 @@ TeleClaude includes a **Model Context Protocol (MCP) server** that enables Agent
 
 **For detailed setup instructions, see [docs/multi-computer-setup.md](docs/multi-computer-setup.md)**
 
+### Text-to-Speech (TTS)
+
+TeleClaude can speak session events (session start, agent stop) using multiple TTS backends with automatic fallback.
+
+**Supported backends:**
+
+| Backend    | Platform              | Requires                |
+| ---------- | --------------------- | ----------------------- |
+| ElevenLabs | All                   | `ELEVENLABS_API_KEY`    |
+| OpenAI     | All                   | `OPENAI_API_KEY`        |
+| macOS Say  | macOS                 | Built-in                |
+| pyttsx3    | All                   | Built-in (fallback)     |
+| Qwen3      | macOS (Apple Silicon) | `pip install mlx-audio` |
+
+Configure in `config.yml`:
+
+```yaml
+tts:
+  enabled: true
+  service_priority: [elevenlabs, openai, macos, pyttsx3]
+  events:
+    session_start:
+      enabled: true
+    agent_stop:
+      enabled: true
+  services:
+    elevenlabs:
+      enabled: true
+      voices:
+        - name: 'Rachel'
+          voice_id: 'your-voice-id'
+    openai:
+      enabled: true
+      voices:
+        - name: 'nova'
+```
+
+Each session gets a unique voice assignment that persists for its lifetime. If the primary service fails, TeleClaude falls back through the priority chain and promotes the working service.
+
 ## Architecture
 
 ```
@@ -514,9 +554,9 @@ make install      # Install dependencies
 make init         # Run installation wizard (or ARGS=-y for unattended)
 make format       # Format code
 make lint         # Run linting checks
+make test         # Run all tests (unit + integration)
 make test-unit    # Run unit tests
 make test-e2e     # Run integration tests
-make test-all     # Run all tests
 make dev          # Run daemon in foreground
 make clean        # Clean generated files
 make status       # Check daemon status
@@ -554,6 +594,7 @@ See developer documentation:
   - ✅ Concurrent session support (15+ tested)
   - ✅ Multi-hop communication (Comp1 → Comp2 → Comp3)
 - ✅ Voice input with Whisper transcription
+- ✅ Text-to-speech with multi-backend fallback and per-session voice assignment
 - ✅ File upload handling via MCP (send files to Telegram from daemon)
 
 **Planned:**

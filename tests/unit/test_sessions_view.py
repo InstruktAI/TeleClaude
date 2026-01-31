@@ -23,12 +23,26 @@ from teleclaude.cli.tui.views.sessions import SessionsView
 
 
 @dataclass
+class _DummyPaneState:
+    sticky_pane_ids: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.sticky_pane_ids is None:
+            self.sticky_pane_ids = []
+
+
+@dataclass
 class DummyPaneManager:
     """Capture toggle_session arguments without tmux interaction."""
 
     last_args: tuple[object, ...] | None = None
     is_available: bool = True
     apply_called: bool = False
+    state: _DummyPaneState | None = None
+
+    def __post_init__(self) -> None:
+        if self.state is None:
+            self.state = _DummyPaneState()
 
     def toggle_session(self, *args: object) -> None:
         """Record arguments from toggle_session."""

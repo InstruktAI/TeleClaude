@@ -166,6 +166,7 @@ async def test_enrich_with_summary_dedupes_transcript() -> None:
 
     with (
         patch("teleclaude.daemon.Path.stat", return_value=fake_stat),
+        patch("teleclaude.daemon.extract_last_agent_message", return_value="raw output"),
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_sum,
         patch("teleclaude.daemon.db.update_session", new_callable=AsyncMock) as mock_update,
         patch("teleclaude.daemon.AgentName.from_str", return_value=MagicMock()),
@@ -205,6 +206,7 @@ async def test_enrich_with_summary_dedupes_native_session() -> None:
 
     with (
         patch("teleclaude.daemon.Path.stat", side_effect=[first_stat, second_stat]),
+        patch("teleclaude.daemon.extract_last_agent_message", return_value="raw output"),
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_sum,
         patch("teleclaude.daemon.db.update_session", new_callable=AsyncMock) as mock_update,
         patch("teleclaude.daemon.AgentName.from_str", return_value=MagicMock()),
@@ -629,6 +631,7 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
 
     with (
         patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.extract_last_agent_message", return_value="raw output"),
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
         patch("teleclaude.daemon.Path.stat", return_value=MagicMock(st_size=100, st_mtime_ns=1000)),
     ):
@@ -673,6 +676,7 @@ async def test_process_agent_stop_sets_native_session_id_from_payload(tmp_path):
 
     with (
         patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.extract_last_agent_message", return_value="raw output"),
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
         patch("teleclaude.daemon.Path.stat", return_value=MagicMock(st_size=100, st_mtime_ns=1000)),
     ):
@@ -730,6 +734,7 @@ async def test_process_agent_stop_sets_active_agent_from_payload(tmp_path):
 
     with (
         patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.extract_last_agent_message", return_value="raw output"),
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
         patch("teleclaude.daemon.Path.stat", return_value=MagicMock(st_size=100, st_mtime_ns=1000)),
     ):
@@ -829,6 +834,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
 
     with (
         patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.extract_last_agent_message", return_value="raw output"),
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
         patch("teleclaude.daemon.Path.stat", return_value=MagicMock(st_size=100, st_mtime_ns=1000)),
     ):
@@ -872,7 +878,7 @@ async def test_cleanup_terminates_sessions_inactive_72h():
         # Execute cleanup
         await daemon._cleanup_inactive_sessions()
 
-        mock_db.list_sessions.assert_awaited_once_with(include_closed=True)
+        mock_db.list_sessions.assert_awaited_once_with(include_closed=True, include_headless=True)
         terminate_session.assert_called_once_with(
             "inactive-123",
             daemon.client,
@@ -969,7 +975,7 @@ async def test_ensure_tmux_session_skips_when_exists():
 
             await daemon._cleanup_inactive_sessions()
 
-            mock_db.list_sessions.assert_awaited_once_with(include_closed=True)
+            mock_db.list_sessions.assert_awaited_once_with(include_closed=True, include_headless=True)
             terminate_session.assert_not_called()
 
 

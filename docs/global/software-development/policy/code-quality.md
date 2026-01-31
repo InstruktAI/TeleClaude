@@ -25,10 +25,6 @@ Scope
 
 - Applies to all code changes and design decisions.
 
-See also
-
-- @~/.teleclaude/docs/software-development/guide/code-quality-practices.md
-
 - Prefer simple, readable implementations over cleverness.
 - Require tests or explicit justification for untested changes.
 - Avoid hidden side effects; document mutation and I/O explicitly.

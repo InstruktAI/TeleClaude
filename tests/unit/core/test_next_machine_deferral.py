@@ -104,7 +104,7 @@ async def test_next_work_dispatches_defer():
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
-        assert 'command="next-defer"' in result
+        assert 'command="/next-defer"' in result
         assert f'subfolder="trees/{slug}"' in result
 
 
@@ -148,4 +148,4 @@ async def test_next_work_skips_defer_if_processed():
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
         # Should go to finalize
-        assert 'command="next-finalize"' in result
+        assert 'command="/next-finalize"' in result

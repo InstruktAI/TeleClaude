@@ -31,7 +31,8 @@ erDiagram
         string status
         string agent
         string computer
-        string tmux_session_name
+        string tmux_session_name "nullable, NULL for headless"
+        string lifecycle_status "active, headless, closing, closed"
         timestamp created_at
         timestamp closed_at
     }

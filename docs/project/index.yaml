@@ -117,6 +117,13 @@ snippets:
   scope: project
   path: docs/project/architecture/tmux-management.md
   source_project: TeleClaude
+- id: project/architecture/tts-system
+  description: Text-to-speech system with multi-backend fallback, per-session voice
+    assignment, and file-locked sequential playback.
+  type: architecture
+  scope: project
+  path: docs/project/architecture/tts-system.md
+  source_project: TeleClaude
 - id: project/architecture/tui-state-layout
   description: State-driven layout model for the Telec TUI sessions and preparation
     views.

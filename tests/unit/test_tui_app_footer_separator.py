@@ -32,6 +32,9 @@ class _FakeScreen:
     def addstr(self, row: int, col: int, text: str, attr: int | None = None) -> None:
         self.calls.append((row, col, text, attr))
 
+    def move(self, _y: int, _x: int) -> None:
+        return None
+
     def refresh(self) -> None:
         return None
 
@@ -50,7 +53,7 @@ def test_footer_separator_uses_tab_line_attr(monkeypatch) -> None:
     app._render(screen)
 
     separator_row = 20 - 4
-    matches = [call for call in screen.calls if call[0] == separator_row and call[2] == "─" * 40]
+    matches = [call for call in screen.calls if call[0] == separator_row and call[2] == "─" * 39]
 
     assert matches, "Separator line not rendered"
     assert matches[0][3] == sentinel_attr

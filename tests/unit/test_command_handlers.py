@@ -145,6 +145,7 @@ async def test_handle_create_session_does_not_send_welcome(mock_initialized_db, 
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
             patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
+            patch.object(command_handlers, "get_random_voice", new_callable=AsyncMock, return_value=None),
         ):
             mock_config.computer.name = "TestComputer"
             mock_config.computer.default_working_dir = tmpdir
@@ -172,6 +173,7 @@ async def test_create_session_inherits_parent_origin(mock_initialized_db):
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
             patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
+            patch.object(command_handlers, "get_random_voice", new_callable=AsyncMock, return_value=None),
         ):
             mock_config.computer.name = "TestComputer"
             mock_config.computer.default_working_dir = tmpdir
@@ -223,6 +225,7 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
             patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
+            patch.object(command_handlers, "get_random_voice", new_callable=AsyncMock, return_value=None),
         ):
             mock_config.computer.name = "TestComputer"
             mock_config.computer.default_working_dir = tmpdir

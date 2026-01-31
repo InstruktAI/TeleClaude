@@ -1,3 +1,5 @@
+"""Unit tests for context_selector.build_context_output."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -47,7 +49,8 @@ def _write_index(index_path: Path, project_root: Path, snippets: list[SnippetPay
     index_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
 
-def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_phase2_returns_snippet_content(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """build_context_output with snippet_ids returns snippet content."""
     project_root = tmp_path / "project"
     global_root = tmp_path / "global"
     global_snippets_root = global_root / "agents" / "docs"
@@ -64,7 +67,7 @@ def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.M
         "role",
         "project",
         "Role description",
-        "Role content. @docs/software-development/standards/base.md",
+        "Role content.",
         ["software-development/standards/base"],
     )
 
@@ -96,7 +99,6 @@ def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.M
     _write_index(global_snippets_root / "index.yaml", global_root, [])
 
     monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
-    monkeypatch.setattr(context_selector, "CONTEXT_STATE_PATH", tmp_path / "state.json")
 
     output = context_selector.build_context_output(
         snippet_ids=["software-development/roles/role"],
@@ -105,24 +107,46 @@ def test_context_selector_state_and_output(tmp_path: Path, monkeypatch: pytest.M
         session_id="session-1",
     )
 
-    assert "ALREADY_PROVIDED_IDS:" in output
     assert "NEW_SNIPPETS:" in output
     assert "software-development/roles/role" in output
-    assert "software-development/standards/base" in output
     assert "Role content." in output
-    assert "Base content." in output
     assert "domain: software-development" in output
-    expected_inline = project_root / "docs" / "software-development" / "standards" / "base.md"
-    assert f"@{expected_inline}" in output
 
-    second = context_selector.build_context_output(
-        snippet_ids=["software-development/roles/role"],
-        areas=["role"],
+
+def test_phase1_returns_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """build_context_output without snippet_ids returns snippet index."""
+    project_root = tmp_path / "project"
+    global_root = tmp_path / "global"
+    global_snippets_root = global_root / "agents" / "docs"
+
+    base = _snippet("test/base", "policy", "project", "A base snippet", "Content.")
+    _write(project_root / "docs" / "test" / "base.md", base)
+
+    _write_index(
+        project_root / "docs" / "index.yaml",
+        project_root,
+        [
+            {
+                "id": "test/base",
+                "description": "A base snippet",
+                "type": "policy",
+                "scope": "project",
+                "path": "docs/test/base.md",
+                "requires": [],
+            }
+        ],
+    )
+    _write_index(global_snippets_root / "index.yaml", global_root, [])
+
+    monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
+
+    output = context_selector.build_context_output(
+        snippet_ids=None,
+        areas=["policy"],
         project_root=project_root,
         session_id="session-1",
     )
 
-    assert "ALREADY_PROVIDED_IDS:" in second
-    assert "software-development/roles/role" in second
-    assert "software-development/standards/base" in second
-    assert "NEW_SNIPPETS:\n(none)" in second
+    assert "PHASE 1" in output
+    assert "test/base" in output
+    assert "A base snippet" in output

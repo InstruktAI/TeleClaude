@@ -498,7 +498,7 @@ async def test_heartbeat_populates_cache():
             }
         ).encode("utf-8")
     )
-    adapter.redis = mock_redis
+    adapter._get_redis = AsyncMock(return_value=mock_redis)
 
     # Execute
     await adapter._get_interested_computers("sessions")

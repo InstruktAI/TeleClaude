@@ -8,7 +8,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -16,12 +15,12 @@ class Session(SQLModel, table=True):
     """sessions table."""
 
     __tablename__ = "sessions"
-    __table_args__ = (UniqueConstraint("computer_name", "tmux_session_name"), {"extend_existing": True})
+    __table_args__ = {"extend_existing": True}
 
     session_id: str = Field(primary_key=True)
     computer_name: str
     title: Optional[str] = None
-    tmux_session_name: str
+    tmux_session_name: Optional[str] = None
     last_input_origin: str = "telegram"
     adapter_metadata: Optional[str] = None
     created_at: Optional[datetime] = None

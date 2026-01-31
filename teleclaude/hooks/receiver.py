@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Protocol, cast
@@ -205,6 +206,72 @@ def _get_teleclaude_session_id() -> str | None:
     return session_id or None
 
 
+def _create_headless_session(
+    agent: str,
+    native_session_id: str | None,
+    native_log_file: str | None,
+) -> str:
+    """Create a headless session row for standalone agent usage (no TeleClaude context).
+
+    Headless sessions have no tmux, no adapter metadata, and no Telegram channel.
+    They exist solely to anchor voice assignment and enable summarization and TTS.
+    """
+    db_path = config.database.path
+    session_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    from sqlalchemy import create_engine
+    from sqlalchemy import text as sa_text
+    from sqlmodel import Session as SqlSession
+
+    engine = create_engine("sqlite:///" + str(db_path))
+    with SqlSession(engine) as session:
+        session.exec(sa_text("PRAGMA journal_mode = WAL"))
+        session.exec(sa_text("PRAGMA busy_timeout = 5000"))
+        session.exec(
+            sa_text(
+                "INSERT INTO sessions "
+                "(session_id, computer_name, title, tmux_session_name, "
+                "last_input_origin, lifecycle_status, active_agent, "
+                "native_session_id, native_log_file, created_at, last_activity) "
+                "VALUES (:sid, :computer, :title, :tmux, :origin, :status, :agent, "
+                ":native_sid, :native_log, :now, :now)"
+            ),
+            params={
+                "sid": session_id,
+                "computer": config.computer.name,
+                "title": "Standalone",
+                "tmux": None,
+                "origin": "standalone",
+                "status": "headless",
+                "agent": agent,
+                "native_sid": native_session_id,
+                "native_log": native_log_file,
+                "now": now,
+            },
+        )
+        session.commit()
+
+    logger.info(
+        "Created headless session",
+        session_id=session_id[:8],
+        agent=agent,
+        native_session_id=(native_session_id or "")[:8],
+    )
+    return session_id
+
+
+def _persist_teleclaude_session_id(session_id: str) -> None:
+    """Write TC session ID to TMPDIR so subsequent hooks from the same agent session reuse it."""
+    tmpdir = os.getenv("TMPDIR")
+    if not tmpdir:
+        return
+    try:
+        Path(tmpdir, "teleclaude_session_id").write_text(session_id, encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Failed to persist teleclaude_session_id: %s", exc)
+
+
 class NormalizeFn(Protocol):
     def __call__(self, event_type: str, data: Mapping[str, Any]) -> NormalizedHookPayload: ...
 
@@ -261,8 +328,16 @@ def main() -> None:
 
     teleclaude_session_id = _get_teleclaude_session_id()
     if not teleclaude_session_id:
-        # No TeleClaude session found - this is valid for standalone sessions
-        sys.exit(0)
+        # No TeleClaude session — create a headless session for standalone TTS/summarization.
+        # Requires a native session ID to anchor the session row.
+        if not raw_native_session_id:
+            sys.exit(0)
+        teleclaude_session_id = _create_headless_session(
+            agent=args.agent,
+            native_session_id=raw_native_session_id,
+            native_log_file=raw_native_log_file,
+        )
+        _persist_teleclaude_session_id(teleclaude_session_id)
 
     native_log_file = raw_native_log_file or cast(str | None, raw_data.get("transcript_path"))
     native_session_id = raw_native_session_id or cast(str | None, raw_data.get("session_id"))

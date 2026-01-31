@@ -362,8 +362,9 @@ class TestRateLimitHandling:
 
         result = await telegram_adapter.edit_message(mock_session, "789", "updated text")
 
-        assert result is False
-        # Should attempt 3 times (initial + 2 retries)
+        # Rate-limited edits return True (to preserve output_message_id for retry on next update)
+        assert result is True
+        # Should attempt 3 times (initial + 2 retries via @command_retry)
         assert mock_bot.edit_message_text.call_count == 3
 
 

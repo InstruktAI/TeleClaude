@@ -19,6 +19,12 @@ type: policy
 2. **Do not run full suites by default** - Run targeted tests only when developing, debugging, or when hooks fail
 3. Never commit code with failing hooks, lint violations, or type errors
 
+### Running Tests
+
+- `make test` — run the full test suite (unit + integration)
+- `make test-unit` — run unit tests only
+- `make test-e2e` — run integration tests only
+
 ### Targeted Tests Only (Default)
 
 Run the smallest test scope that proves the change. Escalate only when needed.
@@ -35,8 +41,6 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 - Mock at architectural boundaries; avoid over-mocking
 - Use clear, descriptive test names
 - Use fixtures for shared setup; keep them small and composable
-
-@~/.teleclaude/docs/software-development/policy/linting-requirements.md
 
 1. Each test runs independently - no shared state between tests
 2. Tests can run in any order
