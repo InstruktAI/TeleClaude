@@ -12,6 +12,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import subprocess
 from datetime import datetime
 from enum import Enum
@@ -1108,47 +1109,75 @@ async def ensure_worktree_async(cwd: str, slug: str) -> bool:
 
 
 def _prepare_worktree(cwd: str, slug: str) -> None:
-    """Call worktree preparation hook.
+    """Prepare a worktree using repo conventions.
 
-    Convention: bin/worktree-prepare.sh {slug}
-
-    Args:
-        cwd: Project root directory (main repo)
-        slug: Work item slug
-
-    Raises:
-        RuntimeError: If hook not found or execution fails
+    Conventions:
+    - If Makefile has `install`, run `make install`.
+    - Else if package.json exists, run `pnpm install` if available, otherwise `npm install`.
+    - If neither applies, do nothing.
     """
-    from teleclaude.paths import REPO_ROOT
+    worktree_path = Path(cwd) / "trees" / slug
+    makefile = worktree_path / "Makefile"
+    package_json = worktree_path / "package.json"
 
-    worktree_script = REPO_ROOT / "bin" / "worktree-prepare.sh"
-    if not worktree_script.exists():
-        msg = f"Worktree preparation script not found: {worktree_script}"
-        logger.error(msg)
-        raise RuntimeError(msg)
+    def _has_make_target(target: str) -> bool:
+        try:
+            content = makefile.read_text(encoding="utf-8")
+        except OSError:
+            return False
+        return re.search(rf"^{re.escape(target)}\s*:", content, re.MULTILINE) is not None
 
-    logger.info("Preparing worktree with: %s %s", worktree_script, slug)
-    try:
-        result = subprocess.run(
-            [str(worktree_script), slug],
-            cwd=cwd,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        logger.info("Worktree preparation output:\n%s", result.stdout)
-    except subprocess.CalledProcessError as e:
-        stdout_str = str(e.stdout) if e.stdout is not None else ""  # type: ignore[misc]
-        stderr_str = str(e.stderr) if e.stderr is not None else ""  # type: ignore[misc]
-        msg = (
-            f"Worktree preparation failed for {slug}:\n"
-            f"Command: bin/worktree-prepare.sh {slug}\n"
-            f"Exit code: {e.returncode}\n"
-            f"stdout: {stdout_str}\n"
-            f"stderr: {stderr_str}"
-        )
-        logger.error(msg)
-        raise RuntimeError(msg) from e
+    if makefile.exists() and _has_make_target("install"):
+        logger.info("Preparing worktree with: make install")
+        try:
+            subprocess.run(
+                ["make", "install"],
+                cwd=str(worktree_path),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return
+        except subprocess.CalledProcessError as e:
+            msg = (
+                f"Worktree preparation failed for {slug}:\n"
+                f"Command: make install\n"
+                f"Exit code: {e.returncode}\n"
+                f"stdout: {e.stdout or ''}\n"
+                f"stderr: {e.stderr or ''}"
+            )
+            logger.error(msg)
+            raise RuntimeError(msg) from e
+
+    if package_json.exists():
+        use_pnpm = False
+        if (worktree_path / "pnpm-lock.yaml").exists():
+            use_pnpm = True
+        else:
+            use_pnpm = shutil.which("pnpm") is not None
+        cmd = ["pnpm", "install"] if use_pnpm else ["npm", "install"]
+        logger.info("Preparing worktree with: %s", " ".join(cmd))
+        try:
+            subprocess.run(
+                cmd,
+                cwd=str(worktree_path),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return
+        except subprocess.CalledProcessError as e:
+            msg = (
+                f"Worktree preparation failed for {slug}:\n"
+                f"Command: {' '.join(cmd)}\n"
+                f"Exit code: {e.returncode}\n"
+                f"stdout: {e.stdout or ''}\n"
+                f"stderr: {e.stderr or ''}"
+            )
+            logger.error(msg)
+            raise RuntimeError(msg) from e
+
+    logger.info("No worktree preparation targets found for %s", slug)
 
 
 def is_main_ahead(cwd: str, slug: str) -> bool:
@@ -1434,9 +1463,16 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         )
 
     # 4. Ensure worktree exists
-    worktree_created = await ensure_worktree_async(cwd, resolved_slug)
-    if worktree_created:
-        logger.info("Created new worktree for %s", resolved_slug)
+    try:
+        worktree_created = await ensure_worktree_async(cwd, resolved_slug)
+        if worktree_created:
+            logger.info("Created new worktree for %s", resolved_slug)
+    except RuntimeError as exc:
+        return format_error(
+            "WORKTREE_PREP_FAILED",
+            str(exc),
+            next_call="Add bin/worktree-prepare.sh or fix its execution, then retry.",
+        )
 
     worktree_cwd = str(Path(cwd) / "trees" / resolved_slug)
 

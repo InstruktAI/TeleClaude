@@ -27,11 +27,7 @@ from teleclaude.core.agents import normalize_agent_name
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, ThinkingMode
-from teleclaude.core.next_machine import (
-    next_maintain,
-    next_prepare,
-    next_work,
-)
+from teleclaude.core.next_machine import next_maintain, next_prepare, next_work
 from teleclaude.core.next_machine.core import (
     detect_circular_dependency,
     has_uncommitted_changes,
@@ -956,6 +952,17 @@ class MCPHandlersMixin:
             cwd = str(config.computer.default_working_dir)
         if areas is None:
             areas = []
+        if snippet_ids and any(sid.startswith("project/") for sid in snippet_ids):
+            root = Path(cwd).expanduser().resolve() if cwd else Path.cwd().resolve()
+            while True:
+                if (root / "teleclaude.yml").exists():
+                    cwd = str(root)
+                    break
+                if root.parent == root:
+                    return (
+                        "ERROR: NO_PROJECT_ROOT\nProject snippets require a project root with teleclaude.yml and docs/."
+                    )
+                root = root.parent
         test_agent = None
         test_mode = None
         test_request = None

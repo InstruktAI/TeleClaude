@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from teleclaude.core.next_machine import _prepare_worktree, ensure_worktree
-from teleclaude.paths import REPO_ROOT
 
 
 class TestEnsureWorktreeAlwaysPrepares:
@@ -28,59 +27,61 @@ class TestEnsureWorktreeAlwaysPrepares:
         mock_prepare.assert_called_once_with(str(tmp_path), "test-slug")
 
 
-class TestPrepareWorktreeScript:
-    """Tests for _prepare_worktree with script-based projects."""
+class TestPrepareWorktreeConventions:
+    """Tests for _prepare_worktree with convention-based projects."""
 
     @patch("teleclaude.core.next_machine.core.subprocess.run")
-    def test_calls_worktree_prepare_script_with_slug(self, mock_run: Mock, tmp_path: Path) -> None:
-        """Test that bin/worktree-prepare.sh is called with correct slug."""
-        worktree_script = REPO_ROOT / "bin" / "worktree-prepare.sh"
+    def test_calls_make_install_when_target_exists(self, mock_run: Mock, tmp_path: Path) -> None:
+        """Test that make install is called when Makefile has install target."""
+        worktree_dir = tmp_path / "trees" / "test-slug"
+        worktree_dir.mkdir(parents=True)
+        (worktree_dir / "Makefile").write_text("install:\n\t@echo ok\n", encoding="utf-8")
         mock_run.return_value = MagicMock(returncode=0, stdout="Prepared")
 
-        # Execute
         _prepare_worktree(str(tmp_path), "test-slug")
 
-        # Verify script was called with slug
-        assert mock_run.call_count == 1
         actual_call = mock_run.call_args_list[0]
-        assert actual_call[0][0] == [str(worktree_script), "test-slug"]
-        assert actual_call[1]["cwd"] == str(tmp_path)
+        assert actual_call[0][0] == ["make", "install"]
+        assert actual_call[1]["cwd"] == str(worktree_dir)
         assert actual_call[1]["check"] is True
 
     @patch("teleclaude.core.next_machine.core.subprocess.run")
-    def test_raises_when_worktree_prepare_target_missing(self, mock_run: Mock, tmp_path: Path) -> None:
-        """Test that RuntimeError is raised when script is missing."""
-        with patch("teleclaude.core.next_machine.core.Path.exists", return_value=False):
-            with pytest.raises(
-                RuntimeError,
-                match="Worktree preparation script not found",
-            ):
-                _prepare_worktree(str(tmp_path), "test-slug")
+    def test_calls_npm_install_when_package_json_exists(self, mock_run: Mock, tmp_path: Path) -> None:
+        """Test that npm install is called when package.json exists and pnpm is unavailable."""
+        worktree_dir = tmp_path / "trees" / "test-slug"
+        worktree_dir.mkdir(parents=True)
+        (worktree_dir / "package.json").write_text("{}", encoding="utf-8")
+        mock_run.return_value = MagicMock(returncode=0, stdout="Prepared")
+
+        with patch("teleclaude.core.next_machine.core.shutil.which", return_value=None):
+            _prepare_worktree(str(tmp_path), "test-slug")
+
+        actual_call = mock_run.call_args_list[0]
+        assert actual_call[0][0] == ["npm", "install"]
+        assert actual_call[1]["cwd"] == str(worktree_dir)
+        assert actual_call[1]["check"] is True
 
     @patch("teleclaude.core.next_machine.core.subprocess.run")
     def test_raises_when_preparation_fails(self, mock_run: Mock, tmp_path: Path) -> None:
-        """Test that RuntimeError is raised when worktree preparation fails."""
-        worktree_script = REPO_ROOT / "bin" / "worktree-prepare.sh"
+        """Test that RuntimeError is raised when preparation fails."""
+        worktree_dir = tmp_path / "trees" / "test-slug"
+        worktree_dir.mkdir(parents=True)
+        (worktree_dir / "Makefile").write_text("install:\n\t@echo ok\n", encoding="utf-8")
 
-        # Script execution fails
-        error = subprocess.CalledProcessError(1, str(worktree_script), output="", stderr="Failed!")
+        error = subprocess.CalledProcessError(1, "make", output="", stderr="Failed!")
         error.stdout = ""
         error.stderr = "Failed!"
         mock_run.side_effect = error
 
-        # Execute & Verify
         with pytest.raises(RuntimeError, match="Worktree preparation failed"):
             _prepare_worktree(str(tmp_path), "test-slug")
 
 
-class TestPrepareWorktreeNoHook:
-    """Tests for _prepare_worktree when no preparation hook exists."""
+class TestPrepareWorktreeNoTargets:
+    """Tests for _prepare_worktree when no preparation targets exist."""
 
-    def test_raises_when_no_makefile_or_package_json(self, tmp_path: Path) -> None:
-        """Test that RuntimeError is raised when no preparation hook found."""
-        with patch("teleclaude.core.next_machine.core.Path.exists", return_value=False):
-            with pytest.raises(
-                RuntimeError,
-                match="Worktree preparation script not found",
-            ):
-                _prepare_worktree(str(tmp_path), "test-slug")
+    def test_noop_when_no_targets(self, tmp_path: Path) -> None:
+        """Test that no error is raised when no targets exist."""
+        worktree_dir = tmp_path / "trees" / "test-slug"
+        worktree_dir.mkdir(parents=True)
+        _prepare_worktree(str(tmp_path), "test-slug")

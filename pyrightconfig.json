@@ -5,7 +5,8 @@
     "teleclaude/core/computer_registry.py",
     "teleclaude/core/db.py",
     "teleclaude/core/db_models.py",
-    "teleclaude/hooks/receiver.py"
+    "teleclaude/hooks/receiver.py",
+    "teleclaude/tts/backends/qwen3_tts.py"
   ],
   "venvPath": ".",
   "venv": ".venv",

@@ -21,8 +21,11 @@ Create or update agent artifacts that follow the schema and compile correctly fo
 1. Choose the artifact type (agent, skill, command).
 2. Follow the corresponding schema and taxonomy requirements.
 3. Ensure frontmatter fields are complete and consistent.
-4. Use required reads for hard dependencies.
-5. Run the repository tooling that validates and builds artifacts.
+4. Add required reads at the very top of the body, before any headings.
+5. Order required reads from general to concrete: concept → principle → policy → role → procedure → reference.
+6. Add the artifact title (`# ...`). For commands and agents only, add a one-line role activation statement immediately after the title.
+7. Use required reads for hard dependencies.
+8. Run the repository tooling that validates and builds artifacts.
 
 ## Outputs
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --quiet
 """Markdown linter for TeleClaude documentation.
 
 Validates:

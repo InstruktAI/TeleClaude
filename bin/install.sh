@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # TeleClaude Install Script
-# Installs system binaries and Python dependencies only.
-# Run 'make init' after this for first-time setup.
+# Installs system binaries and Python dependencies.
+# Then runs init for first-time setup when safe.
 #
 
 set -e
@@ -11,7 +11,6 @@ set -e
 if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
     GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
     COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null)
-
     if [ "$GIT_DIR" != "$COMMON_DIR" ]; then
         echo "ERROR: Cannot run 'make install' from a git worktree!"
         echo ""
@@ -21,7 +20,7 @@ if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
         echo "  - Break the main TeleClaude daemon"
         echo ""
         echo "Install must only run from the main repository."
-        echo "Worktrees are automatically prepared by 'make worktree-prepare'."
+        echo "Worktrees are prepared by install conventions (make install or npm/pnpm install)."
         exit 1
     fi
 fi
@@ -383,8 +382,9 @@ main() {
     print_header "Install Complete"
     print_success "Binaries and Python dependencies installed"
     echo ""
-    print_info "Next step: Run 'make init' for first-time setup"
+    print_info "Running init for first-time setup..."
     echo ""
+    "$INSTALL_DIR/bin/init.sh" --yes
 
     log "Install completed"
 }

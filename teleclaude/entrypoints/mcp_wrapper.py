@@ -188,7 +188,10 @@ def _read_session_id_marker() -> str | None:
 
 
 def _read_role_marker() -> str | None:
-    """Read TeleClaude role from the per-session TMPDIR marker file."""
+    """Read TeleClaude role from the per-session TMPDIR marker file.
+
+    If no marker is found, no filtering is applied.
+    """
     tmpdir_value = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")
     if not tmpdir_value:
         return None
@@ -255,17 +258,9 @@ async def _write_role_marker_with_wait(session_id: str, role: str, timeout_s: fl
 def _derive_role_from_command(command: str) -> str | None:
     if not command.startswith("/next-"):
         return None
-    normalized = command[1:]
-    role_map = {
-        "next-prepare": "architect",
-        "next-build": "builder",
-        "next-review": "reviewer",
-        "next-fix-review": "fixer",
-        "next-finalize": "finalizer",
-        "next-bugs": "builder",
-        "next-defer": "architect",
-    }
-    return role_map.get(normalized)
+    from teleclaude.constants import ROLE_WORKER
+
+    return ROLE_WORKER
 
 
 def _get_response_timeout(method: str | None, tool_name: str | None) -> float:
@@ -376,15 +371,16 @@ def refresh_tool_cache_if_needed(force: bool = False) -> None:
 
 
 def _build_initialize_response(request_id: object) -> bytes:
+    from teleclaude.constants import ROLE_WORKER
     from teleclaude.mcp.role_tools import filter_tool_names
 
-    # Read role and filter tools
-    role = _read_role_marker() or "orchestrator"
+    # Read role marker and filter tools only for worker sessions.
+    role = _read_role_marker()
     tool_names = _tool_names_from_cache(TOOL_LIST_CACHE)
-    if tool_names:
+    if tool_names and role == ROLE_WORKER:
         before_count = len(tool_names)
         tool_names = filter_tool_names(role, tool_names)
-        if role != "orchestrator" and before_count != len(tool_names):
+        if before_count != len(tool_names):
             logger.info(
                 "mcp_wrapper: filtered initialize tools",
                 role=role,
@@ -817,6 +813,7 @@ class MCPProxy:
 
     async def _send_tools_list_cached(self, request_id: object) -> None:
         """Send cached tools/list response without touching the backend."""
+        from teleclaude.constants import ROLE_WORKER
         from teleclaude.mcp.role_tools import filter_tool_specs
 
         tools_list = TOOL_LIST_CACHE
@@ -828,16 +825,17 @@ class MCPProxy:
             return
 
         # Filter tools based on role
-        role = _read_role_marker() or "orchestrator"
-        before_count = len(tools_list)
-        tools_list = filter_tool_specs(role, tools_list)
-        if role != "orchestrator" and before_count != len(tools_list):
-            logger.info(
-                "mcp_wrapper: filtered cached tools list",
-                role=role,
-                before=before_count,
-                after=len(tools_list),
-            )
+        role = _read_role_marker()
+        if role == ROLE_WORKER:
+            before_count = len(tools_list)
+            tools_list = filter_tool_specs(role, tools_list)
+            if before_count != len(tools_list):
+                logger.info(
+                    "mcp_wrapper: filtered cached tools list",
+                    role=role,
+                    before=before_count,
+                    after=len(tools_list),
+                )
 
         try:
             sys.stdout.buffer.write(_jsonrpc_tools_list_response(request_id, tools_list))
@@ -960,9 +958,9 @@ class MCPProxy:
                 if method == McpMethod.TOOLS_CALL.value and tool_name and request_id is not None:
                     from teleclaude.mcp.role_tools import is_tool_allowed
 
-                    role = _read_role_marker() or "orchestrator"
-                    if not is_tool_allowed(role, tool_name):
-                        logger.warning(
+                    role = _read_role_marker()
+                    if role is not None and not is_tool_allowed(role, tool_name):
+                        logger.error(
                             "mcp_wrapper: tool call blocked",
                             role=role,
                             tool_name=tool_name,
@@ -1242,6 +1240,7 @@ class MCPProxy:
                             and isinstance(msg[RESULT_KEY].get("tools"), list)
                         ):
                             # Cache tools/list response for startup fallbacks.
+                            from teleclaude.constants import ROLE_WORKER
                             from teleclaude.mcp.role_tools import filter_tool_specs
 
                             tools = msg[RESULT_KEY]["tools"]
@@ -1249,16 +1248,17 @@ class MCPProxy:
                                 updated = _update_tool_cache(tools, "backend")
                                 if updated is not None:
                                     # Filter tools based on role
-                                    role = _read_role_marker() or "orchestrator"
-                                    before_count = len(updated)
-                                    updated = filter_tool_specs(role, updated)
-                                    if role != "orchestrator" and before_count != len(updated):
-                                        logger.info(
-                                            "mcp_wrapper: filtered backend tools list",
-                                            role=role,
-                                            before=before_count,
-                                            after=len(updated),
-                                        )
+                                    role = _read_role_marker()
+                                    if role == ROLE_WORKER:
+                                        before_count = len(updated)
+                                        updated = filter_tool_specs(role, updated)
+                                        if before_count != len(updated):
+                                            logger.info(
+                                                "mcp_wrapper: filtered backend tools list",
+                                                role=role,
+                                                before=before_count,
+                                                after=len(updated),
+                                            )
                                     msg[RESULT_KEY]["tools"] = updated
                                     modified = True
                         if response_id in self._pending_requests:

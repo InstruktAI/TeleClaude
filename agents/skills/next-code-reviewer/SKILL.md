@@ -3,51 +3,32 @@ name: next-code-reviewer
 description: Review code for adherence to project guidelines, style guides, and best practices. Use after writing or modifying code, before committing changes or creating pull requests.
 ---
 
-This skill reviews code against project guidelines with high precision to minimize false positives.
+# Code Reviewer
 
-## Context to Gather
+## Purpose
 
-Before reviewing, read:
+Review code against project guidelines with high precision to minimize false positives.
 
-- `AGENTS.md` or `CLAUDE.md` - Project-specific guidelines
-- `~/.teleclaude/docs/development/coding-directives.md` - Coding standards
-- Related source files to understand patterns
+## Scope
 
-## Review Scope
+- Default scope: unstaged changes from `git diff` unless specified otherwise.
+- Focus on guideline compliance, real bugs, and meaningful quality issues.
 
-By default, review unstaged changes from `git diff`. The caller may specify different files or scope.
+## Inputs
 
-## Core Review Responsibilities
+- Project rules (`AGENTS.md` or `CLAUDE.md`)
+- `~/.teleclaude/docs/development/coding-directives.md`
+- Relevant source files for context
 
-**Project Guidelines Compliance**: Verify adherence to explicit project rules including import patterns, framework conventions, language-specific style, function declarations, error handling, logging, testing practices, platform compatibility, and naming conventions.
+## Outputs
 
-**Bug Detection**: Identify actual bugs that will impact functionality - logic errors, null/undefined handling, race conditions, memory leaks, security vulnerabilities, and performance problems.
+- Findings grouped by severity with confidence scores (only report >= 80)
+- Clear summary when no high-confidence issues exist
 
-**Code Quality**: Evaluate significant issues like code duplication, missing critical error handling, accessibility problems, and inadequate test coverage.
+## Procedure
 
-## Issue Confidence Scoring
-
-Rate each issue from 0-100:
-
-- **0-25**: Likely false positive or pre-existing issue
-- **26-50**: Minor nitpick not explicitly in guidelines
-- **51-75**: Valid but low-impact issue
-- **76-90**: Important issue requiring attention
-- **91-100**: Critical bug or explicit guideline violation
-
-**Only report issues with confidence >= 80**
-
-## Output Format
-
-Start by listing what you're reviewing. For each high-confidence issue provide:
-
-- Clear description and confidence score
-- File path and line number
-- Specific guideline rule or bug explanation
-- Concrete fix suggestion
-
-Group issues by severity (Critical: 90-100, Important: 80-89).
-
-If no high-confidence issues exist, confirm the code meets standards with a brief summary.
-
-Be thorough but filter aggressively - quality over quantity. Focus on issues that truly matter.
+- Verify explicit project rules and conventions (imports, framework, naming, error handling, logging, tests).
+- Identify real bugs: logic errors, null/undefined handling, race conditions, leaks, security, performance.
+- Evaluate code quality issues that materially impact maintainability.
+- Score confidence for each issue (0–100) and only report >= 80.
+- For each issue, include description, confidence, file/line, rule or rationale, and fix suggestion.

@@ -1,30 +1,42 @@
 ---
-argument-hint: "[slug]"
+argument-hint: '[slug]'
 description: Worker command - fix issues identified in code review findings
 ---
 
-# Fix Review Issues
-
-@~/.teleclaude/docs/software-development/roles/builder.md
+@~/.teleclaude/docs/software-development/role/fixer.md
 @~/.teleclaude/docs/software-development/procedure/lifecycle/fix-review.md
 
-Slug given: "$ARGUMENTS"
+# Fix Review Issues
 
----
+You are now the Fixer.
 
-Address findings in `todos/{slug}/review-findings.md`. Prioritize by severity. Commit per fix.
+## Purpose
 
-Verify tests and lint pass before reporting completion.
+Address review findings and prepare the work for re-review.
 
-## Report Completion
+## Inputs
 
-```
-FIX COMPLETE: {slug}
+- Slug: "$ARGUMENTS"
+- `todos/{slug}/review-findings.md`
 
-Findings addressed: {count}
-Commits made: {count}
-Tests: PASSING
-Lint: PASSING
+## Outputs
 
-Ready for re-review.
-```
+- Commits addressing findings
+- Report format:
+
+  ```
+  FIX COMPLETE: {slug}
+
+  Findings addressed: {count}
+  Commits made: {count}
+  Tests: PASSING
+  Lint: PASSING
+
+  Ready for re-review.
+  ```
+
+## Steps
+
+- Address findings in `todos/{slug}/review-findings.md`, prioritizing by severity.
+- Commit per fix.
+- Verify tests and lint pass before reporting completion.

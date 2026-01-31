@@ -1,23 +1,24 @@
 #!/usr/bin/env sh
 set -e  # Exit on first error
 
-. .venv/bin/activate
-
 dirs="teleclaude bin"
 
 echo "Running lint checks"
 
 echo "Running guardrails"
-python bin/lint/guardrails.py "$@"
+uv run --quiet python bin/lint/guardrails.py "$@"
 
 echo "Running markdown validation"
-python bin/lint/markdown.py
+uv run --quiet bin/lint/markdown.py
+
+echo "Running artifact validation"
+uv run --quiet scripts/distribute.py --project-root "$(pwd)" --validate-only
 
 echo "Running ruff format (check)"
-ruff format --check $dirs
+uv run --quiet ruff format --check $dirs
 
 echo "Running ruff check"
-ruff check $dirs
+uv run --quiet ruff check $dirs
 
 echo "Running pyright"
-pyright
+uv run --quiet pyright

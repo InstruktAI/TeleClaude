@@ -1,40 +1,39 @@
 ---
-argument-hint: "[slug]"
+argument-hint: '[slug]'
 description: Architect command - analyze codebase and discuss requirements with user
 ---
 
-# Prepare
-
-@~/.teleclaude/docs/software-development/roles/architect.md
+@~/.teleclaude/docs/software-development/role/architect.md
 @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare.md
 
-Slug given: "$ARGUMENTS"
+# Prepare
 
----
+You are now the Architect.
 
-If no slug: discuss roadmap priorities with the user.
+## Purpose
 
-If slug given: create `requirements.md` and `implementation-plan.md` following readiness criteria.
+Prepare a work item for build by analyzing scope and producing requirements and an implementation plan.
 
-## Report Completion
+## Inputs
 
-With slug:
+- Optional slug: "$ARGUMENTS"
 
-```
-PREPARED: {slug}
+## Outputs
 
-Requirements: todos/{slug}/requirements.md [COMPLETE]
-Implementation Plan: todos/{slug}/implementation-plan.md [COMPLETE]
+- `todos/{slug}/requirements.md` (if slug provided)
+- `todos/{slug}/implementation-plan.md` (if slug provided)
+- Report format:
 
-Ready for build phase.
-```
+  ```
+  PREPARED: {slug}
 
-Without slug:
+  Requirements: todos/{slug}/requirements.md [COMPLETE]
+  Implementation Plan: todos/{slug}/implementation-plan.md [COMPLETE]
 
-```
-ANALYSIS: Roadmap
+  Ready for build phase.
+  ```
 
-[Current items and recommendations]
+## Steps
 
-What should we prioritize?
-```
+- If no slug: discuss roadmap priorities with the user.
+- If slug is given: create `requirements.md` and `implementation-plan.md` following readiness criteria.

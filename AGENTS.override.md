@@ -4,13 +4,11 @@
 
 This file provides guidance to agents when working with code in this repository.
 
-# Project Baseline — Index
-
 ---
 
 # Agent Service Control — Policy
 
-## Rule
+## Rules
 
 - **Allowed lifecycle commands:** `make restart`, `make status`.
 - **Allowed checks:** `make status`, `instrukt-ai-logs teleclaude --since <window> --grep <str>`.
@@ -39,7 +37,7 @@ This file provides guidance to agents when working with code in this repository.
 
 # Daemon Availability — Policy
 
-## Rule
+## Rules
 
 - The daemon is a 24/7 service; downtime is not acceptable outside controlled restarts.
 - After any change needing a restart, call `make restart` and observe success, or verify with `make status`.
@@ -69,7 +67,7 @@ This file provides guidance to agents when working with code in this repository.
 
 # Single Database — Policy
 
-## Rule
+## Rules
 
 - The daemon uses a single SQLite file: `teleclaude.db` at the project root.
 - The database path is `${WORKING_DIR}/teleclaude.db` in `config.yml`.
@@ -98,7 +96,7 @@ This file provides guidance to agents when working with code in this repository.
 
 # Mcp Connection Resilience — Policy
 
-## Rule
+## Rules
 
 - MCP clients connect via `bin/mcp-wrapper.py`, not directly to the daemon.
 - The wrapper must provide zero-downtime behavior across restarts and reconnects.
@@ -121,3 +119,9 @@ This file provides guidance to agents when working with code in this repository.
 ## Exceptions
 
 - None; bypassing the wrapper breaks resilience guarantees.
+
+## TUI work
+
+- After any TUI code change, send SIGUSR1 to the running TUI to reload.
+- Do not restart the daemon and do not instruct the user to restart telec.
+- Verify the change in the TUI after reload.

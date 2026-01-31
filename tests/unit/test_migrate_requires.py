@@ -9,7 +9,7 @@ from scripts import migrate_requires
 def test_migrate_requires_appends_missing(tmp_path: Path) -> None:
     text = (
         "---\n"
-        "id: example/doc\n"
+        "id: project/example/doc\n"
         "type: policy\n"
         "scope: project\n"
         "description: Example\n"
@@ -36,7 +36,7 @@ def test_migrate_requires_appends_missing(tmp_path: Path) -> None:
 def test_migrate_requires_inserts_section(tmp_path: Path) -> None:
     text = (
         "---\n"
-        "id: example/doc\n"
+        "id: project/example/doc\n"
         "type: policy\n"
         "scope: project\n"
         "description: Example\n"

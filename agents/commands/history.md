@@ -5,6 +5,8 @@ argument-hint: '[search terms]'
 
 # History
 
+You are now the Researcher.
+
 ## Purpose
 
 Search agent history.

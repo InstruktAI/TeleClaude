@@ -1,31 +1,42 @@
 ---
-argument-hint: "[slug]"
-description: Administrator command - resolve deferrals, create new todos
+argument-hint: '[slug]'
+description: Orchestrator command - resolve deferrals, create new todos
 ---
+
+@~/.teleclaude/docs/software-development/role/orchestrator.md
+@~/.teleclaude/docs/software-development/procedure/lifecycle/deferrals.md
 
 # Deferral Resolution
 
-@~/.teleclaude/docs/software-development/roles/administrator.md
-@~/.teleclaude/docs/software-development/procedure/lifecycle/deferrals.md
+You are now the Orchestrator.
 
-Slug given: "$ARGUMENTS"
+## Purpose
 
----
+Process deferrals, decide outcomes, and create new todos as needed.
+
+## Inputs
+
+- Slug: "$ARGUMENTS"
+- `todos/{slug}/deferrals.md`
+
+## Outputs
+
+- Updated `todos/{slug}/deferrals.md`
+- New todos in the roadmap (if needed)
+- Report format:
+
+  ```
+  DEFERRALS PROCESSED: {slug}
+
+  New todos created: {count}
+  Marked NOOP: {count}
+
+  Ready to continue.
+  ```
 
 ## Steps
 
-1. Read `todos/{slug}/deferrals.md`.
-2. For each deferral: decide NEW_TODO or NOOP.
-3. Create new todos in roadmap if needed.
-4. Mark deferrals as processed.
-
-## Report Completion
-
-```
-DEFERRALS PROCESSED: {slug}
-
-New todos created: {count}
-Marked NOOP: {count}
-
-Ready to continue.
-```
+- Read `todos/{slug}/deferrals.md`.
+- For each deferral: decide NEW_TODO or NOOP.
+- Create new todos in the roadmap if needed.
+- Mark deferrals as processed.

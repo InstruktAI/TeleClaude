@@ -47,6 +47,10 @@ MAIN_MODULE = "__main__"
 LOCAL_COMPUTER = "local"
 ENV_ENABLE = "1"
 
+# MCP roles
+ROLE_ORCHESTRATOR = "orchestrator"
+ROLE_WORKER = "worker"
+
 
 class ResultStatus(str, Enum):
     SUCCESS = "success"

@@ -1,27 +1,44 @@
 ---
-argument-hint: "[slug]"
+argument-hint: '[slug]'
 description: Worker command - merge, log delivery, cleanup after review passes
 ---
 
-# Finalize
-
-@~/.teleclaude/docs/software-development/roles/finalizer.md
+@~/.teleclaude/docs/software-development/role/finalizer.md
 @~/.teleclaude/docs/software-development/procedure/lifecycle/finalize.md
 
-Slug given: "$ARGUMENTS"
+# Finalize
 
----
+You are now the Finalizer.
 
-Verify review is APPROVED. Merge worktree branch to main. Log delivery. Clean up.
+## Purpose
 
-## Report Completion
+Merge approved work, log delivery, and clean up.
 
-```
-FINALIZE COMPLETE: {slug}
+## Inputs
 
-Branch merged: {branch_name}
-Delivery logged: YES
-Cleanup: COMPLETE
+- Slug: "$ARGUMENTS"
+- Approved review status
 
-Work item delivered.
-```
+## Outputs
+
+- Merged branch
+- Delivery log entry
+- Cleaned worktree
+- Report format:
+
+  ```
+  FINALIZE COMPLETE: {slug}
+
+  Branch merged: {branch_name}
+  Delivery logged: YES
+  Cleanup: COMPLETE
+
+  Work item delivered.
+  ```
+
+## Steps
+
+- Verify review is APPROVED.
+- Merge the worktree branch to main.
+- Log delivery.
+- Clean up.

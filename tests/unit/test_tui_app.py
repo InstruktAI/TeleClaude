@@ -36,7 +36,7 @@ class TestTelecAppWebSocketEvents:
                     ProjectWithTodosInfo(
                         computer="local",
                         name="TeleClaude",
-                        path="/Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude",
+                        path="/Users/Morriz/Workspace/InstruktAI/TeleClaude",
                         description=None,
                         todos=[],
                     )

@@ -778,6 +778,34 @@ def extract_last_agent_message(
     return _extract_last_message_by_role(transcript_path, agent_name, "assistant", count)
 
 
+def collect_transcript_messages(
+    transcript_path: str,
+    agent_name: AgentName,
+) -> list[tuple[str, str]]:
+    """Collect (role, text) message pairs from a transcript."""
+    entries = _get_entries_for_agent(transcript_path, agent_name)
+    if entries is None:
+        return []
+
+    messages: list[tuple[str, str]] = []
+    for entry in entries:
+        message = entry.get("message")
+        if not isinstance(message, dict) and entry.get("type") == "response_item":
+            payload = entry.get("payload")
+            if isinstance(payload, dict):
+                message = payload
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        if not isinstance(role, str):
+            continue
+        content = message.get("content")
+        text = _extract_text_from_content(content, role)
+        if text:
+            messages.append((role, text))
+    return messages
+
+
 def parse_session_transcript(
     transcript_path: str,
     title: str,

@@ -1,24 +1,32 @@
 ---
 description: Update inline docstrings/JSDoc/comments to match current code behavior.
-argument-hint: "[scope]"
+argument-hint: '[scope]'
 ---
+
+@~/.teleclaude/docs/software-development/role/builder.md
+@~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docstrings.md
 
 # Synchronize Docstrings
 
-Align inline documentation with actual code behavior. This command is atomic and idempotent.
+You are now the Builder.
 
-## Scope
+## Purpose
 
-ARGUMENT: "$ARGUMENTS"
+Align inline documentation with actual code behavior.
 
-- ARGUMENT: optional focus area (path, feature, or component). If omitted, cover the whole repo.
-- Always operate from project root to keep paths correct.
+## Inputs
 
-## Mandatory Procedure
+- Scope: "$ARGUMENTS" (optional path/feature/component)
+- Repository codebase
 
-@~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docstrings.md
+## Outputs
 
-## Output
+- Updated docstrings/comments in code
+- Summary of files changed
 
-- Updated docstrings in code.
-- No changes to docs/ or docs.
+## Steps
+
+- If a scope is provided, focus on that area; otherwise cover the whole repo.
+- Update docstrings/JSDoc/comments to match current behavior.
+- Do not modify `docs/`.
+- Report changed files only (no content diff).

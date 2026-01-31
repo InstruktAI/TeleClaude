@@ -6,8 +6,10 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, NotRequired, TypedDict, cast
+from typing import Callable, Literal, NotRequired, TypedDict, cast
 
 import frontmatter
 import yaml
@@ -53,18 +55,43 @@ def _format_markdown(paths: list[str]) -> None:
     subprocess.run(["npx", "--yes", "prettier", "--write", *md_files], check=False)
 
 
+ArtifactFrontmatter = TypedDict(
+    "ArtifactFrontmatter",
+    {
+        "description": str,
+        "name": str,
+        "argument-hint": str,
+        "hooks": object,
+    },
+    total=False,
+)
+
+
 class AgentConfig(TypedDict):
     check_dir: str
     prefix: str
     master_dest: str
     commands_dest_dir: str
+    agents_dest_dir: str
     skills_dest_dir: str
     skills_ext: str
     ext: str
     transform: Transform
     deploy_master_dest: NotRequired[str]
     deploy_commands_dest: NotRequired[str]
+    deploy_agents_dest: NotRequired[str]
     deploy_skills_dest: NotRequired[str]
+
+
+@dataclass(frozen=True)
+class FileArtifactType:
+    name: str
+    source_dir_key: str
+    dest_dir_key: str
+    deploy_dir_key: str
+    ext_key: str
+    kind: Literal["file", "skill"]
+    validator: Callable[[Post, str], None]
 
 
 def transform_to_codex(post: Post) -> str:
@@ -109,6 +136,178 @@ def transform_skill_to_gemini(post: Post, name: str) -> str:
     return f"name = \"{name}\"\ndescription = {description_str}\nprompt = '''\n{content}\n'''\n"
 
 
+def _validate_agent_frontmatter(post: Post, path: str) -> None:
+    """Validate frontmatter for agent artifacts."""
+    description = post.metadata.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError(f"Agent artifact {path} is missing frontmatter 'description'")
+
+
+def _validate_command_frontmatter(post: Post, path: str) -> None:
+    """Validate frontmatter for command artifacts."""
+    description = post.metadata.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError(f"Command {path} is missing frontmatter 'description'")
+
+
+def _validate_skill_frontmatter(post: Post, path: str) -> None:
+    """Validate frontmatter for skill artifacts."""
+    description = post.metadata.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError(f"Skill {path} is missing frontmatter 'description'")
+
+
+_ARTIFACT_REF_ORDER = ["concept", "principle", "policy", "role", "procedure", "reference"]
+
+
+def _taxonomy_from_ref(ref: str) -> str | None:
+    for taxonomy in _ARTIFACT_REF_ORDER:
+        if f"/{taxonomy}/" in ref:
+            return taxonomy
+    return None
+
+
+def _extract_required_reads(lines: list[str]) -> tuple[list[str], int]:
+    idx = 0
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+    refs: list[str] = []
+    while idx < len(lines):
+        stripped = lines[idx].strip()
+        if not stripped:
+            idx += 1
+            continue
+        if stripped.startswith("@"):
+            refs.append(stripped[1:].strip())
+            idx += 1
+            continue
+        break
+    return refs, idx
+
+
+def _next_nonblank(lines: list[str], idx: int) -> tuple[str | None, int]:
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+    if idx >= len(lines):
+        return None, idx
+    return lines[idx], idx
+
+
+def _validate_required_reads_order(refs: list[str], path: str) -> None:
+    last_index = -1
+    for ref in refs:
+        taxonomy = _taxonomy_from_ref(ref)
+        if not taxonomy:
+            continue
+        index = _ARTIFACT_REF_ORDER.index(taxonomy)
+        if index < last_index:
+            raise ValueError(f"{path} required reads are out of order; expected {' → '.join(_ARTIFACT_REF_ORDER)}")
+        last_index = index
+
+
+def _validate_body_schema(post: Post, path: str, *, kind: str) -> None:
+    argument_hint = post.metadata.get("argument-hint")
+    if kind == "command" and argument_hint is not None and not isinstance(argument_hint, str):
+        raise ValueError(f"{path} has invalid frontmatter 'argument-hint' (must be a string)")
+    lines = post.content.splitlines()
+    refs, idx = _extract_required_reads(lines)
+    _validate_required_reads_order(refs, path)
+
+    line, idx = _next_nonblank(lines, idx)
+    if line is None or not line.startswith("# "):
+        raise ValueError(f"{path} must start with an H1 title after required reads")
+    idx += 1
+
+    line, idx = _next_nonblank(lines, idx)
+    if kind in {"command", "agent"}:
+        if line is None or not line.strip().startswith("You are now the "):
+            raise ValueError(f"{path} must include role activation line after the title")
+        idx += 1
+    else:
+        if line is not None and line.strip().startswith("You are now the "):
+            raise ValueError(f"{path} must not include a role activation line")
+
+    line, idx = _next_nonblank(lines, idx)
+    if line is None:
+        raise ValueError(f"{path} is missing required section headings")
+
+    allowed_map = {
+        "command": ["Purpose", "Inputs", "Outputs", "Steps", "Examples"],
+        "skill": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure", "Examples"],
+        "agent": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure", "Examples"],
+    }
+    required_map = {
+        "command": ["Purpose", "Inputs", "Outputs", "Steps"],
+        "skill": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"],
+        "agent": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"],
+    }
+    allowed = allowed_map[kind]
+    required = required_map[kind]
+
+    headings: list[str] = []
+    for raw in lines[idx:]:
+        stripped = raw.strip()
+        if stripped.startswith("@"):
+            raise ValueError(f"{path} has inline refs outside the required reads block")
+        if stripped.startswith("# "):
+            raise ValueError(f"{path} must only have one H1 title")
+        if stripped.startswith("### "):
+            raise ValueError(f"{path} must use H2 headings only for schema sections")
+        if stripped.startswith("## "):
+            headings.append(stripped[3:].strip())
+
+    if not headings:
+        raise ValueError(f"{path} is missing required section headings")
+
+    for heading in headings:
+        if heading not in allowed:
+            raise ValueError(f"{path} has invalid section heading '{heading}'")
+
+    if headings != required and headings != required + ["Examples"]:
+        raise ValueError(f"{path} section order must be: {' → '.join(required)} (optional Examples at end)")
+
+
+def _validate_command(post: Post, path: str) -> None:
+    _validate_command_frontmatter(post, path)
+    _validate_body_schema(post, path, kind="command")
+
+
+def _validate_agent(post: Post, path: str) -> None:
+    _validate_agent_frontmatter(post, path)
+    _validate_body_schema(post, path, kind="agent")
+
+
+def _validate_skill(post: Post, path: str) -> None:
+    _validate_skill_frontmatter(post, path)
+    _validate_body_schema(post, path, kind="skill")
+
+
+def _should_expand_inline(agent_name: str) -> bool:
+    return agent_name in {"claude", "codex", "gemini"}
+
+
+def _filter_frontmatter(metadata: ArtifactFrontmatter, agent_name: str) -> ArtifactFrontmatter:
+    filtered = cast(ArtifactFrontmatter, dict(metadata))
+    if agent_name != "claude":
+        filtered.pop("hooks", None)
+    return filtered
+
+
+def _prepare_post(
+    post: Post,
+    *,
+    agent_prefix: str,
+    agent_name: str,
+    project_root: Path,
+    current_path: Path,
+) -> Post:
+    content = process_file(post.content, agent_prefix, agent_name)
+    if _should_expand_inline(agent_name):
+        content = expand_inline_refs(content, project_root=project_root, current_path=current_path)
+    metadata = _filter_frontmatter(post.metadata, agent_name)
+    return Post(content, **metadata)
+
+
 def resolve_skill_name(post: Post, dirname: str) -> str:
     """Resolve the skill name from metadata and validate its directory."""
     name = cast(str, post.metadata.get("name"))
@@ -119,9 +318,10 @@ def resolve_skill_name(post: Post, dirname: str) -> str:
     return name
 
 
-def process_file(content: str, agent_prefix: str) -> str:
+def process_file(content: str, agent_prefix: str, agent_name: str) -> str:
     """Apply substitutions to the file content."""
     content = content.replace("{AGENT_PREFIX}", agent_prefix)
+    content = content.replace("{{agent}}", agent_name)
     return content
 
 
@@ -181,10 +381,7 @@ def expand_inline_refs(content: str, *, project_root: Path, current_path: Path) 
 
         return INLINE_REF_RE.sub(_replace, text)
 
-    expanded = _expand(content, current_path=current_path, depth=20)
-    expanded = expanded.replace("@~/.teleclaude/docs/", "~/.teleclaude/docs/")
-    expanded = expanded.replace("@docs/", "docs/")
-    return expanded
+    return _expand(content, current_path=current_path, depth=20)
 
 
 def _strip_required_reads(content: str) -> str:
@@ -194,13 +391,11 @@ def _strip_required_reads(content: str) -> str:
     in_required_reads = False
 
     for line in lines:
-        if not in_required_reads and line.strip().lower() == "## required reads":
+        if line.strip().lower() == "## required reads":
             in_required_reads = True
             continue
         if in_required_reads:
-            stripped = line.strip()
-            if stripped:
-                # End the section once we hit the first non-empty line after the header.
+            if line.startswith("## "):
                 in_required_reads = False
                 output.append(line)
             continue
@@ -217,6 +412,35 @@ def _strip_specific_h1(content: str, title: str) -> str:
     if lines[0].strip() == f"# {title}":
         return "\n".join(lines[1:]).lstrip("\n")
     return content
+
+
+def _iter_project_agent_masters(project_root: Path) -> list[Path]:
+    """Find AGENTS.master.md files in the project (excluding tool-managed dirs)."""
+    skip_dirs = {
+        ".git",
+        ".agents",
+        "__pycache__",
+        "dist",
+        "node_modules",
+        ".venv",
+        "venv",
+    }
+    matches: list[Path] = []
+    for root, dirs, files in os.walk(project_root):
+        dirs[:] = [d for d in dirs if d not in skip_dirs]
+        if "AGENTS.master.md" in files:
+            matches.append(Path(root) / "AGENTS.master.md")
+    return sorted(matches)
+
+
+def _write_project_agents(master_path: Path, *, project_root: Path) -> None:
+    """Generate AGENTS.md and CLAUDE.md next to a project AGENTS.master.md."""
+    raw = master_path.read_text(encoding="utf-8")
+    inflated = expand_inline_refs(raw, project_root=project_root, current_path=master_path)
+    agents_path = master_path.parent / "AGENTS.md"
+    agents_path.write_text(inflated, encoding="utf-8")
+    claude_path = master_path.parent / "CLAUDE.md"
+    claude_path.write_text("@./AGENTS.md\n", encoding="utf-8")
 
 
 def _merge_global_index(deploy_docs_root: str) -> None:
@@ -294,26 +518,40 @@ def main() -> None:
         required=True,
         help="Project root to read agents/.agents from (default: script parent).",
     )
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Validate artifact schema without generating outputs.",
+    )
+    parser.add_argument(
+        "--warn-only",
+        action="store_true",
+        help="Emit validation warnings but exit successfully.",
+    )
     args = parser.parse_args()
 
     # Get the project root and main TeleClaude repo root.
     script_dir = os.path.dirname(os.path.realpath(__file__))
     teleclaude_root = os.path.dirname(script_dir)
     project_root = os.path.abspath(os.path.expanduser(args.project_root))
+    is_mother_project = Path(project_root).resolve() == Path(teleclaude_root).resolve()
+    project_root_path = Path(project_root)
     agents_root = os.path.join(teleclaude_root, "agents")
     dot_agents_root = os.path.join(project_root, ".agents")
     os.chdir(project_root)
 
-    dist_dir = "dist"
-    if os.path.exists(dist_dir):
-        shutil.rmtree(dist_dir)
-    os.makedirs(dist_dir)
+    for master_path in _iter_project_agent_masters(project_root_path):
+        _write_project_agents(master_path, project_root=project_root_path)
 
-    master_agents_file = os.path.join(agents_root, "AGENTS.master.md")
+    validate_only = args.validate_only or args.warn_only
+    dist_dir = "dist"
+
+    master_agents_file = os.path.join(agents_root, "AGENTS.global.md")
+    master_agents_dir = os.path.join(agents_root, "agents")
     master_commands_dir = os.path.join(agents_root, "commands")
     master_skills_dir = os.path.join(agents_root, "skills")
 
-    dot_master_agents_file = os.path.join(dot_agents_root, "AGENTS.master.md")
+    dot_master_agents_dir = os.path.join(dot_agents_root, "agents")
     dot_master_commands_dir = os.path.join(dot_agents_root, "commands")
     dot_master_skills_dir = os.path.join(dot_agents_root, "skills")
     master_docs_dir = os.path.join(project_root, "docs", "global")
@@ -324,10 +562,12 @@ def main() -> None:
             "prefix": "/",
             "master_dest": os.path.join(dist_dir, "claude", "CLAUDE.md"),
             "commands_dest_dir": os.path.join(dist_dir, "claude", "commands"),
+            "agents_dest_dir": os.path.join(dist_dir, "claude", "agents"),
             "skills_dest_dir": os.path.join(dist_dir, "claude", "skills"),
             "skills_ext": ".md",
             "deploy_master_dest": os.path.join(os.path.expanduser("~/.claude"), "CLAUDE.md"),
             "deploy_commands_dest": os.path.join(os.path.expanduser("~/.claude"), "commands"),
+            "deploy_agents_dest": os.path.join(os.path.expanduser("~/.claude"), "agents"),
             "deploy_skills_dest": os.path.join(os.path.expanduser("~/.claude"), "skills"),
             "ext": ".md",
             "transform": dump_frontmatter,
@@ -337,10 +577,12 @@ def main() -> None:
             "prefix": "~/.codex/prompts/",
             "master_dest": os.path.join(dist_dir, "codex", "CODEX.md"),
             "commands_dest_dir": os.path.join(dist_dir, "codex", "prompts"),
+            "agents_dest_dir": os.path.join(dist_dir, "codex", "agents"),
             "skills_dest_dir": os.path.join(dist_dir, "codex", "skills"),
             "skills_ext": ".md",
             "deploy_master_dest": os.path.join(os.path.expanduser("~/.codex"), "CODEX.md"),
             "deploy_commands_dest": os.path.join(os.path.expanduser("~/.codex"), "prompts"),
+            "deploy_agents_dest": os.path.join(os.path.expanduser("~/.codex"), "agents"),
             "deploy_skills_dest": os.path.join(os.path.expanduser("~/.codex"), "skills"),
             "ext": ".md",
             "transform": transform_to_codex,
@@ -350,48 +592,141 @@ def main() -> None:
             "prefix": "/",
             "master_dest": os.path.join(dist_dir, "gemini", "GEMINI.md"),
             "commands_dest_dir": os.path.join(dist_dir, "gemini", "commands"),
+            "agents_dest_dir": os.path.join(dist_dir, "gemini", "agents"),
             "skills_dest_dir": os.path.join(dist_dir, "gemini", "skills"),
             "skills_ext": ".toml",
             "deploy_master_dest": os.path.join(os.path.expanduser("~/.gemini"), "GEMINI.md"),
             "deploy_commands_dest": os.path.join(os.path.expanduser("~/.gemini"), "commands"),
+            "deploy_agents_dest": os.path.join(os.path.expanduser("~/.gemini"), "agents"),
             "deploy_skills_dest": os.path.join(os.path.expanduser("~/.gemini"), "skills"),
             "ext": ".toml",
             "transform": transform_to_gemini,
         },
     }
 
-    global_sources = [
-        {
-            "label": "agents",
-            "master": master_agents_file,
-            "commands": master_commands_dir,
-            "skills": master_skills_dir,
-        }
+    artifact_specs: list[FileArtifactType] = [
+        FileArtifactType(
+            name="agents",
+            source_dir_key="agents_dir",
+            dest_dir_key="agents_dest_dir",
+            deploy_dir_key="deploy_agents_dest",
+            ext_key="ext",
+            kind="file",
+            validator=_validate_agent,
+        ),
+        FileArtifactType(
+            name="commands",
+            source_dir_key="commands",
+            dest_dir_key="commands_dest_dir",
+            deploy_dir_key="deploy_commands_dest",
+            ext_key="ext",
+            kind="file",
+            validator=_validate_command,
+        ),
+        FileArtifactType(
+            name="skills",
+            source_dir_key="skills",
+            dest_dir_key="skills_dest_dir",
+            deploy_dir_key="deploy_skills_dest",
+            ext_key="skills_ext",
+            kind="skill",
+            validator=_validate_skill,
+        ),
     ]
+
+    global_sources = []
+    if is_mother_project:
+        global_sources = [
+            {
+                "label": "agents",
+                "master": master_agents_file,
+                "agents_dir": master_agents_dir,
+                "commands": master_commands_dir,
+                "skills": master_skills_dir,
+            }
+        ]
     local_sources = [
         {
             "label": ".agents",
-            "master": dot_master_agents_file,
+            "master": os.path.join(project_root, ".agents", "__none__"),
+            "agents_dir": dot_master_agents_dir,
             "commands": dot_master_commands_dir,
             "skills": dot_master_skills_dir,
-        },
-        {
-            "label": "AGENTS.md",
-            "master": os.path.join(project_root, "AGENTS.md"),
-            "commands": os.path.join(project_root, ".agents", "__none__"),
-            "skills": os.path.join(project_root, ".agents", "__none__"),
         },
     ]
 
     def _existing_sources(source_list: list[dict[str, str]]) -> list[dict[str, str]]:
         existing: list[dict[str, str]] = []
         for source in source_list:
+            if source["label"] in {"agents", ".agents"}:
+                existing.append(source)
+                continue
             if os.path.isfile(source["master"]) or os.path.isdir(source["commands"]) or os.path.isdir(source["skills"]):
                 existing.append(source)
         return existing
 
     global_sources = _existing_sources(global_sources)
     local_sources = _existing_sources(local_sources)
+
+    def _validate_sources(sources: list[dict[str, str]]) -> list[str]:
+        errors: list[str] = []
+        artifact_items: dict[str, list[str]] = {spec.name: [] for spec in artifact_specs}
+        for source in sources:
+            for spec in artifact_specs:
+                source_dir = source.get(spec.source_dir_key)
+                if not isinstance(source_dir, str) or not os.path.isdir(source_dir):
+                    continue
+                if spec.kind == "file":
+                    artifact_items[spec.name].extend([f for f in os.listdir(source_dir) if f.endswith(".md")])
+                else:
+                    artifact_items[spec.name].extend(
+                        [f for f in os.listdir(source_dir) if os.path.isdir(os.path.join(source_dir, f))]
+                    )
+        for spec in artifact_specs:
+            artifact_items[spec.name] = sorted(set(artifact_items[spec.name]))
+
+        for spec in artifact_specs:
+            items = artifact_items[spec.name]
+            for item in items:
+                item_path = ""
+                for source in sources:
+                    source_dir = source.get(spec.source_dir_key)
+                    if not isinstance(source_dir, str):
+                        continue
+                    if spec.kind == "file":
+                        candidate = os.path.join(source_dir, item)
+                    else:
+                        candidate = os.path.join(source_dir, item, "SKILL.md")
+                    if os.path.exists(candidate):
+                        item_path = candidate
+                        break
+                if not item_path:
+                    continue
+                try:
+                    with open(item_path, "r") as f:
+                        post = frontmatter.load(f)
+                    spec.validator(post, item_path)
+                    if spec.kind == "skill":
+                        resolve_skill_name(post, item)
+                except Exception as e:
+                    errors.append(str(e))
+        return errors
+
+    errors: list[str] = []
+    errors.extend(_validate_sources(global_sources))
+    errors.extend(_validate_sources(local_sources))
+    if errors:
+        for error in errors:
+            print(error)
+        if not args.warn_only:
+            raise SystemExit(1)
+    if validate_only:
+        return
+
+    dist_dir = "dist"
+    if os.path.exists(dist_dir):
+        shutil.rmtree(dist_dir)
+    os.makedirs(dist_dir)
 
     def _run_phase(
         *,
@@ -408,25 +743,24 @@ def main() -> None:
         os.makedirs(dist_dir)
 
         agent_master_contents: list[str] = []
-        command_files: list[str] = []
-        skill_dirs: list[str] = []
         markdown_outputs: list[str] = []
+        artifact_items: dict[str, list[str]] = {spec.name: [] for spec in artifact_specs}
         for source in sources:
             if os.path.isfile(source["master"]) and source["label"] != ".agents":
                 with open(source["master"], "r") as f:
                     agent_master_contents.append(f.read())
-            if os.path.isdir(source["commands"]):
-                command_files.extend([f for f in os.listdir(source["commands"]) if f.endswith(".md")])
-            if os.path.isdir(source["skills"]):
-                skill_dirs.extend(
-                    [
-                        name
-                        for name in os.listdir(source["skills"])
-                        if os.path.isdir(os.path.join(source["skills"], name))
-                    ]
-                )
-        command_files = sorted(set(command_files))
-        skill_dirs = sorted(set(skill_dirs))
+            for spec in artifact_specs:
+                source_dir = source.get(spec.source_dir_key)
+                if not isinstance(source_dir, str) or not os.path.isdir(source_dir):
+                    continue
+                if spec.kind == "file":
+                    artifact_items[spec.name].extend([f for f in os.listdir(source_dir) if f.endswith(".md")])
+                else:
+                    artifact_items[spec.name].extend(
+                        [name for name in os.listdir(source_dir) if os.path.isdir(os.path.join(source_dir, name))]
+                    )
+        for spec in artifact_specs:
+            artifact_items[spec.name] = sorted(set(artifact_items[spec.name]))
 
         built_agents: list[str] = []
         for agent_name, config in agents_config.items():
@@ -443,20 +777,21 @@ def main() -> None:
                     raw_agent_specific = extra_f.read()
                 agent_specific_content = process_file(raw_agent_specific, config["prefix"])
 
-            has_any_content = bool(agent_master_contents or command_files or skill_dirs or agent_specific_content)
+            has_any_content = bool(
+                agent_master_contents
+                or any(artifact_items[spec.name] for spec in artifact_specs)
+                or agent_specific_content
+            )
             if not has_any_content:
                 print(f"Skipping {agent_name}: no agent content found.")
                 continue
 
             master_dest_path = os.path.join(dist_dir, agent_name, os.path.basename(config["master_dest"]))
-            commands_dest_path = os.path.join(dist_dir, agent_name, os.path.basename(config["commands_dest_dir"]))
-            skills_dest_path = os.path.join(dist_dir, agent_name, os.path.basename(config["skills_dest_dir"]))
-
             processed_contents = [process_file(content, config["prefix"]) for content in agent_master_contents]
             combined_agents_content = "\n\n".join(
                 content for content in (agent_specific_content, *processed_contents) if content
             )
-            if agent_name == "codex":
+            if _should_expand_inline(agent_name) and processed_contents:
                 expanded_body = expand_inline_refs(
                     "\n\n".join(content for content in processed_contents if content),
                     project_root=Path(project_root),
@@ -478,80 +813,61 @@ def main() -> None:
                         f.write(combined_agents_content)
                     markdown_outputs.append(repo_override_path)
 
-            if command_files:
-                os.makedirs(commands_dest_path, exist_ok=True)
-
-            for command_file in command_files:
-                command_path = ""
-                for source in sources:
-                    candidate = os.path.join(source["commands"], command_file)
-                    if os.path.exists(candidate):
-                        command_path = candidate
-                        break
-                if not command_path:
+            for spec in artifact_specs:
+                items = artifact_items[spec.name]
+                if not items:
                     continue
-                with open(command_path, "r") as f:
-                    try:
-                        post = frontmatter.load(f)
-                        post.content = process_file(post.content, config["prefix"])
-                        if agent_name == "codex":
-                            post.content = expand_inline_refs(
-                                post.content,
-                                project_root=Path(project_root),
-                                current_path=Path(command_path),
-                            )
-                        transformed_content = config["transform"](post)
-                        base_name = os.path.splitext(command_file)[0]
-                        output_filename = f"{base_name}{config['ext']}"
-                        output_path = os.path.join(commands_dest_path, output_filename)
-                        with open(output_path, "w") as out_f:
-                            out_f.write(transformed_content + "\n")
-                        if output_filename.endswith(".md"):
-                            markdown_outputs.append(output_path)
-                    except Exception as e:
-                        print(f"Error processing file {command_file} for agent {agent_name}: {e}")
-
-            if skill_dirs:
-                os.makedirs(skills_dest_path, exist_ok=True)
-
-            for skill_dir in skill_dirs:
-                skill_path = ""
-                for source in sources:
-                    candidate = os.path.join(source["skills"], skill_dir, "SKILL.md")
-                    if os.path.exists(candidate):
-                        skill_path = candidate
-                        break
-                if not skill_path:
-                    print(f"Skipping skill {skill_dir}: SKILL.md not found.")
-                    continue
-                with open(skill_path, "r") as f:
-                    try:
-                        post = frontmatter.load(f)
-                        post.content = process_file(post.content, config["prefix"])
-                        skill_name = resolve_skill_name(post, skill_dir)
-
-                        if agent_name == "claude":
-                            transformed_content = transform_skill_to_claude(post, skill_name)
-                        elif agent_name == "codex":
-                            post.content = expand_inline_refs(
-                                post.content,
-                                project_root=Path(project_root),
-                                current_path=Path(skill_path),
-                            )
-                            transformed_content = transform_skill_to_codex(post, skill_name)
+                dest_dir = os.path.join(dist_dir, agent_name, os.path.basename(config[spec.dest_dir_key]))
+                os.makedirs(dest_dir, exist_ok=True)
+                for item in items:
+                    item_path = ""
+                    for source in sources:
+                        source_dir = source.get(spec.source_dir_key)
+                        if not isinstance(source_dir, str):
+                            continue
+                        if spec.kind == "file":
+                            candidate = os.path.join(source_dir, item)
                         else:
-                            transformed_content = transform_skill_to_gemini(post, skill_name)
-
-                        output_dir = os.path.join(skills_dest_path, skill_dir)
-                        os.makedirs(output_dir, exist_ok=True)
-                        output_filename = f"SKILL{config['skills_ext']}"
-                        output_path = os.path.join(output_dir, output_filename)
-                        with open(output_path, "w") as out_f:
-                            out_f.write(transformed_content + "\n")
-                        if output_filename.endswith(".md"):
-                            markdown_outputs.append(output_path)
-                    except Exception as e:
-                        print(f"Error processing skill {skill_dir} for agent {agent_name}: {e}")
+                            candidate = os.path.join(source_dir, item, "SKILL.md")
+                        if os.path.exists(candidate):
+                            item_path = candidate
+                            break
+                    if not item_path:
+                        continue
+                    with open(item_path, "r") as f:
+                        try:
+                            post = frontmatter.load(f)
+                            spec.validator(post, item_path)
+                            prepared = _prepare_post(
+                                post,
+                                agent_prefix=config["prefix"],
+                                agent_name=agent_name,
+                                project_root=Path(project_root),
+                                current_path=Path(item_path),
+                            )
+                            if spec.kind == "skill":
+                                skill_name = resolve_skill_name(prepared, item)
+                                if agent_name == "claude":
+                                    transformed_content = transform_skill_to_claude(prepared, skill_name)
+                                elif agent_name == "codex":
+                                    transformed_content = transform_skill_to_codex(prepared, skill_name)
+                                else:
+                                    transformed_content = transform_skill_to_gemini(prepared, skill_name)
+                                output_dir = os.path.join(dest_dir, item)
+                                os.makedirs(output_dir, exist_ok=True)
+                                output_filename = f"SKILL{config[spec.ext_key]}"
+                                output_path = os.path.join(output_dir, output_filename)
+                            else:
+                                transformed_content = config["transform"](prepared)
+                                base_name = os.path.splitext(item)[0]
+                                output_filename = f"{base_name}{config[spec.ext_key]}"
+                                output_path = os.path.join(dest_dir, output_filename)
+                            with open(output_path, "w") as out_f:
+                                out_f.write(transformed_content + "\n")
+                            if output_filename.endswith(".md"):
+                                markdown_outputs.append(output_path)
+                        except Exception as e:
+                            print(f"Error processing {spec.name} item {item} for agent {agent_name}: {e}")
 
             built_agents.append(agent_name)
 
@@ -598,27 +914,51 @@ def main() -> None:
 
             print("Deployment complete.")
 
-    if global_sources:
-        _run_phase(
-            sources=global_sources,
-            prefix_root=agents_root,
-            dist_dir=os.path.join(project_root, "dist", "global"),
-            deploy_root=os.path.expanduser("~"),
-            include_docs=True,
-            emit_repo_codex=False,
-            deploy_enabled=True,
-        )
+    if args.deploy:
+        with tempfile.TemporaryDirectory(prefix="teleclaude-dist-global-") as global_dist:
+            if global_sources:
+                _run_phase(
+                    sources=global_sources,
+                    prefix_root=agents_root,
+                    dist_dir=global_dist,
+                    deploy_root=os.path.expanduser("~"),
+                    include_docs=True,
+                    emit_repo_codex=False,
+                    deploy_enabled=True,
+                )
+        with tempfile.TemporaryDirectory(prefix="teleclaude-dist-local-") as local_dist:
+            if local_sources:
+                _run_phase(
+                    sources=local_sources,
+                    prefix_root=dot_agents_root,
+                    dist_dir=local_dist,
+                    deploy_root=project_root,
+                    include_docs=False,
+                    emit_repo_codex=True,
+                    deploy_enabled=True,
+                )
+    else:
+        if global_sources:
+            _run_phase(
+                sources=global_sources,
+                prefix_root=agents_root,
+                dist_dir=os.path.join(project_root, "dist", "global"),
+                deploy_root=os.path.expanduser("~"),
+                include_docs=True,
+                emit_repo_codex=False,
+                deploy_enabled=False,
+            )
 
-    if local_sources:
-        _run_phase(
-            sources=local_sources,
-            prefix_root=dot_agents_root,
-            dist_dir=os.path.join(project_root, "dist", "local"),
-            deploy_root=project_root,
-            include_docs=False,
-            emit_repo_codex=True,
-            deploy_enabled=False,
-        )
+        if local_sources:
+            _run_phase(
+                sources=local_sources,
+                prefix_root=dot_agents_root,
+                dist_dir=os.path.join(project_root, "dist", "local"),
+                deploy_root=project_root,
+                include_docs=False,
+                emit_repo_codex=True,
+                deploy_enabled=False,
+            )
 
 
 if __name__ == "__main__":

@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import json
 import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, TypedDict
+from typing import Iterable
 
 import yaml
 from instrukt_ai_logging import get_logger
 
-from teleclaude.paths import CONTEXT_STATE_PATH, GLOBAL_SNIPPETS_DIR
+from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.utils import expand_env_vars
 
 logger = get_logger(__name__)
@@ -28,55 +27,10 @@ class SnippetMeta:
     requires: list[str]
 
 
-class SessionState(TypedDict):
-    ids: list[str]
-
-
-class ContextState(TypedDict):
-    sessions: dict[str, SessionState]
-
-
-def _empty_state() -> ContextState:
-    return {"sessions": {}}
-
-
 def _scope_rank(scope: str | None) -> int:
     if not scope:
         return 3
     return SCOPE_ORDER.get(scope, 3)
-
-
-def _load_state() -> ContextState:
-    if not CONTEXT_STATE_PATH.exists():
-        return _empty_state()
-    try:
-        data = json.loads(CONTEXT_STATE_PATH.read_text(encoding="utf-8"))
-    except Exception as exc:
-        logger.exception("context_state_load_failed", error=str(exc))
-        return _empty_state()
-    if not isinstance(data, dict):
-        return _empty_state()
-    sessions = data.get("sessions")
-    if not isinstance(sessions, dict):
-        return _empty_state()
-    clean_sessions: dict[str, SessionState] = {}
-    for key, value in sessions.items():
-        if not isinstance(key, str) or not isinstance(value, dict):
-            continue
-        ids = value.get("ids")
-        if not isinstance(ids, list):
-            continue
-        clean_ids = [sid for sid in ids if isinstance(sid, str)]
-        clean_sessions[key] = {"ids": clean_ids}
-    return {"sessions": clean_sessions}
-
-
-def _save_state(state: ContextState) -> None:
-    try:
-        CONTEXT_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CONTEXT_STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    except Exception as exc:
-        logger.exception("context_state_save_failed", error=str(exc))
 
 
 _INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
@@ -404,7 +358,7 @@ def build_context_output(
 
     if not snippet_ids:
         parts: list[str] = [
-            "# PHASE 1: Snippet Index (Frontmatter Only)",
+            "# PHASE 1: Snippet Index (IDs + descriptions)",
             "# Review the snippets below and select the IDs you need.",
             "",
         ]
@@ -423,21 +377,8 @@ def build_context_output(
             test_csv_path=test_csv_path,
         )
         for snippet in ordered:
-            domain = _domain_for_snippet(snippet, project_domains=project_domain_roots)
-            scope = _output_scope(snippet, global_snippets_root=global_snippets_root)
-            parts.append(
-                "\n".join(
-                    [
-                        "---",
-                        f"id: {snippet.snippet_id}",
-                        f"type: {snippet.snippet_type}",
-                        f"domain: {domain}",
-                        f"scope: {scope}",
-                        f"description: {snippet.description}",
-                        "---",
-                    ]
-                ).strip()
-            )
+            description = snippet.description or ""
+            parts.append(f"{snippet.snippet_id}: {description}".strip())
         parts.extend(
             [
                 "",
@@ -460,18 +401,9 @@ def build_context_output(
         test_csv_path=test_csv_path,
     )
 
-    state = _load_state()
-    already_ids: set[str] = set()
-    if session_id:
-        session_entry = state.get("sessions", {}).get(session_id, {})
-        ids = session_entry.get("ids", [])
-        already_ids = set(ids)
-
     new_snippets: list[SnippetMeta] = []
     new_ids: list[str] = []
     for snippet in resolved:
-        if snippet.snippet_id in already_ids:
-            continue
         new_snippets.append(snippet)
         new_ids.append(snippet.snippet_id)
 
@@ -482,17 +414,7 @@ def build_context_output(
         new_snippets_count=len(new_snippets),
     )
 
-    if session_id:
-        state.setdefault("sessions", {})
-        session_ids = set(state["sessions"].get(session_id, {}).get("ids", []))
-        session_ids.update(new_ids)
-        state["sessions"][session_id] = {"ids": sorted(session_ids)}
-        _save_state(state)
-
     parts: list[str] = []
-    if session_id is not None:
-        already_lines = "\n".join(f"- {sid}" for sid in sorted(already_ids)) or "- (none)"
-        parts.extend(["ALREADY_PROVIDED_IDS:", already_lines, ""])
     parts.append("NEW_SNIPPETS:")
 
     if not new_snippets:

@@ -3,6 +3,8 @@
 import tempfile
 
 from instrukt_ai_logging import get_logger
+from mlx_audio.tts.generate import generate_audio
+from mlx_audio.tts.utils import load_model
 
 logger = get_logger(__name__)
 
@@ -21,14 +23,9 @@ class Qwen3TTSBackend:
         if self._model is not None:
             return True
         try:
-            from mlx_audio.tts.utils import load_model
-
             self._model = load_model(DEFAULT_MODEL)
             logger.info("Qwen3 TTS model loaded: %s", DEFAULT_MODEL)
             return True
-        except ImportError:
-            logger.debug("mlx-audio library not installed")
-            return False
         except Exception as e:
             logger.error("Failed to load Qwen3 TTS model: %s", e)
             return False
@@ -48,8 +45,6 @@ class Qwen3TTSBackend:
             return False
 
         try:
-            from mlx_audio.tts.generate import generate_audio
-
             voice = voice_name or DEFAULT_VOICE
 
             with tempfile.TemporaryDirectory() as tmp_dir:

@@ -40,7 +40,7 @@ def get_tool_definitions() -> list[Tool]:
                 "Use teleclaude__get_context by default when information is incomplete. "
                 "If you do not have full, current, and confident visibility into repo rules, workflows, or relevant local knowledge, "
                 "you must call teleclaude__get_context before acting. Treat any uncertainty as a hard trigger. "
-                "This applies to planning, troubleshooting, editing, or answering when local constraints might matter. "
+                "This applies to skaffolding, planning, troubleshooting, editing, or answering when local constraints might matter. "
                 "Only skip the tool if the user explicitly says not to or the request is purely mechanical with zero dependency on local guidance. "
                 "If unsure, assume the tool is required. "
                 "Use when you need context beyond what you already have, like policy/procedure/role/checklist/reference/etc. "

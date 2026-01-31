@@ -63,3 +63,6 @@ worktrees/
 teleclaude.db
 teleclaude.db-wal
 teleclaude.db-shm
+
+AGENTS.md
+CLAUDE.md

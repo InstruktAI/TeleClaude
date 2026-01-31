@@ -10,9 +10,9 @@ description: Role-based filtering of teleclaude tools to enforce least-privilege
 ## Rules
 
 - The MCP wrapper filters `teleclaude__*` tools based on the agent's role.
-- When the wrapper receives a `teleclaude__run_agent_command(cmd="/next-{step}")` call, it sets the agent role to `builder`.
+- When the wrapper receives a `teleclaude__run_agent_command(cmd="/next-{step}")` call, it sets the agent role to `worker`.
 - Role-based tool access:
-  - `builder`: only `teleclaude__get_context` is exposed.
+  - `worker`: orchestration tools are hidden.
   - No role: all `teleclaude__*` tools are exposed.
 
 ## Rationale

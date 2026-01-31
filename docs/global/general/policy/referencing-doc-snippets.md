@@ -36,3 +36,7 @@ description: Policy for referencing documentation snippets in AI agent prompts.
 ## Exceptions
 
 - None.
+
+## See also
+
+- docs/global/general/procedure/agent-artifact-authoring.md

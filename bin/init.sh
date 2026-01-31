@@ -20,7 +20,7 @@ if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
         echo "  - Break the main TeleClaude daemon"
         echo ""
         echo "Init must only run from the main repository."
-        echo "Worktrees are automatically prepared by 'make worktree-prepare'."
+        echo "Worktrees are prepared by install conventions (make install or npm/pnpm install)."
         exit 1
     fi
 fi

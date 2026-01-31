@@ -3,6 +3,9 @@ Description=TeleClaude docs watch ({{PROJECT_ROOT}})
 
 [Path]
 PathModified={{PROJECT_ROOT}}/AGENTS.md
+PathModified={{PROJECT_ROOT}}/AGENTS.master.md
+PathModified={{PROJECT_ROOT}}/agents/AGENTS.global.md
+PathModified={{PROJECT_ROOT}}
 PathModified={{PROJECT_ROOT}}/.agents
 PathModified={{PROJECT_ROOT}}/agents
 PathModified={{PROJECT_ROOT}}/docs/project

@@ -65,7 +65,7 @@ def _allowed_scopes(domains: Iterable[str]) -> set[str]:
 
 
 def validate_snippet_id_format(value: str, *, domains: Iterable[str]) -> tuple[SnippetIdParts | None, str | None]:
-    if not isinstance(value, str) or not value.strip():
+    if not value.strip():
         return None, "missing"
     raw = value.strip()
     if raw.startswith("@"):
@@ -169,7 +169,7 @@ def _tail(parts: tuple[str, ...], start_idx: int, path: Path) -> str:
 
 
 def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | None:
-    if not isinstance(ref, str) or not ref:
+    if not ref:
         return "missing_ref"
     if not ref.startswith("@"):
         return "missing_at_prefix"

@@ -1,6 +1,5 @@
 """Project artifact syncing and file watching for TeleClaude."""
 
-import hashlib
 import os
 import subprocess
 import sys
@@ -16,28 +15,20 @@ def sync_project_artifacts(project_root: Path) -> None:
         project_root: Path to the project root directory.
     """
     env = os.environ.copy()
-    commands = [
+    subprocess.run(
         [
             "uv",
             "run",
             "--quiet",
-            "scripts/sync_resources.py",
-            "--warn-only",
+            "scripts/auto_sync.py",
             "--project-root",
             str(project_root),
+            "--force",
         ],
-        [
-            "uv",
-            "run",
-            "--quiet",
-            "scripts/distribute.py",
-            "--project-root",
-            str(project_root),
-            "--deploy",
-        ],
-    ]
-    for cmd in commands:
-        subprocess.run(cmd, cwd=project_root, check=True, env=env)
+        cwd=project_root,
+        check=True,
+        env=env,
+    )
 
 
 def install_docs_watch(project_root: Path) -> None:
@@ -55,25 +46,26 @@ def install_docs_watch(project_root: Path) -> None:
     print("telec init: unsupported OS for auto-sync watcher.")
 
 
-def _project_hash(project_root: Path) -> str:
-    """Generate a short hash for the project path."""
-    digest = hashlib.sha1(str(project_root).encode("utf-8")).hexdigest()
-    return digest[:10]
+def _project_label(project_root: Path) -> str:
+    """Generate a stable label from the project name."""
+    name = project_root.name.strip() or "teleclaude"
+    slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in name)
+    slug = "-".join(part for part in slug.split("-") if part)
+    return slug or "teleclaude"
 
 
 def _install_launchd_watch(project_root: Path) -> None:
     """Install launchd file watcher on macOS."""
-    label = f"ai.instrukt.teleclaude.docs.{_project_hash(project_root)}"
+    label = f"ai.instrukt.teleclaude.docs.{_project_label(project_root)}"
     plist_path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
     plist_path.parent.mkdir(parents=True, exist_ok=True)
 
-    command = (
-        f"cd {project_root} && "
-        f"uv run --quiet scripts/sync_resources.py --warn-only --project-root {project_root} && "
-        f"uv run --quiet scripts/distribute.py --project-root {project_root} --deploy"
-    )
+    command = f"cd {project_root} && uv run --quiet scripts/auto_sync.py --project-root {project_root}"
     watch_paths = [
         project_root / "AGENTS.md",
+        project_root / "AGENTS.master.md",
+        project_root / "agents" / "AGENTS.global.md",
+        project_root,
         project_root / ".agents",
         project_root / "agents",
         project_root / "docs" / "project",
@@ -82,6 +74,8 @@ def _install_launchd_watch(project_root: Path) -> None:
     ]
     watch_entries = "\n".join(f"      <string>{path}</string>" for path in watch_paths)
     launchd_path = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+
+    _remove_stale_launchd_plists(plist_path.parent, project_root)
 
     template_path = REPO_ROOT / "templates" / "ai.instrukt.teleclaude.docs-watch.plist"
     if template_path.exists():
@@ -127,19 +121,34 @@ def _install_launchd_watch(project_root: Path) -> None:
         subprocess.run(["launchctl", "load", str(plist_path)], check=False)
 
 
+def _remove_stale_launchd_plists(launchd_dir: Path, project_root: Path) -> None:
+    """Remove stale TeleClaude docs watcher plists that reference this project."""
+    if not launchd_dir.exists():
+        return
+    for plist in launchd_dir.glob("ai.instrukt.teleclaude.docs.*.plist"):
+        if plist.name == f"ai.instrukt.teleclaude.docs.{_project_label(project_root)}.plist":
+            continue
+        try:
+            content = plist.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        if str(project_root) not in content:
+            continue
+        try:
+            plist.unlink()
+        except Exception:
+            continue
+
+
 def _install_systemd_watch(project_root: Path) -> None:
     """Install systemd file watcher on Linux."""
-    unit_id = f"teleclaude-docs-{_project_hash(project_root)}"
+    unit_id = f"teleclaude-docs-{_project_label(project_root)}"
     unit_dir = Path.home() / ".config" / "systemd" / "user"
     unit_dir.mkdir(parents=True, exist_ok=True)
     service_path = unit_dir / f"{unit_id}.service"
     path_path = unit_dir / f"{unit_id}.path"
 
-    command = (
-        f"cd {project_root} && "
-        f"uv run --quiet scripts/sync_resources.py --warn-only --project-root {project_root} && "
-        f"uv run --quiet scripts/distribute.py --project-root {project_root} --deploy"
-    )
+    command = f"cd {project_root} && uv run --quiet scripts/auto_sync.py --project-root {project_root}"
 
     service_template_path = REPO_ROOT / "templates" / "teleclaude-docs-watch.service"
     path_template_path = REPO_ROOT / "templates" / "teleclaude-docs-watch.path"
