@@ -332,11 +332,15 @@ install_python_deps() {
 
     # Install mlx-audio on macOS Apple Silicon for local TTS
     if [ "$OS" = "macos" ] && [ "$(uname -m)" = "arm64" ]; then
-        print_info "Apple Silicon detected, installing mlx-audio for local TTS..."
-        if uv pip install mlx-audio >> "$LOG_FILE" 2>&1; then
-            print_success "mlx-audio installed (Qwen3 TTS backend)"
+        if uv pip show mlx-audio > /dev/null 2>&1; then
+            print_success "mlx-audio already installed"
         else
-            print_warning "Failed to install mlx-audio (TTS will be unavailable)"
+            print_info "Apple Silicon detected, installing mlx-audio for local TTS..."
+            if uv pip install mlx-audio >> "$LOG_FILE" 2>&1; then
+                print_success "mlx-audio installed (Qwen3 TTS backend)"
+            else
+                print_warning "Failed to install mlx-audio (TTS will be unavailable)"
+            fi
         fi
     fi
 
