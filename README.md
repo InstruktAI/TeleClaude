@@ -102,6 +102,11 @@ The `make init` wizard will prompt you for these values:
 
 5. **Optional: OpenAI API Key** (for voice transcription)
 
+6. **Optional: mlx-audio** (for local TTS on Apple Silicon)
+   - `pip install mlx-audio` — requires macOS with Apple Silicon
+   - Enables Qwen3 TTS backend for local speech synthesis
+   - Excluded from pyright checks since it's platform-specific
+
 The wizard will create `.env` and `config.yml` files with your settings.
 
 ### Running
