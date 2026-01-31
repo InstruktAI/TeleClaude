@@ -126,7 +126,6 @@ def expand_requires(snippet_id, visited=set()):
 
 - **Snippet Not Found**: Requested ID not in index. Returns error with missing ID list. Client must re-select.
 - **File Read Error**: Snippet in index but file missing/unreadable. Skipped with warning. Partial results returned.
-- **Circular Requires**: Expansion detects cycle. Logs warning, breaks cycle at detection point. Returns partial graph.
 - **Invalid ID Format**: Malformed snippet ID. Rejected immediately with error.
 - **Index Not Found**: `docs/index.yaml` missing. Returns empty result with error message. Agent cannot proceed.
 - **Context Too Large**: Expanded content exceeds AI context window. No automatic truncation. Client must reduce selection.

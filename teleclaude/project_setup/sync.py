@@ -15,12 +15,15 @@ def sync_project_artifacts(project_root: Path) -> None:
         project_root: Path to the project root directory.
     """
     env = os.environ.copy()
+    script_path = REPO_ROOT / "scripts" / "auto_sync.py"
     subprocess.run(
         [
             "uv",
             "run",
             "--quiet",
-            "scripts/auto_sync.py",
+            "--project",
+            str(REPO_ROOT),
+            str(script_path),
             "--project-root",
             str(project_root),
             "--force",
@@ -60,7 +63,8 @@ def _install_launchd_watch(project_root: Path) -> None:
     plist_path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
     plist_path.parent.mkdir(parents=True, exist_ok=True)
 
-    command = f"cd {project_root} && uv run --quiet scripts/auto_sync.py --project-root {project_root}"
+    script_path = REPO_ROOT / "scripts" / "auto_sync.py"
+    command = f"cd {project_root} && uv run --quiet --project {REPO_ROOT} {script_path} --project-root {project_root}"
     watch_paths = [
         project_root / "AGENTS.md",
         project_root / "AGENTS.master.md",
@@ -148,7 +152,8 @@ def _install_systemd_watch(project_root: Path) -> None:
     service_path = unit_dir / f"{unit_id}.service"
     path_path = unit_dir / f"{unit_id}.path"
 
-    command = f"cd {project_root} && uv run --quiet scripts/auto_sync.py --project-root {project_root}"
+    script_path = REPO_ROOT / "scripts" / "auto_sync.py"
+    command = f"cd {project_root} && uv run --quiet --project {REPO_ROOT} {script_path} --project-root {project_root}"
 
     service_template_path = REPO_ROOT / "templates" / "teleclaude-docs-watch.service"
     path_template_path = REPO_ROOT / "templates" / "teleclaude-docs-watch.path"

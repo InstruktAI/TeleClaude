@@ -3,6 +3,8 @@ name: next-comment-analyzer
 description: Analyze code comments for accuracy, completeness, and long-term maintainability. Use after adding documentation, before finalizing PRs with comment changes, or when reviewing existing comments for technical debt.
 ---
 
+@/Users/Morriz/.teleclaude/docs/software-development/policy/code-quality.md
+
 # Comment Analyzer
 
 ## Purpose

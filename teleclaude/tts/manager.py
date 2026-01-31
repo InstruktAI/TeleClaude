@@ -8,6 +8,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import TTSConfig, config
 from teleclaude.core.db import db
+from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.voice_assignment import VoiceConfig
 from teleclaude.tts.queue_runner import run_tts_with_lock_async
 
@@ -130,7 +131,7 @@ class TTSManager:
 
     async def trigger_event(
         self,
-        event_name: str,
+        event_name: str | AgentHookEventType,
         session_id: str,
         text: Optional[str] = None,
     ) -> bool:
@@ -149,15 +150,16 @@ class TTSManager:
             logger.debug("TTS disabled globally")
             return False
 
-        event_cfg = self.tts_config.events.get(event_name)
+        normalized_event_name = self._normalize_event_name(event_name)
+        event_cfg = self.tts_config.events.get(normalized_event_name)
         if not event_cfg or not event_cfg.enabled:
-            logger.debug(f"Event {event_name} disabled or not configured")
+            logger.debug(f"Event {normalized_event_name} disabled or not configured")
             return False
 
         # Use custom text, or built-in session_start messages, or config messages, or fallback message
         if text:
             text_to_speak = text
-        elif event_name == "session_start":
+        elif normalized_event_name == "session_start":
             text_to_speak = random.choice(SESSION_START_MESSAGES) if SESSION_START_MESSAGES else "Session started."
         elif event_cfg.messages:
             text_to_speak = random.choice(event_cfg.messages)
@@ -199,7 +201,7 @@ class TTSManager:
                 service_chain.append((service_name, fallback_voice))
 
         logger.debug(
-            f"TTS triggered for {event_name}: {text_to_speak[:50]}...",
+            f"TTS triggered for {normalized_event_name}: {text_to_speak[:50]}...",
             extra={"session_id": session_id[:8]},
         )
 
@@ -209,6 +211,14 @@ class TTSManager:
             lambda t: asyncio.create_task(self._handle_tts_result(t, session_id, voice.service_name))
         )
         return True
+
+    def _normalize_event_name(self, event_name: str | AgentHookEventType) -> str:
+        """Map agent hook events to TTS event config keys."""
+        if event_name == AgentHookEvents.AGENT_SESSION_START:
+            return "session_start"
+        if event_name == AgentHookEvents.AGENT_STOP:
+            return "agent_stop"
+        return str(event_name)
 
     async def _handle_tts_result(
         self,

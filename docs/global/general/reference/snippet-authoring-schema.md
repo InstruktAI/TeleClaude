@@ -65,5 +65,4 @@ Global snippets are distributed to `~/.teleclaude/docs/` and available to all pr
 
 - Baseline snippets omit frontmatter but must follow the same section structure.
 - Section headings must match the schema exactly; extra headings are invalid.
-- Required reads must be acyclic; circular references indicate incorrect information design.
 - `docs/index.yaml` is auto-generated — never hand-edit it.

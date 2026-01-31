@@ -49,7 +49,6 @@ flowchart LR
 - **Unique IDs**: Each snippet has globally unique ID; collisions detected and rejected.
 - **Stable Paths**: Global docs use `~/.teleclaude/docs`, project docs use absolute or tilde-expanded paths.
 - **Path Normalization**: The `teleclaude-docs` git filter smudges portable `@~/.teleclaude` references into local absolute paths and cleans them back on commit.
-- **Acyclic Requires**: Circular dependencies detected and reported as warnings.
 - **Type Validation**: Snippet types must match canonical taxonomy from `teleclaude/constants.py:TAXONOMY_TYPES`.
 - **Schema Compliance**: All snippets validated against `scripts/snippet_schema.yaml` required sections.
 
@@ -94,7 +93,6 @@ Build dependency graph: snippet_id -> [required_snippet_ids]
 For each snippet:
     Traverse requires recursively
     If snippet appears in own dependency chain:
-        Report circular reference
         Log warning (does not block index generation)
 ```
 
@@ -109,7 +107,6 @@ For each snippet:
 
 - **Missing Frontmatter**: Snippet skipped with warning. Does not block index generation.
 - **Duplicate IDs**: Script exits with error listing collisions. Requires manual resolution before daemon can use index.
-- **Circular Requires**: Logged as warning. Index generated but context selection may fail or loop.
 - **Invalid Type**: Snippet skipped. Logged with file path for manual correction.
 - **File Read Error**: Snippet skipped. Logged with exception details.
 - **YAML Write Failure**: Index generation fails. Daemon cannot start without valid index.

@@ -14,6 +14,9 @@ snippets:
   type: architecture
   scope: project
   path: docs/project/architecture/api-server.md
+  requires:
+  - architecture/docs/project/architecture/cache.md
+  - architecture/docs/project/reference/event-types.md
   source_project: TeleClaude
 - id: project/architecture/cache
   description: DaemonCache snapshot layer for computers, projects, todos, sessions,
@@ -21,6 +24,8 @@ snippets:
   type: architecture
   scope: project
   path: docs/project/architecture/cache.md
+  requires:
+  - architecture/docs/project/architecture/cache-system.md
   source_project: TeleClaude
 - id: project/architecture/cache-system
   description: Event-driven read-cache architecture using SQLite snapshots.
@@ -40,12 +45,16 @@ snippets:
   type: architecture
   scope: project
   path: docs/project/architecture/context-selection.md
+  requires:
+  - architecture/docs/project/architecture/context-index.md
   source_project: TeleClaude
 - id: project/architecture/daemon
   description: Daemon orchestration responsibilities, boundaries, and background services.
   type: architecture
   scope: project
   path: docs/project/architecture/daemon.md
+  requires:
+  - architecture/docs/project/architecture/system-overview.md
   source_project: TeleClaude
 - id: project/architecture/database
   description: SQLite persistence for sessions, hook outbox, UX state, and agent metadata.
@@ -70,6 +79,9 @@ snippets:
   type: architecture
   scope: project
   path: docs/project/architecture/outbox.md
+  requires:
+  - architecture/docs/project/architecture/database.md
+  - architecture/docs/project/reference/event-types.md
   source_project: TeleClaude
 - id: project/architecture/output-polling
   description: Mechanism for real-time terminal output capture and streaming.
@@ -83,6 +95,10 @@ snippets:
   type: architecture
   scope: project
   path: docs/project/architecture/redis-transport.md
+  requires:
+  - architecture/docs/project/architecture/adapter-client.md
+  - architecture/docs/project/architecture/cache.md
+  - architecture/docs/project/reference/event-types.md
   source_project: TeleClaude
 - id: project/architecture/session-lifecycle
   description: Complete lifecycle of a terminal session from creation to cleanup.
@@ -110,6 +126,9 @@ snippets:
   type: architecture
   scope: project
   path: docs/project/architecture/telegram-adapter.md
+  requires:
+  - architecture/docs/project/policy/ux-message-cleanup.md
+  - architecture/docs/project/architecture/session-lifecycle.md
   source_project: TeleClaude
 - id: project/architecture/tmux-management
   description: Tmux session orchestration, input injection, and per-session temp directories.
@@ -130,6 +149,10 @@ snippets:
   type: architecture
   scope: project
   path: docs/project/architecture/tui-state-layout.md
+  requires:
+  - architecture/docs/project/architecture/system-overview.md
+  - architecture/docs/project/architecture/ui-adapter.md
+  - architecture/docs/project/architecture/tmux-management.md
   source_project: TeleClaude
 - id: project/architecture/ui-adapter
   description: UI adapters translate human inputs into events and render outputs with
@@ -137,12 +160,16 @@ snippets:
   type: architecture
   scope: project
   path: docs/project/architecture/ui-adapter.md
+  requires:
+  - architecture/docs/project/policy/ux-message-cleanup.md
   source_project: TeleClaude
 - id: project/checklist/multi-computer-readiness
   description: Verification steps before enabling multi-computer orchestration.
   type: checklist
   scope: global
   path: docs/project/checklist/multi-computer-readiness.md
+  requires:
+  - checklist/docs/project/procedure/ssh-agent-keychain.md
   source_project: TeleClaude
 - id: project/example/ai-to-ai-delegation
   description: Code example of a Master AI delegating a task to a Worker AI.
@@ -155,12 +182,17 @@ snippets:
   type: guide
   scope: project
   path: docs/project/guide/ai-to-ai-operations.md
+  requires:
+  - guide/docs/project/reference/command-surface.md
+  - guide/docs/project/reference/command-contracts.md
   source_project: TeleClaude
 - id: project/guide/multi-computer-setup
   description: Guide for setting up a distributed TeleClaude network.
   type: guide
   scope: project
   path: docs/project/guide/multi-computer-setup.md
+  requires:
+  - guide/docs/project/checklist/multi-computer-readiness.md
   source_project: TeleClaude
 - id: project/guide/ssh-agent-deployments
   description: Configure SSH agent access for automated git operations and deployments.
@@ -199,6 +231,8 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/cache-contract.md
+  requires:
+  - policy/docs/project/architecture/cache.md
   source_project: TeleClaude
 - id: project/policy/daemon-availability
   description: The TeleClaude daemon must stay up; restarts must be brief and verified.
@@ -270,12 +304,16 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/add-telegram-command.md
+  requires:
+  - procedure/docs/project/policy/telegram-command-registration.md
   source_project: TeleClaude
 - id: project/procedure/agent-artifact-distribution
   description: Steps to build and distribute agent artifacts in this repository.
   type: procedure
   scope: project
   path: docs/project/procedure/agent-artifact-distribution.md
+  requires:
+  - docs/global/general/concept/normalized-agent-artifacts.md
   source_project: TeleClaude
 - id: project/procedure/deploy
   description: Deploy TeleClaude changes safely with verification.
@@ -288,12 +326,16 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/out-of-band-telegram-alerts.md
+  requires:
+  - procedure/docs/project/policy/daemon-availability.md
   source_project: TeleClaude
 - id: project/procedure/restart-daemon
   description: Controlled daemon restart with verification and log checks.
   type: procedure
   scope: project
   path: docs/project/procedure/restart-daemon.md
+  requires:
+  - procedure/docs/project/policy/daemon-availability.md
   source_project: TeleClaude
 - id: project/procedure/rsync-development
   description: High-speed iteration workflow using rsync instead of git push/pull.

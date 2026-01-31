@@ -3,6 +3,8 @@ name: next-code-reviewer
 description: Review code for adherence to project guidelines, style guides, and best practices. Use after writing or modifying code, before committing changes or creating pull requests.
 ---
 
+@/Users/Morriz/.teleclaude/docs/software-development/policy/code-quality.md
+
 # Code Reviewer
 
 ## Purpose
@@ -16,8 +18,6 @@ Review code against project guidelines with high precision to minimize false pos
 
 ## Inputs
 
-- Project rules (`AGENTS.md` or `CLAUDE.md`)
-- `~/.teleclaude/docs/development/coding-directives.md`
 - Relevant source files for context
 
 ## Outputs

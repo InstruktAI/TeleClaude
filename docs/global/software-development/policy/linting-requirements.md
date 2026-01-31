@@ -10,7 +10,7 @@ type: policy
 
 ## Required reads
 
-@~/.teleclaude/docs/software-development/policy/code-quality.md
+- @~/.teleclaude/docs/software-development/policy/code-quality.md
 
 ## Rules
 

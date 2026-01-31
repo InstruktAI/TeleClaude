@@ -3,6 +3,9 @@ name: next-test-analyzer
 description: Review test coverage quality and completeness. Use after creating a PR or adding new functionality to ensure tests adequately cover new code and edge cases.
 ---
 
+@/Users/Morriz/.teleclaude/docs/software-development/policy/code-quality.md
+@/Users/Morriz/.teleclaude/docs/software-development/policy/testing.md
+
 # Test Analyzer
 
 ## Purpose

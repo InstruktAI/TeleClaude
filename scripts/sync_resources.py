@@ -752,7 +752,7 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
         }
 
     snippet_path_to_id: dict[str, str] = {}
-    snippet_cache: list[tuple[Path, Mapping[str, object]]] = []
+    snippet_cache: list[tuple[Path, Mapping[str, object], str]] = []
     snippet_files = sorted(_snippet_files(snippets_root))
     if not snippet_files:
         return {
@@ -766,10 +766,10 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
         snippet_id = metadata.get("id")
         if isinstance(snippet_id, str):
             snippet_path_to_id[str(file_path.relative_to(snippets_root))] = snippet_id
-        snippet_cache.append((file_path, metadata))
+        snippet_cache.append((file_path, metadata, post.content))
 
     snippets: list[SnippetEntry] = []
-    for file_path, metadata in snippet_cache:
+    for file_path, metadata, content in snippet_cache:
         snippet_id = metadata.get("id")
         description = metadata.get("description")
         snippet_type = metadata.get("type")
@@ -781,7 +781,7 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             or not isinstance(snippet_scope, str)
         ):
             continue
-        requires_list = _extract_required_reads(post.content)
+        requires_list = _extract_required_reads(content)
         resolved_refs = _resolve_requires(file_path, requires_list, snippets_root, project_root, snippet_path_to_id)
         try:
             relative_path = str(file_path.relative_to(project_root))
@@ -838,7 +838,6 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
         "snippets_root": snippets_root_str,
         "snippets": snippets,
     }
-    _detect_cycles(payload)
     return payload
 
 
@@ -856,44 +855,6 @@ def _get_project_name(project_root: Path) -> str:
         except Exception:
             pass
     return project_root.name
-
-
-def _detect_cycles(payload: IndexPayload) -> None:
-    graph: dict[str, list[str]] = {}
-    id_to_path: dict[str, str] = {}
-    for entry in payload.get("snippets", []):
-        graph[entry["id"]] = list(entry.get("requires", []))
-        id_to_path[entry["id"]] = entry.get("path", "")
-
-    visited: set[str] = set()
-    in_stack: set[str] = set()
-    stack: list[str] = []
-
-    def visit(node: str) -> None:
-        if node in in_stack:
-            idx = stack.index(node) if node in stack else 0
-            cycle = stack[idx:] + [node]
-            path = id_to_path.get(cycle[0], "")
-            _warn(
-                "snippet_circular_reference",
-                path=path,
-                cycle=" -> ".join(cycle),
-                hint="Fix circular references first.",
-            )
-            return
-        if node in visited:
-            return
-        visited.add(node)
-        in_stack.add(node)
-        stack.append(node)
-        for nxt in graph.get(node, []):
-            if nxt in graph:
-                visit(nxt)
-        stack.pop()
-        in_stack.remove(node)
-
-    for node in graph:
-        visit(node)
 
 
 def _check_global_collisions(

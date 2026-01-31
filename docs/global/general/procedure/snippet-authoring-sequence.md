@@ -36,4 +36,3 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 ## Recovery
 
 - If validation fails, fix schema violations and re-run indexing.
-- If a circular reference is reported, remove or reorder required reads so dependencies form a tree (acyclic graph). Only one direction should reference the other.

@@ -323,8 +323,8 @@ A one-time initialization that creates `tmp/known-facts-summary.md` from existin
 
 ```
 Input sources:
-├── ~/.teleclaude/docs/development/coding-directives.md
-├── ~/.teleclaude/docs/development/testing-directives.md
+├── ~/.teleclaude/docs/software-development/policy/code-quality.md
+├── ~/.teleclaude/docs/software-development/policy/testing.md
 ├── {project}/AGENTS.md (if exists)
 └── {project}/LEARNED.md (if exists)
 

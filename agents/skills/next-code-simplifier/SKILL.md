@@ -3,6 +3,8 @@ name: next-code-simplifier
 description: Simplify code for clarity, consistency, and maintainability while preserving all functionality. Use after completing a coding task or after passing code review to polish the implementation.
 ---
 
+@/Users/Morriz/.teleclaude/docs/software-development/policy/code-quality.md
+
 # Code Simplifier
 
 ## Purpose
@@ -16,8 +18,6 @@ Refine code for clarity and maintainability without changing behavior.
 
 ## Inputs
 
-- Project standards (`AGENTS.md` or `CLAUDE.md`)
-- `~/.teleclaude/docs/development/coding-directives.md`
 - Relevant code context and patterns
 
 ## Outputs

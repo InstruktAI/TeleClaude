@@ -19,7 +19,7 @@ type: architecture
 
 **Inputs:**
 
-- Session events from the event bus (SESSION_STARTED, SESSION_UPDATED)
+- Agent events from the event bus (AGENT_EVENT for AgentHookEvents.AGENT_SESSION_START, AgentHookEvents.AGENT_STOP)
 - TTS configuration from `config.yml` (services, voices, events, priority)
 - Voice assignments persisted in the database
 - Environment variables: `ELEVENLABS_API_KEY`, `OPENAI_API_KEY` (for respective services)
@@ -34,7 +34,7 @@ type: architecture
 
 **Event-triggered playback:**
 
-1. Event handler receives SESSION_STARTED or SESSION_UPDATED from the event bus.
+1. Event handler receives AGENT_EVENT (AgentHookEvents.AGENT_SESSION_START or AgentHookEvents.AGENT_STOP) from the event bus.
 2. `TTSManager.trigger_event()` checks config, gets or assigns a voice from the database.
 3. Builds a service chain: assigned service first, then fallbacks in `service_priority` order.
 4. `run_tts_with_lock_async()` delegates to a thread via `asyncio.to_thread()`.

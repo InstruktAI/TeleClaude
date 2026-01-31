@@ -36,13 +36,7 @@ Co-Authored-By: TeleClaude <noreply@instrukt.ai>
 
 **Valid types:**
 
-- `feat` - New feature
-- `fix` - Bug fix
-- `refactor` - Code restructuring
-- `docs` - Documentation changes
-- `test` - Test additions or updates
-- `chore` - Maintenance tasks
-- `perf` - Performance improvements
+All Committizen types are allowed.
 
 **Scope:** Component or area affected (optional but recommended)
 
@@ -65,7 +59,7 @@ Co-Authored-By: TeleClaude <noreply@instrukt.ai>
 
 ## Scope
 
-- Applies to all repositories and all contributors (human or AI).
+- Applies to all repositories and all contributors.
 
 ## Enforcement
 

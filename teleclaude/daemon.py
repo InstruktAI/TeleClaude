@@ -824,7 +824,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.warning("Unknown system command: %s", ctx.command)
 
     async def _handle_agent_event(self, _event: str, context: AgentEventContext) -> None:
-        """Central handler for AGENT_EVENT (formerly CLAUDE_EVENT).
+        """Central handler for AGENT_EVENT.
 
         Orchestrates summarization, title updates, and coordination.
         """
