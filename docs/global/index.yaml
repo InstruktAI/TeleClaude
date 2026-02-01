@@ -159,8 +159,9 @@ snippets:
   - software-development/policy/code-quality
   source_project: TeleClaude
 - id: software-development/policy/security-awareness
-  description: Secrets management, input validation, OWASP awareness, secure defaults.
-    Never commit secrets, validate boundaries.
+  description: Security posture, defense in depth, OWASP surface, auth, crypto, transport,
+    secrets, supply chain, observability. Assume breach, fail closed, contain blast
+    radius.
   type: policy
   scope: domain
   path: docs/global/software-development/policy/security-awareness.md
