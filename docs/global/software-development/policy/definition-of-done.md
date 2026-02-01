@@ -122,19 +122,6 @@ Work is NOT done if ANY of these are true:
 - ❌ "Bypassed hooks to commit faster"
 - ❌ "Commented out broken code"
 
-Work is complete when:
-
-1. All baseline quality gates pass
-2. Code is production-ready
-3. No known issues remain
-4. You would be proud to maintain this code yourself
-5. Another developer can understand and modify it
-
-- Docs updated for any new behavior or interfaces.
-- Observability updated if behavior affects production signals.
-- Backward-compatibility impacts are documented and communicated.
-- Follow-up tasks are recorded when scope is intentionally deferred.
-
 ## Rationale
 
 - A consistent DoD prevents “almost done” work from leaking into production.

@@ -63,25 +63,6 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 17. No commits with `--no-verify` to bypass hooks unless explicitly approved
 18. Keep test suite fast (< 10s for unit tests)
 
-- [ ] Pre-commit hooks pass without warnings
-- [ ] No unused imports or variables
-- [ ] All imports at top level (no import-outside-toplevel)
-- [ ] Code formatted according to project standards
-- [ ] New tests added for new functionality
-- [ ] Edge cases and error conditions tested
-- [ ] Type annotations complete and accurate
-- [ ] Test names are descriptive
-- [ ] Tests verify behavior, not implementation
-- [ ] No flaky or slow tests introduced
-- [ ] No commented-out code or tests
-
-**CRITICAL**: Never commit code with failing hooks, lint violations, or type errors.
-
-- Prefer deterministic tests; control time, randomness, and external I/O.
-- Separate unit tests from integration tests; document how to run each.
-- Mock external services; never hit production by default.
-- Keep fixtures minimal and reusable.
-
 ## Rationale
 
 - Tests protect behavior and enable safe refactors.

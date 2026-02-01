@@ -10,21 +10,12 @@ type: policy
 
 ## Rules
 
-Code quality is enforced through explicit contracts, stable boundaries, and verifiable outcomes.
-
-Rules:
-
 - Honor repository configuration and established conventions.
 - Encode invariants explicitly and validate at boundaries.
 - Preserve contract fidelity across all call chains.
 - Keep responsibilities narrow and interfaces explicit.
 - Fail fast on contract violations with clear diagnostics.
 - Keep state ownership explicit and observable.
-
-Scope
-
-- Applies to all code changes and design decisions.
-
 - Prefer simple, readable implementations over cleverness.
 - Require tests or explicit justification for untested changes.
 - Avoid hidden side effects; document mutation and I/O explicitly.

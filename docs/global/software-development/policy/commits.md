@@ -14,15 +14,7 @@ type: policy
 
 ## Rules
 
-Pre-commit hooks enforce tests, linting, and formatting automatically.
-
-Only commit when ALL conditions are met:
-
-- Change is atomic and complete
-- Code works (hooks will verify)
-- No debug/temp code
-- All tests pass
-- No lint violations
+Pre-commit hooks enforce tests, linting, and formatting. Only commit atomic, complete changes with no debug/temp code.
 
 Use commitizen format:
 
