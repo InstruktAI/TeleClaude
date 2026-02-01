@@ -587,7 +587,7 @@ class UiAdapter(BaseAdapter):
         feedback_updated = (
             SessionField.LAST_FEEDBACK_RECEIVED.value in updated_fields or "last_feedback_summary" in updated_fields
         )
-        if feedback_updated:
+        if feedback_updated and session.lifecycle_status != "headless":
             # Use helper to get appropriate feedback based on config
             feedback = get_last_feedback(session) or ""
             if feedback:
@@ -600,6 +600,6 @@ class UiAdapter(BaseAdapter):
                 await self.client.send_message(
                     session,
                     feedback,
-                    metadata=MessageMetadata(origin="internal"),
+                    metadata=MessageMetadata(),
                     cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
                 )

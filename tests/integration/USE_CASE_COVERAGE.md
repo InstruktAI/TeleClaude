@@ -146,7 +146,7 @@ async def test_close_session_with_active_polling():
 @pytest.mark.integration
 async def test_last_input_origin_receives_output():
     """Test output sent to origin adapter (CRITICAL)."""
-    # Setup: Create session with last_input_origin="telegram"
+    # Setup: Create session with last_input_origin=InputOrigin.TELEGRAM.value
     # Execute: Send command
     # Assert: Output sent to TelegramAdapter
     # Assert: send_message() called on origin adapter

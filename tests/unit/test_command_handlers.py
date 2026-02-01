@@ -12,6 +12,7 @@ from teleclaude.config import AgentConfig
 from teleclaude.core import command_handlers
 from teleclaude.core.db import Db
 from teleclaude.core.models import MessageMetadata
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 from teleclaude.types.commands import (
     CreateSessionCommand,
@@ -93,7 +94,7 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
     mock_client.send_message = AsyncMock()
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        MessageMetadata(origin="telegram", project_path=tmpdir)
+        MessageMetadata(origin=InputOrigin.TELEGRAM.value, project_path=tmpdir)
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
@@ -106,7 +107,7 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
             mock_db.assign_voice = mock_initialized_db.assign_voice
             mock_unique.return_value = "$TestComputer[user] - Test Title"
 
-            cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", origin="telegram")
+            cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", origin=InputOrigin.TELEGRAM.value)
             result = await command_handlers.create_session(cmd, mock_client)
 
     assert result["session_id"]
@@ -140,7 +141,7 @@ async def test_handle_create_session_does_not_send_welcome(mock_initialized_db, 
     mock_client.adapters = {}
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        MessageMetadata(origin="telegram", project_path=tmpdir)
+        MessageMetadata(origin=InputOrigin.TELEGRAM.value, project_path=tmpdir)
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
@@ -154,7 +155,7 @@ async def test_handle_create_session_does_not_send_welcome(mock_initialized_db, 
             mock_db.assign_voice = mock_initialized_db.assign_voice
             mock_unique.return_value = "$TestComputer[user] - Test Title"
 
-            cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", origin="telegram")
+            cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", origin=InputOrigin.TELEGRAM.value)
             await command_handlers.create_session(cmd, mock_client)
 
     assert order == []
@@ -185,14 +186,14 @@ async def test_create_session_inherits_parent_origin(mock_initialized_db):
             parent = await mock_initialized_db.create_session(
                 computer_name="TestComputer",
                 tmux_session_name="tmux-parent",
-                last_input_origin="telegram",
+                last_input_origin=InputOrigin.TELEGRAM.value,
                 title="Parent Session",
             )
 
             cmd = CreateSessionCommand(
                 project_path=tmpdir,
                 title="Child Session",
-                origin="telegram",
+                origin=InputOrigin.TELEGRAM.value,
                 initiator_session_id=parent.session_id,
             )
             result = await command_handlers.create_session(cmd, mock_client)
@@ -259,7 +260,7 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
     invalid_path = tmp_path / "not-a-dir.txt"
     invalid_path.write_text("nope", encoding="utf-8")
 
-    MessageMetadata(origin="telegram", project_path=str(invalid_path))
+    MessageMetadata(origin=InputOrigin.TELEGRAM.value, project_path=str(invalid_path))
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
@@ -279,7 +280,7 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
         mock_db.assign_voice = mock_initialized_db.assign_voice
         mock_unique.return_value = "$TestComputer[user] - Untitled"
 
-        cmd = CreateSessionCommand(project_path="/nonexistent", origin="telegram")
+        cmd = CreateSessionCommand(project_path="/nonexistent", origin=InputOrigin.TELEGRAM.value)
         with pytest.raises(ValueError, match="Working directory does not exist"):
             await command_handlers.create_session(cmd, mock_client)
     assert await mock_initialized_db.count_sessions() == 0
@@ -372,6 +373,7 @@ async def test_handle_list_sessions_formats_output():
     s0.created_at = now
     s0.last_activity = now
     s0.thinking_mode = "med"
+    s0.lifecycle_status = "active"
 
     s1 = MagicMock()
     s1.session_id = "session-1"
@@ -381,6 +383,7 @@ async def test_handle_list_sessions_formats_output():
     s1.created_at = now
     s1.last_activity = now
     s1.thinking_mode = "med"
+    s1.lifecycle_status = "active"
 
     mock_sessions = [s0, s1]
 
@@ -519,7 +522,7 @@ async def test_handle_ctrl_requires_key_argument(mock_initialized_db):
     session = await mock_initialized_db.create_session(
         computer_name="TestPC",
         tmux_session_name="tc_test",
-        last_input_origin="terminal",
+        last_input_origin=InputOrigin.API.value,
         title="Test Session",
         project_path="/home/user",
     )

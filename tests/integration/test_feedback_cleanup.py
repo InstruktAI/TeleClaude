@@ -9,6 +9,8 @@ from unittest.mock import call, patch
 
 import pytest
 
+from teleclaude.core.origins import InputOrigin
+
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import tmux_bridge
@@ -33,7 +35,7 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
     session = await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="test-ephemeral-cleanup",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Ephemeral Cleanup",
         project_path="/tmp",
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=67890)),
@@ -60,7 +62,7 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
     with patch.object(tmux_bridge, "session_exists", mock_session_exists):
         # Simulate user input - this triggers pre-handler cleanup
         metadata = MessageMetadata(
-            origin="telegram",
+            origin=InputOrigin.TELEGRAM.value,
             message_thread_id=67890,
             channel_metadata={"message_id": "user-msg-123"},
         )
@@ -103,7 +105,7 @@ async def test_send_message_ephemeral_auto_tracks(daemon_with_mocked_telegram):
     session = await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="test-auto-track",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Auto Track",
         project_path="/tmp",
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=67891)),
@@ -126,7 +128,7 @@ async def test_send_message_persistent_not_tracked(daemon_with_mocked_telegram):
     session = await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="test-persistent",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Persistent",
         project_path="/tmp",
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=67892)),

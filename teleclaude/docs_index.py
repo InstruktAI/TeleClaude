@@ -1,0 +1,593 @@
+"""Build and manage doc snippet index.yaml files.
+
+Handles title normalization, baseline frontmatter stripping, index generation,
+and global collision checking. Does NOT validate — that's resource_validation.py.
+
+Called by ``telec sync``.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Mapping, NotRequired, TypedDict
+
+import frontmatter
+import yaml
+from instrukt_ai_logging import get_logger
+
+from teleclaude.constants import TYPE_SUFFIX as _TYPE_SUFFIX
+from teleclaude.snippet_validation import load_domains  # noqa: F401 — re-exported for callers
+
+__all__ = ["load_domains"]
+
+logger = get_logger(__name__)
+
+_REQUIRED_READS_HEADER = re.compile(r"^##\s+Required reads\s*$", re.IGNORECASE)
+_HEADER_LINE = re.compile(r"^#{1,6}\s+")
+_REQUIRED_READ_LINE = re.compile(r"^\s*-\s*@(\S+)\s*$")
+_H1_LINE = re.compile(r"^#\s+")
+
+
+def _teleclaude_root() -> str:
+    """Return teleclaude root path with tilde (portable)."""
+    return "~/.teleclaude"
+
+
+# ---------------------------------------------------------------------------
+# Type definitions
+# ---------------------------------------------------------------------------
+
+
+class SnippetEntry(TypedDict):
+    id: str
+    description: str
+    type: str
+    scope: str
+    path: str
+    requires: NotRequired[list[str]]
+    source_project: NotRequired[str]
+
+
+class IndexPayload(TypedDict):
+    project_root: str
+    snippets_root: str
+    snippets: list[SnippetEntry]
+
+
+# ---------------------------------------------------------------------------
+# Title normalization
+# ---------------------------------------------------------------------------
+
+
+def _normalize_title(file_path: Path, content: str, declared_type: str | None) -> str:
+    """Ensure H1 title has the correct type suffix (e.g. '— Policy')."""
+    suffix = _TYPE_SUFFIX.get((declared_type or "").lower())
+    if not suffix:
+        inferred = _infer_type_from_path(file_path)
+        suffix = _TYPE_SUFFIX.get(inferred) if inferred else None
+    if not suffix:
+        return content
+    lines = content.splitlines()
+    if not lines or not _H1_LINE.match(lines[0]):
+        return content
+    title = lines[0].lstrip("#").strip()
+    expected = f" — {suffix}"
+    if title.endswith(expected):
+        return content
+    base = title.split(" — ")[0].strip() if " — " in title else title
+    lines[0] = f"# {base}{expected}"
+    return "\n".join(lines) + ("\n" if content.endswith("\n") else "")
+
+
+def _infer_type_from_path(file_path: Path) -> str | None:
+    parts = list(file_path.parts)
+    try:
+        baseline_idx = parts.index("baseline")
+    except ValueError:
+        return None
+    if baseline_idx + 1 >= len(parts):
+        return None
+    folder = parts[baseline_idx + 1]
+    return folder if folder in _TYPE_SUFFIX else None
+
+
+def normalize_titles(snippets_root: Path) -> None:
+    """Normalize H1 titles in all snippets to include the type suffix."""
+    for path in sorted(snippets_root.rglob("*.md")):
+        if path.name == "index.yaml" or path.name == "index.md":
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception as exc:
+            logger.warning("title_read_failed", path=str(path), error=str(exc))
+            continue
+        declared_type = None
+        if text.lstrip().startswith("---"):
+            try:
+                post = frontmatter.loads(text)
+                meta = post.metadata or {}
+                declared_type = meta.get("type") if isinstance(meta.get("type"), str) else None
+                body = post.content
+            except Exception:
+                body = text
+        else:
+            body = text
+        updated = _normalize_title(path, body, declared_type)
+        if updated != body:
+            if text.lstrip().startswith("---"):
+                try:
+                    post = frontmatter.loads(text)
+                    post.content = updated
+                    full_content = frontmatter.dumps(post)
+                    path.write_text(full_content, encoding="utf-8")
+                except Exception as exc:
+                    logger.warning("title_write_failed", path=str(path), error=str(exc))
+            else:
+                try:
+                    path.write_text(updated, encoding="utf-8")
+                except Exception as exc:
+                    logger.warning("title_write_failed", path=str(path), error=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Baseline management
+# ---------------------------------------------------------------------------
+
+
+def strip_baseline_frontmatter(project_root: Path) -> list[str]:
+    """Remove frontmatter from baseline docs (they shouldn't have any). Returns violations."""
+    baseline_root = project_root / "agents" / "docs" / "baseline"
+    if not baseline_root.exists():
+        return []
+    violations: list[str] = []
+    for path in sorted(baseline_root.rglob("*.md")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception as exc:
+            logger.warning("baseline_read_failed", path=str(path), error=str(exc))
+            continue
+        if not text.lstrip().startswith("---"):
+            continue
+        try:
+            rel = str(path.relative_to(project_root))
+        except ValueError:
+            rel = str(path)
+        violations.append(rel)
+        lines = text.splitlines(keepends=True)
+        end_idx = None
+        for idx in range(1, len(lines)):
+            if lines[idx].strip() == "---":
+                end_idx = idx
+                break
+        if end_idx is None:
+            continue
+        stripped = "".join(lines[end_idx + 1 :]).lstrip()
+        try:
+            path.write_text(stripped, encoding="utf-8")
+        except Exception as exc:
+            logger.warning("baseline_strip_failed", path=str(path), error=str(exc))
+    return violations
+
+
+def write_baseline_index(project_root: Path) -> None:
+    """Generate baseline/index.md with @refs to all baseline snippets."""
+    baseline_root = project_root / "agents" / "docs" / "baseline"
+    if not baseline_root.exists():
+        return
+    root = _teleclaude_root()
+    entries: list[str] = []
+    for path in sorted(baseline_root.rglob("*.md")):
+        if path.name == "index.md":
+            continue
+        rel = path.relative_to(baseline_root).as_posix()
+        entries.append(f"@{root}/docs/baseline/{rel}")
+    if not entries:
+        return
+    baseline_index = baseline_root / "index.md"
+    content = "\n".join([*entries, ""])
+    baseline_index.write_text(content, encoding="utf-8")
+
+
+def write_third_party_index(project_root: Path) -> None:
+    """Generate third-party/index.md with @refs to all third-party docs."""
+    third_party_root = project_root / "docs" / "third-party"
+    if not third_party_root.exists():
+        return
+    docs_root = project_root / "docs"
+    entries: list[str] = []
+    for path in sorted(third_party_root.rglob("*.md")):
+        if path.name == "index.md":
+            continue
+        try:
+            rel = path.relative_to(docs_root).as_posix()
+        except ValueError:
+            continue
+        entries.append(f"@docs/{rel}")
+    if not entries:
+        return
+    index_path = third_party_root / "index.md"
+    content = "\n".join([*entries, ""])
+    if index_path.exists():
+        existing = index_path.read_text(encoding="utf-8")
+        if existing == content:
+            return
+    index_path.write_text(content, encoding="utf-8")
+
+
+def remove_non_baseline_indexes(snippets_root: Path) -> list[str]:
+    """Remove stale index.md files outside baseline/. Returns removed paths."""
+    removed: list[str] = []
+    for path in sorted(snippets_root.rglob("index.md")):
+        if "baseline" in path.parts or "third-party" in path.parts:
+            continue
+        try:
+            path.unlink()
+            removed.append(str(path))
+            logger.warning("index_removed", path=str(path))
+        except Exception as exc:
+            logger.warning("index_remove_failed", path=str(path), error=str(exc))
+    return removed
+
+
+# ---------------------------------------------------------------------------
+# Required reads extraction
+# ---------------------------------------------------------------------------
+
+
+def extract_required_reads(content: str) -> list[str]:
+    """Extract ``@`` paths from the Required Reads section."""
+    lines = content.splitlines()
+    header_idx = None
+    for idx, line in enumerate(lines):
+        if _REQUIRED_READS_HEADER.match(line):
+            header_idx = idx
+            break
+    if header_idx is None:
+        return []
+    section_start = header_idx + 1
+    section_end = next(
+        (i for i in range(section_start, len(lines)) if _HEADER_LINE.match(lines[i])),
+        len(lines),
+    )
+    refs: list[str] = []
+    for line in lines[section_start:section_end]:
+        match = _REQUIRED_READ_LINE.match(line)
+        if match:
+            refs.append(match.group(1))
+    return refs
+
+
+def resolve_requires(
+    file_path: Path,
+    requires: list[str],
+    snippets_root: Path,
+    project_root: Path,
+    snippet_path_to_id: dict[str, str],
+) -> list[str]:
+    """Resolve required-read paths to snippet IDs where possible."""
+    resolved: list[str] = []
+    home_prefix = str(Path.home())
+    for req in requires:
+        if not req.endswith(".md"):
+            if req.startswith(home_prefix):
+                resolved.append(req.replace(home_prefix, "~", 1))
+            else:
+                resolved.append(req)
+            continue
+        candidate = Path(req).expanduser()
+        if not candidate.is_absolute():
+            absolute = (file_path.parent / candidate).resolve()
+        else:
+            absolute = candidate.resolve()
+        try:
+            rel_to_snippets = absolute.relative_to(snippets_root)
+        except ValueError:
+            try:
+                resolved.append(str(absolute.relative_to(project_root)))
+            except ValueError:
+                abs_str = str(absolute)
+                if abs_str.startswith(home_prefix):
+                    abs_str = abs_str.replace(home_prefix, "~", 1)
+                resolved.append(abs_str)
+            continue
+        snippet_id = snippet_path_to_id.get(rel_to_snippets.as_posix())
+        resolved.append(snippet_id if snippet_id else str(rel_to_snippets))
+    return resolved
+
+
+# ---------------------------------------------------------------------------
+# Snippet root discovery
+# ---------------------------------------------------------------------------
+
+
+def snippet_files(snippets_root: Path, *, include_baseline: bool) -> list[Path]:
+    """List all .md snippet files under a root, optionally including baseline."""
+    files = [path for path in snippets_root.rglob("*.md") if path.name != "index.yaml"]
+    if include_baseline:
+        return files
+    return [path for path in files if "baseline" not in str(path)]
+
+
+def iter_snippet_roots(project_root: Path) -> list[Path]:
+    """Find all snippet root directories under the project."""
+    roots: list[Path] = []
+    candidates = [
+        project_root / "docs" / "global",
+        project_root / "docs" / "project",
+        project_root / "agents" / "docs",
+    ]
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            rel_path = candidate.relative_to(project_root)
+            include_baseline = str(rel_path) in ("docs/global", "agents/docs")
+        except ValueError:
+            include_baseline = False
+        if snippet_files(candidate, include_baseline=include_baseline):
+            roots.append(candidate)
+    return roots
+
+
+# ---------------------------------------------------------------------------
+# Project config helpers
+# ---------------------------------------------------------------------------
+
+
+def ensure_project_config(project_root: Path) -> None:
+    """Create a minimal teleclaude.yml if one does not exist."""
+    config_path = project_root / "teleclaude.yml"
+    if config_path.exists():
+        return
+    config_path.write_text(
+        "business:\n  domains:\n    software-development: docs\n",
+        encoding="utf-8",
+    )
+
+
+def get_project_name(project_root: Path) -> str:
+    """Get project name from config or directory name."""
+    config_file = project_root / "teleclaude.yml"
+    if config_file.exists():
+        try:
+            config = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+            if isinstance(config, dict) and "project_name" in config:
+                return str(config["project_name"])
+        except Exception:
+            pass
+    return project_root.name
+
+
+# ---------------------------------------------------------------------------
+# Global collision checking
+# ---------------------------------------------------------------------------
+
+
+def check_global_collisions(
+    snippets: list[SnippetEntry],
+    project_root: Path,
+    snippets_root: Path,
+) -> None:
+    """Check for ID collisions with global documentation. Raises SystemExit on collision."""
+    try:
+        rel_path = snippets_root.relative_to(project_root)
+        if str(rel_path) != "docs/global" and "agents/docs" not in str(rel_path):
+            return
+    except ValueError:
+        return
+
+    if "baseline" in str(project_root):
+        return
+
+    global_index_path = Path.home() / ".teleclaude" / "docs" / "index.yaml"
+    if not global_index_path.exists():
+        return
+
+    try:
+        global_data = yaml.safe_load(global_index_path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+
+    if not isinstance(global_data, dict) or "snippets" not in global_data:
+        return
+
+    global_snippets: dict[str, str] = {}
+    for entry in global_data["snippets"]:
+        if isinstance(entry, dict):
+            snippet_id = entry.get("id")
+            source_project = entry.get("source_project", "unknown")
+            if snippet_id:
+                global_snippets[snippet_id] = source_project
+
+    current_project = get_project_name(project_root)
+    collisions = []
+    for snippet in snippets:
+        snippet_id = snippet["id"]
+        if snippet_id in global_snippets:
+            owner = global_snippets[snippet_id]
+            if owner != current_project:
+                collisions.append((snippet_id, owner, snippet.get("path", "")))
+
+    if collisions:
+        error_msg = ["", "=" * 80, "ERROR: Global snippet ID collision(s) detected", "=" * 80, ""]
+        for snippet_id, owner, path in collisions:
+            error_msg.extend(
+                [
+                    f"ID: {snippet_id}",
+                    f"Your project: {current_project}",
+                    f"Already owned by: {owner}",
+                    f"Your file: {path}",
+                    "",
+                ]
+            )
+        error_msg.append("=" * 80)
+        raise SystemExit("\n".join(error_msg))
+
+
+# ---------------------------------------------------------------------------
+# Index building
+# ---------------------------------------------------------------------------
+
+
+def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload:
+    """Build the index.yaml payload for a snippet root. Modifies files as side effects
+    (strips baseline frontmatter, normalizes titles, removes stale indexes)."""
+    violations = strip_baseline_frontmatter(project_root)
+    if violations:
+        logger.warning("baseline_frontmatter_removed", paths=violations)
+    write_baseline_index(project_root)
+    remove_non_baseline_indexes(snippets_root)
+    normalize_titles(snippets_root)
+
+    if not snippets_root.exists():
+        return {"project_root": str(project_root), "snippets_root": str(snippets_root), "snippets": []}
+
+    snippet_path_to_id: dict[str, str] = {}
+    snippet_cache: list[tuple[Path, Mapping[str, object], str]] = []
+    snippets: list[SnippetEntry] = []
+
+    try:
+        rel_path = snippets_root.relative_to(project_root)
+        include_baseline = str(rel_path) in ("docs/global", "agents/docs")
+    except ValueError:
+        include_baseline = False
+
+    files = sorted(snippet_files(snippets_root, include_baseline=include_baseline))
+    if not files:
+        return {"project_root": str(project_root), "snippets_root": str(snippets_root), "snippets": []}
+
+    baseline_root = snippets_root / "baseline"
+    for file_path in files:
+        if include_baseline and baseline_root in file_path.parents:
+            try:
+                rel = file_path.relative_to(baseline_root).as_posix()
+            except ValueError:
+                rel = file_path.name
+            snippet_id = f"baseline/{rel}"
+            if snippet_id.endswith(".md"):
+                snippet_id = snippet_id[: -len(".md")]
+            snippet_type = rel.split("/", 1)[0] if "/" in rel else "principle"
+            try:
+                text = file_path.read_text(encoding="utf-8")
+            except Exception:
+                text = ""
+            title_line = next(
+                (line.strip() for line in text.splitlines() if line.strip().startswith("# ")),
+                "",
+            )
+            description = title_line.lstrip("# ").strip() if title_line else snippet_id
+            try:
+                relative_path = str(file_path.relative_to(project_root))
+            except ValueError:
+                relative_path = str(file_path)
+            snippets.append(
+                {
+                    "id": snippet_id,
+                    "description": description,
+                    "type": snippet_type,
+                    "scope": "global",
+                    "path": relative_path,
+                }
+            )
+            snippet_path_to_id[str(file_path.relative_to(snippets_root))] = snippet_id
+            continue
+
+        post = frontmatter.load(file_path)
+        metadata: Mapping[str, object] = post.metadata or {}
+        snippet_id_val = metadata.get("id")
+        if isinstance(snippet_id_val, str):
+            snippet_path_to_id[str(file_path.relative_to(snippets_root))] = snippet_id_val
+        snippet_cache.append((file_path, metadata, post.content))
+
+    for file_path, metadata, content in snippet_cache:
+        snippet_id_val = metadata.get("id")
+        description = metadata.get("description")
+        snippet_type = metadata.get("type")
+        snippet_scope = metadata.get("scope")
+        if (
+            not isinstance(snippet_id_val, str)
+            or not isinstance(description, str)
+            or not isinstance(snippet_type, str)
+            or not isinstance(snippet_scope, str)
+        ):
+            continue
+        requires_list = extract_required_reads(content)
+        resolved_refs = resolve_requires(file_path, requires_list, snippets_root, project_root, snippet_path_to_id)
+        try:
+            relative_path = str(file_path.relative_to(project_root))
+        except ValueError:
+            relative_path = str(file_path)
+        entry: SnippetEntry = {
+            "id": snippet_id_val,
+            "description": description,
+            "type": snippet_type,
+            "scope": snippet_scope,
+            "path": relative_path,
+        }
+        if resolved_refs:
+            entry["requires"] = resolved_refs
+        snippets.append(entry)
+
+    snippets.sort(key=lambda e: e["id"])
+    check_global_collisions(snippets, project_root, snippets_root)
+
+    project_name = get_project_name(project_root)
+    for snippet in snippets:
+        snippet["source_project"] = project_name
+
+    try:
+        rel_path = snippets_root.relative_to(project_root)
+        is_global = str(rel_path) in ("docs/global", "agents/docs")
+    except ValueError:
+        is_global = False
+
+    if is_global:
+        root = _teleclaude_root()
+        snippets_root_str = f"{root}/docs"
+        for snippet in snippets:
+            p = snippet["path"]
+            if p.startswith("docs/global/"):
+                snippet["path"] = p.replace("docs/global/", "docs/", 1)
+    else:
+        home = str(Path.home())
+        project_root_str = str(project_root)
+        root = project_root_str.replace(home, "~", 1) if project_root_str.startswith(home) else project_root_str
+        snippets_root_str = str(snippets_root)
+        if snippets_root_str.startswith(home):
+            snippets_root_str = snippets_root_str.replace(home, "~", 1)
+
+    return {"project_root": root, "snippets_root": snippets_root_str, "snippets": snippets}
+
+
+def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
+    """Build and write index.yaml for a snippet root. Returns the target path."""
+    target = snippets_root / "index.yaml"
+    if "third-party" in snippets_root.parts:
+        if target.exists():
+            target.unlink()
+        return target
+    payload = build_index_payload(project_root, snippets_root)
+    if not payload["snippets"]:
+        if target.exists():
+            target.unlink()
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    rendered = yaml.safe_dump(payload, sort_keys=False, allow_unicode=False)
+    if target.exists():
+        existing = target.read_text(encoding="utf-8")
+        if existing == rendered:
+            return target
+    target.write_text(rendered, encoding="utf-8")
+    return target
+
+
+def build_all_indexes(project_root: Path) -> list[Path]:
+    """Build index.yaml for all snippet roots. Main entry point."""
+    ensure_project_config(project_root)
+    write_third_party_index(project_root)
+    roots = iter_snippet_roots(project_root)
+    written: list[Path] = []
+    for snippets_root in roots:
+        written.append(write_index_yaml(project_root, snippets_root))
+    return written

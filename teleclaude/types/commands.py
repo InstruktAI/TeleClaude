@@ -42,11 +42,11 @@ class CreateSessionCommand(InternalCommand):
     """Intent to create a new session."""
 
     project_path: str
+    origin: str
     title: Optional[str] = None
     subdir: Optional[str] = None
     working_slug: Optional[str] = None
     initiator_session_id: Optional[str] = None
-    origin: str = "unknown"
     channel_metadata: Optional[Dict[str, object]] = None
     launch_intent: Optional["SessionLaunchIntent"] = None
     auto_command: Optional[str] = None
@@ -55,11 +55,11 @@ class CreateSessionCommand(InternalCommand):
         self,
         *,
         project_path: str,
+        origin: str,
         title: Optional[str] = None,
         subdir: Optional[str] = None,
         working_slug: Optional[str] = None,
         initiator_session_id: Optional[str] = None,
-        origin: str = "unknown",
         channel_metadata: Optional[Dict[str, object]] = None,
         launch_intent: Optional["SessionLaunchIntent"] = None,
         auto_command: Optional[str] = None,
@@ -67,11 +67,11 @@ class CreateSessionCommand(InternalCommand):
     ):
         super().__init__(command_type=CommandType.CREATE_SESSION, request_id=request_id)
         self.project_path = project_path
+        self.origin = origin
         self.title = title
         self.subdir = subdir
         self.working_slug = working_slug
         self.initiator_session_id = initiator_session_id
-        self.origin = origin
         self.channel_metadata = channel_metadata
         self.launch_intent = launch_intent
         self.auto_command = auto_command

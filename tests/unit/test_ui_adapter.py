@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.core.origins import InputOrigin
+
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.adapters.ui_adapter import UiAdapter
@@ -103,7 +105,7 @@ class TestSendOutputUpdate:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
 
@@ -124,7 +126,7 @@ class TestSendOutputUpdate:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
 
@@ -153,7 +155,7 @@ class TestSendOutputUpdate:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
 
@@ -178,7 +180,7 @@ class TestSendOutputUpdate:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
 
@@ -206,7 +208,7 @@ class TestSendOutputUpdate:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
 
@@ -241,7 +243,7 @@ class TestSendOutputUpdate:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
 
@@ -281,7 +283,7 @@ class TestSendMessageNotice:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
 

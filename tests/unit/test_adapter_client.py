@@ -17,6 +17,7 @@ from teleclaude.core.models import (
     SessionAdapterMetadata,
     TelegramAdapterMetadata,
 )
+from teleclaude.core.origins import InputOrigin
 
 FIXED_NOW = datetime(2024, 1, 1, 12, 0, 0)
 
@@ -273,7 +274,7 @@ async def test_route_to_ui_skips_exceptions_without_origin():
         session_id="session-123",
         computer_name="test",
         tmux_session_name="test-tmux",
-        last_input_origin="missing",
+        last_input_origin=InputOrigin.API.value,
         title="Test Session",
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=1)),
     )
@@ -473,7 +474,7 @@ async def test_send_output_update_missing_thread_does_not_recreate_topic():
         session_id="session-123",
         computer_name="test",
         tmux_session_name="tc_session",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="msg-1")
@@ -504,7 +505,7 @@ async def test_send_output_update_missing_thread_non_telegram_origin_no_recreate
         session_id="session-456",
         computer_name="test",
         tmux_session_name="tc_session_456",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="Test Session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=456, output_message_id="msg-2")
@@ -535,7 +536,7 @@ async def test_send_output_update_missing_thread_terminal_no_recreate():
         session_id="session-789",
         computer_name="test",
         tmux_session_name="tc_session_789",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="Test Tmux Session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="msg-1")
@@ -563,7 +564,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
         session_id="session-999",
         computer_name="test",
         tmux_session_name="tc_session_999",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="Test Tmux Session",
         adapter_metadata=SessionAdapterMetadata(),
     )
@@ -571,7 +572,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
         session_id="session-999",
         computer_name="test",
         tmux_session_name="tc_session_999",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="Test Tmux Session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=999, output_message_id="msg-1")
@@ -609,7 +610,7 @@ async def test_send_message_broadcasts_to_ui_adapters():
         session_id="session-789",
         computer_name="test",
         tmux_session_name="tc_session_789",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Session",
     )
 
@@ -632,7 +633,7 @@ async def test_send_message_ephemeral_tracks_for_deletion():
         session_id="session-790",
         computer_name="test",
         tmux_session_name="tc_session_790",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Session",
     )
 
@@ -659,7 +660,7 @@ async def test_send_message_persistent_not_tracked():
         session_id="session-791",
         computer_name="test",
         tmux_session_name="tc_session_791",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Session",
     )
 
@@ -724,8 +725,8 @@ async def test_send_message_notice_targets_last_input_origin():
 
 
 @pytest.mark.asyncio
-async def test_send_message_notice_skips_cli_origin():
-    """Notices skip UI adapters when last_input_origin is cli."""
+async def test_send_message_notice_api_origin_routes_to_ui():
+    """Notices route to UI adapters when last_input_origin is api."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -735,15 +736,15 @@ async def test_send_message_notice_skips_cli_origin():
         session_id="session-802",
         computer_name="test",
         tmux_session_name="tc_session_802",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="Test Session",
     )
 
     with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
-    assert message_id is None
-    assert telegram_adapter.send_message.call_count == 0
+    assert message_id == "tg-feedback"
+    assert telegram_adapter.send_message.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -758,7 +759,7 @@ async def test_send_message_notice_skipped_for_ai_to_ai():
         session_id="session-801",
         computer_name="test",
         tmux_session_name="tc_session_801",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Session",
         initiator_session_id="initiator-123",
     )
@@ -787,7 +788,7 @@ async def test_delete_channel_always_broadcasts():
         session_id="session-900",
         computer_name="test",
         tmux_session_name="tc_session_900",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Session",
     )
 

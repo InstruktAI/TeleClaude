@@ -14,6 +14,7 @@ from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import Db
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session
+from teleclaude.core.origins import InputOrigin
 
 
 class MockTelegramAdapter(UiAdapter):
@@ -145,7 +146,7 @@ async def test_last_input_origin_receives_output():
 
     Use Case: UC-M1
     Flow:
-    1. Create session with last_input_origin="telegram"
+    1. Create session with last_input_origin=InputOrigin.TELEGRAM.value
     2. Register TelegramAdapter as origin
     3. Send message via adapter_client
     4. Verify send_message() called on TelegramAdapter
@@ -165,7 +166,7 @@ async def test_last_input_origin_receives_output():
                 session = await test_db.create_session(
                     computer_name="TestPC",
                     tmux_session_name="test-origin",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Origin Test",
                 )
 
@@ -217,7 +218,7 @@ async def test_redis_observer_skipped_no_ui():
                 session = await test_db.create_session(
                     computer_name="TestPC",
                     tmux_session_name="test-redis-observer",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Redis Observer Test",
                 )
 
@@ -336,7 +337,7 @@ async def test_ui_observer_receives_broadcasts():
                 session = await test_db.create_session(
                     computer_name="TestPC",
                     tmux_session_name="test-ui-observer",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="UI Observer Test",
                 )
 
@@ -455,7 +456,7 @@ async def test_observer_failure_does_not_affect_origin():
                 session = await test_db.create_session(
                     computer_name="TestPC",
                     tmux_session_name="test-observer-failure",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Observer Failure Test",
                 )
 
@@ -569,7 +570,7 @@ async def test_origin_failure_raises_exception():
                 session = await test_db.create_session(
                     computer_name="TestPC",
                     tmux_session_name="test-origin-failure",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Origin Failure Test",
                 )
 
@@ -706,7 +707,7 @@ async def test_discover_peers_respects_redis_enabled_flag():
                 session = await test_db.create_session(
                     computer_name="LocalPC",
                     tmux_session_name="local-session",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Local Session Test",
                 )
                 assert session is not None, "Local session creation should work"

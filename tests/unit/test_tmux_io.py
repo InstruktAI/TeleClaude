@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from teleclaude.core.origins import InputOrigin
+
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import tmux_io
@@ -18,7 +20,7 @@ async def test_send_text_prefers_existing_tmux():
         session_id="sid-123",
         computer_name="test",
         tmux_session_name="telec_123",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="Test Tmux",
     )
 
@@ -45,7 +47,7 @@ async def test_send_text_creates_tmux_when_missing():
         session_id="sid-456",
         computer_name="test",
         tmux_session_name="telec_456",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="Test Tmux",
     )
 

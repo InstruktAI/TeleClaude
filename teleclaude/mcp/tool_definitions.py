@@ -72,6 +72,13 @@ def get_tool_definitions() -> list[Tool]:
                         "items": {"type": "string"},
                         "description": "Phase 2 only: Array of snippet IDs to retrieve full content for.",
                     },
+                    "include_baseline": {
+                        "type": "boolean",
+                        "description": (
+                            "Include baseline snippet IDs in the phase-1 index. Baseline IDs can then be "
+                            "passed in snippet_ids for phase-2 retrieval."
+                        ),
+                    },
                 },
             },
         ),

@@ -6,7 +6,7 @@ import json
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.tui.state import DocStickyInfo, StickySessionInfo, TuiState
+from teleclaude.cli.tui.state import DocStickyInfo, PreviewState, StickySessionInfo, TuiState
 from teleclaude.paths import TUI_STATE_PATH
 
 logger = get_logger(__name__)
@@ -41,10 +41,18 @@ def load_sticky_state(state: TuiState) -> None:
         if isinstance(expanded_todos, list):
             state.preparation.expanded_todos = set(str(item) for item in expanded_todos)
 
+        preview_data = data.get("preview")
+        if isinstance(preview_data, dict) and preview_data.get("session_id"):
+            state.sessions.preview = PreviewState(
+                session_id=preview_data["session_id"],
+                show_child=preview_data.get("show_child", True),
+            )
+
         logger.info(
-            "Loaded %d sticky sessions, %d sticky docs from %s",
+            "Loaded %d sticky sessions, %d sticky docs, preview=%s from %s",
             len(state.sessions.sticky_sessions),
             len(state.preparation.sticky_previews),
+            state.sessions.preview.session_id if state.sessions.preview else None,
             TUI_STATE_PATH,
         )
     except (json.JSONDecodeError, KeyError, TypeError, OSError) as e:
@@ -58,6 +66,7 @@ def save_sticky_state(state: TuiState) -> None:
     try:
         TUI_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+        preview = state.sessions.preview
         state_data = {
             "sticky_sessions": [
                 {"session_id": s.session_id, "show_child": s.show_child} for s in state.sessions.sticky_sessions
@@ -66,6 +75,7 @@ def save_sticky_state(state: TuiState) -> None:
                 {"doc_id": d.doc_id, "command": d.command, "title": d.title} for d in state.preparation.sticky_previews
             ],
             "expanded_todos": sorted(state.preparation.expanded_todos),
+            "preview": {"session_id": preview.session_id, "show_child": preview.show_child} if preview else None,
         }
 
         with open(TUI_STATE_PATH, "w", encoding="utf-8") as f:

@@ -9,6 +9,7 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
+from teleclaude.core.origins import InputOrigin
 from teleclaude.mcp.handlers import MCPHandlersMixin
 
 
@@ -52,7 +53,7 @@ async def test_start_session_extracts_tmux_name_from_event_result():
 
     with (
         patch("teleclaude.mcp.handlers.get_command_service", return_value=mock_commands),
-        patch.object(handler, "_resolve_origin", new_callable=AsyncMock, return_value="telegram"),
+        patch.object(handler, "_resolve_origin", new_callable=AsyncMock, return_value=InputOrigin.MCP.value),
     ):
         result = await handler.teleclaude__start_session(
             computer="local",
@@ -79,7 +80,7 @@ async def test_start_session_handles_missing_tmux_name():
 
     with (
         patch("teleclaude.mcp.handlers.get_command_service", return_value=mock_commands),
-        patch.object(handler, "_resolve_origin", new_callable=AsyncMock, return_value="telegram"),
+        patch.object(handler, "_resolve_origin", new_callable=AsyncMock, return_value=InputOrigin.MCP.value),
     ):
         result = await handler.teleclaude__start_session(
             computer="local",

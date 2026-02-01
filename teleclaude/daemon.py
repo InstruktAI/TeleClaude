@@ -56,8 +56,15 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.lifecycle import DaemonLifecycle
 from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.session_utils import get_output_file, parse_session_title, resolve_working_dir
+from teleclaude.core.session_utils import (
+    get_output_file,
+    get_short_project_name,
+    parse_session_title,
+    resolve_working_dir,
+    split_project_path_and_subdir,
+)
 from teleclaude.core.summarizer import summarize
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.voice_assignment import get_voice_env_vars
@@ -70,7 +77,11 @@ from teleclaude.types.commands import (
     ResumeAgentCommand,
     StartAgentCommand,
 )
-from teleclaude.utils.transcript import extract_last_agent_message
+from teleclaude.utils.transcript import (
+    extract_last_agent_message,
+    extract_workdir_from_transcript,
+    parse_session_transcript,
+)
 
 init_voice_handler = voice_message_handler.init_voice_handler
 
@@ -266,6 +277,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # In-memory dedupe for stop summarization (session_id -> transcript fingerprint)
         self._last_summary_fingerprint: dict[str, str] = {}
+        self._last_headless_snapshot_fingerprint: dict[str, str] = {}
 
         # Auto-discover and register event handlers
         for attr_name in dir(TeleClaudeEvents):
@@ -666,6 +678,49 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return False
         return True
 
+    async def _ensure_headless_session(
+        self,
+        session_id: str,
+        data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
+    ) -> Session:
+        """Create a headless session row for standalone hook events."""
+        native_log_file = data.get("native_log_file") or data.get("transcript_path")
+        native_session_id = data.get("native_session_id") or data.get("session_id")
+        agent_name = data.get("agent_name")
+        agent_str = str(agent_name) if isinstance(agent_name, str) and agent_name else None
+
+        workdir = None
+        if isinstance(native_log_file, str) and native_log_file:
+            workdir = extract_workdir_from_transcript(native_log_file)
+
+        project_path = None
+        subdir = None
+        if workdir:
+            trusted_dirs = [d.path for d in config.computer.get_all_trusted_dirs()]
+            project_path, subdir = split_project_path_and_subdir(workdir, trusted_dirs)
+
+        title = "Standalone"
+        if project_path:
+            title = get_short_project_name(project_path, subdir)
+
+        logger.info(
+            "Creating headless session",
+            session_id=session_id[:8],
+            agent=agent_str,
+            project_path=project_path or "",
+        )
+        return await db.create_headless_session(
+            session_id=session_id,
+            computer_name=config.computer.name,
+            last_input_origin=InputOrigin.HOOK.value,
+            title=title,
+            active_agent=agent_str,
+            native_session_id=str(native_session_id) if native_session_id else None,
+            native_log_file=str(native_log_file) if native_log_file else None,
+            project_path=project_path,
+            subdir=subdir,
+        )
+
     async def _dispatch_hook_event(
         self,
         session_id: str,
@@ -675,7 +730,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Dispatch a hook event directly via AdapterClient."""
         session = await db.get_session(session_id)
         if not session:
-            raise ValueError(f"TeleClaude session {session_id} not found")
+            session = await self._ensure_headless_session(session_id, data)
+        elif session.lifecycle_status == "headless" and session.last_input_origin != InputOrigin.HOOK.value:
+            await db.update_session(session_id, last_input_origin=InputOrigin.HOOK.value)
+            session = await db.get_session(session_id) or session
 
         transcript_path = data.get("transcript_path")
         native_session_id = data.get("native_session_id")
@@ -799,9 +857,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             session=session,
         )
 
-    async def _handle_session_started(self, _event: str, _context: SessionLifecycleContext) -> None:
-        """Handler for session_started events (no-op)."""
-        return
+    async def _handle_session_started(self, _event: str, context: SessionLifecycleContext) -> None:
+        """Handler for session_started events (headless snapshot bootstrap)."""
+        session = await db.get_session(context.session_id)
+        if not session:
+            return
+
+        if session.lifecycle_status != "headless":
+            return
+
+        await self._send_headless_transcript_snapshot(session, reason="session_started")
 
     async def _handle_system_command(self, _event: str, context: SystemCommandContext) -> None:
         """Handler for SYSTEM_COMMAND events.
@@ -839,6 +904,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Dispatch other events synchronously
         if agent_event_type == AgentHookEvents.AGENT_SESSION_START:
             await self.agent_coordinator.handle_session_start(context)
+            session = await db.get_session(context.session_id)
+            if session and session.lifecycle_status == "headless":
+                await self._send_headless_transcript_snapshot(session, reason="agent_session_start")
         elif agent_event_type == AgentHookEvents.AGENT_PROMPT:
             await self._process_agent_prompt(context)
         elif agent_event_type == AgentHookEvents.AGENT_NOTIFICATION:
@@ -889,6 +957,20 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             # 4. Best-effort Enrichment (Summarization + Title + UI Feedback)
             await self._enrich_with_summary(session, payload)
 
+            # 4b. Headless sessions: push transcript snapshot to UI
+            if session.lifecycle_status == "headless":
+                await self._send_headless_transcript_snapshot(session, reason="agent_stop")
+
+            if session.lifecycle_status == "headless" and payload.summary:
+                now_ts = time.time()
+                await self.client.send_output_update(
+                    session,
+                    payload.summary,
+                    now_ts,
+                    now_ts,
+                    render_markdown=True,
+                )
+
             # 5. Final Coordination
             await self.agent_coordinator.handle_stop(context)
 
@@ -932,11 +1014,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Infer last input origin using prompt string comparison.
 
         If the prompt matches the last stored message, assume the UI adapter
-        already set last_input_origin. Otherwise the hook indicates CLI input.
+        already set last_input_origin. Otherwise the hook indicates hook input.
         """
         if session.last_message_sent and session.last_message_sent == prompt:
-            return session.last_input_origin or "cli"
-        return "cli"
+            return session.last_input_origin or InputOrigin.HOOK.value
+        return InputOrigin.HOOK.value
 
     async def _sync_session_stop_state(self, session_id: str, payload: AgentStopPayload) -> Optional[Session]:
         """Update session record with native agent identity and transcript data."""
@@ -1078,6 +1160,84 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         )
 
         # 5. UI feedback + TTS is emitted via session_updated event handlers.
+
+    async def _send_headless_transcript_snapshot(self, session: Session, *, reason: str) -> None:
+        """Send a transcript snapshot to UI for headless sessions."""
+        transcript_path = session.native_log_file
+        if not transcript_path:
+            logger.error(
+                "Headless snapshot missing transcript path",
+                reason=reason,
+                session=session.session_id[:8],
+            )
+            return
+
+        active_agent = session.active_agent
+        if not active_agent:
+            logger.error(
+                "Headless snapshot missing active_agent",
+                reason=reason,
+                session=session.session_id[:8],
+            )
+            return
+
+        agent_name = AgentName.from_str(active_agent)
+        transcript_file = Path(transcript_path)
+        try:
+            stat = transcript_file.stat()
+        except FileNotFoundError:
+            logger.error(
+                "Headless snapshot transcript missing",
+                reason=reason,
+                session=session.session_id[:8],
+                transcript_path=transcript_path,
+            )
+            return
+
+        fingerprint = f"{transcript_path}:{stat.st_size}:{stat.st_mtime_ns}"
+        last_fingerprint = self._last_headless_snapshot_fingerprint.get(session.session_id)
+        first_snapshot = last_fingerprint is None
+        if last_fingerprint == fingerprint:
+            logger.debug(
+                "Headless snapshot skipped (duplicate)",
+                reason=reason,
+                session=session.session_id[:8],
+            )
+            return
+
+        try:
+            markdown_content = parse_session_transcript(
+                transcript_path,
+                session.title,
+                agent_name=agent_name,
+                tail_chars=0 if first_snapshot else UI_MESSAGE_MAX_CHARS,
+                escape_triple_backticks=True,
+            )
+        except Exception as exc:
+            logger.error(
+                "Headless snapshot parse failed for session %s: %s",
+                session.session_id[:8],
+                exc,
+            )
+            return
+
+        if not markdown_content.strip():
+            logger.debug("Headless snapshot skipped (empty)", reason=reason, session=session.session_id[:8])
+            return
+
+        if first_snapshot:
+            markdown_content = markdown_content[:UI_MESSAGE_MAX_CHARS]
+
+        self._last_headless_snapshot_fingerprint[session.session_id] = fingerprint
+
+        now = time.time()
+        await self.client.send_output_update(
+            session,
+            markdown_content,
+            now,
+            now,
+            render_markdown=True,
+        )
 
     async def _execute_auto_command(self, session_id: str, auto_command: str) -> dict[str, str]:
         """Execute a post-session auto_command and return status/message."""
@@ -1410,7 +1570,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         source = f" ({context.source})" if context.source else ""
         message = f"Error{source}: {context.message}"
-        await self.client.send_message(session, message, metadata=MessageMetadata(origin="internal"))
+        await self.client.send_message(session, message, metadata=MessageMetadata())
 
     async def _update_session_title(self, session_id: str, title: str) -> None:
         """Update session title in DB and UI.
@@ -1937,7 +2097,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 continue
 
             # Ensure UI channels exist (migration/recovery) for telegram sessions
-            if session.last_input_origin == "telegram":
+            if session.last_input_origin == InputOrigin.TELEGRAM.value:
                 if (
                     not session.adapter_metadata
                     or not session.adapter_metadata.telegram

@@ -7,6 +7,7 @@ import pytest
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core import tmux_bridge
+from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import CreateSessionCommand, SendMessageCommand
 
 
@@ -27,7 +28,7 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
 
     # Create a test session
     project_path = "/tmp"
-    create_cmd = CreateSessionCommand(project_path=project_path, origin="telegram", title="Short Test")
+    create_cmd = CreateSessionCommand(project_path=project_path, origin=InputOrigin.TELEGRAM.value, title="Short Test")
     await daemon.command_service.create_session(create_cmd)
 
     sessions = await daemon.db.list_sessions(include_initializing=True)
@@ -42,7 +43,7 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
 
     # Send any command - it will be mocked with short echo
     await daemon.command_service.send_message(
-        SendMessageCommand(session_id=session.session_id, text="any command here", origin="telegram")
+        SendMessageCommand(session_id=session.session_id, text="any command here", origin=InputOrigin.TELEGRAM.value)
     )
 
     # Wait for command to execute and polling to send output
@@ -79,7 +80,7 @@ async def test_long_running_command(daemon_with_mocked_telegram):
 
     # Create a test session
     project_path = "/tmp"
-    create_cmd = CreateSessionCommand(project_path=project_path, origin="telegram", title="Long Test")
+    create_cmd = CreateSessionCommand(project_path=project_path, origin=InputOrigin.TELEGRAM.value, title="Long Test")
     await daemon.command_service.create_session(create_cmd)
 
     sessions = await daemon.db.list_sessions(include_initializing=True)
@@ -94,7 +95,7 @@ async def test_long_running_command(daemon_with_mocked_telegram):
 
     # Send any command - it will be mocked with long-running Python process
     await daemon.command_service.send_message(
-        SendMessageCommand(session_id=session.session_id, text="any command", origin="telegram")
+        SendMessageCommand(session_id=session.session_id, text="any command", origin=InputOrigin.TELEGRAM.value)
     )
 
     # Wait for process to start and produce initial output

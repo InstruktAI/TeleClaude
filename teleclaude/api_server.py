@@ -47,6 +47,7 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import ErrorEventContext, SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSummary
+from teleclaude.core.origins import InputOrigin
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
@@ -114,7 +115,7 @@ class APIServer:
 
     def _metadata(self, **kwargs: object) -> MessageMetadata:
         """Build API boundary metadata."""
-        return MessageMetadata(origin="cli", **kwargs)
+        return MessageMetadata(origin=InputOrigin.API.value, **kwargs)
 
     @property
     def cache(self) -> "DaemonCache | None":
@@ -478,7 +479,7 @@ class APIServer:
         ) -> dict[str, str]:
             """Restart agent in session (preserves conversation via --resume)."""
             try:
-                logger.info("API agent_restart requested (session=%s, origin=cli)", session_id[:8])
+                logger.info("API agent_restart requested (session=%s, origin=api)", session_id[:8])
                 # Normalize command through mapper before dispatching
                 metadata = self._metadata()
                 cmd = CommandMapper.map_api_input(

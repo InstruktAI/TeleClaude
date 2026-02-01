@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+from teleclaude.core.origins import InputOrigin
+
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from unittest.mock import AsyncMock, Mock
@@ -95,7 +97,7 @@ async def test_refresh_updates_activity_state_marks_idle_when_activity_is_old():
     sessions = [
         SessionInfo(
             session_id="sess-1",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             status="active",
             computer="local",
             project_path="/tmp",
@@ -133,7 +135,7 @@ async def test_handle_enter_on_session_toggles_pane():
     # Setup state needed for toggle
     session = SessionInfo(
         session_id="parent",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         status="active",
         tmux_session_name="tmux-parent",
         computer="remote",
@@ -145,7 +147,7 @@ async def test_handle_enter_on_session_toggles_pane():
     )
     child = SessionInfo(
         session_id="child",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         status="active",
         tmux_session_name="tmux-child",
         computer="remote",
@@ -192,7 +194,7 @@ def test_open_project_sessions_sets_sticky_list():
     sessions = [
         SessionInfo(
             session_id="sess-0",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             status="active",
             tmux_session_name="tmux-0",
             computer="local",
@@ -203,7 +205,7 @@ def test_open_project_sessions_sets_sticky_list():
         ),
         SessionInfo(
             session_id="sess-1",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             status="active",
             tmux_session_name="tmux-1",
             computer="local",
@@ -214,7 +216,7 @@ def test_open_project_sessions_sets_sticky_list():
         ),
         SessionInfo(
             session_id="sess-2",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             status="active",
             tmux_session_name="tmux-2",
             computer="local",

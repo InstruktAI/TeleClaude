@@ -55,3 +55,12 @@
 - TTS listens only to AGENT_EVENT for AGENT_SESSION_START + AGENT_STOP.
 - Docs updated for origins + headless sessions + TTS flow.
 - TUI behavior unaffected (origin not used in selection logic).
+
+## Status (2026-01-31)
+
+- [x] Origin constants introduced and adopted (api/hook/mcp/telegram/redis).
+- [x] MCP origin behavior set to InputOrigin.MCP (no parent-origin inheritance).
+- [x] Headless sessions created in core (daemon), hook receiver is normalization-only.
+- [x] Headless project_path/subdir derived from native transcript when available.
+- [x] TTS listens only to AGENT_EVENT (AGENT_SESSION_START/AGENT_STOP); no event-name fallbacks.
+- [x] Docs updated for TTS, headless lifecycle, and origin semantics.

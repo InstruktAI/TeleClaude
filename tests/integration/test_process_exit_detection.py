@@ -6,6 +6,8 @@ because detection used file existence (file kept for downloads) instead of outpu
 
 import pytest
 
+from teleclaude.core.origins import InputOrigin
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio
@@ -17,7 +19,7 @@ async def test_process_detection_uses_output_message_id(daemon_with_mocked_teleg
     session = await daemon.db.create_session(
         computer_name="test",
         tmux_session_name="test-exit-detection",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Exit Detection",
         project_path="/tmp",
     )
@@ -72,7 +74,7 @@ async def test_process_detection_survives_daemon_restart(daemon_with_mocked_tele
     session = await daemon.db.create_session(
         computer_name="test",
         tmux_session_name="test-restart-detection",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Restart",
         project_path="/tmp",
     )

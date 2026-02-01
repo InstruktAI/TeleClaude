@@ -306,7 +306,7 @@ snippets:
   scope: project
   path: docs/project/procedure/agent-artifact-distribution.md
   requires:
-  - docs/global/general/concept/normalized-agent-artifacts.md
+  - ~/.teleclaude/docs/general/concept/normalized-agent-artifacts.md
   source_project: TeleClaude
 - id: project/procedure/deploy
   description: Deploy TeleClaude changes safely with verification.

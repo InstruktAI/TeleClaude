@@ -11,8 +11,8 @@ uv run --quiet python bin/lint/guardrails.py "$@"
 echo "Running markdown validation"
 uv run --quiet bin/lint/markdown.py
 
-echo "Running artifact validation"
-uv run --quiet scripts/distribute.py --project-root "$(pwd)" --validate-only
+echo "Running resource validation"
+uv run --quiet -m teleclaude.cli.telec sync --validate-only --project-root "$(pwd)"
 
 echo "Running ruff format (check)"
 uv run --quiet ruff format --check $dirs

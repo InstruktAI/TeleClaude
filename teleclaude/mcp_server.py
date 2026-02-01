@@ -396,10 +396,12 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 if isinstance(snippet_ids_obj, list):
                     snippet_ids = [s for s in snippet_ids_obj if isinstance(s, str)]
 
+                include_baseline = bool(arguments.get("include_baseline")) if arguments else False
                 cwd = self._str_arg(arguments, "cwd") or None
                 text = await self.teleclaude__get_context(
                     areas=areas,
                     snippet_ids=snippet_ids,
+                    include_baseline=include_baseline,
                     cwd=cwd,
                     caller_session_id=caller_session_id,
                 )

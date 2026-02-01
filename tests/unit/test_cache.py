@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 from teleclaude.core.cache import CachedItem, DaemonCache
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
+from teleclaude.core.origins import InputOrigin
 
 # ==================== CachedItem Tests ====================
 
@@ -78,7 +79,7 @@ def test_get_sessions_filters_by_computer():
             session_id="sess-1",
             computer="local",
             title="Local",
-            last_input_origin="cli",
+            last_input_origin=InputOrigin.API.value,
             project_path="~",
             thinking_mode="slow",
             active_agent=None,
@@ -90,7 +91,7 @@ def test_get_sessions_filters_by_computer():
             session_id="sess-2",
             computer="remote",
             title="Remote",
-            last_input_origin="cli",
+            last_input_origin=InputOrigin.API.value,
             project_path="~",
             thinking_mode="slow",
             active_agent=None,
@@ -132,7 +133,7 @@ def test_update_session_notifies_subscribers():
         session_id="sess-123",
         computer="local",
         title="Test",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         project_path="~",
         thinking_mode="slow",
         active_agent=None,
@@ -160,7 +161,7 @@ def test_remove_session_notifies_subscribers():
         session_id="sess-123",
         computer="local",
         title="Test",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         project_path="~",
         thinking_mode="slow",
         active_agent=None,
@@ -338,7 +339,7 @@ def test_invalidate_removes_from_cache():
             session_id="sess-123",
             computer="local",
             title="Test",
-            last_input_origin="cli",
+            last_input_origin=InputOrigin.API.value,
             project_path="~",
             thinking_mode="slow",
             active_agent=None,
@@ -367,7 +368,7 @@ def test_invalidate_all_clears_everything():
             session_id="sess-123",
             computer="local",
             title="Test",
-            last_input_origin="cli",
+            last_input_origin=InputOrigin.API.value,
             project_path="~",
             thinking_mode="slow",
             active_agent=None,

@@ -16,7 +16,7 @@ class AdapterMetadata(BaseModel):  # type: ignore[explicit-any]
     """
 
     # Required fields
-    origin: str = Field(..., description="Origin (telegram, discord, api, mcp, etc.)")
+    origin: str = Field(..., description="Origin (InputOrigin.*.value)")
 
     # Optional common fields
     user_id: Optional[str] = Field(None, description="Platform user ID (if human)")

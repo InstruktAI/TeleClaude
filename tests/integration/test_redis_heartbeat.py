@@ -2,6 +2,8 @@
 
 import pytest
 
+from teleclaude.core.origins import InputOrigin
+
 
 @pytest.mark.integration
 async def test_heartbeat_includes_sessions(daemon_with_mocked_telegram):
@@ -13,7 +15,7 @@ async def test_heartbeat_includes_sessions(daemon_with_mocked_telegram):
     session = await daemon.db.create_session(
         computer_name="TestPC",
         tmux_session_name="test-heartbeat",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="Test Session",
         adapter_metadata={"test": "data"},
     )
@@ -39,7 +41,7 @@ async def test_heartbeat_sessions_limit(daemon_with_mocked_telegram):
         session = await daemon.db.create_session(
             computer_name="TestPC",
             tmux_session_name=f"test-heartbeat-{i}",
-            last_input_origin="cli",
+            last_input_origin=InputOrigin.API.value,
             title=f"Test Session {i}",
             adapter_metadata={"index": i},
         )

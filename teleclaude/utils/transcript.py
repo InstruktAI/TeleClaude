@@ -843,6 +843,81 @@ def parse_session_transcript(
     return rendered
 
 
+_WORKDIR_KEYS = {
+    "cwd",
+    "working_dir",
+    "workdir",
+    "workingDirectory",
+    "workspace",
+    "workspaceRoot",
+    "project_path",
+    "projectRoot",
+    "root",
+    "root_dir",
+    "rootPath",
+}
+
+
+def _find_workdir_in_obj(obj: object) -> str | None:
+    """Recursively search for a working directory string in a JSON object."""
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key in _WORKDIR_KEYS and isinstance(value, str):
+                candidate = value.strip()
+                if candidate and Path(candidate).is_absolute():
+                    return candidate
+            found = _find_workdir_in_obj(value)
+            if found:
+                return found
+    elif isinstance(obj, list):
+        for item in obj:
+            found = _find_workdir_in_obj(item)
+            if found:
+                return found
+    return None
+
+
+def extract_workdir_from_transcript(transcript_path: str) -> str | None:
+    """Extract a working directory path from a native transcript file."""
+    path = Path(transcript_path).expanduser()
+    if not path.exists():
+        return None
+
+    try:
+        if path.suffix == ".jsonl":
+            with open(path, encoding="utf-8") as f:
+                for idx, line in enumerate(f):
+                    if idx > 200:
+                        break
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(entry, dict) and entry.get("type") == "session_meta":
+                        payload = entry.get("payload")
+                        found = _find_workdir_in_obj(payload)
+                        if found:
+                            return found
+                    found = _find_workdir_in_obj(entry)
+                    if found:
+                        return found
+            return None
+
+        if path.suffix == ".json":
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            return _find_workdir_in_obj(data)
+    except OSError:
+        return None
+    except json.JSONDecodeError:
+        return None
+
+    return None
+
+
 def _escape_triple_backticks(text: str) -> str:
     """Escape triple backticks to avoid nested code block breakage."""
     return text.replace("```", "`\u200b``")

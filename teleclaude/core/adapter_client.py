@@ -83,8 +83,6 @@ class AdapterClient:
                 session.session_id[:8],
             )
             return None
-        if session.last_input_origin == "cli":
-            return None
         adapter = self.adapters.get(session.last_input_origin)
         return adapter if isinstance(adapter, UiAdapter) else None
 
@@ -340,13 +338,7 @@ class AdapterClient:
                 )
                 await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
 
-        if session.last_input_origin == "cli":
-            logger.debug(
-                "Skipping UI send for session %s (last_input_origin=cli)",
-                session.session_id[:8],
-            )
-            result = None
-        elif session.last_input_origin:
+        if session.last_input_origin:
             target = self.adapters.get(session.last_input_origin)
             if isinstance(target, UiAdapter):
                 result = await target.send_message(session, text, metadata=metadata)

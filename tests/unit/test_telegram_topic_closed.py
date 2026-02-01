@@ -10,6 +10,7 @@ import pytest
 
 from teleclaude.adapters.telegram.input_handlers import InputHandlersMixin
 from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
+from teleclaude.core.origins import InputOrigin
 
 
 class DummyHandlers(InputHandlersMixin):
@@ -46,7 +47,7 @@ async def test_topic_closed_ignores_new_session() -> None:
         session_id="sess-123",
         computer_name="test",
         tmux_session_name="tc_sess_123",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test",
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=456)),
         created_at=datetime.now(timezone.utc),
@@ -76,7 +77,7 @@ async def test_topic_closed_handles_naive_created_at() -> None:
         session_id="sess-456",
         computer_name="test",
         tmux_session_name="tc_sess_456",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test",
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=789)),
         created_at=utc_naive,

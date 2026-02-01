@@ -14,6 +14,8 @@
 - Prefer action when intent is clear.
 - Slow only when ambiguity could change direction, not details.
 - Use anchors to keep intent stable while moving fast.
+- Own the outcome end-to-end once the intent is clear; finish the job, don’t stop halfway.
+- Be proactive: take the next necessary step without waiting for permission when direction is known.
 
 ## Tensions
 

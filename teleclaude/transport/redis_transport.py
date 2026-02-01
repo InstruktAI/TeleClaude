@@ -55,6 +55,7 @@ from teleclaude.core.models import (
     ThinkingMode,
     TodoInfo,
 )
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.core.redis_utils import scan_keys
 from teleclaude.types import SystemStats
@@ -1244,7 +1245,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         msg_type = data.get(b"type", b"").decode("utf-8")
         session_id = data.get(b"session_id", b"").decode("utf-8") or None
         command = data.get(b"command", b"").decode("utf-8")
-        origin = data.get(b"origin", b"").decode("utf-8") or "redis"
+        origin = data.get(b"origin", b"").decode("utf-8") or InputOrigin.REDIS.value
 
         channel_metadata: dict[str, object] | None = None
         if b"channel_metadata" in data:
@@ -1985,7 +1986,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             data[b"channel_metadata"] = json.dumps(metadata.channel_metadata).encode("utf-8")
         if metadata.launch_intent:
             data[b"launch_intent"] = json.dumps(metadata.launch_intent.to_dict()).encode("utf-8")
-        origin = metadata.origin or "redis"
+        origin = metadata.origin or InputOrigin.REDIS.value
         data[b"origin"] = origin.encode("utf-8")
 
         # Send to Redis stream - XADD returns unique message_id
@@ -2139,7 +2140,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             b"command": command.encode("utf-8"),
             b"timestamp": str(time.time()).encode("utf-8"),
             b"from_computer": self.computer_name.encode("utf-8"),
-            b"origin": b"redis",
+            b"origin": InputOrigin.REDIS.value.encode("utf-8"),
         }
 
         # Add args as JSON if provided

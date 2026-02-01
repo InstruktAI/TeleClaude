@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     computer_name TEXT NOT NULL,
     title TEXT,
     tmux_session_name TEXT,  -- NULL for headless sessions (standalone TTS/summarization)
-    last_input_origin TEXT NOT NULL DEFAULT 'telegram',  -- Most recent input origin (e.g., "telegram", "cli")
+    last_input_origin TEXT NOT NULL DEFAULT 'telegram',  -- Most recent input origin (InputOrigin.*.value)
     adapter_metadata TEXT,  -- JSON string for platform-specific data
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

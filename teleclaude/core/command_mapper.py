@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, cast
 
 from teleclaude.core.events import parse_command_string
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent
+from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import (
     CloseSessionCommand,
     CreateSessionCommand,
@@ -59,7 +60,7 @@ class CommandMapper:
                 project_path=metadata.project_path or "",
                 title=metadata.title or (args[0] if args else None),
                 subdir=metadata.subdir,
-                origin="telegram",
+                origin=InputOrigin.TELEGRAM.value,
                 channel_metadata=metadata.channel_metadata,
                 auto_command=metadata.auto_command,
                 working_slug=cast(Optional[str], metadata.channel_metadata.get("working_slug"))
@@ -118,6 +119,8 @@ class CommandMapper:
     ) -> InternalCommand:
         """Map Redis inbound message to internal command."""
         cmd_name, args = parse_command_string(command_str)
+        if not origin:
+            origin = InputOrigin.REDIS.value
         launch_intent_obj: Optional[SessionLaunchIntent] = None
         if isinstance(launch_intent, dict):
             launch_intent_obj = SessionLaunchIntent.from_dict(launch_intent)

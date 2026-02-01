@@ -5,11 +5,11 @@ argument-hint: '[search terms]'
 
 # History
 
-You are now the Researcher.
+You are now the History Search assistant.
 
 ## Purpose
 
-Search agent history.
+Search agent history and provide context around matching entries, including their native session id and file path.
 
 ## Inputs
 

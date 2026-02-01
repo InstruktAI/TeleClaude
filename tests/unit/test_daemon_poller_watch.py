@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from teleclaude.core.origins import InputOrigin
+
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.models import Session, SessionAdapterMetadata
@@ -26,7 +28,7 @@ async def test_poller_watch_does_not_create_ui_channel():
         session_id="sess-123",
         computer_name="test",
         tmux_session_name="tc_sess",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="Test Session",
         adapter_metadata=SessionAdapterMetadata(),
         project_path="/tmp",
@@ -59,7 +61,7 @@ async def test_poller_watch_recreates_missing_tmux_session():
         session_id="sess-456",
         computer_name="test",
         tmux_session_name="tc_sess_456",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="Test Session 2",
         adapter_metadata=SessionAdapterMetadata(),
         active_agent="claude",
@@ -89,7 +91,7 @@ async def test_ensure_tmux_session_restores_agent_on_recreate():
         session_id="sess-789",
         computer_name="test",
         tmux_session_name="tc_sess_789",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="Restore Agent",
         adapter_metadata=SessionAdapterMetadata(),
         active_agent="gemini",

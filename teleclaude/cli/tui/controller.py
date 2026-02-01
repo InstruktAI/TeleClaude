@@ -14,6 +14,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.cli.models import SessionInfo
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.state import DocPreviewState, DocStickyInfo, Intent, IntentType, TuiState, reduce_state
+from teleclaude.cli.tui.state_store import save_sticky_state
 
 logger = get_logger(__name__)
 
@@ -54,8 +55,15 @@ class TuiController:
             before_preview = self.state.sessions.preview
             before_sticky = list(self.state.sessions.sticky_sessions)
             reduce_state(self.state, intent)
-            if self.state.sessions.preview != before_preview or self.state.sessions.sticky_sessions != before_sticky:
+            changed = (
+                self.state.sessions.preview != before_preview or self.state.sessions.sticky_sessions != before_sticky
+            )
+            if changed:
                 self.apply_layout(focus=False)
+                # Only persist if sticky sessions changed (not preview — preview
+                # wipes from SYNC are cleanup, not user intent).
+                if self.state.sessions.sticky_sessions != before_sticky:
+                    save_sticky_state(self.state)
             return
         reduce_state(self.state, intent)
         if intent.type in {
@@ -67,6 +75,7 @@ class TuiController:
             IntentType.TOGGLE_PREP_STICKY,
         }:
             self.apply_layout(focus=False)
+            save_sticky_state(self.state)
 
     def apply_layout(self, *, focus: bool = False) -> None:
         """Apply pane layout derived from current state."""

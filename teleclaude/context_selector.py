@@ -315,6 +315,7 @@ def build_context_output(
     project_root: Path,
     session_id: str | None,
     snippet_ids: list[str] | None = None,
+    include_baseline: bool = False,
     test_agent: str | None = None,
     test_mode: str | None = None,
     test_request: str | None = None,
@@ -349,6 +350,8 @@ def build_context_output(
         return True
 
     snippets = [snippet for snippet in snippets if _include_snippet(snippet)]
+    if not include_baseline:
+        snippets = [snippet for snippet in snippets if not snippet.snippet_id.startswith("baseline/")]
 
     areas_set = set(areas)
     if areas_set:
@@ -419,7 +422,6 @@ def build_context_output(
 
     if not new_snippets:
         parts.append("(none)")
-        return "\n".join(parts)
 
     for snippet in new_snippets:
         try:

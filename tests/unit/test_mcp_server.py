@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.core.origins import InputOrigin
+
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.models import ComputerInfo, SessionSummary, ThinkingMode
@@ -106,7 +108,7 @@ async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
             return_value=[
                 SessionSummary(
                     session_id="test-session-123",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Test Session",
                     project_path="/home/user",
                     thinking_mode="slow",
@@ -154,7 +156,7 @@ async def test_teleclaude_list_sessions_filters_spawned_by_me(mock_mcp_server):
             return_value=[
                 SessionSummary(
                     session_id="sess-1",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session One",
                     project_path="/home/user",
                     thinking_mode="slow",
@@ -164,7 +166,7 @@ async def test_teleclaude_list_sessions_filters_spawned_by_me(mock_mcp_server):
                 ),
                 SessionSummary(
                     session_id="sess-2",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session Two",
                     project_path="/home/user",
                     thinking_mode="slow",
@@ -174,7 +176,7 @@ async def test_teleclaude_list_sessions_filters_spawned_by_me(mock_mcp_server):
                 ),
                 SessionSummary(
                     session_id="sess-3",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session Three",
                     project_path="/home/user",
                     thinking_mode="slow",
@@ -204,7 +206,7 @@ async def test_teleclaude_list_sessions_allows_all_sessions(mock_mcp_server):
             return_value=[
                 SessionSummary(
                     session_id="sess-1",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session One",
                     project_path="/home/user",
                     thinking_mode="slow",
@@ -214,7 +216,7 @@ async def test_teleclaude_list_sessions_allows_all_sessions(mock_mcp_server):
                 ),
                 SessionSummary(
                     session_id="sess-2",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session Two",
                     project_path="/home/user",
                     thinking_mode="slow",
@@ -244,7 +246,7 @@ async def test_teleclaude_list_sessions_isolates_multiple_callers(mock_mcp_serve
             return_value=[
                 SessionSummary(
                     session_id="sess-1",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session One",
                     project_path="/home/user",
                     thinking_mode="slow",
@@ -254,7 +256,7 @@ async def test_teleclaude_list_sessions_isolates_multiple_callers(mock_mcp_serve
                 ),
                 SessionSummary(
                     session_id="sess-2",
-                    last_input_origin="telegram",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session Two",
                     project_path="/home/user",
                     thinking_mode="slow",
@@ -289,7 +291,8 @@ async def test_teleclaude_start_session_creates_session(mock_mcp_server):
     server.command_service.create_session = AsyncMock(return_value={"session_id": "new-session-456"})
 
     with patch(
-        "teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=MagicMock(last_input_origin="telegram"))
+        "teleclaude.mcp.handlers.db.get_session",
+        new=AsyncMock(return_value=MagicMock(last_input_origin=InputOrigin.TELEGRAM.value)),
     ):
         result = await server.teleclaude__start_session(
             computer="local",
@@ -466,7 +469,8 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     server.command_service.create_session = AsyncMock(side_effect=mock_create_session)
 
     with patch(
-        "teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=MagicMock(last_input_origin="telegram"))
+        "teleclaude.mcp.handlers.db.get_session",
+        new=AsyncMock(return_value=MagicMock(last_input_origin=InputOrigin.TELEGRAM.value)),
     ):
         # Test 1: Gemini agent
         result = await server.teleclaude__start_session(

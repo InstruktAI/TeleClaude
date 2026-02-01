@@ -9,29 +9,16 @@ from teleclaude.paths import REPO_ROOT
 
 
 def sync_project_artifacts(project_root: Path) -> None:
-    """Build snippet indexes and distribute artifacts.
+    """Build snippet indexes and distribute artifacts via ``telec sync``.
 
     Args:
         project_root: Path to the project root directory.
     """
-    env = os.environ.copy()
-    script_path = REPO_ROOT / "scripts" / "auto_sync.py"
-    subprocess.run(
-        [
-            "uv",
-            "run",
-            "--quiet",
-            "--project",
-            str(REPO_ROOT),
-            str(script_path),
-            "--project-root",
-            str(project_root),
-            "--force",
-        ],
-        cwd=project_root,
-        check=True,
-        env=env,
-    )
+    from teleclaude.sync import sync
+
+    ok = sync(project_root, warn_only=True)
+    if not ok:
+        print("telec init: sync completed with warnings.")
 
 
 def install_docs_watch(project_root: Path) -> None:
@@ -63,8 +50,7 @@ def _install_launchd_watch(project_root: Path) -> None:
     plist_path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
     plist_path.parent.mkdir(parents=True, exist_ok=True)
 
-    script_path = REPO_ROOT / "scripts" / "auto_sync.py"
-    command = f"cd {project_root} && uv run --quiet --project {REPO_ROOT} {script_path} --project-root {project_root}"
+    command = f"cd {project_root} && uv run --quiet --project {REPO_ROOT} -m teleclaude.cli.telec sync --warn-only --project-root {project_root}"
     watch_paths = [
         project_root / "AGENTS.md",
         project_root / "AGENTS.master.md",
@@ -152,8 +138,7 @@ def _install_systemd_watch(project_root: Path) -> None:
     service_path = unit_dir / f"{unit_id}.service"
     path_path = unit_dir / f"{unit_id}.path"
 
-    script_path = REPO_ROOT / "scripts" / "auto_sync.py"
-    command = f"cd {project_root} && uv run --quiet --project {REPO_ROOT} {script_path} --project-root {project_root}"
+    command = f"cd {project_root} && uv run --quiet --project {REPO_ROOT} -m teleclaude.cli.telec sync --warn-only --project-root {project_root}"
 
     service_template_path = REPO_ROOT / "templates" / "teleclaude-docs-watch.service"
     path_template_path = REPO_ROOT / "templates" / "teleclaude-docs-watch.path"

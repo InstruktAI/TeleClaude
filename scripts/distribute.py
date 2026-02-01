@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +17,16 @@ import yaml
 from frontmatter import Post
 from frontmatter.default_handlers import YAMLHandler
 
-SubstitutionMap = dict[str, str]
+# Allow running from any working directory by anchoring imports at repo root.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from teleclaude.resource_validation import (
+    resolve_ref_path,
+    validate_artifact,
+)
+
 Transform = Callable[[Post], str]
 
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
@@ -91,7 +101,7 @@ class FileArtifactType:
     deploy_dir_key: str
     ext_key: str
     kind: Literal["file", "skill"]
-    validator: Callable[[Post, str], None]
+    artifact_kind: str  # "agent", "command", or "skill" — passed to validate_artifact
 
 
 def transform_to_codex(post: Post) -> str:
@@ -107,7 +117,7 @@ def transform_to_gemini(post: Post) -> str:
     description_str = f'"""{description}"""'
 
     # replace $ARGUMENTS for {{args}} in gemini format
-    content = post.content.replace("$ARGUMENTS", "{{args}}")
+    content = post.content.replace("$ARGUMENTS", "{{args}}").strip()
 
     return f"description = {description_str}\nprompt = '''\n{content}\n'''\n"
 
@@ -132,154 +142,8 @@ def transform_skill_to_gemini(post: Post, name: str) -> str:
     """Transform a skill post to Gemini TOML format."""
     description = post.metadata.get("description", "")
     description_str = f'"""{description}"""'
-    content = post.content
+    content = post.content.strip()
     return f"name = \"{name}\"\ndescription = {description_str}\nprompt = '''\n{content}\n'''\n"
-
-
-def _validate_agent_frontmatter(post: Post, path: str) -> None:
-    """Validate frontmatter for agent artifacts."""
-    description = post.metadata.get("description")
-    if not isinstance(description, str) or not description.strip():
-        raise ValueError(f"Agent artifact {path} is missing frontmatter 'description'")
-
-
-def _validate_command_frontmatter(post: Post, path: str) -> None:
-    """Validate frontmatter for command artifacts."""
-    description = post.metadata.get("description")
-    if not isinstance(description, str) or not description.strip():
-        raise ValueError(f"Command {path} is missing frontmatter 'description'")
-
-
-def _validate_skill_frontmatter(post: Post, path: str) -> None:
-    """Validate frontmatter for skill artifacts."""
-    description = post.metadata.get("description")
-    if not isinstance(description, str) or not description.strip():
-        raise ValueError(f"Skill {path} is missing frontmatter 'description'")
-
-
-_ARTIFACT_REF_ORDER = ["concept", "principle", "policy", "role", "procedure", "reference"]
-
-
-def _taxonomy_from_ref(ref: str) -> str | None:
-    for taxonomy in _ARTIFACT_REF_ORDER:
-        if f"/{taxonomy}/" in ref:
-            return taxonomy
-    return None
-
-
-def _extract_required_reads(lines: list[str]) -> tuple[list[str], int]:
-    idx = 0
-    while idx < len(lines) and not lines[idx].strip():
-        idx += 1
-    refs: list[str] = []
-    while idx < len(lines):
-        stripped = lines[idx].strip()
-        if not stripped:
-            idx += 1
-            continue
-        if stripped.startswith("@"):
-            refs.append(stripped[1:].strip())
-            idx += 1
-            continue
-        break
-    return refs, idx
-
-
-def _next_nonblank(lines: list[str], idx: int) -> tuple[str | None, int]:
-    while idx < len(lines) and not lines[idx].strip():
-        idx += 1
-    if idx >= len(lines):
-        return None, idx
-    return lines[idx], idx
-
-
-def _validate_required_reads_order(refs: list[str], path: str) -> None:
-    last_index = -1
-    for ref in refs:
-        taxonomy = _taxonomy_from_ref(ref)
-        if not taxonomy:
-            continue
-        index = _ARTIFACT_REF_ORDER.index(taxonomy)
-        if index < last_index:
-            raise ValueError(f"{path} required reads are out of order; expected {' → '.join(_ARTIFACT_REF_ORDER)}")
-        last_index = index
-
-
-def _validate_body_schema(post: Post, path: str, *, kind: str) -> None:
-    argument_hint = post.metadata.get("argument-hint")
-    if kind == "command" and argument_hint is not None and not isinstance(argument_hint, str):
-        raise ValueError(f"{path} has invalid frontmatter 'argument-hint' (must be a string)")
-    lines = post.content.splitlines()
-    refs, idx = _extract_required_reads(lines)
-    _validate_required_reads_order(refs, path)
-
-    line, idx = _next_nonblank(lines, idx)
-    if line is None or not line.startswith("# "):
-        raise ValueError(f"{path} must start with an H1 title after required reads")
-    idx += 1
-
-    line, idx = _next_nonblank(lines, idx)
-    if kind in {"command", "agent"}:
-        if line is None or not line.strip().startswith("You are now the "):
-            raise ValueError(f"{path} must include role activation line after the title")
-        idx += 1
-    else:
-        if line is not None and line.strip().startswith("You are now the "):
-            raise ValueError(f"{path} must not include a role activation line")
-
-    line, idx = _next_nonblank(lines, idx)
-    if line is None:
-        raise ValueError(f"{path} is missing required section headings")
-
-    allowed_map = {
-        "command": ["Purpose", "Inputs", "Outputs", "Steps", "Examples"],
-        "skill": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure", "Examples"],
-        "agent": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure", "Examples"],
-    }
-    required_map = {
-        "command": ["Purpose", "Inputs", "Outputs", "Steps"],
-        "skill": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"],
-        "agent": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"],
-    }
-    allowed = allowed_map[kind]
-    required = required_map[kind]
-
-    headings: list[str] = []
-    for raw in lines[idx:]:
-        stripped = raw.strip()
-        if stripped.startswith("@"):
-            raise ValueError(f"{path} has inline refs outside the required reads block")
-        if stripped.startswith("# "):
-            raise ValueError(f"{path} must only have one H1 title")
-        if stripped.startswith("### "):
-            raise ValueError(f"{path} must use H2 headings only for schema sections")
-        if stripped.startswith("## "):
-            headings.append(stripped[3:].strip())
-
-    if not headings:
-        raise ValueError(f"{path} is missing required section headings")
-
-    for heading in headings:
-        if heading not in allowed:
-            raise ValueError(f"{path} has invalid section heading '{heading}'")
-
-    if headings != required and headings != required + ["Examples"]:
-        raise ValueError(f"{path} section order must be: {' → '.join(required)} (optional Examples at end)")
-
-
-def _validate_command(post: Post, path: str) -> None:
-    _validate_command_frontmatter(post, path)
-    _validate_body_schema(post, path, kind="command")
-
-
-def _validate_agent(post: Post, path: str) -> None:
-    _validate_agent_frontmatter(post, path)
-    _validate_body_schema(post, path, kind="agent")
-
-
-def _validate_skill(post: Post, path: str) -> None:
-    _validate_skill_frontmatter(post, path)
-    _validate_body_schema(post, path, kind="skill")
 
 
 def _should_expand_inline(agent_name: str) -> bool:
@@ -325,29 +189,6 @@ def process_file(content: str, agent_prefix: str, agent_name: str) -> str:
     return content
 
 
-def _resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path | None:
-    if "://" in ref:
-        return None
-    candidate = Path(ref).expanduser()
-    if not candidate.is_absolute():
-        if str(candidate).startswith("docs/"):
-            candidate = (root_path / candidate).resolve()
-            if not candidate.exists():
-                tail = Path(ref).relative_to("docs")
-                project_candidate = (root_path / "docs" / "project" / tail).resolve()
-                if project_candidate.exists():
-                    candidate = project_candidate
-                else:
-                    global_candidate = (root_path / "docs" / "global" / tail).resolve()
-                    if global_candidate.exists():
-                        candidate = global_candidate
-        else:
-            candidate = (current_path.parent / candidate).resolve()
-    else:
-        candidate = candidate.resolve()
-    return candidate
-
-
 def expand_inline_refs(content: str, *, project_root: Path, current_path: Path) -> str:
     """Inline @path.md references into the content (Codex speedup)."""
     seen: set[Path] = set()
@@ -359,7 +200,7 @@ def expand_inline_refs(content: str, *, project_root: Path, current_path: Path) 
 
         def _replace(match: re.Match[str]) -> str:
             ref = match.group(1)
-            resolved = _resolve_ref_path(ref, root_path=project_root, current_path=current_path)
+            resolved = resolve_ref_path(ref, root_path=project_root, current_path=current_path)
             if not resolved or not resolved.exists():
                 return match.group(0)
             if resolved in seen:
@@ -385,20 +226,18 @@ def expand_inline_refs(content: str, *, project_root: Path, current_path: Path) 
 
 
 def _strip_required_reads(content: str) -> str:
-    """Remove Required Reads section after inlining references."""
+    """Remove the '## Required Reads' heading, preserving @ref lines for expansion."""
     lines = content.splitlines()
     output: list[str] = []
-    in_required_reads = False
+    skip_blanks = False
 
     for line in lines:
         if line.strip().lower() == "## required reads":
-            in_required_reads = True
+            skip_blanks = True
             continue
-        if in_required_reads:
-            if line.startswith("## "):
-                in_required_reads = False
-                output.append(line)
+        if skip_blanks and not line.strip():
             continue
+        skip_blanks = False
         output.append(line)
 
     return "\n".join(output).rstrip() + "\n"
@@ -543,7 +382,7 @@ def main() -> None:
     for master_path in _iter_project_agent_masters(project_root_path):
         _write_project_agents(master_path, project_root=project_root_path)
 
-    validate_only = args.validate_only or args.warn_only
+    validate_only = args.validate_only
     dist_dir = "dist"
 
     master_agents_file = os.path.join(agents_root, "AGENTS.global.md")
@@ -612,7 +451,7 @@ def main() -> None:
             deploy_dir_key="deploy_agents_dest",
             ext_key="ext",
             kind="file",
-            validator=_validate_agent,
+            artifact_kind="agent",
         ),
         FileArtifactType(
             name="commands",
@@ -621,7 +460,7 @@ def main() -> None:
             deploy_dir_key="deploy_commands_dest",
             ext_key="ext",
             kind="file",
-            validator=_validate_command,
+            artifact_kind="command",
         ),
         FileArtifactType(
             name="skills",
@@ -630,7 +469,7 @@ def main() -> None:
             deploy_dir_key="deploy_skills_dest",
             ext_key="skills_ext",
             kind="skill",
-            validator=_validate_skill,
+            artifact_kind="skill",
         ),
     ]
 
@@ -705,7 +544,7 @@ def main() -> None:
                 try:
                     with open(item_path, "r") as f:
                         post = frontmatter.load(f)
-                    spec.validator(post, item_path)
+                    validate_artifact(post, item_path, kind=spec.artifact_kind, project_root=Path(project_root))
                     if spec.kind == "skill":
                         resolve_skill_name(post, item)
                 except Exception as e:
@@ -770,12 +609,12 @@ def main() -> None:
 
             print(f"Processing {agent_name}...")
 
-            agent_specific_file = os.path.join(prefix_root, f"PREFIX.{agent_name}.md")
+            agent_specific_file = os.path.join(prefix_root, f"{agent_name.upper()}.primer.md")
             agent_specific_content = ""
             if os.path.exists(agent_specific_file):
                 with open(agent_specific_file, "r") as extra_f:
                     raw_agent_specific = extra_f.read()
-                agent_specific_content = process_file(raw_agent_specific, config["prefix"])
+                agent_specific_content = process_file(raw_agent_specific, config["prefix"], agent_name)
 
             has_any_content = bool(
                 agent_master_contents
@@ -787,19 +626,20 @@ def main() -> None:
                 continue
 
             master_dest_path = os.path.join(dist_dir, agent_name, os.path.basename(config["master_dest"]))
-            processed_contents = [process_file(content, config["prefix"]) for content in agent_master_contents]
-            combined_agents_content = "\n\n".join(
-                content for content in (agent_specific_content, *processed_contents) if content
-            )
+            processed_contents = [
+                process_file(content, config["prefix"], agent_name) for content in agent_master_contents
+            ]
+            primer_suffix = f"\n---\n\n{agent_specific_content}" if agent_specific_content else ""
+            combined_agents_content = "\n\n".join(content for content in (*processed_contents,) if content)
             if _should_expand_inline(agent_name) and processed_contents:
                 expanded_body = expand_inline_refs(
                     "\n\n".join(content for content in processed_contents if content),
                     project_root=Path(project_root),
                     current_path=Path(project_root) / "AGENTS.md",
                 )
-                combined_agents_content = "\n\n".join(
-                    content for content in (agent_specific_content, expanded_body) if content
-                )
+                combined_agents_content = expanded_body
+            if combined_agents_content:
+                combined_agents_content = combined_agents_content.rstrip() + primer_suffix
             if combined_agents_content:
                 master_dest_dir = os.path.dirname(master_dest_path)
                 if master_dest_dir:
@@ -837,7 +677,7 @@ def main() -> None:
                     with open(item_path, "r") as f:
                         try:
                             post = frontmatter.load(f)
-                            spec.validator(post, item_path)
+                            validate_artifact(post, item_path, kind=spec.artifact_kind, project_root=Path(project_root))
                             prepared = _prepare_post(
                                 post,
                                 agent_prefix=config["prefix"],
@@ -863,7 +703,7 @@ def main() -> None:
                                 output_filename = f"{base_name}{config[spec.ext_key]}"
                                 output_path = os.path.join(dest_dir, output_filename)
                             with open(output_path, "w") as out_f:
-                                out_f.write(transformed_content + "\n")
+                                out_f.write(transformed_content.rstrip("\n") + "\n")
                             if output_filename.endswith(".md"):
                                 markdown_outputs.append(output_path)
                         except Exception as e:

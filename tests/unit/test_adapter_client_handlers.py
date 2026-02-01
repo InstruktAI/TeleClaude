@@ -9,6 +9,7 @@ import pytest
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.models import MessageMetadata, Session, SessionAdapterMetadata
+from teleclaude.core.origins import InputOrigin
 
 
 class PrePostUiAdapter(UiAdapter):
@@ -79,7 +80,7 @@ def _make_session() -> Session:
         session_id="sess-1",
         computer_name="TestPC",
         tmux_session_name="tc_sess_1",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test",
         adapter_metadata=SessionAdapterMetadata(),
     )
@@ -101,7 +102,7 @@ async def test_pre_post_handlers_run_with_message_id():
         await adapter._dispatch_command(
             session,
             "123",
-            MessageMetadata(origin="telegram"),
+            MessageMetadata(origin=InputOrigin.TELEGRAM.value),
             "send_message",
             {"text": "hello"},
             AsyncMock(),
@@ -127,7 +128,7 @@ async def test_pre_post_handlers_skip_without_message_id():
         await adapter._dispatch_command(
             session,
             None,
-            MessageMetadata(origin="telegram"),
+            MessageMetadata(origin=InputOrigin.TELEGRAM.value),
             "send_message",
             {"text": "hello"},
             AsyncMock(),

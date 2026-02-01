@@ -8,6 +8,8 @@ import pytest
 from telegram.error import BadRequest, RetryAfter
 from telegram.ext import filters
 
+from teleclaude.core.origins import InputOrigin
+
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude import config as config_module
@@ -97,7 +99,7 @@ class TestSimpleCommandHandlers:
             session_id="session-123",
             computer_name="test",
             tmux_session_name="tmux-123",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
             adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=999)),
         )
@@ -146,7 +148,7 @@ class TestMessaging:
             session_id="session-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
             adapter_metadata={"channel_id": "123"},
         )
@@ -177,7 +179,7 @@ class TestMessaging:
             session_id="session-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
             adapter_metadata={"channel_id": "123"},
         )
@@ -215,7 +217,7 @@ class TestChannelManagement:
             session_id="session-123",
             computer_name="test",
             tmux_session_name="test-session",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Topic",
         )
 
@@ -258,7 +260,7 @@ class TestChannelManagement:
             session_id="session-123",
             computer_name="test",
             tmux_session_name="test-session",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Topic",
         )
 
@@ -267,7 +269,7 @@ class TestChannelManagement:
             session_id="session-123",
             computer_name="test",
             tmux_session_name="test-session",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Topic",
             adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=999)),
         )
@@ -297,7 +299,7 @@ class TestChannelManagement:
             session_id="123",
             computer_name="test",
             tmux_session_name="test-session",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=456)),
             title="Test",
         )
@@ -321,7 +323,7 @@ class TestRateLimitHandling:
             session_id="session-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
             adapter_metadata={"channel_id": "123"},
         )
@@ -348,7 +350,7 @@ class TestRateLimitHandling:
             session_id="session-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
             adapter_metadata={"channel_id": "123"},
         )
@@ -393,7 +395,7 @@ class TestReplyMarkup:
             session_id="session-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
             adapter_metadata={"channel_id": "123"},
         )
@@ -431,7 +433,7 @@ class TestMessageNotModified:
             session_id="session-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
             adapter_metadata={"channel_id": "123"},
         )
@@ -464,7 +466,7 @@ class TestMessageNotModified:
             session_id="session-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
             adapter_metadata={"channel_id": "123"},
         )

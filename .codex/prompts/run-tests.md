@@ -7,11 +7,15 @@ argument-hint: '[--csv <path>]'
 
 # Tester — Role
 
+---
+
+# Testing — Policy
+
+---
+
+# Code Quality — Policy
+
 ## Rules
-
-Code quality is enforced through explicit contracts, stable boundaries, and verifiable outcomes.
-
-Rules:
 
 - Honor repository configuration and established conventions.
 - Encode invariants explicitly and validate at boundaries.
@@ -19,53 +23,6 @@ Rules:
 - Keep responsibilities narrow and interfaces explicit.
 - Fail fast on contract violations with clear diagnostics.
 - Keep state ownership explicit and observable.
-
-Scope
-
-- Applies to all code changes and design decisions.
-
-See also
-
----
-
-# Code Quality Practices — Guide
-
-## Goal
-
-Apply code-quality policy consistently in daily work.
-
-## Context
-
-The code-quality policy defines what good code looks like. This guide translates those principles into concrete habits: how to structure modules, handle errors, manage state, and reason about concurrency in practice.
-
-## Approach
-
-- Follow the repository's configuration and established conventions.
-- Introduce new patterns only when they are required by the intent.
-- Keep one responsibility per module, function, or class.
-- Separate core logic from interfaces and operational concerns.
-- Prefer designs that are explicit, verifiable, and easy to reason about.
-- Make contracts explicit and enforce invariants at boundaries.
-- Preserve signature fidelity across all call chains.
-- Use structured models to make illegal states unrepresentable.
-- Assign explicit ownership to state and its lifecycle.
-- Avoid implicit global state or import-time side effects.
-- Pass dependencies explicitly and keep boundaries visible.
-- Fail fast on contract violations with clear diagnostics.
-- Keep recovery logic explicit and minimal.
-- Make error posture clear: when to stop, when to continue, and why.
-- Preserve deterministic outcomes under concurrency.
-- Aggregate parallel work explicitly and keep ordering intentional.
-- Protect shared state with explicit ownership or isolation.
-- Log boundary events and failures with enough context to diagnose.
-- Prefer clarity over volume; log what changes decisions.
-
-## Pitfalls
-
-- Over-engineering: adding abstractions, configurability, or error handling for scenarios that don't exist yet.
-- Inconsistency: following different conventions in different parts of the same codebase.
-- Implicit contracts: relying on undocumented behavior or import order instead of explicit dependencies.
-
 - Prefer simple, readable implementations over cleverness.
 - Require tests or explicit justification for untested changes.
 - Avoid hidden side effects; document mutation and I/O explicitly.
@@ -93,6 +50,8 @@ The code-quality policy defines what good code looks like. This guide translates
 ---
 
 # Linting Requirements — Policy
+
+-
 
 ## Rules
 
@@ -143,6 +102,12 @@ The code-quality policy defines what good code looks like. This guide translates
 2. **Do not run full suites by default** - Run targeted tests only when developing, debugging, or when hooks fail
 3. Never commit code with failing hooks, lint violations, or type errors
 
+### Running Tests
+
+- `make test` — run the full test suite (unit + integration)
+- `make test-unit` — run unit tests only
+- `make test-e2e` — run integration tests only
+
 ### Targeted Tests Only (Default)
 
 Run the smallest test scope that proves the change. Escalate only when needed.
@@ -180,25 +145,6 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 16. Linting, type checking, and unit tests run automatically
 17. No commits with `--no-verify` to bypass hooks unless explicitly approved
 18. Keep test suite fast (< 10s for unit tests)
-
-- [ ] Pre-commit hooks pass without warnings
-- [ ] No unused imports or variables
-- [ ] All imports at top level (no import-outside-toplevel)
-- [ ] Code formatted according to project standards
-- [ ] New tests added for new functionality
-- [ ] Edge cases and error conditions tested
-- [ ] Type annotations complete and accurate
-- [ ] Test names are descriptive
-- [ ] Tests verify behavior, not implementation
-- [ ] No flaky or slow tests introduced
-- [ ] No commented-out code or tests
-
-**CRITICAL**: Never commit code with failing hooks, lint violations, or type errors.
-
-- Prefer deterministic tests; control time, randomness, and external I/O.
-- Separate unit tests from integration tests; document how to run each.
-- Mock external services; never hit production by default.
-- Keep fixtures minimal and reusable.
 
 ## Rationale
 

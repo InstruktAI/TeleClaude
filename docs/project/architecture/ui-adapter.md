@@ -56,6 +56,7 @@ Invariants
 - **Consistent Cleanup Rules**: pending_deletions enforced uniformly across all UI adapters; trigger conditions identical.
 - **Single Output Message**: One persistent output message per session, edited repeatedly; message_id tracked in adapter_metadata namespace.
 - **Session Affinity**: Feedback routed to last_input_origin; user sees responses in the adapter they sent from.
+- **Origin Semantics**: last_input_origin uses InputOrigin values (telegram, redis, api, hook, mcp). Non-UI origins (api/hook/mcp) are treated as originless and broadcast to all UI adapters.
 
 ## Primary flows
 

@@ -8,6 +8,7 @@ import pytest
 from teleclaude.core import polling_coordinator
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, ProcessExited
 
 
@@ -26,7 +27,7 @@ class TestPollAndSendOutput:
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",  # Not matching $X > $Y pattern
         )
 
@@ -57,7 +58,7 @@ class TestPollAndSendOutput:
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
 
@@ -89,7 +90,7 @@ class TestPollAndSendOutput:
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
 
@@ -139,7 +140,7 @@ class TestPollAndSendOutput:
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
 
@@ -197,7 +198,7 @@ class TestPollAndSendOutput:
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
 

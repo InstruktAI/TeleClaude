@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.sync_resources import build_index_payload
+from teleclaude.docs_index import build_index_payload
 
 
 def _write(path: Path, content: str) -> None:

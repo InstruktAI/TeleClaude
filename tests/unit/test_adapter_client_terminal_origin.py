@@ -1,4 +1,4 @@
-"""Unit tests for AdapterClient terminal-origin routing."""
+"""Unit tests for AdapterClient API-origin routing."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.models import MessageMetadata, Session, SessionAdapterMetadata
+from teleclaude.core.origins import InputOrigin
 
 
 class DummyUiAdapter(UiAdapter):
@@ -89,19 +90,19 @@ def _make_session(last_input_origin: str) -> Session:
 
 @pytest.mark.asyncio
 async def test_terminal_origin_send_message_skips_ui():
-    """Test that terminal-origin send_message does not route to UI adapter."""
+    """Test that API-origin send_message routes to UI adapter."""
     client = AdapterClient()
     adapter = DummyUiAdapter(client)
     client.register_adapter("telegram", adapter)
 
-    session = _make_session("cli")
+    session = _make_session(InputOrigin.API.value)
 
     # Mock db.add_pending_deletion since send_message auto-tracks ephemeral messages
     with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
         message_id = await client.send_message(session, "hello")
 
-    assert message_id is None
-    assert adapter.sent_messages == []
+    assert message_id == "msg-1"
+    assert adapter.sent_messages == [("sess-1", "hello")]
 
 
 @pytest.mark.asyncio

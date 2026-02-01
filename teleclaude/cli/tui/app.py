@@ -14,7 +14,6 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
-import nest_asyncio
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.models import (
@@ -50,9 +49,6 @@ from teleclaude.cli.tui.widgets.footer import Footer
 from teleclaude.cli.tui.widgets.tab_bar import TabBar
 from teleclaude.config import config
 from teleclaude.constants import LOCAL_COMPUTER
-
-# Allow nested event loops (required for async calls inside curses sync loop)
-nest_asyncio.apply()
 
 logger = get_logger(__name__)
 
@@ -203,6 +199,7 @@ class TelecApp:
         self._refresh_error_since: float | None = None
         self._refresh_error_notified = False
         self._refresh_error_escalated = False
+        self._loop: asyncio.AbstractEventLoop | None = None
 
         # Animation system
         self.animation_engine = AnimationEngine()
@@ -212,6 +209,7 @@ class TelecApp:
     async def initialize(self) -> None:
         """Load initial data and create views."""
         await self.api.connect()
+        self._loop = asyncio.get_event_loop()
         self._loop = asyncio.get_running_loop()
 
         # Create views BEFORE refresh so they can receive data
@@ -382,7 +380,8 @@ class TelecApp:
         if current not in self._subscribed_computers:
             self.api.subscribe(current, ["sessions", "projects"])
             self._subscribed_computers.add(current)
-            asyncio.get_event_loop().run_until_complete(self.refresh_data())
+            if self._loop:
+                self._loop.run_until_complete(self.refresh_data())
 
     def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
         """Get SSH connection info for a computer."""
@@ -451,7 +450,8 @@ class TelecApp:
                 sessions_view = self.views.get(1)
                 if isinstance(sessions_view, SessionsView):
                     sessions_view.request_select_session(event.data.session_id)
-                asyncio.get_event_loop().run_until_complete(self.refresh_data(include_todos=False))
+                if self._loop:
+                    self._loop.run_until_complete(self.refresh_data(include_todos=False))
 
             elif isinstance(event, SessionUpdatedEvent):
                 updated_session = event.data
@@ -475,10 +475,12 @@ class TelecApp:
                         NotificationLevel.INFO,
                     )
                 self._session_status_cache[updated_session.session_id] = new_status
-                asyncio.get_event_loop().run_until_complete(self.refresh_data(include_todos=False))
+                if self._loop:
+                    self._loop.run_until_complete(self.refresh_data(include_todos=False))
 
             elif isinstance(event, SessionClosedEvent):
-                asyncio.get_event_loop().run_until_complete(self.refresh_data(include_todos=False))
+                if self._loop:
+                    self._loop.run_until_complete(self.refresh_data(include_todos=False))
 
             elif isinstance(event, ErrorEvent):
                 self.notify(event.data.message, NotificationLevel.ERROR)
@@ -486,7 +488,8 @@ class TelecApp:
             else:
                 # For now, trigger a full refresh for computer/project updates
                 # In the future, could apply incremental updates
-                asyncio.get_event_loop().run_until_complete(self.refresh_data())
+                if self._loop:
+                    self._loop.run_until_complete(self.refresh_data())
 
         return updated
 
@@ -513,7 +516,8 @@ class TelecApp:
         """
         # For now, trigger a full async refresh since preparation view
         # needs to rebuild its tree with todos
-        asyncio.get_event_loop().run_until_complete(self.refresh_data())
+        if self._loop:
+            self._loop.run_until_complete(self.refresh_data())
 
     def _apply_session_update(self, session: SessionInfo) -> None:
         """Apply incremental session update.
@@ -537,7 +541,8 @@ class TelecApp:
 
         if not found:
             # Unknown session: refresh from source-of-truth data
-            asyncio.get_event_loop().run_until_complete(self.refresh_data())
+            if self._loop:
+                self._loop.run_until_complete(self.refresh_data())
             return
 
         # Update activity state for the changed session
@@ -608,7 +613,8 @@ class TelecApp:
                 # Check if view needs data refresh
                 view = self.views.get(self.current_view)
                 if view and getattr(view, "needs_refresh", False):
-                    asyncio.get_event_loop().run_until_complete(self.refresh_data())
+                    if self._loop:
+                        self._loop.run_until_complete(self.refresh_data())
                     view.needs_refresh = False
 
             # Always render to advance animations, even during idle periods
@@ -662,7 +668,8 @@ class TelecApp:
             return False
 
         self._last_ws_heal = current
-        asyncio.get_event_loop().run_until_complete(self.refresh_data())
+        if self._loop:
+            self._loop.run_until_complete(self.refresh_data())
         return True
 
     def _install_appearance_hook(self) -> None:
@@ -860,7 +867,8 @@ class TelecApp:
                 view.handle_enter(stdscr)
         elif key == ord("r"):
             logger.debug("Refresh requested")
-            asyncio.get_event_loop().run_until_complete(self.refresh_data())
+            if self._loop:
+                self._loop.run_until_complete(self.refresh_data())
 
         # Agent restart (Sessions view only)
         elif key == ord("R"):
@@ -962,7 +970,8 @@ class TelecApp:
                     view.selected_index,
                 )
                 if view_num == 2:
-                    asyncio.get_event_loop().run_until_complete(self.refresh_data(include_todos=True))
+                    if self._loop:
+                        self._loop.run_until_complete(self.refresh_data(include_todos=True))
             # Panes remain unchanged across view switches.
         else:
             logger.warning("Attempted to switch to non-existent view %d", view_num)

@@ -124,6 +124,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_click_time: dict[int, float] = {}  # screen_row -> timestamp
         self._double_click_threshold = 0.4  # seconds
         self._pending_select_session_id: str | None = None
+        self._last_data_counts: dict[str, int] = {}
 
         # Load persisted sticky state (sessions + docs)
         load_sticky_state(self.state)
@@ -206,6 +207,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Store sessions for child lookup
         self._sessions = sessions
+        if not sessions and self._last_data_counts.get("sessions", 1) != 0:
+            logger.debug("SessionsView.refresh: no sessions returned")
+        self._last_data_counts["sessions"] = len(sessions)
         self.controller.update_sessions(sessions)
         self.controller.dispatch(Intent(IntentType.SYNC_SESSIONS, {"session_ids": [s.session_id for s in sessions]}))
         # Store computers for SSH connection lookup
@@ -260,8 +264,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
         self._apply_pending_selection()
-        if self.pane_manager.is_available and self.sticky_sessions and not self.pane_manager.state.sticky_pane_ids:
-            self.controller.apply_layout(focus=False)
+        if self.pane_manager.is_available:
+            needs_layout = False
+            if self.sticky_sessions and not self.pane_manager.state.sticky_pane_ids:
+                needs_layout = True
+            if self._preview and not self.pane_manager.state.parent_pane_id:
+                needs_layout = True
+            if needs_layout:
+                self.controller.apply_layout(focus=False)
 
     def request_select_session(self, session_id: str) -> bool:
         """Request that a session be selected once it appears in the tree."""
@@ -1334,7 +1344,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         if not self.flat_items:
             msg = "(no items)"
-            logger.debug("render: no items to display")
             stdscr.addstr(start_row, 2, msg, curses.A_DIM)  # type: ignore[attr-defined]
             return
 

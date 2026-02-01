@@ -28,6 +28,7 @@ class TelecCommand(str, Enum):
     GEMINI = "gemini"
     CODEX = "codex"
     INIT = "init"
+    SYNC = "sync"
 
 
 def main() -> None:
@@ -68,27 +69,30 @@ def main() -> None:
         os.execlp(tmux, *tmux_args)
 
     try:
-        asyncio.run(_run_tui())
+        _run_tui()
     except KeyboardInterrupt:
         pass  # Clean exit on Ctrl-C
 
 
-async def _run_tui() -> None:
+def _run_tui() -> None:
     """Run TUI application."""
     # Lazy import: TelecApp applies nest_asyncio which breaks httpx for CLI commands
     from teleclaude.cli.tui.app import TelecApp
 
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     api = TelecAPIClient()
     app = TelecApp(api)
 
     try:
         _ensure_tmux_mouse_on()
-        await app.initialize()
+        loop.run_until_complete(app.initialize())
         curses.wrapper(app.run)
     except KeyboardInterrupt:
         pass  # Clean exit on Ctrl-C
     finally:
-        await api.close()
+        loop.run_until_complete(api.close())
+        loop.close()
         _maybe_kill_tui_session()
 
 
@@ -115,6 +119,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         _quick_start(cmd_enum.value, mode, prompt)
     elif cmd_enum is TelecCommand.INIT:
         init_project(Path.cwd())
+    elif cmd_enum is TelecCommand.SYNC:
+        _handle_sync(args)
     else:
         print(f"Unknown command: /{cmd}")
         print(_usage())
@@ -232,6 +238,33 @@ def _attach_tmux_session(tmux_session_name: str) -> None:
     os.execlp(tmux, tmux, "attach-session", "-t", tmux_session_name)
 
 
+def _handle_sync(args: list[str]) -> None:
+    """Handle telec sync command."""
+    from teleclaude.sync import sync
+
+    project_root = Path.cwd()
+    warn_only = False
+    validate_only = False
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif args[i] == "--warn-only":
+            warn_only = True
+            i += 1
+        elif args[i] == "--validate-only":
+            validate_only = True
+            i += 1
+        else:
+            i += 1
+
+    ok = sync(project_root, validate_only=validate_only, warn_only=warn_only)
+    if not ok:
+        raise SystemExit(1)
+
+
 def _usage() -> str:
     """Return usage string.
 
@@ -246,6 +279,8 @@ def _usage() -> str:
         "  telec gemini [mode] [prompt]   # Start Gemini (mode: fast/med/slow, prompt optional)\n"
         "  telec codex [mode] [prompt]    # Start Codex (mode: fast/med/slow/deep, prompt optional)\n"
         "  telec init                     # Initialize docs sync and auto-rebuild watcher\n"
+        "  telec sync [--warn-only] [--validate-only] [--project-root PATH]\n"
+        "                                 # Validate, build indexes, and deploy artifacts\n"
     )
 
 

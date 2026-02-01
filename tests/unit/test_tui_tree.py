@@ -1,9 +1,9 @@
 """Unit tests for TUI tree building."""
 
 # type: ignore - test fixtures use concrete types that are compatible
-
 from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.tree import ComputerDisplayInfo, build_tree
+from teleclaude.core.origins import InputOrigin
 
 
 def make_computer(name: str = "local", host: str = "localhost") -> ComputerDisplayInfo:
@@ -32,7 +32,7 @@ def make_session(
 ) -> SessionInfo:
     return SessionInfo(
         session_id=session_id,
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title=title,
         project_path=project_path,
         thinking_mode="slow",

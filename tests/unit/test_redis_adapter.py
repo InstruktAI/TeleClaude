@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
+from teleclaude.core.origins import InputOrigin
+
 
 @pytest.mark.asyncio
 async def test_discover_peers_parses_heartbeat_data():
@@ -282,7 +284,7 @@ async def test_send_message_adds_to_stream():
         session_id="test-session-123",
         computer_name="RemotePC",
         tmux_session_name="test-tmux",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="Test Session",
     )
     # Set up adapter_metadata with redis channel info

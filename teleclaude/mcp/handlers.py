@@ -35,6 +35,7 @@ from teleclaude.core.next_machine.core import (
     read_dependencies,
     write_dependencies,
 )
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import register_listener, unregister_listener
 from teleclaude.mcp.types import (
     ComputerInfo,
@@ -569,13 +570,9 @@ class MCPHandlersMixin:
         )
 
     async def _resolve_origin(self, caller_session_id: str | None) -> str:
-        """Resolve origin for MCP requests based on the caller session."""
-        if not caller_session_id:
-            raise ValueError("MCP request missing caller_session_id")
-        session = await db.get_session(caller_session_id)
-        if not session or not session.last_input_origin:
-            raise ValueError(f"MCP request missing parent origin for session {caller_session_id}")
-        return session.last_input_origin
+        """Resolve origin for MCP requests."""
+        _ = caller_session_id
+        return InputOrigin.MCP.value
 
     async def _start_local_session_with_auto_command(
         self,
@@ -940,6 +937,7 @@ class MCPHandlersMixin:
         self,
         areas: list[str] | None = None,
         snippet_ids: list[str] | None = None,
+        include_baseline: bool | None = None,
         cwd: str | None = None,
         caller_session_id: str | None = None,
     ) -> str:
@@ -980,6 +978,7 @@ class MCPHandlersMixin:
             project_root=project_root,
             session_id=caller_session_id,
             snippet_ids=snippet_ids,
+            include_baseline=bool(include_baseline),
             test_agent=test_agent,
             test_mode=test_mode,
             test_request=test_request,

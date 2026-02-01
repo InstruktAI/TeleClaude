@@ -10,6 +10,8 @@ from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
+from teleclaude.core.origins import InputOrigin
+
 
 class Session(SQLModel, table=True):
     """sessions table."""
@@ -21,7 +23,7 @@ class Session(SQLModel, table=True):
     computer_name: str
     title: Optional[str] = None
     tmux_session_name: Optional[str] = None
-    last_input_origin: str = "telegram"
+    last_input_origin: str = InputOrigin.TELEGRAM.value
     adapter_metadata: Optional[str] = None
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None

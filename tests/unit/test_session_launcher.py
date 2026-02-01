@@ -4,6 +4,7 @@ import pytest
 
 from teleclaude.core import session_launcher
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.origins import InputOrigin
 
 
 @pytest.mark.asyncio
@@ -30,7 +31,7 @@ async def test_create_session_runs_auto_command_after_create(monkeypatch):
 
     monkeypatch.setattr(session_launcher, "create_tmux_session", _fake_create_session)
 
-    metadata = MessageMetadata(origin="telegram")
+    metadata = MessageMetadata(origin=InputOrigin.TELEGRAM.value)
     metadata.launch_intent = SessionLaunchIntent(
         kind=SessionLaunchKind.AGENT,
         agent="claude",
@@ -39,7 +40,9 @@ async def test_create_session_runs_auto_command_after_create(monkeypatch):
 
     from teleclaude.types.commands import CreateSessionCommand
 
-    cmd = CreateSessionCommand(project_path=".", origin="telegram", launch_intent=metadata.launch_intent)
+    cmd = CreateSessionCommand(
+        project_path=".", origin=InputOrigin.TELEGRAM.value, launch_intent=metadata.launch_intent
+    )
 
     result = await session_launcher.create_session(
         cmd=cmd,

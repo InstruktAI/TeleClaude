@@ -4,8 +4,8 @@ This folder harbors agent artifact definitions and tooling to build and distribu
 
 ## Required reads
 
-@docs/project/procedure/agent-artifact-distribution.md
-@docs/project/policy/agent-artifact-governance.md
+- @docs/project/procedure/agent-artifact-distribution.md
+- @docs/project/policy/agent-artifact-governance.md
 
 ## Tools
 

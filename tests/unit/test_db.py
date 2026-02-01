@@ -11,6 +11,7 @@ import pytest
 
 from teleclaude.core.db import Db
 from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.voice_assignment import VoiceConfig
 
 FIXED_NOW = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -43,7 +44,7 @@ class TestCreateSession:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test-session",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title=None,  # Test default title generation
         )
 
@@ -62,7 +63,7 @@ class TestCreateSession:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="full-session",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Custom Title",
             adapter_metadata=metadata,
             project_path="/home/user",
@@ -78,7 +79,7 @@ class TestCreateSession:
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="child-session",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Child",
             initiator_session_id="parent-session",
         )
@@ -113,7 +114,10 @@ class TestGetSession:
     async def test_get_existing_session(self, test_db):
         """Test retrieving existing session."""
         created = await test_db.create_session(
-            computer_name="TestPC", tmux_session_name="test-session", last_input_origin="telegram", title="Test Session"
+            computer_name="TestPC",
+            tmux_session_name="test-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
         )
 
         retrieved = await test_db.get_session(created.session_id)
@@ -179,23 +183,23 @@ class TestListSessions:
     @pytest.mark.asyncio
     async def test_list_sessions_filter_by_adapter_type(self, test_db):
         """Test filtering sessions by adapter type."""
-        await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
-        await test_db.create_session("PC1", "session-2", "api", "Test Session")
-        await test_db.create_session("PC1", "session-3", "telegram", "Test Session")
+        await test_db.create_session("PC1", "session-1", InputOrigin.TELEGRAM.value, "Test Session")
+        await test_db.create_session("PC1", "session-2", InputOrigin.API.value, "Test Session")
+        await test_db.create_session("PC1", "session-3", InputOrigin.TELEGRAM.value, "Test Session")
 
-        sessions = await test_db.list_sessions(last_input_origin="telegram")
+        sessions = await test_db.list_sessions(last_input_origin=InputOrigin.TELEGRAM.value)
 
         assert len(sessions) == 2
-        assert all(s.last_input_origin == "telegram" for s in sessions)
+        assert all(s.last_input_origin == InputOrigin.TELEGRAM.value for s in sessions)
 
     @pytest.mark.asyncio
     async def test_list_sessions_multiple_filters(self, test_db):
         """Test filtering sessions with multiple criteria."""
-        await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
-        await test_db.create_session("PC2", "session-2", "telegram", "Test Session")
-        s3 = await test_db.create_session("PC1", "session-3", "cli", "Test Session")
+        await test_db.create_session("PC1", "session-1", InputOrigin.TELEGRAM.value, "Test Session")
+        await test_db.create_session("PC2", "session-2", InputOrigin.TELEGRAM.value, "Test Session")
+        s3 = await test_db.create_session("PC1", "session-3", InputOrigin.API.value, "Test Session")
 
-        sessions = await test_db.list_sessions(computer_name="PC1", last_input_origin="cli")
+        sessions = await test_db.list_sessions(computer_name="PC1", last_input_origin=InputOrigin.API.value)
 
         assert len(sessions) == 1
         assert sessions[0].session_id == s3.session_id
@@ -447,7 +451,7 @@ class TestGetSessionsByAdapterMetadata:
         """Test retrieving sessions finds ALL sessions with the metadata, regardless of last_input_origin.
 
         This is crucial for observer adapters: when Telegram is an observer for a Redis-initiated
-        session, we need to find the session by telegram.topic_id even though last_input_origin='cli'.
+        session, we need to find the session by telegram.topic_id even though last_input_origin='api'.
         """
         from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
 
@@ -510,7 +514,10 @@ class TestDbAdapterClientIntegration:
         """Test that update_session works without client wired."""
         # Create session
         session = await test_db.create_session(
-            computer_name="TestPC", tmux_session_name="test-session", last_input_origin="telegram", title="Test Session"
+            computer_name="TestPC",
+            tmux_session_name="test-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
         )
 
         # Update without wiring client (should not crash)
@@ -529,7 +536,10 @@ class TestNotificationFlag:
         """Test setting notification_sent flag."""
         # Create session
         session = await test_db.create_session(
-            computer_name="TestPC", tmux_session_name="test-session", last_input_origin="telegram", title="Test Session"
+            computer_name="TestPC",
+            tmux_session_name="test-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
         )
 
         # Set flag to True
@@ -544,7 +554,10 @@ class TestNotificationFlag:
         """Test clearing notification_sent flag."""
         # Create session and set flag
         session = await test_db.create_session(
-            computer_name="TestPC", tmux_session_name="test-session", last_input_origin="telegram", title="Test Session"
+            computer_name="TestPC",
+            tmux_session_name="test-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
         )
         await test_db.set_notification_flag(session.session_id, True)
 
@@ -560,7 +573,10 @@ class TestNotificationFlag:
         """Test get_notification_flag returns False for new session."""
         # Create session (no flag set)
         session = await test_db.create_session(
-            computer_name="TestPC", tmux_session_name="test-session", last_input_origin="telegram", title="Test Session"
+            computer_name="TestPC",
+            tmux_session_name="test-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
         )
 
         # Verify flag defaults to False
@@ -572,7 +588,10 @@ class TestNotificationFlag:
         """Test notification_sent flag persists when other UX state fields change."""
         # Create session and set flag
         session = await test_db.create_session(
-            computer_name="TestPC", tmux_session_name="test-session", last_input_origin="telegram", title="Test Session"
+            computer_name="TestPC",
+            tmux_session_name="test-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
         )
         await test_db.set_notification_flag(session.session_id, True)
 
@@ -588,7 +607,10 @@ class TestNotificationFlag:
         """Test toggling notification_sent flag multiple times."""
         # Create session
         session = await test_db.create_session(
-            computer_name="TestPC", tmux_session_name="test-session", last_input_origin="telegram", title="Test Session"
+            computer_name="TestPC",
+            tmux_session_name="test-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
         )
 
         # Toggle: False -> True -> False -> True

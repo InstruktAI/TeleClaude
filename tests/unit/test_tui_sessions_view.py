@@ -19,6 +19,7 @@ from teleclaude.cli.tui.tree import (
     SessionNode,
 )
 from teleclaude.cli.tui.views.sessions import SessionsView
+from teleclaude.core.origins import InputOrigin
 
 
 @pytest.fixture
@@ -99,7 +100,7 @@ class TestSessionsViewLogic:
     ) -> SessionInfo:
         return SessionInfo(
             session_id=session_id,
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title=title,
             project_path="/test/project",
             thinking_mode=thinking_mode,

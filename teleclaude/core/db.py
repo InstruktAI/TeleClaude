@@ -249,7 +249,7 @@ class Db:
         Args:
             computer_name: Name of the computer
             tmux_session_name: Name of tmux session
-            last_input_origin: Last input origin (e.g., "telegram", "cli")
+            last_input_origin: Last input origin (InputOrigin.*.value)
             title: Optional session title
             adapter_metadata: Optional adapter-specific metadata
             project_path: Base project path (no subdir)
@@ -297,6 +297,73 @@ class Db:
             working_slug=session.working_slug,
             initiator_session_id=session.initiator_session_id,
             lifecycle_status=session.lifecycle_status,
+        )
+        async with self._session() as db_session:
+            db_session.add(db_row)
+            await db_session.commit()
+
+        event_bus.emit(
+            TeleClaudeEvents.SESSION_STARTED,
+            SessionLifecycleContext(session_id=session_id),
+        )
+
+        return session
+
+    async def create_headless_session(
+        self,
+        *,
+        session_id: str,
+        computer_name: str,
+        last_input_origin: str,
+        title: str,
+        active_agent: str | None,
+        native_session_id: str | None,
+        native_log_file: str | None,
+        project_path: str | None,
+        subdir: str | None,
+    ) -> Session:
+        """Create a headless session (no tmux)."""
+        now = datetime.now(timezone.utc)
+        tmux_session_name = ""
+
+        session = Session(
+            session_id=session_id,
+            computer_name=computer_name,
+            tmux_session_name=tmux_session_name,
+            last_input_origin=last_input_origin,
+            title=title,
+            adapter_metadata=SessionAdapterMetadata(),
+            created_at=now,
+            last_activity=now,
+            project_path=project_path,
+            subdir=subdir,
+            description=None,
+            working_slug=None,
+            initiator_session_id=None,
+            lifecycle_status="headless",
+            active_agent=active_agent,
+            native_session_id=native_session_id,
+            native_log_file=native_log_file,
+        )
+
+        db_row = db_models.Session(
+            session_id=session.session_id,
+            computer_name=session.computer_name,
+            title=session.title,
+            tmux_session_name=session.tmux_session_name,
+            last_input_origin=session.last_input_origin,
+            adapter_metadata=self._serialize_adapter_metadata(session.adapter_metadata),
+            created_at=session.created_at,
+            last_activity=session.last_activity,
+            project_path=session.project_path,
+            subdir=session.subdir,
+            description=session.description,
+            working_slug=session.working_slug,
+            initiator_session_id=session.initiator_session_id,
+            lifecycle_status=session.lifecycle_status,
+            active_agent=session.active_agent,
+            native_session_id=session.native_session_id,
+            native_log_file=session.native_log_file,
         )
         async with self._session() as db_session:
             db_session.add(db_row)
@@ -363,7 +430,7 @@ class Db:
 
         Args:
             computer_name: Filter by computer name
-            last_input_origin: Filter by last input origin (telegram, redis, cli)
+            last_input_origin: Filter by last input origin (InputOrigin.*.value)
             include_closed: Include closed sessions when True
             include_headless: Include headless sessions (standalone, no tmux) when True
 

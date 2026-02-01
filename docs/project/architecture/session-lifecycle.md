@@ -38,10 +38,12 @@ description: Complete lifecycle of a terminal session from creation to cleanup.
 ### 4. Headless Sessions (Standalone TTS/Summarization)
 
 - **Trigger**: An agent hook fires without a TeleClaude session context (no `teleclaude_session_id` in `$TMPDIR`).
-- **Creation**: The hook receiver creates a minimal session row with `lifecycle_status="headless"`, `tmux_session_name=NULL`, and `last_input_origin="standalone"`.
+- **Normalization**: The hook receiver only normalizes payloads and enqueues them in the outbox (no DB writes).
+- **Creation (core-owned)**: The daemon creates a minimal session row with `lifecycle_status="headless"`, `tmux_session_name=NULL`, and `last_input_origin=InputOrigin.HOOK.value`.
+- **Project path**: The daemon attempts to derive `project_path` (and `subdir`) from the native transcript file before persisting the headless session.
 - **Persistence**: The new session UUID is written to `$TMPDIR/teleclaude_session_id` so subsequent hooks from the same agent process reuse it.
 - **Pipeline**: Hook events flow through the normal outbox → daemon → summarization → TTS pipeline. Output polling is skipped (no tmux to poll).
-- **Cleanup**: Headless sessions are cleaned up by the 72h inactivity sweep, same as regular sessions. They are excluded from stale-tmux detection (no tmux to check) and from user-facing session listings.
+- **Cleanup**: Headless sessions are cleaned up by the 72h inactivity sweep, same as regular sessions. They are excluded from stale-tmux detection (no tmux to check) but **are visible in UI listings** for observability.
 
 ```mermaid
 stateDiagram-v2

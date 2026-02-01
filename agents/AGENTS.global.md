@@ -4,7 +4,7 @@ This file provides baseline guidance to all agents across all projects and conte
 
 ## Required Reads
 
-@/Users/Morriz/.teleclaude/docs/baseline/index.md
+- @/Users/Morriz/.teleclaude/docs/baseline/index.md
 
 ## Facts you should know
 

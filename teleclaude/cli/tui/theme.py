@@ -46,7 +46,7 @@ _BANNER_PAIR_ID = 22
 _TAB_LINE_PAIR_ID = 23
 
 # Track current mode for reference
-_is_dark_mode: bool = True
+_is_dark_mode: bool = True  # set at module load below, after is_dark_mode() is defined
 
 # Status bar foreground color (neutral gray for both dark/light modes)
 STATUS_FG_COLOR = "#727578"
@@ -120,6 +120,9 @@ def is_dark_mode() -> bool:
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         # Default to dark mode if detection fails (non-macOS, etc.)
         return True
+
+
+_is_dark_mode = is_dark_mode()
 
 
 def get_current_mode() -> bool:

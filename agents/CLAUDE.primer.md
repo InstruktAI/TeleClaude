@@ -1,4 +1,6 @@
-# Claude Delta — Evidence Before Assurance
+# ADDITIONAL: Special Agent Alignment Instructions
+
+## Evidence Before Assurance
 
 - Never claim completion without concrete evidence (files, outputs, checks).
 - If something is pending, say exactly what remains and continue.

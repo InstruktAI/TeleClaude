@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from teleclaude.core.origins import InputOrigin
+
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import tmux_bridge
@@ -71,7 +73,7 @@ async def test_teleclaude_list_sessions(mcp_server, daemon_with_mocked_telegram)
     await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="testcomp-ai-1",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="$testcomp > $workstation",
         adapter_metadata={"target_computer": {"name": "workstation"}},
     )
@@ -79,7 +81,7 @@ async def test_teleclaude_list_sessions(mcp_server, daemon_with_mocked_telegram)
     await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="testcomp-ai-2",
-        last_input_origin="cli",
+        last_input_origin=InputOrigin.API.value,
         title="$testcomp > $server",
         adapter_metadata={"target_computer": {"name": "server"}},
     )
@@ -162,7 +164,7 @@ async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
     await daemon.db.create_session(
         computer_name="TestPC",
         tmux_session_name="tmux-caller",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Caller Session",
         session_id="caller-session-123",
     )
@@ -199,7 +201,7 @@ async def test_teleclaude_send_file(mcp_server, daemon_with_mocked_telegram):
     session = await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="test-file-upload",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test File Upload",
         adapter_metadata={"channel_id": "12345"},
     )
@@ -264,7 +266,7 @@ async def test_teleclaude_send_file_nonexistent_file(mcp_server, daemon_with_moc
     session = await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="test-missing-file",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Missing File",
         adapter_metadata={"channel_id": "12345"},
     )

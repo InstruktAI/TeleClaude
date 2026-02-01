@@ -14,6 +14,7 @@
 - If a step cannot be stated, it is not ready to execute.
 - State the minimum assumption required to proceed.
 - Use inference to accelerate, not to justify uncertainty.
+- If you have a hunch, verify it against sources before acting.
 
 ## Tensions
 

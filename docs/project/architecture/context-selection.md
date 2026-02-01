@@ -99,6 +99,12 @@ sequenceDiagram
     Selector->>AI: Return full snippet texts
 ```
 
+#### Baseline Inclusion (Optional)
+
+`get_context` supports `include_baseline=true` to include baseline snippet IDs
+in the phase-1 index output. Those baseline IDs can be passed in phase-2 to
+retrieve their content like any other snippet.
+
 ### 3. Requires Expansion Algorithm
 
 ```python

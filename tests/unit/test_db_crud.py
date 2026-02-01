@@ -7,6 +7,7 @@ import pytest
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.db import Db
+from teleclaude.core.origins import InputOrigin
 
 
 @pytest.mark.unit
@@ -27,7 +28,7 @@ async def test_session_manager_crud():
         session = await session_mgr.create_session(
             computer_name="TestMac",
             tmux_session_name="test-session-crud",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
             project_path="~",
         )
@@ -86,7 +87,7 @@ async def test_session_manager_with_metadata():
         session = await session_mgr.create_session(
             computer_name="TestMac",
             tmux_session_name="test-metadata",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             adapter_metadata=metadata,
             title="Metadata Test",
         )

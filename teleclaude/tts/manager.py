@@ -151,6 +151,9 @@ class TTSManager:
             return False
 
         normalized_event_name = self._normalize_event_name(event_name)
+        if not normalized_event_name:
+            logger.debug("Ignoring unsupported TTS event %s", event_name)
+            return False
         event_cfg = self.tts_config.events.get(normalized_event_name)
         if not event_cfg or not event_cfg.enabled:
             logger.debug(f"Event {normalized_event_name} disabled or not configured")
@@ -212,13 +215,13 @@ class TTSManager:
         )
         return True
 
-    def _normalize_event_name(self, event_name: str | AgentHookEventType) -> str:
+    def _normalize_event_name(self, event_name: str | AgentHookEventType) -> str | None:
         """Map agent hook events to TTS event config keys."""
         if event_name == AgentHookEvents.AGENT_SESSION_START:
             return "session_start"
         if event_name == AgentHookEvents.AGENT_STOP:
             return "agent_stop"
-        return str(event_name)
+        return None
 
     async def _handle_tts_result(
         self,

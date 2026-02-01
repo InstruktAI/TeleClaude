@@ -7,6 +7,7 @@ import pytest
 
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.models import Recording, RunAgentCommandArgs, Session, StartSessionArgs
+from teleclaude.core.origins import InputOrigin
 
 
 class TestSession:
@@ -21,7 +22,7 @@ class TestSession:
             session_id="test-789",
             computer_name="TestPC",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
             adapter_metadata=metadata,
             created_at=now,
@@ -44,7 +45,7 @@ class TestSession:
             session_id="test-none",
             computer_name="TestPC",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
             created_at=None,
             last_activity=None,
@@ -85,7 +86,7 @@ class TestSession:
             session_id="test-roundtrip",
             computer_name="TestPC",
             tmux_session_name="test-tmux",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Roundtrip Test",
             adapter_metadata=metadata,
             created_at=now,

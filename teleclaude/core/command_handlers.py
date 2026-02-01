@@ -18,7 +18,7 @@ import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.core import tmux_io, voice_message_handler
+from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.db import db
@@ -44,9 +44,10 @@ from teleclaude.core.session_utils import (
     ensure_unique_title,
     get_short_project_name,
     resolve_working_dir,
+    split_project_path_and_subdir,
     update_title_with_agent,
 )
-from teleclaude.core.voice_assignment import get_random_voice
+from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import (
     CloseSessionCommand,
@@ -61,7 +62,11 @@ from teleclaude.types.commands import (
     SendMessageCommand,
     StartAgentCommand,
 )
-from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
+from teleclaude.utils.transcript import (
+    extract_workdir_from_transcript,
+    get_transcript_parser_info,
+    parse_session_transcript,
+)
 
 logger = get_logger(__name__)
 
@@ -136,6 +141,114 @@ async def _execute_control_key(
         True if tmux action succeeded, False otherwise
     """
     return await tmux_action(session, *tmux_args)
+
+
+async def _ensure_tmux_for_headless(
+    session: Session,
+    client: "AdapterClient",
+    start_polling: StartPollingFunc | None,
+    *,
+    resume_native: bool,
+) -> Session | None:
+    """Ensure a headless session has a tmux pane before handling input."""
+    if session.tmux_session_name and session.lifecycle_status != "headless":
+        return session
+
+    tmux_name = session.tmux_session_name
+    if not tmux_name:
+        tmux_name = f"{TMUX_SESSION_PREFIX}{session.session_id[:8]}"
+        await db.update_session(
+            session.session_id,
+            tmux_session_name=tmux_name,
+            lifecycle_status="initializing",
+        )
+        refreshed = await db.get_session(session.session_id)
+        if refreshed:
+            session = refreshed
+        else:
+            session.tmux_session_name = tmux_name
+
+    project_path = session.project_path
+    subdir = session.subdir
+    if not project_path and session.native_log_file:
+        workdir = extract_workdir_from_transcript(session.native_log_file)
+        if workdir:
+            trusted_dirs = [d.path for d in config.computer.get_all_trusted_dirs()]
+            project_path, subdir = split_project_path_and_subdir(workdir, trusted_dirs)
+            await db.update_session(
+                session.session_id,
+                project_path=project_path,
+                subdir=subdir,
+            )
+            refreshed = await db.get_session(session.session_id)
+            if refreshed:
+                session = refreshed
+
+    if not project_path:
+        await client.send_message(
+            session,
+            "❌ Cannot adopt headless session: project_path missing.",
+            metadata=MessageMetadata(),
+        )
+        return None
+
+    try:
+        working_dir = resolve_working_dir(project_path, subdir)
+    except Exception as exc:
+        await client.send_message(
+            session,
+            f"❌ Cannot adopt headless session: {exc}",
+            metadata=MessageMetadata(),
+        )
+        return None
+    env_vars: dict[str, str] = {"TELECLAUDE_SESSION_ID": session.session_id}
+    voice = await db.get_voice(session.session_id)
+    if voice:
+        env_vars.update(get_voice_env_vars(voice))
+
+    try:
+        created = await tmux_bridge.ensure_tmux_session(
+            name=tmux_name,
+            working_dir=working_dir,
+            session_id=session.session_id,
+            env_vars=env_vars,
+        )
+    except Exception as exc:
+        await client.send_message(
+            session,
+            f"❌ Failed to create tmux session: {exc}",
+            metadata=MessageMetadata(),
+        )
+        return None
+    if not created:
+        await client.send_message(
+            session,
+            "❌ Failed to create tmux session for headless session.",
+            metadata=MessageMetadata(),
+        )
+        return None
+
+    if resume_native and session.active_agent and session.native_session_id:
+        resume_cmd = get_agent_command(
+            agent=session.active_agent,
+            thinking_mode=session.thinking_mode,
+            exec=False,
+            native_session_id=session.native_session_id,
+        )
+        wrapped = tmux_io.wrap_bracketed_paste(resume_cmd)
+        await tmux_io.send_text(
+            session,
+            wrapped,
+            working_dir=working_dir,
+            active_agent=session.active_agent,
+        )
+
+    if start_polling:
+        await start_polling(session.session_id, tmux_name)
+
+    await db.update_session(session.session_id, lifecycle_status="active")
+    refreshed = await db.get_session(session.session_id)
+    return refreshed or session
 
 
 async def create_session(  # pylint: disable=too-many-locals  # Session creation requires many variables
@@ -246,7 +359,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         await db.assign_voice(session_id, voice)
 
     # Prefer parent origin for AI-to-AI sessions
-    last_input_origin = str(origin)
+    last_input_origin = origin
     if initiator_session_id:
         parent_session = await db.get_session(initiator_session_id)
         if parent_session and parent_session.last_input_origin:
@@ -285,7 +398,7 @@ async def list_sessions() -> list[SessionSummary]:
     Returns:
         List of session summaries.
     """
-    sessions = await db.list_sessions()
+    sessions = await db.list_sessions(include_headless=True)
 
     summaries: list[SessionSummary] = []
     local_name = config.computer.name
@@ -299,7 +412,7 @@ async def list_sessions() -> list[SessionSummary]:
                 subdir=s.subdir,
                 thinking_mode=s.thinking_mode or ThinkingMode.SLOW.value,
                 active_agent=s.active_agent,
-                status="active",
+                status=s.lifecycle_status or "active",
                 created_at=s.created_at.isoformat() if s.created_at else None,
                 last_activity=s.last_activity.isoformat() if s.last_activity else None,
                 last_input=s.last_message_sent,
@@ -692,6 +805,16 @@ async def send_message(
     if not session:
         logger.warning("Session %s not found", session_id)
         return
+    if session.lifecycle_status == "headless" or not session.tmux_session_name:
+        adopted = await _ensure_tmux_for_headless(
+            session,
+            client,
+            start_polling,
+            resume_native=True,
+        )
+        if not adopted:
+            return
+        session = adopted
 
     await db.update_session(
         session_id,
@@ -728,6 +851,16 @@ async def keys(
 ) -> None:
     """Handle key-based commands via a single KeysCommand."""
     key_name = cmd.key
+    session = await db.get_session(cmd.session_id)
+    if session and (session.lifecycle_status == "headless" or not session.tmux_session_name):
+        adopted = await _ensure_tmux_for_headless(
+            session,
+            client,
+            start_polling,
+            resume_native=True,
+        )
+        if not adopted:
+            return
 
     if key_name == "cancel":
         await cancel_command(cmd, start_polling, double=False)
@@ -1238,6 +1371,17 @@ async def start_agent(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
+    if session.lifecycle_status == "headless" or not session.tmux_session_name:
+        adopted = await _ensure_tmux_for_headless(
+            session,
+            client,
+            None,
+            resume_native=False,
+        )
+        if not adopted:
+            return
+        session = adopted
+
     agent_name = cmd.agent_name
     args = list(cmd.args)
     logger.debug(
@@ -1345,6 +1489,17 @@ async def resume_agent(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
+    if session.lifecycle_status == "headless" or not session.tmux_session_name:
+        adopted = await _ensure_tmux_for_headless(
+            session,
+            client,
+            None,
+            resume_native=False,
+        )
+        if not adopted:
+            return
+        session = adopted
+
     # If no agent_name provided, use active_agent from session
     agent_name = cmd.agent_name or ""
     args = [cmd.native_session_id] if cmd.native_session_id else []
@@ -1442,6 +1597,17 @@ async def agent_restart(
         )
         return False, error
 
+    if session.lifecycle_status == "headless" or not session.tmux_session_name:
+        adopted = await _ensure_tmux_for_headless(
+            session,
+            client,
+            None,
+            resume_native=False,
+        )
+        if not adopted:
+            return False, "Failed to adopt headless session."
+        session = adopted
+
     if not config.agents.get(target_agent):
         error = f"Unknown agent: {target_agent}"
         logger.error(
@@ -1502,13 +1668,23 @@ async def agent_restart(
 async def run_agent_command(
     session: Session,
     cmd: RunAgentCommand,
-    _client: "AdapterClient",
+    client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Send a slash command directly to the running agent."""
     if not cmd.command:
         logger.warning("run_agent_command called without a command")
         return
+    if session.lifecycle_status == "headless" or not session.tmux_session_name:
+        adopted = await _ensure_tmux_for_headless(
+            session,
+            client,
+            None,
+            resume_native=True,
+        )
+        if not adopted:
+            return
+        session = adopted
 
     command_text = f"/{cmd.command}".strip()
     if cmd.args:

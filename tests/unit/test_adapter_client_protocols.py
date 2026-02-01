@@ -7,6 +7,7 @@ import pytest
 
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.models import MessageMetadata
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 
@@ -60,7 +61,7 @@ def adapter_client_without_transport(mock_ui_adapter):
 async def test_send_request_success(adapter_client_with_transport, mock_transport_adapter):
     """Test sending request to remote computer via transport adapter."""
     # Execute
-    metadata = MessageMetadata(origin="cli")
+    metadata = MessageMetadata(origin=InputOrigin.API.value)
     stream_id = await adapter_client_with_transport.send_request(
         computer_name="comp1", command="ls -la", metadata=metadata
     )
@@ -74,7 +75,7 @@ async def test_send_request_success(adapter_client_with_transport, mock_transpor
 async def test_send_request_no_transport_fails(adapter_client_without_transport):
     """Test sending request fails when no transport adapter available."""
     with pytest.raises(RuntimeError, match="No transport adapter available"):
-        metadata = MessageMetadata(origin="cli")
+        metadata = MessageMetadata(origin=InputOrigin.API.value)
         await adapter_client_without_transport.send_request(computer_name="comp1", command="ls -la", metadata=metadata)
 
 
@@ -113,7 +114,7 @@ async def test_mixed_adapters_only_transport_used_for_cross_computer():
     client.register_adapter("redis", transport)
 
     # Execute cross-computer operation
-    metadata = MessageMetadata(origin="cli")
+    metadata = MessageMetadata(origin=InputOrigin.API.value)
     stream_id = await client.send_request("comp1", "ls", metadata)
 
     # Verify - only transport adapter used

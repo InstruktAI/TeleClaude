@@ -22,6 +22,7 @@ import pytest
 from pydantic import TypeAdapter
 
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary
+from teleclaude.core.origins import InputOrigin
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
@@ -95,7 +96,7 @@ def create_test_session(
     """Create test session summary object."""
     return SessionSummary(
         session_id=session_id,
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title=title,
         project_path="/tmp",
         status="active",
@@ -477,7 +478,7 @@ async def test_local_session_lifecycle_to_websocket(
     session = await db_instance.create_session(
         computer_name="test-computer",
         tmux_session_name="test-tmux-session",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Local Lifecycle Test Session",
         project_path="/tmp",
     )

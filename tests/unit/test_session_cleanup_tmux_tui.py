@@ -8,6 +8,7 @@ import pytest
 
 from teleclaude.core import session_cleanup
 from teleclaude.core.models import Session
+from teleclaude.core.origins import InputOrigin
 
 
 @pytest.mark.asyncio
@@ -17,7 +18,7 @@ async def test_cleanup_orphan_tmux_sessions_skips_tui_session() -> None:
             session_id="abc",
             computer_name="local",
             tmux_session_name="tc_abc",
-            last_input_origin="telegram",
+            last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test",
         )
     ]

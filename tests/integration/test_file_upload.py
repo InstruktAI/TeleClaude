@@ -11,6 +11,7 @@ from teleclaude.core import file_handler, tmux_io
 from teleclaude.core.db import Db
 from teleclaude.core.events import FileEventContext
 from teleclaude.core.models import MessageMetadata, SessionAdapterMetadata, TelegramAdapterMetadata
+from teleclaude.core.origins import InputOrigin
 
 
 @pytest.fixture
@@ -35,7 +36,7 @@ async def test_session(session_manager):
     session = await session_manager.create_session(
         computer_name="test-computer",
         tmux_session_name="tmux_test",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=12345, output_message_id="msg_out")
         ),

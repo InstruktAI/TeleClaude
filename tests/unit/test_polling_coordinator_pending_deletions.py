@@ -12,6 +12,7 @@ import pytest
 from teleclaude.core import polling_coordinator
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
+from teleclaude.core.origins import InputOrigin
 
 
 @pytest.mark.asyncio
@@ -30,7 +31,7 @@ async def test_polling_does_not_clear_pending_deletions():
         session_id="test-123",
         computer_name="test",
         tmux_session_name="test-tmux",
-        last_input_origin="telegram",
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Session",
     )
 
