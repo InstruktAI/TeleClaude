@@ -39,12 +39,6 @@ snippets:
   scope: global
   path: docs/global/general/procedure/agent-artifact-authoring.md
   source_project: TeleClaude
-- id: general/procedure/agents-authoring
-  description: Author AGENTS.md files that bootstrap required reads and role context.
-  type: procedure
-  scope: global
-  path: docs/global/general/procedure/agents-authoring.md
-  source_project: TeleClaude
 - id: general/procedure/agents-md-authoring
   description: Author AGENTS.md files that bootstrap required reads and role context.
   type: procedure
