@@ -29,13 +29,17 @@ def test_rest_server_done_calls_exit_handler_when_running() -> None:
             self.should_exit = True
 
     adapter.server = _Server()
-    handler = MagicMock()
-    adapter.set_on_server_exit(handler)
+    calls = []
+
+    def record_handler(*args):
+        calls.append(args)
+
+    adapter.set_on_server_exit(record_handler)
 
     adapter._on_server_task_done(_DummyTask())
 
-    handler.assert_called_once()
-    exc, started, should_exit, socket_exists = handler.call_args.args
+    assert len(calls) == 1
+    exc, started, should_exit, socket_exists = calls[0]
     assert exc is None
     assert started is True
     assert should_exit is True

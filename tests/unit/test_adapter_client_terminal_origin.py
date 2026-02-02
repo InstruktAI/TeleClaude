@@ -118,4 +118,4 @@ async def test_terminal_origin_send_message_ephemeral_tracks_deletion():
         await client.send_message(session, "ephemeral message")
 
     # Verify auto-tracking was called with notice deletion type
-    mock_db.add_pending_deletion.assert_called_once_with("sess-1", "msg-1", deletion_type="feedback")
+    assert mock_db.add_pending_deletion.call_args == (("sess-1", "msg-1"), {"deletion_type": "feedback"})

@@ -30,24 +30,36 @@ def reset_voice_handler():
 def test_init_voice_handler_initializes_client():
     """Paranoid test that init_voice_handler creates OpenAI client."""
 
-    with patch("teleclaude.core.voice_message_handler.AsyncOpenAI") as mock_openai:
+    calls = []
+
+    def record_openai(*args, **kwargs):
+        calls.append((args, kwargs))
+        return MagicMock()
+
+    with patch("teleclaude.core.voice_message_handler.AsyncOpenAI", new=record_openai):
         voice_message_handler.init_voice_handler(api_key="test-api-key")
 
-        mock_openai.assert_called_once_with(api_key="test-api-key")
+        assert calls == [((), {"api_key": "test-api-key"})]
         assert voice_message_handler._openai_client is not None
 
 
 def test_init_voice_handler_is_idempotent():
     """Paranoid test that init_voice_handler is safe to call multiple times (idempotent)."""
 
-    with patch("teleclaude.core.voice_message_handler.AsyncOpenAI") as mock_openai:
+    calls = []
+
+    def record_openai(*args, **kwargs):
+        calls.append((args, kwargs))
+        return MagicMock()
+
+    with patch("teleclaude.core.voice_message_handler.AsyncOpenAI", new=record_openai):
         # First call initializes
         voice_message_handler.init_voice_handler(api_key="test-api-key")
-        assert mock_openai.call_count == 1
+        assert len(calls) == 1
 
         # Second call is a no-op (idempotent)
         voice_message_handler.init_voice_handler(api_key="another-key")
-        assert mock_openai.call_count == 1  # Still only called once
+        assert len(calls) == 1  # Still only called once
 
 
 def test_init_voice_handler_requires_api_key():
@@ -73,12 +85,18 @@ async def test_transcribe_voice_calls_whisper_api():
         mock_client = MagicMock()
         mock_transcript = MagicMock()
         mock_transcript.text = "Hello world"
-        mock_client.audio.transcriptions.create = AsyncMock(return_value=mock_transcript)
+        calls = []
+
+        async def record_create(**kwargs):
+            calls.append(kwargs)
+            return mock_transcript
+
+        mock_client.audio.transcriptions.create = record_create
 
         result = await transcribe_voice(audio_path, client=mock_client)
 
         assert result == "Hello world"
-        mock_client.audio.transcriptions.create.assert_called_once()
+        assert len(calls) == 1
     finally:
         Path(audio_path).unlink(missing_ok=True)
 
@@ -105,12 +123,11 @@ async def test_transcribe_voice_with_retry_retries_once():
     try:
         # Mock client that fails first, succeeds second
         mock_client = MagicMock()
-        call_count = 0
+        attempts = []
 
         async def mock_create(**kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
+            attempts.append(kwargs)
+            if len(attempts) == 1:
                 raise Exception("First attempt failed")
             mock_result = MagicMock()
             mock_result.text = "Success on retry"
@@ -121,7 +138,7 @@ async def test_transcribe_voice_with_retry_retries_once():
         result = await transcribe_voice_with_retry(audio_path, max_retries=1, client=mock_client)
 
         assert result == "Success on retry"
-        assert call_count == 2  # 1 failure + 1 success
+        assert len(attempts) == 2  # 1 failure + 1 success
     finally:
         Path(audio_path).unlink(missing_ok=True)
 
@@ -138,11 +155,10 @@ async def test_transcribe_voice_with_retry_returns_none_after_max_retries():
     try:
         # Mock client that always fails
         mock_client = MagicMock()
-        call_count = 0
+        attempts = []
 
         async def mock_create(**kwargs):
-            nonlocal call_count
-            call_count += 1
+            attempts.append(kwargs)
             raise Exception("Always fails")
 
         mock_client.audio.transcriptions.create = mock_create
@@ -150,7 +166,7 @@ async def test_transcribe_voice_with_retry_returns_none_after_max_retries():
         result = await transcribe_voice_with_retry(audio_path, max_retries=2, client=mock_client)
 
         assert result is None
-        assert call_count == 3  # 1 initial + 2 retries
+        assert len(attempts) == 3  # 1 initial + 2 retries
     finally:
         Path(audio_path).unlink(missing_ok=True)
 
@@ -165,7 +181,11 @@ async def test_handle_voice_rejects_no_active_process():
         audio_path = f.name
 
     try:
-        mock_send_message = AsyncMock(return_value="msg-123")
+        sent = []
+
+        async def record_send_message(session, text, *args, **kwargs):
+            sent.append((session, text))
+            return "msg-123"
 
         # Mock session and db
         mock_session = MagicMock()
@@ -181,12 +201,11 @@ async def test_handle_voice_rejects_no_active_process():
             mock_polling.return_value = False  # No active process
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            result = await handle_voice("test-session-123", audio_path, context, mock_send_message)
+            result = await handle_voice("test-session-123", audio_path, context, record_send_message)
 
         # Verify rejection message sent
-        mock_send_message.assert_called_once()
-        call_args = mock_send_message.call_args[0]
-        assert "requires an active process" in call_args[1]
+        assert len(sent) == 1
+        assert "requires an active process" in sent[0][1]
         assert result is None
 
         # Verify temp file cleaned up
@@ -205,7 +224,11 @@ async def test_handle_voice_returns_none_when_session_missing():
         audio_path = f.name
 
     try:
-        mock_send_message = AsyncMock(return_value="msg-123")
+        sent = []
+
+        async def record_send_message(session, text, *args, **kwargs):
+            sent.append((session, text))
+            return "msg-123"
 
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
@@ -213,10 +236,10 @@ async def test_handle_voice_returns_none_when_session_missing():
             mock_get.return_value = None
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            result = await handle_voice("test-session-123", audio_path, context, mock_send_message)
+            result = await handle_voice("test-session-123", audio_path, context, record_send_message)
 
         assert result is None
-        mock_send_message.assert_not_called()
+        assert sent == []
 
     finally:
         Path(audio_path).unlink(missing_ok=True)
@@ -232,7 +255,11 @@ async def test_handle_voice_forwards_transcription_to_process():
         audio_path = f.name
 
     try:
-        mock_send_message = AsyncMock(return_value="msg-123")
+        sent = []
+
+        async def record_send_message(session, text, *args, **kwargs):
+            sent.append((session, text))
+            return "msg-123"
 
         # Mock session with tmux name
         mock_session = MagicMock()
@@ -259,12 +286,12 @@ async def test_handle_voice_forwards_transcription_to_process():
                 "test-session-123",
                 audio_path,
                 context,
-                mock_send_message,
+                record_send_message,
                 delete_message=mock_delete,
             )
 
         assert result == "Transcribed text"
-        mock_delete.assert_awaited_once_with("test-session-123", "msg-123")
+        assert mock_delete.call_args == (("test-session-123", "msg-123"), {})
 
     finally:
         Path(audio_path).unlink(missing_ok=True)
@@ -280,7 +307,11 @@ async def test_handle_voice_transcribes_without_notice_channel():
         audio_path = f.name
 
     try:
-        mock_send_message = AsyncMock(return_value=None)
+        sent = []
+
+        async def record_send_message(session, text, *args, **kwargs):
+            sent.append((session, text))
+            return None
 
         # Mock session with tmux name
         mock_session = MagicMock()
@@ -302,7 +333,7 @@ async def test_handle_voice_transcribes_without_notice_channel():
             mock_transcribe.return_value = "Transcribed text"
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            result = await handle_voice("test-session-123", audio_path, context, mock_send_message)
+            result = await handle_voice("test-session-123", audio_path, context, record_send_message)
 
         assert result == "Transcribed text"
 
@@ -322,7 +353,11 @@ async def test_handle_voice_cleans_up_temp_file_on_error():
         audio_path = f.name
 
     try:
-        mock_send_message = AsyncMock(return_value="msg-123")
+        sent = []
+
+        async def record_send_message(session, text, *args, **kwargs):
+            sent.append((session, text))
+            return "msg-123"
 
         # Mock session with tmux name
         mock_session = MagicMock()
@@ -344,12 +379,11 @@ async def test_handle_voice_cleans_up_temp_file_on_error():
             mock_transcribe.return_value = None  # Transcription failed
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            result = await handle_voice("test-session-123", audio_path, context, mock_send_message)
+            result = await handle_voice("test-session-123", audio_path, context, record_send_message)
 
         # Verify error message sent
-        assert mock_send_message.call_count >= 2  # "Transcribing..." + error
-        last_call = mock_send_message.call_args_list[-1]
-        assert "failed" in last_call[0][1].lower()
+        assert len(sent) >= 2  # "Transcribing..." + error
+        assert "failed" in sent[-1][1].lower()
         assert result is None
 
         # Verify temp file cleaned up

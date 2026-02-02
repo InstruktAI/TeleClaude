@@ -1,7 +1,8 @@
 """Unit tests for TaskRegistry."""
 
 import asyncio
-from unittest.mock import patch
+from contextlib import suppress
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -12,9 +13,10 @@ from teleclaude.core.task_registry import TaskRegistry
 async def test_spawn_tracks_task():
     """Test that spawn() creates and tracks a task."""
     registry = TaskRegistry()
+    ready = asyncio.Event()
 
     async def dummy_coro():
-        await asyncio.sleep(0.01)
+        await ready.wait()
         return "done"
 
     task = registry.spawn(dummy_coro(), name="test-task")
@@ -23,6 +25,7 @@ async def test_spawn_tracks_task():
     assert not task.done()
 
     # Wait for task to complete
+    ready.set()
     result = await task
     assert result == "done"
 
@@ -42,7 +45,7 @@ async def test_spawn_auto_cleanup_on_completion():
     await task
 
     # Give done callback time to execute
-    await asyncio.sleep(0.01)
+    await asyncio.sleep(0)
 
     # Task should be auto-removed via done callback
     assert registry.task_count() == 0
@@ -52,15 +55,18 @@ async def test_spawn_auto_cleanup_on_completion():
 async def test_shutdown_cancels_pending_tasks():
     """Test that shutdown() cancels all pending tasks."""
     registry = TaskRegistry()
+    blocker = asyncio.Event()
 
     async def long_coro():
-        await asyncio.sleep(10)  # Long sleep
+        await blocker.wait()
         return "never"
 
     # Spawn multiple tasks
-    registry.spawn(long_coro(), name="task-1")
-    registry.spawn(long_coro(), name="task-2")
-    registry.spawn(long_coro(), name="task-3")
+    tasks = [
+        registry.spawn(long_coro(), name="task-1"),
+        registry.spawn(long_coro(), name="task-2"),
+        registry.spawn(long_coro(), name="task-3"),
+    ]
 
     assert registry.task_count() == 3
 
@@ -69,16 +75,17 @@ async def test_shutdown_cancels_pending_tasks():
 
     # All tasks should be cancelled (may still be in registry if cleanup hasn't run)
     # But they should all be done or cancelled
-    assert registry.task_count() <= 3  # May be 0 if callbacks ran
+    assert all(task.done() for task in tasks)
 
 
 @pytest.mark.asyncio
 async def test_shutdown_waits_for_completion():
     """Test that shutdown() cancels tasks and waits for them to finish."""
     registry = TaskRegistry()
+    blocker = asyncio.Event()
 
     async def long_coro():
-        await asyncio.sleep(10)
+        await blocker.wait()
 
     # Spawn tasks
     task_a = registry.spawn(long_coro(), name="task-a")
@@ -102,19 +109,32 @@ async def test_shutdown_waits_for_completion():
 async def test_shutdown_logs_pending_tasks_on_timeout():
     """Test that shutdown() logs warning if tasks don't complete within timeout."""
     registry = TaskRegistry()
+    blocker = asyncio.Event()
 
     async def slow_coro():
-        try:
-            await asyncio.sleep(5)
-        except asyncio.CancelledError:
-            pass  # Expected
+        await blocker.wait()
 
-    registry.spawn(slow_coro(), name="slow-task")
+    task = registry.spawn(slow_coro(), name="slow-task")
 
-    # Shutdown with very short timeout (task won't complete)
-    await registry.shutdown(timeout=0.01)
+    # Shutdown with zero timeout (task won't complete)
+    with (
+        patch("teleclaude.core.task_registry.logger") as mock_logger,
+        patch(
+            "teleclaude.core.task_registry.asyncio.wait",
+            new_callable=AsyncMock,
+            return_value=(set(), {task}),
+        ),
+    ):
+        await registry.shutdown(timeout=0.0)
 
-    # Task should be cancelled but test just verifies no crash
+        warnings = mock_logger.warning.call_args_list
+        assert len(warnings) >= 1
+        assert any("Shutdown timeout" in str(call.args[0]) for call in warnings)
+
+    # Cleanup: ensure task is stopped
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
 
 
 @pytest.mark.asyncio
@@ -133,9 +153,10 @@ async def test_empty_shutdown():
 async def test_multiple_spawns():
     """Test spawning multiple tasks and tracking them."""
     registry = TaskRegistry()
+    blocker = asyncio.Event()
 
     async def numbered_coro(n: int):
-        await asyncio.sleep(0.01)
+        await blocker.wait()
         return n
 
     tasks = []
@@ -146,6 +167,7 @@ async def test_multiple_spawns():
     assert registry.task_count() == 5
 
     # Wait for all to complete
+    blocker.set()
     results = await asyncio.gather(*tasks)
     assert results == [0, 1, 2, 3, 4]
 
@@ -181,11 +203,12 @@ async def test_exception_logging_with_full_traceback():
             await task
 
         # Give done callback time to execute
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0)
 
         # Verify logger.error was called with exc_info
-        mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args
+        errors = mock_logger.error.call_args_list
+        assert len(errors) == 1
+        call_args = errors[0]
 
         # Check that exc_info keyword argument was passed
         assert "exc_info" in call_args.kwargs

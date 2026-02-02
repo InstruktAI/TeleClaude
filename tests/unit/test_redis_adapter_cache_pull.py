@@ -79,11 +79,20 @@ async def test_pull_initial_sessions_happy_path():
         )
     )
 
+    updated: list[tuple[str, str]] = []
+
+    def record_update(session: SessionSummary) -> None:
+        updated.append((session.session_id, session.computer))
+
+    mock_cache.update_session = record_update
+
     # Execute
     await adapter._pull_initial_sessions()
 
-    # Verify cache was populated
-    assert mock_cache.update_session.call_count == 2  # Called for each computer
+    # Verify cache was populated for each computer
+    assert len(updated) == 2
+    assert ("sess-1", "RemotePC1") in updated
+    assert ("sess-1", "RemotePC2") in updated
 
 
 @pytest.mark.unit
@@ -117,11 +126,20 @@ async def test_populate_initial_cache_pulls_projects_with_todos():
             ),
         ]
     )
-    adapter.pull_remote_projects_with_todos = AsyncMock()
+    scheduled: list[tuple[str, str, str, bool]] = []
+
+    def record_schedule(*, computer: str, data_type: str, reason: str, force: bool, **_kwargs) -> bool:
+        scheduled.append((computer, data_type, reason, force))
+        return True
+
+    adapter._schedule_refresh = record_schedule
 
     await adapter._populate_initial_cache()
 
-    assert adapter.pull_remote_projects_with_todos.call_count == 2
+    assert scheduled == [
+        ("RemotePC1", "projects", "startup", True),
+        ("RemotePC2", "projects", "startup", True),
+    ]
 
 
 @pytest.mark.unit
@@ -172,11 +190,20 @@ async def test_pull_initial_sessions_timeout_continues_to_next():
         ]
     )
 
+    calls: list[str] = []
+
+    async def record_send_request(computer_name: str, command: str, metadata, **_kwargs):
+        _ = (command, metadata)
+        calls.append(computer_name)
+        return "msg-123"
+
+    adapter.send_request = record_send_request
+
     # Execute
     await adapter._pull_initial_sessions()
 
     # Verify both computers were attempted
-    assert adapter.send_request.call_count == 2
+    assert calls == ["RemotePC1", "RemotePC2"]
 
 
 @pytest.mark.unit
@@ -279,14 +306,21 @@ async def test_pull_remote_projects_happy_path():
         )
     )
 
+    captured: list[tuple[str, list[ProjectInfo]]] = []
+
+    def record_snapshot(computer: str, projects: list[ProjectInfo]) -> bool:
+        captured.append((computer, projects))
+        return True
+
+    mock_cache.apply_projects_snapshot = record_snapshot
+
     # Execute
     await adapter.pull_remote_projects("RemotePC")
 
     # Verify cache was populated
-    mock_cache.apply_projects_snapshot.assert_called_once()
-    call_args = mock_cache.apply_projects_snapshot.call_args
-    assert call_args[0][0] == "RemotePC"
-    assert len(call_args[0][1]) == 2
+    assert len(captured) == 1
+    assert captured[0][0] == "RemotePC"
+    assert len(captured[0][1]) == 2
 
 
 @pytest.mark.unit
@@ -354,15 +388,21 @@ async def test_pull_remote_todos_happy_path():
         )
     )
 
+    captured: list[tuple[str, str, list[TodoInfo]]] = []
+
+    def record_todos(computer: str, project_path: str, todos: list[TodoInfo]) -> None:
+        captured.append((computer, project_path, todos))
+
+    mock_cache.set_todos = record_todos
+
     # Execute
     await adapter.pull_remote_todos("RemotePC", "/home/user/project")
 
     # Verify cache was populated
-    mock_cache.set_todos.assert_called_once()
-    call_args = mock_cache.set_todos.call_args
-    assert call_args[0][0] == "RemotePC"
-    assert call_args[0][1] == "/home/user/project"
-    assert len(call_args[0][2]) == 2
+    assert len(captured) == 1
+    assert captured[0][0] == "RemotePC"
+    assert captured[0][1] == "/home/user/project"
+    assert len(captured[0][2]) == 2
 
 
 @pytest.mark.unit
@@ -420,13 +460,26 @@ async def test_pull_remote_projects_with_todos_happy_path():
         )
     )
 
+    captured_projects: list[tuple[str, list[ProjectInfo]]] = []
+    captured_todos: list[tuple[str, dict[str, list[TodoInfo]]]] = []
+
+    def record_projects(computer: str, projects: list[ProjectInfo]) -> bool:
+        captured_projects.append((computer, projects))
+        return True
+
+    def record_todos_snapshot(computer: str, todos_by_project: dict[str, list[TodoInfo]]) -> None:
+        captured_todos.append((computer, todos_by_project))
+
+    mock_cache.apply_projects_snapshot = record_projects
+    mock_cache.apply_todos_snapshot = record_todos_snapshot
+
     await adapter.pull_remote_projects_with_todos("RemotePC")
 
-    mock_cache.apply_projects_snapshot.assert_called_once()
-    mock_cache.apply_todos_snapshot.assert_called_once()
-    todos_call = mock_cache.apply_todos_snapshot.call_args
-    assert todos_call[0][0] == "RemotePC"
-    todos_by_project = todos_call[0][1]
+    assert len(captured_projects) == 1
+    assert captured_projects[0][0] == "RemotePC"
+    assert len(captured_todos) == 1
+    assert captured_todos[0][0] == "RemotePC"
+    todos_by_project = captured_todos[0][1]
     assert "/home/user/projectA" in todos_by_project
     assert "/home/user/projectB" in todos_by_project
 
@@ -466,11 +519,16 @@ async def test_pull_remote_projects_with_todos_fallbacks_to_projects():
             }
         )
     )
-    adapter.pull_remote_projects = AsyncMock()
+    pulled = []
+
+    async def record_pull(computer: str) -> None:
+        pulled.append(computer)
+
+    adapter.pull_remote_projects = record_pull
 
     await adapter.pull_remote_projects_with_todos("RemotePC")
 
-    adapter.pull_remote_projects.assert_awaited_once_with("RemotePC")
+    assert pulled == ["RemotePC"]
 
 
 @pytest.mark.unit
@@ -500,14 +558,20 @@ async def test_heartbeat_populates_cache():
     )
     adapter._get_redis = AsyncMock(return_value=mock_redis)
 
+    captured: list[ComputerInfo] = []
+
+    def record_computer(info: ComputerInfo) -> None:
+        captured.append(info)
+
+    mock_cache.update_computer = record_computer
+
     # Execute
     await adapter._get_interested_computers("sessions")
 
     # Verify cache was updated
-    mock_cache.update_computer.assert_called_once()
-    call_args = mock_cache.update_computer.call_args
-    assert call_args[0][0].name == "RemotePC"
-    assert call_args[0][0].status == "online"
+    assert len(captured) == 1
+    assert captured[0].name == "RemotePC"
+    assert captured[0].status == "online"
 
 
 @pytest.mark.unit

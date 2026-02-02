@@ -1,6 +1,5 @@
 ---
-description:
-  Five AI pitfalls to guard against. Trust code over comments, verify before
+description: Five AI pitfalls to guard against. Trust code over comments, verify before
   concluding, hunt bugs actively, slow down, trace actual values not patterns.
 id: software-development/principle/failure-modes
 scope: domain

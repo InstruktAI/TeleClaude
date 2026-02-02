@@ -1,6 +1,5 @@
 ---
-description:
-  Analyze or draft implementation-plan.md with approach, files, tasks,
+description: Analyze or draft implementation-plan.md with approach, files, tasks,
   risks.
 id: software-development/procedure/lifecycle/prepare/implementation-planning
 scope: domain

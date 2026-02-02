@@ -32,6 +32,8 @@ class MockUiAdapter(UiAdapter):
         mock_client.on = MagicMock()  # Mock event registration
         mock_client.send_message = AsyncMock(return_value="msg-123")
         super().__init__(mock_client)
+        self._send_calls = []
+        self._edit_calls = []
         self._send_message_mock = AsyncMock(return_value="msg-123")
         self._edit_message_mock = AsyncMock(return_value=True)
         self._delete_message_mock = AsyncMock(return_value=True)
@@ -43,9 +45,11 @@ class MockUiAdapter(UiAdapter):
         pass
 
     async def send_message(self, session: Session, text: str, metadata: MessageMetadata | None = None) -> str:
+        self._send_calls.append((text, metadata))
         return await self._send_message_mock(session, text, metadata)
 
     async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
+        self._edit_calls.append(text)
         return await self._edit_message_mock(session, message_id, text, metadata)
 
     async def delete_message(self, session: Session, message_id: str) -> bool:
@@ -117,8 +121,9 @@ class TestSendOutputUpdate:
         )
 
         assert result == "msg-123"
-        adapter._send_message_mock.assert_called_once()
-        adapter._edit_message_mock.assert_not_called()
+        assert len(adapter._send_calls) == 1
+        assert "test output" in adapter._send_calls[0][0]
+        assert adapter._edit_calls == []
 
     async def test_edits_existing_message_when_message_id_exists(self, test_db):
         """Paranoid test editing existing message when message_id exists."""
@@ -147,7 +152,8 @@ class TestSendOutputUpdate:
         )
 
         assert result == "msg-456"
-        adapter._edit_message_mock.assert_called_once()
+        assert len(adapter._edit_calls) == 1
+        assert "updated output" in adapter._edit_calls[0]
 
     async def test_render_markdown_skips_code_block(self, test_db):
         """Paranoid test that render_markdown sends output without code block wrapper."""
@@ -168,9 +174,8 @@ class TestSendOutputUpdate:
         )
 
         assert result == "msg-123"
-        adapter._send_message_mock.assert_called_once()
-        sent_text = adapter._send_message_mock.call_args[0][1]
-        metadata = adapter._send_message_mock.call_args[0][2]
+        assert adapter._send_calls
+        sent_text, metadata = adapter._send_calls[-1]
         assert "```" not in sent_text
         assert metadata.parse_mode == "MarkdownV2"
 
@@ -194,7 +199,7 @@ class TestSendOutputUpdate:
             render_markdown=True,
         )
 
-        sent_text = adapter._send_message_mock.call_args[0][1]
+        sent_text, _ = adapter._send_calls[-1]
         assert "## " not in sent_text
         assert "📌" not in sent_text
         assert "✏" not in sent_text
@@ -229,8 +234,9 @@ class TestSendOutputUpdate:
         )
 
         assert result == "msg-123"
-        adapter._edit_message_mock.assert_called_once()
-        adapter._send_message_mock.assert_called_once()
+        assert len(adapter._edit_calls) == 1
+        assert "output after edit fail" in adapter._edit_calls[0]
+        assert len(adapter._send_calls) >= 1
 
         # Verify stale message_id was cleared and new one stored
         session = await test_db.get_session(session.session_id)
@@ -257,9 +263,8 @@ class TestSendOutputUpdate:
             exit_code=0,
         )
 
-        adapter._send_message_mock.assert_called_once()
-        call_args = adapter._send_message_mock.call_args
-        message_text = call_args[0][1]
+        assert adapter._send_calls
+        message_text, _ = adapter._send_calls[-1]
 
         assert "✅" in message_text or "0" in message_text
         assert "```" in message_text

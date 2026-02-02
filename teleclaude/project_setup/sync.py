@@ -50,21 +50,7 @@ def _install_launchd_watch(project_root: Path) -> None:
     plist_path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
     plist_path.parent.mkdir(parents=True, exist_ok=True)
 
-    command = (
-        f"uv run --quiet --project {REPO_ROOT} -m teleclaude.cli.telec sync --warn-only --project-root {project_root}"
-    )
-    watch_paths = [
-        project_root / "AGENTS.md",
-        project_root / "AGENTS.master.md",
-        project_root / "agents" / "AGENTS.global.md",
-        project_root,
-        project_root / ".agents",
-        project_root / "agents",
-        project_root / "docs" / "project",
-        project_root / "docs" / "global",
-        project_root / "teleclaude.yml",
-    ]
-    watch_entries = "\n".join(f"      <string>{path}</string>" for path in watch_paths)
+    command = f"uv run --quiet --project {REPO_ROOT} -m teleclaude.cli.telec watch --project-root {project_root}"
     launchd_path = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
 
     _remove_stale_launchd_plists(plist_path.parent, project_root)
@@ -76,8 +62,12 @@ def _install_launchd_watch(project_root: Path) -> None:
             template.replace("{{LABEL}}", label)
             .replace("{{COMMAND}}", command)
             .replace("{{PATH}}", launchd_path)
-            .replace("{{WATCH_PATHS}}", watch_entries)
+            .replace("<key>WatchPaths</key>", "<!-- WatchPaths removed for telec watch -->")
+            .replace("<array>\n{{WATCH_PATHS}}\n    </array>", "")
         )
+        # Inject KeepAlive if missing
+        if "<key>KeepAlive</key>" not in plist_content:
+            plist_content = plist_content.replace("<dict>", "<dict>\n    <key>KeepAlive</key>\n    <true/>")
     else:
         plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -96,10 +86,8 @@ def _install_launchd_watch(project_root: Path) -> None:
       <key>PATH</key>
       <string>{launchd_path}</string>
     </dict>
-    <key>WatchPaths</key>
-    <array>
-{watch_entries}
-    </array>
+    <key>KeepAlive</key>
+    <true/>
     <key>RunAtLoad</key>
     <true/>
   </dict>

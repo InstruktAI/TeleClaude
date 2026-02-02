@@ -1,6 +1,6 @@
 """Unit tests for daemon startup retry logic."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -193,7 +193,7 @@ class TestDaemonStartupRetryIntegration:
                 await daemon.start()
 
                 # Verify voice handler WAS initialized (after network succeeded)
-                mock_init_voice.assert_called_once()
+                assert mock_init_voice.call_count == 1
 
         finally:
             voice_message_handler._openai_client = None
@@ -211,14 +211,20 @@ class TestDaemonStartupRetryIntegration:
         voice_message_handler._openai_client = None
 
         try:
-            with patch("teleclaude.core.voice_message_handler.AsyncOpenAI") as mock_openai:
+            calls = []
+
+            def record_openai(*args, **kwargs):
+                calls.append((args, kwargs))
+                return MagicMock()
+
+            with patch("teleclaude.core.voice_message_handler.AsyncOpenAI", new=record_openai):
                 # First initialization
                 voice_message_handler.init_voice_handler(api_key="test-key")
-                assert mock_openai.call_count == 1
+                assert len(calls) == 1
 
                 # Second initialization (simulating retry) - should be no-op
                 voice_message_handler.init_voice_handler(api_key="test-key")
-                assert mock_openai.call_count == 1  # Still only called once
+                assert len(calls) == 1  # Still only called once
 
         finally:
             voice_message_handler._openai_client = None

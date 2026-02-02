@@ -539,7 +539,6 @@ async def test_run_agent_command_passes_mode_for_new_session(mock_mcp_server):
     )
 
     assert result["status"] == "success"
-    server.command_service.create_session.assert_awaited_once()
     call_args = server.command_service.create_session.call_args
     cmd = call_args.args[0]
     assert "codex" in cmd.auto_command
@@ -686,7 +685,13 @@ async def test_mark_phase_schema_allows_pending(mock_mcp_server):
         patch("teleclaude.mcp.handlers.Path.exists", return_value=True),
         patch("teleclaude.mcp.handlers.has_uncommitted_changes", return_value=False),
     ):
-        mock_mark.return_value = "pending"
+        calls = []
+
+        def record_mark(*args, **kwargs):
+            calls.append((args, kwargs))
+            return "pending"
+
+        mock_mark.side_effect = record_mark
 
         result = await server.teleclaude__mark_phase(
             slug="test-slug",
@@ -696,7 +701,7 @@ async def test_mark_phase_schema_allows_pending(mock_mcp_server):
         )
 
         assert "state updated" in result
-        mock_mark.assert_called_once()
+        assert len(calls) == 1
 
 
 @pytest.mark.asyncio

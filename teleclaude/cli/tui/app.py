@@ -39,6 +39,7 @@ from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigg
 from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.state import Intent, IntentType, TuiState
+from teleclaude.cli.tui.state_store import save_sticky_state
 from teleclaude.cli.tui.theme import get_tab_line_attr, init_colors
 from teleclaude.cli.tui.tree import is_computer_node, is_session_node
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NotificationLevel
@@ -402,7 +403,7 @@ class TelecApp:
         # Save sticky sessions state before exit
         sessions_view = self.views.get(1)
         if isinstance(sessions_view, SessionsView):
-            sessions_view.save_sticky_state()
+            save_sticky_state(sessions_view.state)
 
         self.pane_manager.cleanup()
         # Stop WebSocket connection
@@ -696,7 +697,7 @@ class TelecApp:
             stdscr: Curses screen object
         """
         key_str = _key_name(key)
-        logger.debug("Key pressed: %s, current_view=%d", key_str, self.current_view)
+        logger.trace("Key pressed: %s, current_view=%d", key_str, self.current_view)
 
         if key == ord("q"):
             logger.debug("Quit requested")

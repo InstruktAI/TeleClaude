@@ -204,6 +204,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             "polling": MockPolling(),
             "redis": MockRedis(),
             "telegram": MockTelegram(),
+            "tts": None,
             "agents": {
                 "claude": config_module.AgentConfig(
                     command="mock_claude_command --arg",
@@ -282,6 +283,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         "teleclaude.core.voice_message_handler",
         "teleclaude.core.computer_registry",
         "teleclaude.core.agent_coordinator",
+        "teleclaude.tts.manager",
     ]
 
     for module_name in modules_to_patch:
@@ -298,10 +300,16 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         "teleclaude.adapters.ui_adapter",
         "teleclaude.daemon",
         "teleclaude.mcp_server",
+        "teleclaude.tts.manager",
     ]
 
     for module_name in config_modules:
         monkeypatch.setattr(f"{module_name}.config", test_config)
+
+    # Reset cached TTS manager to ensure patched config/db are used
+    from teleclaude.core import voice_assignment as voice_assignment_module
+
+    voice_assignment_module._tts_manager = None
 
     # CRITICAL: Patch Redis.from_url and TelegramAdapter BEFORE daemon/adapter initialization
     # This prevents real network calls to Redis and Telegram

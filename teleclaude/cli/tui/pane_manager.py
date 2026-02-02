@@ -361,7 +361,7 @@ class TmuxPaneManager:
             logger.debug("Remote attach cmd for %s via %s: %s", tmux_session_name, ssh_target, cmd)
             return cmd
 
-        # Local: use configured tmux binary
+        # Local: use configured tmux binary with nested attach
         tmux = config.computer.tmux_binary
         cmd = f"env -u TMUX TERM=tmux-256color {tmux} -u {attach_cmd}"
         logger.debug("Local attach cmd for %s: %s", tmux_session_name, cmd)

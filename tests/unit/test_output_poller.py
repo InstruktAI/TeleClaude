@@ -149,12 +149,10 @@ class TestOutputPollerPoll:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
                     with _patch_reader(["line 1\n", "line 1\nline 2\n", None]):
-                        call_count = 0
+                        exists_iter = iter([True, True, True, False])
 
                         async def session_exists_mock(name, log_missing=True):
-                            nonlocal call_count
-                            call_count += 1
-                            return call_count < 4
+                            return next(exists_iter)
 
                         mock_terminal.session_exists = session_exists_mock
                         mock_terminal.get_current_directory = AsyncMock(return_value="/test/dir")
@@ -185,13 +183,11 @@ class TestOutputPollerPoll:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
                     with _patch_reader(["output 1\n", "output 1\noutput 2\n", None]):
-                        call_count = 0
+                        exists_iter = iter([True, True, True, True, True, False])
 
                         async def session_exists_mock(name, log_missing=True):
-                            nonlocal call_count
-                            call_count += 1
                             # Exit after 6 iterations (3 poll cycles * 2-second update interval)
-                            return call_count < 6
+                            return next(exists_iter)
 
                         mock_terminal.session_exists = session_exists_mock
                         mock_terminal.get_current_directory = AsyncMock(return_value="/test/dir")
@@ -219,12 +215,10 @@ class TestOutputPollerPoll:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
                     with _patch_reader(["   ", "real output\n", None]):
-                        call_count = 0
+                        exists_iter = iter([True, True, True, True, True, False])
 
                         async def session_exists_mock(name, log_missing=True):
-                            nonlocal call_count
-                            call_count += 1
-                            return call_count < 6
+                            return next(exists_iter)
 
                         mock_terminal.session_exists = session_exists_mock
                         mock_terminal.is_process_running = AsyncMock(return_value=True)
@@ -242,15 +236,13 @@ class TestOutputPollerPoll:
         """Paranoid test that output still emits after the interval even when nothing changes."""
         output_file = tmp_path / "output.txt"
 
-        def time_mock():
-            call_count = 0
+        times = [1000.0 + (i * 0.2) for i in range(1, 10)]
+        times += [1004.0 + (i * 0.1) for i in range(0, 10)]
+        time_iter = iter(times)
 
+        def time_mock():
             def _time():
-                nonlocal call_count
-                call_count += 1
-                if call_count < 10:
-                    return 1000.0 + (call_count * 0.2)
-                return 1004.0 + (call_count - 10) * 0.1
+                return next(time_iter, times[-1])
 
             return _time
 
@@ -259,12 +251,10 @@ class TestOutputPollerPoll:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", new=time_mock()):
                     with _patch_reader(["output 1\n"]):
-                        call_count = 0
+                        exists_iter = iter([True, True, False])
 
                         async def session_exists_mock(name, log_missing=True):
-                            nonlocal call_count
-                            call_count += 1
-                            return call_count < 3
+                            return next(exists_iter)
 
                         mock_terminal.session_exists = session_exists_mock
                         mock_terminal.get_current_directory = AsyncMock(return_value="/test/dir")
@@ -319,13 +309,11 @@ class TestOutputPollerPoll:
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                     with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
                         with _patch_reader(["initial output\n"]):
-                            iteration_count = 0
+                            exists_iter = iter([True] * 19 + [False])
 
                             async def session_exists_mock(name, log_missing=True):
-                                nonlocal iteration_count
-                                iteration_count += 1
                                 # Run for 20 iterations (need: 1 initial + 5 for first periodic + 10 for second periodic = 16)
-                                return iteration_count < 20
+                                return next(exists_iter)
 
                             mock_terminal.session_exists = session_exists_mock
                             mock_terminal.is_process_running = AsyncMock(return_value=True)
@@ -356,12 +344,10 @@ class TestOutputPollerPoll:
                             make_advancing_time_mock(increment=0.2),
                         ):
                             with _patch_reader(["output\n"]):
-                                iteration_count = 0
+                                exists_iter = iter([True] * 7 + [False])
 
                                 async def session_exists_mock(name, log_missing=True):
-                                    nonlocal iteration_count
-                                    iteration_count += 1
-                                    return iteration_count < 8
+                                    return next(exists_iter)
 
                                 mock_terminal.session_exists = session_exists_mock
                                 mock_terminal.is_process_running = AsyncMock(return_value=True)
@@ -406,14 +392,12 @@ class TestOutputPollerPoll:
                 _init_terminal_mock(mock_terminal)
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                     with _patch_reader(["output\n"]):
-                        iteration_count = 0
+                        exists_iter = iter([True] * 9 + [False])
                         directory_calls = 0
 
                         async def session_exists_mock(name, log_missing=True):
-                            nonlocal iteration_count
-                            iteration_count += 1
                             # Run for 10 iterations (3 directory checks at intervals 3, 6, 9)
-                            return iteration_count < 10
+                            return next(exists_iter)
 
                         mock_terminal.session_exists = session_exists_mock
                         mock_terminal.is_process_running = AsyncMock(return_value=True)
@@ -449,16 +433,20 @@ class TestOutputPollerPoll:
                 _init_terminal_mock(mock_terminal)
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                     with _patch_reader(["output\n"]):
-                        iteration_count = 0
+                        exists_iter = iter([True] * 4 + [False])
 
                         async def session_exists_mock(name, log_missing=True):
-                            nonlocal iteration_count
-                            iteration_count += 1
-                            return iteration_count < 5
+                            return next(exists_iter)
 
                         mock_terminal.session_exists = session_exists_mock
                         mock_terminal.is_process_running = AsyncMock(return_value=True)
-                        mock_terminal.get_current_directory = AsyncMock(return_value="/home/user")
+                        directory_calls = []
+
+                        async def record_directory(_name):
+                            directory_calls.append(True)
+                            return "/home/user"
+
+                        mock_terminal.get_current_directory = record_directory
 
                         # Collect events
                         events = []
@@ -469,4 +457,4 @@ class TestOutputPollerPoll:
                         dir_events = [e for e in events if isinstance(e, DirectoryChanged)]
                         assert len(dir_events) == 0
                         # Verify get_current_directory never called
-                        mock_terminal.get_current_directory.assert_not_called()
+                        assert not directory_calls

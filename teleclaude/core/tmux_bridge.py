@@ -255,7 +255,6 @@ async def _create_tmux_session(
         # tmux automatically uses $SHELL for the session's shell
         # No need for explicit shell command - tmux creates proper PTY with user's default shell
 
-        working_dir = os.path.expanduser("~")
         logger.info("create_tmux_session: name=%s, working_dir=%s", name, working_dir)
         cmd = [
             config.computer.tmux_binary,

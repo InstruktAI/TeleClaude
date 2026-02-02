@@ -60,6 +60,16 @@ def adapter_client_without_transport(mock_ui_adapter):
 @pytest.mark.asyncio
 async def test_send_request_success(adapter_client_with_transport, mock_transport_adapter):
     """Test sending request to remote computer via transport adapter."""
+    calls: list[tuple[str, str, MessageMetadata, None]] = []
+
+    async def record_send_request(
+        computer_name: str, command: str, metadata: MessageMetadata, request_id: str | None
+    ) -> str:
+        calls.append((computer_name, command, metadata, request_id))
+        return "req_123"
+
+    mock_transport_adapter.send_request = record_send_request
+
     # Execute
     metadata = MessageMetadata(origin=InputOrigin.API.value)
     stream_id = await adapter_client_with_transport.send_request(
@@ -68,7 +78,7 @@ async def test_send_request_success(adapter_client_with_transport, mock_transpor
 
     # Verify
     assert stream_id == "req_123"
-    mock_transport_adapter.send_request.assert_called_once_with("comp1", "ls -la", metadata, None)
+    assert calls == [("comp1", "ls -la", metadata, None)]
 
 
 @pytest.mark.asyncio
@@ -106,7 +116,15 @@ async def test_mixed_adapters_only_transport_used_for_cross_computer():
 
     # Create transport adapter
     transport = Mock(spec=RemoteExecutionProtocol)
-    transport.send_request = AsyncMock(return_value="req_123")
+    calls: list[tuple[str, str, MessageMetadata, None]] = []
+
+    async def record_send_request(
+        computer_name: str, command: str, metadata: MessageMetadata, request_id: str | None
+    ) -> str:
+        calls.append((computer_name, command, metadata, request_id))
+        return "req_123"
+
+    transport.send_request = record_send_request
     transport.send_response = AsyncMock(return_value="resp_123")
 
     client = AdapterClient()
@@ -119,16 +137,24 @@ async def test_mixed_adapters_only_transport_used_for_cross_computer():
 
     # Verify - only transport adapter used
     assert stream_id == "req_123"
-    transport.send_request.assert_called_once()
+    assert calls == [("comp1", "ls", metadata, None)]
     assert not hasattr(ui_adapter, "send_request")  # UI adapter not called
 
 
 @pytest.mark.asyncio
 async def test_send_response_success(adapter_client_with_transport, mock_transport_adapter):
     """Test sending response for ephemeral request."""
+    calls: list[tuple[str, str]] = []
+
+    async def record_send_response(message_id: str, data: str) -> str:
+        calls.append((message_id, data))
+        return "resp_123"
+
+    mock_transport_adapter.send_response = record_send_response
+
     # Execute
     stream_id = await adapter_client_with_transport.send_response(message_id="msg_123", data='{"status": "ok"}')
 
     # Verify
     assert stream_id == "resp_123"
-    mock_transport_adapter.send_response.assert_called_once_with("msg_123", '{"status": "ok"}')
+    assert calls == [("msg_123", '{"status": "ok"}')]

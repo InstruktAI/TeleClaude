@@ -170,7 +170,8 @@ class TestValidateArtifact:
             "## Steps\n\n1. Do it.\n"
         )
         post = fm.Post(body, description="Test command")
-        validate_artifact(post, "test.md", kind="command", project_root=tmp_path)
+        result = validate_artifact(post, "test.md", kind="command", project_root=tmp_path)
+        assert result is None
 
     def test_missing_description_raises(self, tmp_path: Path) -> None:
         import frontmatter as fm
@@ -243,6 +244,7 @@ class TestValidateThirdPartyDocs:
         validate_third_party_docs(tmp_path)
         # No sources section — currently no warning for missing sources in third-party validator
         # (that's in snippet validator). Third-party validator only checks source values.
+        assert get_warnings() == []
 
     def test_invalid_source_warns(self, tmp_path: Path) -> None:
         tp = tmp_path / "docs" / "third-party" / "lib" / "feature.md"

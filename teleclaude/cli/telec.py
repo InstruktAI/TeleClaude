@@ -29,6 +29,7 @@ class TelecCommand(str, Enum):
     CODEX = "codex"
     INIT = "init"
     SYNC = "sync"
+    WATCH = "watch"
 
 
 def main() -> None:
@@ -121,6 +122,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         init_project(Path.cwd())
     elif cmd_enum is TelecCommand.SYNC:
         _handle_sync(args)
+    elif cmd_enum is TelecCommand.WATCH:
+        _handle_watch(args)
     else:
         print(f"Unknown command: /{cmd}")
         print(_usage())
@@ -265,6 +268,22 @@ def _handle_sync(args: list[str]) -> None:
         raise SystemExit(1)
 
 
+def _handle_watch(args: list[str]) -> None:
+    """Handle telec watch command."""
+    from teleclaude.cli.watch import run_watch
+
+    project_root = Path.cwd()
+    i = 0
+    while i < len(args):
+        if args[i] == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        else:
+            i += 1
+
+    run_watch(project_root)
+
+
 def _usage() -> str:
     """Return usage string.
 
@@ -281,6 +300,8 @@ def _usage() -> str:
         "  telec init                     # Initialize docs sync and auto-rebuild watcher\n"
         "  telec sync [--warn-only] [--validate-only] [--project-root PATH]\n"
         "                                 # Validate, build indexes, and deploy artifacts\n"
+        "  telec watch [--project-root PATH]\n"
+        "                                 # Watch project for changes and auto-sync\n"
     )
 
 

@@ -16,7 +16,12 @@ async def test_process_agent_stop_forwarded_skips_summary(monkeypatch):
     daemon._last_stop_time = {}
     daemon._stop_debounce_seconds = 0.0
     daemon.agent_coordinator = MagicMock()
-    daemon.agent_coordinator.handle_stop = AsyncMock()
+    calls = []
+
+    async def record_handle_stop(ctx):
+        calls.append(ctx)
+
+    daemon.agent_coordinator.handle_stop = record_handle_stop
 
     monkeypatch.setattr(
         daemon_module,
@@ -40,4 +45,4 @@ async def test_process_agent_stop_forwarded_skips_summary(monkeypatch):
 
     await daemon._process_agent_stop(context)
 
-    daemon.agent_coordinator.handle_stop.assert_awaited_once_with(context)
+    assert calls == [context]

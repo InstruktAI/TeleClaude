@@ -55,5 +55,5 @@ async def test_warm_local_sessions_cache_seeds_cache(monkeypatch: pytest.MonkeyP
     ) as mock_list:
         await lifecycle._warm_local_sessions_cache()
 
-    mock_list.assert_awaited_once_with(computer_name="test-computer")
-    lifecycle.cache.update_session.assert_called_once()
+    assert mock_list.call_args == ((), {"computer_name": "test-computer"})
+    assert lifecycle.cache.update_session.call_args is not None

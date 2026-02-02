@@ -39,4 +39,4 @@ async def test_cleanup_orphan_tmux_sessions_skips_tui_session() -> None:
         killed = await session_cleanup.cleanup_orphan_tmux_sessions()
 
     assert killed == 1
-    kill_session.assert_called_once_with("tc_orphan")
+    assert kill_session.call_args == (("tc_orphan",), {})

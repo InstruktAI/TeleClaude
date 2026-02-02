@@ -50,6 +50,11 @@ class TestSync:
 
     def test_full_sync_calls_distribute(self, tmp_path: Path) -> None:
         _write_snippet(tmp_path / "docs" / "project" / "test.md", id="test/x")
-        with patch("teleclaude.sync._run_distribute") as mock:
+        calls = []
+
+        def record_distribute(*args, **kwargs):
+            calls.append((args, kwargs))
+
+        with patch("teleclaude.sync._run_distribute", new=record_distribute):
             sync(tmp_path)
-        mock.assert_called_once()
+        assert len(calls) == 1

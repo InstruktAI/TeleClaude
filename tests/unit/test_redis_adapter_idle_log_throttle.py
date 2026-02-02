@@ -14,25 +14,29 @@ def test_idle_poll_log_is_throttled_to_once_per_minute(monkeypatch):
     """Test that idle poll logging is suppressed until the throttle window elapses."""
     adapter = RedisTransport(adapter_client=MagicMock())
 
-    trace_mock = MagicMock()
-    monkeypatch.setattr("teleclaude.transport.redis_transport.logger.trace", trace_mock)
+    calls = []
+
+    def record_trace(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr("teleclaude.transport.redis_transport.logger.trace", record_trace)
 
     adapter._reset_idle_poll_log_throttle()
 
     adapter._maybe_log_idle_poll(message_stream="messages:test", now=0.0)
     adapter._maybe_log_idle_poll(message_stream="messages:test", now=30.0)
     adapter._maybe_log_idle_poll(message_stream="messages:test", now=59.0)
-    assert trace_mock.call_count == 0
+    assert calls == []
 
     adapter._maybe_log_idle_poll(message_stream="messages:test", now=60.0)
-    assert trace_mock.call_count == 1
-    _, kwargs = trace_mock.call_args
+    assert len(calls) == 1
+    _, kwargs = calls[0]
     assert kwargs["stream"] == "messages:test"
     assert kwargs["suppressed"] == 4
     assert kwargs["interval_s"] == 60
 
     # Next minute window
     adapter._maybe_log_idle_poll(message_stream="messages:test", now=119.0)
-    assert trace_mock.call_count == 1
+    assert len(calls) == 1
     adapter._maybe_log_idle_poll(message_stream="messages:test", now=120.0)
-    assert trace_mock.call_count == 2
+    assert len(calls) == 2

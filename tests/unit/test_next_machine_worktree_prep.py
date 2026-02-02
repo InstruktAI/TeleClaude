@@ -24,7 +24,7 @@ class TestEnsureWorktreeAlwaysPrepares:
 
         # Verify - preparation always runs (idempotent, catches drift)
         assert result is False  # Worktree already existed
-        mock_prepare.assert_called_once_with(str(tmp_path), "test-slug")
+        assert mock_prepare.call_args == ((str(tmp_path), "test-slug"), {})
 
 
 class TestPrepareWorktreeConventions:

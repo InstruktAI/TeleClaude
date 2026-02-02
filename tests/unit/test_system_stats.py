@@ -71,14 +71,18 @@ def test_get_disk_stats_error_handling():
 
 def test_get_cpu_percent():
     """Test get_cpu_percent returns float."""
-    with patch("psutil.cpu_percent") as mock_cpu:
-        mock_cpu.return_value = 75.5
+    calls = []
 
+    def record_cpu_percent(*, interval):
+        calls.append(interval)
+        return 75.5
+
+    with patch("psutil.cpu_percent", new=record_cpu_percent):
         result = get_cpu_percent()
 
         assert isinstance(result, float)
         assert result == 75.5
-        mock_cpu.assert_called_once_with(interval=0.1)
+        assert calls == [0.1]
 
 
 def test_get_cpu_percent_error_handling():

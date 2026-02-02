@@ -186,8 +186,8 @@ class TestPollAndSendOutput:
                     _skip_register=True,
                 )
 
-        assert mock_exists.await_count == 1
-        mock_terminate.assert_called_once()
+        assert mock_exists.call_args == (("test-tmux",), {"log_missing": False})
+        assert mock_terminate.call_args is not None
         _, kwargs = mock_terminate.call_args
         assert kwargs["kill_tmux"] is False
 

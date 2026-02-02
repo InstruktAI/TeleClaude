@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 from datetime import datetime
+from typing import TypedDict, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -296,13 +297,18 @@ async def test_handle_kill_terminates_process():
     mock_session.tmux_session_name = "tc_test"
 
     cmd = KeysCommand(session_id=mock_session.session_id, key="kill")
+    sent: list[tuple[object, str]] = []
+
+    async def record_signal(session, signal: str) -> bool:
+        sent.append((session, signal))
+        return True
 
     with patch.object(command_handlers, "tmux_io") as mock_tb:
-        mock_tb.send_signal = AsyncMock(return_value=True)
+        mock_tb.send_signal = record_signal
 
         await command_handlers.kill_command.__wrapped__(mock_session, cmd, AsyncMock())
 
-    mock_tb.send_signal.assert_called_once_with(mock_session, "SIGKILL")
+    assert sent == [(mock_session, "SIGKILL")]
 
 
 @pytest.mark.asyncio
@@ -314,13 +320,18 @@ async def test_handle_cancel_sends_ctrl_c():
     mock_session.tmux_session_name = "tc_test"
 
     cmd = KeysCommand(session_id=mock_session.session_id, key="cancel")
+    sent: list[tuple[object, str]] = []
+
+    async def record_signal(session, signal: str) -> bool:
+        sent.append((session, signal))
+        return True
 
     with patch.object(command_handlers, "tmux_io") as mock_tb:
-        mock_tb.send_signal = AsyncMock(return_value=True)
+        mock_tb.send_signal = record_signal
 
         await command_handlers.cancel_command.__wrapped__(mock_session, cmd, AsyncMock())
 
-    mock_tb.send_signal.assert_called_once_with(mock_session, "SIGINT")
+    assert sent == [(mock_session, "SIGINT")]
 
 
 @pytest.mark.asyncio
@@ -332,13 +343,18 @@ async def test_handle_escape_sends_esc():
     mock_session.tmux_session_name = "tc_test"
 
     cmd = KeysCommand(session_id=mock_session.session_id, key="escape")
+    sent: list[object] = []
+
+    async def record_escape(session) -> bool:
+        sent.append(session)
+        return True
 
     with patch.object(command_handlers, "tmux_io") as mock_tb:
-        mock_tb.send_escape = AsyncMock(return_value=True)
+        mock_tb.send_escape = record_escape
 
         await command_handlers.escape_command.__wrapped__(mock_session, cmd, AsyncMock())
 
-    mock_tb.send_escape.assert_called_once_with(mock_session)
+    assert sent == [mock_session]
 
 
 @pytest.mark.asyncio
@@ -351,13 +367,18 @@ async def test_handle_ctrl_sends_ctrl_key():
 
     cmd = KeysCommand(session_id=mock_session.session_id, key="ctrl", args=["d"])
     mock_client = MagicMock()
+    sent: list[tuple[object, str]] = []
+
+    async def record_ctrl(session, key: str) -> bool:
+        sent.append((session, key))
+        return True
 
     with patch.object(command_handlers, "tmux_io") as mock_tb:
-        mock_tb.send_ctrl_key = AsyncMock(return_value=True)
+        mock_tb.send_ctrl_key = record_ctrl
 
         await command_handlers.ctrl_command.__wrapped__(mock_session, cmd, mock_client, AsyncMock())
 
-    mock_tb.send_ctrl_key.assert_called_once_with(mock_session, "d")
+    assert sent == [(mock_session, "d")]
 
 
 @pytest.mark.asyncio
@@ -543,7 +564,13 @@ async def test_handle_agent_start_executes_command_with_args(mock_initialized_db
     mock_session.session_id = "model-session-789"
     mock_session.tmux_session_name = "tc_test"
 
-    mock_execute = AsyncMock()
+    mock_execute_calls = []
+
+    async def record_execute(*args, **kwargs):
+        mock_execute_calls.append((args, kwargs))
+        return True
+
+    mock_execute = record_execute
     mock_client = MagicMock()
 
     mock_agent_config = AgentConfig(
@@ -569,9 +596,8 @@ async def test_handle_agent_start_executes_command_with_args(mock_initialized_db
         await command_handlers.start_agent.__wrapped__(mock_session, cmd, mock_client, mock_execute)
 
     # Verify execute_terminal_command was called with base command and args
-    mock_execute.assert_called_once()
-    call_args = mock_execute.call_args[0]
-    command = call_args[1]
+    assert len(mock_execute_calls) == 1
+    command = mock_execute_calls[0][0][1]
 
     # Check for parts since shlex.quote behavior can vary in tests
     assert "claude" in command
@@ -587,7 +613,13 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
     mock_session.session_id = "regular-session-123"
     mock_session.tmux_session_name = "tc_test"
 
-    mock_execute = AsyncMock()
+    mock_execute_calls = []
+
+    async def record_execute(*args, **kwargs):
+        mock_execute_calls.append((args, kwargs))
+        return True
+
+    mock_execute = record_execute
     mock_client = MagicMock()
 
     mock_agent_config = AgentConfig(
@@ -608,9 +640,8 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
         cmd = StartAgentCommand(session_id=mock_session.session_id, agent_name="codex", args=[])
         await command_handlers.start_agent.__wrapped__(mock_session, cmd, mock_client, mock_execute)
 
-    mock_execute.assert_called_once()
-    call_args = mock_execute.call_args[0]
-    command = call_args[1]
+    assert len(mock_execute_calls) == 1
+    command = mock_execute_calls[0][0][1]
     assert "codex" in command
 
 
@@ -624,7 +655,13 @@ async def test_handle_agent_start_does_not_clear_native_fields(mock_initialized_
     mock_session.native_log_file = "/tmp/native.jsonl"
     mock_session.title = "Project: $local - Test"
 
-    mock_execute = AsyncMock()
+    mock_execute_calls = []
+
+    async def record_execute(*args, **kwargs):
+        mock_execute_calls.append((args, kwargs))
+        return True
+
+    mock_execute = record_execute
     mock_client = MagicMock()
 
     with (
@@ -653,7 +690,13 @@ async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
     mock_session.tmux_session_name = "tc_test"
     mock_session.thinking_mode = "slow"
 
-    mock_execute = AsyncMock()
+    mock_execute_calls: list[tuple[tuple[object, ...], ExecuteKwargs]] = []
+
+    async def record_execute(*args: object, **kwargs: object) -> bool:
+        mock_execute_calls.append((args, cast(ExecuteKwargs, kwargs)))
+        return True
+
+    mock_execute = record_execute
     mock_client = MagicMock()
 
     with (
@@ -668,10 +711,10 @@ async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
         cmd = StartAgentCommand(session_id=mock_session.session_id, agent_name="codex", args=["deep"])
         await command_handlers.start_agent.__wrapped__(mock_session, cmd, mock_client, mock_execute)
 
-    mock_execute.assert_called_once()
+    assert len(mock_execute_calls) == 1
     # "deep" is parsed as thinking_mode, so user_args is empty -> interactive=False
-    mock_get_agent_command.assert_called_once_with("codex", thinking_mode="deep", interactive=False)
-    command = mock_execute.call_args[0][1]
+    assert mock_get_agent_command.call_args == (("codex",), {"thinking_mode": "deep", "interactive": False})
+    command = mock_execute_calls[0][0][1]
     assert "codex -m deep" in command
 
 
@@ -684,7 +727,13 @@ async def test_handle_agent_start_rejects_deep_for_non_codex(mock_initialized_db
     mock_session.tmux_session_name = "tc_test"
     mock_session.thinking_mode = "slow"
 
-    mock_execute = AsyncMock()
+    mock_execute_calls: list[tuple[tuple[object, ...], ExecuteKwargs]] = []
+
+    async def record_execute(*args: object, **kwargs: object) -> bool:
+        mock_execute_calls.append((args, cast(ExecuteKwargs, kwargs)))
+        return True
+
+    mock_execute = record_execute
     mock_client = MagicMock()
     mock_client.send_message = AsyncMock()
 
@@ -699,8 +748,11 @@ async def test_handle_agent_start_rejects_deep_for_non_codex(mock_initialized_db
         cmd = StartAgentCommand(session_id=mock_session.session_id, agent_name="claude", args=["deep"])
         await command_handlers.start_agent.__wrapped__(mock_session, cmd, mock_client, mock_execute)
 
-    mock_client.send_message.assert_awaited_once()
-    mock_execute.assert_not_called()
+    assert mock_client.send_message.call_args == (
+        (mock_session, "deep is only supported for codex. Use fast/med/slow for other agents."),
+        {},
+    )
+    assert mock_execute_calls == []
     mock_get_agent_command.assert_not_called()
 
 
@@ -714,7 +766,13 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
     mock_session.native_session_id = "native-123-abc"
     mock_session.thinking_mode = "slow"
 
-    mock_execute = AsyncMock(return_value=True)
+    mock_execute_calls = []
+
+    async def record_execute(*args, **kwargs):
+        mock_execute_calls.append((args, kwargs))
+        return True
+
+    mock_execute = record_execute
     mock_client = MagicMock()
 
     mock_agent_config = AgentConfig(
@@ -743,9 +801,8 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
         cmd = ResumeAgentCommand(session_id=mock_session.session_id, agent_name="gemini")
         await command_handlers.resume_agent.__wrapped__(mock_session, cmd, mock_client, mock_execute)
 
-    mock_execute.assert_called_once()
-    call_args = mock_execute.call_args[0]
-    command = call_args[1]
+    assert len(mock_execute_calls) == 1
+    command = mock_execute_calls[0][0][1]
 
     # Gemini uses --resume flag with session ID from database
     assert "--yolo" in command
@@ -763,7 +820,13 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
     mock_session.native_session_id = None
     mock_session.thinking_mode = "slow"
 
-    mock_execute = AsyncMock(return_value=True)
+    mock_execute_calls = []
+
+    async def record_execute(*args, **kwargs):
+        mock_execute_calls.append((args, kwargs))
+        return True
+
+    mock_execute = record_execute
     mock_client = MagicMock()
 
     mock_agent_config = AgentConfig(
@@ -788,9 +851,8 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
         cmd = ResumeAgentCommand(session_id=mock_session.session_id, agent_name="claude")
         await command_handlers.resume_agent.__wrapped__(mock_session, cmd, mock_client, mock_execute)
 
-    mock_execute.assert_called_once()
-    call_args = mock_execute.call_args[0]
-    command = call_args[1]
+    assert len(mock_execute_calls) == 1
+    command = mock_execute_calls[0][0][1]
 
     # Check for Claude's key flags and continue template behavior
     assert "--dangerously-skip-permissions" in command
@@ -809,7 +871,13 @@ async def test_handle_agent_resume_uses_override_session_id_from_args(mock_initi
     mock_session.native_session_id = "native-db-123"
     mock_session.thinking_mode = "slow"
 
-    mock_execute = AsyncMock(return_value=True)
+    mock_execute_calls = []
+
+    async def record_execute(*args, **kwargs):
+        mock_execute_calls.append((args, kwargs))
+        return True
+
+    mock_execute = record_execute
     mock_client = MagicMock()
 
     mock_agent_config = AgentConfig(
@@ -842,8 +910,8 @@ async def test_handle_agent_resume_uses_override_session_id_from_args(mock_initi
         "test-session-override-123",
         native_session_id="native-override-999",
     )
-    mock_execute.assert_called_once()
-    command = mock_execute.call_args[0][1]
+    assert len(mock_execute_calls) == 1
+    command = mock_execute_calls[0][0][1]
     assert "resume" in command
     assert "native-override-999" in command
 
@@ -856,23 +924,28 @@ async def test_handle_agent_restart_fails_without_active_agent(mock_initialized_
     mock_session.session_id = "restart-session-123"
     mock_session.tmux_session_name = "tc_test"
 
-    mock_execute = AsyncMock()
+    mock_execute_calls = []
+
+    async def record_execute(*args, **kwargs):
+        mock_execute_calls.append((args, kwargs))
+        return True
+
+    mock_execute = record_execute
     mock_client = MagicMock()
     mock_client.send_message = AsyncMock()
     mock_session.active_agent = None
     mock_session.native_session_id = None
 
-    with (
-        patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "tmux_io") as mock_tmux_bridge,
-    ):
-        mock_tmux_bridge.send_signal = AsyncMock(return_value=True)
+    with patch.object(command_handlers, "db") as mock_db:
         cmd = RestartAgentCommand(session_id=mock_session.session_id, agent_name=None)
-        await command_handlers.agent_restart.__wrapped__(mock_session, cmd, mock_client, mock_execute)
+        result = await command_handlers.agent_restart.__wrapped__(mock_session, cmd, mock_client, mock_execute)
 
-    mock_client.send_message.assert_awaited_once()
-    mock_execute.assert_not_called()
-    mock_tmux_bridge.send_signal.assert_not_called()
+    assert result == (False, "Cannot restart agent: no active agent for this session.")
+    assert mock_client.send_message.call_args == (
+        (mock_session, "❌ Cannot restart agent: no active agent for this session."),
+        {},
+    )
+    assert mock_execute_calls == []
 
 
 @pytest.mark.asyncio
@@ -890,9 +963,13 @@ async def test_handle_agent_restart_fails_without_native_session_id(mock_initial
     mock_client.send_message = AsyncMock()
 
     cmd = RestartAgentCommand(session_id=mock_session.session_id, agent_name=None)
-    await command_handlers.agent_restart.__wrapped__(mock_session, cmd, mock_client, mock_execute)
+    result = await command_handlers.agent_restart.__wrapped__(mock_session, cmd, mock_client, mock_execute)
 
-    mock_client.send_message.assert_awaited_once()
+    assert result == (False, "Cannot restart agent: no native session ID stored. Start the agent first.")
+    assert mock_client.send_message.call_args == (
+        (mock_session, "❌ Cannot restart agent: no native session ID stored. Start the agent first."),
+        {},
+    )
     mock_execute.assert_not_called()
 
 
@@ -906,7 +983,13 @@ async def test_handle_agent_restart_resumes_with_native_session_id(mock_initiali
     mock_session.active_agent = "claude"
     mock_session.native_session_id = "native-abc"
 
-    mock_execute = AsyncMock()
+    mock_execute_calls: list[tuple[tuple[object, ...], ExecuteKwargs]] = []
+
+    async def record_execute(*args: object, **kwargs: object) -> bool:
+        mock_execute_calls.append((args, cast(ExecuteKwargs, kwargs)))
+        return True
+
+    mock_execute = record_execute
     mock_client = MagicMock()
 
     with (
@@ -924,8 +1007,8 @@ async def test_handle_agent_restart_resumes_with_native_session_id(mock_initiali
         await command_handlers.agent_restart.__wrapped__(mock_session, cmd, mock_client, mock_execute)
 
     assert mock_tmux_bridge.send_signal.await_count == 2
-    mock_execute.assert_called_once()
-    command = mock_execute.call_args[0][1]
+    assert len(mock_execute_calls) == 1
+    command = mock_execute_calls[0][0][1]
     assert "claude --resume native-abc" in command
 
 
@@ -939,7 +1022,13 @@ async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized
     mock_session.active_agent = "claude"
     mock_session.native_session_id = "native-xyz"
 
-    mock_execute = AsyncMock()
+    mock_execute_calls = []
+
+    async def record_execute(*args, **kwargs):
+        mock_execute_calls.append((args, kwargs))
+        return True
+
+    mock_execute = record_execute
     mock_client = MagicMock()
     mock_client.send_message = AsyncMock()
 
@@ -954,8 +1043,8 @@ async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized
         cmd = RestartAgentCommand(session_id=mock_session.session_id, agent_name=None)
         await command_handlers.agent_restart.__wrapped__(mock_session, cmd, mock_client, mock_execute)
 
-    mock_client.send_message.assert_awaited_once()
-    mock_execute.assert_not_called()
+    assert mock_client.send_message.await_count == 1
+    assert mock_execute_calls == []
 
 
 @pytest.mark.asyncio
@@ -965,15 +1054,20 @@ async def test_handle_voice_sends_transcribed_text() -> None:
     mock_client.send_message = AsyncMock()
     mock_client.delete_message = AsyncMock()
 
+    send_calls = []
+
+    async def record_send(*args, **kwargs):
+        send_calls.append((args, kwargs))
+
     with (
         patch.object(command_handlers.voice_message_handler, "handle_voice", new_callable=AsyncMock) as mock_handle,
-        patch.object(command_handlers, "send_message", new_callable=AsyncMock) as mock_send,
+        patch.object(command_handlers, "send_message", new=record_send),
     ):
         mock_handle.return_value = "hello world"
         cmd = HandleVoiceCommand(session_id="sess-123", file_path="/tmp/voice.ogg")
         await command_handlers.handle_voice(cmd, mock_client, AsyncMock())
 
-    mock_send.assert_called_once()
+    assert len(send_calls) == 1
 
 
 @pytest.mark.asyncio
@@ -997,3 +1091,7 @@ async def test_handle_file_invokes_file_handler() -> None:
     assert context.session_id == "sess-456"
     assert context.file_path == "/tmp/file.txt"
     assert context.filename == "file.txt"
+
+
+class ExecuteKwargs(TypedDict, total=False):
+    """Typed kwargs payload for mock execute calls."""

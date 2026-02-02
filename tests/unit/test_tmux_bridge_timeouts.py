@@ -22,12 +22,17 @@ async def test_wait_with_timeout_completes_normally():
     mock_process = MagicMock()
     mock_process.pid = 12345
     mock_process.wait = AsyncMock(return_value=None)
+    killed = {"value": False}
+
+    def record_kill() -> None:
+        killed["value"] = True
+
+    mock_process.kill = record_kill
 
     # Should not raise
     await wait_with_timeout(mock_process, SUBPROCESS_TIMEOUT_QUICK, "test operation")
 
-    mock_process.wait.assert_called_once()
-    mock_process.kill.assert_not_called()
+    assert killed["value"] is False
 
 
 @pytest.mark.asyncio
@@ -38,10 +43,15 @@ async def test_wait_with_timeout_kills_on_timeout():
 
     # Simulate hanging process
     async def hang():
-        await asyncio.sleep(10)
+        await asyncio.Future()
 
     mock_process.wait = AsyncMock(side_effect=hang)
-    mock_process.kill = MagicMock()
+    killed = {"value": False}
+
+    def record_kill() -> None:
+        killed["value"] = True
+
+    mock_process.kill = record_kill
 
     # After kill, wait should succeed
     wait_calls = 0
@@ -65,7 +75,7 @@ async def test_wait_with_timeout_kills_on_timeout():
 
     # Verify error message
     assert "test operation timed out after 0.1s" in str(exc_info.value)
-    mock_process.kill.assert_called_once()
+    assert killed["value"] is True
     assert wait_calls == 2  # Once for timeout, once for cleanup
 
 
@@ -77,18 +87,24 @@ async def test_wait_with_timeout_handles_process_already_dead():
 
     # Simulate hanging process
     async def hang():
-        await asyncio.sleep(10)
+        await asyncio.Future()
 
     mock_process.wait = AsyncMock(side_effect=hang)
 
     # kill() raises ProcessLookupError if process already terminated
-    mock_process.kill = MagicMock(side_effect=ProcessLookupError("No such process"))
+    kill_attempted = {"value": False}
+
+    def raise_lookup() -> None:
+        kill_attempted["value"] = True
+        raise ProcessLookupError("No such process")
+
+    mock_process.kill = raise_lookup
 
     with pytest.raises(SubprocessTimeoutError):
         await wait_with_timeout(mock_process, 0.1, "test operation")
 
     # Should not propagate ProcessLookupError
-    mock_process.kill.assert_called_once()
+    assert kill_attempted["value"] is True
 
 
 @pytest.mark.asyncio
@@ -97,13 +113,19 @@ async def test_communicate_with_timeout_completes_normally():
     mock_process = MagicMock()
     mock_process.pid = 12345
     mock_process.communicate = AsyncMock(return_value=(b"stdout", b"stderr"))
+    killed = {"value": False}
+
+    def record_kill() -> None:
+        killed["value"] = True
+
+    mock_process.kill = record_kill
 
     stdout, stderr = await communicate_with_timeout(mock_process, None, SUBPROCESS_TIMEOUT_QUICK, "test operation")
 
     assert stdout == b"stdout"
     assert stderr == b"stderr"
-    mock_process.communicate.assert_called_once_with(None)
-    mock_process.kill.assert_not_called()
+    assert mock_process.communicate.called
+    assert killed["value"] is False
 
 
 @pytest.mark.asyncio
@@ -120,7 +142,7 @@ async def test_communicate_with_timeout_with_input():
 
     assert stdout == b"output"
     assert stderr == b""
-    mock_process.communicate.assert_called_once_with(input_data)
+    assert mock_process.communicate.call_args == ((input_data,), {})
 
 
 @pytest.mark.asyncio
@@ -131,11 +153,16 @@ async def test_communicate_with_timeout_kills_on_timeout():
 
     # Simulate hanging process
     async def hang(input_data=None):
-        await asyncio.sleep(10)
+        await asyncio.Future()
         return (b"", b"")
 
     mock_process.communicate = AsyncMock(side_effect=hang)
-    mock_process.kill = MagicMock()
+    killed = {"value": False}
+
+    def record_kill() -> None:
+        killed["value"] = True
+
+    mock_process.kill = record_kill
 
     # After kill, wait should succeed
     wait_called = False
@@ -156,7 +183,7 @@ async def test_communicate_with_timeout_kills_on_timeout():
 
     # Verify error message
     assert "test operation timed out after 0.1s" in str(exc_info.value)
-    mock_process.kill.assert_called_once()
+    assert killed["value"] is True
     assert wait_called  # Cleanup wait was called
 
 

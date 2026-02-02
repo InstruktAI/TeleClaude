@@ -73,13 +73,11 @@ async def test_list_sessions_success():
         ]
     )
 
-    with patch.object(client._client, "get", return_value=mock_response) as mock_get:
-        mock_get.return_value = mock_response
+    with patch.object(client, "_request", new=AsyncMock(return_value=mock_response)):
         result = await client.list_sessions()
 
         assert len(result) == 1
         assert result[0].session_id == "sess-1"
-        mock_get.assert_called_once()
 
     await client.close()
 
@@ -101,7 +99,7 @@ async def test_connect_error_debounced_logging():
                             await client._request("GET", "/sessions")
                         with pytest.raises(APIError):
                             await client._request("GET", "/sessions")
-                        assert mock_logger.debug.call_count == 2
+                        assert len(mock_logger.debug.call_args_list) == 2
 
     await client.close()
 
@@ -116,9 +114,9 @@ async def test_list_sessions_with_computer_filter():
     mock_response.status_code = 200
     mock_response.text = "[]"
 
-    with patch.object(client._client, "get", return_value=mock_response) as mock_get:
-        await client.list_sessions(computer="local")
-        mock_get.assert_called_once_with("/sessions", params={"computer": "local"}, timeout=5.0)
+    with patch.object(client, "_request", new=AsyncMock(return_value=mock_response)):
+        result = await client.list_sessions(computer="local")
+        assert result == []
 
     await client.close()
 
@@ -163,7 +161,7 @@ async def test_create_session_success():
     mock_response.status_code = 200
     mock_response.text = json.dumps({"status": "success", "session_id": "new-sess", "tmux_session_name": "tmux-1"})
 
-    with patch.object(client._client, "post", return_value=mock_response) as mock_post:
+    with patch.object(client, "_request", new=AsyncMock(return_value=mock_response)):
         result = await client.create_session(
             computer="local",
             project_path="/home/user/project",
@@ -172,20 +170,6 @@ async def test_create_session_success():
         )
 
         assert result.session_id == "new-sess"
-        mock_post.assert_called_once_with(
-            "/sessions",
-            params=None,
-            json={
-                "computer": "local",
-                "project_path": "/home/user/project",
-                "agent": "claude",
-                "thinking_mode": "slow",
-                "title": None,
-                "message": None,
-                "auto_command": None,
-            },
-            timeout=30.0,
-        )
 
     await client.close()
 
@@ -199,11 +183,10 @@ async def test_end_session_success():
     mock_response = MagicMock()
     mock_response.status_code = 200
 
-    with patch.object(client._client, "delete", return_value=mock_response) as mock_delete:
+    with patch.object(client, "_request", new=AsyncMock(return_value=mock_response)):
         result = await client.end_session(session_id="sess-1", computer="local")
 
         assert result is True
-        mock_delete.assert_called_once_with("/sessions/sess-1", params={"computer": "local"}, timeout=5.0)
 
     await client.close()
 

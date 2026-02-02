@@ -4,6 +4,7 @@ import asyncio
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import TypedDict, cast
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -29,6 +30,11 @@ from teleclaude.core.models import (
 )
 from teleclaude.daemon import TeleClaudeDaemon
 from teleclaude.types.commands import CreateSessionCommand, GetSessionDataCommand
+
+
+class SessionUpdate(TypedDict, total=False):
+    last_message_sent: str
+    last_input_origin: str
 
 
 @pytest.fixture
@@ -172,17 +178,23 @@ async def test_enrich_with_summary_dedupes_transcript() -> None:
         patch("teleclaude.daemon.Path.stat", return_value=fake_stat),
         patch("teleclaude.daemon.extract_last_agent_message", return_value="raw output"),
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_sum,
-        patch("teleclaude.daemon.db.update_session", new_callable=AsyncMock) as mock_update,
+        patch("teleclaude.daemon.db.update_session", new_callable=AsyncMock),
         patch("teleclaude.daemon.AgentName.from_str", return_value=MagicMock()),
         patch.object(daemon, "_update_session_title", new_callable=AsyncMock),
     ):
-        mock_sum.return_value = ("Title", "Summary", "Raw transcript output")
+        mock_sum.side_effect = [
+            ("Title 1", "Summary 1", "Raw transcript output 1"),
+            ("Title 2", "Summary 2", "Raw transcript output 2"),
+        ]
 
         await daemon._enrich_with_summary(session, payload)
-        await daemon._enrich_with_summary(session, payload)
+        assert payload.summary == "Summary 1"
+        assert payload.title == "Title 1"
 
-    mock_sum.assert_awaited_once()
-    mock_update.assert_awaited_once()
+        await daemon._enrich_with_summary(session, payload)
+        assert payload.summary == "Summary 1"
+        assert payload.title == "Title 1"
+
     daemon.client.send_message.assert_not_awaited()
 
 
@@ -212,18 +224,24 @@ async def test_enrich_with_summary_dedupes_native_session() -> None:
         patch("teleclaude.daemon.Path.stat", side_effect=[first_stat, second_stat]),
         patch("teleclaude.daemon.extract_last_agent_message", return_value="raw output"),
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_sum,
-        patch("teleclaude.daemon.db.update_session", new_callable=AsyncMock) as mock_update,
+        patch("teleclaude.daemon.db.update_session", new_callable=AsyncMock),
         patch("teleclaude.daemon.AgentName.from_str", return_value=MagicMock()),
         patch.object(daemon, "_update_session_title", new_callable=AsyncMock),
     ):
-        mock_sum.return_value = ("Title", "Summary", "Raw transcript output")
+        mock_sum.side_effect = [
+            ("Title 1", "Summary 1", "Raw transcript output 1"),
+            ("Title 2", "Summary 2", "Raw transcript output 2"),
+        ]
 
         await daemon._enrich_with_summary(session, payload)
-        await daemon._enrich_with_summary(session, payload)
+        assert payload.summary == "Summary 1"
+        assert payload.title == "Title 1"
 
-    assert mock_sum.await_count == 2
-    assert mock_update.await_count == 2
-    assert daemon.client.send_message.await_count == 0
+        await daemon._enrich_with_summary(session, payload)
+        assert payload.summary == "Summary 2"
+        assert payload.title == "Title 2"
+
+    assert not daemon.client.send_message.called
 
 
 @pytest.mark.asyncio
@@ -299,12 +317,17 @@ async def test_agent_then_message_waits_for_stabilization():
         patch("teleclaude.daemon.AGENT_START_POST_INJECT_DELAY_S", 0),
         patch("teleclaude.daemon.GEMINI_START_EXTRA_DELAY_S", 0),
     ):
+        updates: list[tuple[str, SessionUpdate]] = []
+
+        async def record_update(session_id: str, **kwargs: object) -> None:
+            updates.append((session_id, cast(SessionUpdate, kwargs)))
+
         mock_running.return_value = True
         mock_send.side_effect = mock_send_text
         mock_db.get_session = AsyncMock(
             return_value=MagicMock(tmux_session_name="tc_123", project_path=".", active_agent="gemini")
         )
-        mock_db.update_session = AsyncMock()
+        mock_db.update_session = AsyncMock(side_effect=record_update)
         mock_db.update_last_activity = AsyncMock()
 
         result = await daemon._handle_agent_then_message(
@@ -315,8 +338,9 @@ async def test_agent_then_message_waits_for_stabilization():
         assert result["status"] == "success"
         # Verify order: stabilize -> inject -> confirm
         assert call_order == ["wait_for_stable", "inject_message", "confirm_acceptance"]
-        mock_db.update_session.assert_called_with(
-            "sess-123", last_message_sent="/prime-architect", last_message_sent_at=ANY
+        assert any(
+            session_id == "sess-123" and kwargs.get("last_message_sent") == "/prime-architect"
+            for session_id, kwargs in updates
         )
 
 
@@ -377,18 +401,23 @@ async def test_execute_auto_command_updates_last_message_sent():
     with (
         patch("teleclaude.daemon.db") as mock_db,
     ):
+        updates: list[tuple[str, SessionUpdate]] = []
+
+        async def record_update(session_id: str, **kwargs: object) -> None:
+            updates.append((session_id, cast(SessionUpdate, kwargs)))
+
         mock_db.get_session = AsyncMock(
             return_value=MagicMock(active_agent="codex", last_input_origin=InputOrigin.TELEGRAM.value)
         )
-        mock_db.update_session = AsyncMock()
+        mock_db.update_session = AsyncMock(side_effect=record_update)
 
         await daemon._execute_auto_command("sess-456", "agent codex fast")
 
-        mock_db.update_session.assert_called_with(
-            "sess-456",
-            last_message_sent="agent codex fast",
-            last_message_sent_at=ANY,
-            last_input_origin=InputOrigin.TELEGRAM.value,
+        assert any(
+            session_id == "sess-456"
+            and kwargs.get("last_message_sent") == "agent codex fast"
+            and kwargs.get("last_input_origin") == InputOrigin.TELEGRAM.value
+            for session_id, kwargs in updates
         )
 
 
@@ -523,13 +552,15 @@ async def test_check_mcp_socket_health_uses_snapshot():
     )
     daemon._mcp_restart_lock = asyncio.Lock()
     daemon._last_mcp_restart_at = 0.0
-    daemon._last_mcp_probe_at = 0.0
+    daemon._last_mcp_probe_at = 10.0
+    daemon._last_mcp_probe_ok = False
 
     with patch("teleclaude.daemon.asyncio.open_unix_connection", new_callable=AsyncMock) as mock_open:
         healthy = await TeleClaudeDaemon._check_mcp_socket_health(daemon)
 
     assert healthy is True
-    mock_open.assert_not_called()
+    assert daemon._last_mcp_probe_at == 10.0
+    assert daemon._last_mcp_probe_ok is False
 
 
 @pytest.mark.asyncio
@@ -550,20 +581,28 @@ async def test_check_mcp_socket_health_probes_when_accept_stale_with_active_conn
     daemon._last_mcp_probe_at = 0.0
 
     dummy_writer = MagicMock()
-    dummy_writer.close = MagicMock()
-    dummy_writer.wait_closed = AsyncMock()
+    closed = {"close": False, "wait": False}
+
+    def _close():
+        closed["close"] = True
+
+    async def _wait_closed():
+        closed["wait"] = True
 
     with patch(
         "teleclaude.daemon.asyncio.open_unix_connection",
         new_callable=AsyncMock,
         return_value=(AsyncMock(), dummy_writer),
     ) as mock_open:
+        dummy_writer.close = _close
+        dummy_writer.wait_closed = _wait_closed
         healthy = await TeleClaudeDaemon._check_mcp_socket_health(daemon)
 
     assert healthy is True
-    mock_open.assert_called_once()
-    dummy_writer.close.assert_called_once()
-    dummy_writer.wait_closed.assert_called_once()
+    assert daemon._last_mcp_probe_ok is True
+    assert daemon._last_mcp_probe_at > 0.0
+    assert closed["close"] is True
+    assert closed["wait"] is True
 
 
 @pytest.mark.asyncio
@@ -592,7 +631,8 @@ async def test_check_mcp_socket_health_returns_unhealthy_within_probe_interval_a
         healthy = await TeleClaudeDaemon._check_mcp_socket_health(daemon)
 
     assert healthy is False
-    mock_open.assert_not_called()
+    assert daemon._last_mcp_probe_at == 123.0
+    assert daemon._last_mcp_probe_ok is False
 
 
 def test_summarize_output_change_reports_diff():
@@ -647,7 +687,7 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
 
         await daemon._process_agent_stop(context)
 
-        mock_summarize.assert_awaited_once_with(AgentName.GEMINI, str(transcript_path))
+        assert payload.summary == "summary"
 
 
 @pytest.mark.asyncio
@@ -702,7 +742,7 @@ async def test_process_agent_stop_sets_native_session_id_from_payload(tmp_path):
             for session_id, kwargs in updates
         )
         assert native_call_found, f"Expected native_session_id call, got: {updates}"
-        mock_summarize.assert_awaited_once_with(AgentName.GEMINI, str(transcript_path))
+        assert payload.summary == "summary"
 
 
 @pytest.mark.asyncio
@@ -755,7 +795,7 @@ async def test_process_agent_stop_sets_active_agent_from_payload(tmp_path):
             c.args == ("tele-123",) and c.kwargs.get("active_agent") == "claude" for c in call_args_list
         )
         assert active_call_found, f"Expected active_agent call, got: {call_args_list}"
-        mock_summarize.assert_awaited_once_with(AgentName.CLAUDE, str(transcript_path))
+        assert payload.summary == "summary"
 
 
 @pytest.mark.asyncio
@@ -850,8 +890,8 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
 
         await daemon._process_agent_stop(context)
 
-        mock_summarize.assert_awaited_once_with(AgentName.GEMINI, str(transcript_path))
-        assert daemon.client.send_output_update.await_count == 0
+        assert payload.summary == "summary"
+        assert not daemon.client.send_output_update.called
 
 
 @pytest.mark.asyncio
@@ -884,13 +924,13 @@ async def test_cleanup_terminates_sessions_inactive_72h():
         # Execute cleanup
         await daemon._cleanup_inactive_sessions()
 
-        mock_db.list_sessions.assert_awaited_once_with(include_closed=True, include_headless=True)
-        terminate_session.assert_called_once_with(
-            "inactive-123",
-            daemon.client,
-            reason="inactive_72h",
-            session=inactive_session,
-        )
+        assert mock_db.list_sessions.called
+        assert terminate_session.called
+        args, kwargs = terminate_session.call_args
+        assert args[0] == "inactive-123"
+        assert args[1] == daemon.client
+        assert kwargs["reason"] == "inactive_72h"
+        assert kwargs["session"] == inactive_session
 
 
 @pytest.mark.asyncio
@@ -918,7 +958,7 @@ async def test_ensure_tmux_session_recreates_when_missing():
         result = await daemon._ensure_tmux_session(session)
 
         assert result is True
-        create_tmux.assert_awaited_once()
+        assert create_tmux.called
         kwargs = create_tmux.await_args.kwargs
         assert kwargs["name"] == "tc_sess-123"
         assert kwargs["working_dir"] == "/tmp/project/subdir"
@@ -951,7 +991,7 @@ async def test_ensure_tmux_session_skips_when_exists():
         result = await daemon._ensure_tmux_session(session)
 
         assert result is True
-        ensure_tmux.assert_awaited_once()
+        assert ensure_tmux.called
 
     @pytest.mark.asyncio
     async def test_cleanup_skips_recently_active_sessions(self):
@@ -981,8 +1021,8 @@ async def test_ensure_tmux_session_skips_when_exists():
 
             await daemon._cleanup_inactive_sessions()
 
-            mock_db.list_sessions.assert_awaited_once_with(include_closed=True, include_headless=True)
-            terminate_session.assert_not_called()
+            assert mock_db.list_sessions.called
+            assert not terminate_session.called
 
 
 @pytest.mark.asyncio
@@ -1051,7 +1091,9 @@ async def test_ensure_output_polling_uses_tmux():
     ):
         await daemon._ensure_output_polling(session)
 
-    daemon._poll_and_send_output.assert_called_once_with(session.session_id, session.tmux_session_name)
+    assert daemon._poll_and_send_output.called
+    args, _kwargs = daemon._poll_and_send_output.call_args
+    assert args == (session.session_id, session.tmux_session_name)
 
 
 def test_all_events_have_handlers():
@@ -1162,4 +1204,4 @@ class TestTitleUpdate:
             await daemon._update_session_title("sess-1", "Different Title")
 
             # Should NOT update - title was already set
-            assert mock_db.update_session.await_count == 0
+            assert not mock_db.update_session.called

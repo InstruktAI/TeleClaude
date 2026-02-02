@@ -24,7 +24,12 @@ async def test_startup_refreshes_remote_snapshot():
         adapter._redis_ready.set()
 
     adapter._schedule_reconnect = fake_schedule_reconnect
-    adapter.refresh_remote_snapshot = AsyncMock()
+    refreshed = []
+
+    async def record_refresh():
+        refreshed.append(True)
+
+    adapter.refresh_remote_snapshot = record_refresh
 
     adapter._poll_redis_messages = AsyncMock()
     adapter._heartbeat_loop = AsyncMock()
@@ -34,6 +39,6 @@ async def test_startup_refreshes_remote_snapshot():
     await adapter.start()
     await adapter._connection_task
 
-    adapter.refresh_remote_snapshot.assert_awaited_once()
+    assert refreshed == [True]
 
     await adapter.stop()

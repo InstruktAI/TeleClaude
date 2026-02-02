@@ -1,5 +1,7 @@
 """Unit tests for config.py - TrustedDir parsing and ComputerConfig methods."""
 
+import pytest
+
 from teleclaude.config import ComputerConfig, TrustedDir, _parse_trusted_dirs
 
 
@@ -10,11 +12,8 @@ class TestParseTrustedDirs:
         """Old string-only format is rejected."""
         raw_dirs = ["/home/user/projects", "/tmp/workspace", "/var/data"]
 
-        try:
+        with pytest.raises(ValueError, match="Invalid trusted_dirs entry type"):
             _parse_trusted_dirs(raw_dirs)
-            assert False, "Should have raised ValueError"
-        except ValueError as e:
-            assert "Invalid trusted_dirs entry type" in str(e)
 
     def test_parse_new_format_dicts(self):
         """Test parsing new format (list of dicts) works correctly."""
@@ -55,11 +54,8 @@ class TestParseTrustedDirs:
             {"name": "new", "desc": "new format", "path": "/home/user/new"},
         ]
 
-        try:
+        with pytest.raises(ValueError, match="Invalid trusted_dirs entry type"):
             _parse_trusted_dirs(raw_dirs)
-            assert False, "Should have raised ValueError"
-        except ValueError as e:
-            assert "Invalid trusted_dirs entry type" in str(e)
 
     def test_parse_empty_list(self):
         """Test parsing empty list returns empty list."""
@@ -70,11 +66,8 @@ class TestParseTrustedDirs:
         """Test parsing invalid entry type raises ValueError."""
         raw_dirs = [123, 456]  # Invalid: numbers instead of strings or dicts
 
-        try:
+        with pytest.raises(ValueError, match="Invalid trusted_dirs entry type"):
             _parse_trusted_dirs(raw_dirs)
-            assert False, "Should have raised ValueError"
-        except ValueError as e:
-            assert "Invalid trusted_dirs entry type" in str(e)
 
 
 class TestGetAllTrustedDirs:

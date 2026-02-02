@@ -55,7 +55,10 @@ class TestWorktreePreparationIntegration:
             worktree_path = tmp_path / "trees" / slug
             worktree_path.mkdir(parents=True)
             # No Makefile, no package.json — should just return
-            _prepare_worktree(str(tmp_path), slug)
+            with patch("teleclaude.core.next_machine.core.subprocess.run") as mock_run:
+                result = _prepare_worktree(str(tmp_path), slug)
+            assert result is None
+            mock_run.assert_not_called()
 
 
 class TestInstallInitGuards:
@@ -126,7 +129,9 @@ echo "NOT_A_WORKTREE"
                 check=False,
             )
 
-            # From main repo, should not detect worktree
-            # (unless this test itself is running in a worktree,
-            # which would be an acceptable false positive)
-            assert result.returncode in [0, 1]  # Either way is valid for this test
+            if result.returncode == 0:
+                assert "NOT_A_WORKTREE" in result.stdout
+            elif result.returncode == 1:
+                assert "WORKTREE_DETECTED" in result.stdout
+            else:
+                raise AssertionError(f"Unexpected return code: {result.returncode}")

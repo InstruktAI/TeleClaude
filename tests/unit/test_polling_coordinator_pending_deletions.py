@@ -79,7 +79,6 @@ async def test_polling_does_not_clear_pending_deletions():
     # CRITICAL ASSERTION: clear_pending_deletions should NOT have been called
     # The finally block should not touch deletion tracking; that's handled by
     # _pre_handle_user_input on the next user message.
-    db.clear_pending_deletions.assert_not_called()
+    assert db.clear_pending_deletions.call_args is None
 
     # update_ux_state may be called for notification flags, etc.
-    assert db.update_ux_state.call_count >= 0

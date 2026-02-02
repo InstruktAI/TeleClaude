@@ -16,7 +16,7 @@ import frontmatter
 import yaml
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import TYPE_SUFFIX as _TYPE_SUFFIX
+from teleclaude.constants import TYPE_SUFFIX
 from teleclaude.snippet_validation import load_domains  # noqa: F401 — re-exported for callers
 
 __all__ = ["load_domains"]
@@ -61,10 +61,10 @@ class IndexPayload(TypedDict):
 
 def _normalize_title(file_path: Path, content: str, declared_type: str | None) -> str:
     """Ensure H1 title has the correct type suffix (e.g. '— Policy')."""
-    suffix = _TYPE_SUFFIX.get((declared_type or "").lower())
+    suffix = TYPE_SUFFIX.get((declared_type or "").lower())
     if not suffix:
         inferred = _infer_type_from_path(file_path)
-        suffix = _TYPE_SUFFIX.get(inferred) if inferred else None
+        suffix = TYPE_SUFFIX.get(inferred) if inferred else None
     if not suffix:
         return content
     lines = content.splitlines()
@@ -88,7 +88,7 @@ def _infer_type_from_path(file_path: Path) -> str | None:
     if baseline_idx + 1 >= len(parts):
         return None
     folder = parts[baseline_idx + 1]
-    return folder if folder in _TYPE_SUFFIX else None
+    return folder if folder in TYPE_SUFFIX else None
 
 
 def normalize_titles(snippets_root: Path) -> None:

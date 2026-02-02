@@ -112,22 +112,31 @@ def test_get_sessions_filters_by_computer():
 def test_update_computer_notifies_subscribers():
     """Test update_computer() notifies subscribers."""
     cache = DaemonCache()
-    callback = MagicMock()
-    callback.__name__ = "test_callback"  # Add __name__ for logger
-    cache.subscribe(callback)
+    events = []
+
+    def record_event(event, payload):
+        events.append((event, payload))
+
+    record_event.__name__ = "test_callback"
+    cache.subscribe(record_event)
 
     computer = ComputerInfo(name="test", status="online")
     cache.update_computer(computer)
 
-    callback.assert_called_once_with("computer_updated", computer)
+    assert events == [("computer_updated", computer)]
+    assert cache.get_computers() == [computer]
 
 
 def test_update_session_notifies_subscribers():
     """Test update_session() notifies subscribers."""
     cache = DaemonCache()
-    callback = MagicMock()
-    callback.__name__ = "test_callback"
-    cache.subscribe(callback)
+    events = []
+
+    def record_event(event, payload):
+        events.append((event, payload))
+
+    record_event.__name__ = "test_callback"
+    cache.subscribe(record_event)
 
     session = SessionSummary(
         session_id="sess-123",
@@ -141,20 +150,26 @@ def test_update_session_notifies_subscribers():
     )
     cache.update_session(session)
 
-    callback.assert_called_once_with("session_started", session)
+    assert events == [("session_started", session)]
+    assert cache.get_sessions() == [session]
 
     # Update same session again should emit session_updated
-    callback.reset_mock()
+    events.clear()
     cache.update_session(session)
-    callback.assert_called_once_with("session_updated", session)
+    assert events == [("session_updated", session)]
+    assert cache.get_sessions() == [session]
 
 
 def test_remove_session_notifies_subscribers():
     """Test remove_session() notifies subscribers."""
     cache = DaemonCache()
-    callback = MagicMock()
-    callback.__name__ = "test_callback"
-    cache.subscribe(callback)
+    events = []
+
+    def record_event(event, payload):
+        events.append((event, payload))
+
+    record_event.__name__ = "test_callback"
+    cache.subscribe(record_event)
 
     # Add then remove session
     session = SessionSummary(
@@ -168,19 +183,24 @@ def test_remove_session_notifies_subscribers():
         status="active",
     )
     cache.update_session(session)
-    callback.reset_mock()  # Clear the update notification
+    events.clear()  # Clear the update notification
 
     cache.remove_session("sess-123")
 
-    callback.assert_called_once_with("session_closed", {"session_id": "sess-123"})
+    assert events == [("session_closed", {"session_id": "sess-123"})]
+    assert cache.get_sessions() == []
 
 
 def test_apply_projects_snapshot_dedupes_notifications():
     """Apply snapshot should notify only on changes."""
     cache = DaemonCache()
-    callback = MagicMock()
-    callback.__name__ = "test_callback"
-    cache.subscribe(callback)
+    events = []
+
+    def record_event(event, payload):
+        events.append((event, payload))
+
+    record_event.__name__ = "test_callback"
+    cache.subscribe(record_event)
 
     projects = [
         ProjectInfo(name="Proj", path="/tmp/proj", description="Test"),
@@ -188,42 +208,55 @@ def test_apply_projects_snapshot_dedupes_notifications():
 
     changed = cache.apply_projects_snapshot("remote", projects)
     assert changed is True
-    callback.assert_called_once_with("projects_snapshot", {"computer": "remote", "version": 1})
+    assert events == [("projects_snapshot", {"computer": "remote", "version": 1})]
 
-    callback.reset_mock()
+    events.clear()
     changed = cache.apply_projects_snapshot("remote", projects)
     assert changed is False
-    callback.assert_not_called()
+    assert events == []
     assert "sess-123" not in cache._sessions
 
 
 def test_set_projects_notifies_subscribers():
     """Test set_projects() notifies subscribers."""
     cache = DaemonCache()
-    callback = MagicMock()
-    callback.__name__ = "test_callback"
-    cache.subscribe(callback)
+    events = []
+
+    def record_event(event, payload):
+        events.append((event, payload))
+
+    record_event.__name__ = "test_callback"
+    cache.subscribe(record_event)
 
     projects = [ProjectInfo(name="proj1", path="/path1", description="Test")]
     cache.set_projects("local", projects)
 
-    callback.assert_called_once_with("projects_updated", {"computer": "local", "projects": projects})
+    assert events == [("projects_updated", {"computer": "local", "projects": projects})]
+    cached_projects = cache.get_projects("local")
+    assert len(cached_projects) == 1
+    assert cached_projects[0].name == "proj1"
+    assert cached_projects[0].path == "/path1"
+    assert cached_projects[0].computer == "local"
 
 
 def test_set_todos_notifies_subscribers():
     """Test set_todos() notifies subscribers."""
     cache = DaemonCache()
-    callback = MagicMock()
-    callback.__name__ = "test_callback"
-    cache.subscribe(callback)
+    events = []
+
+    def record_event(event, payload):
+        events.append((event, payload))
+
+    record_event.__name__ = "test_callback"
+    cache.subscribe(record_event)
 
     todos = [TodoInfo(slug="todo-1", status="pending", description="Test")]
     cache.set_todos("local", "/path", todos)
 
-    callback.assert_called_once_with(
-        "todos_updated",
-        {"computer": "local", "project_path": "/path", "todos": todos},
-    )
+    assert events == [
+        ("todos_updated", {"computer": "local", "project_path": "/path", "todos": todos}),
+    ]
+    assert cache.get_todos("local", "/path") == todos
 
 
 def test_set_interest_per_computer():
@@ -250,12 +283,21 @@ def test_notify_handles_callback_exception():
     cache = DaemonCache()
 
     # Add failing callback
-    failing_callback = MagicMock(side_effect=Exception("Callback error"))
+    failed = []
+
+    def failing_callback(_event, _payload):
+        failed.append(True)
+        raise Exception("Callback error")
+
     failing_callback.__name__ = "failing_callback"
     cache.subscribe(failing_callback)
 
     # Add successful callback
-    success_callback = MagicMock()
+    succeeded = []
+
+    def success_callback(_event, _payload):
+        succeeded.append(True)
+
     success_callback.__name__ = "success_callback"
     cache.subscribe(success_callback)
 
@@ -263,8 +305,8 @@ def test_notify_handles_callback_exception():
     cache.update_computer(ComputerInfo(name="test", status="online"))
 
     # Both callbacks should have been called despite one failing
-    assert failing_callback.call_count == 1
-    assert success_callback.call_count == 1
+    assert failed == [True]
+    assert succeeded == [True]
 
 
 def test_get_projects_filters_stale_entries():

@@ -50,39 +50,54 @@ class TuiController:
         """Update session catalog used for layout derivation."""
         self._sessions = sessions
 
+    def _layout_inputs(self) -> tuple[object, ...]:
+        preview = self.state.sessions.preview
+        preview_key = (preview.session_id, preview.show_child) if preview else None
+        sticky_key = tuple((s.session_id, s.show_child) for s in self.state.sessions.sticky_sessions)
+        prep_preview = self.state.preparation.preview
+        prep_preview_key = (prep_preview.doc_id, prep_preview.command, prep_preview.title) if prep_preview else None
+        prep_sticky_key = tuple((d.doc_id, d.command, d.title) for d in self.state.preparation.sticky_previews)
+        return (preview_key, sticky_key, prep_preview_key, prep_sticky_key)
+
+    def _sticky_inputs(self) -> tuple[object, ...]:
+        sticky_key = tuple((s.session_id, s.show_child) for s in self.state.sessions.sticky_sessions)
+        prep_sticky_key = tuple((d.doc_id, d.command, d.title) for d in self.state.preparation.sticky_previews)
+        return (sticky_key, prep_sticky_key)
+
     def dispatch(self, intent: Intent, *, defer_layout: bool = False) -> None:
         """Apply intent to state and update layout if needed."""
-        if intent.type is IntentType.SYNC_SESSIONS:
-            before_preview = self.state.sessions.preview
-            before_sticky = list(self.state.sessions.sticky_sessions)
-            reduce_state(self.state, intent)
-            changed = (
-                self.state.sessions.preview != before_preview or self.state.sessions.sticky_sessions != before_sticky
-            )
-            if changed:
-                if defer_layout:
-                    self._layout_pending = True
-                else:
-                    self.apply_layout(focus=False)
-                # Only persist if sticky sessions changed (not preview — preview
-                # wipes from SYNC are cleanup, not user intent).
-                if self.state.sessions.sticky_sessions != before_sticky:
-                    save_sticky_state(self.state)
-            return
-        reduce_state(self.state, intent)
-        if intent.type in {
+        _ = defer_layout
+        layout_intents = {
+            IntentType.SYNC_SESSIONS,
             IntentType.SET_PREVIEW,
             IntentType.CLEAR_PREVIEW,
             IntentType.TOGGLE_STICKY,
             IntentType.SET_PREP_PREVIEW,
             IntentType.CLEAR_PREP_PREVIEW,
             IntentType.TOGGLE_PREP_STICKY,
-        }:
-            if defer_layout:
-                self._layout_pending = True
-            else:
-                self.apply_layout(focus=False)
-            save_sticky_state(self.state)
+        }
+        before_layout = self._layout_inputs() if intent.type in layout_intents else None
+        before_sticky = self._sticky_inputs() if intent.type in layout_intents else None
+
+        if intent.type is IntentType.SYNC_SESSIONS:
+            reduce_state(self.state, intent)
+            after_layout = self._layout_inputs()
+            if after_layout == before_layout:
+                return
+            self._layout_pending = True
+            # Only persist if sticky sessions changed (not preview — preview
+            # wipes from SYNC are cleanup, not user intent).
+            if self._sticky_inputs() != before_sticky:
+                save_sticky_state(self.state)
+            return
+        reduce_state(self.state, intent)
+        if intent.type in layout_intents:
+            after_layout = self._layout_inputs()
+            if after_layout == before_layout:
+                return
+            self._layout_pending = True
+            if self._sticky_inputs() != before_sticky:
+                save_sticky_state(self.state)
 
     def apply_layout(self, *, focus: bool = False) -> None:
         """Apply pane layout derived from current state."""

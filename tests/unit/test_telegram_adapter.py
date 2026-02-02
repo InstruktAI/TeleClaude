@@ -127,7 +127,7 @@ class TestSimpleCommandHandlers:
 
             await telegram_adapter._handle_simple_command(update, context, "cancel")
 
-        assert mock_commands.keys.call_count == 1
+        assert mock_commands.keys.await_count == 1
         args, _kwargs = mock_commands.keys.call_args
         cmd = args[0]
         assert isinstance(cmd, KeysCommand)
@@ -164,9 +164,19 @@ class TestMessaging:
             metadata = MessageMetadata(parse_mode="MarkdownV2")
             result = await telegram_adapter.edit_message(mock_session, "456", "new text", metadata=metadata)
 
+            calls = []
+
+            async def record_edit_message_text(**kwargs):
+                calls.append(kwargs)
+                return True
+
+            telegram_adapter.app.bot.edit_message_text = record_edit_message_text
+
+            result = await telegram_adapter.edit_message(mock_session, "456", "new text", metadata=metadata)
+
             assert result is True
-            telegram_adapter.app.bot.edit_message_text.assert_called_once()
-            call_kwargs = telegram_adapter.app.bot.edit_message_text.call_args.kwargs
+            assert len(calls) == 1
+            call_kwargs = calls[0]
             assert call_kwargs["parse_mode"] == "MarkdownV2"
 
     @pytest.mark.asyncio
@@ -192,10 +202,18 @@ class TestMessaging:
         with patch("teleclaude.adapters.telegram_adapter.db") as mock_sm:
             mock_sm.get_session = AsyncMock(return_value=mock_session)
 
+            calls = []
+
+            async def record_delete_message(chat_id, message_id):
+                calls.append((chat_id, message_id))
+                return True
+
+            telegram_adapter.app.bot.delete_message = record_delete_message
+
             result = await telegram_adapter.delete_message("session-123", "456")
 
             assert result is True
-            telegram_adapter.app.bot.delete_message.assert_called_once()
+            assert len(calls) == 1
 
 
 class TestChannelManagement:
@@ -230,9 +248,19 @@ class TestChannelManagement:
             mock_db.update_session = AsyncMock()
             result = await telegram_adapter.create_channel(mock_session, "Test Topic", ChannelMetadata())
 
-        assert result == "123"
-        telegram_adapter.app.bot.create_forum_topic.assert_called_once()
-        mock_wait.assert_not_awaited()
+            calls = []
+
+            async def record_create_forum_topic(*args, **kwargs):
+                calls.append((args, kwargs))
+                return mock_topic
+
+            telegram_adapter.app.bot.create_forum_topic = record_create_forum_topic
+
+            result = await telegram_adapter.create_channel(mock_session, "Test Topic", ChannelMetadata())
+
+            assert result == "123"
+            assert len(calls) == 0
+            mock_wait.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_wait_for_topic_ready_timeout_is_soft(self, telegram_adapter, monkeypatch):
@@ -304,10 +332,18 @@ class TestChannelManagement:
             title="Test",
         )
 
+        calls = []
+
+        async def record_delete_forum_topic(*args, **kwargs):
+            calls.append((args, kwargs))
+            return True
+
+        telegram_adapter.app.bot.delete_forum_topic = record_delete_forum_topic
+
         result = await telegram_adapter.delete_channel(mock_session)
 
         assert result is True
-        telegram_adapter.app.bot.delete_forum_topic.assert_called_once()
+        assert len(calls) == 1
 
 
 class TestRateLimitHandling:
@@ -335,10 +371,20 @@ class TestRateLimitHandling:
         # First call raises rate limit, second succeeds
         mock_bot.edit_message_text = AsyncMock(side_effect=[RetryAfter(retry_after=0.01), None])
 
+        calls = []
+
+        async def record_edit_message_text(*args, **kwargs):
+            calls.append((args, kwargs))
+            if len(calls) == 1:
+                raise RetryAfter(retry_after=0.01)
+            return None
+
+        mock_bot.edit_message_text = record_edit_message_text
+
         result = await telegram_adapter.edit_message(mock_session, "789", "updated text")
 
         assert result is True
-        assert mock_bot.edit_message_text.call_count == 2
+        assert len(calls) == 2
 
     @pytest.mark.asyncio
     async def test_edit_message_rate_limit_retries_and_fails(self, telegram_adapter):
@@ -362,12 +408,20 @@ class TestRateLimitHandling:
         # Always raises rate limit
         mock_bot.edit_message_text = AsyncMock(side_effect=RetryAfter(retry_after=0.01))
 
+        calls = []
+
+        async def record_edit_message_text(*args, **kwargs):
+            calls.append((args, kwargs))
+            raise RetryAfter(retry_after=0.01)
+
+        mock_bot.edit_message_text = record_edit_message_text
+
         result = await telegram_adapter.edit_message(mock_session, "789", "updated text")
 
         # Rate-limited edits return True (to preserve output_message_id for retry on next update)
         assert result is True
         # Should attempt 3 times (initial + 2 retries via @command_retry)
-        assert mock_bot.edit_message_text.call_count == 3
+        assert len(calls) == 3
 
 
 class TestPlatformParameters:
@@ -411,10 +465,18 @@ class TestReplyMarkup:
             mock_sm.get_session = AsyncMock(return_value=mock_session)
 
             metadata = MessageMetadata(reply_markup=markup)  # type: ignore[arg-type]  # reply_markup is InlineKeyboardMarkup, testing with dict
+            calls = []
+
+            async def record_edit_message_text(**kwargs):
+                calls.append(kwargs)
+                return True
+
+            telegram_adapter.app.bot.edit_message_text = record_edit_message_text
+
             result = await telegram_adapter.edit_message(mock_session, "456", "text", metadata=metadata)
 
             assert result is True
-            telegram_adapter.app.bot.edit_message_text.assert_called_once()
+            assert len(calls) == 1
 
 
 class TestMessageNotModified:
@@ -447,11 +509,19 @@ class TestMessageNotModified:
             side_effect=BadRequest("Message is not modified: specified new message content is equal to current")
         )
 
+        calls = []
+
+        async def record_edit_message_text(*args, **kwargs):
+            calls.append((args, kwargs))
+            raise BadRequest("Message is not modified: specified new message content is equal to current")
+
+        mock_bot.edit_message_text = record_edit_message_text
+
         result = await telegram_adapter.edit_message(mock_session, "789", "same text")
 
         # Should return True (message exists, just unchanged)
         assert result is True
-        assert mock_bot.edit_message_text.call_count == 1  # No retry needed
+        assert len(calls) == 1  # No retry needed
 
     @pytest.mark.asyncio
     async def test_edit_message_not_found_returns_false(self, telegram_adapter):
@@ -478,11 +548,19 @@ class TestMessageNotModified:
         # Raise "Message to edit not found" error
         mock_bot.edit_message_text = AsyncMock(side_effect=BadRequest("Message to edit not found"))
 
+        calls = []
+
+        async def record_edit_message_text(*args, **kwargs):
+            calls.append((args, kwargs))
+            raise BadRequest("Message to edit not found")
+
+        mock_bot.edit_message_text = record_edit_message_text
+
         result = await telegram_adapter.edit_message(mock_session, "789", "new text")
 
         # Should return False (message was deleted)
         assert result is False
-        assert mock_bot.edit_message_text.call_count == 1  # No retry for BadRequest
+        assert len(calls) == 1  # No retry for BadRequest
 
 
 class TestTopicOwnership:

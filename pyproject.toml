@@ -45,6 +45,8 @@ dependencies = [
     "sqlmodel>=0.0.16",
     "greenlet>=3.3.0",
     "elevenlabs>=2.31.0",
+    "watchdog>=4.0.0",
+    "pathspec>=0.12.0",
 ]
 
 [project.optional-dependencies]
@@ -91,6 +93,10 @@ select = [
 ]
 ignore = [
   "E501", # line-too-long (formatter handles this in practice)
+]
+extend-select = [
+  "F403", # import * used; unable to detect undefined names
+  "F405", # name may be undefined, or defined from star imports
 ]
 
 [tool.ruff.lint.per-file-ignores]

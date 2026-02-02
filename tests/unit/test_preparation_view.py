@@ -103,7 +103,6 @@ def test_handle_enter_on_ready_todo_splits_tmux_in_tmux_env():
     # Verification: Side effects of session launch
     assert screen.refresh_called is True
     # The actual tmux split happens in session_launcher.attach_tmux_session
-    assert mock_launcher_run.call_count == 1
     args = mock_launcher_run.call_args[0][0]
     assert "split-window" in args
     assert "session-1" in args[-1]

@@ -1,7 +1,7 @@
 """Unit tests for API server endpoints."""
 
-# type: ignore[explicit-any, unused-ignore] - test uses mocked adapters and dynamic types
 import uuid
+from typing import TypedDict
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,6 +11,10 @@ from teleclaude.api_server import APIServer
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
 from teleclaude.core.origins import InputOrigin
 from teleclaude.transport.redis_transport import RedisTransport
+
+
+class CacheUpdateEvent(TypedDict):
+    computer: str | None
 
 
 @pytest.fixture
@@ -58,7 +62,9 @@ def api_server(mock_adapter_client, mock_cache, mock_command_service):  # type: 
 @pytest.fixture
 def test_client(api_server):  # type: ignore[explicit-any, unused-ignore]
     """Create TestClient for API server."""
-    return TestClient(api_server.app)
+    client = TestClient(api_server.app)
+    assert client.app is api_server.app
+    return client
 
 
 def test_health_endpoint(test_client):  # type: ignore[explicit-any, unused-ignore]
@@ -106,6 +112,14 @@ def test_list_sessions_success(test_client, mock_cache):  # type: ignore[explici
             ),
         ]
 
+        calls = []
+
+        async def record_list_sessions(*args, **kwargs):
+            calls.append((args, kwargs))
+            return mock_handler.return_value
+
+        mock_handler.side_effect = record_list_sessions
+
         response = test_client.get("/sessions")
         assert response.status_code == 200
         data = response.json()
@@ -116,7 +130,7 @@ def test_list_sessions_success(test_client, mock_cache):  # type: ignore[explici
         # Second session is from cache
         assert data[1]["session_id"] == "sess-2"
         assert data[1]["computer"] == "remote"
-        mock_handler.assert_called_once()
+        assert len(calls) == 1
 
 
 def test_list_sessions_with_computer_filter(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
@@ -138,7 +152,7 @@ def test_list_sessions_with_computer_filter(test_client, mock_cache):  # type: i
         response = test_client.get("/sessions?computer=local")
         assert response.status_code == 200
         # Verify cache was queried with computer filter
-        mock_cache.get_sessions.assert_called_once_with("local")
+        assert mock_cache.get_sessions.call_args == (("local",), {})
 
 
 def test_list_sessions_without_cache(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -172,12 +186,19 @@ async def test_refresh_remote_cache_notifies_projects(api_server, mock_adapter_c
     redis_adapter = MagicMock(spec=RedisTransport)
     redis_adapter.refresh_remote_snapshot = AsyncMock()
     mock_adapter_client.adapters = {"redis": redis_adapter}
-    api_server._on_cache_change = MagicMock()
+    events: list[tuple[str, CacheUpdateEvent]] = []
+
+    def record_event(event: str, data: CacheUpdateEvent) -> None:
+        events.append((event, data))
+
+    api_server._on_cache_change = record_event
 
     await api_server._refresh_remote_cache_and_notify()
 
-    redis_adapter.refresh_remote_snapshot.assert_awaited_once()
-    api_server._on_cache_change.assert_called_once_with("projects_updated", {"computer": None})
+    assert len(events) == 1
+    event, data = events[0]
+    assert event == "projects_updated"
+    assert data == {"computer": None}
 
 
 def test_create_session_success(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
@@ -401,13 +422,21 @@ def test_list_projects_success(test_client, mock_cache):  # type: ignore[explici
             ProjectInfo(name="project2", path="/path2", description="Remote project", computer="RemoteComputer"),
         ]
 
+        calls = []
+
+        async def record_list_projects(*args, **kwargs):
+            calls.append((args, kwargs))
+            return mock_handler.return_value
+
+        mock_handler.side_effect = record_list_projects
+
         response = test_client.get("/projects")
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 2
         assert data[0]["name"] == "project1"
         assert data[0]["description"] == "Local project"
-        mock_handler.assert_called_once()
+        assert len(calls) == 1
 
 
 def test_list_projects_with_computer_filter(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
@@ -419,7 +448,7 @@ def test_list_projects_with_computer_filter(test_client, mock_cache):  # type: i
         response = test_client.get("/projects?computer=local")
         assert response.status_code == 200
         # Verify cache was queried with computer filter
-        mock_cache.get_projects.assert_called_once_with("local", include_stale=True)
+        assert mock_cache.get_projects.call_args == (("local",), {"include_stale": True})
 
 
 def test_list_projects_without_cache(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -487,7 +516,10 @@ def test_list_todos_all_cached(test_client, mock_cache):  # type: ignore[explici
     assert data[0]["slug"] == "remote-1"
     assert data[0]["computer"] == "remote"
     assert data[0]["project_path"] == "/remote/path"
-    mock_cache.get_todo_entries.assert_called_once_with(computer=None, project_path=None, include_stale=True)
+    assert mock_cache.get_todo_entries.call_args == (
+        (),
+        {"computer": None, "project_path": None, "include_stale": True},
+    )
 
 
 def test_list_todos_project_filter(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
@@ -508,10 +540,9 @@ def test_list_todos_project_filter(test_client, mock_cache):  # type: ignore[exp
     data = response.json()
     assert len(data) == 1
     assert data[0]["slug"] == "remote-1"
-    mock_cache.get_todo_entries.assert_called_once_with(
-        computer="remote",
-        project_path="/remote/path",
-        include_stale=True,
+    assert mock_cache.get_todo_entries.call_args == (
+        (),
+        {"computer": "remote", "project_path": "/remote/path", "include_stale": True},
     )
 
 
@@ -563,7 +594,6 @@ async def test_handle_session_started_updates_cache(api_server, mock_cache):
 
         await api_server._handle_session_started_event("session_started", context)
 
-        mock_cache.update_session.assert_called_once()
         summary = mock_cache.update_session.call_args[0][0]
         assert summary.session_id == "new-sess"
         assert summary.title == "New Session"
@@ -589,38 +619,57 @@ async def test_handle_session_updated_updates_cache(api_server, mock_cache):
 
         await api_server._handle_session_updated_event("session_updated", context)
 
-        mock_cache.update_session.assert_called_once()
         summary = mock_cache.update_session.call_args[0][0]
         assert summary.session_id == "sess-1"
         assert summary.title == "Updated"
 
 
 @pytest.mark.asyncio
-async def test_handle_session_closed_updates_cache(api_server, mock_cache):
-    """Test _handle_session_closed_event updates cache."""
+async def test_handle_session_closed_updates_cache(mock_adapter_client):
+    """Test _handle_session_closed_event removes session from cache."""
+    from teleclaude.core.cache import DaemonCache
     from teleclaude.core.events import SessionLifecycleContext
+    from teleclaude.core.models import SessionSummary
 
+    cache = DaemonCache()
+    api_server = APIServer(client=mock_adapter_client, cache=cache)
     context = SessionLifecycleContext(session_id="sess-1")
+
+    cache.update_session(
+        SessionSummary(
+            session_id="sess-1",
+            title="Test Session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            project_path="~",
+            thinking_mode="slow",
+            active_agent=None,
+            status="active",
+        )
+    )
+    assert cache.get_sessions()
 
     await api_server._handle_session_closed_event("session_closed", context)
 
-    mock_cache.remove_session.assert_called_once_with("sess-1")
+    assert cache.get_sessions() == []
 
 
 def test_api_server_subscriptions(mock_adapter_client, mock_cache):
-    """Test APIServer subscribes to correct events using constants."""
+    """Test APIServer registers event handlers for session lifecycle events."""
+    from teleclaude.core.event_bus import event_bus
     from teleclaude.core.events import TeleClaudeEvents
 
-    with (
-        patch("teleclaude.api_server.event_bus.subscribe") as mock_subscribe,
-        patch("teleclaude.api_server.get_command_service", return_value=MagicMock()),
-    ):
-        # Re-initialize to check calls
-        APIServer(client=mock_adapter_client, cache=mock_cache)
+    event_bus.clear()
+    with patch("teleclaude.api_server.get_command_service", return_value=MagicMock()):
+        api = APIServer(client=mock_adapter_client, cache=mock_cache)
 
-        mock_subscribe.assert_any_call(TeleClaudeEvents.SESSION_UPDATED, ANY)
-        mock_subscribe.assert_any_call(TeleClaudeEvents.SESSION_STARTED, ANY)
-        mock_subscribe.assert_any_call(TeleClaudeEvents.SESSION_CLOSED, ANY)
+    handlers = event_bus._handlers
+    assert TeleClaudeEvents.SESSION_UPDATED in handlers
+    assert TeleClaudeEvents.SESSION_STARTED in handlers
+    assert TeleClaudeEvents.SESSION_CLOSED in handlers
+
+    assert api._handle_session_updated_event in handlers[TeleClaudeEvents.SESSION_UPDATED]
+    assert api._handle_session_started_event in handlers[TeleClaudeEvents.SESSION_STARTED]
+    assert api._handle_session_closed_event in handlers[TeleClaudeEvents.SESSION_CLOSED]
 
 
 # ==================== Error Path Tests ====================
@@ -668,7 +717,7 @@ def test_send_voice_success(test_client, mock_command_service):  # type: ignore[
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    mock_command_service.handle_voice.assert_called_once()
+    assert mock_command_service.handle_voice.await_count == 1
 
 
 def test_send_file_success(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
@@ -679,7 +728,7 @@ def test_send_file_success(test_client, mock_command_service):  # type: ignore[e
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    mock_command_service.handle_file.assert_called_once()
+    assert mock_command_service.handle_file.await_count == 1
 
 
 def test_list_computers_handler_exception(test_client):  # type: ignore[explicit-any, unused-ignore]

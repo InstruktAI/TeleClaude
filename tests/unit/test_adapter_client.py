@@ -36,8 +36,16 @@ class DummyTelegramAdapter(UiAdapter):
         super().__init__(adapter_client)
         self._error = error
         self._error_sequence = list(error_sequence) if error_sequence else []
+        self.sent_messages: list[str] = []
+        self.deleted_channels: list[str] = []
         if send_message_return is not None:
-            self.send_message = AsyncMock(return_value=send_message_return)  # type: ignore[assignment]
+
+            async def record_send_message(_session, _text, *, metadata=None) -> str:  # type: ignore[override]
+                _ = metadata
+                self.sent_messages.append(_text)
+                return send_message_return
+
+            self.send_message = record_send_message  # type: ignore[assignment]
 
     async def start(self) -> None:
         return None
@@ -59,6 +67,7 @@ class DummyTelegramAdapter(UiAdapter):
         return True
 
     async def delete_channel(self, _session) -> bool:
+        self.deleted_channels.append(_session.session_id)
         return True
 
     async def send_message(self, _session, _text, *, metadata=None) -> str:
@@ -579,14 +588,21 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
         ),
     )
 
+    sent_sessions: list[Session] = []
+
+    async def record_send_output_update(sent_session: Session, *_args, **_kwargs):
+        sent_sessions.append(sent_session)
+        return "msg"
+
     with (
         patch.object(telegram, "ensure_channel", new=AsyncMock(return_value=updated_session)),
         patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()),
     ):
+        telegram.send_output_update = record_send_output_update  # type: ignore[assignment]
         await client.send_output_update(session, "output", 0.0, 0.0)
 
-    telegram.send_output_update.assert_called_once()
-    sent_session = telegram.send_output_update.call_args[0][0]
+    assert len(sent_sessions) == 1
+    sent_session = sent_sessions[0]
     assert sent_session.adapter_metadata.telegram
     assert sent_session.adapter_metadata.telegram.topic_id == 999
 
@@ -618,7 +634,7 @@ async def test_send_message_broadcasts_to_ui_adapters():
         message_id = await client.send_message(session, "hello")
 
     assert message_id == "tg-msg-1"
-    assert telegram_adapter.send_message.call_count == 1
+    assert telegram_adapter.sent_messages == ["hello"]
 
 
 @pytest.mark.asyncio
@@ -642,7 +658,7 @@ async def test_send_message_ephemeral_tracks_for_deletion():
         # Default ephemeral=True should track for deletion
         await client.send_message(session, "hello")
 
-    assert mock_db.add_pending_deletion.call_count == 1
+    assert mock_db.add_pending_deletion.await_count == 1
     _, kwargs = mock_db.add_pending_deletion.call_args
     assert kwargs == {"deletion_type": "feedback"}
     assert mock_db.add_pending_deletion.call_args.args == ("session-790", "tg-msg-2")
@@ -669,7 +685,7 @@ async def test_send_message_persistent_not_tracked():
         # ephemeral=False should NOT track for deletion
         await client.send_message(session, "hello", ephemeral=False)
 
-    assert mock_db.add_pending_deletion.call_count == 0
+    assert mock_db.add_pending_deletion.await_count == 0
 
 
 @pytest.mark.asyncio
@@ -694,8 +710,8 @@ async def test_send_message_notice_broadcasts_when_missing_origin():
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id == "tg-feedback"
-    assert telegram_adapter.send_message.call_count == 1
-    assert slack_adapter.send_message.call_count == 1
+    assert telegram_adapter.sent_messages == ["hello"]
+    assert slack_adapter.sent_messages == ["hello"]
 
 
 @pytest.mark.asyncio
@@ -720,8 +736,8 @@ async def test_send_message_notice_targets_last_input_origin():
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id == "slack-feedback"
-    assert telegram_adapter.send_message.call_count == 0
-    assert slack_adapter.send_message.call_count == 1
+    assert telegram_adapter.sent_messages == []
+    assert slack_adapter.sent_messages == ["hello"]
 
 
 @pytest.mark.asyncio
@@ -744,7 +760,7 @@ async def test_send_message_notice_api_origin_routes_to_ui():
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id == "tg-feedback"
-    assert telegram_adapter.send_message.call_count == 1
+    assert telegram_adapter.sent_messages == ["hello"]
 
 
 @pytest.mark.asyncio
@@ -768,7 +784,7 @@ async def test_send_message_notice_skipped_for_ai_to_ai():
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id is None
-    assert telegram_adapter.send_message.call_count == 0
+    assert telegram_adapter.sent_messages == []
 
 
 @pytest.mark.asyncio
@@ -778,8 +794,6 @@ async def test_delete_channel_always_broadcasts():
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-msg")
     slack_adapter = DummyTelegramAdapter(client, send_message_return="slack-msg")
-    telegram_adapter.delete_channel = AsyncMock(return_value=True)
-    slack_adapter.delete_channel = AsyncMock(return_value=True)
 
     client.register_adapter("telegram", telegram_adapter)
     client.register_adapter("slack", slack_adapter)
@@ -795,5 +809,5 @@ async def test_delete_channel_always_broadcasts():
     ok = await client.delete_channel(session)
 
     assert ok is True
-    assert telegram_adapter.delete_channel.call_count == 1
-    assert slack_adapter.delete_channel.call_count == 1
+    assert telegram_adapter.deleted_channels == [session.session_id]
+    assert slack_adapter.deleted_channels == [session.session_id]

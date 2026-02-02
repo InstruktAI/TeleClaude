@@ -64,7 +64,7 @@ async def test_topic_closed_ignores_new_session() -> None:
     ):
         await handlers._handle_topic_closed(update, None)
 
-    mock_emit.assert_not_called()
+    assert mock_emit.call_args is None
 
 
 @pytest.mark.asyncio
@@ -94,4 +94,4 @@ async def test_topic_closed_handles_naive_created_at() -> None:
     ):
         await handlers._handle_topic_closed(update, None)
 
-    mock_emit.assert_called_once()
+    assert mock_emit.call_args is not None

@@ -45,8 +45,20 @@ def test_protocol_methods_signature():
 @pytest.mark.asyncio
 async def test_protocol_send_request_signature():
     """Test send_request method signature."""
-    mock_adapter = Mock(spec=RemoteExecutionProtocol)
-    mock_adapter.send_request = AsyncMock(return_value="stream_123")
+    calls: list[tuple[str, str, str, dict[str, str]]] = []
+
+    class Adapter:
+        async def send_request(
+            self,
+            computer_name: str,
+            request_id: str,
+            command: str,
+            metadata: dict[str, str],
+        ) -> str:
+            calls.append((computer_name, request_id, command, metadata))
+            return "stream_123"
+
+    mock_adapter = Adapter()
 
     # Should accept these parameters
     result = await mock_adapter.send_request(
@@ -54,22 +66,26 @@ async def test_protocol_send_request_signature():
     )
 
     assert result == "stream_123"
-    mock_adapter.send_request.assert_called_once_with(
-        computer_name="comp1", request_id="req_123", command="ls -la", metadata={"key": "value"}
-    )
+    assert calls == [("comp1", "req_123", "ls -la", {"key": "value"})]
 
 
 @pytest.mark.asyncio
 async def test_protocol_send_response_signature():
     """Test send_response method signature."""
-    mock_adapter = Mock(spec=RemoteExecutionProtocol)
-    mock_adapter.send_response = AsyncMock(return_value="stream_456")
+    calls: list[tuple[str, str]] = []
+
+    class Adapter:
+        async def send_response(self, request_id: str, data: str) -> str:
+            calls.append((request_id, data))
+            return "stream_456"
+
+    mock_adapter = Adapter()
 
     # Should accept these parameters
     result = await mock_adapter.send_response(request_id="req_123", data='{"status": "ok"}')
 
     assert result == "stream_456"
-    mock_adapter.send_response.assert_called_once_with(request_id="req_123", data='{"status": "ok"}')
+    assert calls == [("req_123", '{"status": "ok"}')]
 
 
 def test_protocol_poll_output_stream_signature():

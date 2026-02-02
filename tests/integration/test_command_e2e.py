@@ -46,20 +46,23 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
         SendMessageCommand(session_id=session.session_id, text="any command here", origin=InputOrigin.TELEGRAM.value)
     )
 
-    # Wait for command to execute and polling to send output
-    # Poll loop: 1s initial delay + 3s base update interval
-    await asyncio.sleep(4.5)
+    # Wait for output to be captured and broadcast to the UI adapter
+    output_sent = False
+    for _ in range(90):
+        for call in telegram.send_output_update.call_args_list:
+            if len(call.args) > 1 and "Command executed" in call.args[1]:
+                output_sent = True
+                break
+        if output_sent:
+            break
+        await asyncio.sleep(0.1)
 
     # Verify command was executed in tmux
     output = await tmux_bridge.capture_pane(session.tmux_session_name)
     assert output is not None, "Should have tmux output"
     assert "Command executed" in output, f"Should see mocked command output, got: {output[:300]}"
 
-    # Verify output was sent to Telegram via send_output_update (used by polling coordinator)
-    assert telegram.send_output_update.call_count >= 1, (
-        f"Should have sent output to Telegram via send_output_update. "
-        f"send_output_update calls: {telegram.send_output_update.call_count}"
-    )
+    assert output_sent, "Expected send_output_update to include command output"
 
 
 @pytest.mark.asyncio
@@ -118,19 +121,22 @@ async def test_long_running_command(daemon_with_mocked_telegram):
         # Send input to the interactive process
         await tmux_bridge.send_keys(session.tmux_session_name, "test message")
 
-        # Wait for response and polling to send output to Telegram
-        # Poll loop: 1s initial delay + 3s base update interval
-        await asyncio.sleep(4.5)
+        # Wait for response to be captured and broadcast to the UI adapter
+        output_sent = False
+        for _ in range(90):
+            for call in telegram.send_output_update.call_args_list:
+                if len(call.args) > 1 and "Echo: test message" in call.args[1]:
+                    output_sent = True
+                    break
+            if output_sent:
+                break
+            await asyncio.sleep(0.1)
 
         # Verify terminal has both initial output and response
         output = await tmux_bridge.capture_pane(session.tmux_session_name)
         assert "Echo: test message" in output, f"Should see response to input, got: {output[:500]}"
 
-        # Verify output was sent to Telegram via send_output_update (used by polling coordinator)
-        assert telegram.send_output_update.call_count >= 1, (
-            f"Should have sent output to Telegram via send_output_update. "
-            f"send_output_update calls: {telegram.send_output_update.call_count}"
-        )
+        assert output_sent, "Expected send_output_update to include echo response"
     finally:
         # CRITICAL: Reset mock mode to prevent subsequent tests from running real commands
         daemon.mock_command_mode = "short"

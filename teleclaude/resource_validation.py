@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from teleclaude.constants import TYPE_SUFFIX as _TYPE_SUFFIX  # noqa: E402
+from teleclaude.constants import TYPE_SUFFIX  # noqa: E402
 from teleclaude.snippet_validation import (  # noqa: E402
     expected_snippet_id_for_path,
     load_domains,
@@ -298,7 +298,7 @@ def _infer_type_from_path(file_path: Path) -> str | None:
     if baseline_idx + 1 >= len(parts):
         return None
     folder = parts[baseline_idx + 1]
-    return folder if folder in _TYPE_SUFFIX else None
+    return folder if folder in TYPE_SUFFIX else None
 
 
 def validate_snippet(path: Path, content: str, project_root: Path, *, domains: set[str]) -> None:

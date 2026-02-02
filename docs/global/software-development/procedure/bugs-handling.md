@@ -1,6 +1,5 @@
 ---
-description:
-  Triage bugs, decide quick fixes vs new todos, and track resolution in
+description: Triage bugs, decide quick fixes vs new todos, and track resolution in
   bugs.md.
 id: software-development/procedure/bugs-handling
 scope: domain

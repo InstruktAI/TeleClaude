@@ -276,6 +276,32 @@ def _resolve_or_refresh_session_id(
     return candidate_session_id
 
 
+def _find_session_id_by_native(native_session_id: str | None) -> str | None:
+    """Look up the latest non-closed session for a native session id."""
+    if not native_session_id:
+        return None
+    db_path = config.database.path
+    from sqlalchemy import create_engine, text
+    from sqlmodel import Session as SqlSession
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with SqlSession(engine) as session:
+        row = session.exec(
+            text(
+                "SELECT session_id FROM sessions "
+                "WHERE native_session_id = :native_session_id AND closed_at IS NULL "
+                "ORDER BY created_at DESC LIMIT 1"
+            ).bindparams(native_session_id=native_session_id)
+        ).first()
+    if not row:
+        return None
+    if hasattr(row, "_mapping"):
+        return row._mapping.get("session_id")  # type: ignore[attr-defined]
+    if isinstance(row, tuple):
+        return row[0] if len(row) > 0 else None
+    return None
+
+
 def _persist_session_map(agent: str, native_session_id: str | None, session_id: str) -> None:
     """Persist session mapping keyed by agent + native session id."""
     if not native_session_id:
@@ -360,12 +386,18 @@ def main() -> None:
         agent=args.agent,
     )
     if not teleclaude_session_id:
-        # No TeleClaude session yet — mint an ID and let core create the headless session.
-        # Requires a native session ID to anchor later resolution.
-        if not raw_native_session_id:
-            sys.exit(0)
-        teleclaude_session_id = str(uuid.uuid4())
-        _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
+        # Try to reuse an existing session for this native session id before minting a new one.
+        existing_id = _find_session_id_by_native(raw_native_session_id)
+        if existing_id:
+            teleclaude_session_id = existing_id
+            _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
+        else:
+            # No TeleClaude session yet — mint an ID and let core create the headless session.
+            # Requires a native session ID to anchor later resolution.
+            if not raw_native_session_id:
+                sys.exit(0)
+            teleclaude_session_id = str(uuid.uuid4())
+            _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
     else:
         _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
 

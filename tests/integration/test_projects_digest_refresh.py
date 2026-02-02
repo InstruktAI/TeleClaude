@@ -1,6 +1,7 @@
 """Integration test for digest-triggered project refresh."""
 
-from unittest.mock import ANY, MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -31,7 +32,21 @@ async def test_refresh_peers_triggers_pull_on_digest_change():
     local_adapter.cache = DaemonCache()
     local_adapter._running = True
     local_adapter._redis_ready.set()
-    local_adapter._schedule_refresh = MagicMock(return_value=True)
+    refresh_tasks: list[asyncio.Task[object]] = []
+    pulled: list[str] = []
+
+    def _spawn_refresh_task(coro, *, key):  # type: ignore[no-untyped-def]
+        task = asyncio.create_task(coro)
+        refresh_tasks.append(task)
+        return task
+
+    local_adapter._spawn_refresh_task = _spawn_refresh_task
+
+    async def record_pull(computer: str) -> None:
+        pulled.append(computer)
+        return None
+
+    local_adapter.pull_remote_projects_with_todos = record_pull
 
     remote_adapter.cache.apply_projects_snapshot(
         "RemotePC",
@@ -41,30 +56,26 @@ async def test_refresh_peers_triggers_pull_on_digest_change():
     await remote_adapter._send_heartbeat()
     await local_adapter.refresh_peers_from_heartbeats()
 
-    local_adapter._schedule_refresh.assert_called_once_with(
-        computer="RemotePC",
-        data_type="projects",
-        reason="digest",
-        force=True,
-        on_success=ANY,
-    )
-    local_adapter._peer_digests["RemotePC"] = digest_first
+    assert len(refresh_tasks) == 1
+    await refresh_tasks[-1]
+    assert pulled == ["RemotePC"]
+    assert local_adapter._peer_digests["RemotePC"] == digest_first
 
-    local_adapter._schedule_refresh.reset_mock()
+    tasks_before = len(refresh_tasks)
     await local_adapter.refresh_peers_from_heartbeats()
-    local_adapter._schedule_refresh.assert_not_called()
+    assert local_adapter._peer_digests["RemotePC"] == digest_first
+    assert len(refresh_tasks) == tasks_before
+    assert pulled == ["RemotePC"]
 
     remote_adapter.cache.apply_projects_snapshot(
         "RemotePC",
         [ProjectInfo(name="Alpha", path="/tmp/alpha"), ProjectInfo(name="Beta", path="/tmp/beta")],
     )
+    digest_second = remote_adapter.cache.get_projects_digest("RemotePC")
     await remote_adapter._send_heartbeat()
     await local_adapter.refresh_peers_from_heartbeats()
 
-    local_adapter._schedule_refresh.assert_called_once_with(
-        computer="RemotePC",
-        data_type="projects",
-        reason="digest",
-        force=True,
-        on_success=ANY,
-    )
+    assert len(refresh_tasks) == tasks_before + 1
+    await refresh_tasks[-1]
+    assert pulled == ["RemotePC", "RemotePC"]
+    assert local_adapter._peer_digests["RemotePC"] == digest_second

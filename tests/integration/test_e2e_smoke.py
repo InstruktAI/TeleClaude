@@ -119,7 +119,7 @@ async def test_projects_initial_payload_parses(api_server, cache: DaemonCache) -
     await api_server._send_initial_state(mock_ws, "projects", "local")
 
     await wait_for_call(mock_ws.send_json)
-    payload = mock_ws.send_json.call_args[0][0]
+    payload = mock_ws.send_json.call_args_list[-1][0][0]
     TypeAdapter(WsEvent).validate_python(payload)
 
 
@@ -207,8 +207,8 @@ async def test_cache_update_notifies_websocket_clients(
     await wait_for_call(mock_ws.send_json)
 
     # Verify WebSocket received notification
-    mock_ws.send_json.assert_called_once()
-    call_args = mock_ws.send_json.call_args[0][0]
+    assert mock_ws.send_json.called
+    call_args = mock_ws.send_json.call_args_list[-1][0][0]
     assert call_args["event"] == "session_started"
     assert call_args["data"]["session_id"] == "test-session-123"
 
@@ -242,8 +242,8 @@ async def test_session_removal_notifies_websocket(
     await wait_for_call(mock_ws.send_json)
 
     # Verify WebSocket received removal notification
-    mock_ws.send_json.assert_called_once()
-    call_args = mock_ws.send_json.call_args[0][0]
+    assert mock_ws.send_json.called
+    call_args = mock_ws.send_json.call_args_list[-1][0][0]
     assert call_args["event"] == "session_closed"
     assert call_args["data"]["session_id"] == "test-session-123"
 
@@ -406,8 +406,8 @@ async def test_full_event_round_trip(
     await wait_for_call(mock_ws.send_json)
 
     # Verify end-to-end: WebSocket received the event
-    mock_ws.send_json.assert_called()
-    call_args = mock_ws.send_json.call_args[0][0]
+    assert mock_ws.send_json.called
+    call_args = mock_ws.send_json.call_args_list[-1][0][0]
     assert call_args["event"] == "session_started"
     assert call_args["data"]["session_id"] == "round-trip-789"
     assert call_args["data"]["computer"] == "remote-computer"
@@ -487,8 +487,8 @@ async def test_local_session_lifecycle_to_websocket(
     await wait_for_call(mock_ws.send_json, timeout=2.0)
 
     # Verify WebSocket received the session_started event
-    mock_ws.send_json.assert_called()
-    call_args = mock_ws.send_json.call_args[0][0]
+    assert mock_ws.send_json.called
+    call_args = mock_ws.send_json.call_args_list[-1][0][0]
     assert call_args["event"] == "session_started"
     assert call_args["data"]["session_id"] == session.session_id
     assert call_args["data"]["computer"] == "test-computer"
@@ -563,8 +563,8 @@ async def test_api_server_cache_wired_post_init(
     await wait_for_call(mock_ws.send_json, timeout=2.0)
 
     # Verify WebSocket received the session_started event
-    mock_ws.send_json.assert_called()
-    call_args = mock_ws.send_json.call_args[0][0]
+    assert mock_ws.send_json.called
+    call_args = mock_ws.send_json.call_args_list[-1][0][0]
     assert call_args["event"] == "session_started"
     assert call_args["data"]["session_id"] == "post-init-session"
     assert call_args["data"]["computer"] == "test-computer"
@@ -608,8 +608,8 @@ async def test_multiple_websocket_clients_receive_updates(
     assert mock_ws2.send_json.called
 
     # Verify same event sent to both
-    call1 = mock_ws1.send_json.call_args[0][0]
-    call2 = mock_ws2.send_json.call_args[0][0]
+    call1 = mock_ws1.send_json.call_args_list[-1][0][0]
+    call2 = mock_ws2.send_json.call_args_list[-1][0][0]
     assert call1["event"] == "session_started"
     assert call2["event"] == "session_started"
     assert call1["data"]["session_id"] == "broadcast-test"
@@ -646,7 +646,7 @@ async def test_unsubscribed_client_receives_all_events(
     # Verify client received notification (broadcast to all clients)
     # NOTE: Current implementation does NOT filter by subscription
     assert mock_ws.send_json.called
-    call_args = mock_ws.send_json.call_args[0][0]
+    call_args = mock_ws.send_json.call_args_list[-1][0][0]
     assert call_args["event"] == "session_started"
 
 

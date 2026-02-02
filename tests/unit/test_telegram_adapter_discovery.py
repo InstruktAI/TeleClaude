@@ -123,8 +123,19 @@ async def test_heartbeat_edit_same_message():
     # Create mock bot with all required async methods
     mock_bot = Mock()
     mock_bot.get_me = AsyncMock(return_value=Mock(username="test_bot", id=123))
-    mock_bot.send_message = AsyncMock(return_value=mock_message)
-    mock_bot.edit_message_text = AsyncMock(return_value=mock_edited_message)
+    sent = []
+    edited = []
+
+    async def record_send_message(*args, **kwargs):
+        sent.append((args, kwargs))
+        return mock_message
+
+    async def record_edit_message_text(*args, **kwargs):
+        edited.append((args, kwargs))
+        return mock_edited_message
+
+    mock_bot.send_message = record_send_message
+    mock_bot.edit_message_text = record_edit_message_text
     adapter.app = Mock()
     adapter.app.bot = mock_bot
 
@@ -133,13 +144,13 @@ async def test_heartbeat_edit_same_message():
 
     # First heartbeat: should POST
     await adapter._send_heartbeat()
-    assert adapter.app.bot.send_message.call_count == 1
+    assert len(sent) == 1
     assert adapter.registry_message_id == 12345
 
     # Second heartbeat: should EDIT same message
     await adapter._send_heartbeat()
-    assert adapter.app.bot.send_message.call_count == 1  # Still 1 (no new post)
-    assert adapter.app.bot.edit_message_text.call_count == 1  # Edited
+    assert len(sent) == 1  # Still 1 (no new post)
+    assert len(edited) == 1  # Edited
     assert adapter.registry_message_id == 12345  # Same message ID
 
 

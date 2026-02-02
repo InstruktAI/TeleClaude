@@ -68,6 +68,14 @@ async def test_poller_watch_recreates_missing_tmux_session():
         project_path="/tmp",
     )
 
+    captured: list[Session] = []
+
+    async def record_ensure(session_arg: Session) -> bool:
+        captured.append(session_arg)
+        return True
+
+    daemon._ensure_tmux_session = record_ensure
+
     with (
         patch("teleclaude.daemon.db.get_active_sessions", new=AsyncMock(return_value=[session])),
         patch("teleclaude.daemon.tmux_bridge.list_tmux_sessions", new=AsyncMock(return_value=[])),
@@ -78,7 +86,7 @@ async def test_poller_watch_recreates_missing_tmux_session():
     ):
         await daemon._poller_watch_iteration()
 
-    daemon._ensure_tmux_session.assert_called_once_with(session)
+    assert captured == [session]
 
 
 @pytest.mark.asyncio
@@ -99,14 +107,22 @@ async def test_ensure_tmux_session_restores_agent_on_recreate():
         thinking_mode="med",
     )
 
+    sent: list[str] = []
+
+    async def record_send_keys(*_args: object, **kwargs: object) -> bool:
+        text = kwargs.get("text")
+        if isinstance(text, str):
+            sent.append(text)
+        return True
+
     with (
         patch("teleclaude.daemon.tmux_bridge.session_exists", new=AsyncMock(return_value=False)),
         patch("teleclaude.daemon.tmux_bridge.ensure_tmux_session", new=AsyncMock(return_value=True)),
-        patch("teleclaude.daemon.tmux_bridge.send_keys", new=AsyncMock(return_value=True)) as send_keys,
+        patch("teleclaude.daemon.tmux_bridge.send_keys", new=record_send_keys),
         patch("teleclaude.daemon.resolve_working_dir", new=Mock(return_value="/tmp")),
         patch("teleclaude.daemon.get_agent_command", new=Mock(return_value="agent resume cmd")),
     ):
         created = await TeleClaudeDaemon._ensure_tmux_session(daemon, session)
 
     assert created is True
-    send_keys.assert_called_once()
+    assert len(sent) == 1
