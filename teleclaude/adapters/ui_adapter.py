@@ -600,6 +600,6 @@ class UiAdapter(BaseAdapter):
                 await self.client.send_message(
                     session,
                     feedback,
-                    metadata=MessageMetadata(),
+                    metadata=MessageMetadata(parse_mode=None),
                     cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
                 )
