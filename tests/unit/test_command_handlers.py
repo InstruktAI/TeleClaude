@@ -99,6 +99,7 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
             patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
+            patch.object(command_handlers, "get_random_voice", new_callable=AsyncMock, return_value=None),
         ):
             mock_config.computer.name = "TestComputer"
             mock_config.computer.default_working_dir = tmpdir

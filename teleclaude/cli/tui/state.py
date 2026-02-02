@@ -44,6 +44,7 @@ class SessionViewState:
     """State for Sessions view."""
 
     selected_index: int = 0
+    selected_session_id: str | None = None
     scroll_offset: int = 0
     selection_method: str = "arrow"  # "arrow" | "click"
     collapsed_sessions: set[str] = field(default_factory=set)
@@ -247,8 +248,11 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
     if t is IntentType.SET_SELECTION:
         view = p.get("view")
         idx = p.get("index")
+        session_id = p.get("session_id")
         if view == "sessions" and isinstance(idx, int):
             state.sessions.selected_index = idx
+            if isinstance(session_id, str):
+                state.sessions.selected_session_id = session_id
         if view == "preparation" and isinstance(idx, int):
             state.preparation.selected_index = idx
         return

@@ -16,28 +16,12 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _snippet(
-    snippet_id: str, snippet_type: str, scope: str, description: str, body: str, requires: list[str] | None = None
-) -> str:
-    requires = requires or []
-    requires_block = "\n".join(f"  - {req}" for req in requires)
-    return (
-        "---\n"
-        f"id: {snippet_id}\n"
-        f"type: {snippet_type}\n"
-        f"scope: {scope}\n"
-        f"description: {description}\n" + ("requires:\n" + requires_block + "\n" if requires else "") + "---\n"
-        f"{body}\n"
-    )
-
-
 class SnippetPayload(TypedDict):
     id: str
     description: str
     type: str
     scope: str
     path: str
-    requires: list[str]
 
 
 def _write_index(index_path: Path, project_root: Path, snippets: list[SnippetPayload]) -> None:
@@ -55,24 +39,20 @@ def test_phase2_returns_snippet_content(tmp_path: Path, monkeypatch: pytest.Monk
     global_root = tmp_path / "global"
     global_snippets_root = global_root / "agents" / "docs"
 
-    base = _snippet(
-        "software-development/standards/base",
-        "policy",
-        "project",
-        "Base standard",
-        "Base content.",
-    )
-    child = _snippet(
-        "software-development/roles/role",
-        "role",
-        "project",
-        "Role description",
-        "Role content.",
-        ["software-development/standards/base"],
-    )
+    base_path = project_root / "docs" / "software-development" / "standards" / "base.md"
+    child_path = project_root / "docs" / "software-development" / "roles" / "role.md"
 
-    _write(project_root / "docs" / "software-development" / "standards" / "base.md", base)
-    _write(project_root / "docs" / "software-development" / "roles" / "role.md", child)
+    _write(
+        base_path,
+        "---\nid: software-development/standards/base\ntype: policy\n"
+        "scope: project\ndescription: Base standard\n---\n\nBase content.\n",
+    )
+    _write(
+        child_path,
+        "---\nid: software-development/roles/role\ntype: role\n"
+        "scope: project\ndescription: Role description\n---\n\n"
+        f"## Required reads\n\n- @{base_path}\n\nRole content.\n",
+    )
 
     _write_index(
         project_root / "docs" / "index.yaml",
@@ -84,7 +64,6 @@ def test_phase2_returns_snippet_content(tmp_path: Path, monkeypatch: pytest.Monk
                 "type": "policy",
                 "scope": "project",
                 "path": "docs/software-development/standards/base.md",
-                "requires": [],
             },
             {
                 "id": "software-development/roles/role",
@@ -92,7 +71,6 @@ def test_phase2_returns_snippet_content(tmp_path: Path, monkeypatch: pytest.Monk
                 "type": "role",
                 "scope": "project",
                 "path": "docs/software-development/roles/role.md",
-                "requires": ["software-development/standards/base"],
             },
         ],
     )
@@ -104,13 +82,36 @@ def test_phase2_returns_snippet_content(tmp_path: Path, monkeypatch: pytest.Monk
         snippet_ids=["software-development/roles/role"],
         areas=["role"],
         project_root=project_root,
-        session_id="session-1",
     )
 
-    assert "NEW_SNIPPETS:" in output
     assert "software-development/roles/role" in output
     assert "Role content." in output
     assert "domain: software-development" in output
+    # Dependency resolved from file @ ref
+    assert "software-development/standards/base" in output
+    assert "Base content." in output
+    assert "Auto-included" in output
+
+
+def test_phase2_invalid_ids_returns_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """build_context_output with invalid snippet_ids returns an error."""
+    project_root = tmp_path / "project"
+    global_root = tmp_path / "global"
+    global_snippets_root = global_root / "agents" / "docs"
+
+    _write_index(project_root / "docs" / "index.yaml", project_root, [])
+    _write_index(global_snippets_root / "index.yaml", global_root, [])
+
+    monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
+
+    output = context_selector.build_context_output(
+        snippet_ids=["nonexistent/snippet"],
+        areas=[],
+        project_root=project_root,
+    )
+
+    assert output.startswith("ERROR:")
+    assert "nonexistent/snippet" in output
 
 
 def test_phase1_returns_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -119,8 +120,10 @@ def test_phase1_returns_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     global_root = tmp_path / "global"
     global_snippets_root = global_root / "agents" / "docs"
 
-    base = _snippet("test/base", "policy", "project", "A base snippet", "Content.")
-    _write(project_root / "docs" / "test" / "base.md", base)
+    _write(
+        project_root / "docs" / "test" / "base.md",
+        "---\nid: test/base\ntype: policy\nscope: project\ndescription: A base snippet\n---\n\nContent.\n",
+    )
 
     _write_index(
         project_root / "docs" / "index.yaml",
@@ -132,7 +135,6 @@ def test_phase1_returns_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
                 "type": "policy",
                 "scope": "project",
                 "path": "docs/test/base.md",
-                "requires": [],
             }
         ],
     )
@@ -144,7 +146,6 @@ def test_phase1_returns_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         snippet_ids=None,
         areas=["policy"],
         project_root=project_root,
-        session_id="session-1",
     )
 
     assert "PHASE 1" in output

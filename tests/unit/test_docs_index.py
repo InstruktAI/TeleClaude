@@ -77,7 +77,7 @@ class TestWriteIndexYaml:
 
 @pytest.mark.unit
 class TestBuildIndexPayload:
-    def test_resolves_requires(self, tmp_path: Path) -> None:
+    def test_index_excludes_requires(self, tmp_path: Path) -> None:
         docs = tmp_path / "docs" / "project"
         _write_snippet(docs / "base.md", id="test/base", type="policy")
         child = docs / "child.md"
@@ -88,8 +88,7 @@ class TestBuildIndexPayload:
         )
         payload = build_index_payload(tmp_path, docs)
         by_id = {s["id"]: s for s in payload["snippets"]}
-        assert "requires" in by_id["test/child"]
-        assert "test/base" in by_id["test/child"]["requires"]
+        assert "requires" not in by_id["test/child"]
 
     def test_global_docs_use_tilde_paths(self, tmp_path: Path) -> None:
         docs = tmp_path / "docs" / "global"

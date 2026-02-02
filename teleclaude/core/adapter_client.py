@@ -343,14 +343,14 @@ class AdapterClient:
             if isinstance(target, UiAdapter):
                 result = await target.send_message(session, text, metadata=metadata)
             else:
-                logger.error(
+                logger.debug(
                     "Session %s last_input_origin=%s not available; broadcasting to all UI adapters",
                     session.session_id[:8],
                     session.last_input_origin,
                 )
                 result = await self._route_to_ui(session, "send_message", text, broadcast=True, metadata=metadata)
         else:
-            logger.error(
+            logger.debug(
                 "Session %s missing last_input_origin; broadcasting to all UI adapters",
                 session.session_id[:8],
             )

@@ -38,4 +38,4 @@ def test_sync_resources_resolves_requires(tmp_path: Path) -> None:
 
     assert ids == ["domain/base", "domain/child"]
     child_entry = next(entry for entry in entries if entry["id"] == "domain/child")
-    assert child_entry["requires"] == ["domain/base"]
+    assert "requires" not in child_entry

@@ -45,6 +45,15 @@ class SendMessageRequest(BaseModel):  # type: ignore[explicit-any]
     message: str = Field(..., min_length=1)
 
 
+class KeysRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to send a key command to a session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str = Field(..., min_length=1)
+    count: int | None = Field(default=None, ge=1)
+
+
 class VoiceInputRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to send a voice input to a session."""
 

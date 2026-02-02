@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import string
 from signal import Signals
 from typing import Optional
@@ -48,8 +49,17 @@ async def _send_to_tmux(
     active_agent: Optional[str] = None,
     working_dir: str,
 ) -> bool:
+    if not working_dir:
+        raise ValueError("working_dir is required for tmux input routing")
     tmux_name = session.tmux_session_name
+    cd_cmd = f"cd {shlex.quote(working_dir)}"
     if tmux_name and await tmux_bridge.session_exists(tmux_name):
+        await tmux_bridge.send_keys_existing_tmux(
+            session_name=tmux_name,
+            text=cd_cmd,
+            send_enter=True,
+            active_agent=active_agent,
+        )
         return await tmux_bridge.send_keys_existing_tmux(
             session_name=tmux_name,
             text=text,
@@ -57,11 +67,23 @@ async def _send_to_tmux(
             active_agent=active_agent,
         )
 
-    return await tmux_bridge.send_keys(
-        session.tmux_session_name,
-        text,
-        session_id=session.session_id,
+    # If session doesn't exist, create it first, then cd, then send payload.
+    created = await tmux_bridge.ensure_tmux_session(
+        name=session.tmux_session_name,
         working_dir=working_dir,
+        session_id=session.session_id,
+    )
+    if not created:
+        return False
+    await tmux_bridge.send_keys_existing_tmux(
+        session_name=session.tmux_session_name,
+        text=cd_cmd,
+        send_enter=True,
+        active_agent=active_agent,
+    )
+    return await tmux_bridge.send_keys_existing_tmux(
+        session_name=session.tmux_session_name,
+        text=text,
         send_enter=send_enter,
         active_agent=active_agent,
     )

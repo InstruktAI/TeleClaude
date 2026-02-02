@@ -445,6 +445,32 @@ class TelecAPIClient:
         )
         return resp.status_code == 200
 
+    async def send_keys(self, session_id: str, computer: str, key: str, count: int | None = None) -> bool:
+        """Send a key command to a session.
+
+        Args:
+            session_id: Session ID
+            computer: Computer name where session is running
+            key: Key command name (e.g. enter, escape, key_up)
+            count: Optional repeat count for commands that support it
+
+        Returns:
+            True if successful
+
+        Raises:
+            APIError: If request fails
+        """
+        payload = {"key": key}
+        if count is not None:
+            payload["count"] = count
+        resp = await self._request(
+            "POST",
+            f"/sessions/{session_id}/keys",
+            params={"computer": computer},
+            json_body=payload,
+        )
+        return resp.status_code == 200
+
     async def get_agent_availability(self) -> dict[str, AgentAvailabilityInfo]:
         """Get agent availability status.
 

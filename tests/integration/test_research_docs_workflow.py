@@ -1,7 +1,6 @@
 """Integration test for research_docs.py workflow."""
 
 import os
-import shutil
 import subprocess
 import sys
 import unittest
@@ -18,21 +17,22 @@ class TestResearchDocsWorkflow(unittest.TestCase):
 
     def setUp(self):
         """Set up test directory and ensure it's clean."""
-        self.test_dir = Path("docs/3rd_test")
-        if self.test_dir.exists():
-            shutil.rmtree(self.test_dir)
+        self.test_dir = Path("docs/third-party")
+        self.test_file = self.test_dir / "_test-doc.md"
         self.test_dir.mkdir(parents=True, exist_ok=True)
+        if self.test_file.exists():
+            self.test_file.unlink()
 
     def tearDown(self):
-        """Clean up test directory."""
-        if self.test_dir.exists():
-            shutil.rmtree(self.test_dir)
+        """Clean up test file only."""
+        if self.test_file.exists():
+            self.test_file.unlink()
 
     def test_end_to_end_workflow(self):
         """Test the full workflow of creating a doc and updating the index."""
         # Prepare test content
         title = "Test Library API"
-        filename = "test-doc.md"
+        filename = "_test-doc.md"
         source = "https://example.com/docs"
         purpose = "Reference for testing the research workflow"
         content = """## Overview
@@ -92,17 +92,7 @@ key: value
         self.assertIn("## Overview", doc_content)
         self.assertIn("Feature 1", doc_content)
 
-        # Verify index was created in test directory
-        index_file = self.test_dir / "index.md"
-        self.assertTrue(index_file.exists(), "Index file not created")
-
-        # Read and verify index content
-        index_content = index_file.read_text(encoding="utf-8")
-        self.assertIn(f"## {title}", index_content)
-        self.assertIn(f"- Purpose: {purpose}", index_content)
-        self.assertIn(f"- File: `{filename}`", index_content)
-        self.assertIn(f"- Source: {source}", index_content)
-        self.assertIn("- Last Updated:", index_content)
+        # Index.md is no longer managed by research_docs.py (disallowed outside baseline)
 
 
 if __name__ == MAIN_MODULE:

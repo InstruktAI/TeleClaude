@@ -62,7 +62,6 @@ flowchart TB
 - **Requires Expansion**: All transitive dependencies included automatically; caller never manually resolves requires.
 - **Scope Ordering**: Global snippets before domain before project; stable deterministic order.
 - **Duplicate Prevention**: Each snippet ID appears exactly once in output even if required multiple times.
-- **Context Persistence**: Selected IDs stored per session to avoid repeated full selections.
 
 ## Primary flows
 

@@ -45,7 +45,6 @@ class SnippetEntry(TypedDict):
     type: str
     scope: str
     path: str
-    requires: NotRequired[list[str]]
     source_project: NotRequired[str]
 
 
@@ -258,44 +257,6 @@ def extract_required_reads(content: str) -> list[str]:
     return refs
 
 
-def resolve_requires(
-    file_path: Path,
-    requires: list[str],
-    snippets_root: Path,
-    project_root: Path,
-    snippet_path_to_id: dict[str, str],
-) -> list[str]:
-    """Resolve required-read paths to snippet IDs where possible."""
-    resolved: list[str] = []
-    home_prefix = str(Path.home())
-    for req in requires:
-        if not req.endswith(".md"):
-            if req.startswith(home_prefix):
-                resolved.append(req.replace(home_prefix, "~", 1))
-            else:
-                resolved.append(req)
-            continue
-        candidate = Path(req).expanduser()
-        if not candidate.is_absolute():
-            absolute = (file_path.parent / candidate).resolve()
-        else:
-            absolute = candidate.resolve()
-        try:
-            rel_to_snippets = absolute.relative_to(snippets_root)
-        except ValueError:
-            try:
-                resolved.append(str(absolute.relative_to(project_root)))
-            except ValueError:
-                abs_str = str(absolute)
-                if abs_str.startswith(home_prefix):
-                    abs_str = abs_str.replace(home_prefix, "~", 1)
-                resolved.append(abs_str)
-            continue
-        snippet_id = snippet_path_to_id.get(rel_to_snippets.as_posix())
-        resolved.append(snippet_id if snippet_id else str(rel_to_snippets))
-    return resolved
-
-
 # ---------------------------------------------------------------------------
 # Snippet root discovery
 # ---------------------------------------------------------------------------
@@ -443,8 +404,7 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
     if not snippets_root.exists():
         return {"project_root": str(project_root), "snippets_root": str(snippets_root), "snippets": []}
 
-    snippet_path_to_id: dict[str, str] = {}
-    snippet_cache: list[tuple[Path, Mapping[str, object], str]] = []
+    snippet_cache: list[tuple[Path, Mapping[str, object]]] = []
     snippets: list[SnippetEntry] = []
 
     try:
@@ -490,17 +450,13 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
                     "path": relative_path,
                 }
             )
-            snippet_path_to_id[str(file_path.relative_to(snippets_root))] = snippet_id
             continue
 
         post = frontmatter.load(file_path)
         metadata: Mapping[str, object] = post.metadata or {}
-        snippet_id_val = metadata.get("id")
-        if isinstance(snippet_id_val, str):
-            snippet_path_to_id[str(file_path.relative_to(snippets_root))] = snippet_id_val
-        snippet_cache.append((file_path, metadata, post.content))
+        snippet_cache.append((file_path, metadata))
 
-    for file_path, metadata, content in snippet_cache:
+    for file_path, metadata in snippet_cache:
         snippet_id_val = metadata.get("id")
         description = metadata.get("description")
         snippet_type = metadata.get("type")
@@ -512,8 +468,6 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             or not isinstance(snippet_scope, str)
         ):
             continue
-        requires_list = extract_required_reads(content)
-        resolved_refs = resolve_requires(file_path, requires_list, snippets_root, project_root, snippet_path_to_id)
         try:
             relative_path = str(file_path.relative_to(project_root))
         except ValueError:
@@ -525,8 +479,6 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             "scope": snippet_scope,
             "path": relative_path,
         }
-        if resolved_refs:
-            entry["requires"] = resolved_refs
         snippets.append(entry)
 
     snippets.sort(key=lambda e: e["id"])

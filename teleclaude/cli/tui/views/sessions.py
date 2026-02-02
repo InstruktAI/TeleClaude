@@ -205,6 +205,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             len(sessions),
         )
 
+        previous_selection = self._get_selected_key()
+
         # Store sessions for child lookup
         self._sessions = sessions
         if not sessions and self._last_data_counts.get("sessions", 1) != 0:
@@ -263,7 +265,18 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self.tree = build_tree(enriched_computers, project_infos, sessions)
         logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
-        self._apply_pending_selection()
+        if self._pending_select_session_id:
+            found = self._apply_pending_selection()
+            if not found:
+                if self.state.sessions.selected_session_id:
+                    self._restore_selection(("session", self.state.sessions.selected_session_id))
+                else:
+                    self._restore_selection(previous_selection)
+        else:
+            if self.state.sessions.selected_session_id:
+                self._restore_selection(("session", self.state.sessions.selected_session_id))
+            else:
+                self._restore_selection(previous_selection)
         if self.pane_manager.is_available:
             needs_layout = False
             if self.sticky_sessions and not self.pane_manager.state.sticky_pane_ids:
@@ -282,25 +295,97 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._pending_select_session_id = session_id
         return True
 
-    def _apply_pending_selection(self) -> None:
+    def _apply_pending_selection(self) -> bool:
         """Select any pending session once the tree is available."""
         target = self._pending_select_session_id
         if not target:
-            return
+            return False
 
         for idx, item in enumerate(self.flat_items):
             if is_session_node(item) and item.data.session.session_id == target:
-                self.selected_index = idx
+                self._select_index(idx)
+                self.controller.dispatch(
+                    Intent(
+                        IntentType.SET_SELECTION,
+                        {"view": "sessions", "index": idx, "session_id": target},
+                    )
+                )
                 self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
-                if self.selected_index < self.scroll_offset:
-                    self.scroll_offset = self.selected_index
-                else:
-                    _, last_rendered = self._last_rendered_range
-                    if self.selected_index > last_rendered:
-                        self.scroll_offset += self.selected_index - last_rendered
-                self._pending_select_session_id = None
+                activated = False
+                if item.data.session.tmux_session_name:
+                    self._activate_session(item, clear_preview=False)
+                    self._focus_selected_pane()
+                    activated = True
+                if activated:
+                    self._pending_select_session_id = None
                 logger.debug("Selected new session %s at index %d", target[:8], idx)
-                return
+                return True
+        return False
+
+    def _get_selected_key(self) -> tuple[str, str] | None:
+        if not self.flat_items or not (0 <= self.selected_index < len(self.flat_items)):
+            return None
+        item = self.flat_items[self.selected_index]
+        if is_session_node(item):
+            return ("session", item.data.session.session_id)
+        if is_project_node(item):
+            return ("project", f"{item.data.computer}::{item.data.path}")
+        if is_computer_node(item):
+            return ("computer", item.data.computer.name)
+        return None
+
+    def _restore_selection(self, selection_key: tuple[str, str] | None) -> None:
+        if not selection_key:
+            return
+        target_type, target_key = selection_key
+        for idx, item in enumerate(self.flat_items):
+            if target_type == "session" and is_session_node(item):
+                if item.data.session.session_id == target_key:
+                    self._select_index(idx)
+                    return
+            if target_type == "project" and is_project_node(item):
+                item_key = f"{item.data.computer}::{item.data.path}"
+                if item_key == target_key:
+                    self._select_index(idx)
+                    return
+            if target_type == "computer" and is_computer_node(item):
+                if item.data.computer.name == target_key:
+                    self._select_index(idx)
+                    return
+
+    def _select_index(self, idx: int) -> None:
+        self.selected_index = idx
+        self._sync_selected_session_id()
+        if self.selected_index < self.scroll_offset:
+            self.scroll_offset = self.selected_index
+        else:
+            _, last_rendered = self._last_rendered_range
+            if self.selected_index > last_rendered:
+                self.scroll_offset += self.selected_index - last_rendered
+
+    def _sync_selected_session_id(self) -> None:
+        item = self.flat_items[self.selected_index] if 0 <= self.selected_index < len(self.flat_items) else None
+        if item and is_session_node(item):
+            self.state.sessions.selected_session_id = item.data.session.session_id
+        else:
+            self.state.sessions.selected_session_id = None
+
+    def _revive_headless_session(self, session: SessionInfo) -> None:
+        session_id = session.session_id
+        computer = session.computer or "local"
+        if self.notify:
+            self.notify("Reviving headless session...", "info")
+        try:
+            result = asyncio.get_event_loop().run_until_complete(
+                self.api.send_keys(session_id=session_id, computer=computer, key="enter", count=1)
+            )
+            if result:
+                self.request_select_session(session_id)
+                self.needs_refresh = True
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.error("Failed to revive headless session %s: %s", session_id[:8], exc)
+            if self.notify:
+                self.notify(f"Revive failed: {exc}", "error")
 
     async def _clear_highlight_after_delay(self, session_id: str) -> None:
         """Clear highlight after 60 seconds if no new changes occurred.
@@ -456,10 +541,16 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self.flat_items = self._flatten_tree(nodes, base_depth=0)
         logger.debug("Flattened to %d items", len(self.flat_items))
 
+        if self.state.sessions.selected_session_id:
+            for idx, item in enumerate(self.flat_items):
+                if is_session_node(item) and item.data.session.session_id == self.state.sessions.selected_session_id:
+                    self.selected_index = idx
+                    break
         # Reset selection if out of bounds
         if self.selected_index >= len(self.flat_items):
-            self.selected_index = max(0, len(self.flat_items) - 1)
+            self.selected_index = 0 if self.flat_items else 0
         self.scroll_offset = 0
+        self._sync_selected_session_id()
 
     def _flatten_tree(self, nodes: list[TreeNode], base_depth: int = 0) -> list[TreeNode]:
         """Flatten tree for navigation.
@@ -546,11 +637,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     def move_up(self) -> None:
         """Move selection up (arrow key navigation)."""
         super().move_up()
+        self._sync_selected_session_id()
         self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "arrow"}))
 
     def move_down(self) -> None:
         """Move selection down (arrow key navigation)."""
         super().move_down()
+        self._sync_selected_session_id()
         self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "arrow"}))
 
     def _focus_selected_pane(self) -> None:
@@ -586,6 +679,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             self.focus.push(FocusLevelType.COMPUTER, item.data.computer.name)
             self.rebuild_for_focus()
             self.selected_index = 0
+            self._sync_selected_session_id()
             logger.debug("drill_down: pushed computer focus")
             return True
         if is_session_node(item):
@@ -765,7 +859,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         )
 
         if not tmux_session:
-            logger.warning("_activate_session: tmux_session_name missing, cannot activate")
+            logger.warning("_activate_session: tmux_session_name missing, attempting revive")
+            self._revive_headless_session(session)
             return
 
         # If session is already sticky, hide active pane (no duplication)
@@ -833,7 +928,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         )
 
         if not tmux_session:
-            logger.warning("_toggle_session_pane: tmux_session_name missing, cannot toggle")
+            logger.warning("_toggle_session_pane: tmux_session_name missing, attempting revive")
+            self._revive_headless_session(session)
             return
 
         # Get computer info for SSH (if remote)
@@ -870,7 +966,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         agent = session.active_agent
 
         if not tmux_session:
-            logger.warning("_show_single_session_pane: tmux_session_name missing, cannot show")
+            logger.warning("_show_single_session_pane: tmux_session_name missing, attempting revive")
+            self._revive_headless_session(session)
             return
 
         computer_info = self._get_computer_info(computer_name)
@@ -1159,12 +1256,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             )
             # Select the item but don't activate (sticky toggle is the action)
             self.selected_index = item_idx
+            self._sync_selected_session_id()
             self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
             self._focus_selected_pane()  # Focus the sticky pane
             return True
 
         # SINGLE CLICK - select and activate (preview lane) or highlight sticky (sticky lane)
         self.selected_index = item_idx
+        self._sync_selected_session_id()
         self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
         self._id_row_clicked = screen_row in self._row_to_id_item
 

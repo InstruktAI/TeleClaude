@@ -279,7 +279,7 @@ PY
         local endpoint="$2"
         if command -v curl >/dev/null 2>&1; then
             local status
-            status=$(curl -s -o /dev/null -w "%{http_code}" --unix-socket "$socket_path" "http://localhost${endpoint}") || status=""
+            status=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 1 --max-time 1 --unix-socket "$socket_path" "http://localhost${endpoint}") || status=""
             if [ "$status" = "200" ]; then
                 echo "ok"
             else
@@ -293,7 +293,7 @@ path = "$socket_path"
 endpoint = "$endpoint"
 try:
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(2.0)
+    s.settimeout(1.0)
     s.connect(path)
     req = f"GET {endpoint} HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n"
     s.sendall(req.encode("utf-8"))
@@ -415,8 +415,11 @@ restart_daemon() {
         EXIT_CODE=1
     fi
 
-    # Return immediately with collected exit code
-    return $EXIT_CODE
+    # Always run a status check after restart
+    if status_daemon; then
+        return $EXIT_CODE
+    fi
+    return 1
 }
 
 # Kill daemon process (service manager will auto-restart)

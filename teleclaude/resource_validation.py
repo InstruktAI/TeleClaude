@@ -272,10 +272,10 @@ def _resolve_snippet_ref(project_root: Path, snippet_path: Path, ref: str) -> Pa
     target = ref[1:]
     if target.startswith("~"):
         return Path(target).expanduser()
-    if target.startswith("/"):
+    if target.startswith("./") or target.startswith("/"):
         return Path(target)
-    if target.startswith("./") or target.startswith("../"):
-        return (snippet_path.parent / target).resolve()
+    if target.startswith("../"):
+        raise NotImplementedError("Relative refs with .. not supported")
     return (project_root / target).resolve()
 
 

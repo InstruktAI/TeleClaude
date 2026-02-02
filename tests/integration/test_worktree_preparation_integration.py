@@ -14,43 +14,48 @@ from teleclaude.paths import REPO_ROOT
 class TestWorktreePreparationIntegration:
     """Integration tests for actual worktree preparation execution."""
 
-    def test_script_worktree_prepare_integration(self) -> None:
-        """Test that bin/worktree-prepare.sh execution works."""
+    def test_makefile_install_target(self) -> None:
+        """Test that _prepare_worktree runs make install when Makefile has install target."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
+            slug = "test-work-item"
+            worktree_path = tmp_path / "trees" / slug
+            worktree_path.mkdir(parents=True)
+            (worktree_path / "Makefile").write_text("install:\n\techo done\n")
 
             with patch("teleclaude.core.next_machine.core.subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stdout="Prepared")
-                slug = "test-work-item"
+                mock_run.return_value = MagicMock(returncode=0)
                 _prepare_worktree(str(tmp_path), slug)
                 actual_call = mock_run.call_args_list[0]
-                assert actual_call[0][0] == [str(REPO_ROOT / "bin" / "worktree-prepare.sh"), slug]
-                assert actual_call[1]["cwd"] == str(tmp_path)
+                assert actual_call[0][0] == ["make", "install"]
+                assert actual_call[1]["cwd"] == str(worktree_path)
 
-    def test_error_propagation_when_script_fails(self) -> None:
-        """Test that errors from worktree-prepare.sh are properly propagated."""
+    def test_error_propagation_when_make_fails(self) -> None:
+        """Test that errors from make install are properly propagated."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
+            slug = "test-slug"
+            worktree_path = tmp_path / "trees" / slug
+            worktree_path.mkdir(parents=True)
+            (worktree_path / "Makefile").write_text("install:\n\tfalse\n")
 
             with patch("teleclaude.core.next_machine.core.subprocess.run") as mock_run:
-                error = subprocess.CalledProcessError(
-                    1, str(REPO_ROOT / "bin" / "worktree-prepare.sh"), output="", stderr="Failed!"
-                )
+                error = subprocess.CalledProcessError(1, "make install", output="", stderr="Failed!")
                 error.stdout = ""
                 error.stderr = "Failed!"
                 mock_run.side_effect = error
                 with pytest.raises(RuntimeError, match="Worktree preparation failed"):
-                    _prepare_worktree(str(tmp_path), "test-slug")
+                    _prepare_worktree(str(tmp_path), slug)
 
-    def test_error_propagation_when_target_missing(self) -> None:
-        """Test that error is raised when no preparation hook exists."""
+    def test_no_targets_logs_and_returns(self) -> None:
+        """Test that no error is raised when no preparation targets exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
-
-            # Execute and verify error is raised
-            with patch("teleclaude.core.next_machine.core.Path.exists", return_value=False):
-                with pytest.raises(RuntimeError, match="Worktree preparation script not found"):
-                    _prepare_worktree(str(tmp_path), "test-slug")
+            slug = "test-slug"
+            worktree_path = tmp_path / "trees" / slug
+            worktree_path.mkdir(parents=True)
+            # No Makefile, no package.json — should just return
+            _prepare_worktree(str(tmp_path), slug)
 
 
 class TestInstallInitGuards:

@@ -205,16 +205,10 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                             event.exit_code,
                         )
                 else:
-                    # Tmux session died - terminate and clean up the TeleClaude session
-                    await session_cleanup.terminate_session(
-                        event.session_id,
-                        adapter_client,
-                        reason="tmux_exited",
-                        session=session,
-                        kill_tmux=False,
-                    )
-                    logger.info(
-                        "Terminated session %s after tmux exit",
+                    # Tmux session disappeared (no exit code). Do NOT terminate:
+                    # allow auto-heal to recreate tmux and resume the session.
+                    logger.warning(
+                        "Tmux session missing for %s; leaving session active for auto-heal",
                         event.session_id[:8],
                     )
     except Exception as exc:

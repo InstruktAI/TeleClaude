@@ -16,7 +16,14 @@ async def test_startup_refreshes_remote_snapshot():
     adapter = RedisTransport(mock_client)
     adapter.cache = DaemonCache()
 
-    adapter._connect_with_backoff = AsyncMock()
+    # Mock the reconnect to immediately mark redis as ready
+    def fake_schedule_reconnect(reason: str, error: Exception | None = None) -> None:
+        mock_redis = MagicMock()
+        mock_redis.aclose = AsyncMock()
+        adapter.redis = mock_redis
+        adapter._redis_ready.set()
+
+    adapter._schedule_reconnect = fake_schedule_reconnect
     adapter.refresh_remote_snapshot = AsyncMock()
 
     adapter._poll_redis_messages = AsyncMock()

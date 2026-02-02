@@ -277,7 +277,13 @@ def test_modal_start_requests_session_and_notifies(mock_api):
         notify=notify,
     )
 
-    result = modal._start_session(MagicMock())
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        result = modal._start_session(MagicMock())
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
 
     assert result is not None
     assert result.status == "success"

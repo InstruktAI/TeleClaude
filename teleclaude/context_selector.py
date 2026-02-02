@@ -9,6 +9,7 @@ from typing import Iterable
 import yaml
 from instrukt_ai_logging import get_logger
 
+from teleclaude.docs_index import extract_required_reads
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.utils import expand_env_vars
 
@@ -24,7 +25,6 @@ class SnippetMeta:
     snippet_type: str
     scope: str
     path: Path
-    requires: list[str]
 
 
 def _scope_rank(scope: str | None) -> int:
@@ -241,7 +241,6 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
         snippet_type = item.get("type")
         scope = item.get("scope")
         raw_path = item.get("path")
-        requires_raw = item.get("requires", [])
         if (
             not isinstance(snippet_id, str)
             or not isinstance(description, str)
@@ -250,8 +249,6 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
             or not isinstance(raw_path, str)
         ):
             continue
-        requires_list = requires_raw if isinstance(requires_raw, list) else []
-        requires: list[str] = [req for req in requires_list if isinstance(req, str)]
         path = Path(raw_path).expanduser()
         if not path.is_absolute():
             path = (root_path / path).resolve()
@@ -262,7 +259,6 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
                 snippet_type=snippet_type,
                 scope=scope,
                 path=path,
-                requires=requires,
             )
         )
 
@@ -293,13 +289,17 @@ def _resolve_requires(
             continue
         seen.add(str(current.path))
         resolved.append(current)
-        for req in current.requires:
-            req_snippet = snippets_by_id.get(req)
-            if not req_snippet:
-                req_snippet = snippets_by_path.get(str(req))
-            if not req_snippet and req.endswith(".md"):
-                req_path = (current.path.parent / req).resolve()
-                req_snippet = snippets_by_path.get(str(req_path))
+        # Read @ refs from the snippet file's Required reads section
+        try:
+            content = current.path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        ref_paths = extract_required_reads(content)
+        for ref in ref_paths:
+            ref_resolved = Path(ref).expanduser().resolve()
+            req_snippet = snippets_by_path.get(str(ref_resolved))
+            if not req_snippet and not Path(ref).is_absolute():
+                req_snippet = snippets_by_path.get(str((current.path.parent / ref).resolve()))
             if req_snippet and str(req_snippet.path) not in seen:
                 stack.append(req_snippet)
 
@@ -313,7 +313,6 @@ def build_context_output(
     *,
     areas: list[str],
     project_root: Path,
-    session_id: str | None,
     snippet_ids: list[str] | None = None,
     include_baseline: bool = False,
     test_agent: str | None = None,
@@ -391,7 +390,10 @@ def build_context_output(
         return "\n".join(parts)
 
     valid_ids = {s.snippet_id for s in snippets}
-    selected_ids = [sid for sid in (snippet_ids or []) if sid in valid_ids]
+    invalid_ids = [sid for sid in (snippet_ids or []) if sid not in valid_ids]
+    if invalid_ids:
+        return f"ERROR: Unknown snippet IDs: {', '.join(invalid_ids)}"
+    selected_ids = list(snippet_ids or [])
     resolved = _resolve_requires(selected_ids, snippets, global_snippets_root=global_snippets_root)
     _write_test_output(
         phase="phase2",
@@ -404,26 +406,23 @@ def build_context_output(
         test_csv_path=test_csv_path,
     )
 
-    new_snippets: list[SnippetMeta] = []
-    new_ids: list[str] = []
-    for snippet in resolved:
-        new_snippets.append(snippet)
-        new_ids.append(snippet.snippet_id)
-
     logger.debug(
         "context_selector_output_summary",
         selected_ids_count=len(selected_ids),
         resolved_snippets_count=len(resolved),
-        new_snippets_count=len(new_snippets),
     )
 
-    parts: list[str] = []
-    parts.append("NEW_SNIPPETS:")
+    requested_set = set(selected_ids)
+    dep_ids = [s.snippet_id for s in resolved if s.snippet_id not in requested_set]
+    parts: list[str] = [
+        "# PHASE 2: Selected snippet content",
+        f"# Requested: {', '.join(selected_ids)}",
+    ]
+    if dep_ids:
+        parts.append(f"# Auto-included (required by the above): {', '.join(dep_ids)}")
+    parts.append("")
 
-    if not new_snippets:
-        parts.append("(none)")
-
-    for snippet in new_snippets:
+    for snippet in resolved:
         try:
             raw = snippet.path.read_text(encoding="utf-8")
             root_path = project_root

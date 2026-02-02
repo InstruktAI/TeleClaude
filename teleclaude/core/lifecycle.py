@@ -240,6 +240,10 @@ class DaemonLifecycle:
             return
         loop.create_task(self._restart_api_server(reason))
 
+    def schedule_api_restart(self, reason: str) -> None:
+        """Request an API server restart from external watchdogs."""
+        self._schedule_api_restart(reason)
+
     async def _restart_api_server(self, reason: str) -> bool:
         async with self._api_restart_lock:
             if self.shutdown_event.is_set():

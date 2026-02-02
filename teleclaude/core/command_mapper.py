@@ -254,6 +254,15 @@ class CommandMapper:
                 origin=metadata.origin,
             )
 
+        if command_name == "keys":
+            key = str(payload.get("key", ""))
+            args = cast(List[str], payload.get("args", []))
+            return KeysCommand(
+                session_id=session_id,
+                key=key,
+                args=args,
+            )
+
         if command_name == "handle_voice":
             return HandleVoiceCommand(
                 session_id=session_id,

@@ -7,9 +7,12 @@ and routes write requests through AdapterClient.
 from __future__ import annotations
 
 import asyncio
+import faulthandler
+import io
 import json
 import os
 import shlex
+import time
 from typing import TYPE_CHECKING, Callable, Literal
 
 import uvicorn
@@ -22,6 +25,7 @@ from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
     FileUploadRequest,
+    KeysRequest,
     ProjectDTO,
     ProjectsInitialDataDTO,
     ProjectsInitialEventDTO,
@@ -61,6 +65,10 @@ API_WS_PING_INTERVAL_S = 20.0
 API_WS_PING_TIMEOUT_S = 20.0
 API_TIMEOUT_KEEP_ALIVE_S = 5
 API_STOP_TIMEOUT_S = 5.0
+API_WATCH_INTERVAL_S = float(os.getenv("API_WATCH_INTERVAL_S", "5"))
+API_WATCH_LAG_THRESHOLD_MS = float(os.getenv("API_WATCH_LAG_THRESHOLD_MS", "250"))
+API_WATCH_INFLIGHT_THRESHOLD_S = float(os.getenv("API_WATCH_INFLIGHT_THRESHOLD_S", "1"))
+API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
 
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 
@@ -92,6 +100,11 @@ class APIServer:
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None
         self._metrics_task: asyncio.Task[object] | None = None
+        self._watch_task: asyncio.Task[object] | None = None
+        self._inflight_requests: dict[int, tuple[str, float]] = {}
+        self._request_seq = 0
+        self._last_watch_tick = 0.0
+        self._last_dump_at = 0.0
         self._running = False
         self._on_server_exit: ServerExitHandler | None = None
         # WebSocket state
@@ -194,6 +207,17 @@ class APIServer:
 
     def _setup_routes(self) -> None:
         """Set up all HTTP endpoints."""
+
+        @self.app.middleware("http")
+        async def _track_requests(request, call_next):  # pyright: ignore
+            """Track in-flight requests to detect stalls."""
+            self._request_seq += 1
+            req_id = self._request_seq
+            self._inflight_requests[req_id] = (request.url.path, time.monotonic())
+            try:
+                return await call_next(request)
+            finally:
+                self._inflight_requests.pop(req_id, None)
 
         @self.app.get("/health")
         async def health() -> dict[str, str]:  # pyright: ignore
@@ -420,6 +444,29 @@ class APIServer:
             except Exception as e:
                 logger.error("send_message failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
+
+        @self.app.post("/sessions/{session_id}/keys")
+        async def send_keys_endpoint(  # pyright: ignore
+            session_id: str,
+            request: KeysRequest,
+            computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
+        ) -> dict[str, object]:  # guard: loose-dict - API boundary
+            """Send key command to session."""
+            try:
+                metadata = self._metadata()
+                args: list[str] = []
+                if request.count:
+                    args = [str(request.count)]
+                cmd = CommandMapper.map_api_input(
+                    "keys",
+                    {"session_id": session_id, "key": request.key, "args": args},
+                    metadata,
+                )
+                await get_command_service().keys(cmd)
+                return {"status": "success"}
+            except Exception as e:
+                logger.error("send_keys failed (session=%s): %s", session_id, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to send keys: {e}") from e
 
         @self.app.post("/sessions/{session_id}/voice")
         async def send_voice_endpoint(  # pyright: ignore
@@ -1101,12 +1148,14 @@ class APIServer:
         logger.info("API server starting")
         await self._start_server()
         self._start_metrics_task()
+        self._start_watch_task()
 
     async def stop(self) -> None:
         """Stop the API server."""
         self._running = False
         logger.info("API server stopping")
         await self._stop_metrics_task()
+        await self._stop_watch_task()
         # Unsubscribe from cache changes
         if self.cache:
             self.cache.unsubscribe(self._on_cache_change)
@@ -1127,6 +1176,64 @@ class APIServer:
         self._cleanup_socket("stop")
 
         logger.info("API server stopped")
+
+    def _start_watch_task(self) -> None:
+        if self._watch_task and not self._watch_task.done():
+            return
+        self._last_watch_tick = time.monotonic()
+        self._watch_task = asyncio.create_task(self._watch_loop())
+
+    async def _stop_watch_task(self) -> None:
+        if not self._watch_task:
+            return
+        self._watch_task.cancel()
+        try:
+            await self._watch_task
+        except asyncio.CancelledError:
+            pass
+
+    def _dump_stacks(self, reason: str) -> None:
+        now = time.monotonic()
+        if (now - self._last_dump_at) < API_WATCH_DUMP_COOLDOWN_S:
+            return
+        self._last_dump_at = now
+        buf = io.StringIO()
+        try:
+            faulthandler.dump_traceback(file=buf, all_threads=True)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error("API watch dump failed: %s", exc)
+            return
+        logger.error("API HANG_DUMP reason=%s\n%s", reason, buf.getvalue())
+
+    async def _watch_loop(self) -> None:
+        """Detect API stalls (loop lag or long in-flight requests)."""
+        loop = asyncio.get_running_loop()
+        while self._running:
+            await asyncio.sleep(API_WATCH_INTERVAL_S)
+            now = loop.time()
+            lag_ms = max(0.0, (now - self._last_watch_tick - API_WATCH_INTERVAL_S) * 1000.0)
+            self._last_watch_tick = now
+            if lag_ms >= API_WATCH_LAG_THRESHOLD_MS:
+                logger.warning("API watch: loop lag detected (%.1fms)", lag_ms)
+                self._dump_stacks(f"loop_lag_{lag_ms:.1f}ms")
+
+            if not self._inflight_requests:
+                continue
+            inflight = []
+            now_mono = time.monotonic()
+            for path, started_at in self._inflight_requests.values():
+                age = now_mono - started_at
+                if age >= API_WATCH_INFLIGHT_THRESHOLD_S:
+                    inflight.append((path, age))
+            if inflight:
+
+                def _sort_key(item: tuple[str, float]) -> float:
+                    return item[1]
+
+                inflight.sort(key=_sort_key, reverse=True)
+                top = ", ".join(f"{path}:{age:.2f}s" for path, age in inflight[:5])
+                logger.warning("API watch: slow requests detected (%s)", top)
+                self._dump_stacks("slow_requests")
 
     async def _start_server(self) -> None:
         """Start uvicorn server and attach restart handler."""

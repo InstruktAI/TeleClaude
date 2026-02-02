@@ -22,11 +22,15 @@ async def test_refresh_peers_triggers_pull_on_digest_change():
     remote_adapter.redis = redis_client
     remote_adapter.computer_name = "RemotePC"
     remote_adapter.cache = DaemonCache()
+    remote_adapter._running = True
+    remote_adapter._redis_ready.set()
 
     local_adapter = RedisTransport(mock_client)
     local_adapter.redis = redis_client
     local_adapter.computer_name = "LocalPC"
     local_adapter.cache = DaemonCache()
+    local_adapter._running = True
+    local_adapter._redis_ready.set()
     local_adapter._schedule_refresh = MagicMock(return_value=True)
 
     remote_adapter.cache.apply_projects_snapshot(

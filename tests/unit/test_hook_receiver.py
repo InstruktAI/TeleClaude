@@ -153,9 +153,8 @@ def test_receiver_accepts_gemini_stop_event(monkeypatch, tmp_path):
 
 
 def test_receiver_updates_native_fields_for_gemini_session_start(monkeypatch, tmp_path):
-    """Gemini session_start should update native fields before enqueue."""
+    """Gemini session_start should include native fields in enqueued data."""
     sent = []
-    updates = []
 
     def fake_enqueue(session_id, event_type, data):
         sent.append((session_id, event_type, data))
@@ -163,12 +162,8 @@ def test_receiver_updates_native_fields_for_gemini_session_start(monkeypatch, tm
     def fake_normalize(_event_type, _data):
         return NormalizedHookPayload()
 
-    def fake_update(session_id, *, native_log_file=None, native_session_id=None):
-        updates.append((session_id, native_log_file, native_session_id))
-
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: fake_normalize)
-    monkeypatch.setattr(receiver, "_update_session_native_fields", fake_update)
     monkeypatch.setattr(
         receiver,
         "_read_stdin",
@@ -188,24 +183,20 @@ def test_receiver_updates_native_fields_for_gemini_session_start(monkeypatch, tm
 
     receiver.main()
 
-    assert updates
-    assert updates[0] == ("sess-1", "/tmp/gemini.jsonl", "native-1")
     assert sent
+    _, _, data = sent[0]
+    assert data["native_session_id"] == "native-1"
+    assert data["native_log_file"] == "/tmp/gemini.jsonl"
 
 
 def test_receiver_filters_gemini_non_terminal_events(monkeypatch, tmp_path):
-    """Gemini intermediate events should update native fields but not enqueue."""
+    """Gemini intermediate events should not enqueue."""
     sent = []
-    updates = []
 
     def fake_enqueue(session_id, event_type, data):
         sent.append((session_id, event_type, data))
 
-    def fake_update(session_id, *, native_log_file=None, native_session_id=None):
-        updates.append((session_id, native_log_file, native_session_id))
-
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
-    monkeypatch.setattr(receiver, "_update_session_native_fields", fake_update)
     monkeypatch.setattr(
         receiver,
         "_read_stdin",
@@ -227,9 +218,6 @@ def test_receiver_filters_gemini_non_terminal_events(monkeypatch, tmp_path):
         receiver.main()
 
     assert exc.value.code == 0
-
-    assert updates
-    assert updates[0] == ("sess-2", "/tmp/gemini-2.jsonl", "native-2")
     assert not sent
 
 

@@ -976,7 +976,6 @@ class MCPHandlersMixin:
         return build_context_output(
             areas=areas,
             project_root=project_root,
-            session_id=caller_session_id,
             snippet_ids=snippet_ids,
             include_baseline=bool(include_baseline),
             test_agent=test_agent,
