@@ -12,6 +12,7 @@ class NormalizedHookPayload:
 
     session_id: Optional[str] = None
     transcript_path: Optional[str] = None
+    cwd: Optional[str] = None
     prompt: Optional[str] = None
     message: Optional[str] = None
 

@@ -16,25 +16,34 @@ from teleclaude.utils.transcript import collect_transcript_messages
 def _discover_transcripts(agent: AgentName) -> list[tuple[Path, float]]:
     """Find all transcript files for an agent, return (path, mtime) sorted newest first."""
     meta = AGENT_METADATA[agent.value]
-    session_dir = Path(str(meta["session_dir"])).expanduser()
+    session_dirs: list[Path] = [Path(str(meta["session_dir"])).expanduser()]
 
     # Claude stores transcripts in ~/.claude/projects/*/*.jsonl, not sessions/
     if agent == AgentName.CLAUDE:
-        projects_dir = session_dir.parent / "projects"
+        projects_dir = session_dirs[0].parent / "projects"
         if projects_dir.exists():
-            session_dir = projects_dir
+            session_dirs = [projects_dir]
 
-    if not session_dir.exists():
-        return []
+    if agent == AgentName.CODEX:
+        # Codex stores active sessions in ~/.codex/sessions and history in ~/.codex/.history/sessions.
+        session_dirs.append(Path("~/.codex/.history/sessions").expanduser())
 
     pattern = str(meta["log_pattern"])
     # rglob already recurses, strip leading **/ if present
     if pattern.startswith("**/"):
         pattern = pattern[3:]
     files: list[tuple[Path, float]] = []
-    for p in session_dir.rglob(pattern):
-        if p.is_file():
-            files.append((p, p.stat().st_mtime))
+    seen: set[Path] = set()
+    for session_dir in session_dirs:
+        if not session_dir.exists():
+            continue
+        for p in session_dir.rglob(pattern):
+            if p.is_file() and p not in seen:
+                files.append((p, p.stat().st_mtime))
+                seen.add(p)
+
+    if not files:
+        return []
 
     files.sort(key=lambda x: x[1], reverse=True)
     return files
@@ -72,7 +81,8 @@ def _extract_session_id(path: Path, agent: AgentName) -> str:
         return stem.replace("session-", "")[:12]
     if agent == AgentName.CODEX:
         # rollout-2025-12-05T23-52-23-<uuid>_<timestamp>.jsonl
-        return stem[:12]
+        # or rollout-2026-02-02T03-01-53-<uuid>.jsonl
+        return stem.split("_", 1)[0]
     return stem[:12]
 
 

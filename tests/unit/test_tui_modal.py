@@ -288,4 +288,4 @@ def test_modal_start_requests_session_and_notifies(mock_api):
     assert result is not None
     assert result.status == "success"
     assert modal.start_requested is True
-    assert ("Starting session...", "info") in notify_calls
+    assert ("Spawning new session...", "info") in notify_calls

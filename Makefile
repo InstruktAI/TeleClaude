@@ -1,4 +1,4 @@
-.PHONY: help install init certs format lint test-unit test-e2e test-all test coverage coverage-html coverage-report clean dev start stop restart kill status
+.PHONY: help install init link certs format lint test-unit test-e2e test-all test coverage coverage-html coverage-report clean dev start stop restart kill status
 
 # Default target
 help:
@@ -8,6 +8,7 @@ help:
 	@echo "Setup:"
 	@echo "  make install      Install binaries and Python dependencies"
 	@echo "  make init         Run first-time setup wizard (ARGS=-y for unattended)"
+	@echo "  make link         Link shared scripts/docs into ~/.teleclaude"
 	@echo "  make certs        Generate SSL certificates for REST API"
 	@echo ""
 	@echo "Code Quality:"
@@ -40,6 +41,14 @@ install:
 
 init:
 	@./bin/init.sh $(ARGS)
+
+link:
+	@echo "Linking shared scripts/docs..."
+	@mkdir -p "$$HOME/.teleclaude"
+	@ln -sfn "$(PWD)/scripts" "$$HOME/.teleclaude/scripts"
+	@rm -rf "$$HOME/.teleclaude/docs"
+	@ln -s "$(PWD)/docs/global" "$$HOME/.teleclaude/docs"
+	@echo "✓ Linked shared scripts/docs"
 
 format:
 	@echo "Formatting code..."
@@ -119,4 +128,3 @@ kill:
 
 status:
 	@./bin/daemon-control.sh status
-

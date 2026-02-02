@@ -40,7 +40,14 @@ from teleclaude.cli.tui.tree import (
     is_project_node,
     is_session_node,
 )
-from teleclaude.cli.tui.types import ActivePane, CursesWindow, FocusLevelType, NodeType, StickySessionInfo
+from teleclaude.cli.tui.types import (
+    ActivePane,
+    CursesWindow,
+    FocusLevelType,
+    NodeType,
+    NotificationLevel,
+    StickySessionInfo,
+)
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
 from teleclaude.paths import TUI_STATE_PATH as _TUI_STATE_PATH
@@ -81,7 +88,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         pane_manager: TmuxPaneManager,
         state: TuiState,
         controller: TuiController,
-        notify: Callable[[str, str], None] | None = None,
+        on_agent_output: Callable[[str], None] | None = None,
+        notify: Callable[[str, NotificationLevel], None] | None = None,
     ):
         """Initialize sessions view.
 
@@ -97,14 +105,15 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self.pane_manager = pane_manager
         self.state = state
         self.controller = controller
+        self._on_agent_output = on_agent_output
         self.notify = notify
         self.tree: list[TreeNode] = []
         self.flat_items: list[TreeNode] = []
         # State tracking for color coding (detect changes between refreshes)
         self._prev_state: dict[str, dict[str, str]] = {}  # session_id -> {input, output}
         self._active_field: dict[str, ActivePane] = {}
-        # Track running highlight timers (for 60-second auto-dim)
-        self._highlight_timers: dict[str, asyncio.Task[None]] = {}  # session_id -> timer task
+        # Track highlight expiry (monotonic time) for 60-second auto-dim
+        self._highlight_until: dict[str, float] = {}
         # Store sessions for child lookup
         self._sessions: list[SessionInfo] = []
         # Store computers for SSH connection lookup
@@ -124,6 +133,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_click_time: dict[int, float] = {}  # screen_row -> timestamp
         self._double_click_threshold = 0.4  # seconds
         self._pending_select_session_id: str | None = None
+        self._pending_activate_session_id: str | None = None
+        self._pending_activate_clear_preview: bool = False
         self._last_data_counts: dict[str, int] = {}
 
         # Load persisted sticky state (sessions + docs)
@@ -303,6 +314,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         for idx, item in enumerate(self.flat_items):
             if is_session_node(item) and item.data.session.session_id == target:
+                if not item.data.session.tmux_session_name:
+                    return False
                 self._select_index(idx)
                 self.controller.dispatch(
                     Intent(
@@ -313,8 +326,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
                 activated = False
                 if item.data.session.tmux_session_name:
-                    self._activate_session(item, clear_preview=False)
-                    self._focus_selected_pane()
+                    self._schedule_activate_session(item, clear_preview=False)
                     activated = True
                 if activated:
                     self._pending_select_session_id = None
@@ -373,8 +385,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     def _revive_headless_session(self, session: SessionInfo) -> None:
         session_id = session.session_id
         computer = session.computer or "local"
-        if self.notify:
-            self.notify("Reviving headless session...", "info")
         try:
             result = asyncio.get_event_loop().run_until_complete(
                 self.api.send_keys(session_id=session_id, computer=computer, key="enter", count=1)
@@ -385,20 +395,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("Failed to revive headless session %s: %s", session_id[:8], exc)
             if self.notify:
-                self.notify(f"Revive failed: {exc}", "error")
-
-    async def _clear_highlight_after_delay(self, session_id: str) -> None:
-        """Clear highlight after 60 seconds if no new changes occurred.
-
-        Args:
-            session_id: Session ID to clear highlight for
-        """
-        await asyncio.sleep(60)
-        # Timer completed - remove highlight
-        self._active_field[session_id] = ActivePane.NONE
-        # Clean up timer reference
-        self._highlight_timers.pop(session_id, None)
-        logger.debug("Highlight timer expired for session %s", session_id[:8])
+                self.notify(f"Revive failed: {exc}", NotificationLevel.ERROR)
 
     def _start_highlight_timer(self, session_id: str, field: ActivePane) -> None:
         """Start 60-second highlight timer, canceling any existing timer.
@@ -407,18 +404,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             session_id: Session ID
             field: Which field to highlight (INPUT or OUTPUT)
         """
-        # Cancel existing timer if any
-        existing_timer = self._highlight_timers.get(session_id)
-        if existing_timer and not existing_timer.done():
-            existing_timer.cancel()
-            logger.debug("Cancelled existing highlight timer for session %s", session_id[:8])
-
         # Set highlight
         self._active_field[session_id] = field
-
-        # Start new 60-second timer
-        timer = asyncio.create_task(self._clear_highlight_after_delay(session_id))
-        self._highlight_timers[session_id] = timer
+        self._highlight_until[session_id] = time.monotonic() + 60
         logger.debug("Started highlight timer for session %s (%s)", session_id[:8], field.name)
 
     def _update_activity_state(self, sessions: list[SessionInfo]) -> None:
@@ -431,6 +419,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             sessions: List of session dicts
         """
         now = datetime.now(timezone.utc)
+        now_mono = time.monotonic()
 
         def _is_recent(last_activity: str | None) -> bool:
             if not last_activity:
@@ -442,6 +431,12 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if last_dt.tzinfo is None:
                 last_dt = last_dt.replace(tzinfo=timezone.utc)
             return (now - last_dt).total_seconds() <= 60
+
+        # Clear expired highlights before processing new changes.
+        for session_id, until in list(self._highlight_until.items()):
+            if until <= now_mono:
+                self._active_field[session_id] = ActivePane.NONE
+                self._highlight_until.pop(session_id, None)
 
         for session in sessions:
             session_id = session.session_id
@@ -473,6 +468,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if output_changed:
                 # New output → highlight output, start timer
                 self._start_highlight_timer(session_id, ActivePane.OUTPUT)
+                if self._on_agent_output and session.active_agent:
+                    self._on_agent_output(session.active_agent)
             elif input_changed:
                 # New input → highlight input, start timer
                 self._start_highlight_timer(session_id, ActivePane.INPUT)
@@ -766,7 +763,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             self._start_session_for_project(stdscr, item.data)
         elif is_session_node(item):
             # Activate session (same behavior as clicking)
-            self._activate_session(item)
+            self._schedule_activate_session(item)
             logger.trace(
                 "sessions_enter",
                 item_type="session",
@@ -813,7 +810,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if existing_idx is None and (len(self.sticky_sessions) + len(self._prep_sticky_previews)) >= 5:
             # Max 5 reached
             if self.notify:
-                self.notify("warning", "Maximum 5 sticky sessions")
+                self.notify("Maximum 5 sticky sessions", NotificationLevel.WARNING)
             logger.warning("Cannot add sticky session %s: maximum 5 reached", session_id[:8])
             return
         if existing_idx is None and any(s.session_id == session_id for s in self.sticky_sessions):
@@ -874,12 +871,37 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return
 
         if clear_preview and self._preview:
-            self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
-        self.controller.dispatch(Intent(IntentType.SET_PREVIEW, {"session_id": session_id, "show_child": True}))
+            self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
+        self.controller.dispatch(
+            Intent(IntentType.SET_PREVIEW, {"session_id": session_id, "show_child": True}),
+            defer_layout=True,
+        )
         logger.debug(
             "_activate_session: showing session in active pane (sticky_count=%d)",
             len(self.sticky_sessions),
         )
+
+    def _schedule_activate_session(self, item: SessionNode, *, clear_preview: bool = False) -> None:
+        """Defer activation so selection is rendered immediately."""
+        if not item.data.session.tmux_session_name and self.notify:
+            self.notify("Adopting headless session...", NotificationLevel.INFO)
+        self._pending_activate_session_id = item.data.session.session_id
+        self._pending_activate_clear_preview = clear_preview
+
+    def apply_pending_activation(self) -> None:
+        """Apply any deferred activation once per loop tick."""
+        target = self._pending_activate_session_id
+        if not target:
+            return
+        clear_preview = self._pending_activate_clear_preview
+        self._pending_activate_session_id = None
+        self._pending_activate_clear_preview = False
+
+        for item in self.flat_items:
+            if is_session_node(item) and item.data.session.session_id == target:
+                self._activate_session(item, clear_preview=clear_preview)
+                self._focus_selected_pane()
+                return
 
     def _rebuild_sticky_panes(self) -> None:
         """Rebuild pane layout based on sticky sessions."""
@@ -1091,7 +1113,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         if not project_sessions:
             if self.notify:
-                self.notify("info", "No sessions found for project")
+                self.notify("No sessions found for project", NotificationLevel.INFO)
             logger.debug("_open_project_sessions: no matching sessions for %s", project.path)
             return
 
@@ -1113,13 +1135,16 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         tmux_sessions = [session for session in project_sessions if session.tmux_session_name]
         if not tmux_sessions:
             if self.notify:
-                self.notify("info", "No attachable sessions found for project")
+                self.notify("No attachable sessions found for project", NotificationLevel.INFO)
             logger.debug("_open_project_sessions: no tmux sessions for %s", project.path)
             return
 
         max_sticky = 5
         if len(tmux_sessions) > max_sticky and self.notify:
-            self.notify("warning", f"Showing first {max_sticky} sessions (max 5 sticky panes)")
+            self.notify(
+                f"Showing first {max_sticky} sessions (max 5 sticky panes)",
+                NotificationLevel.WARNING,
+            )
 
         self.sticky_sessions = [StickySessionInfo(session.session_id, True) for session in tmux_sessions[:max_sticky]]
         self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
@@ -1273,11 +1298,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             is_sticky = any(sticky.session_id == session_id for sticky in self.sticky_sessions)
             if is_sticky:
                 if self._preview:
-                    self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW))
+                    self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
                 self._focus_selected_pane()  # Focus sticky pane only
             else:
-                self._activate_session(item, clear_preview=False)
-                self._focus_selected_pane()  # Focus active preview pane
+                self._schedule_activate_session(item, clear_preview=False)
 
         logger.trace(
             "sessions_click",

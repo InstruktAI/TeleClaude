@@ -501,9 +501,13 @@ class TestSessionsViewLogic:
 
         view._row_to_item[10] = 0
         view._row_to_id_item[10] = session
+        view._schedule_activate_session = lambda item, clear_preview=False: view._activate_session(  # type: ignore[assignment]
+            item, clear_preview=clear_preview
+        )
 
         # First click - single click activates (no sticky sessions)
         assert view.handle_click(10, is_double_click=False) is True
+        controller.apply_pending_layout()
         assert view.selected_index == 0
         assert pane_manager.apply_called is True
 
@@ -511,6 +515,7 @@ class TestSessionsViewLogic:
         pane_manager.toggle_called = False
         pane_manager.apply_called = False
         assert view.handle_click(10, is_double_click=True) is True
+        controller.apply_pending_layout()
 
         # Should have toggled sticky with parent-only mode
         assert len(view.sticky_sessions) == 1

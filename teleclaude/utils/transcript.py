@@ -1,6 +1,7 @@
 """Parse and convert Claude/Gemini/Codex session transcripts to markdown."""
 
 import json
+import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -113,7 +114,11 @@ def parse_gemini_transcript(
         return f"Error parsing transcript: {e}"
 
 
-def _should_skip_entry(entry: dict[str, object], since_dt: Optional[datetime], until_dt: Optional[datetime]) -> bool:  # noqa: loose-dict - External entry
+def _should_skip_entry(
+    entry: dict[str, object],  # guard: loose-dict - External entry
+    since_dt: Optional[datetime],
+    until_dt: Optional[datetime],
+) -> bool:
     """Check if entry should be skipped based on type and timestamp filters.
 
     guard: allow-string-compare
@@ -137,11 +142,11 @@ def _should_skip_entry(entry: dict[str, object], since_dt: Optional[datetime], u
 
 
 def _process_entry(
-    entry: dict[str, object],  # noqa: loose-dict - External entry
+    entry: dict[str, object],  # guard: loose-dict - External entry
     lines: list[str],
     last_section: Optional[str],
     collapse_tool_results: bool,
-) -> Optional[str]:  # noqa: loose-dict - External entry
+) -> Optional[str]:  # guard: loose-dict - External entry
     """Process a transcript entry and append formatted content to lines.
 
     guard: allow-string-compare
@@ -231,7 +236,7 @@ def _process_list_content(
 
 
 def _process_text_block(
-    block: dict[str, object],  # noqa: loose-dict - External block
+    block: dict[str, object],  # guard: loose-dict - External block
     role: str,
     time_prefix: str,
     lines: list[str],
@@ -261,7 +266,7 @@ def _process_text_block(
 
 
 def _process_thinking_block(
-    block: dict[str, object],  # noqa: loose-dict - External block
+    block: dict[str, object],  # guard: loose-dict - External block
     time_prefix: str,
     lines: list[str],
     last_section: Optional[str],
@@ -280,7 +285,11 @@ def _process_thinking_block(
     return "assistant"
 
 
-def _process_tool_use_block(block: dict[str, object], time_prefix: str, lines: list[str]) -> str:  # noqa: loose-dict - External block
+def _process_tool_use_block(
+    block: dict[str, object],  # guard: loose-dict - External block
+    time_prefix: str,
+    lines: list[str],
+) -> str:
     """Process tool use block.
 
     guard: allow-string-compare
@@ -296,11 +305,11 @@ def _process_tool_use_block(block: dict[str, object], time_prefix: str, lines: l
 
 
 def _process_tool_result_block(
-    block: dict[str, object],  # noqa: loose-dict - External block
+    block: dict[str, object],  # guard: loose-dict - External block
     time_prefix: str,
     lines: list[str],
     collapse_tool_results: bool,
-) -> str:  # noqa: loose-dict - External block
+) -> str:  # guard: loose-dict - External block
     """Process tool result block.
 
     guard: allow-string-compare
@@ -438,7 +447,7 @@ def _format_thinking(text: str) -> str:
 
 
 def _render_transcript_from_entries(
-    entries: Iterable[dict[str, object]],  # noqa: loose-dict - External entries
+    entries: Iterable[dict[str, object]],  # guard: loose-dict - External entries
     title: str,
     since_timestamp: Optional[str],
     until_timestamp: Optional[str],
@@ -472,7 +481,9 @@ def _render_transcript_from_entries(
     return tail_limit_fn(result, tail_chars)
 
 
-def _iter_jsonl_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loose-dict - External JSONL unknown structure
+def _iter_jsonl_entries(
+    path: Path,
+) -> Iterable[dict[str, object]]:  # guard: loose-dict - External JSONL unknown structure
     """Yield JSON objects for each line in a transcript file."""
 
     with open(path, encoding="utf-8") as f:
@@ -485,16 +496,20 @@ def _iter_jsonl_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loo
                 continue
 
             if isinstance(entry_value, dict):
-                yield cast(dict[str, object], entry_value)  # noqa: loose-dict - Parsed JSONL entry
+                yield cast(dict[str, object], entry_value)  # guard: loose-dict - Parsed JSONL entry
 
 
-def _iter_claude_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loose-dict - External JSONL unknown structure
+def _iter_claude_entries(
+    path: Path,
+) -> Iterable[dict[str, object]]:  # guard: loose-dict - External JSONL unknown structure
     """Yield entries from Claude Code transcripts (raw JSONL)."""
 
     yield from _iter_jsonl_entries(path)
 
 
-def _iter_codex_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loose-dict - External JSONL unknown structure
+def _iter_codex_entries(
+    path: Path,
+) -> Iterable[dict[str, object]]:  # guard: loose-dict - External JSONL unknown structure
     """Yield entries from Codex JSONL transcripts, skipping metadata.
 
     guard: allow-string-compare
@@ -506,7 +521,9 @@ def _iter_codex_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loo
         yield entry
 
 
-def _iter_gemini_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loose-dict - External JSONL unknown structure
+def _iter_gemini_entries(
+    path: Path,
+) -> Iterable[dict[str, object]]:  # guard: loose-dict - External JSONL unknown structure
     """Yield normalized entries from Gemini JSON session files.
 
     guard: allow-string-compare
@@ -515,16 +532,16 @@ def _iter_gemini_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: lo
     with open(path, encoding="utf-8") as f:
         raw_document: object = json.load(f)
 
-    document: dict[str, object] = {}  # noqa: loose-dict - External JSON document
+    document: dict[str, object] = {}  # guard: loose-dict - External JSON document
     if isinstance(raw_document, dict):
-        document = cast(dict[str, object], raw_document)  # noqa: loose-dict - External JSON document
+        document = cast(dict[str, object], raw_document)  # guard: loose-dict - External JSON document
 
     raw_messages = document.get("messages", [])
-    messages: list[dict[str, object]] = []  # noqa: loose-dict - External JSON messages
+    messages: list[dict[str, object]] = []  # guard: loose-dict - External JSON messages
     if isinstance(raw_messages, list):
         for item in raw_messages:
             if isinstance(item, dict):
-                messages.append(cast(dict[str, object], item))  # noqa: loose-dict - External JSON message
+                messages.append(cast(dict[str, object], item))  # guard: loose-dict - External JSON message
 
     for message in messages:
         msg_type = message.get("type")
@@ -545,13 +562,13 @@ def _iter_gemini_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: lo
         if msg_type != "gemini":
             continue
 
-        blocks: list[dict[str, object]] = []  # noqa: loose-dict - Internal normalized blocks
+        blocks: list[dict[str, object]] = []  # guard: loose-dict - Internal normalized blocks
         thoughts_raw = message.get("thoughts")
-        thoughts: list[dict[str, object]] = []  # noqa: loose-dict - External thoughts
+        thoughts: list[dict[str, object]] = []  # guard: loose-dict - External thoughts
         if isinstance(thoughts_raw, list):
             for thought_item in thoughts_raw:
                 if isinstance(thought_item, dict):
-                    thoughts.append(cast(dict[str, object], thought_item))  # noqa: loose-dict - External thought
+                    thoughts.append(cast(dict[str, object], thought_item))  # guard: loose-dict - External thought
 
         for thought in thoughts:
             description = thought.get("description") or thought.get("text") or ""
@@ -563,18 +580,18 @@ def _iter_gemini_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: lo
             blocks.append({"type": "text", "text": str(content_text)})
 
         tool_calls_raw = message.get("toolCalls")
-        tool_calls: list[dict[str, object]] = []  # noqa: loose-dict - External tool calls
+        tool_calls: list[dict[str, object]] = []  # guard: loose-dict - External tool calls
         if isinstance(tool_calls_raw, list):
             for tool_item in tool_calls_raw:
                 if isinstance(tool_item, dict):
-                    tool_calls.append(cast(dict[str, object], tool_item))  # noqa: loose-dict - External tool call
+                    tool_calls.append(cast(dict[str, object], tool_item))  # guard: loose-dict - External tool call
 
         for tool_call in tool_calls:
             name = tool_call.get("displayName") or tool_call.get("name") or "tool"
             args = tool_call.get("args")
-            input_payload: dict[str, object] = {}  # noqa: loose-dict - External tool args
+            input_payload: dict[str, object] = {}  # guard: loose-dict - External tool args
             if isinstance(args, dict):
-                input_payload = cast(dict[str, object], args)  # noqa: loose-dict - External tool args
+                input_payload = cast(dict[str, object], args)  # guard: loose-dict - External tool args
             blocks.append(
                 {
                     "type": "tool_use",
@@ -650,7 +667,7 @@ def get_transcript_parser_info(agent_name: AgentName) -> TranscriptParserInfo:
 def _get_entries_for_agent(
     transcript_path: str,
     agent_name: AgentName,
-) -> Optional[list[dict[str, object]]]:  # noqa: loose-dict - External entries
+) -> Optional[list[dict[str, object]]]:  # guard: loose-dict - External entries
     """Load and return transcript entries for the given agent type.
 
     Returns None if path doesn't exist or agent type is unknown.
@@ -883,9 +900,43 @@ def extract_workdir_from_transcript(transcript_path: str) -> str | None:
     if not path.exists():
         return None
 
+    def _collect_abs_paths(obj: object, out: list[str]) -> None:
+        if isinstance(obj, dict):
+            for value in obj.values():
+                _collect_abs_paths(value, out)
+        elif isinstance(obj, list):
+            for item in obj:
+                _collect_abs_paths(item, out)
+        elif isinstance(obj, str) and Path(obj).is_absolute():
+            out.append(obj.strip())
+
+    def _derive_workdir_from_paths(paths: list[str]) -> str | None:
+        if not paths:
+            return None
+        normalized: list[str] = []
+        for raw in paths:
+            candidate = raw.strip()
+            if not candidate:
+                continue
+            p = Path(candidate)
+            # If this looks like a file path, use its parent directory.
+            if p.suffix and not candidate.endswith("/"):
+                p = p.parent
+            normalized.append(str(p))
+        if not normalized:
+            return None
+        try:
+            common = Path(os.path.commonpath(normalized))
+        except ValueError:
+            return normalized[0]
+        if common.is_file():
+            common = common.parent
+        return str(common)
+
     try:
         if path.suffix == ".jsonl":
             with open(path, encoding="utf-8") as f:
+                abs_paths: list[str] = []
                 for idx, line in enumerate(f):
                     if idx > 200:
                         break
@@ -901,15 +952,21 @@ def extract_workdir_from_transcript(transcript_path: str) -> str | None:
                         found = _find_workdir_in_obj(payload)
                         if found:
                             return found
+                    _collect_abs_paths(entry, abs_paths)
                     found = _find_workdir_in_obj(entry)
                     if found:
                         return found
-            return None
+            return _derive_workdir_from_paths(abs_paths)
 
         if path.suffix == ".json":
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
-            return _find_workdir_in_obj(data)
+            found = _find_workdir_in_obj(data)
+            if found:
+                return found
+            abs_paths: list[str] = []
+            _collect_abs_paths(data, abs_paths)
+            return _derive_workdir_from_paths(abs_paths)
     except OSError:
         return None
     except json.JSONDecodeError:

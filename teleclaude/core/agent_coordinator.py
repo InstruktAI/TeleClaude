@@ -44,12 +44,19 @@ class AgentCoordinator:
         payload = cast(AgentSessionStartPayload, context.data)
         native_session_id = payload.session_id
         native_log_file = payload.transcript_path
+        raw_cwd = payload.raw.get("cwd")
 
         update_kwargs: dict[str, object] = {}  # noqa: loose-dict - Dynamic session updates
         if native_session_id:
             update_kwargs["native_session_id"] = str(native_session_id)
         if native_log_file:
             update_kwargs["native_log_file"] = str(native_log_file)
+
+        if isinstance(raw_cwd, str) and raw_cwd:
+            session = await db.get_session(context.session_id)
+            if session and not session.project_path:
+                update_kwargs["project_path"] = raw_cwd
+                update_kwargs["subdir"] = None
         if update_kwargs:
             await db.update_session(context.session_id, **update_kwargs)
 

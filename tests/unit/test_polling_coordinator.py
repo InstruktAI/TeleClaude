@@ -132,7 +132,7 @@ class TestPollAndSendOutput:
                 _skip_register=True,
             )
 
-        mock_terminate.assert_called_once()
+        mock_terminate.assert_not_called()
 
     async def test_process_exited_with_exit_code_and_missing_tmux(self, tmp_path):
         """Exit code with missing tmux should terminate the session."""

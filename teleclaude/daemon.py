@@ -79,7 +79,6 @@ from teleclaude.types.commands import (
 )
 from teleclaude.utils.transcript import (
     extract_last_agent_message,
-    extract_workdir_from_transcript,
     parse_session_transcript,
 )
 
@@ -690,8 +689,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         agent_str = str(agent_name) if isinstance(agent_name, str) and agent_name else None
 
         workdir = None
-        if isinstance(native_log_file, str) and native_log_file:
-            workdir = extract_workdir_from_transcript(native_log_file)
+        raw_cwd = data.get("cwd")
+        if isinstance(raw_cwd, str) and raw_cwd:
+            workdir = raw_cwd
 
         project_path = None
         subdir = None
@@ -731,6 +731,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         session = await db.get_session(session_id)
         if not session:
             session = await self._ensure_headless_session(session_id, data)
+        elif session.lifecycle_status == "closed":
+            logger.debug(
+                "Ignoring hook event for closed session",
+                session_id=session_id[:8],
+                event_type=event_type,
+            )
+            return
         elif session.lifecycle_status == "headless" and session.last_input_origin != InputOrigin.HOOK.value:
             await db.update_session(session_id, last_input_origin=InputOrigin.HOOK.value)
             session = await db.get_session(session_id) or session
@@ -971,6 +978,17 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     render_markdown=True,
                 )
 
+            # 4c. Re-emit enriched stop event so subscribers (e.g. TTS) see summary.
+            if payload.summary:
+                event_bus.emit(
+                    TeleClaudeEvents.AGENT_EVENT,
+                    AgentEventContext(
+                        session_id=session_id,
+                        event_type=AgentHookEvents.AGENT_STOP,
+                        data=payload,
+                    ),
+                )
+
             # 5. Final Coordination
             await self.agent_coordinator.handle_stop(context)
 
@@ -1086,13 +1104,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         fingerprint_key = f"{native_session_id}:{fingerprint}"
         last_fingerprint = self._last_summary_fingerprint.get(session_id)
         if last_fingerprint == fingerprint_key:
-            logger.debug("Skipping enrichment for session %s: duplicate transcript", session_id[:8])
+            logger.warning("Duplicate transcript fingerprint for session %s", session_id[:8])
             return
         self._last_summary_fingerprint[session_id] = fingerprint_key
 
         active_agent = session.active_agent
         if not active_agent:
-            return
+            raise RuntimeError(f"Missing active_agent for session {session_id}")
         agent_name = AgentName.from_str(active_agent)
 
         title: str | None = None

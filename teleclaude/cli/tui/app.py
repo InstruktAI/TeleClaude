@@ -221,6 +221,7 @@ class TelecApp:
             self.pane_manager,
             self.state,
             self.controller,
+            on_agent_output=self._on_agent_output,
             notify=self.notify,
         )
         self.views[2] = PreparationView(
@@ -449,23 +450,13 @@ class TelecApp:
             elif isinstance(event, SessionStartedEvent):
                 sessions_view = self.views.get(1)
                 if isinstance(sessions_view, SessionsView):
-                    sessions_view.request_select_session(event.data.session_id)
+                    if event.data.tmux_session_name:
+                        sessions_view.request_select_session(event.data.session_id)
                 if self._loop:
                     self._loop.run_until_complete(self.refresh_data(include_todos=False))
 
             elif isinstance(event, SessionUpdatedEvent):
                 updated_session = event.data
-
-                # Trigger animation on any update (activity pulse)
-                if updated_session.active_agent:
-                    self.activity_trigger.on_agent_activity(
-                        updated_session.active_agent,
-                        is_big=True,  # Trigger for big banner if it will be shown
-                    )
-                    self.activity_trigger.on_agent_activity(
-                        updated_session.active_agent,
-                        is_big=False,  # Trigger for logo if it will be shown
-                    )
 
                 old_status = self._session_status_cache.get(updated_session.session_id)
                 new_status = updated_session.status
@@ -507,6 +498,11 @@ class TelecApp:
         self._session_status_cache = {session.session_id: session.status for session in sessions}
         sessions_view._update_activity_state(sessions)
         logger.debug("Sessions view updated with %d sessions", len(sessions))
+
+    def _on_agent_output(self, agent_name: str) -> None:
+        """Trigger banner/logo animations for agent output (agent_stop)."""
+        self.activity_trigger.on_agent_activity(agent_name, is_big=True)
+        self.activity_trigger.on_agent_activity(agent_name, is_big=False)
 
     def _update_preparation_view(self, projects: list[ProjectInfo | ProjectWithTodosInfo]) -> None:  # noqa: ARG002
         """Update preparation view with fresh project data.
@@ -619,6 +615,10 @@ class TelecApp:
 
             # Always render to advance animations, even during idle periods
             self._render(stdscr)
+            sessions_view = self.views.get(1)
+            if isinstance(sessions_view, SessionsView):
+                sessions_view.apply_pending_activation()
+            self.controller.apply_pending_layout()
 
     def _consume_theme_refresh(self) -> bool:
         if self._theme_refresh_requested:

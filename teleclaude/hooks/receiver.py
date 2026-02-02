@@ -63,6 +63,11 @@ def _parse_args() -> argparse.Namespace:
         choices=AgentName.choices(),
         help="Agent name for adapter selection",
     )
+    parser.add_argument(
+        "--cwd",
+        default=None,
+        help="Caller working directory for headless session attribution",
+    )
     parser.add_argument("event_type", nargs="?", default=None, help="Hook event type")
     return parser.parse_args()
 
@@ -158,23 +163,69 @@ def _extract_native_identity(agent: str, data: Mapping[str, Any]) -> tuple[str |
     return native_session_id, native_log_file
 
 
-def _get_teleclaude_session_id() -> str | None:
+def _get_env_session_id() -> str | None:
+    value = os.getenv("TELECLAUDE_SESSION_ID")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    # Legacy tmux session id file (compat + tests)
+    tmpdir = os.getenv("TMPDIR")
+    if tmpdir:
+        legacy_path = Path(tmpdir) / "teleclaude_session_id"
+        if legacy_path.exists():
+            try:
+                contents = legacy_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                contents = ""
+            if contents:
+                return contents
+    return None
+
+
+def _get_session_map_path() -> Path | None:
     tmpdir = os.getenv("TMPDIR")
     if not tmpdir:
         return None
-    candidate = Path(tmpdir) / "teleclaude_session_id"
-    if not candidate.exists():
-        return None
+    return Path(tmpdir) / "teleclaude_session_map.json"
+
+
+def _session_map_key(agent: str, native_session_id: str) -> str:
+    return f"{agent}:{native_session_id}"
+
+
+def _load_session_map(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
     try:
-        session_id = candidate.read_text(encoding="utf-8").strip()
-    except Exception:
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw) if raw.strip() else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if isinstance(data, dict):
+        return {str(k): str(v) for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
+    return {}
+
+
+def _write_session_map_atomic(path: Path, data: dict[str, str]) -> None:
+    tmp_path = path.with_suffix(".tmp")
+    tmp_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(tmp_path, path)
+
+
+def _get_cached_session_id(agent: str, native_session_id: str | None) -> str | None:
+    if not native_session_id:
         return None
-    return session_id or None
+    path = _get_session_map_path()
+    if not path:
+        return None
+    data = _load_session_map(path)
+    return data.get(_session_map_key(agent, native_session_id))
 
 
 def _resolve_or_refresh_session_id(
     candidate_session_id: str | None,
     raw_native_session_id: str | None,
+    *,
+    agent: str,
 ) -> str | None:
     """Ensure a native session maps to the correct TeleClaude session id.
 
@@ -191,35 +242,61 @@ def _resolve_or_refresh_session_id(
     engine = create_engine(f"sqlite:///{db_path}")
     with SqlSession(engine) as session:
         row = session.exec(
-            text("SELECT native_session_id, lifecycle_status FROM sessions WHERE session_id = :session_id").bindparams(
-                session_id=candidate_session_id
-            )
+            text(
+                "SELECT native_session_id, lifecycle_status, closed_at FROM sessions WHERE session_id = :session_id"
+            ).bindparams(session_id=candidate_session_id)
         ).first()
     if not row:
         return candidate_session_id
 
-    native_session_id = row[0] if isinstance(row, tuple) else None
-    lifecycle_status = row[1] if isinstance(row, tuple) else None
+    native_session_id = None
+    lifecycle_status = None
+    closed_at = None
+    if hasattr(row, "_mapping"):
+        mapping = row._mapping  # type: ignore[attr-defined]
+        native_session_id = mapping.get("native_session_id")
+        lifecycle_status = mapping.get("lifecycle_status")
+        closed_at = mapping.get("closed_at")
+    elif isinstance(row, tuple):
+        native_session_id = row[0] if len(row) > 0 else None
+        lifecycle_status = row[1] if len(row) > 1 else None
+        closed_at = row[2] if len(row) > 2 else None
+    if closed_at:
+        new_session_id = str(uuid.uuid4())
+        _persist_session_map(agent, raw_native_session_id, new_session_id)
+        return new_session_id
     if lifecycle_status != "headless":
         return candidate_session_id
 
     if native_session_id and native_session_id != raw_native_session_id:
         new_session_id = str(uuid.uuid4())
-        _persist_teleclaude_session_id(new_session_id)
+        _persist_session_map(agent, raw_native_session_id, new_session_id)
         return new_session_id
 
     return candidate_session_id
 
 
-def _persist_teleclaude_session_id(session_id: str) -> None:
-    """Write TC session ID to TMPDIR so subsequent hooks from the same agent session reuse it."""
-    tmpdir = os.getenv("TMPDIR")
-    if not tmpdir:
+def _persist_session_map(agent: str, native_session_id: str | None, session_id: str) -> None:
+    """Persist session mapping keyed by agent + native session id."""
+    if not native_session_id:
         return
+    path = _get_session_map_path()
+    if not path:
+        return
+    lock_path = path.with_suffix(".lock")
     try:
-        Path(tmpdir, "teleclaude_session_id").write_text(session_id, encoding="utf-8")
+        with open(lock_path, "w", encoding="utf-8") as lock_file:
+            try:
+                import fcntl
+
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            except Exception:
+                pass
+            data = _load_session_map(path)
+            data[_session_map_key(agent, native_session_id)] = session_id
+            _write_session_map_atomic(path, data)
     except OSError as exc:
-        logger.warning("Failed to persist teleclaude_session_id: %s", exc)
+        logger.warning("Failed to persist session map: %s", exc)
 
 
 class NormalizeFn(Protocol):
@@ -244,7 +321,7 @@ def main() -> None:
         argv=sys.argv,
         cwd=os.getcwd(),
         stdin_tty=sys.stdin.isatty(),
-        has_session_id=bool(_get_teleclaude_session_id()),
+        has_session_id=bool(_get_env_session_id()),
         agent=args.agent,
     )
 
@@ -276,15 +353,21 @@ def main() -> None:
 
     raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, raw_data)
 
-    teleclaude_session_id = _get_teleclaude_session_id()
-    teleclaude_session_id = _resolve_or_refresh_session_id(teleclaude_session_id, raw_native_session_id)
+    teleclaude_session_id = _get_env_session_id() or _get_cached_session_id(args.agent, raw_native_session_id)
+    teleclaude_session_id = _resolve_or_refresh_session_id(
+        teleclaude_session_id,
+        raw_native_session_id,
+        agent=args.agent,
+    )
     if not teleclaude_session_id:
         # No TeleClaude session yet — mint an ID and let core create the headless session.
         # Requires a native session ID to anchor later resolution.
         if not raw_native_session_id:
             sys.exit(0)
         teleclaude_session_id = str(uuid.uuid4())
-        _persist_teleclaude_session_id(teleclaude_session_id)
+        _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
+    else:
+        _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
 
     # Gemini: only allow session_start and stop into outbox.
     # For other events, exit cleanly (transcript capture only).
@@ -333,6 +416,10 @@ def main() -> None:
         data["native_session_id"] = raw_native_session_id
     if raw_native_log_file:
         data["native_log_file"] = raw_native_log_file
+
+    cwd = getattr(args, "cwd", None)
+    if isinstance(cwd, str) and cwd:
+        data["cwd"] = cwd
 
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(timezone.utc).isoformat()

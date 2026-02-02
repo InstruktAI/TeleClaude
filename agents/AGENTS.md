@@ -101,14 +101,3 @@ Build and distribute agent artifacts in this repository.
 
 - None.
 
-
-## Tools
-
-### history.py — Search session transcripts
-
-Searches through native transcript files for conversations matching a search term. Use when the user asks to find a previous conversation, recall what was discussed, or locate a session to resume.
-
-Usage: `~/.teleclaude/scripts/history.py --agent {{agent}} <search terms>`
-
-- Search terms are required
-- Returns matching sessions with project name, context snippet, and session ID

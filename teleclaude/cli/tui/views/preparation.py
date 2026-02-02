@@ -33,7 +33,14 @@ from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.state import DocPreviewState, DocStickyInfo, Intent, IntentType, TuiState
 from teleclaude.cli.tui.state_store import save_sticky_state
 from teleclaude.cli.tui.todos import TodoItem, parse_roadmap
-from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NodeType, TodoFileFlag, TodoStatus
+from teleclaude.cli.tui.types import (
+    CursesWindow,
+    FocusLevelType,
+    NodeType,
+    NotificationLevel,
+    TodoFileFlag,
+    TodoStatus,
+)
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import StartSessionModal
 from teleclaude.config import config
@@ -163,7 +170,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         pane_manager: TmuxPaneManager,
         state: TuiState,
         controller: TuiController,
-        notify: Callable[[str, str], None] | None = None,
+        notify: Callable[[str, NotificationLevel], None] | None = None,
     ):
         """Initialize preparation view.
 
@@ -843,7 +850,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         combined = len(self._sticky_previews) + len(self.state.sessions.sticky_sessions)
         if not existing and combined >= 5:
             if self.notify:
-                self.notify("warning", "Maximum 5 sticky panes")
+                self.notify("Maximum 5 sticky panes", NotificationLevel.WARNING)
             logger.warning("Cannot add sticky doc preview: maximum 5 reached")
             return
 

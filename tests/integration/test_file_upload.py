@@ -69,7 +69,8 @@ class TestFileUploadFlow:
             patch("teleclaude.core.file_handler.db", session_manager),
             patch("teleclaude.core.file_handler.is_agent_running", return_value=True),
             patch("teleclaude.core.file_handler.tmux_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.tmux_bridge.send_keys", side_effect=mock_send_keys),
+            patch("teleclaude.core.tmux_io.tmux_bridge.session_exists", return_value=True),
+            patch("teleclaude.core.tmux_io.tmux_bridge.send_keys_existing_tmux", side_effect=mock_send_keys),
         ):
             await file_handler.handle_file(
                 session_id=test_session.session_id,
@@ -84,12 +85,14 @@ class TestFileUploadFlow:
                 send_message=mock_send_message,
             )
 
-        assert len(sent_keys) == 1
+        assert len(sent_keys) == 2
         assert sent_keys[0][0] == "tmux_test"
+        assert sent_keys[0][1] == "cd /tmp"
+        assert sent_keys[1][0] == "tmux_test"
         # Path is resolved to absolute path (on macOS /tmp -> /private/tmp)
         expected_path = str(Path("/tmp/document.pdf").resolve())
         expected_text = tmux_io.wrap_bracketed_paste(f"@{expected_path}")
-        assert sent_keys[0][1] == expected_text
+        assert sent_keys[1][1] == expected_text
 
         assert len(sent_messages) == 1
         assert "document.pdf" in sent_messages[0][1]
@@ -113,7 +116,8 @@ class TestFileUploadFlow:
             patch("teleclaude.core.file_handler.db", session_manager),
             patch("teleclaude.core.file_handler.is_agent_running", return_value=False),
             patch("teleclaude.core.file_handler.tmux_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.tmux_bridge.send_keys", side_effect=mock_send_keys),
+            patch("teleclaude.core.tmux_io.tmux_bridge.session_exists", return_value=True),
+            patch("teleclaude.core.tmux_io.tmux_bridge.send_keys_existing_tmux", side_effect=mock_send_keys),
         ):
             await file_handler.handle_file(
                 session_id=test_session.session_id,
@@ -128,10 +132,11 @@ class TestFileUploadFlow:
                 send_message=mock_send_message,
             )
 
-        assert len(sent_keys) == 1
+        assert len(sent_keys) == 2
         expected_path = str(Path("/tmp/image.jpg").resolve())
         expected_text = tmux_io.wrap_bracketed_paste(expected_path)
-        assert sent_keys[0][1] == expected_text
+        assert sent_keys[0][1] == "cd /tmp"
+        assert sent_keys[1][1] == expected_text
 
     @pytest.mark.asyncio
     async def test_rejection_when_no_process_active(self, session_manager, test_session):

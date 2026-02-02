@@ -11,6 +11,12 @@ from teleclaude.hooks import receiver
 from teleclaude.hooks.adapters.models import NormalizedHookPayload
 
 
+@pytest.fixture(autouse=True)
+def _clear_session_env(monkeypatch):
+    """Ensure tests don't inherit a live TeleClaude session id."""
+    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
+
+
 def test_receiver_emits_error_event_on_normalize_failure(monkeypatch, tmp_path):
     """Test that normalization exceptions emit error events and exit nonzero."""
     sent = []

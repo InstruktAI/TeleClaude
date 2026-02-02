@@ -169,9 +169,13 @@ async def test_handle_enter_on_session_toggles_pane():
     )
     view.flat_items = [item]
     view.selected_index = 0
+    view._schedule_activate_session = lambda item, clear_preview=False: view._activate_session(  # type: ignore[assignment]
+        item, clear_preview=clear_preview
+    )
 
     screen = Mock()
     view.handle_enter(screen)
+    controller.apply_pending_layout()
 
     assert pane_manager.apply_called is True
 

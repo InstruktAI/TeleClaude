@@ -50,7 +50,9 @@ def _install_launchd_watch(project_root: Path) -> None:
     plist_path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
     plist_path.parent.mkdir(parents=True, exist_ok=True)
 
-    command = f"cd {project_root} && uv run --quiet --project {REPO_ROOT} -m teleclaude.cli.telec sync --warn-only --project-root {project_root}"
+    command = (
+        f"uv run --quiet --project {REPO_ROOT} -m teleclaude.cli.telec sync --warn-only --project-root {project_root}"
+    )
     watch_paths = [
         project_root / "AGENTS.md",
         project_root / "AGENTS.master.md",
@@ -138,7 +140,9 @@ def _install_systemd_watch(project_root: Path) -> None:
     service_path = unit_dir / f"{unit_id}.service"
     path_path = unit_dir / f"{unit_id}.path"
 
-    command = f"cd {project_root} && uv run --quiet --project {REPO_ROOT} -m teleclaude.cli.telec sync --warn-only --project-root {project_root}"
+    command = (
+        f"uv run --quiet --project {REPO_ROOT} -m teleclaude.cli.telec sync --warn-only --project-root {project_root}"
+    )
 
     service_template_path = REPO_ROOT / "templates" / "teleclaude-docs-watch.service"
     path_template_path = REPO_ROOT / "templates" / "teleclaude-docs-watch.path"

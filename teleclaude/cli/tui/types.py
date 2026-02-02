@@ -29,6 +29,7 @@ class NotificationLevel(str, Enum):
     """Notification severity levels."""
 
     INFO = "info"
+    WARNING = "warning"
     ERROR = "error"
     SUCCESS = "success"
 

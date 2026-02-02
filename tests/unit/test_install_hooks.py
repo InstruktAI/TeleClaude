@@ -56,7 +56,7 @@ def test_configure_claude_writes_hook_file(tmp_path, monkeypatch):
         command_text = " ".join(command)
     else:
         command_text = command
-    assert "receiver.py --agent claude session_start" in command_text
+    assert 'receiver.py --agent claude --cwd "$PWD" session_start' in command_text
 
 
 def test_configure_codex_writes_notify_hook(tmp_path, monkeypatch):
@@ -77,9 +77,12 @@ def test_configure_codex_writes_notify_hook(tmp_path, monkeypatch):
     notify = data["notify"]
     assert isinstance(notify, list)
     assert len(notify) == 4
-    assert notify[2] == "--agent"
-    assert notify[3] == "codex"
-    assert "receiver.py" in notify[1]
+    assert notify[0] == "/bin/bash"
+    assert notify[1] == "-lc"
+    assert "receiver.py" in notify[2]
+    assert "--agent codex" in notify[2]
+    assert ' --cwd "$PWD" "$1"' in notify[2]
+    assert notify[3] == "hook"
     assert data["mcp_servers"]["teleclaude"]["type"] == "stdio"
     assert "mcp-wrapper.py" in data["mcp_servers"]["teleclaude"]["args"][0]
 
@@ -106,7 +109,7 @@ def test_configure_codex_preserves_existing_config(tmp_path, monkeypatch):
     assert data["sandbox_mode"] == "safe"
     # New notify hook added
     assert "notify" in data
-    assert "receiver.py" in data["notify"][1]
+    assert "receiver.py" in data["notify"][2]
     assert data["mcp_servers"]["teleclaude"]["type"] == "stdio"
     assert "mcp-wrapper.py" in data["mcp_servers"]["teleclaude"]["args"][0]
 
@@ -165,10 +168,12 @@ def test_configure_codex_updates_our_hook_when_paths_change(tmp_path, monkeypatc
 
     data = tomllib.loads(codex_config.read_text())
     # Our hook updated to new paths
-    assert str(hook_python) in data["notify"][0]
-    assert "receiver.py" in data["notify"][1]
-    assert "--agent" in data["notify"][2]
-    assert "codex" in data["notify"][3]
+    assert data["notify"][0] == "/bin/bash"
+    assert data["notify"][1] == "-lc"
+    assert str(hook_python) in data["notify"][2]
+    assert "receiver.py" in data["notify"][2]
+    assert "--agent codex" in data["notify"][2]
+    assert data["notify"][3] == "hook"
     # Old paths gone
     assert "/old/venv/python" not in str(data["notify"])
     assert "/old/path/" not in str(data["notify"])

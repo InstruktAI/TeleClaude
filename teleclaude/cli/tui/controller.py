@@ -44,12 +44,13 @@ class TuiController:
         self._get_computer_info = get_computer_info
         self._sessions: list[SessionInfo] = []
         self._last_layout: LayoutState | None = None
+        self._layout_pending = False
 
     def update_sessions(self, sessions: list[SessionInfo]) -> None:
         """Update session catalog used for layout derivation."""
         self._sessions = sessions
 
-    def dispatch(self, intent: Intent) -> None:
+    def dispatch(self, intent: Intent, *, defer_layout: bool = False) -> None:
         """Apply intent to state and update layout if needed."""
         if intent.type is IntentType.SYNC_SESSIONS:
             before_preview = self.state.sessions.preview
@@ -59,7 +60,10 @@ class TuiController:
                 self.state.sessions.preview != before_preview or self.state.sessions.sticky_sessions != before_sticky
             )
             if changed:
-                self.apply_layout(focus=False)
+                if defer_layout:
+                    self._layout_pending = True
+                else:
+                    self.apply_layout(focus=False)
                 # Only persist if sticky sessions changed (not preview — preview
                 # wipes from SYNC are cleanup, not user intent).
                 if self.state.sessions.sticky_sessions != before_sticky:
@@ -74,7 +78,10 @@ class TuiController:
             IntentType.CLEAR_PREP_PREVIEW,
             IntentType.TOGGLE_PREP_STICKY,
         }:
-            self.apply_layout(focus=False)
+            if defer_layout:
+                self._layout_pending = True
+            else:
+                self.apply_layout(focus=False)
             save_sticky_state(self.state)
 
     def apply_layout(self, *, focus: bool = False) -> None:
@@ -94,6 +101,13 @@ class TuiController:
             sticky_doc_previews=layout.sticky_doc_previews,
             focus=focus,
         )
+
+    def apply_pending_layout(self) -> None:
+        """Apply deferred layout work once per loop tick."""
+        if not self._layout_pending:
+            return
+        self._layout_pending = False
+        self.apply_layout(focus=False)
 
     def _derive_layout(self) -> LayoutState:
         preview = self.state.sessions.preview

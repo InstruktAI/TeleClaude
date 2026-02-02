@@ -54,7 +54,7 @@ class StartSessionModal:
         api: "TelecAPIClient",
         agent_availability: dict[str, AgentAvailabilityInfo],
         default_prompt: str = "",
-        notify: Callable[[str, str], None] | None = None,
+        notify: Callable[[str, NotificationLevel], None] | None = None,
     ):
         """Initialize modal.
 
@@ -234,7 +234,7 @@ class StartSessionModal:
         message = None if native_session_id else self.prompt
 
         if self.notify:
-            self.notify("Starting session...", NotificationLevel.INFO)
+            self.notify("Spawning new session...", NotificationLevel.INFO)
         self.start_requested = True
 
         try:

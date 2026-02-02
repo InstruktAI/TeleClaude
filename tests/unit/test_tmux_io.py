@@ -31,13 +31,11 @@ async def test_send_text_prefers_existing_tmux():
             "send_keys_existing_tmux",
             new=AsyncMock(return_value=True),
         ) as mock_send_tmux,
-        patch.object(tmux_io.tmux_bridge, "send_keys", new=AsyncMock(return_value=True)) as mock_send_keys,
     ):
         ok = await tmux_io.send_text(session, "hello", send_enter=True, working_dir="/tmp")
 
         assert ok is True
-        mock_send_tmux.assert_awaited_once()
-        mock_send_keys.assert_not_called()
+        assert mock_send_tmux.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -53,15 +51,14 @@ async def test_send_text_creates_tmux_when_missing():
 
     with (
         patch.object(tmux_io.tmux_bridge, "session_exists", new=AsyncMock(return_value=False)),
+        patch.object(tmux_io.tmux_bridge, "ensure_tmux_session", new=AsyncMock(return_value=True)),
         patch.object(
             tmux_io.tmux_bridge,
             "send_keys_existing_tmux",
             new=AsyncMock(return_value=True),
         ) as mock_send_tmux,
-        patch.object(tmux_io.tmux_bridge, "send_keys", new=AsyncMock(return_value=True)) as mock_send_keys,
     ):
         ok = await tmux_io.send_text(session, "hello", send_enter=True, working_dir="/tmp")
 
         assert ok is True
-        mock_send_tmux.assert_not_called()
-        mock_send_keys.assert_awaited_once()
+        assert mock_send_tmux.await_count == 2

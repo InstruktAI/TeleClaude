@@ -44,7 +44,6 @@ from teleclaude.core.session_utils import (
     ensure_unique_title,
     get_short_project_name,
     resolve_working_dir,
-    split_project_path_and_subdir,
     update_title_with_agent,
 )
 from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
@@ -63,7 +62,6 @@ from teleclaude.types.commands import (
     StartAgentCommand,
 )
 from teleclaude.utils.transcript import (
-    extract_workdir_from_transcript,
     get_transcript_parser_info,
     parse_session_transcript,
 )
@@ -170,19 +168,6 @@ async def _ensure_tmux_for_headless(
 
     project_path = session.project_path
     subdir = session.subdir
-    if not project_path and session.native_log_file:
-        workdir = extract_workdir_from_transcript(session.native_log_file)
-        if workdir:
-            trusted_dirs = [d.path for d in config.computer.get_all_trusted_dirs()]
-            project_path, subdir = split_project_path_and_subdir(workdir, trusted_dirs)
-            await db.update_session(
-                session.session_id,
-                project_path=project_path,
-                subdir=subdir,
-            )
-            refreshed = await db.get_session(session.session_id)
-            if refreshed:
-                session = refreshed
 
     if not project_path:
         await client.send_message(

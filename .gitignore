@@ -66,3 +66,6 @@ teleclaude.db-shm
 
 AGENTS.md
 CLAUDE.md
+# Local AI config artifacts
+.claude/
+.codex/

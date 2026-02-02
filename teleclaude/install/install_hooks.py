@@ -136,7 +136,7 @@ def _resolve_hook_python(repo_root: Path) -> Path:
 
 def _build_hook_command(python_exe: Path, receiver_script: Path, agent: str, event_arg: str) -> str:
     """Build command string: python executable + script + args, space-separated."""
-    return f"{python_exe} {receiver_script} --agent {agent} {event_arg}"
+    return f'{python_exe} {receiver_script} --agent {agent} --cwd "$PWD" {event_arg}'
 
 
 # Event mappings by agent
@@ -351,7 +351,12 @@ def configure_codex(repo_root: Path) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     python_exe = _resolve_hook_python(repo_root)
-    notify_value = [str(python_exe), str(receiver_script), AGENT_FLAG, CODEX_AGENT]
+    notify_value = [
+        "/bin/bash",
+        "-lc",
+        f'{python_exe} {receiver_script} {AGENT_FLAG} {CODEX_AGENT} --cwd "$PWD" "$1"',
+        "hook",
+    ]
 
     if config_path.exists():
         content = config_path.read_text()
