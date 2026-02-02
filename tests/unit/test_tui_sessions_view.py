@@ -348,11 +348,9 @@ class TestSessionsViewLogic:
         result = CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_123", agent="claude")
         view._attach_new_session(result, "test-machine", object())
 
-        assert pane_manager.called is True
-        assert pane_manager.args is not None
-        assert pane_manager.args[0] == "tc_123"
-        assert pane_manager.args[1] == "claude"
+        assert pane_manager.called is False
         assert view._pending_select_session_id == "sess-1"
+        assert view._pending_select_source == "user"
 
     @pytest.mark.asyncio
     async def test_refresh_selects_pending_session(self, sessions_view):

@@ -195,7 +195,6 @@ class TelecApp:
         self._theme_refresh_requested = False
         self._reload_requested = False
         self._session_status_cache: dict[str, str] = {}
-        self._last_active_pane_id: str | None = None
         self._last_ws_heal = time.monotonic()
         self._refresh_error_since: float | None = None
         self._refresh_error_notified = False
@@ -590,7 +589,6 @@ class TelecApp:
         while self.running:
             # Process any pending WebSocket events
             self._process_ws_events()
-            self._sync_selection_with_active_pane()
             self._maybe_heal_ws()
 
             key = stdscr.getch()  # type: ignore[attr-defined]
@@ -620,6 +618,8 @@ class TelecApp:
             if isinstance(sessions_view, SessionsView):
                 sessions_view.apply_pending_activation()
             self.controller.apply_pending_layout()
+            if isinstance(sessions_view, SessionsView):
+                sessions_view.apply_pending_focus()
 
     def _consume_theme_refresh(self) -> bool:
         if self._theme_refresh_requested:
@@ -631,37 +631,6 @@ class TelecApp:
         if self._reload_requested:
             self._reload_requested = False
             return True
-        return False
-
-    def _sync_selection_with_active_pane(self) -> bool:
-        """Sync tree selection with active tmux pane (Sessions view only)."""
-        if self.current_view != 1:
-            return False
-        sessions_view = self.views.get(self.current_view)
-        if not isinstance(sessions_view, SessionsView):
-            return False
-        if not self.pane_manager.is_available:
-            return False
-
-        active_pane_id = self.pane_manager.get_active_pane_id()
-        if not active_pane_id or active_pane_id == self._last_active_pane_id:
-            return False
-
-        self._last_active_pane_id = active_pane_id
-        session_id = self.pane_manager.get_session_id_for_pane(active_pane_id)
-        if not session_id:
-            return False
-        if (
-            sessions_view.state.sessions.last_selection_source == "user"
-            and sessions_view.state.sessions.selected_session_id
-            and sessions_view.state.sessions.selected_session_id != session_id
-        ):
-            return False
-
-        if sessions_view.request_select_session(session_id, source="pane"):
-            sessions_view._apply_pending_selection(source="pane")
-            return True
-
         return False
 
     def _maybe_heal_ws(self, now: float | None = None) -> bool:

@@ -554,8 +554,10 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         created_sessions.add(name)
         if session_id:
             session_ids_by_name[name] = session_id
-        session_outputs[name] = []  # Initialize empty output buffer
-        process_running[name] = False
+        if name not in session_outputs:
+            session_outputs[name] = []  # Initialize empty output buffer
+        if name not in process_running:
+            process_running[name] = False
         return True
 
     async def mock_session_exists(session_name: str, log_missing: bool = True):

@@ -238,6 +238,7 @@ def test_open_project_sessions_sets_sticky_list():
     view.selected_index = 0
 
     view.handle_key(ord("a"), Mock())
+    controller.apply_pending_layout()
 
     assert pane_manager.apply_called is True
     assert [sticky.session_id for sticky in view.sticky_sessions] == ["sess-2", "sess-0", "sess-1"]

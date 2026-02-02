@@ -136,6 +136,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._pending_select_source: str | None = None
         self._pending_activate_session_id: str | None = None
         self._pending_activate_clear_preview: bool = False
+        self._pending_focus_session_id: str | None = None
         self._last_data_counts: dict[str, int] = {}
 
         # Load persisted sticky state (sessions + docs)
@@ -901,8 +902,20 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         for item in self.flat_items:
             if is_session_node(item) and item.data.session.session_id == target:
                 self._activate_session(item, clear_preview=clear_preview)
-                self._focus_selected_pane()
+                self._queue_focus_session(target)
                 return
+
+    def _queue_focus_session(self, session_id: str) -> None:
+        """Request pane focus after the next layout apply."""
+        self._pending_focus_session_id = session_id
+
+    def apply_pending_focus(self) -> None:
+        """Focus the requested session pane after layout changes settle."""
+        session_id = self._pending_focus_session_id
+        if not session_id:
+            return
+        self._pending_focus_session_id = None
+        self.pane_manager.focus_pane_for_session(session_id)
 
     def _toggle_session_pane(self, item: SessionNode) -> None:
         """Toggle session preview pane visibility.
@@ -1254,7 +1267,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # Select the item but don't activate (sticky toggle is the action)
             self._select_index(item_idx, source="user")
             self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
-            self._focus_selected_pane()  # Focus the sticky pane
+            self._queue_focus_session(session_id)
             return True
 
         # SINGLE CLICK - select and activate (preview lane) or highlight sticky (sticky lane)
@@ -1269,7 +1282,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if is_sticky:
                 if self._preview:
                     self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
-                self._focus_selected_pane()  # Focus sticky pane only
+                self._queue_focus_session(session_id)
             else:
                 self._schedule_activate_session(item, clear_preview=False)
 
