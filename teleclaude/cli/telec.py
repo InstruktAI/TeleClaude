@@ -8,6 +8,8 @@ import sys
 from enum import Enum
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.models import CreateSessionResult
 from teleclaude.config import config
@@ -35,6 +37,7 @@ class TelecCommand(str, Enum):
 def main() -> None:
     """Main entry point for telec CLI."""
     setup_logging()
+    logger = get_logger(__name__)
     argv = sys.argv[1:]
 
     if argv:
@@ -73,10 +76,13 @@ def main() -> None:
         _run_tui()
     except KeyboardInterrupt:
         pass  # Clean exit on Ctrl-C
+    except Exception:
+        logger.exception("telec TUI crashed during startup")
 
 
 def _run_tui() -> None:
     """Run TUI application."""
+    logger = get_logger(__name__)
     # Lazy import: TelecApp applies nest_asyncio which breaks httpx for CLI commands
     from teleclaude.cli.tui.app import TelecApp
 
@@ -91,6 +97,8 @@ def _run_tui() -> None:
         curses.wrapper(app.run)
     except KeyboardInterrupt:
         pass  # Clean exit on Ctrl-C
+    except Exception:
+        logger.exception("telec TUI crashed")
     finally:
         loop.run_until_complete(api.close())
         loop.close()

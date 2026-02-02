@@ -133,6 +133,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_click_time: dict[int, float] = {}  # screen_row -> timestamp
         self._double_click_threshold = 0.4  # seconds
         self._pending_select_session_id: str | None = None
+        self._pending_select_source: str | None = None
         self._pending_activate_session_id: str | None = None
         self._pending_activate_clear_preview: bool = False
         self._last_data_counts: dict[str, int] = {}
@@ -293,30 +294,33 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if needs_layout:
                 self.controller.apply_layout(focus=False)
 
-    def request_select_session(self, session_id: str) -> bool:
+    def request_select_session(self, session_id: str, *, source: str | None = None) -> bool:
         """Request that a session be selected once it appears in the tree."""
         if not session_id:
             return False
         if self._pending_select_session_id == session_id:
             return False
         self._pending_select_session_id = session_id
+        self._pending_select_source = source
         return True
 
-    def _apply_pending_selection(self) -> bool:
+    def _apply_pending_selection(self, *, source: str | None = None) -> bool:
         """Select any pending session once the tree is available."""
         target = self._pending_select_session_id
         if not target:
             return False
+        if source is None:
+            source = self._pending_select_source
 
         for idx, item in enumerate(self.flat_items):
             if is_session_node(item) and item.data.session.session_id == target:
                 if not item.data.session.tmux_session_name:
                     return False
-                self._select_index(idx)
+                self._select_index(idx, source=source)
                 self.controller.dispatch(
                     Intent(
                         IntentType.SET_SELECTION,
-                        {"view": "sessions", "index": idx, "session_id": target},
+                        {"view": "sessions", "index": idx, "session_id": target, "source": source or "system"},
                     )
                 )
                 self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
@@ -326,6 +330,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                     activated = True
                 if activated:
                     self._pending_select_session_id = None
+                    self._pending_select_source = None
                 logger.debug("Selected new session %s at index %d", target[:8], idx)
                 return True
         return False
@@ -361,9 +366,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                     self._select_index(idx)
                     return
 
-    def _select_index(self, idx: int) -> None:
+    def _select_index(self, idx: int, *, source: str | None = None) -> None:
         self.selected_index = idx
-        self._sync_selected_session_id()
+        self._sync_selected_session_id(source=source)
         if self.selected_index < self.scroll_offset:
             self.scroll_offset = self.selected_index
         else:
@@ -371,10 +376,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if self.selected_index > last_rendered:
                 self.scroll_offset += self.selected_index - last_rendered
 
-    def _sync_selected_session_id(self) -> None:
+    def _sync_selected_session_id(self, *, source: str | None = None) -> None:
         item = self.flat_items[self.selected_index] if 0 <= self.selected_index < len(self.flat_items) else None
         if item and is_session_node(item):
             self.state.sessions.selected_session_id = item.data.session.session_id
+            self.state.sessions.last_selection_session_id = item.data.session.session_id
+            if source in ("user", "pane", "system"):
+                self.state.sessions.last_selection_source = source
         else:
             self.state.sessions.selected_session_id = None
 
@@ -386,7 +394,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 self.api.send_keys(session_id=session_id, computer=computer, key="enter", count=1)
             )
             if result:
-                self.request_select_session(session_id)
+                self.request_select_session(session_id, source="user")
                 self.needs_refresh = True
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("Failed to revive headless session %s: %s", session_id[:8], exc)
@@ -537,11 +545,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if self.state.sessions.selected_session_id:
             for idx, item in enumerate(self.flat_items):
                 if is_session_node(item) and item.data.session.session_id == self.state.sessions.selected_session_id:
-                    self.selected_index = idx
+                    self._select_index(idx)
                     break
         # Reset selection if out of bounds
         if self.selected_index >= len(self.flat_items):
-            self.selected_index = 0 if self.flat_items else 0
+            self._select_index(0)
         self.scroll_offset = 0
         self._sync_selected_session_id()
 
@@ -630,13 +638,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     def move_up(self) -> None:
         """Move selection up (arrow key navigation)."""
         super().move_up()
-        self._sync_selected_session_id()
+        self._sync_selected_session_id(source="user")
         self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "arrow"}))
 
     def move_down(self) -> None:
         """Move selection down (arrow key navigation)."""
         super().move_down()
-        self._sync_selected_session_id()
+        self._sync_selected_session_id(source="user")
         self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "arrow"}))
 
     def _focus_selected_pane(self) -> None:
@@ -671,8 +679,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if is_computer_node(item):
             self.focus.push(FocusLevelType.COMPUTER, item.data.computer.name)
             self.rebuild_for_focus()
-            self.selected_index = 0
-            self._sync_selected_session_id()
+            self._select_index(0, source="user")
             logger.debug("drill_down: pushed computer focus")
             return True
         if is_session_node(item):
@@ -1009,8 +1016,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             logger.warning("New session missing tmux_session_name, cannot attach")
             return
         if result.session_id:
-            self.request_select_session(result.session_id)
-            self._apply_pending_selection()
+            self.request_select_session(result.session_id, source="user")
+            self._apply_pending_selection(source="user")
 
         if not self.pane_manager.is_available:
             attach_tmux_from_result(result, stdscr)
@@ -1245,15 +1252,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 duration_ms=int((time.perf_counter() - click_start) * 1000),
             )
             # Select the item but don't activate (sticky toggle is the action)
-            self.selected_index = item_idx
-            self._sync_selected_session_id()
+            self._select_index(item_idx, source="user")
             self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
             self._focus_selected_pane()  # Focus the sticky pane
             return True
 
         # SINGLE CLICK - select and activate (preview lane) or highlight sticky (sticky lane)
-        self.selected_index = item_idx
-        self._sync_selected_session_id()
+        self._select_index(item_idx, source="user")
         self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
         self._id_row_clicked = screen_row in self._row_to_id_item
 

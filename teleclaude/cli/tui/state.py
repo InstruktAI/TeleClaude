@@ -45,6 +45,8 @@ class SessionViewState:
 
     selected_index: int = 0
     selected_session_id: str | None = None
+    last_selection_source: str = "system"  # "user" | "pane" | "system"
+    last_selection_session_id: str | None = None
     scroll_offset: int = 0
     selection_method: str = "arrow"  # "arrow" | "click"
     collapsed_sessions: set[str] = field(default_factory=set)
@@ -116,6 +118,7 @@ class IntentPayload(TypedDict, total=False):
     index: int
     offset: int
     method: str
+    source: str
     pane_id: str
     doc_id: str
     command: str
@@ -249,10 +252,14 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         view = p.get("view")
         idx = p.get("index")
         session_id = p.get("session_id")
+        source = p.get("source")
         if view == "sessions" and isinstance(idx, int):
             state.sessions.selected_index = idx
             if isinstance(session_id, str):
                 state.sessions.selected_session_id = session_id
+                state.sessions.last_selection_session_id = session_id
+                if source in ("user", "pane", "system"):
+                    state.sessions.last_selection_source = source
         if view == "preparation" and isinstance(idx, int):
             state.preparation.selected_index = idx
         return

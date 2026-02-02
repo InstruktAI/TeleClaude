@@ -651,9 +651,15 @@ class TelecApp:
         session_id = self.pane_manager.get_session_id_for_pane(active_pane_id)
         if not session_id:
             return False
+        if (
+            sessions_view.state.sessions.last_selection_source == "user"
+            and sessions_view.state.sessions.selected_session_id
+            and sessions_view.state.sessions.selected_session_id != session_id
+        ):
+            return False
 
-        if sessions_view.request_select_session(session_id):
-            sessions_view._apply_pending_selection()
+        if sessions_view.request_select_session(session_id, source="pane"):
+            sessions_view._apply_pending_selection(source="pane")
             return True
 
         return False

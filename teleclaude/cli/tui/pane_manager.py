@@ -222,6 +222,9 @@ class TmuxPaneManager:
                 self.update_child_session(child_tmux, child_computer)
             if focus and active_spec:
                 self.focus_pane_for_session(active_spec.session_id)
+            self._sync_sticky_mappings()
+            if not active_spec:
+                self._clear_active_state_if_sticky()
             return
 
         self._render_layout()
@@ -551,19 +554,34 @@ class TmuxPaneManager:
         layout = LAYOUT_SPECS.get(total_panes)
         if not layout:
             return None
-        spec_keys = tuple(
-            (
-                (spec.tmux_session_name or spec.command) if spec.is_sticky else "active",
-                "sticky" if spec.is_sticky else "active",
-            )
-            for spec in session_specs
-        )
+        spec_keys = tuple(spec.session_id for spec in session_specs)
         return (
             layout.rows,
             layout.cols,
             tuple(tuple(row) for row in layout.grid),
             spec_keys,
         )
+
+    def _sync_sticky_mappings(self) -> None:
+        """Sync sticky pane mappings without rebuilding layout."""
+        sticky_panes: list[str] = []
+        sticky_map: dict[str, str] = {}
+        for spec in self._sticky_specs:
+            pane_id = self.state.session_to_pane.get(spec.session_id)
+            if pane_id and self._get_pane_exists(pane_id):
+                sticky_panes.append(pane_id)
+                sticky_map[spec.session_id] = pane_id
+        self.state.sticky_pane_ids = sticky_panes
+        self.state.sticky_session_to_pane = sticky_map
+
+    def _clear_active_state_if_sticky(self) -> None:
+        """Clear active pane metadata when it has been promoted to sticky."""
+        if not self.state.parent_spec_id:
+            return
+        if any(spec.session_id == self.state.parent_spec_id for spec in self._sticky_specs):
+            self.state.parent_session = None
+            self.state.parent_spec_id = None
+            self.state.parent_pane_id = None
 
     def _update_active_pane(self, active_spec: SessionPaneSpec) -> None:
         """Swap the active pane content without rebuilding layout."""
