@@ -137,6 +137,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._pending_activate_session_id: str | None = None
         self._pending_activate_clear_preview: bool = False
         self._pending_focus_session_id: str | None = None
+        self._pending_ready_session_id: str | None = None
         self._last_data_counts: dict[str, int] = {}
 
         # Load persisted sticky state (sessions + docs)
@@ -294,6 +295,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 needs_layout = True
             if needs_layout:
                 self.controller.apply_layout(focus=False)
+        self._maybe_activate_ready_session()
 
     def request_select_session(self, session_id: str, *, source: str | None = None) -> bool:
         """Request that a session be selected once it appears in the tree."""
@@ -312,29 +314,54 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return False
         if source is None:
             source = self._pending_select_source
+        activated = self._select_session_by_id(target, source=source, activate=True)
+        if activated:
+            self._pending_select_session_id = None
+            self._pending_select_source = None
+        return activated
 
+    def _is_session_ready_for_preview(self, session: SessionInfo) -> bool:
+        if not session.tmux_session_name:
+            return False
+        return session.status == "active"
+
+    def _select_session_by_id(self, session_id: str, *, source: str | None, activate: bool) -> bool:
         for idx, item in enumerate(self.flat_items):
-            if is_session_node(item) and item.data.session.session_id == target:
-                if not item.data.session.tmux_session_name:
-                    return False
+            if is_session_node(item) and item.data.session.session_id == session_id:
                 self._select_index(idx, source=source)
                 self.controller.dispatch(
                     Intent(
                         IntentType.SET_SELECTION,
-                        {"view": "sessions", "index": idx, "session_id": target, "source": source or "system"},
+                        {"view": "sessions", "index": idx, "session_id": session_id, "source": source or "system"},
                     )
                 )
-                self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
-                activated = False
-                if item.data.session.tmux_session_name:
+                if activate:
+                    self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
                     self._schedule_activate_session(item, clear_preview=False)
-                    activated = True
-                if activated:
-                    self._pending_select_session_id = None
-                    self._pending_select_source = None
-                logger.debug("Selected new session %s at index %d", target[:8], idx)
+                logger.debug("Selected new session %s at index %d", session_id[:8], idx)
                 return True
         return False
+
+    def maybe_sync_selection_from_active_pane(self) -> bool:
+        """Sync tree selection to active pane only when UI is idle."""
+        if not self.pane_manager.is_available:
+            return False
+        if self._preview:
+            return False
+        if self._pending_select_session_id or self._pending_activate_session_id:
+            return False
+        if self.state.sessions.last_selection_source == "user":
+            return False
+        if self.state.sessions.selected_session_id:
+            return False
+
+        active_pane_id = self.pane_manager.get_active_pane_id()
+        if not active_pane_id:
+            return False
+        session_id = self.pane_manager.get_session_id_for_pane(active_pane_id)
+        if not session_id:
+            return False
+        return self._select_session_by_id(session_id, source="pane", activate=False)
 
     def _get_selected_key(self) -> tuple[str, str] | None:
         if not self.flat_items or not (0 <= self.selected_index < len(self.flat_items)):
@@ -500,7 +527,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                     return True
             return False
 
-        return walk(self.tree)
+        updated = walk(self.tree)
+        if updated:
+            self._maybe_activate_ready_session()
+        return updated
 
     def sync_layout(self) -> None:
         """Sync pane layout with current session list."""
@@ -885,9 +915,20 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
     def _schedule_activate_session(self, item: SessionNode, *, clear_preview: bool = False) -> None:
         """Defer activation so selection is rendered immediately."""
-        if not item.data.session.tmux_session_name and self.notify:
-            self.notify("Adopting headless session...", NotificationLevel.INFO)
-        self._pending_activate_session_id = item.data.session.session_id
+        session = item.data.session
+        session_id = session.session_id
+        if not self._is_session_ready_for_preview(session):
+            if self._pending_ready_session_id != session_id:
+                if self.notify:
+                    if session.status == "headless" or not session.tmux_session_name:
+                        self.notify("Adopting headless session...", NotificationLevel.INFO)
+                    else:
+                        self.notify("Spawning new session...", NotificationLevel.INFO)
+                self._pending_ready_session_id = session_id
+            return
+        if self._pending_ready_session_id == session_id:
+            self._pending_ready_session_id = None
+        self._pending_activate_session_id = session_id
         self._pending_activate_clear_preview = clear_preview
 
     def apply_pending_activation(self) -> None:
@@ -916,6 +957,21 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return
         self._pending_focus_session_id = None
         self.pane_manager.focus_pane_for_session(session_id)
+
+    def _maybe_activate_ready_session(self) -> None:
+        """Activate a pending session once it is ready for preview."""
+        session_id = self._pending_ready_session_id
+        if not session_id:
+            return
+        if self.state.sessions.selected_session_id != session_id:
+            return
+        session = next((s for s in self._sessions if s.session_id == session_id), None)
+        if not session or not self._is_session_ready_for_preview(session):
+            return
+        for item in self.flat_items:
+            if is_session_node(item) and item.data.session.session_id == session_id:
+                self._schedule_activate_session(item, clear_preview=False)
+                return
 
     def _toggle_session_pane(self, item: SessionNode) -> None:
         """Toggle session preview pane visibility.

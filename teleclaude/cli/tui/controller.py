@@ -117,12 +117,13 @@ class TuiController:
             focus=focus,
         )
 
-    def apply_pending_layout(self) -> None:
+    def apply_pending_layout(self) -> bool:
         """Apply deferred layout work once per loop tick."""
         if not self._layout_pending:
-            return
+            return False
         self._layout_pending = False
         self.apply_layout(focus=False)
+        return True
 
     def _derive_layout(self) -> LayoutState:
         preview = self.state.sessions.preview

@@ -617,9 +617,11 @@ class TelecApp:
             sessions_view = self.views.get(1)
             if isinstance(sessions_view, SessionsView):
                 sessions_view.apply_pending_activation()
-            self.controller.apply_pending_layout()
+            layout_applied = self.controller.apply_pending_layout()
             if isinstance(sessions_view, SessionsView):
                 sessions_view.apply_pending_focus()
+                if layout_applied:
+                    sessions_view.maybe_sync_selection_from_active_pane()
 
     def _consume_theme_refresh(self) -> bool:
         if self._theme_refresh_requested:
