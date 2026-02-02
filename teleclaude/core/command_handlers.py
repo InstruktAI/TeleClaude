@@ -681,6 +681,9 @@ async def handle_voice(
     start_polling: StartPollingFunc,
 ) -> None:
     """Handle voice input for a session."""
+    session = await db.get_session(cmd.session_id)
+    if session:
+        await client.pre_handle_command(session, cmd.origin)
 
     async def _send_status(
         session_id: str,
