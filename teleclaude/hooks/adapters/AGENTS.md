@@ -199,8 +199,8 @@ Mapping rules:
 
 ## Sources
 
-- https://developers.openai.com/docs/codex/config-reference
-- https://developers.openai.com/docs/codex/cli/reference
+- https://developers.openai.com/codex/config-reference
+- https://developers.openai.com/codex/cli/reference
 
 
 ## Internal typed payloads

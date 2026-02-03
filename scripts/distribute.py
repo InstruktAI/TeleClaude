@@ -685,6 +685,7 @@ def main() -> None:
                                 project_root=Path(project_root),
                                 current_path=Path(item_path),
                             )
+                            output_dir = ""
                             if spec.kind == "skill":
                                 skill_name = resolve_skill_name(prepared, item)
                                 if agent_name == "claude":
@@ -706,6 +707,20 @@ def main() -> None:
                                 out_f.write(transformed_content.rstrip("\n") + "\n")
                             if output_filename.endswith(".md"):
                                 markdown_outputs.append(output_path)
+                            # Copy supporting files/dirs from skill source (everything except SKILL.md)
+                            if spec.kind == "skill" and output_dir:
+                                skill_source_dir = os.path.dirname(item_path)
+                                for entry in os.listdir(skill_source_dir):
+                                    if entry == "SKILL.md" or entry.startswith((".", "__")):
+                                        continue
+                                    src_entry = os.path.join(skill_source_dir, entry)
+                                    dst_entry = os.path.join(output_dir, entry)
+                                    if os.path.isdir(src_entry):
+                                        if os.path.exists(dst_entry):
+                                            shutil.rmtree(dst_entry)
+                                        shutil.copytree(src_entry, dst_entry)
+                                    else:
+                                        shutil.copy2(src_entry, dst_entry)
                         except Exception as e:
                             print(f"Error processing {spec.name} item {item} for agent {agent_name}: {e}")
 

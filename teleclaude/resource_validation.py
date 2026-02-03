@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Mapping, TypedDict
@@ -46,6 +47,7 @@ _H1_LINE = re.compile(r"^#\s+")
 _H2_LINE = re.compile(r"^##\s+")
 _INLINE_REF_LINE = re.compile(r"^\s*(?:-\s*)?@\S+")
 _CODE_FENCE_LINE = re.compile(r"^```")
+_INLINE_CODE_SPAN = re.compile(r"`[^`]*`")
 
 _SCHEMA_PATH = Path(__file__).resolve().parents[1] / "scripts" / "snippet_schema.yaml"
 
@@ -426,7 +428,8 @@ def _validate_snippet_refs(path: Path, lines: list[str], project_root: Path, *, 
         if _H2_LINE.match(line):
             in_required_reads = False
             in_see_also = False
-        if "@" in line:
+        line_without_inline = _INLINE_CODE_SPAN.sub("", line)
+        if "@" in line_without_inline:
             if in_see_also:
                 _warn("snippet_see_also_inline_ref", path=str(path), line=line.strip())
             elif not in_required_reads:
@@ -510,10 +513,21 @@ def _is_web_url(value: str) -> bool:
 
 
 def _check_url_alive(url: str, *, timeout: int = 8) -> bool:
+    headers = {"User-Agent": "TeleClaude/1.0"}
     try:
-        req = urllib.request.Request(url, method="HEAD")
+        req = urllib.request.Request(url, method="HEAD", headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status < 400
+    except urllib.error.HTTPError as exc:
+        # Some docs block HEAD; retry with GET before declaring unreachable.
+        if exc.code >= 400:
+            try:
+                req = urllib.request.Request(url, method="GET", headers=headers)
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    return resp.status < 400
+            except Exception:
+                return False
+        return False
     except Exception:
         return False
 

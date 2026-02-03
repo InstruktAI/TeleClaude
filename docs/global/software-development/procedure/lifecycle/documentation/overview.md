@@ -7,10 +7,12 @@ type: procedure
 
 # Overview — Procedure
 
-## Goal
+## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docstrings.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docs.md
+
+## Goal
 
 Documentation is a distinct lifecycle phase. It ensures the codebase and its inline documentation are aligned before finalization.
 

@@ -20,11 +20,11 @@ Scaffold a Node.js or CLI TypeScript project with native ESM.
 - Check current Node.js LTS version and its native TypeScript support status (e.g., `--experimental-strip-types`).
 - Tooling extends the base:
 
-| Tool             | Purpose                            |
-| ---------------- | ---------------------------------- |
-| tsx              | Development runner with watch mode |
-| @tsconfig/node\* | Node-specific tsconfig preset      |
-| @types/node      | Node.js type definitions           |
+| Tool              | Purpose                            |
+| ----------------- | ---------------------------------- |
+| tsx               | Development runner with watch mode |
+| `@tsconfig/node*` | Node-specific tsconfig preset      |
+| `@types/node`     | Node.js type definitions           |
 
 ## Steps
 

@@ -8,9 +8,11 @@ type: procedure
 
 # Input Assessment — Procedure
 
-## Goal
+## Required reads
 
 - @~/.teleclaude/docs/software-development/policy/definition-of-ready.md
+
+## Goal
 
 If `todos/{slug}/input.md` exists and `todos/{slug}/state.json` lacks `breakdown.assessed`, perform readiness assessment.
 

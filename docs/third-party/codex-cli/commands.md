@@ -12,5 +12,5 @@ slash commands.
 
 ## Sources
 
-- https://developers.openai.com/docs/codex/cli/slash-commands
-- https://developers.openai.com/docs/codex/custom-prompts
+- https://developers.openai.com/codex/cli/slash-commands
+- https://developers.openai.com/codex/custom-prompts

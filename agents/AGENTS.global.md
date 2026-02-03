@@ -43,6 +43,24 @@ Usage: `$HOME/.teleclaude/scripts/history.py --agent {{agent}} <search terms>`
 - Search terms are required
 - Returns matching sessions with project name, context snippet, and session ID
 
+### Self-restart — Reload artifacts
+
+After distributing new or updated agent artifacts (`distribute.py --deploy`), restart
+your own session to load them. The restart preserves conversation history via `--resume`.
+
+**How:**
+
+```bash
+curl -s --unix-socket /tmp/teleclaude-api.sock \
+  -X POST "http://localhost/sessions/$(cat "$TMPDIR/teleclaude_session_id")/agent-restart"
+```
+
+**When:** Only after running `distribute.py --deploy` or when artifacts (skills, commands,
+AGENTS files, doc snippets) have changed on disk and you need to pick them up.
+
+**Do not** restart for routine work — only when you have evidence that your loaded
+artifacts are stale relative to what was just deployed.
+
 ## REMINDERS
 
 - ALWAYS RESPOND IN ENGLISH, ALSO WHEN YOU RECEIVE INPUT IN DUTCH!

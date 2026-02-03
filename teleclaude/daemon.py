@@ -730,6 +730,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Dispatch a hook event directly via AdapterClient."""
         session = await db.get_session(session_id)
         if not session:
+            if event_type != AgentHookEvents.AGENT_SESSION_START:
+                logger.debug(
+                    "Ignoring hook event for unknown session (not session_start)",
+                    session_id=session_id[:8],
+                    event_type=event_type,
+                )
+                return
             session = await self._ensure_headless_session(session_id, data)
         elif session.lifecycle_status == "closed":
             logger.debug(

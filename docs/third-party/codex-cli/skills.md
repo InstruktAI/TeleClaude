@@ -11,5 +11,5 @@ Skills can be loaded from team configuration roots, including `.codex/skills` in
 
 ## Sources
 
-- https://developers.openai.com/docs/codex/skills
-- https://developers.openai.com/docs/codex/team-config
+- https://developers.openai.com/codex/skills
+- https://developers.openai.com/codex/team-config

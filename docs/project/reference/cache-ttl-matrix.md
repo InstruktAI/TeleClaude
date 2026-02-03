@@ -7,9 +7,11 @@ type: reference
 
 # Cache Ttl Matrix — Reference
 
-## What it is
+## Required reads
 
 - @docs/project/architecture/cache.md
+
+## What it is
 
 - TTL and scope matrix for cache refresh behavior.
 

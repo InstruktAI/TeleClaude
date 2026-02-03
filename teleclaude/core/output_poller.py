@@ -86,7 +86,7 @@ class OutputPoller:
         # State tracking
         idle_ticks = 0
         started_at: float | None = None
-        last_output_changed_at: float | None = None
+        last_output_changed_at = 0.0
         current_update_interval = global_update_interval  # Start with global interval
         last_directory: str | None = None
         directory_check_ticks = 0
@@ -96,6 +96,7 @@ class OutputPoller:
         last_sent_output: str | None = None
         previous_output = ""  # Track previous clean output for change detection
         pending_output = False  # Output changed since last yield
+        pending_idle_flush = False  # One-time flush after output goes idle
         suppressed_idle_ticks = 0
         last_summary_time: float | None = None
         idle_summary_interval = IDLE_SUMMARY_INTERVAL_S
@@ -118,9 +119,7 @@ class OutputPoller:
                     last_summary_time = now
                 if not force and (now - last_summary_time) < idle_summary_interval:
                     return
-                idle_for = 0.0
-                if last_output_changed_at is not None:
-                    idle_for = max(0.0, now - last_output_changed_at)
+                idle_for = max(0.0, now - last_output_changed_at)
                 logger.trace(
                     "[POLL %s] idle: unchanged for %.1fs (suppressed=%d, interval=%ds, idle_ticks=%d)",
                     session_id[:8],
@@ -205,6 +204,7 @@ class OutputPoller:
                     last_output_changed_at = time.time()
                     current_update_interval = global_update_interval
                     pending_output = True
+                    pending_idle_flush = True
                     # Output file persistence removed; downloads now use native session logs.
 
                 # Check if enough time elapsed since last yield (wall-clock, not tick-based)
@@ -219,7 +219,7 @@ class OutputPoller:
                     if output_sent_at_least_once:
                         should_send = pending_output
                     else:
-                        should_send = bool(current_cleaned.strip())
+                        should_send = True
 
                     if should_send:
                         # Send rendered TUI snapshot to UI
@@ -234,6 +234,7 @@ class OutputPoller:
                         output_sent_at_least_once = True
                         last_sent_output = current_cleaned
                         pending_output = False
+                        pending_idle_flush = False
 
                         # Update last yield time (ONLY after yielding, not on every change!)
                         last_yield_time = current_time
@@ -241,6 +242,19 @@ class OutputPoller:
                     elif pending_output and not output_sent_at_least_once:
                         # Suppress empty initial output until something real appears.
                         pending_output = False
+                if pending_idle_flush and (current_time - last_output_changed_at) >= 3.0:
+                    yield OutputChanged(
+                        session_id=session_id,
+                        output=current_cleaned,
+                        started_at=started_at,
+                        last_changed_at=last_output_changed_at,
+                    )
+                    output_sent_at_least_once = True
+                    last_sent_output = current_cleaned
+                    pending_output = False
+                    pending_idle_flush = False
+                    last_yield_time = current_time
+                    did_yield = True
                 else:
                     # Skip per-tick logging; summarized in idle summaries.
                     pass

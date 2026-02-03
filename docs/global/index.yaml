@@ -152,6 +152,14 @@ snippets:
   scope: domain
   path: docs/software-development/guide/typescript/core.md
   source_project: TeleClaude
+- id: software-development/policy/ai-agent-security
+  description: Security policy for AI agent systems covering prompt injection, credential
+    isolation, skill trust, session boundaries, network exposure, and supply chain
+    risks. Informed by real-world incidents in open-source agentic platforms.
+  type: policy
+  scope: domain
+  path: docs/software-development/policy/ai-agent-security.md
+  source_project: TeleClaude
 - id: software-development/policy/code-quality
   description: Architecture, typing, contracts, state management, error handling.
     Generic quality standards for all code.

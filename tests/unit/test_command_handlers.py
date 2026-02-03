@@ -1048,7 +1048,7 @@ async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized
 
 
 @pytest.mark.asyncio
-async def test_handle_voice_sends_transcribed_text() -> None:
+async def test_handle_voice_sends_transcribed_text(mock_initialized_db) -> None:
     """Voice input should forward transcribed text via send_message handler."""
     mock_client = MagicMock()
     mock_client.send_message = AsyncMock()
