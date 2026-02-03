@@ -224,6 +224,13 @@ snippets:
   scope: domain
   path: docs/software-development/principle/failure-modes.md
   source_project: TeleClaude
+- id: software-development/principle/parallel-work
+  description: Prefer parallelizing independent work with clear briefs and reconciliation
+    to reduce latency without sacrificing accuracy.
+  type: principle
+  scope: domain
+  path: docs/software-development/principle/parallel-work.md
+  source_project: TeleClaude
 - id: software-development/procedure/bugs-handling
   description: Triage bugs, decide quick fixes vs new todos, and track resolution
     in bugs.md.

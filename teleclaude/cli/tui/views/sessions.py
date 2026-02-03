@@ -139,6 +139,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._pending_focus_session_id: str | None = None
         self._pending_ready_session_id: str | None = None
         self._last_data_counts: dict[str, int] = {}
+        # Pane focus detection for reverse sync (pane click → tree selection)
+        self._last_detected_pane_id: str | None = None
+        self._we_caused_focus: bool = False
 
         # Load persisted sticky state (sessions + docs)
         load_sticky_state(self.state)
@@ -342,25 +345,48 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 return True
         return False
 
-    def maybe_sync_selection_from_active_pane(self) -> bool:
-        """Sync tree selection to active pane only when UI is idle."""
+    def detect_pane_focus_change(self) -> bool:
+        """Detect user-initiated pane focus changes and sync tree selection.
+
+        Called every loop iteration to detect when user clicks a tmux pane directly.
+        When detected, fires SET_SELECTION intent with source="pane" to update tree.
+
+        Returns:
+            True if a user-initiated pane change was detected and handled.
+        """
         if not self.pane_manager.is_available:
-            return False
-        if self._preview:
-            return False
-        if self._pending_select_session_id or self._pending_activate_session_id:
-            return False
-        if self.state.sessions.last_selection_source == "user":
-            return False
-        if self.state.sessions.selected_session_id:
             return False
 
         active_pane_id = self.pane_manager.get_active_pane_id()
+
+        # If we caused the focus change, just update tracking and skip
+        if self._we_caused_focus:
+            self._we_caused_focus = False
+            self._last_detected_pane_id = active_pane_id
+            return False
+
+        # No change in pane focus
+        if active_pane_id == self._last_detected_pane_id:
+            return False
+
+        # Pane focus changed - update tracking
+        self._last_detected_pane_id = active_pane_id
+
+        # If it's the TUI pane or no pane, nothing to sync
         if not active_pane_id:
             return False
+
+        # Get session for this pane
         session_id = self.pane_manager.get_session_id_for_pane(active_pane_id)
         if not session_id:
             return False
+
+        # Skip pending operations - they'll handle their own selection
+        if self._pending_select_session_id or self._pending_activate_session_id:
+            return False
+
+        # User clicked a pane - sync tree selection to match
+        logger.debug("Pane focus changed by user: pane=%s session=%s", active_pane_id, session_id[:8])
         return self._select_session_by_id(session_id, source="pane", activate=False)
 
     def _get_selected_key(self) -> tuple[str, str] | None:
@@ -956,6 +982,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if not session_id:
             return
         self._pending_focus_session_id = None
+        self._we_caused_focus = True  # Mark that we triggered focus, not user
         self.pane_manager.focus_pane_for_session(session_id)
 
     def _maybe_activate_ready_session(self) -> None:
