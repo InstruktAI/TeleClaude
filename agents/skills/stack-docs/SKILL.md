@@ -7,12 +7,13 @@ description: Research and index official documentation for project dependencies.
 
 ## Purpose
 
-Capture authoritative documentation for project dependencies and store concise internal snippets under `docs/third-party/` so they are discoverable via `get_context`.
+Capture authoritative documentation for project dependencies and store concise internal snippets under `docs/third-party/`.
 
 ## Scope
 
 - Targeted documentation for libraries, frameworks, and tools used in the project.
 - Output stored under `docs/third-party/{library}/`.
+- Check `docs/third-party/index.md` for existing documentation before researching.
 - Prefer official vendor documentation; expand to secondary sources only to fill gaps.
 - Apply the Parallel Work principle when multiple independent topics or dependencies can be researched simultaneously.
 
@@ -45,10 +46,7 @@ Capture authoritative documentation for project dependencies and store concise i
    - Follow the snippet schema and keep content concise and actionable.
    - Include **Sources** and **Gaps/Unknowns**.
 
-5. **Index**
-   - Observe the snippet is registered by the watcher in `docs/index.yaml`.
-
-6. **Stop condition**
+5. **Stop condition**
    - Stop when the brief is satisfied and any remaining gaps are explicitly recorded.
 
 **Bulk workflow (stack scan):**
@@ -64,7 +62,7 @@ User asks: "Get me the Redis Streams documentation."
 
 1. Locate the official Redis Streams documentation.
 2. Capture the core concepts, consumer group behavior, and common pitfalls.
-3. Write `docs/third-party/redis/streams.md` and register it in the index.
+3. Write `docs/third-party/redis/streams.md`.
 
 **Scan the stack for missing docs:**
 User asks: "Check what dependencies we're missing docs for."

@@ -55,7 +55,7 @@ def test_phase2_returns_snippet_content(tmp_path: Path, monkeypatch: pytest.Monk
     )
 
     _write_index(
-        project_root / "docs" / "index.yaml",
+        project_root / "docs" / "project" / "index.yaml",
         project_root,
         [
             {
@@ -99,7 +99,7 @@ def test_phase2_invalid_ids_returns_error(tmp_path: Path, monkeypatch: pytest.Mo
     global_root = tmp_path / "global"
     global_snippets_root = global_root / "agents" / "docs"
 
-    _write_index(project_root / "docs" / "index.yaml", project_root, [])
+    _write_index(project_root / "docs" / "project" / "index.yaml", project_root, [])
     _write_index(global_snippets_root / "index.yaml", global_root, [])
 
     monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
@@ -126,7 +126,7 @@ def test_phase1_returns_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     )
 
     _write_index(
-        project_root / "docs" / "index.yaml",
+        project_root / "docs" / "project" / "index.yaml",
         project_root,
         [
             {
