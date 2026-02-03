@@ -4,14 +4,18 @@
 #     "playwright",
 # ]
 # ///
-"""Refresh YouTube cookies using Playwright with existing Chrome profile.
+"""Refresh YouTube cookies using Playwright with dedicated automation profile.
 
-Visits youtube.com to trigger server-side token rotation, extracts
-fresh cookies, and saves them in Netscape format.
+First run with --setup to log in once. After that, refresh works automatically.
 
 Usage:
+    # One-time setup: log in to YouTube in Playwright's Chromium
+    uv run scripts/refresh_cookies.py --setup
+
+    # Refresh cookies (after setup)
     uv run scripts/refresh_cookies.py
-    uv run scripts/refresh_cookies.py --profile ~/.config/google-chrome
+
+    # Custom output path
     uv run scripts/refresh_cookies.py --output ~/cookies.txt
 """
 
@@ -20,8 +24,8 @@ import sys
 import time
 from pathlib import Path
 
-# Default paths
-DEFAULT_CHROME_PROFILE = Path.home() / "Library" / "Application Support" / "Google" / "Chrome"
+# Persistent profile for automation (separate from system Chrome)
+DEFAULT_PROFILE = Path.home() / ".config" / "youtube" / "playwright-profile"
 DEFAULT_OUTPUT = Path.home() / ".config" / "youtube" / "cookies.txt"
 
 
@@ -30,7 +34,7 @@ def cookies_to_netscape(cookies: list[dict]) -> str:
     lines = [
         "# Netscape HTTP Cookie File",
         "# https://curl.haxx.se/docs/http-cookies.html",
-        "# Refreshed by refresh_cookies.py",
+        f"# Refreshed by refresh_cookies.py at {time.strftime('%Y-%m-%d %H:%M:%S')}",
         "",
     ]
 
@@ -51,135 +55,198 @@ def cookies_to_netscape(cookies: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def refresh_cookies(
-    chrome_profile: Path,
-    output_path: Path,
-    headless: bool = False,
-    timeout: int = 30000,
-) -> bool:
-    """Refresh YouTube cookies by visiting the site with existing Chrome session.
+def setup_profile(profile_dir: Path) -> bool:
+    """Interactive setup: launch browser for user to log in to YouTube.
 
     Args:
-        chrome_profile: Path to Chrome user data directory (or dedicated automation profile)
+        profile_dir: Where to store the persistent profile
+
+    Returns:
+        True if setup completed successfully
+    """
+    from playwright.sync_api import sync_playwright
+
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Profile directory: {profile_dir}")
+    print()
+    print("=" * 60)
+    print("SETUP MODE")
+    print("=" * 60)
+    print()
+    print("A browser window will open. Please:")
+    print("1. Log in to your YouTube/Google account")
+    print("2. Make sure you can see your watch history")
+    print("3. Close the browser window when done")
+    print()
+
+    with sync_playwright() as p:
+        # Use Chrome channel for better compatibility with Google login
+        context = p.chromium.launch_persistent_context(
+            user_data_dir=str(profile_dir),
+            headless=False,
+            channel="chrome",  # Use real Chrome instead of Playwright's Chromium
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-infobars",
+                "--disable-extensions",
+            ],
+            ignore_default_args=["--enable-automation"],
+        )
+
+        page = context.new_page()
+
+        # Navigate to YouTube directly (less suspicious than accounts.google.com)
+        page.goto("https://www.youtube.com")
+
+        print()
+        print("Browser opened. Log in to Google/YouTube.")
+        print("After logging in, navigate to youtube.com/feed/history to verify access.")
+        print("Then close the browser window when done.")
+        print()
+
+        # Store cookies captured before close
+        cookies = []
+
+        def capture_cookies():
+            nonlocal cookies
+            try:
+                cookies = context.cookies()
+                cookie_names = {c["name"] for c in cookies}
+                essential = {"SID", "HSID", "SSID", "APISID", "SAPISID"}
+                found = essential & cookie_names
+                if found:
+                    print(f"Captured {len(cookies)} cookies - AUTH DETECTED: {found}")
+                else:
+                    print(f"Captured {len(cookies)} cookies (no auth yet): {list(cookie_names)[:5]}...")
+            except Exception:
+                pass
+
+        # Capture cookies periodically and on close
+        context.on("close", lambda: None)  # Keep context alive
+
+        try:
+            while len(context.pages) > 0:
+                capture_cookies()
+                time.sleep(2)
+        except Exception:
+            pass
+
+        # Final capture attempt
+        capture_cookies()
+
+    cookie_names = {c["name"] for c in cookies}
+    essential = {"SID", "HSID", "SSID", "APISID", "SAPISID"}
+    missing = essential - cookie_names
+
+    if missing:
+        print(f"\nSetup incomplete - missing auth cookies: {missing}")
+        print("Please run --setup again and make sure to fully log in.")
+        return False
+
+    print(f"\nSetup complete! Found {len(cookies)} cookies.")
+    print("You can now run without --setup to refresh cookies.")
+    return True
+
+
+def refresh_cookies(
+    profile_dir: Path,
+    output_path: Path,
+    headless: bool = True,
+    timeout: int = 30000,
+) -> bool:
+    """Refresh YouTube cookies using the dedicated Playwright profile.
+
+    Args:
+        profile_dir: Path to Playwright profile (created via --setup)
         output_path: Where to save cookies.txt
-        headless: Run headless (not recommended, may trigger detection)
+        headless: Run headless (safe since we control this profile)
         timeout: Page load timeout in ms
 
     Returns:
         True if successful
     """
-    import shutil
-    import tempfile
-
     from playwright.sync_api import sync_playwright
 
-    print(f"Using Chrome profile: {chrome_profile}")
-
-    if not chrome_profile.exists():
-        print(f"Error: Chrome profile not found at {chrome_profile}", file=sys.stderr)
+    if not profile_dir.exists():
+        print(f"Error: Profile not found at {profile_dir}", file=sys.stderr)
+        print("Run with --setup first to create the profile.", file=sys.stderr)
         return False
 
-    # Check if this is the main Chrome profile (likely in use)
-    # SingletonLock is a symlink on POSIX, use is_symlink() not exists()
-    singleton_lock = chrome_profile / "SingletonLock"
-    if singleton_lock.is_symlink() or singleton_lock.exists():
-        print("Chrome is running with this profile. Using temporary copy...")
-        # Copy essential cookie files to temp dir
-        temp_dir = Path(tempfile.mkdtemp(prefix="chrome_cookies_"))
-        default_profile = chrome_profile / "Default"
-        temp_default = temp_dir / "Default"
-        temp_default.mkdir(parents=True)
+    print(f"Using profile: {profile_dir}")
 
-        # Copy only what we need for cookies
-        for f in ["Cookies", "Cookies-journal", "Preferences", "Secure Preferences"]:
-            src = default_profile / f
-            if src.exists():
-                shutil.copy2(src, temp_default / f)
+    with sync_playwright() as p:
+        context = p.chromium.launch_persistent_context(
+            user_data_dir=str(profile_dir),
+            headless=headless,
+            channel="chrome",
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-infobars",
+            ],
+            ignore_default_args=["--enable-automation"],
+        )
 
-        # Also copy Local State for encryption keys
-        local_state = chrome_profile / "Local State"
-        if local_state.exists():
-            shutil.copy2(local_state, temp_dir / "Local State")
+        page = context.new_page()
 
-        use_profile = temp_dir
-        cleanup_temp = True
-        print(f"Copied profile to {temp_dir}")
-    else:
-        use_profile = chrome_profile
-        cleanup_temp = False
+        print("Navigating to youtube.com...")
+        try:
+            page.goto("https://www.youtube.com", timeout=timeout, wait_until="networkidle")
+        except Exception as e:
+            print(f"Navigation warning (may still work): {e}", file=sys.stderr)
 
-    try:
-        with sync_playwright() as p:
-            # Launch Chrome with profile
-            context = p.chromium.launch_persistent_context(
-                user_data_dir=str(use_profile),
-                headless=headless,
-                channel="chrome",
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                ],
-            )
+        # Wait for cookie rotation
+        page.wait_for_timeout(2000)
 
-            page = context.new_page()
+        # Extract cookies
+        cookies = context.cookies(["https://www.youtube.com", "https://accounts.google.com"])
+        print(f"Extracted {len(cookies)} cookies")
 
-            print("Navigating to youtube.com...")
-            try:
-                page.goto("https://www.youtube.com", timeout=timeout, wait_until="networkidle")
-            except Exception as e:
-                print(f"Navigation error (may still work): {e}", file=sys.stderr)
+        context.close()
 
-            # Brief wait for any final cookie rotation
-            page.wait_for_timeout(2000)
+    # Filter to YouTube-relevant cookies
+    yt_cookies = [c for c in cookies if ".youtube.com" in c.get("domain", "") or ".google.com" in c.get("domain", "")]
+    print(f"Filtered to {len(yt_cookies)} YouTube/Google cookies")
 
-            # Extract cookies
-            cookies = context.cookies(["https://www.youtube.com", "https://accounts.google.com"])
-            print(f"Extracted {len(cookies)} cookies")
+    # Check for essential auth cookies
+    cookie_names = {c["name"] for c in yt_cookies}
+    essential = {"SID", "HSID", "SSID", "APISID", "SAPISID"}
+    missing = essential - cookie_names
 
-            context.close()
-
-        # Filter to YouTube-relevant cookies
-        yt_cookies = [
-            c for c in cookies if ".youtube.com" in c.get("domain", "") or ".google.com" in c.get("domain", "")
-        ]
-        print(f"Filtered to {len(yt_cookies)} YouTube/Google cookies")
-
-        # Check for essential auth cookies
-        cookie_names = {c["name"] for c in yt_cookies}
-        essential = {"SID", "HSID", "SSID", "APISID", "SAPISID"}
-        missing = essential - cookie_names
-        if missing:
-            print(f"Warning: Missing essential cookies: {missing}", file=sys.stderr)
-            print("You may need to log in to YouTube in Chrome first.", file=sys.stderr)
-            return False
-
-        # Save
-        netscape = cookies_to_netscape(yt_cookies)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(netscape, encoding="utf-8")
-        print(f"Saved {len(yt_cookies)} cookies to {output_path}")
-
-        return True
-
-    except Exception as e:
-        print(f"Error during cookie refresh: {e}", file=sys.stderr)
+    if missing:
+        print(f"Warning: Missing essential cookies: {missing}", file=sys.stderr)
+        print("Session may have expired. Run --setup again to re-login.", file=sys.stderr)
         return False
 
-    finally:
-        # Cleanup temp profile if we created one
-        if cleanup_temp and use_profile.exists():
-            shutil.rmtree(use_profile, ignore_errors=True)
-            print("Cleaned up temporary profile")
+    # Save
+    netscape = cookies_to_netscape(yt_cookies)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(netscape, encoding="utf-8")
+    print(f"Saved {len(yt_cookies)} cookies to {output_path}")
+
+    return True
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Refresh YouTube cookies via Playwright")
+    parser = argparse.ArgumentParser(
+        description="Refresh YouTube cookies via Playwright",
+        epilog="First run with --setup to log in, then run without flags to refresh.",
+    )
+    parser.add_argument(
+        "--setup",
+        action="store_true",
+        help="Interactive setup: open browser to log in to YouTube",
+    )
     parser.add_argument(
         "--profile",
         type=Path,
-        default=DEFAULT_CHROME_PROFILE,
-        help=f"Chrome user data directory (default: {DEFAULT_CHROME_PROFILE})",
+        default=DEFAULT_PROFILE,
+        help=f"Playwright profile directory (default: {DEFAULT_PROFILE})",
     )
     parser.add_argument(
         "--output",
@@ -188,17 +255,20 @@ def main():
         help=f"Output cookies.txt path (default: {DEFAULT_OUTPUT})",
     )
     parser.add_argument(
-        "--headless",
+        "--no-headless",
         action="store_true",
-        help="Run headless (not recommended)",
+        help="Show browser window during refresh (default: headless)",
     )
     args = parser.parse_args()
 
-    success = refresh_cookies(
-        chrome_profile=args.profile,
-        output_path=args.output,
-        headless=args.headless,
-    )
+    if args.setup:
+        success = setup_profile(args.profile)
+    else:
+        success = refresh_cookies(
+            profile_dir=args.profile,
+            output_path=args.output,
+            headless=not args.no_headless,
+        )
 
     sys.exit(0 if success else 1)
 

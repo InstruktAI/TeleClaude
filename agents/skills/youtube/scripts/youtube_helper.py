@@ -19,6 +19,7 @@ import hashlib
 import http.cookiejar
 import json
 import logging
+import subprocess
 import time
 import urllib.parse
 from datetime import datetime, timedelta, timezone
@@ -150,6 +151,40 @@ def _cookies_to_header(cookies: dict[str, str]) -> str:
     return "; ".join(f"{k}={v}" for k, v in cookies.items())
 
 
+def _refresh_cookies_if_needed() -> bool:
+    """Run the cookie refresh script if profile exists. Returns True if successful."""
+    profile_dir = Path.home() / ".config" / "youtube" / "playwright-profile"
+    if not profile_dir.exists():
+        log.warning("Playwright profile not found at %s - cannot auto-refresh cookies", profile_dir)
+        return False
+
+    refresh_script = Path(__file__).parent / "refresh_cookies.py"
+    if not refresh_script.exists():
+        log.warning("refresh_cookies.py not found - cannot auto-refresh cookies")
+        return False
+
+    log.info("Auto-refreshing YouTube cookies...")
+    try:
+        result = subprocess.run(
+            ["uv", "run", str(refresh_script)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=refresh_script.parent,
+        )
+        if result.returncode == 0:
+            log.info("Cookie refresh successful")
+            return True
+        log.error("Cookie refresh failed: %s", result.stderr)
+        return False
+    except subprocess.TimeoutExpired:
+        log.error("Cookie refresh timed out")
+        return False
+    except Exception as e:
+        log.error("Cookie refresh error: %s", e)
+        return False
+
+
 def _parse_history_entries(data: dict) -> list[dict]:
     """Extract video entries from InnerTube browse response JSON."""
     entries: list[dict] = []
@@ -244,6 +279,7 @@ async def youtube_history(
     cookies_file: str | None = None,
     get_transcripts: bool = False,
     char_cap: int | None = None,
+    _retry_after_refresh: bool = False,
 ) -> list[Video]:
     """Fetch personal YouTube watch history via InnerTube browse API.
 
@@ -254,6 +290,7 @@ async def youtube_history(
         cookies_file: Path to a Netscape cookies.txt file (required for auth).
         get_transcripts: Fetch transcripts for matched videos.
         char_cap: Cap total output characters.
+        _retry_after_refresh: Internal flag - if True, this is already a retry after cookie refresh.
 
     Returns:
         List of Video objects from watch history, most recent first.
@@ -328,8 +365,20 @@ async def youtube_history(
                     if kv.get("key") == "logged_in" and kv.get("value") == "1":
                         logged_in = True
             if not logged_in and page == 0:
+                # Single auto-refresh attempt - no retry loop
+                if not _retry_after_refresh and _refresh_cookies_if_needed():
+                    log.info("Cookies refreshed, retrying history fetch once...")
+                    return await youtube_history(
+                        query=query,
+                        channel=channel,
+                        max_results=max_results,
+                        cookies_file=None,  # Force reload from default path
+                        get_transcripts=get_transcripts,
+                        char_cap=char_cap,
+                        _retry_after_refresh=True,  # Prevent infinite recursion
+                    )
                 raise RuntimeError(
-                    "YouTube did not recognize the session as logged in. Cookies may be expired — re-export them."
+                    "YouTube did not recognize the session as logged in. Run: uv run scripts/refresh_cookies.py --setup"
                 )
 
             entries = _parse_history_entries(data)

@@ -1,14 +1,16 @@
 """File watcher for TeleClaude artifacts."""
 
-import logging
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from instrukt_ai_logging import InstruktAILogger, get_logger
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
+
+from teleclaude.logging_config import setup_logging
 
 try:
     import pathspec
@@ -20,7 +22,7 @@ if TYPE_CHECKING:
 else:
     PathSpecType = Any
 
-logger = logging.getLogger(__name__)
+logger: InstruktAILogger = get_logger(__name__)
 
 
 class SmartWatcher(FileSystemEventHandler):
@@ -76,7 +78,7 @@ class SmartWatcher(FileSystemEventHandler):
 
         # Check against .gitignore and custom ignores
         if self.spec and self.spec.match_file(str(rel_path)):
-            logger.debug(f"Ignoring change: {rel_path} (matched .gitignore/exclude)")
+            logger.trace(f"Ignoring change: {rel_path} (matched .gitignore/exclude)")
             return
 
         logger.info(f"Change detected: {rel_path}")
@@ -114,6 +116,8 @@ class SmartWatcher(FileSystemEventHandler):
 
 def run_watch(project_root: Path) -> None:
     """Run the watcher loop."""
+    setup_logging()
+    logger = get_logger(__name__)
     handler = SmartWatcher(project_root)
     observer = Observer()
     observer.schedule(handler, str(project_root), recursive=True)
