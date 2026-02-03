@@ -3,7 +3,7 @@ name: stack-docs
 description: Research and index official documentation for project dependencies. Use when the user asks to capture docs for a library, framework, or tool in the tech stack. Outputs structured snippets under docs/third-party/.
 ---
 
-# Stack Docs
+# Tech Stack Docs
 
 ## Purpose
 
@@ -12,7 +12,7 @@ Capture authoritative documentation for project dependencies and store concise i
 ## Scope
 
 - Targeted documentation for libraries, frameworks, and tools used in the project.
-- Output stored under `docs/third-party/{library}/` and registered in `docs/index.yaml`.
+- Output stored under `docs/third-party/{library}/`.
 - Prefer official vendor documentation; expand to secondary sources only to fill gaps.
 - Apply the Parallel Work principle when multiple independent topics or dependencies can be researched simultaneously.
 
@@ -26,7 +26,6 @@ Capture authoritative documentation for project dependencies and store concise i
 
 - Documentation snippet(s) under `docs/third-party/{library}/` following the snippet authoring schema.
 - Each snippet includes a **Sources** section and an explicit **Gaps/Unknowns** note when needed.
-- Updated `docs/index.yaml` entry for discoverability.
 
 ## Procedure
 
@@ -47,7 +46,7 @@ Capture authoritative documentation for project dependencies and store concise i
    - Include **Sources** and **Gaps/Unknowns**.
 
 5. **Index**
-   - Register the snippet in `docs/index.yaml` using the standard tooling.
+   - Observe the snippet is registered by the watcher in `docs/index.yaml`.
 
 6. **Stop condition**
    - Stop when the brief is satisfied and any remaining gaps are explicitly recorded.

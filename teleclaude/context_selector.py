@@ -320,7 +320,7 @@ def build_context_output(
     test_request: str | None = None,
     test_csv_path: str | None = None,
 ) -> str:
-    project_index = project_root / "docs" / "index.yaml"
+    project_index = project_root / "docs" / "project" / "index.yaml"
     global_index = GLOBAL_SNIPPETS_DIR / "index.yaml"
     global_root = GLOBAL_SNIPPETS_DIR.parent.parent
     global_snippets_root = GLOBAL_SNIPPETS_DIR
