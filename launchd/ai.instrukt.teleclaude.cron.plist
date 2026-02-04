@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.instrukt.teleclaude.cron</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/Morriz/.local/bin/uv</string>
+        <string>run</string>
+        <string>--quiet</string>
+        <string>/Users/Morriz/Workspace/InstruktAI/TeleClaude/scripts/cron_runner.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/Morriz/Workspace/InstruktAI/TeleClaude</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/Morriz/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/Morriz</string>
+    </dict>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/Morriz/.teleclaude/logs/cron.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/Morriz/.teleclaude/logs/cron.log</string>
+</dict>
+</plist>
