@@ -1,12 +1,12 @@
 ---
 description: 'Research third-party docs: search authoritative sources, fetch, summarize,
   and index findings.'
-id: software-development/procedure/research/3rd-party-research
+id: software-development/procedure/research/third-party-research
 scope: domain
 type: procedure
 ---
 
-# 3rd Party Research — Procedure
+# Third-Party Research — Procedure
 
 ## Goal
 
@@ -46,7 +46,6 @@ artifacts.
 - Identify sources (web or Context7) and record them.
 - Draft an internal snippet that captures only validated facts.
 - Add sources to a **Sources** section.
-- Rebuild docs/index.yaml and validate.
 
 ## Outputs
 

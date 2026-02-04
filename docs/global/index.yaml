@@ -43,6 +43,12 @@ snippets:
   scope: global
   path: docs/baseline/principle/explicit-inference.md
   source_project: TeleClaude
+- id: baseline/principle/parallel-work
+  description: "Parallel Work \u2014 Principle"
+  type: principle
+  scope: global
+  path: docs/baseline/principle/parallel-work.md
+  source_project: TeleClaude
 - id: baseline/reference/third-party-docs
   description: "Third-Party Docs \u2014 Reference"
   type: reference
@@ -87,12 +93,6 @@ snippets:
   scope: global
   path: docs/general/procedure/agent-artifact-authoring.md
   source_project: TeleClaude
-- id: general/procedure/agents-md-authoring
-  description: Author AGENTS.md files that bootstrap required reads and role context.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/agents-md-authoring.md
-  source_project: TeleClaude
 - id: general/procedure/snippet-authoring-sequence
   description: Sequence for authoring and validating documentation snippets.
   type: procedure
@@ -104,6 +104,12 @@ snippets:
   type: reference
   scope: global
   path: docs/general/reference/agent-artifacts.md
+  source_project: TeleClaude
+- id: general/reference/history-log
+  description: Standard format for history.md logs that record request/response entries.
+  type: reference
+  scope: global
+  path: docs/general/reference/history-log.md
   source_project: TeleClaude
 - id: general/reference/snippet-authoring-schema
   description: Schema and section requirements for documentation snippets belonging
@@ -224,13 +230,6 @@ snippets:
   scope: domain
   path: docs/software-development/principle/failure-modes.md
   source_project: TeleClaude
-- id: software-development/principle/parallel-work
-  description: Prefer parallelizing independent work with clear briefs and reconciliation
-    to reduce latency without sacrificing accuracy.
-  type: principle
-  scope: domain
-  path: docs/software-development/principle/parallel-work.md
-  source_project: TeleClaude
 - id: software-development/procedure/bugs-handling
   description: Triage bugs, decide quick fixes vs new todos, and track resolution
     in bugs.md.
@@ -336,12 +335,12 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/orchestration.md
   source_project: TeleClaude
-- id: software-development/procedure/research/3rd-party-research
+- id: software-development/procedure/research/third-party-research
   description: 'Research third-party docs: search authoritative sources, fetch, summarize,
     and index findings.'
   type: procedure
   scope: domain
-  path: docs/software-development/procedure/research/3rd-party-research.md
+  path: docs/software-development/procedure/research/third-party-research.md
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/python
   description: Scaffold a Python repo with standard tooling, Makefile targets, and

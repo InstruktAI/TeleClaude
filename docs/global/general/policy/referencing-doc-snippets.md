@@ -29,7 +29,7 @@ description: Policy for referencing documentation snippets in AI agent prompts.
 
 ## Enforcement
 
-- Required reads must appear in a `Required reads` section at the top of the document.
+- Required reads must appear in a `Required reads` section immediately after the H1 title (or after the activation line in commands/agents).
 - Required reads must use inline `@` references only.
 - Soft references must appear in a `See also` section at the bottom and must not use `@`.
 

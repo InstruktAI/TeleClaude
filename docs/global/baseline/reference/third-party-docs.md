@@ -2,11 +2,12 @@
 
 ## What it is
 
-Defines the project convention for third-party documentation storage and how it is referenced.
+Defines the project and global convention for third-party documentation storage and how it is referenced.
 
 ## Canonical fields
 
-- Third-party docs live under `docs/third-party/`.
+- Third-party global docs live under `~/.teleclaude/docs/third-party/`.
+- Third-party project docs live under `docs/third-party/`.
 - Third-party sources are **never** required reads and must not use inline `@` references.
 - Cite third-party sources only under `Sources` or `See also`.
 

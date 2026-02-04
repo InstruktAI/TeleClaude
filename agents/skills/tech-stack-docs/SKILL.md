@@ -1,19 +1,22 @@
 ---
-name: stack-docs
-description: Research and index official documentation for project dependencies. Use when the user asks to capture docs for a library, framework, or tool in the tech stack. Outputs structured snippets under docs/third-party/.
+name: tech-stack-docs
+description: Research and index official documentation for project dependencies. Use when the user asks to capture docs for a library, framework, or tool in the tech stack. Default output is global (~/.teleclaude/docs/third-party/), unless the user explicitly requests project-only.
 ---
 
 # Tech Stack Docs
 
 ## Purpose
 
-Capture authoritative documentation for project dependencies and store concise internal snippets under `docs/third-party/`.
+Capture authoritative documentation for project dependencies and store concise internal snippets. Default to global storage under `~/.teleclaude/docs/third-party/` unless the user explicitly requests project-only storage.
 
 ## Scope
 
 - Targeted documentation for libraries, frameworks, and tools used in the project.
-- Output stored under `docs/third-party/{library}/`.
-- Check `docs/third-party/index.md` for existing documentation before researching.
+- **Default output**: `~/.teleclaude/docs/third-party/{library}/` (shared across projects).
+- **Project-only output (if requested)**: `docs/third-party/{library}/` within the current repo.
+- Check the relevant `index.md` before researching:
+  - Global: `~/.teleclaude/docs/third-party/index.md`
+  - Project: `docs/third-party/index.md`
 - Prefer official vendor documentation; expand to secondary sources only to fill gaps.
 - Apply the Parallel Work principle when multiple independent topics or dependencies can be researched simultaneously.
 
@@ -25,13 +28,19 @@ Capture authoritative documentation for project dependencies and store concise i
 
 ## Outputs
 
-- Documentation snippet(s) under `docs/third-party/{library}/` following the snippet authoring schema.
+- Documentation snippet(s) under the selected scope:
+  - Global: `~/.teleclaude/docs/third-party/{library}/`
+  - Project: `docs/third-party/{library}/`
 - Each snippet includes a **Sources** section and an explicit **Gaps/Unknowns** note when needed.
 
 ## Procedure
 
 1. **Define the brief**
    - Clarify the exact topic(s) to document and what will count as “done.”
+   - Determine scope:
+     - If the user explicitly says “project-only,” use `docs/third-party/`.
+     - Otherwise default to global `~/.teleclaude/docs/third-party/`.
+     - If unclear, infer based on whether the request is broadly reusable; default to global and state that choice.
 
 2. **Gather authoritative sources**
    - Prefer official docs and primary sources.
@@ -52,7 +61,7 @@ Capture authoritative documentation for project dependencies and store concise i
 **Bulk workflow (stack scan):**
 
 - Enumerate dependencies from `pyproject.toml` or `package.json`.
-- For each key dependency, check if docs already exist under `docs/third-party/`.
+- For each key dependency, check if docs already exist under `~/.teleclaude/docs/third-party/`.
 - Fill only the missing high-impact dependencies first; skip trivial packages.
 
 ## Examples
@@ -62,13 +71,13 @@ User asks: "Get me the Redis Streams documentation."
 
 1. Locate the official Redis Streams documentation.
 2. Capture the core concepts, consumer group behavior, and common pitfalls.
-3. Write `docs/third-party/redis/streams.md`.
+3. Write `~/.teleclaude/docs/third-party/redis/streams.md` (global default).
 
 **Scan the stack for missing docs:**
 User asks: "Check what dependencies we're missing docs for."
 
 1. Enumerate dependencies from `pyproject.toml`.
-2. Compare against `docs/third-party/`.
+2. Compare against `~/.teleclaude/docs/third-party/` (or `docs/third-party/` if project-only).
 3. Report gaps and offer to fill them in priority order.
 
 **Focused topic within a library:**
@@ -76,4 +85,10 @@ User asks: "Get me the FastAPI dependency injection docs."
 
 1. Locate the official FastAPI DI docs.
 2. Summarize usage patterns and edge cases.
-3. Write `docs/third-party/fastapi/dependency-injection.md`.
+3. Write `~/.teleclaude/docs/third-party/fastapi/dependency-injection.md` (global default).
+
+**Project-only example:**
+User asks: "Add project-only docs for the internal Redis usage."
+
+1. Use `docs/third-party/redis/`.
+2. Write `docs/third-party/redis/streams.md`.

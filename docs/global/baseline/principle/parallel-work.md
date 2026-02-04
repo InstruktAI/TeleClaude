@@ -1,6 +1,6 @@
 ---
 description: Prefer parallelizing independent work with clear briefs and reconciliation to reduce latency without sacrificing accuracy.
-id: software-development/principle/parallel-work
+id: general/principle/parallel-work
 scope: domain
 type: principle
 ---
@@ -18,7 +18,7 @@ Independent work streams reduce end-to-end time while allowing deeper coverage. 
 ## Implications
 
 - Identify independent sub-tasks early (sources to gather, topics to cover, or artifacts to produce).
-- Dispatch parallel work with a precise brief, expected outputs, and success criteria.
+- Dispatch parallel work to sub-agents or sub-tasks with a precise brief, expected outputs, and success criteria.
 - Prefer parallelization when work can be isolated; avoid it when tasks are tightly coupled.
 - Reconcile results into a single, coherent outcome; resolve conflicts and call out gaps.
 - Use available skills and capabilities to route tasks to the right worker or tool.

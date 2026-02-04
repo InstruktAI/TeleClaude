@@ -1,20 +1,19 @@
 ---
 name: youtube
-description: Search YouTube channels for videos, browse personal watch history, and extract transcripts. Use when user asks to find YouTube videos, get video transcripts, search specific channels, search personal watch history, analyze YouTube content by topic or date range, or needs video URLs and content for research.
+description: Search YouTube channels for videos, browse personal watch history and subscriptions, and extract transcripts. Use when user asks to find YouTube videos, get video transcripts, search specific channels, search personal watch history/subscriptions, analyze YouTube content by topic or date range, or needs video URLs and content for research.
 ---
 
 # YouTube Search, Watch History & Transcripts
 
-Search YouTube channels for videos, browse personal watch history via InnerTube API, and extract full transcripts with timestamps for analysis.
-
 ## Purpose
 
-Provide agents with the ability to search YouTube channels for videos, query personal watch history, and extract full transcripts with timestamps. Channel search uses HTML parsing (no API key). Watch history uses YouTube's InnerTube browse API with exported cookies for live, authenticated access. The helper script uses PEP 723 inline dependencies and runs via `uv run`.
+Provide a single interface to search YouTube channels, retrieve watch history and subscriptions, and extract transcripts and metadata for analysis.
 
 ## Scope
 
 - Channel-level video search with date filtering and keyword queries.
 - Personal watch history search with title, channel, and result limit filters.
+- Subscription feed browsing and subscription channel listing.
 - Transcript extraction from any video with captions (auto or manual).
 - Parallel async searches across multiple channels.
 - Character cap management for LLM context windows.
@@ -24,22 +23,25 @@ Limitations: HTML parsing may break if YouTube changes page structure. Channel s
 
 ## Inputs
 
-- **mode**: `search` (search channels), `transcripts` (extract from video IDs), or `history` (personal watch history).
-- **For search mode**: `--channels` (comma-separated handles like `@indydevdan`), optional `--query`, `--period-days` (default 30), `--end-date`, `--max-videos` (default 5), `--descriptions`, `--no-transcripts`, `--char-cap`.
+- **mode**: `search` (search channels), `transcripts` (extract from video IDs), `history` (personal watch history), or `subscriptions` (subscription feed or channel list).
+- **For search mode**: `--query` (required), optional `--channels` (comma-separated handles like `@indydevdan`; omit for global search), `--period-days` (default 30), `--end-date`, `--max-videos` (default 5), `--descriptions`, `--no-transcripts`, `--char-cap`.
 - **For transcripts mode**: `--ids` (comma-separated YouTube video IDs).
 - **For history mode**: optional `--query` (title/channel filter), `--channel` (channel name filter), `--max-videos` (default 5), `--cookies` (path to cookies.txt, default: `~/.config/youtube/cookies.txt`), `--transcripts`, `--char-cap`.
+- **For subscriptions mode (feed)**: optional `--channel` (exact channel name), `--max-videos` (default 5), `--cookies` (path to cookies.txt, default: `~/.config/youtube/cookies.txt`), `--transcripts`, `--char-cap`.
+- **For subscriptions mode (channel list)**: `--list-channels` only (uses cookies; ignores `--max-videos`).
 
 ## Outputs
 
 - **Search mode**: Video metadata (title, URL, channel, duration, views, publish time) plus full transcripts with `[Ns]` timestamp markers.
 - **Transcripts mode**: Full transcript text per video ID with timestamps.
 - **History mode**: Video metadata (title, URL, channel, duration, views) from personal watch history, most recent first.
+- **Subscriptions mode**: Video metadata from your subscription feed, or subscription channel list when `--list-channels` is set.
 
 ## Procedure
 
 1. Export YouTube cookies to `~/.config/youtube/cookies.txt` in Netscape format (use a browser extension like "Get cookies.txt LOCALLY"). The helper script auto-detects this path.
-2. Run the helper script via `uv run` from the skill's `scripts/` directory.
-3. Choose a mode: `search`, `transcripts`, or `history` and pass the relevant flags.
+2. Run the helper script directly via the global helpers path.
+3. Choose a mode: `search`, `transcripts`, `history`, or `subscriptions` and pass the relevant flags.
 4. Circuit breaker: if YouTube returns HTTP 429/403/401, the script enforces a 10-minute backoff using `~/.config/youtube/.backoff`.
 
 Channel handles must use `@` prefix. Multiple channels are comma-separated. Timestamps in transcripts use `[123s]` format. Use `--char-cap` to limit total output size for LLM context management.
@@ -51,13 +53,19 @@ Channel handles must use `@` prefix. Multiple channels are comma-separated. Time
 **Find recent videos on a topic:**
 
 ```bash
-uv run scripts/youtube_helper.py --mode search --channels "@indydevdan,@swyx" --query "AI agents" --period-days 7
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode search --channels "@indydevdan,@swyx" --query "AI agents" --period-days 7
+```
+
+**Global search (no channels):**
+
+```bash
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode search --query "AI agents" --period-days 7 --max-videos 10
 ```
 
 **Deep analysis with descriptions:**
 
 ```bash
-uv run scripts/youtube_helper.py --mode search --channels "@channelname" --query "Python testing" --period-days 90 --max-videos 10 --descriptions
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode search --channels "@channelname" --query "Python testing" --period-days 90 --max-videos 10 --descriptions
 ```
 
 **Transcripts**
@@ -65,7 +73,7 @@ uv run scripts/youtube_helper.py --mode search --channels "@channelname" --query
 **Get transcript from a specific video URL (extract ID from URL):**
 
 ```bash
-uv run scripts/youtube_helper.py --mode transcripts --ids "p9acrso71KU"
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode transcripts --ids "p9acrso71KU"
 ```
 
 **Watch history**
@@ -73,41 +81,62 @@ uv run scripts/youtube_helper.py --mode transcripts --ids "p9acrso71KU"
 **Browse recent watch history (no filter):**
 
 ```bash
-uv run scripts/youtube_helper.py --mode history --max-videos 10
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --max-videos 10
 ```
 
 **Search by keyword (matches title + channel name, case-insensitive):**
 
 ```bash
-uv run scripts/youtube_helper.py --mode history --query "AI agents" --max-videos 20
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --query "AI agents" --max-videos 20
 ```
 
 **Filter to a specific channel:**
 
 ```bash
-uv run scripts/youtube_helper.py --mode history --channel "Anthropic"
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --channel "Anthropic"
 ```
 
 **Combine query + channel filter:**
 
 ```bash
-uv run scripts/youtube_helper.py --mode history --query "coding" --channel "ThePrimeagen"
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --query "coding" --channel "ThePrimeagen"
 ```
 
 **With transcripts (off by default in history mode — opt in):**
 
 ```bash
-uv run scripts/youtube_helper.py --mode history --query "AI agents" --max-videos 5 --transcripts
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --query "AI agents" --max-videos 5 --transcripts
 ```
 
 **Use a specific cookies.txt file:**
 
 ```bash
-uv run scripts/youtube_helper.py --mode history --query "python" --cookies ~/cookies.txt
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --query "python" --cookies ~/cookies.txt
 ```
 
 **Cap output size for LLM context windows:**
 
 ```bash
-uv run scripts/youtube_helper.py --mode history --query "tutorial" --max-videos 10 --char-cap 50000
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --query "tutorial" --max-videos 10 --char-cap 50000
+```
+
+**Subscriptions feed**
+
+**Browse recent subscription feed videos:**
+
+```bash
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode subscriptions --max-videos 20
+```
+
+**Filter subscription feed by channel name:**
+
+```bash
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode subscriptions --channel "Anthropic" --max-videos 10
+```
+
+
+**List your subscription channels:**
+
+```bash
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode subscriptions --list-channels
 ```
