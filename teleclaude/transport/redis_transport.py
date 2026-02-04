@@ -1307,12 +1307,13 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         logger.info("Received system command '%s' from %s", command, from_computer)
 
-        deploy_args = DeployArgs()
+        verify_health = True
         if isinstance(args_obj, dict) and "verify_health" in args_obj:
             try:
-                deploy_args.verify_health = bool(args_obj["verify_health"])
+                verify_health = bool(args_obj["verify_health"])
             except Exception:
-                deploy_args.verify_health = True
+                verify_health = True
+        deploy_args = DeployArgs(verify_health=verify_health)
 
         event_bus.emit(
             "system_command",

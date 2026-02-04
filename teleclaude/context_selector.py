@@ -10,8 +10,8 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.docs_index import extract_required_reads
-from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
+from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.utils import expand_env_vars
 
 logger = get_logger(__name__)
@@ -199,8 +199,6 @@ def _resolve_inline_refs(content: str, *, snippet_path: Path, root_path: Path) -
         return f"@{candidate}"
 
     return f"{head}{_INLINE_REF_RE.sub(_expand, body)}"
-
-
 
 
 def _load_index(index_path: Path) -> list[SnippetMeta]:

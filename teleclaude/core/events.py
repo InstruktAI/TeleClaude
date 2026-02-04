@@ -5,8 +5,8 @@ Provides type-safe event definitions for adapter-daemon communication.
 
 import shlex
 from collections.abc import Mapping
-from types import MappingProxyType
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Literal, Optional, Union, cast
 
 # Event bus carries internal events (not user commands).
@@ -51,41 +51,53 @@ class AgentHookEvents:
 
 @dataclass(frozen=True)
 class AgentSessionStartPayload:
-    """Internal payload for agent session_start hook."""
+    """Internal payload for agent session_start hook.
 
-    raw: Mapping[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    guard: loose-dict - Agent hook data varies by agent.
+    """
+
+    raw: Mapping[str, object] = field(default_factory=dict)
     transcript_path: str | None = None
     session_id: str | None = None
 
 
 @dataclass(frozen=True)
 class UserPromptSubmitPayload:
-    """Internal payload for user prompt submission hook."""
+    """Internal payload for user prompt submission hook.
+
+    guard: loose-dict - Agent hook data varies by agent.
+    """
 
     prompt: str
     session_id: str | None = None
     transcript_path: str | None = None
-    raw: Mapping[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    raw: Mapping[str, object] = field(default_factory=dict)
     source_computer: str | None = None
 
 
 @dataclass(frozen=True)
 class AgentStopPayload:
-    """Internal payload for agent stop hook."""
+    """Internal payload for agent stop hook.
+
+    guard: loose-dict - Agent hook data varies by agent.
+    """
 
     session_id: str | None = None
     transcript_path: str | None = None
     prompt: str | None = None
-    raw: Mapping[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    raw: Mapping[str, object] = field(default_factory=dict)
     source_computer: str | None = None
 
 
 @dataclass(frozen=True)
 class AgentNotificationPayload:
-    """Internal payload for agent notification hook."""
+    """Internal payload for agent notification hook.
+
+    guard: loose-dict - Agent hook data varies by agent.
+    """
 
     message: str = ""
-    raw: Mapping[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    raw: Mapping[str, object] = field(default_factory=dict)
     session_id: str | None = None
     transcript_path: str | None = None
     source_computer: str | None = None
@@ -93,10 +105,13 @@ class AgentNotificationPayload:
 
 @dataclass(frozen=True)
 class AgentSessionEndPayload:
-    """Internal payload for agent session_end hook."""
+    """Internal payload for agent session_end hook.
+
+    guard: loose-dict - Agent hook data varies by agent.
+    """
 
     session_id: str | None = None
-    raw: Mapping[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    raw: Mapping[str, object] = field(default_factory=dict)
 
 
 AgentEventPayload = Union[
@@ -310,20 +325,26 @@ class AgentEventContext:
 
 @dataclass(frozen=True)
 class SessionUpdatedContext:
-    """Context for session_updated events."""
+    """Context for session_updated events.
+
+    guard: loose-dict - Dynamic session field updates.
+    """
 
     session_id: str
-    updated_fields: dict[str, object]  # noqa: loose-dict - Dynamic session field updates
+    updated_fields: Mapping[str, object]
 
 
 @dataclass(frozen=True)
 class ErrorEventContext:
-    """Context for error events."""
+    """Context for error events.
+
+    guard: loose-dict - Error detail data varies by error.
+    """
 
     session_id: str | None
     message: str
     source: Optional[str] = None
-    details: Optional[dict[str, object]] = None  # noqa: loose-dict - Error detail data varies by error
+    details: Optional[Mapping[str, object]] = None
     severity: ErrorSeverity = "error"
     retryable: bool = False
     code: Optional[str] = None

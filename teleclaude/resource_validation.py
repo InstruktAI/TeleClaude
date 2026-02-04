@@ -673,10 +673,7 @@ def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> N
         raise ValueError(f"{path} is missing required section headings")
 
     if kind in {"command", "agent"}:
-        has_role = any(
-            line.strip().startswith("You are now the ")
-            for line in lines[h1_idx + 1 : first_section_idx]
-        )
+        has_role = any(line.strip().startswith("You are now the ") for line in lines[h1_idx + 1 : first_section_idx])
         if not has_role:
             raise ValueError(f"{path} must include a role activation line before the first section")
     else:
