@@ -22,6 +22,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from teleclaude.docs_index import write_third_party_index_yaml
 from teleclaude.resource_validation import (
     resolve_ref_path,
     validate_artifact,
@@ -280,49 +281,6 @@ def _write_project_agents(master_path: Path, *, project_root: Path) -> None:
     agents_path.write_text(inflated, encoding="utf-8")
     claude_path = master_path.parent / "CLAUDE.md"
     claude_path.write_text("@./AGENTS.md\n", encoding="utf-8")
-
-
-def _merge_global_index(deploy_docs_root: str) -> None:
-    """Merge index.yaml files from multiple projects into single global index.
-
-    When multiple projects publish to ~/.teleclaude/docs/, each brings its own
-    index.yaml with snippets. This merges them, preserving source_project metadata.
-    """
-    import yaml
-
-    # Note: After copytree with dirs_exist_ok=True, only the most recent
-    # project's index.yaml remains. To truly merge, we'd need to track indexes
-    # before copy. For now, just ensure the final index is correct.
-
-    # The current index.yaml should already have source_project from sync_resources.py
-    # Just rewrite paths to match deployed location
-    index_path = os.path.join(deploy_docs_root, "index.yaml")
-    if not os.path.exists(index_path):
-        return
-
-    try:
-        with open(index_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-
-        if isinstance(data, dict):
-            # Use tilde for portability (git filters will expand in working copy)
-            data["project_root"] = "~/.teleclaude"
-            data["snippets_root"] = "~/.teleclaude/docs"
-            snippets = data.get("snippets")
-            if isinstance(snippets, list):
-                for entry in snippets:
-                    if not isinstance(entry, dict):
-                        continue
-                    path = entry.get("path")
-                    if not isinstance(path, str):
-                        continue
-                    if path.startswith("docs/global/"):
-                        entry["path"] = path.replace("docs/global/", "docs/", 1)
-
-            with open(index_path, "w", encoding="utf-8") as f:
-                yaml.dump(data, f, sort_keys=False, allow_unicode=True)
-    except Exception as e:
-        print(f"Warning: Could not process global index: {e}")
 
 
 def rewrite_global_index(index_path: str, deploy_root: str) -> None:
@@ -755,17 +713,40 @@ def main() -> None:
 
             if include_docs and os.path.isdir(master_docs_dir):
                 deploy_docs_root = os.path.join(os.path.expanduser("~/.teleclaude"), "docs")
-
-                # Remove old symlink if it exists
-                if os.path.islink(deploy_docs_root):
-                    os.unlink(deploy_docs_root)
-
-                # Copy docs (overwriting files from this project)
                 os.makedirs(deploy_docs_root, exist_ok=True)
-                shutil.copytree(master_docs_dir, deploy_docs_root, dirs_exist_ok=True)
 
-                # Merge index.yaml files (combine snippets from multiple projects)
-                _merge_global_index(deploy_docs_root)
+                # Symlink each entry from docs/global/ to ~/.teleclaude/docs/
+                for entry in os.listdir(master_docs_dir):
+                    src_path = os.path.join(master_docs_dir, entry)
+                    dst_path = os.path.join(deploy_docs_root, entry)
+
+                    # Skip hidden files
+                    if entry.startswith("."):
+                        continue
+
+                    # Remove existing symlink at destination
+                    if os.path.islink(dst_path):
+                        os.unlink(dst_path)
+                    elif os.path.isdir(dst_path):
+                        # Only preserve third-party (for global research output)
+                        # All other directories get replaced with symlinks
+                        if entry == "third-party":
+                            continue
+                        shutil.rmtree(dst_path)
+                    elif os.path.isfile(dst_path):
+                        os.unlink(dst_path)
+
+                    # Create symlink for directories and index.yaml
+                    if os.path.isdir(src_path) or entry == "index.yaml":
+                        os.symlink(src_path, dst_path)
+                        print(f"  Symlinked: {dst_path} -> {src_path}")
+
+                # Generate index.yaml for global third-party docs
+                global_third_party = Path(deploy_docs_root) / "third-party"
+                if global_third_party.exists():
+                    third_party_index = write_third_party_index_yaml(global_third_party, scope="global")
+                    if third_party_index:
+                        print(f"  Generated: {third_party_index}")
 
             print("Deployment complete.")
 

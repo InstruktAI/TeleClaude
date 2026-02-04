@@ -11,6 +11,9 @@ import pytest
 
 from teleclaude.core.models import (
     ComputerInfo,
+    ProjectInfo,
+    SessionSummary,
+    TodoInfo,
 )
 
 

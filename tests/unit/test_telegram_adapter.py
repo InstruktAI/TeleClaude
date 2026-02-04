@@ -93,7 +93,6 @@ class TestSimpleCommandHandlers:
     @pytest.mark.asyncio
     async def test_simple_command_propagates_message_id(self, telegram_adapter):
         """Simple commands should include message_id for UI cleanup tracking."""
-        from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
 
         session = Session(
             session_id="session-123",
@@ -141,7 +140,6 @@ class TestMessaging:
     @pytest.mark.asyncio
     async def test_edit_message_success(self, telegram_adapter):
         """Test editing a message."""
-        from teleclaude.core.models import Session
 
         # Mock session with channel metadata
         mock_session = Session(
@@ -182,7 +180,6 @@ class TestMessaging:
     @pytest.mark.asyncio
     async def test_delete_message_success(self, telegram_adapter):
         """Test deleting a message."""
-        from teleclaude.core.models import Session
 
         # Mock session with channel metadata
         mock_session = Session(
@@ -222,7 +219,7 @@ class TestChannelManagement:
     @pytest.mark.asyncio
     async def test_create_channel_success(self, telegram_adapter):
         """Test creating a forum topic."""
-        from teleclaude.core.models import ChannelMetadata, Session
+        from teleclaude.core.models import ChannelMetadata
 
         telegram_adapter.app = MagicMock()
         telegram_adapter.app.bot = MagicMock()
@@ -278,7 +275,7 @@ class TestChannelManagement:
     @pytest.mark.asyncio
     async def test_create_channel_deduplication_returns_existing_topic(self, telegram_adapter):
         """Test that create_channel returns existing topic_id instead of creating duplicate."""
-        from teleclaude.core.models import ChannelMetadata, Session, SessionAdapterMetadata, TelegramAdapterMetadata
+        from teleclaude.core.models import ChannelMetadata
 
         telegram_adapter.app = MagicMock()
         telegram_adapter.app.bot = MagicMock()
@@ -314,7 +311,6 @@ class TestChannelManagement:
     @pytest.mark.asyncio
     async def test_delete_channel_success(self, telegram_adapter):
         """Test deleting a forum topic."""
-        from teleclaude.core.models import Session
 
         telegram_adapter.app = MagicMock()
         telegram_adapter.app.bot = MagicMock()
@@ -352,7 +348,6 @@ class TestRateLimitHandling:
     @pytest.mark.asyncio
     async def test_edit_message_rate_limit_retries_and_succeeds(self, telegram_adapter):
         """Test that rate limit on edit sleeps and retries successfully."""
-        from teleclaude.core.models import Session
 
         # Mock session with channel metadata
         mock_session = Session(
@@ -389,7 +384,6 @@ class TestRateLimitHandling:
     @pytest.mark.asyncio
     async def test_edit_message_rate_limit_retries_and_fails(self, telegram_adapter):
         """Test that rate limit fails after max retries."""
-        from teleclaude.core.models import Session
 
         # Mock session with channel metadata
         mock_session = Session(
@@ -442,7 +436,6 @@ class TestReplyMarkup:
     @pytest.mark.asyncio
     async def test_edit_message_with_reply_markup(self, telegram_adapter):
         """Test editing message with reply markup."""
-        from teleclaude.core.models import Session
 
         # Mock session with channel metadata
         mock_session = Session(
@@ -489,7 +482,6 @@ class TestMessageNotModified:
         When Telegram returns this error, it means the message exists but
         the content is unchanged. This should NOT clear output_message_id.
         """
-        from teleclaude.core.models import Session
 
         mock_session = Session(
             session_id="session-123",
@@ -530,7 +522,6 @@ class TestMessageNotModified:
         When Telegram returns this error, the message was deleted.
         This should clear output_message_id so a new message is created.
         """
-        from teleclaude.core.models import Session
 
         mock_session = Session(
             session_id="session-123",

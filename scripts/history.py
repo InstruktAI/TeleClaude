@@ -4,12 +4,17 @@
 
 import argparse
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 from teleclaude.constants import AGENT_METADATA
 from teleclaude.core.agents import AgentName
+from teleclaude.core.dates import format_local_datetime
 from teleclaude.utils.transcript import collect_transcript_messages
 
 
@@ -108,9 +113,9 @@ def truncate_display(text: str, max_len: int = 70) -> str:
 
 
 def format_timestamp(mtime: float) -> str:
-    """Format mtime to human readable."""
-    dt = datetime.fromtimestamp(mtime)
-    return dt.strftime("%b %d, %Y %H:%M")
+    """Format mtime to human readable in local timezone."""
+    dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
+    return format_local_datetime(dt, include_date=True)
 
 
 def display_history(agent_name: AgentName, search_term: str = "", limit: int = 20) -> None:

@@ -31,6 +31,7 @@ Do the action first, then report it. If blocked, state the block immediately.
 - If an instruction could be interpreted multiple ways, ask a single clarifying question before acting.
 - When asked to find/read a file, locate it first and read it before responding.
 - Do not justify deviations; acknowledge, correct, and proceed.
+- Before giving any suggestion, verify it aligns with the stated objective and present only suggestions that are useful.
 
 ## CRITICAL: Default to Action (No Permission-Seeking)
 

@@ -66,13 +66,16 @@ class TestWriteIndexYaml:
         write_index_yaml(tmp_path, docs)
         assert not index.exists()
 
-    def test_third_party_deletes_index(self, tmp_path: Path) -> None:
+    def test_third_party_skips_index(self, tmp_path: Path) -> None:
+        """Third-party indexes are handled separately by write_third_party_index_yaml."""
         tp = tmp_path / "docs" / "third-party"
         tp.mkdir(parents=True)
         index = tp / "index.yaml"
         index.write_text("stale")
-        write_index_yaml(tmp_path, tp)
-        assert not index.exists()
+        # write_index_yaml now skips third-party directories
+        result = write_index_yaml(tmp_path, tp)
+        assert result == index  # Returns target path without modification
+        assert index.exists()  # File is not touched
 
 
 @pytest.mark.unit

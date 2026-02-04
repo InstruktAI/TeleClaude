@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable, Optional, cast
 
 from teleclaude.core.agents import AgentName
+from teleclaude.core.dates import format_local_datetime
 
 
 def parse_claude_transcript(
@@ -397,22 +398,26 @@ def _parse_timestamp(ts: str) -> Optional[datetime]:
 
 
 def _format_timestamp_prefix(dt: datetime) -> str:
-    """Format datetime as prefix for section headers.
+    """Format datetime as prefix for section headers in local timezone.
 
     Args:
-        dt: datetime object
+        dt: datetime object (UTC or timezone-aware)
 
     Returns:
         Formatted string like "14:25:33 · " or "2025-11-11 14:25:33 · "
     """
-    now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now()
+    # Convert to local timezone for comparison
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local_dt = dt.astimezone()
+    now = datetime.now().astimezone()
 
     # If same day, just show time
-    if dt.date() == now.date():
-        return f"{dt.strftime('%H:%M:%S')} · "
+    if local_dt.date() == now.date():
+        return f"{format_local_datetime(dt, include_date=False)} · "
 
     # Different day, show full date + time
-    return f"{dt.strftime('%Y-%m-%d %H:%M:%S')} · "
+    return f"{format_local_datetime(dt, include_date=True)} · "
 
 
 def _format_thinking(text: str) -> str:

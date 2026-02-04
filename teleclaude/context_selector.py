@@ -27,6 +27,16 @@ class SnippetMeta:
     path: Path
 
 
+@dataclass(frozen=True)
+class ThirdPartyMeta:
+    """Third-party doc entry - no type field (not part of taxonomy)."""
+
+    snippet_id: str
+    description: str
+    scope: str
+    path: Path
+
+
 def _scope_rank(scope: str | None) -> int:
     if not scope:
         return 3
@@ -265,6 +275,56 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
     return entries
 
 
+def _load_third_party_index(index_path: Path) -> list[ThirdPartyMeta]:
+    """Load third-party index.yaml (simpler schema: no type field)."""
+    if not index_path.exists():
+        return []
+
+    try:
+        payload = yaml.safe_load(index_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.exception("third_party_index_load_failed", path=str(index_path), error=str(exc))
+        return []
+
+    if not isinstance(payload, dict):
+        return []
+
+    snippets_root = payload.get("snippets_root")
+    snippets = payload.get("snippets")
+    if not isinstance(snippets_root, str) or not isinstance(snippets, list):
+        return []
+
+    root_path = Path(snippets_root).expanduser().resolve()
+    entries: list[ThirdPartyMeta] = []
+    for item in snippets:
+        if not isinstance(item, dict):
+            continue
+        snippet_id = item.get("id")
+        description = item.get("description")
+        scope = item.get("scope")
+        raw_path = item.get("path")
+        if (
+            not isinstance(snippet_id, str)
+            or not isinstance(description, str)
+            or not isinstance(scope, str)
+            or not isinstance(raw_path, str)
+        ):
+            continue
+        path = Path(raw_path).expanduser()
+        if not path.is_absolute():
+            path = (root_path / path).resolve()
+        entries.append(
+            ThirdPartyMeta(
+                snippet_id=snippet_id,
+                description=description,
+                scope=scope,
+                path=path,
+            )
+        )
+
+    return entries
+
+
 def _resolve_requires(
     selected_ids: Iterable[str],
     snippets: list[SnippetMeta],
@@ -315,6 +375,7 @@ def build_context_output(
     project_root: Path,
     snippet_ids: list[str] | None = None,
     include_baseline: bool = False,
+    include_third_party: bool = False,
     test_agent: str | None = None,
     test_mode: str | None = None,
     test_request: str | None = None,
@@ -325,10 +386,20 @@ def build_context_output(
     global_root = GLOBAL_SNIPPETS_DIR.parent.parent
     global_snippets_root = GLOBAL_SNIPPETS_DIR
 
+    # Third-party indexes (separate from taxonomy)
+    project_third_party_index = project_root / "docs" / "third-party" / "index.yaml"
+    global_third_party_index = GLOBAL_SNIPPETS_DIR / "third-party" / "index.yaml"
+
     # Load global snippets first, then project snippets.
     snippets: list[SnippetMeta] = []
     snippets.extend(_load_index(global_index))
     snippets.extend(_load_index(project_index))
+
+    # Load third-party entries (separate from taxonomy, not filtered by areas)
+    third_party_entries: list[ThirdPartyMeta] = []
+    if include_third_party:
+        third_party_entries.extend(_load_third_party_index(global_third_party_index))
+        third_party_entries.extend(_load_third_party_index(project_third_party_index))
 
     domains = _load_project_domains(project_root)
     project_domain_roots = {d: p for d, p in domains.items() if p.exists()}
@@ -381,6 +452,19 @@ def build_context_output(
         for snippet in ordered:
             description = snippet.description or ""
             parts.append(f"{snippet.snippet_id}: {description}".strip())
+
+        # Include third-party entries (separate section, not filtered by areas)
+        if third_party_entries:
+            parts.append("")
+            parts.append("# Third-party documentation (not part of taxonomy)")
+            ordered_third_party = sorted(
+                third_party_entries,
+                key=lambda s: (_scope_rank(s.scope), s.snippet_id),
+            )
+            for entry in ordered_third_party:
+                description = entry.description or ""
+                parts.append(f"{entry.snippet_id}: {description}".strip())
+
         parts.extend(
             [
                 "",
@@ -389,12 +473,21 @@ def build_context_output(
         )
         return "\n".join(parts)
 
+    # Build valid IDs from both taxonomy snippets and third-party entries
     valid_ids = {s.snippet_id for s in snippets}
+    third_party_by_id = {e.snippet_id: e for e in third_party_entries}
+    valid_ids.update(third_party_by_id.keys())
+
     invalid_ids = [sid for sid in (snippet_ids or []) if sid not in valid_ids]
     if invalid_ids:
         return f"ERROR: Unknown snippet IDs: {', '.join(invalid_ids)}"
+
+    # Separate taxonomy and third-party selections
     selected_ids = list(snippet_ids or [])
-    resolved = _resolve_requires(selected_ids, snippets, global_snippets_root=global_snippets_root)
+    taxonomy_ids = [sid for sid in selected_ids if sid not in third_party_by_id]
+    third_party_ids = [sid for sid in selected_ids if sid in third_party_by_id]
+
+    resolved = _resolve_requires(taxonomy_ids, snippets, global_snippets_root=global_snippets_root)
     _write_test_output(
         phase="phase2",
         areas=areas,
@@ -450,5 +543,32 @@ def build_context_output(
             ).strip()
         )
         parts.append(body.lstrip("\n"))
+
+    # Output selected third-party entries (no type, no dependency resolution)
+    if third_party_ids:
+        parts.append("")
+        parts.append("# Third-party documentation")
+        for sid in third_party_ids:
+            entry = third_party_by_id.get(sid)
+            if not entry:
+                continue
+            try:
+                raw = entry.path.read_text(encoding="utf-8")
+                _, body = _split_frontmatter(raw)
+            except Exception as exc:
+                logger.exception("context_selector_read_failed", path=str(entry.path), error=str(exc))
+                continue
+            parts.append(
+                "\n".join(
+                    [
+                        "---",
+                        f"id: {entry.snippet_id}",
+                        f"scope: {entry.scope}",
+                        f"description: {entry.description}",
+                        "---",
+                    ]
+                ).strip()
+            )
+            parts.append(body.lstrip("\n"))
 
     return "\n".join(parts)

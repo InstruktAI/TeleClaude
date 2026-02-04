@@ -4,7 +4,7 @@ import os
 import re
 import uuid
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 import redis.asyncio as redis_asyncio

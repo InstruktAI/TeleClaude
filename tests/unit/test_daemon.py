@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TypedDict, cast
-from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -14,7 +14,6 @@ from teleclaude.core.origins import InputOrigin
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude import config as config_module
-from teleclaude.core.agents import AgentName
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_service import CommandService
 from teleclaude.core.events import (

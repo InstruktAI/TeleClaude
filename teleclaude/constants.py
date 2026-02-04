@@ -163,7 +163,10 @@ REDIS_OUTPUT_STREAM_TTL = 3600  # Auto-expire output streams after 1 hour
 REDIS_REFRESH_COOLDOWN_SECONDS = 30  # Minimum time between remote refreshes per peer+data type
 
 # Agent metadata (NOT user-configurable)
-AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
+# CLI dicts contain mixed types: str, bool, list[str], dict[str, str]
+AgentCliDict = dict[str, str | bool | list[str] | dict[str, str]]
+AgentDict = dict[str, str | dict[str, str] | AgentCliDict]
+AGENT_METADATA: dict[str, AgentDict] = {
     "claude": {
         "session_dir": "~/.claude/sessions",
         "log_pattern": "*.jsonl",
@@ -177,6 +180,21 @@ AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
         "non_interactive_flag": "-p",
         "resume_template": "{base_cmd} --resume {session_id}",
         "continue_template": "{base_cmd} --continue",
+        "cli": {
+            "base_cmd": [
+                'claude --dangerously-skip-permissions --no-session-persistence --no-chrome --tools default --settings \'{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": [], "disableAllHooks": true}\''
+            ],
+            "output_format": "--output-format json",
+            "schema_arg": "--json-schema",
+            "prompt_flag": True,
+            "response_field": "result",
+            "response_field_type": "string_json",
+            "tools_arg": "--allowed-tools",
+            "mcp_tools_arg": "",
+            "tools_map": {
+                "web_search": "web_search",
+            },
+        },
     },
     "gemini": {
         "session_dir": "~/.gemini/tmp",
@@ -191,6 +209,19 @@ AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
         "non_interactive_flag": "-p",
         "resume_template": "{base_cmd} --resume {session_id}",
         "continue_template": "{base_cmd} --resume latest",
+        "cli": {
+            "base_cmd": ["gemini --yolo --allowed-mcp-server-names=[]"],
+            "output_format": "-o json",
+            "schema_arg": "",
+            "prompt_flag": True,
+            "response_field": "response",
+            "response_field_type": "string_json",
+            "tools_arg": "--allowed-tools",
+            "mcp_tools_arg": "--allowed-mcp-server-names",
+            "tools_map": {
+                "web_search": "google_web_search",
+            },
+        },
     },
     "codex": {
         "session_dir": "~/.codex/sessions",
@@ -206,5 +237,19 @@ AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
         "non_interactive_flag": "",
         "resume_template": "{base_cmd} resume {session_id}",
         "continue_template": "{base_cmd} resume --last",
+        "cli": {
+            "base_cmd": ["codex --dangerously-bypass-approvals-and-sandbox --search"],
+            "output_format": "",
+            "schema_arg": "--output-schema",
+            "schema_file": "true",
+            "prompt_flag": False,
+            "response_field": "",
+            "response_field_type": "object",
+            "tools_arg": "",
+            "mcp_tools_arg": "",
+            "tools_map": {
+                "web_search": "web_search",
+            },
+        },
     },
 }

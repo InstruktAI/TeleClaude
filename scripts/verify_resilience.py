@@ -1,7 +1,14 @@
+#!/usr/bin/env -S uv run --quiet
+
 import json
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from teleclaude.constants import MAIN_MODULE
 

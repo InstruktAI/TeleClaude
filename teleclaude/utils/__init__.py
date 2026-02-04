@@ -4,12 +4,14 @@ import asyncio
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
 from typing import Awaitable, Callable, ParamSpec, TypeVar
 
 from instrukt_ai_logging import get_logger
+
+from teleclaude.core.dates import format_local_datetime
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -198,8 +200,10 @@ def format_completed_status_line(exit_code: int, started_timestamp: float, size_
         Formatted status line
     """
     exit_emoji = "✅" if exit_code == 0 else "❌"
-    started_time = datetime.fromtimestamp(started_timestamp).strftime("%H:%M:%S")
-    completed_time = datetime.now().strftime("%H:%M:%S")
+    started_dt = datetime.fromtimestamp(started_timestamp, tz=timezone.utc)
+    completed_dt = datetime.now(timezone.utc)
+    started_time = format_local_datetime(started_dt)
+    completed_time = format_local_datetime(completed_dt)
     truncation_marker = " | (truncated)" if is_truncated else ""
     return f"{exit_emoji} started: {started_time} | completed: {completed_time} | 📊 {size_str}{truncation_marker}"
 

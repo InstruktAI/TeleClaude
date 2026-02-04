@@ -144,9 +144,11 @@ def test_parse_claude_transcript_with_timestamps():
         result = parse_claude_transcript(f.name, "Timestamp Test", tail_chars=0)
 
         # Verify timestamps appear in headers (format depends on current date)
-        # Should contain time component
-        assert "10:30:00" in result or "2025-11-28 10:30:00" in result
-        assert "10:30:05" in result or "2025-11-28 10:30:05" in result
+        # Time is converted to local timezone, so check for presence of timestamp pattern
+        # The exact time may vary by timezone (e.g., 10:30 UTC -> 11:30 CET)
+        assert "2025-11-28" in result
+        assert ":30:00" in result  # Both messages are at :30:00 and :30:05
+        assert ":30:05" in result
 
         # Each entry gets its own header when timestamps are present
         assert result.count("👤 User") == 1

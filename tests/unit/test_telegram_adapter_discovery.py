@@ -75,7 +75,7 @@ def test_offline_detection_logic():
 @pytest.mark.asyncio
 async def test_discover_peers_returns_empty():
     """Test that discover_peers() returns empty list (bots can't see other bots)."""
-    from unittest.mock import AsyncMock, Mock, patch
+    from unittest.mock import Mock, patch
 
     from teleclaude.adapters.telegram_adapter import TelegramAdapter
 
@@ -157,7 +157,7 @@ async def test_heartbeat_edit_same_message():
 @pytest.mark.asyncio
 async def test_peer_data_format():
     """Test that discover_peers() returns empty list (Telegram doesn't support discovery)."""
-    from unittest.mock import AsyncMock, Mock, patch
+    from unittest.mock import Mock, patch
 
     from teleclaude.adapters.telegram_adapter import TelegramAdapter
 

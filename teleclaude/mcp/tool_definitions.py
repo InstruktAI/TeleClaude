@@ -49,6 +49,7 @@ def get_tool_definitions() -> list[Tool]:
                 "- Write/update doc snippets. "
                 "- Put on your architect/reviewer/researcher hat. "
                 "- Let's do some troubleshooting. "
+                "- Use our third-party docs."
             ),
             inputSchema={
                 "type": "object",
@@ -77,6 +78,15 @@ def get_tool_definitions() -> list[Tool]:
                         "description": (
                             "Include baseline snippet IDs in the phase-1 index. Baseline IDs can then be "
                             "passed in snippet_ids for phase-2 retrieval."
+                        ),
+                    },
+                    "include_third_party": {
+                        "type": "boolean",
+                        "description": (
+                            "Include third-party documentation in the index and allow selection. "
+                            "Third-party docs are separate from the taxonomy (no type field) and "
+                            "are not filtered by areas. Use when you need library/framework docs "
+                            "and want to see what exists locally (preferable) before searching the web."
                         ),
                     },
                 },

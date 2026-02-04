@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 from teleclaude.cli.tui.animation_colors import ColorPalette
 from teleclaude.cli.tui.animation_engine import AnimationEngine, AnimationPriority
 from teleclaude.cli.tui.animation_triggers import filter_animations
-from teleclaude.cli.tui.animations.base import Animation
 from teleclaude.cli.tui.animations.general import FullSpectrumCycle
 from teleclaude.cli.tui.pixel_mapping import PixelMap
 

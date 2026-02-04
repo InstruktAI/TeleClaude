@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from teleclaude.core.next_machine import _prepare_worktree
-from teleclaude.paths import REPO_ROOT
 
 
 class TestWorktreePreparationIntegration:

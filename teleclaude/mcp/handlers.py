@@ -938,6 +938,7 @@ class MCPHandlersMixin:
         areas: list[str] | None = None,
         snippet_ids: list[str] | None = None,
         include_baseline: bool | None = None,
+        include_third_party: bool | None = None,
         cwd: str | None = None,
         caller_session_id: str | None = None,
     ) -> str:
@@ -978,6 +979,7 @@ class MCPHandlersMixin:
             project_root=project_root,
             snippet_ids=snippet_ids,
             include_baseline=bool(include_baseline),
+            include_third_party=bool(include_third_party),
             test_agent=test_agent,
             test_mode=test_mode,
             test_request=test_request,

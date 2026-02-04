@@ -1,7 +1,7 @@
 """Integration test for digest-triggered project refresh."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 

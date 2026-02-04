@@ -54,6 +54,20 @@ class IndexPayload(TypedDict):
     snippets: list[SnippetEntry]
 
 
+class ThirdPartyEntry(TypedDict):
+    """Third-party doc entry - no type field (not part of taxonomy)."""
+
+    id: str
+    description: str
+    scope: str
+    path: str
+
+
+class ThirdPartyIndexPayload(TypedDict):
+    snippets_root: str
+    snippets: list[ThirdPartyEntry]
+
+
 # ---------------------------------------------------------------------------
 # Title normalization
 # ---------------------------------------------------------------------------
@@ -212,6 +226,104 @@ def write_third_party_index(project_root: Path) -> None:
         if existing == content:
             return
     index_path.write_text(content, encoding="utf-8")
+
+
+def _extract_description_from_md(file_path: Path) -> str:
+    """Extract description from markdown file (first H1 title or filename)."""
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except Exception:
+        return file_path.stem
+
+    # Try frontmatter first
+    if text.lstrip().startswith("---"):
+        try:
+            post = frontmatter.loads(text)
+            desc = post.metadata.get("description") if post.metadata else None
+            if isinstance(desc, str) and desc.strip():
+                return desc.strip()
+        except Exception:
+            pass
+
+    # Fall back to first H1 title
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            title = stripped[2:].strip()
+            # Remove type suffix if present (e.g., "— Guide")
+            if " — " in title:
+                title = title.split(" — ")[0].strip()
+            return title
+
+    return file_path.stem
+
+
+def write_third_party_index_yaml(third_party_root: Path, scope: str) -> Path | None:
+    """Generate index.yaml for third-party docs.
+
+    Args:
+        third_party_root: Path to third-party directory (e.g., docs/third-party or ~/.teleclaude/docs/third-party)
+        scope: Either "project" or "global"
+
+    Returns:
+        Path to the generated index.yaml, or None if no docs found.
+    """
+    if not third_party_root.exists():
+        return None
+
+    entries: list[ThirdPartyEntry] = []
+    for path in sorted(third_party_root.rglob("*.md")):
+        if path.name in ("index.md", "index.yaml"):
+            continue
+
+        # Build ID from relative path (e.g., "third-party/react/hooks")
+        try:
+            rel = path.relative_to(third_party_root).as_posix()
+        except ValueError:
+            continue
+
+        # Remove .md extension for ID
+        snippet_id = f"third-party/{rel}"
+        if snippet_id.endswith(".md"):
+            snippet_id = snippet_id[:-3]
+
+        description = _extract_description_from_md(path)
+
+        # Path relative to snippets_root for loading
+        entry: ThirdPartyEntry = {
+            "id": snippet_id,
+            "description": description,
+            "scope": scope,
+            "path": rel,
+        }
+        entries.append(entry)
+
+    index_path = third_party_root / "index.yaml"
+
+    if not entries:
+        if index_path.exists():
+            index_path.unlink()
+        return None
+
+    # Build payload
+    home = str(Path.home())
+    root_str = str(third_party_root)
+    if root_str.startswith(home):
+        root_str = root_str.replace(home, "~", 1)
+
+    payload: ThirdPartyIndexPayload = {
+        "snippets_root": root_str,
+        "snippets": entries,
+    }
+
+    rendered = yaml.safe_dump(payload, sort_keys=False, allow_unicode=False)
+    if index_path.exists():
+        existing = index_path.read_text(encoding="utf-8")
+        if existing == rendered:
+            return index_path
+
+    index_path.write_text(rendered, encoding="utf-8")
+    return index_path
 
 
 def remove_non_baseline_indexes(snippets_root: Path) -> list[str]:
@@ -515,9 +627,8 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
 def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
     """Build and write index.yaml for a snippet root. Returns the target path."""
     target = snippets_root / "index.yaml"
+    # Third-party indexes are handled separately by write_third_party_index_yaml
     if "third-party" in snippets_root.parts:
-        if target.exists():
-            target.unlink()
         return target
     payload = build_index_payload(project_root, snippets_root)
     if not payload["snippets"]:
@@ -537,9 +648,16 @@ def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
 def build_all_indexes(project_root: Path) -> list[Path]:
     """Build index.yaml for all snippet roots. Main entry point."""
     ensure_project_config(project_root)
-    write_third_party_index(project_root)
+    write_third_party_index(project_root)  # Generates index.md with @refs
     roots = iter_snippet_roots(project_root)
     written: list[Path] = []
     for snippets_root in roots:
         written.append(write_index_yaml(project_root, snippets_root))
+
+    # Generate third-party index.yaml (separate from taxonomy)
+    third_party_root = project_root / "docs" / "third-party"
+    third_party_index = write_third_party_index_yaml(third_party_root, scope="project")
+    if third_party_index:
+        written.append(third_party_index)
+
     return written

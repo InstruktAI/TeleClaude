@@ -4,7 +4,6 @@ argument-hint: '[research brief]'
 ---
 
 @~/.teleclaude/docs/software-development/role/researcher.md
-@~/.teleclaude/docs/software-development/procedure/research/3rd-party-research.md
 
 # Research
 
