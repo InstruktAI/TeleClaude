@@ -7,31 +7,16 @@ from enum import Enum
 
 # Taxonomy Types (single source of truth)
 # Used for snippet categorization and get_context filtering
-TAXONOMY_TYPES = [
-    "policy",
-    "guide",
-    "procedure",
-    "role",
-    "checklist",
-    "reference",
-    "concept",
-    "architecture",
-    "example",
-    "principle",
-]
+TAXONOMY_TYPES = ["principle", "concept", "policy", "procedure", "design", "spec"]
 
 # Display suffix mapping for snippet types
 TYPE_SUFFIX = {
     "policy": "Policy",
     "procedure": "Procedure",
-    "reference": "Reference",
     "principle": "Principle",
-    "guide": "Guide",
-    "checklist": "Checklist",
-    "role": "Role",
     "concept": "Concept",
-    "architecture": "Architecture",
-    "example": "Example",
+    "design": "Design",
+    "spec": "Spec",
 }
 
 # MCP Configuration

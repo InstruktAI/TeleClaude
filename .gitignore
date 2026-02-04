@@ -53,11 +53,12 @@ workspace/
 # Backup files
 *.bak*
 
-.claude/data/
 *.local.json
 trees/
 worktrees/
 .state.json
+
+.playwright-mcp
 
 # TeleClaude runtime DB artifacts
 teleclaude.db

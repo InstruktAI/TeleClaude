@@ -7,6 +7,10 @@ description: Author agent artifacts (agents, skills, commands) that compile into
 
 # Agent Artifact Authoring — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md
+
 ## Goal
 
 Create or update agent artifacts that follow the schema and compile correctly for supported CLIs.
@@ -23,16 +27,7 @@ Create or update agent artifacts that follow the schema and compile correctly fo
 3. Ensure frontmatter fields are complete and consistent (except AGENTS.md, which has none).
 4. Add the artifact title (`# ...`) for all artifacts.
 5. Apply the artifact-specific rules below.
-6. Run `telec sync --warn-only` to validate and rebuild artifacts.
-
-## Artifact-specific rules
-
-| Artifact | Required placement rules |
-| --- | --- |
-| **Command** | Add the activation line immediately after the title. If needed, place `## Required reads` immediately after the activation line. |
-| **Agent** | Add the activation line immediately after the title. If needed, place `## Required reads` immediately after the activation line. |
-| **Skill** | If needed, place `## Required reads` immediately after the title. |
-| **AGENTS.md** | No frontmatter. Must live at repo root. If needed, place `## Required reads` immediately after the title. Keep content minimal and role‑specific. |
+6. After any doc change, run `telec sync`.
 
 ## Outputs
 
@@ -41,4 +36,4 @@ Create or update agent artifacts that follow the schema and compile correctly fo
 
 ## Recovery
 
-- If validation fails, fix the schema issues and rebuild.
+- If `telec sync` fails, fix the issue and rerun it.

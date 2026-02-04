@@ -3,9 +3,11 @@ name: git-repo-scraper
 description: Ingest Git repositories for analysis. Keeps a durable index and history so future requests reuse prior work instead of redoing it.
 ---
 
-@/Users/Morriz/.teleclaude/docs/general/reference/history-log.md
-
 # Git Repo Scraper
+
+## Required reads
+
+- @~/.teleclaude/docs/general/spec/history-log.md
 
 ## Purpose
 

@@ -49,11 +49,11 @@ snippets:
   scope: global
   path: docs/baseline/principle/parallel-work.md
   source_project: TeleClaude
-- id: baseline/reference/third-party-docs
-  description: "Third-Party Docs \u2014 Reference"
-  type: reference
+- id: baseline/spec/third-party-docs
+  description: "Third-Party Docs \u2014 Spec"
+  type: spec
   scope: global
-  path: docs/baseline/reference/third-party-docs.md
+  path: docs/baseline/spec/third-party-docs.md
   source_project: TeleClaude
 - id: general/concept/documentation-snippets
   description: Modular documentation system for selective context delivery to AI agents.
@@ -93,70 +93,85 @@ snippets:
   scope: global
   path: docs/general/procedure/agent-artifact-authoring.md
   source_project: TeleClaude
-- id: general/procedure/snippet-authoring-sequence
-  description: Sequence for authoring and validating documentation snippets.
+- id: general/procedure/doc-snippet-authoring
+  description: Author documentation snippets according to the taxonomy and schema.
   type: procedure
   scope: global
-  path: docs/general/procedure/snippet-authoring-sequence.md
+  path: docs/general/procedure/doc-snippet-authoring.md
   source_project: TeleClaude
-- id: general/reference/agent-artifacts
+- id: general/spec/agent-artifacts
   description: Minimal schema used for agent artifacts (commands and skills).
-  type: reference
+  type: spec
   scope: global
-  path: docs/general/reference/agent-artifacts.md
+  path: docs/general/spec/agent-artifacts.md
   source_project: TeleClaude
-- id: general/reference/history-log
+- id: general/spec/history-log
   description: Standard format for history.md logs that record request/response entries.
-  type: reference
+  type: spec
   scope: global
-  path: docs/general/reference/history-log.md
+  path: docs/general/spec/history-log.md
   source_project: TeleClaude
-- id: general/reference/snippet-authoring-schema
+- id: general/spec/snippet-authoring-schema
   description: Schema and section requirements for documentation snippets belonging
     to a taxonomy.
-  type: reference
+  type: spec
   scope: global
-  path: docs/general/reference/snippet-authoring-schema.md
+  path: docs/general/spec/snippet-authoring-schema.md
   source_project: TeleClaude
-- id: software-development/checklist/security-review
-  description: Security review checklist for boundary validation, secrets, and access
-    controls.
-  type: checklist
+- id: software-development/concept/architect
+  description: Strategic role. Requirements, architecture, use cases. Break down work,
+    create implementation plans, ensure readiness.
+  type: concept
   scope: domain
-  path: docs/software-development/checklist/security-review.md
+  path: docs/software-development/concept/architect.md
   source_project: TeleClaude
-- id: software-development/guide/agent-artifacts-quickstart
-  description: Quickstart for authoring and distributing agent artifacts.
-  type: guide
+- id: software-development/concept/builder
+  description: Tactical implementation. Follow architecture, write code matching requirements,
+    pragmatic autonomy, tests after implementation.
+  type: concept
   scope: domain
-  path: docs/software-development/guide/agent-artifacts-quickstart.md
+  path: docs/software-development/concept/builder.md
   source_project: TeleClaude
-- id: software-development/guide/code-quality-practices
-  description: Practical guidance for applying code-quality policy in day-to-day work.
-  type: guide
+- id: software-development/concept/finalizer
+  description: Post-review delivery role. Merge, clean up, and log delivery after
+    approval.
+  type: concept
   scope: domain
-  path: docs/software-development/guide/code-quality-practices.md
+  path: docs/software-development/concept/finalizer.md
   source_project: TeleClaude
-- id: software-development/guide/python/core
-  description: Python typing, data handling, error patterns, async, idioms. Modern
-    syntax, explicit types, pure functions.
-  type: guide
+- id: software-development/concept/fixer
+  description: Bug-fixing role. Investigate issues, identify root cause, apply minimal
+    fixes, and verify.
+  type: concept
   scope: domain
-  path: docs/software-development/guide/python/core.md
+  path: docs/software-development/concept/fixer.md
   source_project: TeleClaude
-- id: software-development/guide/python/logging
-  description: InstruktAI Python logging standard. Logfmt format, dual-level control,
-    structured pairs, tail-friendly output.
-  type: guide
+- id: software-development/concept/orchestrator
+  description: Supervisory role. Dispatch workers, monitor progress, drive state machine.
+    Follow next-work output verbatim.
+  type: concept
   scope: domain
-  path: docs/software-development/guide/python/logging.md
+  path: docs/software-development/concept/orchestrator.md
   source_project: TeleClaude
-- id: software-development/guide/typescript/core
-  description: TypeScript strict typing, discriminated unions, type guards, property
-    checks. No any, no enum, no default exports.
-  type: guide
+- id: software-development/concept/researcher
+  description: Research role. Gather authoritative sources, summarize, and index findings.
+  type: concept
   scope: domain
-  path: docs/software-development/guide/typescript/core.md
+  path: docs/software-development/concept/researcher.md
+  source_project: TeleClaude
+- id: software-development/concept/reviewer
+  description: Evaluative role. Assess code against requirements and standards, parallel
+    review lanes, structured findings, binary verdict.
+  type: concept
+  scope: domain
+  path: docs/software-development/concept/reviewer.md
+  source_project: TeleClaude
+- id: software-development/concept/tester
+  description: Test-focused role. Improve test quality, fix failures, enforce testing
+    standards and coverage.
+  type: concept
+  scope: domain
+  path: docs/software-development/concept/tester.md
   source_project: TeleClaude
 - id: software-development/policy/ai-agent-security
   description: Security policy for AI agent systems covering prompt injection, credential
@@ -172,6 +187,12 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/code-quality.md
+  source_project: TeleClaude
+- id: software-development/policy/code-quality-practices
+  description: Practical guidance for applying code-quality policy in day-to-day work.
+  type: policy
+  scope: domain
+  path: docs/software-development/policy/code-quality-practices.md
   source_project: TeleClaude
 - id: software-development/policy/commits
   description: Commitizen format, attribution, when to commit. Atomic commits, hooks
@@ -201,6 +222,20 @@ snippets:
   scope: domain
   path: docs/software-development/policy/linting-requirements.md
   source_project: TeleClaude
+- id: software-development/policy/python/core
+  description: Python typing, data handling, error patterns, async, idioms. Modern
+    syntax, explicit types, pure functions.
+  type: policy
+  scope: domain
+  path: docs/software-development/policy/python/core.md
+  source_project: TeleClaude
+- id: software-development/policy/python/logging
+  description: InstruktAI Python logging standard. Logfmt format, dual-level control,
+    structured pairs, tail-friendly output.
+  type: policy
+  scope: domain
+  path: docs/software-development/policy/python/logging.md
+  source_project: TeleClaude
 - id: software-development/policy/security-awareness
   description: Security posture, defense in depth, OWASP surface, auth, crypto, transport,
     secrets, supply chain, observability. Assume breach, fail closed, contain blast
@@ -216,6 +251,13 @@ snippets:
   scope: domain
   path: docs/software-development/policy/testing.md
   source_project: TeleClaude
+- id: software-development/policy/typescript/core
+  description: TypeScript strict typing, discriminated unions, type guards, property
+    checks. No any, no enum, no default exports.
+  type: policy
+  scope: domain
+  path: docs/software-development/policy/typescript/core.md
+  source_project: TeleClaude
 - id: software-development/principle/architecture-boundary-purity
   description: Preserve domain intent by isolating transport and UI concerns from
     core logic.
@@ -229,6 +271,12 @@ snippets:
   type: principle
   scope: domain
   path: docs/software-development/principle/failure-modes.md
+  source_project: TeleClaude
+- id: software-development/procedure/agent-artifacts-quickstart
+  description: Quickstart for authoring and distributing agent artifacts.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/agent-artifacts-quickstart.md
   source_project: TeleClaude
 - id: software-development/procedure/bugs-handling
   description: Triage bugs, decide quick fixes vs new todos, and track resolution
@@ -265,7 +313,7 @@ snippets:
   path: docs/software-development/procedure/lifecycle/documentation/overview.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/documentation/sync-docs
-  description: Regenerate docs from code and existing documentation using the taxonomy.
+  description: Sync docs and indexes after documentation changes.
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/documentation/sync-docs.md
@@ -372,59 +420,4 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/scaffolding/typescript-platforms/vite.md
-  source_project: TeleClaude
-- id: software-development/role/architect
-  description: Strategic role. Requirements, architecture, use cases. Break down work,
-    create implementation plans, ensure readiness.
-  type: role
-  scope: domain
-  path: docs/software-development/role/architect.md
-  source_project: TeleClaude
-- id: software-development/role/builder
-  description: Tactical implementation. Follow architecture, write code matching requirements,
-    pragmatic autonomy, tests after implementation.
-  type: role
-  scope: domain
-  path: docs/software-development/role/builder.md
-  source_project: TeleClaude
-- id: software-development/role/finalizer
-  description: Post-review delivery role. Merge, clean up, and log delivery after
-    approval.
-  type: role
-  scope: domain
-  path: docs/software-development/role/finalizer.md
-  source_project: TeleClaude
-- id: software-development/role/fixer
-  description: Bug-fixing role. Investigate issues, identify root cause, apply minimal
-    fixes, and verify.
-  type: role
-  scope: domain
-  path: docs/software-development/role/fixer.md
-  source_project: TeleClaude
-- id: software-development/role/orchestrator
-  description: Supervisory role. Dispatch workers, monitor progress, drive state machine.
-    Follow next-work output verbatim.
-  type: role
-  scope: domain
-  path: docs/software-development/role/orchestrator.md
-  source_project: TeleClaude
-- id: software-development/role/researcher
-  description: Research role. Gather authoritative sources, summarize, and index findings.
-  type: role
-  scope: domain
-  path: docs/software-development/role/researcher.md
-  source_project: TeleClaude
-- id: software-development/role/reviewer
-  description: Evaluative role. Assess code against requirements and standards, parallel
-    review lanes, structured findings, binary verdict.
-  type: role
-  scope: domain
-  path: docs/software-development/role/reviewer.md
-  source_project: TeleClaude
-- id: software-development/role/tester
-  description: Test-focused role. Improve test quality, fix failures, enforce testing
-    standards and coverage.
-  type: role
-  scope: domain
-  path: docs/software-development/role/tester.md
   source_project: TeleClaude

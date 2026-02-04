@@ -11,14 +11,15 @@ import argparse
 import sys
 import time
 from pathlib import Path
-from typing import Any
+
+from teleclaude.core.models import JsonDict
 
 # Persistent profile for automation (separate from system Chrome)
 DEFAULT_PROFILE = Path.home() / ".config" / "youtube" / "playwright-profile"
 DEFAULT_OUTPUT = Path.home() / ".config" / "youtube" / "cookies.txt"
 
 
-def cookies_to_netscape(cookies: list[dict[str, Any]]) -> str:
+def cookies_to_netscape(cookies: list[JsonDict]) -> str:
     """Convert Playwright cookies to Netscape cookies.txt format."""
     lines = [
         "# Netscape HTTP Cookie File",
@@ -29,15 +30,21 @@ def cookies_to_netscape(cookies: list[dict[str, Any]]) -> str:
 
     for c in cookies:
         domain = c.get("domain", "")
+        if not isinstance(domain, str):
+            continue
         if ".youtube.com" not in domain and ".google.com" not in domain:
             continue
 
         include_subdomains = "TRUE" if domain.startswith(".") else "FALSE"
-        path = c.get("path", "/")
+        path_val = c.get("path", "/")
+        path = path_val if isinstance(path_val, str) else "/"
         secure = "TRUE" if c.get("secure", False) else "FALSE"
-        expiry = int(c.get("expires", time.time() + 86400 * 365))
-        name = c.get("name", "")
-        value = c.get("value", "")
+        expires_val = c.get("expires", time.time() + 86400 * 365)
+        expiry = int(expires_val) if isinstance(expires_val, (int, float)) else int(time.time() + 86400 * 365)
+        name_val = c.get("name", "")
+        name = name_val if isinstance(name_val, str) else ""
+        value_val = c.get("value", "")
+        value = value_val if isinstance(value_val, str) else ""
 
         lines.append(f"{domain}\t{include_subdomains}\t{path}\t{secure}\t{expiry}\t{name}\t{value}")
 

@@ -3,9 +3,12 @@ description: Run the context-selection test matrix against teleclaude__get_conte
 argument-hint: '[--csv <path>]'
 ---
 
-@~/.teleclaude/docs/software-development/role/tester.md
-
 # Run Context Selection Tests
+
+## Required reads
+
+@~/.teleclaude/docs/software-development/concept/tester.md
+
 
 You are now the Tester.
 

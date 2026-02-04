@@ -10,6 +10,7 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.docs_index import extract_required_reads
+from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.utils import expand_env_vars
 
@@ -200,26 +201,6 @@ def _resolve_inline_refs(content: str, *, snippet_path: Path, root_path: Path) -
     return f"{head}{_INLINE_REF_RE.sub(_expand, body)}"
 
 
-def _strip_required_reads_section(content: str) -> str:
-    """Remove Required reads section from snippet body."""
-    lines = content.splitlines()
-    output: list[str] = []
-    in_required_reads = False
-    for line in lines:
-        if not in_required_reads and line.strip().lower() == "## required reads":
-            in_required_reads = True
-            continue
-        if in_required_reads:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith("- @") or stripped.startswith("@"):
-                continue
-            in_required_reads = False
-            output.append(line)
-            continue
-        output.append(line)
-    return "\n".join(output).rstrip()
 
 
 def _load_index(index_path: Path) -> list[SnippetMeta]:
@@ -523,7 +504,7 @@ def build_context_output(
                 root_path = global_root
             content = _resolve_inline_refs(raw, snippet_path=snippet.path, root_path=root_path)
             _, body = _split_frontmatter(content)
-            body = _strip_required_reads_section(body)
+            body = strip_required_reads_section(body)
         except Exception as exc:
             logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))
             continue

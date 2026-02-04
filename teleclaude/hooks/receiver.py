@@ -144,6 +144,40 @@ def _enqueue_hook_event(
         session.commit()
 
 
+def _update_session_native_fields(
+    session_id: str,
+    *,
+    native_log_file: str | None = None,
+    native_session_id: str | None = None,
+) -> None:
+    """Update native session fields directly on the session row."""
+    if not native_log_file and not native_session_id:
+        return
+    db_path = config.database.path
+    from sqlalchemy import create_engine, text
+    from sqlmodel import Session as SqlSession
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    update_parts: list[str] = []
+    params: dict[str, str] = {"session_id": session_id}
+    if native_log_file:
+        update_parts.append("native_log_file = :native_log_file")
+        params["native_log_file"] = native_log_file
+    if native_session_id:
+        update_parts.append("native_session_id = :native_session_id")
+        params["native_session_id"] = native_session_id
+    if not update_parts:
+        return
+
+    sql = f"UPDATE sessions SET {', '.join(update_parts)} WHERE session_id = :session_id"
+    statement = text(sql).bindparams(**params)
+    with SqlSession(engine) as session:
+        session.exec(text("PRAGMA journal_mode = WAL"))
+        session.exec(text("PRAGMA busy_timeout = 5000"))
+        session.exec(statement)
+        session.commit()
+
+
 def _extract_native_identity(agent: str, data: Mapping[str, Any]) -> tuple[str | None, str | None]:
     """Extract native session id + transcript path from raw hook payload."""
     native_session_id: str | None = None
@@ -164,9 +198,10 @@ def _extract_native_identity(agent: str, data: Mapping[str, Any]) -> tuple[str |
 
 
 def _get_env_session_id() -> str | None:
-    value = os.getenv("TELECLAUDE_SESSION_ID")
-    if isinstance(value, str) and value.strip():
-        return value.strip()
+    return None
+
+
+def _get_legacy_tmux_session_id() -> str | None:
     # Legacy tmux session id file (compat + tests)
     tmpdir = os.getenv("TMPDIR")
     if tmpdir:
@@ -181,11 +216,8 @@ def _get_env_session_id() -> str | None:
     return None
 
 
-def _get_session_map_path() -> Path | None:
-    tmpdir = os.getenv("TMPDIR")
-    if not tmpdir:
-        return None
-    return Path(tmpdir) / "teleclaude_session_map.json"
+def _get_session_map_path() -> Path:
+    return Path(os.path.expanduser("~/.teleclaude/session_map.json"))
 
 
 def _session_map_key(agent: str, native_session_id: str) -> str:
@@ -193,16 +225,19 @@ def _session_map_key(agent: str, native_session_id: str) -> str:
 
 
 def _load_session_map(path: Path) -> dict[str, str]:
-    if not path.exists():
-        return {}
-    try:
-        raw = path.read_text(encoding="utf-8")
-        data = json.loads(raw) if raw.strip() else {}
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if isinstance(data, dict):
-        return {str(k): str(v) for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
-    return {}
+    data: dict[str, str] = {}
+    sources: list[str] = []
+    if path.exists():
+        try:
+            raw = path.read_text(encoding="utf-8")
+            loaded = json.loads(raw) if raw.strip() else {}
+        except (OSError, json.JSONDecodeError):
+            loaded = {}
+        data.update({str(k): str(v) for k, v in loaded.items() if isinstance(k, str) and isinstance(v, str)})
+        sources.append(str(path))
+    if sources:
+        logger.debug("Loaded session map", path=str(path), sources=sources, entries=len(data))
+    return data
 
 
 def _write_session_map_atomic(path: Path, data: dict[str, str]) -> None:
@@ -215,10 +250,17 @@ def _get_cached_session_id(agent: str, native_session_id: str | None) -> str | N
     if not native_session_id:
         return None
     path = _get_session_map_path()
-    if not path:
-        return None
     data = _load_session_map(path)
-    return data.get(_session_map_key(agent, native_session_id))
+    cached = data.get(_session_map_key(agent, native_session_id))
+    logger.debug(
+        "Session map lookup",
+        agent=agent,
+        native_session_id=(native_session_id or "")[:8],
+        cached_session_id=(cached or "")[:8],
+        path=str(path),
+        hit=bool(cached),
+    )
+    return cached
 
 
 def _resolve_or_refresh_session_id(
@@ -307,8 +349,7 @@ def _persist_session_map(agent: str, native_session_id: str | None, session_id: 
     if not native_session_id:
         return
     path = _get_session_map_path()
-    if not path:
-        return
+    path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = path.with_suffix(".lock")
     try:
         with open(lock_path, "w", encoding="utf-8") as lock_file:
@@ -321,6 +362,13 @@ def _persist_session_map(agent: str, native_session_id: str | None, session_id: 
             data = _load_session_map(path)
             data[_session_map_key(agent, native_session_id)] = session_id
             _write_session_map_atomic(path, data)
+            logger.debug(
+                "Session map persisted",
+                agent=agent,
+                native_session_id=(native_session_id or "")[:8],
+                session_id=session_id[:8],
+                path=str(path),
+            )
     except OSError as exc:
         logger.warning("Failed to persist session map: %s", exc)
 
@@ -379,27 +427,48 @@ def main() -> None:
 
     raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, raw_data)
 
-    teleclaude_session_id = _get_env_session_id() or _get_cached_session_id(args.agent, raw_native_session_id)
-    teleclaude_session_id = _resolve_or_refresh_session_id(
-        teleclaude_session_id,
-        raw_native_session_id,
+    env_session_id = _get_legacy_tmux_session_id()
+    cached_session_id = _get_cached_session_id(args.agent, raw_native_session_id)
+    if env_session_id:
+        teleclaude_session_id = env_session_id
+    elif raw_native_session_id:
+        teleclaude_session_id = cached_session_id
+    else:
+        teleclaude_session_id = cached_session_id
+
+    if not env_session_id:
+        teleclaude_session_id = _resolve_or_refresh_session_id(
+            teleclaude_session_id,
+            raw_native_session_id,
+            agent=args.agent,
+        )
+    logger.debug(
+        "Hook session resolution",
         agent=args.agent,
+        event_type=event_type,
+        env_session_id=(env_session_id or "")[:8],
+        cached_session_id=(cached_session_id or "")[:8],
+        resolved_session_id=(teleclaude_session_id or "")[:8],
+        native_session_id=(raw_native_session_id or "")[:8],
     )
     if not teleclaude_session_id:
         # Try to reuse an existing session for this native session id before minting a new one.
         existing_id = _find_session_id_by_native(raw_native_session_id)
         if existing_id:
             teleclaude_session_id = existing_id
-            _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
+            if not env_session_id:
+                _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
         else:
             # No TeleClaude session yet — mint an ID and let core create the headless session.
             # Requires a native session ID to anchor later resolution.
             if not raw_native_session_id:
                 sys.exit(0)
             teleclaude_session_id = str(uuid.uuid4())
-            _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
+            if not env_session_id:
+                _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
     else:
-        _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
+        if not env_session_id:
+            _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
 
     # Gemini: only allow session_start and stop into outbox.
     # For other events, exit cleanly (transcript capture only).
@@ -449,13 +518,35 @@ def main() -> None:
     if raw_native_log_file:
         data["native_log_file"] = raw_native_log_file
 
+    if raw_native_session_id or raw_native_log_file:
+        try:
+            _update_session_native_fields(
+                teleclaude_session_id,
+                native_log_file=raw_native_log_file,
+                native_session_id=raw_native_session_id,
+            )
+        except Exception as exc:  # Best-effort update; never fail hook.
+            logger.warning(
+                "Hook metadata update failed (ignored)",
+                event_type=event_type,
+                session_id=teleclaude_session_id,
+                agent=args.agent,
+                error=str(exc),
+            )
+
     cwd = getattr(args, "cwd", None)
     if isinstance(cwd, str) and cwd:
         data["cwd"] = cwd
 
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(timezone.utc).isoformat()
-    _enqueue_hook_event(teleclaude_session_id, event_type, data)
+    if event_type == "stop":
+        internal_event_type = "agent_stop"
+    elif event_type == "prompt":
+        internal_event_type = "user_prompt_submit"
+    else:
+        internal_event_type = event_type
+    _enqueue_hook_event(teleclaude_session_id, internal_event_type, data)
 
 
 if __name__ == MAIN_MODULE:

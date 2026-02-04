@@ -201,6 +201,10 @@ class APIServer:
                 "session_id": context.session_id,
                 "message": context.message,
                 "source": context.source,
+                "details": context.details,
+                "severity": context.severity,
+                "retryable": context.retryable,
+                "code": context.code,
             },
         }
         self._broadcast_payload("error", payload)

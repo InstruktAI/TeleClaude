@@ -7,6 +7,7 @@ from typing import Awaitable, Callable, Literal, TypedDict
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.event_guard import create_event_guard
 from teleclaude.core.events import EventContext, EventType
 
 logger = get_logger(__name__)
@@ -31,8 +32,8 @@ class EventBus:
         """Subscribe a handler to an event."""
         if event not in self._handlers:
             self._handlers[event] = []
-        self._handlers[event].append(handler)
-        logger.trace("Subscribed handler for event: %s (total: %d)", event, len(self._handlers[event]))
+        self._handlers[event].append(create_event_guard(handler, emit=self.emit))
+        logger.debug("Subscribed handler for event: %s (total: %d)", event, len(self._handlers[event]))
 
     def clear(self) -> None:
         """Clear all registered handlers (primarily for tests)."""

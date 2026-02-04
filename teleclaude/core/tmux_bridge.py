@@ -230,7 +230,7 @@ async def _create_tmux_session(
     Args:
         name: Session name
         working_dir: Initial working directory
-        session_id: TeleClaude session ID (injected as TELECLAUDE_SESSION_ID env var)
+        session_id: TeleClaude session ID (used for per-session temp directory)
         env_vars: Additional environment variables to inject (e.g., TTS voice config)
 
     Returns:
@@ -265,10 +265,6 @@ async def _create_tmux_session(
             "-c",
             working_dir,  # Working directory
         ]
-
-        # Inject TeleClaude session ID as env var (for Claude Code hook integration)
-        if session_id:
-            cmd.extend(["-e", f"TELECLAUDE_SESSION_ID={session_id}"])
 
         # Inject additional environment variables (e.g., TTS voice configuration)
         if effective_env_vars:

@@ -2,19 +2,15 @@
 
 import argparse
 import os
+import sqlite3
 
 import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
+from teleclaude.config import config
 from teleclaude.hooks import receiver
 from teleclaude.hooks.adapters.models import NormalizedHookPayload
-
-
-@pytest.fixture(autouse=True)
-def _clear_session_env(monkeypatch):
-    """Ensure tests don't inherit a live TeleClaude session id."""
-    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
 
 
 def test_receiver_emits_error_event_on_normalize_failure(monkeypatch, tmp_path):
@@ -195,6 +191,42 @@ def test_receiver_updates_native_fields_for_gemini_session_start(monkeypatch, tm
     assert data["native_log_file"] == "/tmp/gemini.jsonl"
 
 
+def test_receiver_persists_native_fields_to_db(monkeypatch, tmp_path):
+    """Hook receiver should persist native session fields to sessions table."""
+    db_path = tmp_path / "teleclaude.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, native_session_id TEXT, native_log_file TEXT)"
+        )
+        conn.execute("INSERT INTO sessions (session_id) VALUES (?)", ("sess-1",))
+        conn.commit()
+
+    monkeypatch.setenv("TELECLAUDE_DB_PATH", str(db_path))
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: lambda _event_type, _data: NormalizedHookPayload())
+    monkeypatch.setattr(
+        receiver,
+        "_read_stdin",
+        lambda: (
+            '{"session_id": "native-1", "transcript_path": "/tmp/native.jsonl"}',
+            {"session_id": "native-1", "transcript_path": "/tmp/native.jsonl"},
+        ),
+    )
+    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
+    tmpdir = tmp_path / "tmp-native"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("sess-1")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
+
+    receiver.main()
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT native_session_id, native_log_file FROM sessions WHERE session_id = ?", ("sess-1",)
+        ).fetchone()
+    assert row == ("native-1", "/tmp/native.jsonl")
+
+
 def test_receiver_filters_gemini_non_terminal_events(monkeypatch, tmp_path):
     """Gemini intermediate events should not enqueue."""
     sent = []
@@ -250,3 +282,64 @@ def test_receiver_includes_agent_name_in_payload(monkeypatch, tmp_path):
     assert sent
     _session_id, _event_type, data = sent[0]
     assert data["agent_name"] == "claude"
+
+
+def test_receiver_prefers_tmux_session_id_over_session_map(monkeypatch, tmp_path):
+    """TMUX session id must override headless session map resolution."""
+    sent = []
+    persisted = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    def fake_persist(agent, native_session_id, session_id):
+        persisted.append((agent, native_session_id, session_id))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: lambda _event_type, _data: NormalizedHookPayload())
+    monkeypatch.setattr(receiver, "_read_stdin", lambda: ('{"session_id": "native-1"}', {"session_id": "native-1"}))
+    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
+    monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: "cached-1")
+    monkeypatch.setattr(receiver, "_persist_session_map", fake_persist)
+    tmpdir = tmp_path / "tmp-tmux"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("tmux-1")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
+
+    receiver.main()
+
+    assert sent
+    session_id, event_type, _data = sent[0]
+    assert session_id == "tmux-1"
+    assert event_type == "stop"
+    assert persisted == []
+
+
+def test_receiver_persists_session_map_for_headless(monkeypatch, tmp_path):
+    """Headless hooks should persist to the global session map."""
+    sent = []
+    persisted = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    def fake_persist(agent, native_session_id, session_id):
+        persisted.append((agent, native_session_id, session_id))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: lambda _event_type, _data: NormalizedHookPayload())
+    monkeypatch.setattr(receiver, "_read_stdin", lambda: ('{"session_id": "native-2"}', {"session_id": "native-2"}))
+    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
+    monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: None)
+    monkeypatch.setattr(receiver, "_find_session_id_by_native", lambda _native: None)
+    monkeypatch.setattr(receiver, "_persist_session_map", fake_persist)
+    monkeypatch.setattr(receiver.uuid, "uuid4", lambda: "headless-1")
+    monkeypatch.delenv("TMPDIR", raising=False)
+
+    receiver.main()
+
+    assert sent
+    session_id, event_type, _data = sent[0]
+    assert session_id == "headless-1"
+    assert event_type == "stop"
+    assert persisted == [("claude", "native-2", "headless-1")]

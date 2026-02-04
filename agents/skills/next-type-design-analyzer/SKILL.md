@@ -3,9 +3,11 @@ name: next-type-design-analyzer
 description: Analyze type design quality and invariants. Use when introducing new types, during PR creation with data models, or when refactoring type designs.
 ---
 
-@/Users/Morriz/.teleclaude/docs/software-development/policy/code-quality.md
-
 # Type Design Analyzer
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/code-quality.md
 
 ## Purpose
 

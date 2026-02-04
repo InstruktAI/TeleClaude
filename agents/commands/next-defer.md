@@ -3,12 +3,14 @@ argument-hint: '[slug]'
 description: Orchestrator command - resolve deferrals, create new todos
 ---
 
-@~/.teleclaude/docs/software-development/role/orchestrator.md
-@~/.teleclaude/docs/software-development/procedure/lifecycle/deferrals.md
-
 # Deferral Resolution
 
 You are now the Orchestrator.
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/orchestrator.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/deferrals.md
 
 ## Purpose
 

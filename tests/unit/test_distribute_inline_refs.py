@@ -20,9 +20,24 @@ def test_expand_inline_refs_inlines_docs(tmp_path: Path) -> None:
     referenced = docs_dir / "example.md"
     referenced.write_text("---\ndescription: test\n---\n\nHello world\n", encoding="utf-8")
 
-    content = "Required reads\n@docs/example.md\n"
+    content = "\n".join(
+        [
+            "# Agent Artifact Distribution — Procedure",
+            "",
+            "## Required reads",
+            "",
+            "- @docs/example.md",
+            "",
+            "## Goal",
+            "",
+            "Build and distribute agent artifacts.",
+            "",
+        ]
+    )
     distribute = _load_distribute_module(tmp_path)
     source_file = docs_dir / "source.md"
     source_file.write_text(content, encoding="utf-8")
     expanded = distribute.expand_inline_refs(content, project_root=project_root, current_path=source_file)
     assert "Hello world" in expanded
+    assert "## Required reads" not in expanded
+    assert "- ---" not in expanded

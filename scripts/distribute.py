@@ -23,6 +23,11 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from teleclaude.docs_index import write_third_party_index_yaml
+from teleclaude.required_reads import (
+    extract_required_reads,
+    normalize_required_refs,
+    strip_required_reads_section,
+)
 from teleclaude.resource_validation import (
     resolve_ref_path,
     validate_artifact,
@@ -165,10 +170,16 @@ def _prepare_post(
     agent_name: str,
     project_root: Path,
     current_path: Path,
+    warn_only: bool,
 ) -> Post:
     content = process_file(post.content, agent_prefix, agent_name)
     if _should_expand_inline(agent_name):
-        content = expand_inline_refs(content, project_root=project_root, current_path=current_path)
+        content = expand_inline_refs(
+            content,
+            project_root=project_root,
+            current_path=current_path,
+            warn_only=warn_only,
+        )
     metadata = _filter_frontmatter(post.metadata, agent_name)
     return Post(content, **metadata)
 
@@ -190,14 +201,35 @@ def process_file(content: str, agent_prefix: str, agent_name: str) -> str:
     return content
 
 
-def expand_inline_refs(content: str, *, project_root: Path, current_path: Path) -> str:
+def expand_inline_refs(content: str, *, project_root: Path, current_path: Path, warn_only: bool = False) -> str:
     """Inline @path.md references into the content (Codex speedup)."""
     seen: set[Path] = set()
-    content = _strip_required_reads(content)
-
-    def _expand(text: str, *, current_path: Path, depth: int) -> str:
+    def _expand_document(text: str, *, current_path: Path, depth: int) -> str:
         if depth <= 0:
             return text
+
+        required_refs, stripped = extract_required_reads(text)
+        required_refs = normalize_required_refs(required_refs)
+        required_sections: list[str] = []
+        for ref in required_refs:
+            resolved = resolve_ref_path(ref, root_path=project_root, current_path=current_path)
+            if not resolved or not resolved.exists():
+                message = f"Required read not found: {ref}"
+                if warn_only:
+                    print(f"WARNING: {message}")
+                    continue
+                raise ValueError(message)
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            raw = resolved.read_text(encoding="utf-8")
+            post = frontmatter.loads(raw)
+            body = post.content
+            expanded = _expand_document(body, current_path=resolved, depth=depth - 1).strip()
+            expanded = _strip_specific_h1(expanded, "Project baseline").strip()
+            expanded = _strip_leading_separators(expanded)
+            if expanded:
+                required_sections.append(expanded)
 
         def _replace(match: re.Match[str]) -> str:
             ref = match.group(1)
@@ -210,38 +242,26 @@ def expand_inline_refs(content: str, *, project_root: Path, current_path: Path) 
             raw = resolved.read_text(encoding="utf-8")
             post = frontmatter.loads(raw)
             body = post.content
+            expanded = _expand_document(body, current_path=resolved, depth=depth - 1).strip()
             if resolved.name == "index.md":
-                expanded = _expand(body, current_path=resolved, depth=depth - 1).strip()
-                expanded = _strip_required_reads(expanded).strip()
+                expanded = _expand_document(body, current_path=resolved, depth=depth - 1).strip()
                 return f"{expanded}\n" if expanded else ""
-            expanded = _expand(body, current_path=resolved, depth=depth - 1).strip()
-            expanded = _strip_required_reads(expanded)
             expanded = _strip_specific_h1(expanded, "Project baseline").strip()
+            expanded = _strip_leading_separators(expanded)
             if not expanded:
                 return ""
             return f"---\n\n{expanded}\n"
 
-        return INLINE_REF_RE.sub(_replace, text)
+        expanded_body = INLINE_REF_RE.sub(_replace, stripped)
+        expanded_body = _strip_leading_separators(expanded_body)
+        if required_sections:
+            required_block = "\n\n---\n\n".join(required_sections).strip()
+            if expanded_body.strip():
+                return f"{required_block}\n\n---\n\n{expanded_body}"
+            return required_block
+        return expanded_body
 
-    return _expand(content, current_path=current_path, depth=20)
-
-
-def _strip_required_reads(content: str) -> str:
-    """Remove the '## Required Reads' heading, preserving @ref lines for expansion."""
-    lines = content.splitlines()
-    output: list[str] = []
-    skip_blanks = False
-
-    for line in lines:
-        if line.strip().lower() == "## required reads":
-            skip_blanks = True
-            continue
-        if skip_blanks and not line.strip():
-            continue
-        skip_blanks = False
-        output.append(line)
-
-    return "\n".join(output).rstrip() + "\n"
+    return _expand_document(content, current_path=current_path, depth=20)
 
 
 def _strip_specific_h1(content: str, title: str) -> str:
@@ -252,6 +272,17 @@ def _strip_specific_h1(content: str, title: str) -> str:
     if lines[0].strip() == f"# {title}":
         return "\n".join(lines[1:]).lstrip("\n")
     return content
+
+
+def _strip_leading_separators(content: str) -> str:
+    """Remove leading markdown separators to avoid stacked '---' blocks."""
+    lines = content.splitlines()
+    idx = 0
+    while idx < len(lines) and lines[idx].strip() == "---":
+        idx += 1
+        while idx < len(lines) and not lines[idx].strip():
+            idx += 1
+    return "\n".join(lines[idx:]).lstrip("\n")
 
 
 def _iter_project_agent_masters(project_root: Path) -> list[Path]:
@@ -273,10 +304,15 @@ def _iter_project_agent_masters(project_root: Path) -> list[Path]:
     return sorted(matches)
 
 
-def _write_project_agents(master_path: Path, *, project_root: Path) -> None:
+def _write_project_agents(master_path: Path, *, project_root: Path, warn_only: bool) -> None:
     """Generate AGENTS.md and CLAUDE.md next to a project AGENTS.master.md."""
     raw = master_path.read_text(encoding="utf-8")
-    inflated = expand_inline_refs(raw, project_root=project_root, current_path=master_path)
+    inflated = expand_inline_refs(
+        raw,
+        project_root=project_root,
+        current_path=master_path,
+        warn_only=warn_only,
+    )
     agents_path = master_path.parent / "AGENTS.md"
     agents_path.write_text(inflated, encoding="utf-8")
     claude_path = master_path.parent / "CLAUDE.md"
@@ -338,7 +374,7 @@ def main() -> None:
     os.chdir(project_root)
 
     for master_path in _iter_project_agent_masters(project_root_path):
-        _write_project_agents(master_path, project_root=project_root_path)
+        _write_project_agents(master_path, project_root=project_root_path, warn_only=args.warn_only)
 
     validate_only = args.validate_only
     dist_dir = "dist"
@@ -594,6 +630,7 @@ def main() -> None:
                     "\n\n".join(content for content in processed_contents if content),
                     project_root=Path(project_root),
                     current_path=Path(project_root) / "AGENTS.md",
+                    warn_only=args.warn_only,
                 )
                 combined_agents_content = expanded_body
             if combined_agents_content:
@@ -642,6 +679,7 @@ def main() -> None:
                                 agent_name=agent_name,
                                 project_root=Path(project_root),
                                 current_path=Path(item_path),
+                                warn_only=args.warn_only,
                             )
                             output_dir = ""
                             if spec.kind == "skill":

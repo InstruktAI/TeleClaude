@@ -379,8 +379,6 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     "TeleClaude MCP Server\n"
                     "\n"
                     "Local helper scripts:\n"
-                    "- `bin/notify_agents.py`: out-of-band Telegram alerts with exponential backoff (max 1/hour). "
-                    "State is stored in `logs/monitoring/`.\n"
                     "- `bin/send_telegram.py`: ops-only Telegram sender (uses `TELEGRAM_ALERT_USERNAME`).\n"
                 )
                 return [TextContent(type="text", text=text)]

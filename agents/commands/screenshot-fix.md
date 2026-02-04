@@ -3,11 +3,13 @@ description: Fix UI issues based on a screenshot provided by the user or the lat
 argument-hint: '[screenshot-path]'
 ---
 
-@~/.teleclaude/docs/software-development/role/builder.md
-
 # Screenshot Fix
 
 You are now the Builder.
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/builder.md
 
 ## Purpose
 

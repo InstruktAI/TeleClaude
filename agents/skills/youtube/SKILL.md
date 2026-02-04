@@ -84,7 +84,7 @@ Channel handles must use `@` prefix. Multiple channels are comma-separated. Time
 ~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --max-videos 10
 ```
 
-**Search by keyword (matches title + channel name, case-insensitive):**
+**Fetch history:**
 
 ```bash
 ~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --query "AI agents" --max-videos 20
@@ -99,7 +99,7 @@ Channel handles must use `@` prefix. Multiple channels are comma-separated. Time
 **Combine query + channel filter:**
 
 ```bash
-~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --query "coding" --channel "ThePrimeagen"
+~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --channel "ThePrimeagen"
 ```
 
 **With transcripts (off by default in history mode — opt in):**
@@ -133,7 +133,6 @@ Channel handles must use `@` prefix. Multiple channels are comma-separated. Time
 ```bash
 ~/.teleclaude/scripts/helpers/youtube_helper.py --mode subscriptions --channel "Anthropic" --max-videos 10
 ```
-
 
 **List your subscription channels:**
 

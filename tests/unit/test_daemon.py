@@ -962,7 +962,7 @@ async def test_ensure_tmux_session_recreates_when_missing():
         assert kwargs["name"] == "tc_sess-123"
         assert kwargs["working_dir"] == "/tmp/project/subdir"
         assert kwargs["session_id"] == "sess-123"
-        assert kwargs["env_vars"]["TELECLAUDE_SESSION_ID"] == "sess-123"
+        assert kwargs["env_vars"] == {}
 
 
 @pytest.mark.asyncio
@@ -980,9 +980,7 @@ async def test_ensure_tmux_session_skips_when_exists():
 
     with (
         patch("teleclaude.daemon.resolve_working_dir", return_value="/tmp/project"),
-        patch.object(
-            daemon, "_build_tmux_env_vars", new_callable=AsyncMock, return_value={"TELECLAUDE_SESSION_ID": "sess-456"}
-        ),
+        patch.object(daemon, "_build_tmux_env_vars", new_callable=AsyncMock, return_value={}),
         patch(
             "teleclaude.daemon.tmux_bridge.ensure_tmux_session", new_callable=AsyncMock, return_value=True
         ) as ensure_tmux,

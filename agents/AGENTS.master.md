@@ -6,5 +6,3 @@
 - @docs/project/policy/agent-artifact-governance.md
 
 This folder harbors agent artifact definitions and tooling to build and distribute artifacts to multiple AI agents (Claude Code, Codex, Gemini).
-
-Think slow before responding. Verify each suggestion against the stated objective and keep only what is necessary to achieve it.

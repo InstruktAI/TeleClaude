@@ -464,7 +464,7 @@ class Db:
             rows = result.all()
             return [self._to_core_session(row) for row in rows]
 
-    async def update_session(self, session_id: str, **fields: object) -> None:
+    async def update_session(self, session_id: str, **fields: object) -> Session | None:
         """Update session fields and handle events.
 
         Args:

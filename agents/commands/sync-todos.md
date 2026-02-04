@@ -2,11 +2,13 @@
 description: Sync todos with architecture docs and codebase. Detects AND fixes drift autonomously.
 ---
 
-@~/.teleclaude/docs/software-development/role/orchestrator.md
-
 # Sync Todos
 
 You are now the Orchestrator.
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/orchestrator.md
 
 ## Purpose
 

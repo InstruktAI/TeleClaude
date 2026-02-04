@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import curses
+import os
+import re
 import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Callable
@@ -77,6 +79,41 @@ def _format_time(iso_timestamp: str | None) -> str:
     return local_dt.strftime("%H:%M:%S")
 
 
+# Pattern matches /Users/<user>/... (macOS) or /home/<user>/... (Linux)
+_HOME_PATH_PATTERN = re.compile(r"^(/(?:Users|home)/[^/]+)")
+
+
+def _shorten_path(path: str) -> str:
+    """Replace home directory prefix with ~ to save space.
+
+    Works for both local paths and remote paths by detecting common
+    home directory patterns (/Users/... on macOS, /home/... on Linux).
+
+    Args:
+        path: Full path string
+
+    Returns:
+        Path with home directory replaced by ~ if applicable
+    """
+    if not path:
+        return path
+
+    # Try local home directory first (exact match)
+    local_home = os.path.expanduser("~")
+    if path.startswith(local_home + "/"):
+        return "~" + path[len(local_home) :]
+    if path == local_home:
+        return "~"
+
+    # For remote paths, use pattern matching
+    match = _HOME_PATH_PATTERN.match(path)
+    if match:
+        home_prefix = match.group(1)
+        return "~" + path[len(home_prefix) :]
+
+    return path
+
+
 class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     """View 1: Sessions - project-centric tree with AI-to-AI nesting."""
 
@@ -142,6 +179,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Pane focus detection for reverse sync (pane click → tree selection)
         self._last_detected_pane_id: str | None = None
         self._we_caused_focus: bool = False
+        self._initial_layout_done: bool = False
 
         # Load persisted sticky state (sessions + docs)
         load_sticky_state(self.state)
@@ -290,14 +328,20 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 self._restore_selection(("session", self.state.sessions.selected_session_id))
             else:
                 self._restore_selection(previous_selection)
-        if self.pane_manager.is_available:
-            needs_layout = False
-            if self.sticky_sessions and not self.pane_manager.state.sticky_pane_ids:
-                needs_layout = True
-            if self._preview and not self.pane_manager.state.parent_pane_id:
-                needs_layout = True
-            if needs_layout:
+        if self.pane_manager.is_available and not self._initial_layout_done:
+            has_expected_panes = bool(
+                self.sticky_sessions or self._preview or self._prep_sticky_previews or self.state.preparation.preview
+            )
+            panes_missing = False
+            if self.sticky_sessions or self._prep_sticky_previews:
+                if not self.pane_manager.state.sticky_pane_ids:
+                    panes_missing = True
+            if self._preview or self.state.preparation.preview:
+                if not self.pane_manager.state.parent_pane_id:
+                    panes_missing = True
+            if has_expected_panes and panes_missing:
                 self.controller.apply_layout(focus=False)
+                self._initial_layout_done = True
         self._maybe_activate_ready_session()
 
     def request_select_session(self, session_id: str, *, source: str | None = None) -> bool:
@@ -491,10 +535,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return (now - last_dt).total_seconds() <= 60
 
         # Clear expired highlights before processing new changes.
-        for session_id, until in list(self._highlight_until.items()):
-            if until <= now_mono:
-                self._active_field[session_id] = ActivePane.NONE
-                self._highlight_until.pop(session_id, None)
+        self._expire_highlights(now_mono)
 
         for session in sessions:
             session_id = session.session_id
@@ -534,6 +575,17 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
             # Store current state for next comparison
             self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
+
+    def _expire_highlights(self, now_mono: float | None = None) -> bool:
+        """Expire highlight timers based on monotonic time."""
+        current = now_mono if now_mono is not None else time.monotonic()
+        expired_any = False
+        for session_id, until in list(self._highlight_until.items()):
+            if until <= current:
+                self._active_field[session_id] = ActivePane.NONE
+                self._highlight_until.pop(session_id, None)
+                expired_any = True
+        return expired_any
 
     def update_session_node(self, session: SessionInfo) -> bool:
         """Update a session node in the tree if it exists."""
@@ -943,15 +995,16 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         """Defer activation so selection is rendered immediately."""
         session = item.data.session
         session_id = session.session_id
-        if not self._is_session_ready_for_preview(session):
+        is_headless = session.status == "headless" or not session.tmux_session_name
+        # Headless sessions bypass readiness check - _activate_session handles revival
+        if not is_headless and not self._is_session_ready_for_preview(session):
             if self._pending_ready_session_id != session_id:
                 if self.notify:
-                    if session.status == "headless" or not session.tmux_session_name:
-                        self.notify("Adopting headless session...", NotificationLevel.INFO)
-                    else:
-                        self.notify("Spawning new session...", NotificationLevel.INFO)
+                    self.notify("Spawning new session...", NotificationLevel.INFO)
                 self._pending_ready_session_id = session_id
             return
+        if is_headless and self.notify:
+            self.notify("Adopting headless session...", NotificationLevel.INFO)
         if self._pending_ready_session_id == session_id:
             self._pending_ready_session_id = None
         self._pending_activate_session_id = session_id
@@ -1430,7 +1483,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return [line[:width]]
 
         if is_project_node(item):
-            path = item.data.path
+            path = _shorten_path(item.data.path)
             session_count = len(item.children)
             suffix = f"({session_count})" if session_count else ""
             line = f"📁 {path} {suffix}"
@@ -1517,6 +1570,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         """
         # Store visible height for scroll calculations
         self._visible_height = height
+        # Expire highlights even if no data refresh occurs.
+        self._expire_highlights()
 
         logger.trace(
             "SessionsView.render: start_row=%d, height=%d, width=%d, flat_items=%d, scroll=%d",
@@ -1605,7 +1660,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
         if is_project_node(item):
-            path = item.data.path
+            path = _shorten_path(item.data.path)
             session_count = len(item.children)
             suffix = f"({session_count})" if session_count else ""
             line = f"📁 {path} {suffix}"

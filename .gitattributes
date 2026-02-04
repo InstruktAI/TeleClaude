@@ -3,3 +3,5 @@ docs/global/**/*.md filter=teleclaude-docs
 docs/*/index.yaml filter=teleclaude-docs
 docs/**/*.md filter=teleclaude-docs
 agents/docs/**/*.md filter=teleclaude-docs
+agents/**/*.md -filter
+.agents/**/*.md -filter

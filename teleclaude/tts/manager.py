@@ -215,10 +215,50 @@ class TTSManager:
         )
         return True
 
+    async def speak(self, text: str) -> bool:
+        """Speak text without coupling to sessions or event types."""
+        if not self.enabled:
+            logger.debug("TTS disabled globally")
+            return False
+
+        if not text:
+            logger.debug("No text provided for TTS")
+            return False
+
+        service_chain: list[tuple[str, Optional[str]]] = []
+        priority = self.tts_config.service_priority or [
+            "elevenlabs",
+            "openai",
+            "macos",
+            "pyttsx3",
+        ]
+        for service_name in priority:
+            service_cfg = self.tts_config.services.get(service_name)
+            if not service_cfg or not service_cfg.enabled:
+                continue
+            voice_param: Optional[str] = None
+            if service_cfg.voices:
+                random_voice = random.choice(service_cfg.voices)
+                voice_param = random_voice.voice_id or random_voice.name
+            service_chain.append((service_name, voice_param))
+
+        if not service_chain:
+            logger.warning("No TTS services enabled for speak()")
+            return False
+
+        logger.debug("TTS speak queued: %s...", text[:50])
+        task = asyncio.create_task(run_tts_with_lock_async(text, service_chain, "summary"))
+        task.add_done_callback(
+            lambda t: asyncio.create_task(self._handle_tts_result(t, "summary", service_chain[0][0]))
+        )
+        return True
+
     def _normalize_event_name(self, event_name: str | AgentHookEventType) -> str | None:
         """Map agent hook events to TTS event config keys."""
         if event_name == AgentHookEvents.AGENT_SESSION_START:
             return "session_start"
+        if event_name == "stop":
+            return "agent_stop"
         if event_name == AgentHookEvents.AGENT_STOP:
             return "agent_stop"
         return None

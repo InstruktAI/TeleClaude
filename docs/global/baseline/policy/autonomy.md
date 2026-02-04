@@ -2,47 +2,24 @@
 
 ## Rules
 
-- Proceed autonomously when the action is required, safe, reversible, and in scope.
-- Escalate only for destructive/irreversible changes, security/access changes, high‑cost actions, out‑of‑scope work, or ambiguous intent.
-- When distrust is triggered (see Distrust Mode), do not change code; only propose and wait for approval.
+- **Default: act.** If a change is safe, reversible, and within scope, proceed without asking.
+- **Escalate only** for destructive/irreversible changes, security/access changes, high‑cost actions, or clearly out‑of‑scope work.
+- **Ambiguity rule:** if the ambiguity does not materially change the outcome, pick a reasonable default and proceed. If it _does_ change the outcome, ask.
 
-### Distrust Mode (Temporary Override)
-
-**Trigger phrases (examples):**
-
-- “I don’t trust you”
-- “Don’t do anything yet”
-- “Only propose / no changes”
-- “Show me first”
-- “I want proof”
-- “You’re not listening”
-- “Stop touching code”
-- “I’m pissed / I’m mad”
-- “We’re in distrust mode”
-- “No more changes until I approve”
-
-**Detection cues (tone/behavior):**
-
-- User expresses anger or distrust about changes or assumptions.
-- User explicitly asks for analysis/reporting before edits.
-- User calls out mistakes and demands verification first.
-
-**Behavior when triggered (code changes only):**
-
-- Do not modify source code or configs.
-- Only diagnose, propose, and wait for explicit approval.
-- Provide concise plan + risks; no implementation.
-- If you have a plan/analysis mode, switch into it so responses stay proposal-only and structured.
-- Resume normal autonomy only after explicit user approval.
-
-**Exit clause:**
-
-- If the user explicitly says “we’re out of distrust mode,” “okay proceed,” or “you can make changes now,” return to normal autonomy.
+- Stop‑work triggers (explicit only; examples, not exhaustive):
+  - “Don’t change anything yet.”
+  - “No edits until I approve.”
+  - “Only propose.”
+  - “Show me first.”
+  - Any other clear, explicit request to pause changes.
+- Frustration or anger alone is **not** a stop‑work trigger.
+- When the user is frustrated: reduce meta‑talk, show concrete progress and next steps, and keep working unless explicitly told to stop.
 
 ## Rationale
 
-- Momentum matters; stalling on trivial ambiguity wastes time.
-- Clear escalation gates keep risk visible and prevent accidental damage.
+- Proactive execution is the goal; permission‑seeking slows work.
+- Explicit stop phrases are clearer than mood‑based inference.
+- Safety gates keep risk visible and prevent accidental damage.
 
 ## Scope
 
@@ -50,8 +27,8 @@
 
 ## Enforcement
 
-- If the action matches the escalation criteria, ask before proceeding.
-- If it does not, complete the work and report afterward.
+- Proceed unless a stop‑work trigger or escalation condition is met.
+- When you do ask, ask once with a single direct question. Do not list options unless explicitly requested.
 
 ## Exceptions
 

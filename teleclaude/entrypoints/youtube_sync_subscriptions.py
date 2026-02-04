@@ -11,16 +11,19 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Iterable
 
 import yaml
 from aiohttp import ClientSession
 from instrukt_ai_logging import configure_logging, get_logger
 
+from teleclaude.core.models import JsonDict
 from teleclaude.helpers.agent_cli import run_once
 from teleclaude.helpers.youtube_helper import (
     SubscriptionChannel,
     _fetch_channel_about_description,
+    _safe_get_list,
+    _safe_get_str,
     youtube_subscriptions,
 )
 
@@ -152,13 +155,13 @@ def _call_agent_cli(
     agent: str,
     thinking_mode: str,
     prompt: str,
-    schema: dict[str, Any],
+    schema: JsonDict,
     logger: logging.Logger,
     *,
     debug: bool = False,
     tools: str | None = None,
     mcp_tools: str | None = "",
-) -> dict[str, Any] | None:
+) -> JsonDict | None:
     if debug:
         print(json.dumps({"debug_prompt": prompt}))
     try:
@@ -490,11 +493,13 @@ def main() -> int:
             if result is None:
                 return ["n/a"]
             if use_web:
-                items = result.get("items", [])
-                by_id = {i.get("channel_id", ""): i.get("tags", []) for i in items if isinstance(i, dict)}
+                items = _safe_get_list(result, "items")
+                by_id = {
+                    _safe_get_str(i, "channel_id"): _safe_get_list(i, "tags") for i in items if isinstance(i, dict)
+                }
                 tagged = by_id.get(row.get("channel_id", ""), [])
             else:
-                tagged = result.get("tags", [])
+                tagged = _safe_get_list(result, "tags")
             evidence = result.get("evidence")
             valid = _validate_tags(tagged, allowed_tags, evidence)
             return valid or ["n/a"]
@@ -535,13 +540,13 @@ def main() -> int:
                 if result is None:
                     return group_results
                 if use_web:
-                    items = result.get("items", [])
-                    by_id = {i.get("channel_id", ""): i for i in items if isinstance(i, dict)}
+                    items = _safe_get_list(result, "items")
+                    by_id = {_safe_get_str(i, "channel_id"): i for i in items if isinstance(i, dict)}
                     item = by_id.get(row.get("channel_id", ""), {})
-                    tagged = item.get("tags", [])
+                    tagged = _safe_get_list(item, "tags")
                     evidence = item.get("evidence")
                 else:
-                    tagged = result.get("tags", [])
+                    tagged = _safe_get_list(result, "tags")
                     evidence = result.get("evidence")
                 valid = _validate_tags(tagged, allowed_tags, evidence)
                 if not valid:
@@ -586,12 +591,12 @@ def main() -> int:
                     print(json.dumps({"debug_duration_ms": int((time.monotonic() - start) * 1000)}))
                 if result is None:
                     return group_results
-                items = result.get("items", [])
-                by_id = {i.get("channel_id", ""): i for i in items if isinstance(i, dict)}
+                items = _safe_get_list(result, "items")
+                by_id = {_safe_get_str(i, "channel_id"): i for i in items if isinstance(i, dict)}
                 for row in group:
                     cid = row.get("channel_id", "")
                     item = by_id.get(cid, {})
-                    tagged = item.get("tags", [])
+                    tagged = _safe_get_list(item, "tags")
                     evidence = item.get("evidence")
                     valid = _validate_tags(tagged, allowed_tags, evidence)
                     if not valid:

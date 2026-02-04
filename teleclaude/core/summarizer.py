@@ -26,28 +26,8 @@ SUMMARY_SCHEMA: dict[str, object] = {  # noqa: loose-dict - JSON schema definiti
 }
 
 
-async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | None, str, str | None]:
-    """Summarize an agent session transcript.
-
-    Returns:
-        Tuple of (title, summary, raw_transcript) where:
-        - title: Short description of user's intent (max 70 chars)
-        - summary: LLM-generated summary of what the agent did
-        - raw_transcript: The last agent text message, or None if not found
-    """
-    # Verify file exists
-    if not Path(transcript_path).expanduser().exists():
-        raise FileNotFoundError(f"Transcript not found: {transcript_path}")
-
-    # Extract last agent text message for both storage and LLM input.
-    raw_transcript = extract_last_agent_message(transcript_path, agent_name, 1)
-    if not raw_transcript:
-        raise ValueError("Empty transcript")
-
-    # Build prompt with configurable constraints
-    max_summary_words = config.summarizer.max_summary_words
-
-    prompt = f"""Analyze this AI assistant session to generate a title and summary.
+def _build_prompt(raw_transcript: str, max_summary_words: int) -> str:
+    return f"""Analyze this AI assistant session to generate a title and summary.
 
 ## Latest Agent Output:
 {raw_transcript}
@@ -57,9 +37,17 @@ async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | 
 2. **summary** (max {max_summary_words} words, first person "I..."): Summarize the text above. If it is trivial or very short, return it verbatim.
 """
 
+
+async def summarize_text(raw_transcript: str) -> tuple[str | None, str]:
+    """Summarize a single agent output string."""
+    if not raw_transcript:
+        raise ValueError("Empty transcript")
+
+    max_summary_words = config.summarizer.max_summary_words
+    prompt = _build_prompt(raw_transcript, max_summary_words)
+
     errors: list[str] = []
 
-    # Try Anthropic first
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if api_key:
         try:
@@ -80,12 +68,10 @@ async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | 
                 },
             )
             text = response.content[0].text  # type: ignore[union-attr]
-            title, summary = _parse_response(text)
-            return title, summary, raw_transcript
+            return _parse_response(text)
         except Exception as e:
             errors.append(f"Anthropic: {e}")
 
-    # Fallback to OpenAI
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
         try:
@@ -106,14 +92,26 @@ async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | 
             )
             response_any = cast(Any, response)
             text = response_any.choices[0].message.content or ""
-            title, summary = _parse_response(text)
-            return title, summary, raw_transcript
+            return _parse_response(text)
         except Exception as e:
             errors.append(f"OpenAI: {e}")
 
     if errors:
         raise RuntimeError(f"All summarizers failed: {'; '.join(errors)}")
     raise RuntimeError("No summarizer available (missing API key)")
+
+
+async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | None, str, str | None]:
+    """Summarize an agent session transcript."""
+    if not Path(transcript_path).expanduser().exists():
+        raise FileNotFoundError(f"Transcript not found: {transcript_path}")
+
+    raw_transcript = extract_last_agent_message(transcript_path, agent_name, 1)
+    if not raw_transcript:
+        raise ValueError("Empty transcript")
+
+    title, summary = await summarize_text(raw_transcript)
+    return title, summary, raw_transcript
 
 
 def _parse_response(text: str) -> tuple[str | None, str]:

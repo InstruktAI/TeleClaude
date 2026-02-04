@@ -1,4 +1,4 @@
-@docs/project/policy/agent-service-control.md
-@docs/project/policy/daemon-availability.md
-@docs/project/policy/single-database.md
-@docs/project/policy/mcp-connection-management.md
+@docs/project/baseline/policy/agent-service-control.md
+@docs/project/baseline/policy/daemon-availability.md
+@docs/project/baseline/policy/single-database.md
+@docs/project/baseline/policy/mcp-connection-management.md

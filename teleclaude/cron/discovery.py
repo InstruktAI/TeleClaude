@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Mapping, cast
 
 import yaml
+
+from teleclaude.core.models import JsonDict
 
 
 @dataclass
@@ -24,17 +26,29 @@ class Subscriber:
         return self.config_path.parent / "subscriptions"
 
 
-def _load_config(path: Path) -> dict[str, Any] | None:
+def _load_config(path: Path) -> JsonDict | None:
     """Load and parse YAML config, return None on error."""
     if not path.exists():
         return None
     try:
         result = yaml.safe_load(path.read_text(encoding="utf-8"))
         if isinstance(result, dict):
-            return cast(dict[str, Any], result)
+            return cast(JsonDict, result)
         return {}
     except (yaml.YAMLError, OSError):
         return None
+
+
+def _as_mapping(value: object) -> Mapping[str, object]:
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _as_list(value: object) -> list[object]:
+    if isinstance(value, list):
+        return value
+    return []
 
 
 def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
@@ -56,9 +70,11 @@ def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
     global_cfg_path = root / "teleclaude.yml"
     global_cfg = _load_config(global_cfg_path)
     if global_cfg:
-        youtube_file = global_cfg.get("subscriptions", {}).get("youtube")
+        subscriptions = _as_mapping(global_cfg.get("subscriptions"))
+        youtube_file = subscriptions.get("youtube")
         if youtube_file:
-            tags = global_cfg.get("interests", {}).get("tags", [])
+            interests = _as_mapping(global_cfg.get("interests"))
+            tags = _as_list(interests.get("tags"))
             subscribers.append(
                 Subscriber(
                     scope="global",
@@ -78,9 +94,11 @@ def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
             person_cfg = _load_config(person_cfg_path)
             if not person_cfg:
                 continue
-            youtube_file = person_cfg.get("subscriptions", {}).get("youtube")
+            subscriptions = _as_mapping(person_cfg.get("subscriptions"))
+            youtube_file = subscriptions.get("youtube")
             if youtube_file:
-                tags = person_cfg.get("interests", {}).get("tags", [])
+                interests = _as_mapping(person_cfg.get("interests"))
+                tags = _as_list(interests.get("tags"))
                 subscribers.append(
                     Subscriber(
                         scope="person",

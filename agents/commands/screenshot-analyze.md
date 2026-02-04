@@ -3,11 +3,13 @@ description: Analyze a screenshot provided by the user or the latest screenshot
 argument-hint: '[screenshot-path]'
 ---
 
-@~/.teleclaude/docs/software-development/role/reviewer.md
-
 # Screenshot Analyze
 
 You are now the Reviewer.
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/reviewer.md
 
 ## Purpose
 

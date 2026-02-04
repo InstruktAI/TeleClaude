@@ -19,7 +19,7 @@ Documentation is a distinct lifecycle phase. It ensures the codebase and its inl
 Run the phase in order:
 
 1. **Sync Docstrings** — align inline docstrings/comments with actual code behavior.
-2. **Sync Docs** — regenerate `docs/` from code + docs.
+2. **Sync Docs** — run `telec sync` after documentation changes.
 
 This phase is atomic and idempotent.
 
@@ -30,7 +30,7 @@ This phase is atomic and idempotent.
 ## Steps
 
 1. Run docstring synchronization.
-2. Run docs synchronization and validation.
+2. Run `telec sync` after documentation changes.
 3. Review outputs for completeness.
 
 ## Outputs

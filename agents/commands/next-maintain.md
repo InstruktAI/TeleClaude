@@ -2,12 +2,14 @@
 description: Maintenance phase - placeholder for infrastructure upkeep.
 ---
 
-@~/.teleclaude/docs/software-development/role/builder.md
-@~/.teleclaude/docs/software-development/procedure/lifecycle/maintenance.md
-
 # Maintain
 
 You are now the Builder.
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/builder.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/maintenance.md
 
 ## Purpose
 

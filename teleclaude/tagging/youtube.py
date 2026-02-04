@@ -9,16 +9,19 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Iterator, cast
 
 from aiohttp import ClientSession
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.models import JsonDict
 from teleclaude.cron.discovery import Subscriber
 from teleclaude.helpers.agent_cli import run_once
 from teleclaude.helpers.youtube_helper import (
     SubscriptionChannel,
     _fetch_channel_about_description,
+    _safe_get_list,
+    _safe_get_str,
 )
 
 logger = get_logger(__name__)
@@ -209,28 +212,32 @@ def build_batch_prompt(
         )
 
 
-def build_schema(tags: list[str]) -> dict[str, Any]:
+def build_schema(tags: list[str]) -> JsonDict:
     """Build JSON schema for batch response."""
     tag_enum = sorted(set(tags + ["n/a"]))
-    return {
-        "type": "object",
-        "properties": {
-            "items": {
-                "type": "array",
+    # Cast needed because pyright can't verify recursive JsonValue matches
+    return cast(
+        JsonDict,
+        {
+            "type": "object",
+            "properties": {
                 "items": {
-                    "type": "object",
-                    "properties": {
-                        "channel_id": {"type": "string"},
-                        "tags": {"type": "array", "items": {"type": "string", "enum": tag_enum}},
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "channel_id": {"type": "string"},
+                            "tags": {"type": "array", "items": {"type": "string", "enum": tag_enum}},
+                        },
+                        "required": ["channel_id", "tags"],
+                        "additionalProperties": False,
                     },
-                    "required": ["channel_id", "tags"],
-                    "additionalProperties": False,
-                },
-            }
+                }
+            },
+            "required": ["items"],
+            "additionalProperties": False,
         },
-        "required": ["items"],
-        "additionalProperties": False,
-    }
+    )
 
 
 # --- Tag Validation ---
@@ -282,10 +289,10 @@ def call_agent(
     agent: str,
     thinking_mode: str,
     prompt: str,
-    schema: dict[str, Any],
+    schema: JsonDict,
     *,
     use_web: bool = False,
-) -> dict[str, Any] | None:
+) -> JsonDict | None:
     """Call AI agent and return parsed result."""
     try:
         payload = run_once(
@@ -335,12 +342,12 @@ def process_batch(
         if result is None:
             return group_results
 
-        items = result.get("items", [])
-        by_id = {i.get("channel_id", ""): i for i in items if isinstance(i, dict)}
+        items = _safe_get_list(result, "items")
+        by_id = {_safe_get_str(i, "channel_id"): i for i in items if isinstance(i, dict)}
 
         for row in group:
             item = by_id.get(row.channel_id, {})
-            tagged = item.get("tags", [])
+            tagged = _safe_get_list(item, "tags")
             evidence = item.get("evidence")
             valid = validate_tags(tagged, allowed_tags, evidence)
 
@@ -349,10 +356,12 @@ def process_batch(
                 retry_prompt = build_batch_prompt([row], tags, use_web=use_web, retry=True)
                 retry_result = call_agent(next(agent_iter), config.thinking_mode, retry_prompt, schema, use_web=use_web)
                 if retry_result:
-                    retry_items = retry_result.get("items", [])
-                    if retry_items:
-                        retry_item = retry_items[0] if isinstance(retry_items[0], dict) else {}
-                        valid = validate_tags(retry_item.get("tags", []), allowed_tags, retry_item.get("evidence"))
+                    retry_items = _safe_get_list(retry_result, "items")
+                    if retry_items and isinstance(retry_items[0], dict):
+                        retry_item = retry_items[0]
+                        valid = validate_tags(
+                            _safe_get_list(retry_item, "tags"), allowed_tags, retry_item.get("evidence")
+                        )
                 valid = valid or ["n/a"]
 
             group_results[row.channel_id] = ",".join(valid)

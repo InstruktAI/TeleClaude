@@ -280,9 +280,13 @@ class ErrorEventDataDTO(BaseModel):  # type: ignore[explicit-any]
 
     model_config = ConfigDict(frozen=True)
 
-    session_id: str
+    session_id: str | None = None
     message: str
     source: str | None = None
+    details: dict[str, object] | None = None  # noqa: loose-dict - error details vary
+    severity: Literal["warning", "error", "critical"] = "error"
+    retryable: bool = False
+    code: str | None = None
 
 
 class ErrorEventDTO(BaseModel):  # type: ignore[explicit-any]

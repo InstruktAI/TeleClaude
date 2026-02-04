@@ -5,12 +5,9 @@ Provides type-safe event definitions for adapter-daemon communication.
 
 import shlex
 from collections.abc import Mapping
+from types import MappingProxyType
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Optional, Union, cast
-
-if TYPE_CHECKING:
-    from teleclaude.core.models import SessionLaunchIntent
-    from teleclaude.types.commands import InternalCommand
+from typing import Literal, Optional, Union, cast
 
 # Event bus carries internal events (not user commands).
 EventType = Literal[
@@ -23,21 +20,28 @@ EventType = Literal[
 ]
 
 # Agent hook event types (payload event_type values from agents)
-AgentHookEventType = Literal["session_start", "prompt", "stop", "session_end", "notification", "error"]
+AgentHookEventType = Literal[
+    "session_start",
+    "user_prompt_submit",
+    "agent_stop",
+    "session_end",
+    "notification",
+    "error",
+]
 
 
 class AgentHookEvents:
     """Agent hook payload event types (distinct from TeleClaudeEvents commands)."""
 
     AGENT_SESSION_START: AgentHookEventType = "session_start"
-    AGENT_PROMPT: AgentHookEventType = "prompt"
-    AGENT_STOP: AgentHookEventType = "stop"
+    USER_PROMPT_SUBMIT: AgentHookEventType = "user_prompt_submit"
+    AGENT_STOP: AgentHookEventType = "agent_stop"
     AGENT_SESSION_END: AgentHookEventType = "session_end"
     AGENT_NOTIFICATION: AgentHookEventType = "notification"
     AGENT_ERROR: AgentHookEventType = "error"
     ALL: set[AgentHookEventType] = {
         AGENT_SESSION_START,
-        AGENT_PROMPT,
+        USER_PROMPT_SUBMIT,
         AGENT_STOP,
         AGENT_SESSION_END,
         AGENT_NOTIFICATION,
@@ -45,61 +49,59 @@ class AgentHookEvents:
     }
 
 
-@dataclass
+@dataclass(frozen=True)
 class AgentSessionStartPayload:
     """Internal payload for agent session_start hook."""
 
-    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    raw: Mapping[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
     transcript_path: str | None = None
     session_id: str | None = None
 
 
-@dataclass
-class AgentPromptPayload:
-    """Internal payload for agent prompt hook (turn started)."""
+@dataclass(frozen=True)
+class UserPromptSubmitPayload:
+    """Internal payload for user prompt submission hook."""
 
     prompt: str
     session_id: str | None = None
     transcript_path: str | None = None
-    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    raw: Mapping[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
     source_computer: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class AgentStopPayload:
     """Internal payload for agent stop hook."""
 
     session_id: str | None = None
     transcript_path: str | None = None
     prompt: str | None = None
-    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
-    summary: str | None = None
-    title: str | None = None
+    raw: Mapping[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
     source_computer: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class AgentNotificationPayload:
     """Internal payload for agent notification hook."""
 
     message: str = ""
-    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    raw: Mapping[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
     session_id: str | None = None
     transcript_path: str | None = None
     source_computer: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class AgentSessionEndPayload:
     """Internal payload for agent session_end hook."""
 
     session_id: str | None = None
-    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    raw: Mapping[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
 
 
 AgentEventPayload = Union[
     AgentSessionStartPayload,
-    AgentPromptPayload,
+    UserPromptSubmitPayload,
     AgentStopPayload,
     AgentNotificationPayload,
     AgentSessionEndPayload,
@@ -109,20 +111,21 @@ AgentEventPayload = Union[
 def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, object]) -> AgentEventPayload:
     """Build typed agent payload from normalized hook data."""
     native_id = cast(str | None, data.get("session_id"))
+    frozen_raw = MappingProxyType(dict(data))
 
     if event_type == AgentHookEvents.AGENT_SESSION_START:
         return AgentSessionStartPayload(
             session_id=native_id,
             transcript_path=cast(str | None, data.get("transcript_path")),
-            raw=data,
+            raw=frozen_raw,
         )
 
-    if event_type == AgentHookEvents.AGENT_PROMPT:
-        return AgentPromptPayload(
+    if event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
+        return UserPromptSubmitPayload(
             session_id=native_id,
             transcript_path=cast(str | None, data.get("transcript_path")),
             prompt=cast(str, data.get("prompt", "")),
-            raw=data,
+            raw=frozen_raw,
             source_computer=cast(str | None, data.get("source_computer")),
         )
 
@@ -130,11 +133,9 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
         return AgentStopPayload(
             session_id=native_id,
             transcript_path=cast(str | None, data.get("transcript_path")),
-            summary=cast(str | None, data.get("summary")),
             prompt=cast(str | None, data.get("prompt")),
-            title=cast(str | None, data.get("title")),
             source_computer=cast(str | None, data.get("source_computer")),
-            raw=data,
+            raw=frozen_raw,
         )
 
     if event_type == AgentHookEvents.AGENT_NOTIFICATION:
@@ -143,13 +144,13 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
             session_id=native_id,
             transcript_path=cast(str | None, data.get("transcript_path")),
             source_computer=cast(str | None, data.get("source_computer")),
-            raw=data,
+            raw=frozen_raw,
         )
 
     if event_type == AgentHookEvents.AGENT_SESSION_END:
         return AgentSessionEndPayload(
             session_id=native_id,
-            raw=data,
+            raw=frozen_raw,
         )
 
     raise ValueError(f"Unknown agent hook event_type '{event_type}'")
@@ -198,6 +199,9 @@ class TeleClaudeEvents:
     ERROR: Literal["error"] = "error"
 
 
+ErrorSeverity = Literal["warning", "error", "critical"]
+
+
 def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
     """Parse command string into event name and arguments.
 
@@ -241,7 +245,7 @@ def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
 # Event context models (dataclass for type safety)
 
 
-@dataclass
+@dataclass(frozen=True)
 class MessageEventContext:
     """Context for message events."""
 
@@ -249,7 +253,7 @@ class MessageEventContext:
     text: str = ""
 
 
-@dataclass
+@dataclass(frozen=True)
 class FileEventContext:
     """Context for file upload events."""
 
@@ -260,7 +264,7 @@ class FileEventContext:
     file_size: int = 0
 
 
-@dataclass
+@dataclass(frozen=True)
 class VoiceEventContext:
     """Context for voice message events."""
 
@@ -272,21 +276,21 @@ class VoiceEventContext:
     origin: Optional[str] = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class SessionLifecycleContext:
     """Context for session lifecycle events."""
 
     session_id: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class DeployArgs:
     """Arguments for deploy system command."""
 
     verify_health: bool = True
 
 
-@dataclass
+@dataclass(frozen=True)
 class SystemCommandContext:
     """Context for system commands (no session_id)."""
 
@@ -295,27 +299,7 @@ class SystemCommandContext:
     args: DeployArgs = field(default_factory=DeployArgs)
 
 
-@dataclass
-class CommandContext:  # pylint: disable=too-many-instance-attributes  # Command context requires many metadata fields
-    """Context for command dispatch."""
-
-    command: str
-    session_id: str
-    args: list[str] = field(default_factory=list)
-    payload: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Raw command payload
-    message_id: Optional[str] = None
-    # Metadata fields
-    origin: Optional[str] = None
-    message_thread_id: Optional[int] = None
-    title: Optional[str] = None
-    project_path: Optional[str] = None
-    channel_metadata: Optional[dict[str, object]] = None  # noqa: loose-dict - Adapter communication metadata
-    auto_command: Optional[str] = None  # Legacy adapter boundary (deprecated)
-    launch_intent: Optional["SessionLaunchIntent"] = None
-    internal_command: Optional["InternalCommand"] = None
-
-
-@dataclass
+@dataclass(frozen=True)
 class AgentEventContext:
     """Context for Agent events (from hooks)."""
 
@@ -324,7 +308,7 @@ class AgentEventContext:
     event_type: AgentHookEventType
 
 
-@dataclass
+@dataclass(frozen=True)
 class SessionUpdatedContext:
     """Context for session_updated events."""
 
@@ -332,14 +316,17 @@ class SessionUpdatedContext:
     updated_fields: dict[str, object]  # noqa: loose-dict - Dynamic session field updates
 
 
-@dataclass
+@dataclass(frozen=True)
 class ErrorEventContext:
     """Context for error events."""
 
-    session_id: str
+    session_id: str | None
     message: str
     source: Optional[str] = None
     details: Optional[dict[str, object]] = None  # noqa: loose-dict - Error detail data varies by error
+    severity: ErrorSeverity = "error"
+    retryable: bool = False
+    code: Optional[str] = None
 
 
 # Union of all event context types (for adapter_client handler signatures)

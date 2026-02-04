@@ -3,12 +3,14 @@ argument-hint: '[slug]'
 description: Worker command - execute implementation plan, commit per task, verify at completion
 ---
 
-@~/.teleclaude/docs/software-development/role/builder.md
-@~/.teleclaude/docs/software-development/procedure/lifecycle/build.md
-
 # Build
 
 You are now the Builder.
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/builder.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/build.md
 
 ## Purpose
 

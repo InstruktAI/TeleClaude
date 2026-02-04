@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-out="${TELECLAUDE_API_WATCH_LOG:-/tmp/teleclaude-unlink-attrib.log}"
+out="${TELECLAUDE_API_WATCH_LOG:-/var/log/instrukt-ai/teleclaude/monitoring/api-unlink.log}"
 mkdir -p "$(dirname "$out")"
 
 # Watch filesystem events from the TeleClaude daemon process only to avoid

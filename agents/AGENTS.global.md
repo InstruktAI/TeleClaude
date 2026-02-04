@@ -4,7 +4,7 @@ This file provides baseline guidance to all agents across all projects and conte
 
 ## Required Reads
 
-- @/Users/Morriz/.teleclaude/docs/baseline/index.md
+- @~/.teleclaude/docs/baseline/index.md
 
 ## Facts you should know
 
@@ -45,8 +45,8 @@ Usage: `$HOME/.teleclaude/scripts/history.py --agent {{agent}} <search terms>`
 
 ### Self-restart — Reload artifacts
 
-After distributing new or updated agent artifacts (`distribute.py --deploy`), restart
-your own session to load them. The restart preserves conversation history via `--resume`.
+After running `telec sync` to deploy new or updated agent artifacts, restart your own
+session to load them. The restart preserves conversation history via `--resume`.
 
 **How:**
 
@@ -55,7 +55,7 @@ curl -s --unix-socket /tmp/teleclaude-api.sock \
   -X POST "http://localhost/sessions/$(cat "$TMPDIR/teleclaude_session_id")/agent-restart"
 ```
 
-**When:** Only after running `distribute.py --deploy` or when artifacts (skills, commands,
+**When:** Only after running `telec sync` when artifacts (skills, commands,
 AGENTS files, doc snippets) have changed on disk and you need to pick them up.
 
 **Do not** restart for routine work — only when you have evidence that your loaded

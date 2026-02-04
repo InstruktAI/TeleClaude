@@ -22,13 +22,7 @@ Build and distribute agent artifacts in this repository.
 ## Steps
 
 1. Update the appropriate scope (global or project).
-2. Run the distribution script to generate runtime-specific outputs.
-3. Deploy generated outputs to local agent runtimes.
-
-```
-./scripts/distribute.py
-./scripts/distribute.py --deploy
-```
+2. Run `telec sync` to generate and deploy runtime-specific outputs.
 
 ## Outputs
 
@@ -42,4 +36,4 @@ Build and distribute agent artifacts in this repository.
 
 ## See also
 
-- docs/project/reference/agent-artifact-automation.md
+- docs/project/spec/agent-artifact-automation.md

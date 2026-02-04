@@ -1478,7 +1478,6 @@ def main():
         return
     logger.info(
         "MCP wrapper env",
-        teleclaude_session_id=os.environ.get("TELECLAUDE_SESSION_ID"),
         tmux=os.environ.get("TMUX"),
         tmpdir=os.environ.get("TMPDIR"),
         ppid=os.getppid(),

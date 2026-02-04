@@ -3,12 +3,14 @@ argument-hint: '[slug]'
 description: Architect command - analyze codebase and discuss requirements with user
 ---
 
-@~/.teleclaude/docs/software-development/role/architect.md
-@~/.teleclaude/docs/software-development/procedure/lifecycle/prepare.md
-
 # Prepare
 
 You are now the Architect.
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/architect.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare.md
 
 ## Purpose
 

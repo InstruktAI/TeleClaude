@@ -22,10 +22,10 @@ artifacts.
    - Extract key facts, configuration, schemas, and constraints.
    - Separate facts from hypotheses. Do not publish hypotheses as facts.
 
-3. **Summarize & Index**
+3. **Summarize & Sync**
    - Create a concise markdown summary as an internal snippet.
    - Add a **Sources** section listing web links or Context7 snippet IDs.
-   - Update docs/index.yaml so the new entry is discoverable.
+   - After any doc change, run `telec sync`.
 
 4. **Verify**
    - Read the summary for correctness and clarity.
@@ -34,7 +34,7 @@ artifacts.
 
 - Summary is concise and actionable.
 - Sources are listed under a **Sources** section as web links or Context7 snippet IDs.
-- Index is updated.
+- `telec sync` run after changes.
 
 ## Preconditions
 
@@ -45,6 +45,7 @@ artifacts.
 
 - Identify sources (web or Context7) and record them.
 - Draft an internal snippet that captures only validated facts.
+- Run `telec sync`.
 - Add sources to a **Sources** section.
 
 ## Outputs

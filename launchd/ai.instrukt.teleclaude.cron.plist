@@ -26,8 +26,8 @@
         <integer>0</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/Morriz/.teleclaude/logs/cron.log</string>
+    <string>/var/log/instrukt-ai/teleclaude/cron.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/Morriz/.teleclaude/logs/cron.log</string>
+    <string>/var/log/instrukt-ai/teleclaude/cron.log</string>
 </dict>
 </plist>

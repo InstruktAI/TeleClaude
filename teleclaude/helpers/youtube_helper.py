@@ -22,6 +22,53 @@ from munch import munchify  # pylint: disable=import-error
 from pydantic import BaseModel
 from youtube_transcript_api import YouTubeTranscriptApi  # pylint: disable=import-error
 
+from teleclaude.core.models import JsonDict, JsonValue
+
+
+def _safe_get(obj: JsonValue, *keys: str | int, default: JsonValue = None) -> JsonValue:
+    """Safely traverse nested JSON structures with type safety.
+
+    Args:
+        obj: The starting JSON value (dict, list, or primitive)
+        *keys: Keys (str for dicts) or indices (int for lists) to traverse
+        default: Value to return if any key is missing or type is wrong
+
+    Returns:
+        The value at the nested path, or default if unreachable
+    """
+    current: JsonValue = obj
+    for key in keys:
+        if isinstance(key, int):
+            if not isinstance(current, list) or key >= len(current):
+                return default
+            current = current[key]
+        else:
+            if not isinstance(current, dict):
+                return default
+            current = current.get(key, default)
+            if current is default:
+                return default
+    return current
+
+
+def _safe_get_dict(obj: JsonValue, *keys: str | int) -> JsonDict:
+    """Safely get a nested dict, returning empty dict if not found or wrong type."""
+    result = _safe_get(obj, *keys, default={})
+    return result if isinstance(result, dict) else {}
+
+
+def _safe_get_list(obj: JsonValue, *keys: str | int) -> list[JsonValue]:
+    """Safely get a nested list, returning empty list if not found or wrong type."""
+    result = _safe_get(obj, *keys, default=[])
+    return result if isinstance(result, list) else []
+
+
+def _safe_get_str(obj: JsonValue, *keys: str | int, default: str = "") -> str:
+    """Safely get a nested string, returning default if not found or wrong type."""
+    result = _safe_get(obj, *keys, default=default)
+    return result if isinstance(result, str) else default
+
+
 # Configure logging to youtube_helper.log
 log_dir = Path.home() / ".claude" / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
@@ -90,20 +137,20 @@ class LockupViewModel(TypedDict, total=False):
     """Subset of lockupViewModel fields used by the helper."""
 
     contentId: str
-    metadata: dict[str, Any]
-    contentImage: dict[str, Any]
+    metadata: JsonDict
+    contentImage: JsonDict
 
 
 class VideoRenderer(TypedDict, total=False):
     """Subset of videoRenderer fields used by the helper."""
 
     videoId: str
-    title: dict[str, Any]
-    longBylineText: dict[str, Any]
-    lengthText: dict[str, Any]
-    viewCountText: dict[str, Any]
-    publishedTimeText: dict[str, Any]
-    navigationEndpoint: dict[str, Any]
+    title: JsonDict
+    longBylineText: JsonDict
+    lengthText: JsonDict
+    viewCountText: JsonDict
+    publishedTimeText: JsonDict
+    navigationEndpoint: JsonDict
 
 
 class HistoryEntry(TypedDict):
@@ -131,8 +178,8 @@ class HtmlVideoInfo(TypedDict):
 
 
 class RichGridItem(TypedDict, total=False):
-    richItemRenderer: dict[str, Any]
-    continuationItemRenderer: dict[str, Any]
+    richItemRenderer: JsonDict  # guard: youtube-api - Nested InnerTube structure
+    continuationItemRenderer: JsonDict  # guard: youtube-api - Nested InnerTube structure
 
 
 # ---------------------------------------------------------------------------
@@ -270,127 +317,148 @@ def _refresh_cookies_if_needed() -> bool:
         return False
 
 
-def _parse_history_entries(data: dict[str, object]) -> list[HistoryEntry]:  # guard: loose-dict - InnerTube API response
+def _parse_history_entries(data: JsonDict) -> list[HistoryEntry]:
     """Extract video entries from InnerTube browse response JSON."""
     entries: list[HistoryEntry] = []
     try:
         sections = _get_sections(data)
         for section in sections:
-            renderer = section.get("itemSectionRenderer", {})
-            for item in renderer.get("contents", []):
-                entry = _parse_lockup_view_model(item) or _parse_video_renderer(item)
-                if entry:
-                    entries.append(entry)
+            contents = _safe_get_list(section, "itemSectionRenderer", "contents")
+            for item in contents:
+                if isinstance(item, dict):
+                    entry = _parse_lockup_view_model(item) or _parse_video_renderer(item)
+                    if entry:
+                        entries.append(entry)
     except (KeyError, IndexError, TypeError) as exc:
         log.warning("Failed to parse history entries: %s", exc)
     return entries
 
 
-def _get_richgrid_contents(data: dict[str, Any]) -> list[dict[str, Any]]:
+def _get_richgrid_contents(data: JsonDict) -> list[JsonDict]:
     """Extract richGrid contents from initial or continuation response."""
     if "contents" in data:
-        try:
-            return data["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][0]["tabRenderer"]["content"][
-                "richGridRenderer"
-            ]["contents"]
-        except (KeyError, IndexError, TypeError):
-            return []
+        contents = _safe_get_list(
+            data,
+            "contents",
+            "twoColumnBrowseResultsRenderer",
+            "tabs",
+            0,
+            "tabRenderer",
+            "content",
+            "richGridRenderer",
+            "contents",
+        )
+        return [item for item in contents if isinstance(item, dict)]
     if "onResponseReceivedActions" in data:
-        for action in data["onResponseReceivedActions"]:
-            if "appendContinuationItemsAction" in action:
-                return action["appendContinuationItemsAction"].get("continuationItems", [])
+        actions = _safe_get_list(data, "onResponseReceivedActions")
+        for action in actions:
+            if isinstance(action, dict) and "appendContinuationItemsAction" in action:
+                items = _safe_get_list(action, "appendContinuationItemsAction", "continuationItems")
+                return [item for item in items if isinstance(item, dict)]
     return []
 
 
-def _extract_richgrid_continuation(contents: list[dict[str, Any]]) -> str | None:
+def _extract_richgrid_continuation(contents: list[JsonDict]) -> str | None:
     """Extract continuation token from richGrid contents."""
     for item in contents:
-        cont = item.get("continuationItemRenderer", {})
-        endpoint = cont.get("continuationEndpoint", {})
-        token = endpoint.get("continuationCommand", {}).get("token")
+        token = _safe_get_str(item, "continuationItemRenderer", "continuationEndpoint", "continuationCommand", "token")
         if token:
             return token
     return None
 
 
-def _extract_lockup_publish_time(lvm: Mapping[str, Any]) -> str:
+def _extract_lockup_publish_time(lvm: Mapping[str, JsonValue]) -> str:
     """Extract publish time from lockupViewModel metadata rows."""
-    try:
-        meta = lvm.get("metadata", {}).get("lockupMetadataViewModel", {})
-        rows = meta.get("metadata", {}).get("contentMetadataViewModel", {}).get("metadataRows", [])
-        if len(rows) < 2:
-            return ""
-        parts = rows[1].get("metadataParts", [])
-        for part in parts:
-            text = part.get("text", {}).get("content")
+    rows = _safe_get_list(
+        dict(lvm), "metadata", "lockupMetadataViewModel", "metadata", "contentMetadataViewModel", "metadataRows"
+    )
+    if len(rows) < 2:
+        return ""
+    row1 = rows[1]
+    if not isinstance(row1, dict):
+        return ""
+    parts = _safe_get_list(row1, "metadataParts")
+    for part in parts:
+        if isinstance(part, dict):
+            text = _safe_get_str(part, "text", "content")
             if text:
                 return text
-    except (KeyError, IndexError, TypeError):
-        return ""
     return ""
 
 
-def _parse_subscription_entries(data: dict[str, Any]) -> list[SubscriptionEntry]:
+def _parse_subscription_entries(data: JsonDict) -> list[SubscriptionEntry]:
     """Extract subscription feed entries from InnerTube browse response JSON."""
     entries: list[SubscriptionEntry] = []
     contents = _get_richgrid_contents(data)
     for item in contents:
         if "richItemRenderer" not in item:
             continue
-        content = item["richItemRenderer"].get("content", {})
+        content = _safe_get_dict(item, "richItemRenderer", "content")
         if "lockupViewModel" in content:
-            lvm = content["lockupViewModel"]
+            lvm = _safe_get_dict(content, "lockupViewModel")
             entry = _parse_lockup_view_model({"lockupViewModel": lvm})
             if entry:
                 entry["publish_time"] = _extract_lockup_publish_time(lvm)
                 entries.append(entry)
             continue
         if "videoRenderer" in content:
-            entry = _parse_video_renderer({"videoRenderer": content["videoRenderer"]})
+            vr = _safe_get_dict(content, "videoRenderer")
+            entry = _parse_video_renderer({"videoRenderer": vr})
             if entry:
-                entry["publish_time"] = content["videoRenderer"].get("publishedTimeText", {}).get("simpleText", "")
+                entry["publish_time"] = _safe_get_str(vr, "publishedTimeText", "simpleText")
                 entries.append(entry)
     return entries
 
 
-def _parse_subscription_channels(data: dict[str, Any]) -> list[SubscriptionChannel]:
+def _parse_subscription_channels(data: JsonDict) -> list[SubscriptionChannel]:
     """Extract subscription channel list from InnerTube browse response JSON."""
     channels: list[SubscriptionChannel] = []
-    try:
-        sections = data["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][0]["tabRenderer"]["content"][
-            "sectionListRenderer"
-        ]["contents"]
-    except (KeyError, IndexError, TypeError):
+    sections = _safe_get_list(
+        data,
+        "contents",
+        "twoColumnBrowseResultsRenderer",
+        "tabs",
+        0,
+        "tabRenderer",
+        "content",
+        "sectionListRenderer",
+        "contents",
+    )
+    if not sections:
         return channels
 
     for section in sections:
-        item_section = section.get("itemSectionRenderer", {})
-        for content in item_section.get("contents", []):
-            shelf = content.get("shelfRenderer", {})
-            expanded = shelf.get("content", {}).get("expandedShelfContentsRenderer", {})
-            for item in expanded.get("items", []):
-                if "channelRenderer" not in item:
+        if not isinstance(section, dict):
+            continue
+        contents = _safe_get_list(section, "itemSectionRenderer", "contents")
+        for content in contents:
+            if not isinstance(content, dict):
+                continue
+            items = _safe_get_list(content, "shelfRenderer", "content", "expandedShelfContentsRenderer", "items")
+            for item in items:
+                if not isinstance(item, dict) or "channelRenderer" not in item:
                     continue
-                r = item["channelRenderer"]
-                title = r.get("title", {}).get("simpleText", "")
-                channel_id = r.get("channelId", "")
-                url_suffix = (
-                    r.get("navigationEndpoint", {}).get("commandMetadata", {}).get("webCommandMetadata", {}).get("url")
-                )
-                description = None
+                r = _safe_get_dict(item, "channelRenderer")
+                title = _safe_get_str(r, "title", "simpleText")
+                channel_id = _safe_get_str(r, "channelId")
+                url_suffix = _safe_get_str(r, "navigationEndpoint", "commandMetadata", "webCommandMetadata", "url")
+                description: str | None = None
                 if "descriptionSnippet" in r:
-                    runs = r["descriptionSnippet"].get("runs", [])
-                    description = "".join(run.get("text", "") for run in runs) if runs else None
-                handle = r.get("subscriberCountText", {}).get("simpleText")
+                    runs = _safe_get_list(r, "descriptionSnippet", "runs")
+                    if runs:
+                        description = (
+                            "".join(_safe_get_str(run, "text") for run in runs if isinstance(run, dict)) or None
+                        )
+                handle = _safe_get_str(r, "subscriberCountText", "simpleText") or None
                 if handle and not handle.startswith("@"):
                     handle = None
-                subscribers = r.get("videoCountText", {}).get("simpleText")
+                subscribers = _safe_get_str(r, "videoCountText", "simpleText") or None
                 channels.append(
                     SubscriptionChannel(
                         id=channel_id,
                         title=title,
                         handle=handle,
-                        url_suffix=url_suffix,
+                        url_suffix=url_suffix or None,
                         description=description,
                         subscribers=subscribers,
                     )
@@ -398,7 +466,7 @@ def _parse_subscription_channels(data: dict[str, Any]) -> list[SubscriptionChann
     return channels
 
 
-def _extract_yt_initial_data(html: str) -> dict[str, Any] | None:
+def _extract_yt_initial_data(html: str) -> JsonDict | None:
     if "ytInitialData" not in html:
         return None
     try:
@@ -471,45 +539,58 @@ async def _fetch_channel_about_description(
         return None
 
 
-def _get_sections(data: dict[str, Any]) -> list[dict[str, Any]]:
+def _get_sections(data: JsonDict) -> list[JsonDict]:
     """Get section list from initial or continuation response."""
     if "contents" in data:
-        return data["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][0]["tabRenderer"]["content"][
-            "sectionListRenderer"
-        ]["contents"]
+        contents = _safe_get_list(
+            data,
+            "contents",
+            "twoColumnBrowseResultsRenderer",
+            "tabs",
+            0,
+            "tabRenderer",
+            "content",
+            "sectionListRenderer",
+            "contents",
+        )
+        return [item for item in contents if isinstance(item, dict)]
     if "onResponseReceivedActions" in data:
-        for action in data["onResponseReceivedActions"]:
-            if "appendContinuationItemsAction" in action:
-                return action["appendContinuationItemsAction"]["continuationItems"]
+        actions = _safe_get_list(data, "onResponseReceivedActions")
+        for action in actions:
+            if isinstance(action, dict) and "appendContinuationItemsAction" in action:
+                items = _safe_get_list(action, "appendContinuationItemsAction", "continuationItems")
+                return [item for item in items if isinstance(item, dict)]
     return []
 
 
-def _parse_lockup_view_model(item: dict[str, Any]) -> HistoryEntry | None:
+def _parse_lockup_view_model(item: JsonDict) -> HistoryEntry | None:
     """Parse a lockupViewModel entry (current YouTube history format)."""
-    lvm = item.get("lockupViewModel")
+    lvm = _safe_get_dict(item, "lockupViewModel")
     if not lvm:
         return None
-    lvm_view: LockupViewModel = lvm
-    vid_id = lvm_view.get("contentId", "")
-    meta = lvm_view.get("metadata", {}).get("lockupMetadataViewModel", {})
-    title = meta.get("title", {}).get("content", "")
-    meta2 = meta.get("metadata", {}).get("contentMetadataViewModel", {})
-    rows = meta2.get("metadataRows", [])
+    vid_id = _safe_get_str(lvm, "contentId")
+    meta = _safe_get_dict(lvm, "metadata", "lockupMetadataViewModel")
+    title = _safe_get_str(meta, "title", "content")
+    meta2 = _safe_get_dict(meta, "metadata", "contentMetadataViewModel")
+    rows = _safe_get_list(meta2, "metadataRows")
     channel_name = ""
     views = ""
     # row[0] typically has channel (part 0) and views (part 1)
-    if rows:
-        parts = rows[0].get("metadataParts", [])
-        if len(parts) >= 1:
-            channel_name = parts[0].get("text", {}).get("content", "")
-        if len(parts) >= 2:
-            views = parts[1].get("text", {}).get("content", "")
+    if rows and isinstance(rows[0], dict):
+        parts = _safe_get_list(rows[0], "metadataParts")
+        if len(parts) >= 1 and isinstance(parts[0], dict):
+            channel_name = _safe_get_str(parts[0], "text", "content")
+        if len(parts) >= 2 and isinstance(parts[1], dict):
+            views = _safe_get_str(parts[1], "text", "content")
     duration = ""
-    overlays = lvm_view.get("contentImage", {}).get("thumbnailViewModel", {}).get("overlays", [])
+    overlays = _safe_get_list(lvm, "contentImage", "thumbnailViewModel", "overlays")
     for ov in overlays:
-        badges = ov.get("thumbnailBottomOverlayViewModel", {}).get("badges", [])
+        if not isinstance(ov, dict):
+            continue
+        badges = _safe_get_list(ov, "thumbnailBottomOverlayViewModel", "badges")
         for b in badges:
-            duration = b.get("thumbnailBadgeViewModel", {}).get("text", "")
+            if isinstance(b, dict):
+                duration = _safe_get_str(b, "thumbnailBadgeViewModel", "text")
     return {
         "id": vid_id,
         "title": title,
@@ -517,45 +598,42 @@ def _parse_lockup_view_model(item: dict[str, Any]) -> HistoryEntry | None:
         "duration": duration,
         "views": views,
         "url_suffix": f"/watch?v={vid_id}",
-        "publish_time": _extract_lockup_publish_time(lvm_view),
+        "publish_time": _extract_lockup_publish_time(lvm),
     }
 
 
-def _parse_video_renderer(item: dict[str, Any]) -> SubscriptionEntry | None:
+def _parse_video_renderer(item: JsonDict) -> SubscriptionEntry | None:
     """Parse a videoRenderer entry (legacy YouTube format)."""
-    vr = item.get("videoRenderer")
+    vr = _safe_get_dict(item, "videoRenderer")
     if not vr:
         return None
-    vr_view: VideoRenderer = vr
-    title_runs = vr_view.get("title", {}).get("runs", [])
-    channel_runs = vr_view.get("longBylineText", {}).get("runs", [])
+    title_runs = _safe_get_list(vr, "title", "runs")
+    channel_runs = _safe_get_list(vr, "longBylineText", "runs")
+    title = ""
+    if title_runs and isinstance(title_runs[0], dict):
+        title = _safe_get_str(title_runs[0], "text")
+    channel = ""
+    if channel_runs and isinstance(channel_runs[0], dict):
+        channel = _safe_get_str(channel_runs[0], "text")
     return {
-        "id": vr_view.get("videoId", ""),
-        "title": title_runs[0].get("text", "") if title_runs else "",
-        "channel": channel_runs[0].get("text", "") if channel_runs else "",
-        "duration": vr_view.get("lengthText", {}).get("simpleText", ""),
-        "views": vr_view.get("viewCountText", {}).get("simpleText", ""),
-        "publish_time": vr_view.get("publishedTimeText", {}).get("simpleText", ""),
-        "url_suffix": (
-            vr_view.get("navigationEndpoint", {})
-            .get("commandMetadata", {})
-            .get("webCommandMetadata", {})
-            .get("url", "")
-        ),
+        "id": _safe_get_str(vr, "videoId"),
+        "title": title,
+        "channel": channel,
+        "duration": _safe_get_str(vr, "lengthText", "simpleText"),
+        "views": _safe_get_str(vr, "viewCountText", "simpleText"),
+        "publish_time": _safe_get_str(vr, "publishedTimeText", "simpleText"),
+        "url_suffix": _safe_get_str(vr, "navigationEndpoint", "commandMetadata", "webCommandMetadata", "url"),
     }
 
 
-def _extract_continuation_token(data: dict[str, Any]) -> str | None:
+def _extract_continuation_token(data: JsonDict) -> str | None:
     """Extract the continuation token for the next page of history."""
-    try:
-        for section in _get_sections(data):
-            cont = section.get("continuationItemRenderer", {})
-            endpoint = cont.get("continuationEndpoint", {})
-            token = endpoint.get("continuationCommand", {}).get("token")
-            if token:
-                return token
-    except (KeyError, IndexError, TypeError):
-        pass
+    for section in _get_sections(data):
+        token = _safe_get_str(
+            section, "continuationItemRenderer", "continuationEndpoint", "continuationCommand", "token"
+        )
+        if token:
+            return token
     return None
 
 

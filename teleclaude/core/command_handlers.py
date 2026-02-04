@@ -186,10 +186,8 @@ async def _ensure_tmux_for_headless(
             metadata=MessageMetadata(),
         )
         return None
-    env_vars: dict[str, str] = {"TELECLAUDE_SESSION_ID": session.session_id}
     voice = await db.get_voice(session.session_id)
-    if voice:
-        env_vars.update(get_voice_env_vars(voice))
+    env_vars = get_voice_env_vars(voice) if voice else {}
 
     try:
         created = await tmux_bridge.ensure_tmux_session(

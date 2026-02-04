@@ -1,179 +1,154 @@
 project_root: ~/Workspace/InstruktAI/TeleClaude
 snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
 snippets:
-- id: project/architecture/adapter-client
+- id: project/concept/ai-worker
+  description: The role of an AI agent session in the TeleClaude network.
+  type: concept
+  scope: global
+  path: docs/project/concept/ai-worker.md
+  source_project: TeleClaude
+- id: project/concept/master-bot
+  description: The role of the master bot in a multi-computer Telegram supergroup.
+  type: concept
+  scope: global
+  path: docs/project/concept/master-bot.md
+  source_project: TeleClaude
+- id: project/design/adapter-client
   description: AdapterClient centralizes UI adapter lifecycle, delivery, and cross-computer
     routing.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/adapter-client.md
+  path: docs/project/design/adapter-client.md
   source_project: TeleClaude
-- id: project/architecture/api-server
+- id: project/design/api-server
   description: Local HTTP and WebSocket API that reads from cache and routes writes
     through the command pipeline.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/api-server.md
+  path: docs/project/design/api-server.md
   source_project: TeleClaude
-- id: project/architecture/cache
+- id: project/design/cache
   description: DaemonCache snapshot layer for computers, projects, todos, sessions,
     and agent availability.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/cache.md
+  path: docs/project/design/cache.md
   source_project: TeleClaude
-- id: project/architecture/cache-system
+- id: project/design/cache-system
   description: Event-driven read-cache architecture using SQLite snapshots.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/cache-system.md
+  path: docs/project/design/cache-system.md
   source_project: TeleClaude
-- id: project/architecture/context-index
+- id: project/design/context-index
   description: Snippet index generation that produces docs/index.yaml from snippet
     frontmatter.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/context-index.md
+  path: docs/project/design/context-index.md
   source_project: TeleClaude
-- id: project/architecture/context-selection
+- id: project/design/context-selection
   description: Context selection pipeline that picks relevant docs for MCP get_context.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/context-selection.md
+  path: docs/project/design/context-selection.md
   source_project: TeleClaude
-- id: project/architecture/daemon
+- id: project/design/daemon
   description: Daemon orchestration responsibilities, boundaries, and background services.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/daemon.md
+  path: docs/project/design/daemon.md
   source_project: TeleClaude
-- id: project/architecture/database
+- id: project/design/database
   description: SQLite persistence for sessions, hook outbox, UX state, and agent metadata.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/database.md
+  path: docs/project/design/database.md
   source_project: TeleClaude
-- id: project/architecture/mcp-layer
+- id: project/design/mcp-layer
   description: Resilient two-layer MCP architecture for AI-to-AI communication.
-  type: architecture
+  type: design
   scope: global
-  path: docs/project/architecture/mcp-layer.md
+  path: docs/project/design/mcp-layer.md
   source_project: TeleClaude
-- id: project/architecture/next-machine
+- id: project/design/next-machine
   description: Stateless state machine for orchestrating multi-phase project workflows.
-  type: architecture
+  type: design
   scope: global
-  path: docs/project/architecture/next-machine.md
+  path: docs/project/design/next-machine.md
   source_project: TeleClaude
-- id: project/architecture/outbox
+- id: project/design/outbox
   description: Durable outbox table for agent hook events.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/outbox.md
+  path: docs/project/design/outbox.md
   source_project: TeleClaude
-- id: project/architecture/output-polling
+- id: project/design/output-polling
   description: Mechanism for real-time terminal output capture and streaming.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/output-polling.md
+  path: docs/project/design/output-polling.md
   source_project: TeleClaude
-- id: project/architecture/redis-transport
+- id: project/design/redis-transport
   description: Redis Streams transport for cross-computer request/response and peer
     discovery.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/redis-transport.md
+  path: docs/project/design/redis-transport.md
   source_project: TeleClaude
-- id: project/architecture/session-lifecycle
+- id: project/design/session-lifecycle
   description: Complete lifecycle of a terminal session from creation to cleanup.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/session-lifecycle.md
+  path: docs/project/design/session-lifecycle.md
   source_project: TeleClaude
-- id: project/architecture/session-listeners
+- id: project/design/session-listeners
   description: In-memory listener registry that notifies callers when target sessions
     stop.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/session-listeners.md
+  path: docs/project/design/session-listeners.md
   source_project: TeleClaude
-- id: project/architecture/system-overview
+- id: project/design/system-overview
   description: High-level architectural blueprint of TeleClaude components and data
     flow.
-  type: architecture
+  type: design
   scope: global
-  path: docs/project/architecture/system-overview.md
+  path: docs/project/design/system-overview.md
   source_project: TeleClaude
-- id: project/architecture/telegram-adapter
+- id: project/design/telegram-adapter
   description: Telegram UI adapter that maps topics to sessions and enforces UX cleanup
     rules.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/telegram-adapter.md
+  path: docs/project/design/telegram-adapter.md
   source_project: TeleClaude
-- id: project/architecture/tmux-management
+- id: project/design/tmux-management
   description: Tmux session orchestration, input injection, and per-session temp directories.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/tmux-management.md
+  path: docs/project/design/tmux-management.md
   source_project: TeleClaude
-- id: project/architecture/tts-system
+- id: project/design/tts-system
   description: Text-to-speech system with multi-backend fallback, per-session voice
     assignment, and file-locked sequential playback.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/tts-system.md
+  path: docs/project/design/tts-system.md
   source_project: TeleClaude
-- id: project/architecture/tui-state-layout
+- id: project/design/tui-state-layout
   description: State-driven layout model for the Telec TUI sessions and preparation
     views.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/tui-state-layout.md
+  path: docs/project/design/tui-state-layout.md
   source_project: TeleClaude
-- id: project/architecture/ui-adapter
+- id: project/design/ui-adapter
   description: UI adapters translate human inputs into events and render outputs with
     UX rules.
-  type: architecture
+  type: design
   scope: project
-  path: docs/project/architecture/ui-adapter.md
-  source_project: TeleClaude
-- id: project/checklist/multi-computer-readiness
-  description: Verification steps before enabling multi-computer orchestration.
-  type: checklist
-  scope: global
-  path: docs/project/checklist/multi-computer-readiness.md
-  source_project: TeleClaude
-- id: project/example/ai-to-ai-delegation
-  description: Code example of a Master AI delegating a task to a Worker AI.
-  type: example
-  scope: global
-  path: docs/project/example/ai-to-ai-delegation.md
-  source_project: TeleClaude
-- id: project/guide/ai-to-ai-operations
-  description: Recommended flow for delegating work using TeleClaude MCP tools.
-  type: guide
-  scope: project
-  path: docs/project/guide/ai-to-ai-operations.md
-  source_project: TeleClaude
-- id: project/guide/multi-computer-setup
-  description: Guide for setting up a distributed TeleClaude network.
-  type: guide
-  scope: project
-  path: docs/project/guide/multi-computer-setup.md
-  source_project: TeleClaude
-- id: project/guide/ssh-agent-deployments
-  description: Configure SSH agent access for automated git operations and deployments.
-  type: guide
-  scope: project
-  path: docs/project/guide/ssh-agent-deployments.md
-  source_project: TeleClaude
-- id: project/guide/troubleshooting
-  description: Comprehensive operations runbook for TeleClaude troubleshooting and
-    observability.
-  type: guide
-  scope: project
-  path: docs/project/guide/troubleshooting.md
+  path: docs/project/design/ui-adapter.md
   source_project: TeleClaude
 - id: project/policy/adapter-boundaries
   description: Strict separation between adapters and core logic.
@@ -187,24 +162,11 @@ snippets:
   scope: project
   path: docs/project/policy/agent-artifact-governance.md
   source_project: TeleClaude
-- id: project/policy/agent-service-control
-  description: Defines which service/daemon commands agents may run, which are conditional,
-    and which are prohibited in this repo.
-  type: policy
-  scope: project
-  path: docs/project/policy/agent-service-control.md
-  source_project: TeleClaude
 - id: project/policy/cache-contract
   description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
   type: policy
   scope: project
   path: docs/project/policy/cache-contract.md
-  source_project: TeleClaude
-- id: project/policy/daemon-availability
-  description: The TeleClaude daemon must stay up; restarts must be brief and verified.
-  type: policy
-  scope: project
-  path: docs/project/policy/daemon-availability.md
   source_project: TeleClaude
 - id: project/policy/data-modeling
   description: Data modeling, validation, and resource representation rules.
@@ -218,26 +180,12 @@ snippets:
   scope: global
   path: docs/project/policy/master-bot-registration.md
   source_project: TeleClaude
-- id: project/policy/mcp-connection-management
-  description: Architecture policy for MCP clients - tool-call filtering, connection
-    handling, to guarantee stable connection between daemon restarts.
-  type: policy
-  scope: global
-  path: docs/project/policy/mcp-connection-management.md
-  source_project: TeleClaude
 - id: project/policy/mcp-tool-filtering
   description: Role-based filtering of teleclaude tools to enforce least-privilege
     for scoped agents.
   type: policy
   scope: project
   path: docs/project/policy/mcp-tool-filtering.md
-  source_project: TeleClaude
-- id: project/policy/single-database
-  description: Guaranteed single database file usage for the daemon to prevent data
-    fragmentation.
-  type: policy
-  scope: project
-  path: docs/project/policy/single-database.md
   source_project: TeleClaude
 - id: project/policy/telegram-command-registration
   description: Rules for registering Telegram commands and keeping the command list
@@ -270,11 +218,23 @@ snippets:
   scope: project
   path: docs/project/procedure/agent-artifact-distribution.md
   source_project: TeleClaude
+- id: project/procedure/ai-to-ai-operations
+  description: Recommended flow for delegating work using TeleClaude MCP tools.
+  type: procedure
+  scope: project
+  path: docs/project/procedure/ai-to-ai-operations.md
+  source_project: TeleClaude
 - id: project/procedure/deploy
   description: Deploy TeleClaude changes safely with verification.
   type: procedure
   scope: project
   path: docs/project/procedure/deploy.md
+  source_project: TeleClaude
+- id: project/procedure/multi-computer-setup
+  description: Guide for setting up a distributed TeleClaude network.
+  type: procedure
+  scope: project
+  path: docs/project/procedure/multi-computer-setup.md
   source_project: TeleClaude
 - id: project/procedure/out-of-band-telegram-alerts
   description: Send Telegram alerts when the daemon is down using standalone scripts.
@@ -300,59 +260,60 @@ snippets:
   scope: project
   path: docs/project/procedure/service-management.md
   source_project: TeleClaude
+- id: project/procedure/ssh-agent-deployments
+  description: Configure SSH agent access for automated git operations and deployments.
+  type: procedure
+  scope: project
+  path: docs/project/procedure/ssh-agent-deployments.md
+  source_project: TeleClaude
 - id: project/procedure/ssh-agent-keychain
   description: Procedure for configuring persistent SSH agent access for the daemon.
   type: procedure
   scope: global
   path: docs/project/procedure/ssh-agent-keychain.md
   source_project: TeleClaude
-- id: project/reference/agent-artifact-automation
+- id: project/procedure/troubleshooting
+  description: Comprehensive operations runbook for TeleClaude troubleshooting and
+    observability.
+  type: procedure
+  scope: project
+  path: docs/project/procedure/troubleshooting.md
+  source_project: TeleClaude
+- id: project/spec/agent-artifact-automation
   description: Automation that rebuilds and deploys agent artifacts when sources change.
-  type: reference
+  type: spec
   scope: project
-  path: docs/project/reference/agent-artifact-automation.md
+  path: docs/project/spec/agent-artifact-automation.md
   source_project: TeleClaude
-- id: project/reference/cache-ttl-matrix
+- id: project/spec/cache-ttl-matrix
   description: TTL and scope matrix for cache refresh behavior.
-  type: reference
+  type: spec
   scope: project
-  path: docs/project/reference/cache-ttl-matrix.md
+  path: docs/project/spec/cache-ttl-matrix.md
   source_project: TeleClaude
-- id: project/reference/command-contracts
+- id: project/spec/command-contracts
   description: Command contract highlights for session creation, messaging, and agent
     control.
-  type: reference
+  type: spec
   scope: project
-  path: docs/project/reference/command-contracts.md
+  path: docs/project/spec/command-contracts.md
   source_project: TeleClaude
-- id: project/reference/command-surface
+- id: project/spec/command-surface
   description: Command surface contract for TeleClaude client interfaces.
-  type: reference
+  type: spec
   scope: project
-  path: docs/project/reference/command-surface.md
+  path: docs/project/spec/command-surface.md
   source_project: TeleClaude
-- id: project/reference/event-types
+- id: project/spec/event-types
   description: TeleClaude event names used between adapters, daemon, and clients.
-  type: reference
+  type: spec
   scope: project
-  path: docs/project/reference/event-types.md
+  path: docs/project/spec/event-types.md
   source_project: TeleClaude
-- id: project/reference/git-docs-filter
+- id: project/spec/git-docs-filter
   description: Git filter that expands tilde paths for agents and normalizes them
     for portable commits.
-  type: reference
+  type: spec
   scope: project
-  path: docs/project/reference/git-docs-filter.md
-  source_project: TeleClaude
-- id: project/role/ai-worker
-  description: The role of an AI agent session in the TeleClaude network.
-  type: role
-  scope: global
-  path: docs/project/role/ai-worker.md
-  source_project: TeleClaude
-- id: project/role/master-bot
-  description: The role of the master bot in a multi-computer Telegram supergroup.
-  type: role
-  scope: global
-  path: docs/project/role/master-bot.md
+  path: docs/project/spec/git-docs-filter.md
   source_project: TeleClaude

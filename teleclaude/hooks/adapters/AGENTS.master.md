@@ -13,8 +13,8 @@ TeleClaude uses typed internal payload models (see `teleclaude/core/events.py`):
 - `AgentNotificationPayload`
 - `AgentSessionEndPayload` (reserved)
 
-These are constructed in `teleclaude/core/adapter_client.py` and enforced via
-direct field access (no `.get` fallbacks for required fields).
+These are constructed in `teleclaude/core/adapter_client.py`, frozen (immutable),
+and enforced via direct field access (no `.get` fallbacks for required fields).
 
 The hook receiver writes events to the `hook_outbox` database table with the
 following internal shape:
@@ -29,8 +29,8 @@ following internal shape:
 
 The daemon's `_hook_outbox_worker` processes queued events and dispatches them.
 
-## Summary enrichment
+## Summary generation
 
-Adapters never enrich payloads. The daemon enriches `stop` events by running
+Adapters never mutate payloads. The daemon generates summaries on `stop` events by running
 summarization against the transcript markdown produced by
 `teleclaude/utils/transcript.py` (see `parse_session_transcript(...)`).

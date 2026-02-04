@@ -1,5 +1,5 @@
 ---
-description: Regenerate docs from code and existing documentation using the taxonomy.
+description: Sync docs and indexes after documentation changes.
 id: software-development/procedure/lifecycle/documentation/sync-docs
 scope: domain
 type: procedure
@@ -9,34 +9,20 @@ type: procedure
 
 ## Goal
 
-Regenerate `docs/` from code and existing documentation using the taxonomy lens.
+After any documentation change, run `telec sync`.
 
 ## Preconditions
 
-- Repository is clean enough to regenerate docs.
-- `docs/` and `docs-3rd/` are available.
+- `telec` is available.
 
 ## Steps
 
-1. Read `README.md`, `AGENTS.md`, and `docs/**/*.md` excluding `docs/` and `docs-3rd/`.
-2. Scan code entrypoints, adapters, state flows, and tests.
-3. Create or refresh docs across the taxonomy.
-4. Rebuild `docs/index.yaml` and validate integrity.
-
-## Report format
-
-```
-DOCS SYNC COMPLETE
-
-Snippets updated: {count}
-Index rebuilt: yes
-Validation: PASSING
-```
+1. Run `telec sync`.
 
 ## Outputs
 
-- Updated `docs/` and `docs/index.yaml`.
+- Updated `docs/` and regenerated `docs/index.yaml`.
 
 ## Recovery
 
-- If validation fails, report the errors and stop.
+- If `telec sync` fails, fix the issue and rerun it.

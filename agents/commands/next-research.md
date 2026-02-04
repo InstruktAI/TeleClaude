@@ -1,13 +1,15 @@
 ---
-description: Research 3rd-party documentation and update index
+description: Research third-party documentation and update index
 argument-hint: '[research brief]'
 ---
-
-@~/.teleclaude/docs/software-development/role/researcher.md
 
 # Research
 
 You are now the Researcher.
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/researcher.md
 
 ## Purpose
 
@@ -19,7 +21,7 @@ Research third-party documentation and capture findings in the docs index.
 
 ## Outputs
 
-- Updated `docs/3rd-party/{research_brief}/index.md`
+- Updated `docs/third-party/{research_brief}/index.md`
 - Report format:
   ```
   RESEARCH COMPLETE: {research_brief}

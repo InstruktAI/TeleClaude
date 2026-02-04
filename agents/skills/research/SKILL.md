@@ -3,90 +3,72 @@ name: research
 description: Explore a topic, gather information, and produce a durable, reusable record of findings.
 ---
 
-@/Users/Morriz/.teleclaude/docs/general/reference/history-log.md
-
 # Research
+
+## Required reads
+
+- @~/.teleclaude/docs/general/spec/history-log.md
 
 ## Purpose
 
-Orchestrate topic exploration by delegating to specialized skills and producing a durable record that links all findings together.
+Investigate a topic, gather information from multiple sources, and produce a durable record of findings that can be reused in future sessions.
 
 ## Scope
 
-- Produces a topic record under `~/.teleclaude/explore/<topic>/`.
-- Delegates to specialized skills for specific source types.
-- Links sub-skill artifacts via `@` references for reuse.
-- Does NOT duplicate work that sub-skills already do.
+- General-purpose research for any topic or question.
+- Uses web search, documentation, and any available information sources.
+- Maintains a persistent record so the same research doesn't need to be repeated.
+- Topic records live under `~/.teleclaude/explore/<topic>/`.
 
-**Skill routing:**
+**Related skills (for specialized tasks):**
 
-| Signal in request                                               | Skill to invoke       | Artifact location                          |
-| --------------------------------------------------------------- | --------------------- | ------------------------------------------ |
-| Git URL, repo name (owner/repo), "how does X repo work"         | `/git-repo-scraper`   | `~/.teleclaude/git/<host>/<owner>/<repo>/` |
-| YouTube URL, channel name, "videos about X", transcript request | `/youtube`            | (ephemeral - capture in topic index)       |
-| Library/framework name, "docs for X", official API reference    | `/tech-stack-docs`    | `~/.teleclaude/docs/third-party/<lib>/`    |
-| General topic, comparison, "what is X", web sources             | Web search (built-in) | Capture in topic index                     |
+If the user's request is specifically about one of these, suggest the specialized skill instead:
 
-**Routing rules:**
+- `/git-repo-scraper` — Deep analysis of a specific Git repository
+- `/youtube` — YouTube video search, history, transcripts
+- `/tech-stack-docs` — Capturing official library/framework documentation
 
-- If the request is ONLY about official library docs, recommend `/tech-stack-docs` and stop unless user confirms.
-- If the request mentions a specific repo, invoke `/git-repo-scraper` first, then synthesize.
-- If the request mentions YouTube content, invoke `/youtube` to fetch, then capture findings in the topic index.
-- For mixed sources, invoke skills in sequence and aggregate in the topic index.
+These skills produce their own artifacts. If you use them during research, link to their outputs rather than duplicating.
 
 ## Inputs
 
-- Research brief (topic, question, or URLs).
-- Optional: sources to prioritize or avoid.
+- Research brief: a question, topic, or area to investigate.
+- Optional: specific sources to consult or avoid.
 
 ## Outputs
 
-- Topic index: `~/.teleclaude/explore/<topic>/index.md`
-- Topic history: `~/.teleclaude/explore/<topic>/history.md`
-- Links to sub-skill artifacts (not copies)
+- Topic index: `~/.teleclaude/explore/<topic>/index.md` — synthesized findings
+- Topic history: `~/.teleclaude/explore/<topic>/history.md` — log of questions asked and answered
 
 ## Procedure
 
-1. **Parse the brief** — Identify source types (repo? video? docs? general web?).
+1. **Check existing work** — Read `~/.teleclaude/explore/<topic>/history.md` if it exists. If the question was already answered, return that answer or build on it.
 
-2. **Check existing work** — Read `~/.teleclaude/explore/<topic>/history.md` if it exists. Reuse prior answers for covered objectives.
+2. **Investigate** — Use web search, read documentation, consult available sources. Follow leads. Gather evidence.
 
-3. **Delegate to specialized skills:**
-   - **Git repo**: Invoke `/git-repo-scraper` with the repo reference. The skill produces `~/.teleclaude/git/<host>/<owner>/<repo>/index.md`. Link to it with `@~/.teleclaude/git/...`.
-   - **YouTube**: Invoke `/youtube` with the query/channel. Capture the output in the topic index (YouTube doesn't persist artifacts).
-   - **Library docs**: Recommend `/tech-stack-docs` and confirm before proceeding.
-   - **Web sources**: Use web search directly and cite URLs.
+3. **Synthesize** — Distill findings into a clear answer. Note what's certain vs. uncertain.
 
-4. **Aggregate in topic index** — Update `~/.teleclaude/explore/<topic>/index.md` with:
-   - Brief summary of the objective
-   - `@` references to sub-skill artifacts
-   - Key findings synthesized from all sources
-   - Gaps and open questions
+4. **Record** — Update `index.md` with current understanding. Append to `history.md` with: timestamp, objective, answer, evidence (URLs/paths), gaps.
 
-5. **Log the answer** — Append to `history.md` using the history log format (timestamp, objective, answer, evidence, gaps).
-
-6. **Respond** — Return the synthesized answer to the user.
+5. **Respond** — Return the answer to the user.
 
 ## Examples
 
-**Objective:** "Learn how anthropics/claude-code handles MCP connections."
+**"What are the main differences between Redis Streams and Kafka for message queuing?"**
 
-1. Invoke `/git-repo-scraper` with `--host github.com --owner anthropics --repo claude-code`.
-2. Wait for it to produce `~/.teleclaude/git/github.com/anthropics/claude-code/index.md`.
-3. Read the index and search for MCP-related files.
-4. Create `~/.teleclaude/explore/claude-code-mcp/index.md` with:
-   - Link: `@~/.teleclaude/git/github.com/anthropics/claude-code/index.md`
-   - Findings about MCP connection handling
-5. Append answer to history.md.
+1. Search for comparisons, Redis Streams documentation, Kafka documentation.
+2. Identify key differences: persistence model, consumer groups, scaling, ordering guarantees.
+3. Synthesize into a comparison table or summary.
+4. Record in `~/.teleclaude/explore/redis-streams-vs-kafka/`.
 
-**Objective:** "What are the latest AI agent videos from @aiexplained?"
+**"What's the current state of WebGPU browser support?"**
 
-1. Invoke `/youtube` with `--mode search --channels "@aiexplained" --query "AI agents" --period-days 30`.
-2. Capture video titles, URLs, and transcript summaries in `~/.teleclaude/explore/aiexplained-agents/index.md`.
-3. Append answer to history.md.
+1. Search for WebGPU browser support, caniuse data, recent announcements.
+2. Find current status for Chrome, Firefox, Safari, Edge.
+3. Note any recent changes or upcoming milestones.
+4. Record findings with dated sources.
 
-**Objective:** "Research Redis Streams for our message queue."
+**"I want to understand how the X repository handles authentication"**
 
-1. Detect this is library documentation — recommend `/tech-stack-docs` instead.
-2. If user confirms general research, proceed with web search.
-3. If user wants official docs captured, let `/tech-stack-docs` handle it.
+1. Recognize this is deep repo analysis — suggest `/git-repo-scraper` for thorough indexing.
+2. If user wants quick research instead, do targeted web search and surface-level analysis.

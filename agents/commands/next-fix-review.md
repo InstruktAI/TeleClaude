@@ -3,12 +3,14 @@ argument-hint: '[slug]'
 description: Worker command - fix issues identified in code review findings
 ---
 
-@~/.teleclaude/docs/software-development/role/fixer.md
-@~/.teleclaude/docs/software-development/procedure/lifecycle/fix-review.md
-
 # Fix Review Issues
 
 You are now the Fixer.
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/fixer.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/fix-review.md
 
 ## Purpose
 

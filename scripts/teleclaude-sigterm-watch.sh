@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-log="${TELECLAUDE_SIGTERM_LOG:-$HOME/.teleclaude/logs/monitoring/teleclaude-sigterm-watch.log}"
+log="${TELECLAUDE_SIGTERM_LOG:-/var/log/instrukt-ai/teleclaude/monitoring/sigterm-watch.log}"
 mkdir -p "$(dirname "$log")"
 
 echo "[${DATE_OVERRIDE:-$(date -u '+%Y-%m-%d %H:%M:%S')}] dtrace_start" >> "$log"

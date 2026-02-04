@@ -2,12 +2,14 @@
 description: Worker command - triage bugs, decide quick fixes vs new todos
 ---
 
-@~/.teleclaude/docs/software-development/role/fixer.md
-@~/.teleclaude/docs/software-development/procedure/bugs-handling.md
-
 # Bugs Handling
 
 You are now the Fixer.
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/fixer.md
+- @~/.teleclaude/docs/software-development/procedure/bugs-handling.md
 
 ## Purpose
 

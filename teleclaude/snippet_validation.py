@@ -191,6 +191,15 @@ def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:
         return "missing_segments"
     if parts[0] != "project":
         return "invalid_project_scope"
+    if parts[1] == "baseline":
+        if len(parts) < 4:
+            return "missing_segments"
+        taxonomy = parts[2]
+        if taxonomy not in ALLOWED_TAXONOMIES:
+            return "invalid_taxonomy"
+        if not parts[-1].endswith(".md"):
+            return "missing_md_extension"
+        return None
     taxonomy = parts[1]
     if taxonomy not in ALLOWED_TAXONOMIES:
         return "invalid_taxonomy"

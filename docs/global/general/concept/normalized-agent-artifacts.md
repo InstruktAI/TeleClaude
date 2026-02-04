@@ -13,8 +13,8 @@ Normalized agent artifacts are the shared, source‑of‑truth files we author t
 agent behavior, their artifacts such as sub‑agents, commands, skills, and related configuration
 in one consistent format.
 They live in two scopes—global and project—so organization‑wide guidance and project‑specific
-behavior can coexist without overwriting each other. These sources are intentionally
-human‑authored and stable; the agent‑specific outputs are derived from them and treated
+behavior can coexist without overwriting each other. These sources are intentionally stable;
+the agent‑specific outputs are derived from them and treated
 as build artifacts rather than hand‑edited files.
 
 ## Why

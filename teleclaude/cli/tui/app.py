@@ -656,9 +656,12 @@ class TelecApp:
 
         def _handle_signal(_signum: int, _frame: object | None) -> None:
             self._theme_refresh_requested = True
+
+        def _handle_reload_signal(_signum: int, _frame: object | None) -> None:
             self._reload_requested = True
 
         signal.signal(signal.SIGUSR1, _handle_signal)
+        signal.signal(signal.SIGUSR2, _handle_reload_signal)
         logger.debug("Installed SIGUSR1 handler for appearance reload")
 
     def _reload_self(self) -> None:

@@ -26,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from teleclaude.constants import TYPE_SUFFIX  # noqa: E402
+from teleclaude.constants import TAXONOMY_TYPES, TYPE_SUFFIX  # noqa: E402
 from teleclaude.snippet_validation import (  # noqa: E402
     expected_snippet_id_for_path,
     load_domains,
@@ -51,7 +51,7 @@ _INLINE_CODE_SPAN = re.compile(r"`[^`]*`")
 
 _SCHEMA_PATH = Path(__file__).resolve().parents[1] / "scripts" / "snippet_schema.yaml"
 
-_ARTIFACT_REF_ORDER = ["concept", "principle", "policy", "role", "procedure", "reference"]
+_ARTIFACT_REF_ORDER = TAXONOMY_TYPES.copy()
 
 # ---------------------------------------------------------------------------
 # Warning collection
@@ -571,23 +571,28 @@ def _taxonomy_from_ref(ref: str) -> str | None:
     return None
 
 
-def _extract_artifact_required_reads(lines: list[str]) -> tuple[list[str], int]:
-    """Extract leading ``@`` refs from artifact content (before the H1 title)."""
-    idx = 0
-    while idx < len(lines) and not lines[idx].strip():
-        idx += 1
+def _extract_artifact_required_reads(lines: list[str]) -> list[str]:
+    """Extract ``@`` refs from a Required reads section after the H1 title."""
     refs: list[str] = []
-    while idx < len(lines):
-        stripped = lines[idx].strip()
-        if not stripped:
-            idx += 1
+    in_required_reads = False
+    for raw in lines:
+        stripped = raw.strip()
+        if stripped.lower() == "## required reads":
+            in_required_reads = True
             continue
-        if stripped.startswith("@"):
-            refs.append(stripped[1:].strip())
-            idx += 1
-            continue
-        break
-    return refs, idx
+        if in_required_reads:
+            if stripped.startswith("## ") or stripped.startswith("# "):
+                break
+            if stripped.startswith("@"):
+                refs.append(stripped[1:].strip())
+                continue
+            if stripped.startswith("- @"):
+                refs.append(stripped[3:].strip())
+                continue
+            if not stripped:
+                continue
+            break
+    return refs
 
 
 def _next_nonblank(lines: list[str], idx: int) -> tuple[str | None, int]:
@@ -615,26 +620,68 @@ def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> N
     if kind == "command" and argument_hint is not None and not isinstance(argument_hint, str):
         raise ValueError(f"{path} has invalid frontmatter 'argument-hint' (must be a string)")
     lines = post.content.splitlines()
-    refs, idx = _extract_artifact_required_reads(lines)
+    first_line, h1_idx = _next_nonblank(lines, 0)
+    if first_line is None or not first_line.startswith("# "):
+        raise ValueError(f"{path} must start with an H1 title")
+
+    required_reads_idx = None
+    required_reads_end = None
+    for i in range(h1_idx + 1, len(lines)):
+        if lines[i].strip().lower() == "## required reads":
+            required_reads_idx = i
+            j = i + 1
+            while j < len(lines):
+                stripped = lines[j].strip()
+                if not stripped:
+                    j += 1
+                    continue
+                if stripped.startswith("@") or stripped.startswith("- @"):
+                    j += 1
+                    continue
+                if stripped.startswith("# "):
+                    break
+                if stripped.startswith("## ") and stripped.lower() != "## required reads":
+                    break
+                break
+            required_reads_end = j
+            break
+
+    if required_reads_idx is not None:
+        for i in range(h1_idx + 1, required_reads_idx):
+            stripped = lines[i].strip()
+            if stripped.startswith("## "):
+                raise ValueError(f"{path} must place Required reads before other H2 sections")
+        for i in range(required_reads_idx + 1, required_reads_end or len(lines)):
+            stripped = lines[i].strip()
+            if not stripped:
+                continue
+            if stripped.startswith("@") or stripped.startswith("- @"):
+                continue
+            break
+
+    refs = _extract_artifact_required_reads(lines)
     _validate_required_reads_order(refs, path)
 
-    line, idx = _next_nonblank(lines, idx)
-    if line is None or not line.startswith("# "):
-        raise ValueError(f"{path} must start with an H1 title after required reads")
-    idx += 1
+    first_section_idx = None
+    for i in range(h1_idx + 1, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("## ") and stripped.lower() != "## required reads":
+            first_section_idx = i
+            break
 
-    line, idx = _next_nonblank(lines, idx)
-    if kind in {"command", "agent"}:
-        if line is None or not line.strip().startswith("You are now the "):
-            raise ValueError(f"{path} must include role activation line after the title")
-        idx += 1
-    else:
-        if line is not None and line.strip().startswith("You are now the "):
-            raise ValueError(f"{path} must not include a role activation line")
-
-    line, idx = _next_nonblank(lines, idx)
-    if line is None:
+    if first_section_idx is None:
         raise ValueError(f"{path} is missing required section headings")
+
+    if kind in {"command", "agent"}:
+        has_role = any(
+            line.strip().startswith("You are now the ")
+            for line in lines[h1_idx + 1 : first_section_idx]
+        )
+        if not has_role:
+            raise ValueError(f"{path} must include a role activation line before the first section")
+    else:
+        if any(line.strip().startswith("You are now the ") for line in lines):
+            raise ValueError(f"{path} must not include a role activation line")
 
     allowed_map = {
         "command": ["Purpose", "Inputs", "Outputs", "Steps", "Examples"],
@@ -650,16 +697,29 @@ def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> N
     required = required_map[kind]
 
     headings: list[str] = []
-    for raw in lines[idx:]:
+    in_required_reads = False
+    for idx, raw in enumerate(lines):
         stripped = raw.strip()
-        if stripped.startswith("@"):
+        if stripped.lower() == "## required reads":
+            in_required_reads = True
+            continue
+        if in_required_reads:
+            if stripped.startswith("## ") or stripped.startswith("# "):
+                in_required_reads = False
+            else:
+                continue
+        if stripped.startswith("@") or stripped.startswith("- @"):
             raise ValueError(f"{path} has inline refs outside the required reads block")
         if stripped.startswith("# "):
-            raise ValueError(f"{path} must only have one H1 title")
+            if idx != h1_idx:
+                raise ValueError(f"{path} must only have one H1 title")
         if stripped.startswith("### "):
             raise ValueError(f"{path} must use H2 headings only for schema sections")
         if stripped.startswith("## "):
-            headings.append(stripped[3:].strip())
+            title = stripped[3:].strip()
+            if title.lower() == "required reads":
+                continue
+            headings.append(title)
 
     if not headings:
         raise ValueError(f"{path} is missing required section headings")
@@ -697,7 +757,7 @@ def validate_artifact(post: frontmatter.Post, path: str, *, kind: str, project_r
     """Full validation of an agent artifact."""
     validate_artifact_frontmatter(post, path, kind=kind)
     validate_artifact_body(post, path, kind=kind)
-    refs, _ = _extract_artifact_required_reads(post.content.splitlines())
+    refs = _extract_artifact_required_reads(post.content.splitlines())
     if refs:
         validate_artifact_refs_exist(refs, path, project_root=project_root)
     if kind == "skill":

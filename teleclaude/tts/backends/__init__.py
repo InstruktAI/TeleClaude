@@ -22,10 +22,16 @@ BACKENDS: dict[str, TTSBackend] = {
 
 if sys.platform == "darwin":
     from teleclaude.tts.backends.macos_say import MacOSSayBackend
-    from teleclaude.tts.backends.qwen3_tts import Qwen3TTSBackend
 
     BACKENDS["macos"] = MacOSSayBackend()
-    BACKENDS["qwen3"] = Qwen3TTSBackend()
+
+    # Qwen3 requires mlx_audio which may not be installed
+    try:
+        from teleclaude.tts.backends.qwen3_tts import Qwen3TTSBackend
+
+        BACKENDS["qwen3"] = Qwen3TTSBackend()
+    except ImportError:
+        pass  # mlx_audio not available, skip qwen3 backend
 
 
 def get_backend(service_name: str):

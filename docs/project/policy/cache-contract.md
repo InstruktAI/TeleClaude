@@ -9,7 +9,7 @@ type: policy
 
 ## Required reads
 
-- @docs/project/architecture/cache.md
+- @docs/project/design/cache.md
 
 ## Rules
 

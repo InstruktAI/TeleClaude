@@ -6,35 +6,23 @@ import fcntl
 import hashlib
 import json
 import os
-import platform
-import re
-import resource
 import signal
-import subprocess
 import sys
-import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Awaitable, Callable, Coroutine, Optional, TextIO, TypedDict, cast
+from typing import Awaitable, Callable, Coroutine, Optional, TextIO, cast
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.base_adapter import BaseAdapter
-from teleclaude.api_server import APIServer
 from teleclaude.config import config  # config.py loads .env at import time
 from teleclaude.constants import MCP_SOCKET_PATH, UI_MESSAGE_MAX_CHARS
-from teleclaude.core import (
-    polling_coordinator,
-    session_cleanup,
-    tmux_bridge,
-    tmux_io,
-    voice_message_handler,
-)
+from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_coordinator import AgentCoordinator
-from teleclaude.core.agents import AgentName, get_agent_command
+from teleclaude.core.agents import AgentName
 from teleclaude.core.cache import DaemonCache
 from teleclaude.core.command_registry import init_command_service
 from teleclaude.core.command_service import CommandService
@@ -43,8 +31,6 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
-    AgentPromptPayload,
-    AgentStopPayload,
     DeployArgs,
     ErrorEventContext,
     EventType,
@@ -61,55 +47,34 @@ from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import (
     get_output_file,
     get_short_project_name,
-    parse_session_title,
     resolve_working_dir,
     split_project_path_and_subdir,
 )
-from teleclaude.core.summarizer import summarize
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
-from teleclaude.transport.redis_transport import RedisTransport
-from teleclaude.tts.event_handler import register_tts_handlers
+from teleclaude.services.deploy_service import DeployService
+from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
+from teleclaude.services.maintenance_service import MaintenanceService
+from teleclaude.services.monitoring_service import MonitoringService
 from teleclaude.tts.manager import TTSManager
-from teleclaude.types.commands import (
-    ResumeAgentCommand,
-    StartAgentCommand,
-)
-from teleclaude.utils.transcript import (
-    extract_last_agent_message,
-    parse_session_transcript,
-)
+from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
 
 init_voice_handler = voice_message_handler.init_voice_handler
 
 
-# TypedDict definitions for deployment status payloads
-class DeployStatusPayload(TypedDict):
-    """Deployment status payload - sent to Redis during deployment lifecycle."""
-
-    status: str
-    timestamp: float
-
-
-class DeployErrorPayload(TypedDict):
-    """Deployment error payload - sent to Redis when deployment fails."""
-
-    status: str
-    error: str
-
-
-class OutputChangeSummary(TypedDict, total=False):
+@dataclass(frozen=True)
+class OutputChangeSummary:
     """Summary details for tmux output changes."""
 
     changed: bool
-    reason: str
-    before_len: int
-    after_len: int
-    diff_index: int
-    before_snippet: str
-    after_snippet: str
+    reason: str | None = None
+    before_len: int | None = None
+    after_len: int | None = None
+    diff_index: int | None = None
+    before_snippet: str | None = None
+    after_snippet: str | None = None
 
 
 # Logging defaults (can be overridden via environment variables)
@@ -146,26 +111,6 @@ HOOK_OUTBOX_BATCH_SIZE: int = int(os.getenv("HOOK_OUTBOX_BATCH_SIZE", "25"))
 HOOK_OUTBOX_LOCK_TTL_S: float = float(os.getenv("HOOK_OUTBOX_LOCK_TTL_S", "30"))
 HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S", "1"))
 HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
-
-
-def _get_fd_count() -> int | None:
-    """Return open file descriptor count if available."""
-    try:
-        return len(os.listdir("/dev/fd"))
-    except OSError:
-        return None
-
-
-def _get_rss_kb() -> int | None:
-    """Return resident set size in KB when available."""
-    try:
-        rss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
-    except (ValueError, OSError):
-        return None
-
-    if sys.platform == "darwin":
-        return int(rss / 1024)
-    return rss
 
 
 # Agent auto-command startup detection
@@ -259,24 +204,25 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.cache = DaemonCache()
         logger.info("DaemonCache initialized")
 
-        # Initialize TTS manager for session voice assignments and event triggers
+        # Initialize TTS manager for direct speech (no event bus coupling)
         self.tts_manager = TTSManager()
-        register_tts_handlers()
-        logger.info("TTSManager initialized with event handlers")
+        logger.info("TTSManager initialized")
+
+        # Summary + headless snapshot services
+        self.headless_snapshot_service = HeadlessSnapshotService()
+        self.maintenance_service = MaintenanceService(
+            client=self.client,
+            output_poller=self.output_poller,
+            poller_watch_interval_s=5.0,
+        )
 
         # Initialize AgentCoordinator for agent events and cross-computer orchestration
-        self.agent_coordinator = AgentCoordinator(self.client)
+        self.agent_coordinator = AgentCoordinator(
+            self.client,
+            self.tts_manager,
+            self.headless_snapshot_service,
+        )
         event_bus.subscribe(TeleClaudeEvents.AGENT_EVENT, self._handle_agent_event)
-
-        # Debounce stop events (Gemini fires AfterAgent multiple times per turn)
-        self._last_stop_time: dict[str, float] = {}
-        self._stop_debounce_seconds = 5.0
-        self._last_resource_snapshot_time: float | None = None
-        self._last_loop_lag_ms: float | None = None
-
-        # In-memory dedupe for stop summarization (session_id -> transcript fingerprint)
-        self._last_summary_fingerprint: dict[str, str] = {}
-        self._last_headless_snapshot_fingerprint: dict[str, str] = {}
 
         # Auto-discover and register event handlers
         for attr_name in dir(TeleClaudeEvents):
@@ -301,16 +247,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Note: Adapters are loaded in client.start(), not here
 
-        # Initialize MCP server (if enabled)
-        self.mcp_server: Optional[TeleClaudeMCPServer] = None
-        try:
-            self.mcp_server = TeleClaudeMCPServer(
-                adapter_client=self.client,
-                tmux_bridge=tmux_bridge,
-            )
-            logger.info("MCP server object created successfully")
-        except Exception as e:
-            logger.error("Failed to create MCP server: %s", e, exc_info=True)
+        # Initialize MCP server (required)
+        self.mcp_server: TeleClaudeMCPServer = TeleClaudeMCPServer(
+            adapter_client=self.client,
+            tmux_bridge=tmux_bridge,
+        )
+        logger.info("MCP server object created successfully")
 
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
@@ -341,6 +283,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             api_restart_max=API_RESTART_MAX,
             api_restart_window_s=API_RESTART_WINDOW_S,
             api_restart_backoff_s=API_RESTART_BACKOFF_S,
+        )
+
+        self.monitoring_service = MonitoringService(
+            lifecycle=self.lifecycle,
+            mcp_server=self.mcp_server,
+            task_registry=self.task_registry,
+            shutdown_event=self.shutdown_event,
+            start_time=self._start_time,
+            resource_snapshot_interval_s=RESOURCE_SNAPSHOT_INTERVAL_S,
+            launchd_watch_interval_s=LAUNCHD_WATCH_INTERVAL_S,
         )
 
     def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
@@ -727,7 +679,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         event_type: str,
         data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
     ) -> None:
-        """Dispatch a hook event directly via AdapterClient."""
+        """Dispatch a hook event directly global Event Bus."""
+        if event_type == "stop":
+            event_type = AgentHookEvents.AGENT_STOP
+        elif event_type == "prompt":
+            event_type = AgentHookEvents.USER_PROMPT_SUBMIT
         session = await db.get_session(session_id)
         if not session:
             if event_type != AgentHookEvents.AGENT_SESSION_START:
@@ -773,11 +729,17 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
 
         if event_type == AgentHookEvents.AGENT_ERROR:
+            severity = data.get("severity")
+            retryable = data.get("retryable")
+            code = data.get("code")
             context = ErrorEventContext(
                 session_id=session_id,
                 message=str(data.get("message", "")),
                 source=str(data.get("source")) if "source" in data else None,
                 details=data.get("details") if isinstance(data.get("details"), dict) else None,
+                severity=severity if isinstance(severity, str) else "error",
+                retryable=retryable if isinstance(retryable, bool) else False,
+                code=code if isinstance(code, str) else None,
             )
             event_bus.emit(TeleClaudeEvents.ERROR, context)
         else:
@@ -880,7 +842,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if session.lifecycle_status != "headless":
             return
 
-        await self._send_headless_transcript_snapshot(session, reason="session_started")
+        await self.headless_snapshot_service.send_snapshot(session, reason="session_started", client=self.client)
 
     async def _handle_system_command(self, _event: str, context: SystemCommandContext) -> None:
         """Handler for SYSTEM_COMMAND events.
@@ -903,366 +865,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.warning("Unknown system command: %s", ctx.command)
 
     async def _handle_agent_event(self, _event: str, context: AgentEventContext) -> None:
-        """Central handler for AGENT_EVENT.
-
-        Orchestrates summarization, title updates, and coordination.
-        """
-        agent_event_type = context.event_type
-
-        # Handle STOP event in background to prevent hook timeout during summarization
-        if agent_event_type == AgentHookEvents.AGENT_STOP:
-            task = self.task_registry.spawn(self._process_agent_stop(context), name="agent-stop")
-            task.add_done_callback(self._log_background_task_exception("process_agent_stop"))
-            return
-
-        # Dispatch other events synchronously
-        if agent_event_type == AgentHookEvents.AGENT_SESSION_START:
-            await self.agent_coordinator.handle_session_start(context)
-            session = await db.get_session(context.session_id)
-            if session and session.lifecycle_status == "headless":
-                await self._send_headless_transcript_snapshot(session, reason="agent_session_start")
-        elif agent_event_type == AgentHookEvents.AGENT_PROMPT:
-            await self._process_agent_prompt(context)
-        elif agent_event_type == AgentHookEvents.AGENT_NOTIFICATION:
-            await self.agent_coordinator.handle_notification(context)
-        elif agent_event_type == AgentHookEvents.AGENT_SESSION_END:
-            await self.agent_coordinator.handle_session_end(context)
-
-    async def _process_agent_stop(self, context: AgentEventContext) -> None:
-        """Process agent stop event (summarization + coordination)."""
-        session_id = context.session_id
-        payload = cast(AgentStopPayload, context.data)
-
-        # 1. Debounce: skip if we processed a stop event for this session recently
-        now = time.monotonic()
-        last_stop = self._last_stop_time.get(session_id, 0.0)
-        if now - last_stop < self._stop_debounce_seconds:
-            logger.debug("Debouncing stop event for session %s (%.1fs since last)", session_id[:8], now - last_stop)
-            return
-        self._last_stop_time[session_id] = now
-
-        # 2. Remote stop events skip local enrichment and just coordinate
-        if payload.source_computer:
-            await self.agent_coordinator.handle_stop(context)
-            return
-
-        try:
-            # 3. Synchronize "Ground Truth" state (Agent ID, Agent name)
-            session = await self._sync_session_stop_state(session_id, payload)
-            if not session:
-                return
-
-            # Update last user message if present in stop payload (Codex fallback)
-            if payload.prompt is not None:
-                inferred_origin = self._infer_last_input_origin(session, payload.prompt)
-                await db.update_session(
-                    session_id,
-                    last_message_sent=payload.prompt,
-                    last_message_sent_at=datetime.now(timezone.utc).isoformat(),
-                    last_input_origin=inferred_origin,
-                )
-                logger.debug(
-                    "Captured last user input from stop hook",
-                    session_id=session_id[:8],
-                    prompt=payload.prompt[:50],
-                    origin=inferred_origin,
-                )
-
-            # 4. Best-effort Enrichment (Summarization + Title + UI Feedback)
-            await self._enrich_with_summary(session, payload)
-
-            # 4b. Headless sessions: push transcript snapshot to UI
-            if session.lifecycle_status == "headless":
-                await self._send_headless_transcript_snapshot(session, reason="agent_stop")
-
-            if session.lifecycle_status == "headless" and payload.summary:
-                now_ts = time.time()
-                await self.client.send_output_update(
-                    session,
-                    payload.summary,
-                    now_ts,
-                    now_ts,
-                    render_markdown=True,
-                )
-
-            # 4c. Re-emit enriched stop event so subscribers (e.g. TTS) see summary.
-            if payload.summary:
-                event_bus.emit(
-                    TeleClaudeEvents.AGENT_EVENT,
-                    AgentEventContext(
-                        session_id=session_id,
-                        event_type=AgentHookEvents.AGENT_STOP,
-                        data=payload,
-                    ),
-                )
-
-            # 5. Final Coordination
-            await self.agent_coordinator.handle_stop(context)
-
-        except Exception as e:
-            logger.error("Failed to process agent stop event for session %s: %s", session_id[:8], e, exc_info=True)
-
-    async def _process_agent_prompt(self, context: AgentEventContext) -> None:
-        """Process agent prompt event (immediate input capture)."""
-        session_id = context.session_id
-        payload = cast(AgentPromptPayload, context.data)
-
-        # 1. Surgical update: overwrite last_message_sent with prompt from contract
-        # (Only for local sessions; remote sessions handled via coordination if needed)
-        if not payload.source_computer:
-            try:
-                session = await db.get_session(session_id)
-                if not session:
-                    logger.warning("Prompt hook for unknown session %s", session_id[:8])
-                else:
-                    inferred_origin = self._infer_last_input_origin(session, payload.prompt)
-                    await db.update_session(
-                        session_id,
-                        last_message_sent=payload.prompt,
-                        last_message_sent_at=datetime.now(timezone.utc).isoformat(),
-                        last_input_origin=inferred_origin,
-                    )
-                    logger.debug(
-                        "Captured last user input from hook",
-                        session_id=session_id[:8],
-                        prompt=payload.prompt[:50],
-                        origin=inferred_origin,
-                    )
-            except Exception as e:
-                logger.error("Failed to update last_message_sent from prompt hook: %s", e)
-
-        # 2. Coordinator can also listen if needed (e.g. for subagent flow)
-        await self.agent_coordinator.handle_prompt(context)
-
-    @staticmethod
-    def _infer_last_input_origin(session: Session, prompt: str) -> str:
-        """Infer last input origin using prompt string comparison.
-
-        If the prompt matches the last stored message, assume the UI adapter
-        already set last_input_origin. Otherwise the hook indicates hook input.
-        """
-        if session.last_message_sent and session.last_message_sent == prompt:
-            return session.last_input_origin or InputOrigin.HOOK.value
-        return InputOrigin.HOOK.value
-
-    async def _sync_session_stop_state(self, session_id: str, payload: AgentStopPayload) -> Optional[Session]:
-        """Update session record with native agent identity and transcript data."""
-        session = await db.get_session(session_id)
-        if not session:
-            logger.warning("Stop event for unknown session %s", session_id[:8])
-            return None
-
-        updates: dict[str, object] = {}  # guard: loose-dict - Hook payload updates are dynamic
-
-        # Capture native agent session ID
-        if payload.session_id and payload.session_id != session.native_session_id:
-            updates["native_session_id"] = payload.session_id
-
-        # Capture/recover active agent name
-        active_agent_str = session.active_agent
-        if not active_agent_str:
-            agent_name = str(payload.raw.get("agent_name", ""))
-            if agent_name:
-                logger.info("Recovered active_agent from hook for %s: %s", session_id[:8], agent_name)
-                updates["active_agent"] = agent_name
-                active_agent_str = agent_name
-            else:
-                logger.warning("Session %s missing active_agent and no agent in payload", session_id[:8])
-                return None
-
-        # Capture transcript path
-        if payload.transcript_path and payload.transcript_path != session.native_log_file:
-            updates["native_log_file"] = payload.transcript_path
-
-        if updates:
-            await db.update_session(session_id, **updates)
-            return await db.get_session(session_id)
-
-        return session
-
-    async def _enrich_with_summary(self, session: Session, payload: AgentStopPayload) -> None:
-        """Best-effort summarization, title update, and UI feedback."""
-        session_id = session.session_id
-        transcript_path = payload.transcript_path or session.native_log_file
-
-        if not transcript_path:
-            logger.debug("Skipping enrichment for session %s: no transcript path", session_id[:8])
-            return
-
-        transcript_file = Path(transcript_path)
-        try:
-            stat = transcript_file.stat()
-        except FileNotFoundError:
-            message = f"Transcript not found: {transcript_path}"
-            logger.error("Summarizer failed for session %s: %s", session_id[:8], message)
-            event_bus.emit(
-                TeleClaudeEvents.ERROR,
-                ErrorEventContext(
-                    session_id=session_id,
-                    message=message,
-                    source="summarizer",
-                    details={"transcript_path": transcript_path},
-                ),
-            )
-            return
-
-        fingerprint = f"{transcript_path}:{stat.st_size}:{stat.st_mtime_ns}"
-        native_session_id = payload.session_id or ""
-        fingerprint_key = f"{native_session_id}:{fingerprint}"
-        last_fingerprint = self._last_summary_fingerprint.get(session_id)
-        if last_fingerprint == fingerprint_key:
-            logger.warning("Duplicate transcript fingerprint for session %s", session_id[:8])
-            return
-        self._last_summary_fingerprint[session_id] = fingerprint_key
-
-        active_agent = session.active_agent
-        if not active_agent:
-            raise RuntimeError(f"Missing active_agent for session {session_id}")
-        agent_name = AgentName.from_str(active_agent)
-
-        title: str | None = None
-        summary: str | None = None
-        raw_transcript = extract_last_agent_message(transcript_path, agent_name, 1)
-        if not raw_transcript:
-            message = f"No agent output found in transcript: {transcript_path}"
-            logger.error("Summarizer failed for session %s: %s", session_id[:8], message)
-            event_bus.emit(
-                TeleClaudeEvents.ERROR,
-                ErrorEventContext(
-                    session_id=session_id,
-                    message=message,
-                    source="summarizer",
-                    details={"transcript_path": transcript_path},
-                ),
-            )
-            return
-
-        if config.summarizer.enabled:
-            # 1. AI Summarization
-            try:
-                title, summary, raw_transcript = await summarize(agent_name, transcript_path)
-            except FileNotFoundError:
-                message = f"Transcript not found: {transcript_path}"
-                logger.error("Summarization failed for session %s: %s", session_id[:8], message)
-                event_bus.emit(
-                    TeleClaudeEvents.ERROR,
-                    ErrorEventContext(
-                        session_id=session_id,
-                        message=message,
-                        source="summarizer",
-                        details={"transcript_path": transcript_path},
-                    ),
-                )
-            except Exception as sum_err:
-                logger.error("Summarization failed for %s: %s", session_id[:8], sum_err)
-                event_bus.emit(
-                    TeleClaudeEvents.ERROR,
-                    ErrorEventContext(
-                        session_id=session_id,
-                        message=str(sum_err),
-                        source="summarizer",
-                        details={"transcript_path": transcript_path},
-                    ),
-                )
-
-        # 2. Enrich payload for downstream coordinator
-        if summary:
-            payload.summary = summary
-        else:
-            payload.summary = raw_transcript  # Use raw when summarizer disabled
-        payload.title = title
-
-        # 3. Update Title (Once only)
-        if title:
-            await self._update_session_title(session_id, title)
-
-        # 4. Save both raw output and summary to DB
-        await db.update_session(
-            session_id,
-            last_feedback_received=raw_transcript,  # Raw agent text output
-            last_feedback_summary=summary,  # LLM-generated summary (or None)
-            last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
-        )
-
-        # 5. UI feedback + TTS is emitted via session_updated event handlers.
-
-    async def _send_headless_transcript_snapshot(self, session: Session, *, reason: str) -> None:
-        """Send a transcript snapshot to UI for headless sessions."""
-        transcript_path = session.native_log_file
-        if not transcript_path:
-            logger.error(
-                "Headless snapshot missing transcript path",
-                reason=reason,
-                session=session.session_id[:8],
-            )
-            return
-
-        active_agent = session.active_agent
-        if not active_agent:
-            logger.error(
-                "Headless snapshot missing active_agent",
-                reason=reason,
-                session=session.session_id[:8],
-            )
-            return
-
-        agent_name = AgentName.from_str(active_agent)
-        transcript_file = Path(transcript_path)
-        try:
-            stat = transcript_file.stat()
-        except FileNotFoundError:
-            logger.error(
-                "Headless snapshot transcript missing",
-                reason=reason,
-                session=session.session_id[:8],
-                transcript_path=transcript_path,
-            )
-            return
-
-        fingerprint = f"{transcript_path}:{stat.st_size}:{stat.st_mtime_ns}"
-        last_fingerprint = self._last_headless_snapshot_fingerprint.get(session.session_id)
-        first_snapshot = last_fingerprint is None
-        if last_fingerprint == fingerprint:
-            logger.debug(
-                "Headless snapshot skipped (duplicate)",
-                reason=reason,
-                session=session.session_id[:8],
-            )
-            return
-
-        try:
-            markdown_content = parse_session_transcript(
-                transcript_path,
-                session.title,
-                agent_name=agent_name,
-                tail_chars=0 if first_snapshot else UI_MESSAGE_MAX_CHARS,
-                escape_triple_backticks=True,
-            )
-        except Exception as exc:
-            logger.error(
-                "Headless snapshot parse failed for session %s: %s",
-                session.session_id[:8],
-                exc,
-            )
-            return
-
-        if not markdown_content.strip():
-            logger.debug("Headless snapshot skipped (empty)", reason=reason, session=session.session_id[:8])
-            return
-
-        if first_snapshot:
-            markdown_content = markdown_content[:UI_MESSAGE_MAX_CHARS]
-
-        self._last_headless_snapshot_fingerprint[session.session_id] = fingerprint
-
-        now = time.time()
-        await self.client.send_output_update(
-            session,
-            markdown_content,
-            now,
-            now,
-            render_markdown=True,
-        )
+        """Central handler for AGENT_EVENT."""
+        await self.agent_coordinator.handle_event(context)
 
     async def _execute_auto_command(self, session_id: str, auto_command: str) -> dict[str, str]:
         """Execute a post-session auto_command and return status/message."""
@@ -1320,7 +924,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         voice = await db.get_voice(session_id)
         voice_env_vars = get_voice_env_vars(voice) if voice else {}
         env_vars = voice_env_vars.copy()
-        env_vars["TELECLAUDE_SESSION_ID"] = session_id
         working_dir = resolve_working_dir(session.project_path, session.subdir)
 
         created = await tmux_bridge.ensure_tmux_session(
@@ -1498,7 +1101,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     @staticmethod
     def _summarize_output_change(before: str, after: str) -> OutputChangeSummary:
         if before == after:
-            return {"changed": False, "reason": "identical"}
+            return OutputChangeSummary(changed=False, reason="identical")
 
         min_len = min(len(before), len(after))
         diff_index = None
@@ -1513,14 +1116,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         before_snippet = before[max(0, diff_index - 40) : diff_index + snippet_len]
         after_snippet = after[max(0, diff_index - 40) : diff_index + snippet_len]
 
-        return {
-            "changed": True,
-            "before_len": len(before),
-            "after_len": len(after),
-            "diff_index": diff_index,
-            "before_snippet": repr(before_snippet),
-            "after_snippet": repr(after_snippet),
-        }
+        return OutputChangeSummary(
+            changed=True,
+            before_len=len(before),
+            after_len=len(after),
+            diff_index=diff_index,
+            before_snippet=repr(before_snippet),
+            after_snippet=repr(after_snippet),
+        )
 
     async def _wait_for_output_change(
         self,
@@ -1588,6 +1191,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     async def _handle_error(self, _event: str, context: ErrorEventContext) -> None:
         """Handle error events (fail-fast contract violations, hook issues)."""
+        if not context.session_id:
+            logger.error("Error event without session: %s", context.message)
+            return
+
         session = await db.get_session(context.session_id)
         if not session:
             logger.error("Error event for unknown session %s: %s", context.session_id[:8], context.message)
@@ -1597,32 +1204,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         message = f"Error{source}: {context.message}"
         await self.client.send_message(session, message, metadata=MessageMetadata())
 
-    async def _update_session_title(self, session_id: str, title: str) -> None:
-        """Update session title in DB and UI.
-
-        Only updates once - when description is still "Untitled".
-        Subsequent agent_stop events preserve the first LLM-generated title.
-        """
-        session = await db.get_session(session_id)
-        if not session:
-            return
-
-        # Parse the title to extract prefix and description
-        prefix, description = parse_session_title(session.title)
-        if not prefix:
-            return
-
-        # Only update if description is still "Untitled" (or "Untitled (N)")
-        if not description or not re.search(r"^Untitled( \(\d+\))?$", description):
-            return  # Already has LLM-generated title - skip
-
-        new_title = f"{prefix}{title}"
-        await db.update_session(session_id, title=new_title)
-        # db.update_session emits SESSION_UPDATED, which adapters listen to.
-        # So UI updates automatically!
-        logger.info("Updated title: %s", new_title)
-
-    async def _handle_deploy(self, _args: DeployArgs) -> None:  # pylint: disable=too-many-locals  # Deployment requires multiple state variables
+    async def _handle_deploy(self, _args: DeployArgs) -> None:
         """Execute deployment: git pull + restart daemon via service manager.
 
         Args:
@@ -1630,120 +1212,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """
         # Get Redis adapter for status updates
         redis_transport_base = self.client.adapters.get("redis")
-        if not redis_transport_base or not isinstance(redis_transport_base, RedisTransport):
+        if not redis_transport_base:
             logger.error("Redis transport not available, cannot update deploy status")
             return
-
-        redis_transport: RedisTransport = redis_transport_base
-        status_key = f"system_status:{config.computer.name}:deploy"
-        redis_client = await redis_transport._get_redis()
-
-        async def update_status(payload: DeployStatusPayload | DeployErrorPayload) -> None:
-            await redis_client.set(status_key, json.dumps(payload))
-
-        try:
-            # 1. Write deploying status
-            deploying_payload: DeployStatusPayload = {"status": "deploying", "timestamp": time.time()}
-            await update_status(deploying_payload)
-            logger.info("Deploy: marked status as deploying")
-
-            # 2. Git pull with automatic merge commit handling
-            logger.info("Deploy: executing git pull...")
-
-            # Configure git to auto-commit merges (non-interactive)
-            await asyncio.create_subprocess_exec(
-                "git",
-                "config",
-                "pull.rebase",
-                "false",
-                cwd=Path(__file__).parent.parent,
-            )
-
-            # Pull with merge strategy (accepts default merge commit message)
-            result = await asyncio.create_subprocess_exec(
-                "git",
-                "pull",
-                "--no-edit",  # Use default merge commit message
-                cwd=Path(__file__).parent.parent,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await result.communicate()
-
-            if result.returncode != 0:
-                # Capture both stdout and stderr (git sends different errors to different streams)
-                # Uncommitted changes → stderr, merge conflicts → stdout
-                stdout_msg = stdout.decode("utf-8").strip()
-                stderr_msg = stderr.decode("utf-8").strip()
-                error_msg = f"{stderr_msg}\n{stdout_msg}".strip()
-                logger.error("Deploy: git pull failed: %s", error_msg)
-                git_error_payload: DeployErrorPayload = {
-                    "status": "error",
-                    "error": f"git pull failed: {error_msg}",
-                }
-                await update_status(git_error_payload)
-                return
-
-            output = stdout.decode("utf-8")
-            logger.info("Deploy: git pull successful - %s", output.strip())
-
-            # 3. Run make install (update dependencies)
-            logger.info("Deploy: running make install...")
-            install_result = await asyncio.create_subprocess_exec(
-                "make",
-                "install",
-                cwd=Path(__file__).parent.parent,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            # Wait for install to complete with 60s timeout
-            try:
-                install_stdout, install_stderr = await asyncio.wait_for(install_result.communicate(), timeout=60.0)  # type: ignore[misc]
-            except asyncio.TimeoutError:
-                logger.error("Deploy: make install timed out after 60s")
-                timeout_payload: DeployErrorPayload = {
-                    "status": "error",
-                    "error": "make install timed out after 60s",
-                }
-                await update_status(timeout_payload)
-                return
-
-            if install_result.returncode != 0:
-                error_msg = install_stderr.decode("utf-8")
-                logger.error("Deploy: make install failed: %s", error_msg)
-                install_error_payload: DeployErrorPayload = {
-                    "status": "error",
-                    "error": f"make install failed: {error_msg}",
-                }
-                await update_status(install_error_payload)
-                return
-
-            install_output = install_stdout.decode("utf-8")
-            logger.info("Deploy: make install successful - %s", install_output.strip())
-
-            # 4. Write restarting status
-            restarting_payload: DeployStatusPayload = {"status": "restarting", "timestamp": time.time()}
-            await update_status(restarting_payload)
-
-            # 5. Exit to trigger service manager restart
-            # With Restart=on-failure, any non-zero exit triggers restart
-            # Use exit code 42 to indicate intentional deploy restart (not a crash)
-            logger.info("Deploy: exiting with code 42 to trigger service manager restart")
-            os._exit(42)
-
-        except Exception as e:
-            logger.error("Deploy failed: %s", e, exc_info=True)
-            exception_payload: DeployErrorPayload = {"status": "error", "error": str(e)}
-            await update_status(exception_payload)
+        deploy_service = DeployService(redis_transport=redis_transport_base)
+        await deploy_service.deploy()
 
     async def _handle_health_check(self) -> None:
         """Handle health check requested."""
         logger.info("Health check requested")
-
-    def _get_output_file_path(self, session_id: str) -> Path:
-        """Get output file path for a session (delegates to session_utils)."""
-        return get_output_file(session_id)
 
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.
@@ -1813,25 +1290,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         except OSError as e:
             logger.error("Failed to release lock: %s", e)
 
-    def _get_adapter_by_type(self, adapter_type: str) -> BaseAdapter:
-        """Get adapter by type.
-
-        Args:
-            adapter_type: Adapter type name
-
-        Returns:
-            BaseAdapter instance
-
-        Raises:
-            ValueError: If adapter type not loaded
-        """
-        adapter = self.client.adapters.get(adapter_type)
-        if not adapter:
-            raise ValueError(
-                f"No adapter available for type '{adapter_type}'. Available: {list(self.client.adapters.keys())}"
-            )
-        return adapter
-
     async def _execute_terminal_command(
         self,
         session_id: str,
@@ -1890,12 +1348,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         await self.lifecycle.startup()
 
         # Start periodic cleanup task (runs every hour)
-        self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
+        self.cleanup_task = asyncio.create_task(self.maintenance_service.periodic_cleanup())
         self.cleanup_task.add_done_callback(self._log_background_task_exception("periodic_cleanup"))
         logger.info("Periodic cleanup task started (72h session lifecycle)")
 
         # Start polling watcher (keeps pollers aligned with tmux foreground state)
-        self.poller_watch_task = asyncio.create_task(self._poller_watch_loop())
+        self.poller_watch_task = asyncio.create_task(self.maintenance_service.poller_watch_loop())
         self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
         logger.info("Poller watch task started")
 
@@ -1903,13 +1361,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
         logger.info("Hook outbox worker started")
 
-        self.resource_monitor_task = asyncio.create_task(self._resource_monitor_loop())
+        self.resource_monitor_task = asyncio.create_task(self.monitoring_service.resource_monitor_loop())
         self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
         logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
-        self._log_resource_snapshot("startup")
+        self.monitoring_service.log_resource_snapshot("startup")
 
         if LAUNCHD_WATCH_ENABLED:
-            self.launchd_watch_task = asyncio.create_task(self._launchd_watch_loop())
+            self.launchd_watch_task = asyncio.create_task(self.monitoring_service.launchd_watch_loop())
             self.launchd_watch_task.add_done_callback(self._log_background_task_exception("launchd_watch"))
             logger.info("Launchd watch task started (interval=%.0fs)", LAUNCHD_WATCH_INTERVAL_S)
 
@@ -1970,80 +1428,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         logger.info("Daemon stopped")
 
-    async def _periodic_cleanup(self) -> None:
-        """Periodically clean up inactive sessions (72h lifecycle) and orphaned tmux sessions."""
-        first_run = True
-        while True:
-            try:
-                if not first_run:
-                    await asyncio.sleep(3600)  # Run every hour
-                first_run = False
-
-                # Clean up sessions inactive for 72+ hours
-                await self._cleanup_inactive_sessions()
-
-                # Clean up orphan tmux sessions (tmux exists but no DB entry)
-                await session_cleanup.cleanup_orphan_tmux_sessions()
-
-                # Clean up orphan workspace directories (workspace exists but no DB entry)
-                await session_cleanup.cleanup_orphan_workspaces()
-
-                # Clean up orphan MCP wrappers (ppid=1) to avoid FD leaks
-                await session_cleanup.cleanup_orphan_mcp_wrappers()
-
-                # Clean up stale voice assignments (7 day TTL)
-                await db.cleanup_stale_voice_assignments()
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("Error in periodic cleanup: %s", e)
-
-    async def _poller_watch_loop(self) -> None:
-        """Watch tmux foreground commands and ensure pollers are running when needed."""
-        while True:
-            try:
-                await self._poller_watch_iteration()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("Error in poller watch loop: %s", e)
-            await asyncio.sleep(5.0)
-
-    def _collect_resource_snapshot(self, reason: str) -> dict[str, int | float | str | None]:
-        """Collect a lightweight resource snapshot for diagnostics."""
-        api_ws_clients: int | None = None
-        api_server = self.lifecycle.api_server
-        if isinstance(api_server, APIServer):
-            api_ws_clients = len(api_server._ws_clients)
-
-        mcp_connections: int | None = None
-        if self.mcp_server:
-            mcp_connections = self.mcp_server._active_connections
-
-        uptime_s = int(time.time() - self._start_time)
-        snapshot: dict[str, int | float | str | None] = {
-            "event": "resource_snapshot",
-            "reason": reason,
-            "pid": os.getpid(),
-            "uptime_s": uptime_s,
-            "fd_count": _get_fd_count(),
-            "rss_kb": _get_rss_kb(),
-            "threads": threading.active_count(),
-            "asyncio_tasks": len(cast(set[asyncio.Task[object]], asyncio.all_tasks())),
-            "tracked_tasks": self.task_registry.task_count(),
-            "mcp_connections": mcp_connections,
-            "api_ws_clients": api_ws_clients,
-        }
-        if self._last_loop_lag_ms is not None:
-            snapshot["loop_lag_ms"] = self._last_loop_lag_ms
-        return snapshot
-
-    def _log_resource_snapshot(self, reason: str) -> None:
-        """Log a resource snapshot without blocking the event loop."""
-        snapshot = self._collect_resource_snapshot(reason)
-        logger.info("Resource snapshot", **snapshot)
-
     def request_shutdown(self, reason: str) -> None:
         """Request graceful shutdown and capture diagnostics."""
         self._shutdown_reason = reason
@@ -2055,143 +1439,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
 
         loop.call_soon_threadsafe(self.shutdown_event.set)
-        loop.call_soon_threadsafe(self._log_resource_snapshot, f"shutdown:{reason}")
-
-    async def _resource_monitor_loop(self) -> None:
-        """Periodically log resource snapshots."""
-        loop = asyncio.get_running_loop()
-        while not self.shutdown_event.is_set():
-            await asyncio.sleep(RESOURCE_SNAPSHOT_INTERVAL_S)
-            if self.shutdown_event.is_set():
-                break
-            now = loop.time()
-            if self._last_resource_snapshot_time is None:
-                self._last_loop_lag_ms = 0.0
-            else:
-                lag_s = (now - self._last_resource_snapshot_time) - RESOURCE_SNAPSHOT_INTERVAL_S
-                self._last_loop_lag_ms = max(0.0, lag_s * 1000.0)
-            self._last_resource_snapshot_time = now
-            self._log_resource_snapshot("periodic")
-
-    async def _launchd_watch_loop(self) -> None:
-        """Periodically log launchd state for this job on macOS."""
-        if platform.system().lower() != "darwin":
-            return
-        last_output: str | None = None
-        while not self.shutdown_event.is_set():
-            await asyncio.sleep(LAUNCHD_WATCH_INTERVAL_S)
-            if self.shutdown_event.is_set():
-                break
-            try:
-                result = subprocess.run(
-                    ["launchctl", "blame", f"gui/{os.getuid()}/ai.instrukt.teleclaude.daemon"],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
-                output = result.stdout.strip() or result.stderr.strip()
-                if not output:
-                    output = f"launchctl exit={result.returncode}"
-                if output != last_output:
-                    logger.info(
-                        "Launchd state",
-                        event="launchd_state",
-                        reason=output,
-                        exit_code=result.returncode,
-                    )
-                    last_output = output
-            except OSError as e:
-                logger.warning("Launchd probe failed: %s", e)
-
-    async def _poller_watch_iteration(self) -> None:
-        """Run a single poller watch iteration (extracted for testing)."""
-        sessions = await db.get_active_sessions()
-        if not sessions:
-            return
-
-        # Optimization: Get all tmux sessions once instead of N times
-        try:
-            active_tmux_sessions = set(await tmux_bridge.list_tmux_sessions())
-        except Exception as exc:
-            logger.warning("Failed to list tmux sessions during poller watch: %s", exc)
-            return
-
-        for session in sessions:
-            # Check if poller is already running (memory check, very fast)
-            if await polling_coordinator.is_polling(session.session_id):
-                continue
-
-            # Ensure UI channels exist (migration/recovery) for telegram sessions
-            if session.last_input_origin == InputOrigin.TELEGRAM.value:
-                if (
-                    not session.adapter_metadata
-                    or not session.adapter_metadata.telegram
-                    or not session.adapter_metadata.telegram.topic_id
-                    or not session.adapter_metadata.telegram.output_message_id
-                ):
-                    try:
-                        await self.client.ensure_ui_channels(session, session.title)
-                    except Exception as exc:
-                        logger.warning(
-                            "Failed to ensure UI channels for session %s: %s",
-                            session.session_id[:8],
-                            exc,
-                        )
-                        continue
-
-            # Check if session exists in our cached list, recreate if missing
-            if session.tmux_session_name not in active_tmux_sessions:
-                recreated = await self._ensure_tmux_session(session)
-                if not recreated:
-                    continue
-
-            if await tmux_bridge.is_pane_dead(session.tmux_session_name):
-                await session_cleanup.terminate_session(
-                    session.session_id,
-                    self.client,
-                    reason="pane_dead",
-                    session=session,
-                )
-                continue
-
-            await polling_coordinator.schedule_polling(
-                session_id=session.session_id,
-                tmux_session_name=session.tmux_session_name,
-                output_poller=self.output_poller,
-                adapter_client=self.client,
-                get_output_file=self._get_output_file_path,
-            )
-
-    async def _cleanup_inactive_sessions(self) -> None:
-        """Clean up sessions inactive for 72+ hours."""
-        try:
-            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=72)
-            # Include headless sessions so they get cleaned up after 72h too.
-            sessions = await db.list_sessions(include_closed=True, include_headless=True)
-
-            for session in sessions:
-                # Check last_activity timestamp
-                if not session.last_activity:
-                    logger.warning("No last_activity for session %s", session.session_id[:8])
-                    continue
-
-                if session.last_activity < cutoff_time:
-                    logger.info(
-                        "Cleaning up inactive session %s (inactive for %s)",
-                        session.session_id[:8],
-                        datetime.now(timezone.utc) - session.last_activity,
-                    )
-
-                    await session_cleanup.terminate_session(
-                        session.session_id,
-                        self.client,
-                        reason="inactive_72h",
-                        session=session,
-                    )
-                    logger.info("Session %s cleaned up (72h lifecycle)", session.session_id[:8])
-
-        except Exception as e:
-            logger.error("Error cleaning up inactive sessions: %s", e)
+        loop.call_soon_threadsafe(self.monitoring_service.log_resource_snapshot, f"shutdown:{reason}")
 
     async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
         """Wrapper around polling_coordinator.schedule_polling (creates background task).
@@ -2205,73 +1453,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             tmux_session_name=tmux_session_name,
             output_poller=self.output_poller,
             adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
-            get_output_file=self._get_output_file_path,
+            get_output_file=get_output_file,
         )
-
-    async def _build_tmux_env_vars(self, session_id: str) -> dict[str, str]:
-        env_vars: dict[str, str] = {"TELECLAUDE_SESSION_ID": session_id}
-        voice = await db.get_voice(session_id)
-        if voice:
-            env_vars.update(get_voice_env_vars(voice))
-        return env_vars
-
-    async def _ensure_tmux_session(self, session: Session) -> bool:
-        working_dir = resolve_working_dir(session.project_path, session.subdir)
-        env_vars = await self._build_tmux_env_vars(session.session_id)
-        existed = await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False)
-        created = False
-        if not existed:
-            created = await tmux_bridge.ensure_tmux_session(
-                name=session.tmux_session_name,
-                working_dir=working_dir,
-                session_id=session.session_id,
-                env_vars=env_vars,
-            )
-            if not created:
-                logger.warning("Failed to recreate tmux session for %s", session.session_id[:8])
-                return False
-        else:
-            # Session already exists; no restore needed.
-            return True
-
-        # If we recreated the tmux session, restore the agent inside it.
-        if session.active_agent and session.native_session_id:
-            cmd = get_agent_command(
-                agent=session.active_agent,
-                thinking_mode=session.thinking_mode,
-                exec=False,
-                native_session_id=session.native_session_id,
-            )
-
-            # Wrap command to prevent shell echo
-            wrapped_cmd = tmux_io.wrap_bracketed_paste(cmd)
-
-            restored = await tmux_bridge.send_keys(
-                session_name=session.tmux_session_name,
-                text=wrapped_cmd,
-                session_id=session.session_id,
-                working_dir=working_dir,
-                active_agent=session.active_agent,
-            )
-            if restored:
-                logger.info(
-                    "Restored agent %s for session %s (native=%s)",
-                    session.active_agent,
-                    session.session_id[:8],
-                    session.native_session_id[:8],
-                )
-            else:
-                logger.warning(
-                    "Failed to restore agent %s for session %s",
-                    session.active_agent,
-                    session.session_id[:8],
-                )
-        return created
 
     async def _ensure_output_polling(self, session: Session) -> None:
         if await polling_coordinator.is_polling(session.session_id):
             return
-        if not await self._ensure_tmux_session(session):
+        if not await self.maintenance_service.ensure_tmux_session(session):
             logger.warning("Tmux session missing for %s; polling skipped", session.session_id[:8])
             return
 

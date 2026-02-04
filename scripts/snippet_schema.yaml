@@ -13,7 +13,7 @@ global:
   allow_h3: false
 
 sections:
-  architecture:
+  design:
     allowed:
       - Purpose
       - Inputs/Outputs
@@ -26,17 +26,6 @@ sections:
       - Invariants
       - Primary flows
       - Failure modes
-  checklist:
-    allowed:
-      - Purpose
-      - Preconditions
-      - Checks
-      - Recovery
-    required:
-      - Purpose
-      - Preconditions
-      - Checks
-      - Recovery
   concept:
     allowed:
       - What
@@ -44,28 +33,6 @@ sections:
     required:
       - What
       - Why
-  example:
-    allowed:
-      - Scenario
-      - Steps
-      - Outputs
-      - Notes
-    required:
-      - Scenario
-      - Steps
-      - Outputs
-      - Notes
-  guide:
-    allowed:
-      - Goal
-      - Context
-      - Approach
-      - Pitfalls
-    required:
-      - Goal
-      - Context
-      - Approach
-      - Pitfalls
   policy:
     allowed:
       - Rules
@@ -105,7 +72,7 @@ sections:
       - Steps
       - Outputs
       - Recovery
-  reference:
+  spec:
     allowed:
       - What it is
       - Canonical fields
@@ -116,12 +83,3 @@ sections:
       - Canonical fields
       - Allowed values
       - Known caveats
-  role:
-    allowed:
-      - Purpose
-      - Responsibilities
-      - Boundaries
-    required:
-      - Purpose
-      - Responsibilities
-      - Boundaries

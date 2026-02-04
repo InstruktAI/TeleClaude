@@ -10,7 +10,7 @@ type: concept
 ## What
 
 Documentation snippets are atomic markdown files that each capture one idea — a concept,
-policy, procedure, architecture decision, or reference. Each snippet declares its type
+policy, procedure, design decision, or spec. Each snippet declares its type
 and scope in frontmatter, follows a schema specific to that type, and can declare hard
 dependencies on other snippets.
 

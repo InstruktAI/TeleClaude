@@ -28,6 +28,7 @@ logger = get_logger(__name__)
 
 DEFAULT_TOKEN_ENV = "TELEGRAM_BOT_TOKEN"
 DEFAULT_USERNAME_ENV = "TELEGRAM_ALERT_USERNAME"
+DEFAULT_CHAT_ID_ENV = "TELEGRAM_SUPERGROUP_ID"
 
 
 class ApiResponse(TypedDict, total=False):
@@ -64,9 +65,19 @@ def main(argv: list[str] | None = None) -> int:
         help="Env var containing the target Telegram username (without chat IDs).",
     )
     parser.add_argument(
+        "--chat-id-env",
+        default=DEFAULT_CHAT_ID_ENV,
+        help="Env var containing the target Telegram chat_id (e.g. supergroup).",
+    )
+    parser.add_argument(
         "--to",
         default=None,
         help="Override target username (e.g., @Moreaze).",
+    )
+    parser.add_argument(
+        "--chat-id",
+        default=None,
+        help="Override target chat_id (preferred for groups).",
     )
     parser.add_argument("--text", required=True, help="Message text.")
     parser.add_argument("--timeout", type=float, default=10.0, help="HTTP timeout seconds.")
@@ -79,15 +90,19 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("missing_token_env", env=args.token_env)
         return 2
 
+    raw_chat_id = args.chat_id or os.getenv(args.chat_id_env, "")
+    chat_id = str(raw_chat_id).strip() if raw_chat_id is not None else ""
+
     raw_username = args.to or os.getenv(args.username_env, "")
     username = _normalize_username(raw_username)
-    if not username:
-        logger.error("missing_alert_username", env=args.username_env)
+
+    if not chat_id and not username:
+        logger.error("missing_alert_target", chat_id_env=args.chat_id_env, username_env=args.username_env)
         return 2
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload: dict[str, str] = {
-        "chat_id": username,
+        "chat_id": chat_id or username,
         "text": str(args.text),
         "disable_web_page_preview": "true",
     }
@@ -100,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("telegram_send_failed", description=desc)
         return 1
 
-    logger.info("telegram_send_ok", to=username)
+    logger.info("telegram_send_ok", to=chat_id or username)
     return 0
 
 

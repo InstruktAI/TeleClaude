@@ -84,7 +84,6 @@ class TuiController:
             after_layout = self._layout_inputs()
             if after_layout == before_layout:
                 return
-            self._layout_pending = True
             # Only persist if sticky sessions changed (not preview — preview
             # wipes from SYNC are cleanup, not user intent).
             if self._sticky_inputs() != before_sticky:

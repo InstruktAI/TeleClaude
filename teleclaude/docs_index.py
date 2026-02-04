@@ -17,15 +17,13 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import TYPE_SUFFIX
+from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.snippet_validation import load_domains  # noqa: F401 — re-exported for callers
 
 __all__ = ["load_domains"]
 
 logger = get_logger(__name__)
 
-_REQUIRED_READS_HEADER = re.compile(r"^##\s+Required reads\s*$", re.IGNORECASE)
-_HEADER_LINE = re.compile(r"^#{1,6}\s+")
-_REQUIRED_READ_LINE = re.compile(r"^\s*-\s*@(\S+)\s*$")
 _H1_LINE = re.compile(r"^#\s+")
 
 
@@ -348,24 +346,7 @@ def remove_non_baseline_indexes(snippets_root: Path) -> list[str]:
 
 def extract_required_reads(content: str) -> list[str]:
     """Extract ``@`` paths from the Required Reads section."""
-    lines = content.splitlines()
-    header_idx = None
-    for idx, line in enumerate(lines):
-        if _REQUIRED_READS_HEADER.match(line):
-            header_idx = idx
-            break
-    if header_idx is None:
-        return []
-    section_start = header_idx + 1
-    section_end = next(
-        (i for i in range(section_start, len(lines)) if _HEADER_LINE.match(lines[i])),
-        len(lines),
-    )
-    refs: list[str] = []
-    for line in lines[section_start:section_end]:
-        match = _REQUIRED_READ_LINE.match(line)
-        if match:
-            refs.append(match.group(1))
+    refs, _ = _extract_required_reads(content)
     return refs
 
 

@@ -3,9 +3,11 @@ name: next-code-reviewer
 description: Review code for adherence to project guidelines, style guides, and best practices. Use after writing or modifying code, before committing changes or creating pull requests.
 ---
 
-@/Users/Morriz/.teleclaude/docs/software-development/policy/code-quality.md
-
 # Code Reviewer
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/code-quality.md
 
 ## Purpose
 

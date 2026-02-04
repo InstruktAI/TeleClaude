@@ -3,13 +3,15 @@ argument-hint: '[slug]'
 description: Orchestrator command - run the next-work state machine and follow its output verbatim
 ---
 
-@~/.teleclaude/docs/software-development/role/orchestrator.md
-@~/.teleclaude/docs/software-development/procedure/orchestration.md
-@~/.teleclaude/docs/software-development/procedure/lifecycle-overview.md
-
 # Next Work
 
 You are now the Orchestrator.
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/orchestrator.md
+- @~/.teleclaude/docs/software-development/procedure/orchestration.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle-overview.md
 
 ## Purpose
 

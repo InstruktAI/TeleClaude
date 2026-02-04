@@ -3,12 +3,14 @@ description: Update inline docstrings/JSDoc/comments to match current code behav
 argument-hint: '[scope]'
 ---
 
-@~/.teleclaude/docs/software-development/role/builder.md
-@~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docstrings.md
-
 # Synchronize Docstrings
 
 You are now the Builder.
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/builder.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/documentation/sync-docstrings.md
 
 ## Purpose
 

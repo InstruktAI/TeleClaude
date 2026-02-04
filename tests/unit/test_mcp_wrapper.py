@@ -542,7 +542,6 @@ def test_inject_context_does_not_use_tmux_lookup_for_caller_session(
     monkeypatch.setenv("TEMP", tmpdir)
     monkeypatch.setenv("WORKING_DIR", str(tmp_path))
     monkeypatch.setenv("TMUX", "/tmp/tmux-1/default,123,0")
-    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
 
     params = {"arguments": {}}
     out = wrapper.inject_context(params)
@@ -558,7 +557,6 @@ def test_inject_context_uses_tmpdir_marker(monkeypatch: pytest.MonkeyPatch, tmp_
     tmpdir.mkdir()
     (tmpdir / "teleclaude_session_id").write_text(session_id, encoding="utf-8")
     monkeypatch.setenv("TMPDIR", str(tmpdir))
-    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
     monkeypatch.delenv("TMUX", raising=False)
 
     params = {"arguments": {}}
@@ -572,7 +570,6 @@ def test_inject_context_does_not_use_tmpdir_path_fallback(monkeypatch: pytest.Mo
 
     session_id = "fe4aff3e-8f3b-483f-bd3d-4a09811bb3ba"
     monkeypatch.setenv("TMPDIR", f"/Users/morriz/.teleclaude/tmp/sessions/{session_id}")
-    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
     monkeypatch.delenv("TMP", raising=False)
     monkeypatch.delenv("TEMP", raising=False)
     monkeypatch.delenv("TMUX", raising=False)
@@ -591,7 +588,6 @@ def test_inject_context_overrides_blank_caller_session_id(monkeypatch: pytest.Mo
     tmpdir.mkdir()
     (tmpdir / "teleclaude_session_id").write_text(session_id, encoding="utf-8")
     monkeypatch.setenv("TMPDIR", str(tmpdir))
-    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
     monkeypatch.delenv("TMP", raising=False)
     monkeypatch.delenv("TEMP", raising=False)
 
