@@ -70,9 +70,6 @@ class UiAdapter(BaseAdapter):
         # Set client (BaseAdapter has no __init__, just requires this attribute)
         self.client = client
 
-        # Track last rendered output per session to avoid no-op edits.
-        self._last_output_digests: dict[str, str] = {}
-
         # Register event listeners
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
 
@@ -279,7 +276,7 @@ class UiAdapter(BaseAdapter):
 
         # Try to edit existing message
         display_digest = sha256(display_output.encode("utf-8")).hexdigest()
-        if self._last_output_digests.get(session.session_id) == display_digest:
+        if session.last_output_digest == display_digest:
             logger.trace(
                 "[UI_SEND_OUTPUT] Skipping update for session %s (content unchanged)",
                 session.session_id[:8],
@@ -295,7 +292,7 @@ class UiAdapter(BaseAdapter):
         if edit_result:
             # Edit succeeded, return existing message_id
             message_id = await self._get_output_message_id(session)
-            self._last_output_digests[session.session_id] = display_digest
+            await db.update_session(session.session_id, last_output_digest=display_digest)
             logger.debug(
                 "[UI_SEND_OUTPUT] Edit succeeded, message_id=%s for session %s",
                 message_id,
@@ -316,7 +313,7 @@ class UiAdapter(BaseAdapter):
         )
         if new_id:
             await self._store_output_message_id(session, new_id)
-            self._last_output_digests[session.session_id] = display_digest
+            await db.update_session(session.session_id, last_output_digest=display_digest)
         return new_id
 
     def format_message(self, tmux_output: str, status_line: str) -> str:

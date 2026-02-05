@@ -337,6 +337,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
     last_feedback_received: Optional[str] = None
     last_feedback_received_at: Optional[datetime] = None
     last_feedback_summary: Optional[str] = None
+    last_output_digest: Optional[str] = None
     working_slug: Optional[str] = None
     lifecycle_status: str = "active"
 
@@ -441,6 +442,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
             if isinstance(last_feedback_received_at, datetime)
             else None,
             last_feedback_summary=_get_optional_str("last_feedback_summary"),
+            last_output_digest=_get_optional_str("last_output_digest"),
             working_slug=_get_optional_str("working_slug"),
             lifecycle_status=str(data.get("lifecycle_status") or "active"),
         )
