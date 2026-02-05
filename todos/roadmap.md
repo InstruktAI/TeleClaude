@@ -23,3 +23,9 @@ Convert inline SQL in db.py to SQLModel/SQLAlchemy ORM and enforce via pre-commi
 - [ ] repo-cleanup
 
 Refactor test suite to verify observable behavior, add docstrings, document system boundaries.
+
+## Release Automation Pipeline
+
+- [ ] release-automation
+
+Automated AI-driven release pipeline with Claude Code and Codex CLI inspectors.

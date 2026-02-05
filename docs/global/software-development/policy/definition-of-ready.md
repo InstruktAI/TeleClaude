@@ -31,14 +31,20 @@ Gates (all required):
    - The technical path is known or a proven pattern exists in the codebase.
    - Unknowns are small; if not, a research/spike todo exists first.
    - No architectural decisions remain unresolved.
-5. **Dependencies & preconditions**
+5. **Research complete (when applicable)**
+   - Third-party tools, libraries, or integrations have been researched.
+   - Research findings are indexed as third-party docs (global or project).
+   - Sources are authoritative and documented in the findings.
+   - If no third-party dependencies exist, this gate is automatically satisfied.
+   - Triggered when the change introduces or modifies third-party tooling/integrations.
+6. **Dependencies & preconditions**
    - Prerequisite tasks are listed and blocked via `dependencies.json` if needed.
    - Required configs, access, and environments are known.
    - Required external systems are reachable or stubbed.
-6. **Integration safety**
+7. **Integration safety**
    - The change can be merged incrementally without destabilizing main.
    - Entry/exit points are explicit; rollback or containment exists if risky.
-7. **Tooling impact (only if applicable)**
+8. **Tooling impact (only if applicable)**
    - If the work changes tooling or scaffolding, the relevant scaffolding procedure is updated and verified once.
    - If tooling is unchanged, this gate is automatically satisfied.
 
@@ -52,6 +58,7 @@ Remediation playbook:
 - Too large → split into smaller todos with dependencies.
 - Unclear requirements → clarify with the requester before planning.
 - Unknown approach → create a research todo or spike first.
+- Missing research → document third-party findings before planning.
 - Missing verification → define tests or observable checks.
 - Tooling changes → update scaffolding procedures and validate once.
 
