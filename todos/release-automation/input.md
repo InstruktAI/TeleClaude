@@ -82,6 +82,7 @@ Two parallel workflows, nearly identical, dispatching to different AI agents:
 - Lane reports from Claude Code + Codex CLI
 - Arbiter JSON decision output (authoritative)
 - Lane/arbiter reports stored as workflow artifacts
+- Arbiter outputs bump only; version is computed by automation (not by AI)
 
 ### CI Pipeline Prerequisites
 

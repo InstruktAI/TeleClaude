@@ -56,7 +56,20 @@ Create prompts used by both lanes:
   - Inputs: diff summary, contract test results, lint/test status, last tag.
   - Output: JSON report with classification (`patch|minor|skip`) + notes.
 
-### 4) Dual-Lane Workflows
+### 4) Report Schemas
+
+Define strict JSON schemas to make decisions machine-checkable:
+
+- `.github/schemas/release-report.schema.json`
+  - Required fields: `decision`, `confidence`, `evidence`, `notes_markdown`
+  - `decision`: `patch | minor | skip`
+  - `evidence`: last tag, diff range, contract checks, test status
+- `.github/schemas/release-decision.schema.json`
+  - Required fields: `release`, `bump`, `notes_markdown`, `selected_lane`
+  - `release`: `true | false`
+  - `bump`: `patch | minor`
+
+### 5) Dual-Lane Workflows
 
 Add two near-identical workflows:
 
@@ -70,7 +83,20 @@ Each produces:
 
 Both must be uploaded as workflow artifacts.
 
-### 5) Consensus Arbiter
+### 6) Orchestration (Atomic)
+
+Preferred: one orchestrator workflow with parallel jobs and a dependent arbiter:
+
+- `release-orchestrator.yml`
+  - `inspect-claude` job → uploads lane report
+  - `inspect-codex` job → uploads lane report
+  - `arbiter` job (needs both) → produces `decision.json` + `release-notes.md`
+  - `release` job (needs arbiter) → performs tagging/release
+
+Alternative (if separate workflows): use `workflow_run` to trigger the arbiter
+and pull artifacts by run ID. This is more complex; prefer single workflow.
+
+### 7) Consensus Arbiter
 
 Add a small arbiter step (third AI pass):
 
@@ -80,24 +106,29 @@ Add a small arbiter step (third AI pass):
 
 Only the arbiter decision can trigger tagging and releasing.
 
-### 6) Release Execution
+### 8) Release Execution
 
 If `decision.json` says `release`:
 
-- Bump version (patch or minor) with `uv version --bump`.
+- Bump version (patch or minor) with `uv version --bump` based on arbiter output.
 - Tag `vX.Y.Z` and push tag.
 - Create GitHub Release using `release-notes.md`.
 
 If `decision.json` says `skip`, exit cleanly.
 
-### 7) CI Prerequisite
+Idempotency guards:
+
+- Skip if `git diff <last_tag>..HEAD` is empty.
+- Skip if the computed tag already exists.
+
+### 9) CI Prerequisite
 
 Add `ci.yml` for PRs:
 
 - Lint + tests on PRs.
 - Required status checks before merge.
 
-## DoD (Definition of Done)
+## Implementation Checklist
 
 - Contract manifests exist and are enforced by tests.
 - Dual-lane reports produced on every `main` push.
