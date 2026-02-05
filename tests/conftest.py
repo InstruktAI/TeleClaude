@@ -56,6 +56,42 @@ def _isolate_tui_state(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):
+    """Provide a consistent, isolated test environment for parallel runs."""
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
+    config_path = project_root / "teleclaude.yml"
+    if not config_path.exists():
+        config_path.write_text("business:\n  domains:\n    - software-development\n", encoding="utf-8")
+
+    # Force teleclaude.yml lookups to use the test config.
+    monkeypatch.setenv("TELECLAUDE_PROJECT_CONFIG_PATH", str(config_path))
+
+    # Ensure any fallback DB usage is isolated from production.
+    temp_db_path = tmp_path / "teleclaude.db"
+    monkeypatch.setenv("TELECLAUDE_DB_PATH", str(temp_db_path))
+
+    try:
+        from teleclaude.core import db as db_module
+
+        db_module.db.db_path = str(temp_db_path)
+    except Exception:
+        pass
+
+    # Isolate workspace output files for polling and cleanup.
+    try:
+        from teleclaude.core import session_cleanup, session_utils
+
+        workspace_root = tmp_path / "workspace"
+        monkeypatch.setattr(session_utils, "OUTPUT_DIR", workspace_root, raising=False)
+        monkeypatch.setattr(session_cleanup, "OUTPUT_DIR", workspace_root, raising=False)
+    except Exception:
+        pass
+
+    yield
+
+
 # TUI Test Fixtures
 
 

@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.docs_index import extract_required_reads
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import strip_required_reads_section
-from teleclaude.utils import expand_env_vars
+from teleclaude.utils import expand_env_vars, resolve_project_config_path
 
 logger = get_logger(__name__)
 
@@ -140,7 +140,7 @@ def _domain_for_snippet(snippet: SnippetMeta, *, project_domains: dict[str, Path
 
 
 def _load_project_domains(project_root: Path) -> dict[str, Path]:
-    config_path = project_root / "teleclaude.yml"
+    config_path = resolve_project_config_path(project_root)
     if not config_path.exists():
         return {"software-development": project_root / "docs"}
     try:

@@ -142,6 +142,18 @@ def expand_env_vars(config: object) -> object:
     return config
 
 
+def resolve_project_config_path(project_root: Path) -> Path:
+    """Resolve teleclaude.yml path, allowing test overrides.
+
+    Uses TELECLAUDE_PROJECT_CONFIG_PATH when set (for tests or sandboxes).
+    Otherwise defaults to {project_root}/teleclaude.yml.
+    """
+    override = os.getenv("TELECLAUDE_PROJECT_CONFIG_PATH")
+    if override:
+        return Path(override).expanduser()
+    return project_root / "teleclaude.yml"
+
+
 def format_size(size_bytes: int) -> str:
     """Format byte size to human-readable string.
 

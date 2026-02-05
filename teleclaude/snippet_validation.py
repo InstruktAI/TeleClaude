@@ -7,7 +7,7 @@ from typing import Iterable
 import yaml
 
 from teleclaude.constants import TAXONOMY_TYPES
-from teleclaude.utils import expand_env_vars
+from teleclaude.utils import expand_env_vars, resolve_project_config_path
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
 _DEFAULT_DOMAINS = {"software-development"}
@@ -26,7 +26,7 @@ class SnippetIdParts:
 
 
 def load_domains(project_root: Path) -> set[str]:
-    config_path = project_root / "teleclaude.yml"
+    config_path = resolve_project_config_path(project_root)
     if not config_path.exists():
         return set(_DEFAULT_DOMAINS)
     try:
