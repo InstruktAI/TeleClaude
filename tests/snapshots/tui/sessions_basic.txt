@@ -1,0 +1,6 @@
+🖥  local (1)
+📁 ~/TeleClaude (1)
+[1] ▼ claude/slow  "Bootstrap"
+    [] ID: sess-1
+    [] in: ls
+    [] out: ok

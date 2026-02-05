@@ -1,0 +1,3 @@
+🖥  local (1)
+📁 ~/TeleClaude (1)
+[1] ▶ claude/slow  "Collapsed"

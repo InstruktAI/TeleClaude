@@ -1,0 +1,4 @@
+🖥  remote-1 (1)
+  📁 /Users/tester/TeleClaude (1)
+    [>] > release  [in_progress]
+          Build: pending  Review: approved

@@ -1,0 +1,5 @@
+🖥  remote-1 (1)
+  📁 /Users/tester/TeleClaude (1)
+    [ ] v design  [pending]
+      1. Requirements
+      2. Implementation Plan
