@@ -161,8 +161,8 @@ class AgentCoordinator:
     async def handle_user_prompt_submit(self, context: AgentEventContext) -> None:
         """Handle user prompt submission.
 
-        For headless sessions: route through unified process_message path.
-        For non-headless: DB write already happened via UI adapter.
+        For ALL sessions: write last_message_sent to DB (captures direct terminal input).
+        For headless sessions: also route through process_message for tmux adoption.
         """
         session_id = context.session_id
         payload = cast(UserPromptSubmitPayload, context.data)
@@ -175,16 +175,27 @@ class AgentCoordinator:
         # Clear notification flag when new prompt starts (all sessions)
         await db.set_notification_flag(session_id, False)
 
-        # Non-headless: DB write already handled by UI adapter's process_message call
+        # Always write last_message_sent - this captures direct terminal input
+        # that doesn't go through UI adapters (e.g., typing in tmux/MCP)
+        await db.update_session(
+            session_id,
+            last_message_sent=payload.prompt[:200],
+            last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+            last_input_origin=InputOrigin.HOOK.value,
+        )
+        logger.debug(
+            "Recorded user input via hook for session %s: %s...",
+            session_id[:8],
+            payload.prompt[:50],
+        )
+
+        # Non-headless: DB write done above, no further routing needed
+        # (the agent already received the input directly)
         if session.lifecycle_status != "headless":
-            logger.debug(
-                "Skipping hook DB write for non-headless session %s (already handled by UI adapter)",
-                session_id[:8],
-            )
             return
 
         # Headless: route through unified process_message path
-        # This handles DB write, tmux adoption, and polling start
+        # This handles tmux adoption and polling start
         from teleclaude.core.command_registry import get_command_service
 
         cmd = ProcessMessageCommand(
@@ -194,7 +205,7 @@ class AgentCoordinator:
         )
 
         logger.debug(
-            "Routing headless session %s through unified process_message",
+            "Routing headless session %s through process_message for tmux adoption",
             session_id[:8],
         )
 
