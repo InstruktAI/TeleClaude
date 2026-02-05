@@ -38,16 +38,17 @@ class TelecCommand(str, Enum):
 # Completion definitions: (short, long, description)
 _COMMANDS = [cmd.value for cmd in TelecCommand]
 _COMMAND_DESCRIPTIONS = {
-    "list": "List active sessions",
-    "claude": "Start Claude session",
-    "gemini": "Start Gemini session",
-    "codex": "Start Codex session",
-    "init": "Initialize project",
-    "sync": "Sync and validate artifacts",
-    "watch": "Watch for changes",
-    "docs": "Query documentation snippets",
+    "list": "List active TeleClaude sessions across all computers",
+    "claude": "Start interactive Claude Code session (fast/med/slow)",
+    "gemini": "Start interactive Gemini session (fast/med/slow)",
+    "codex": "Start interactive Codex session (fast/med/slow)",
+    "init": "Set up project hooks, watchers, and doc sync",
+    "sync": "Validate refs and build doc artifacts",
+    "watch": "Auto-sync docs on file changes",
+    "docs": "Query doc snippets (index or fetch by ID)",
 }
 _DOCS_FLAGS = [
+    ("-h", "--help", "Show usage information"),
     ("-b", "--baseline-only", "Show only baseline snippets"),
     ("-t", "--third-party", "Include third-party docs"),
     ("-a", "--areas", "Filter by taxonomy type"),
@@ -55,11 +56,13 @@ _DOCS_FLAGS = [
     ("-p", "--project-root", "Project root directory"),
 ]
 _SYNC_FLAGS = [
+    ("-h", "--help", "Show usage information"),
     (None, "--warn-only", "Warn but don't fail"),
     (None, "--validate-only", "Validate without building"),
     (None, "--project-root", "Project root directory"),
 ]
 _WATCH_FLAGS = [
+    ("-h", "--help", "Show usage information"),
     (None, "--project-root", "Project root directory"),
 ]
 _AGENT_MODES = [
@@ -138,10 +141,10 @@ def _flag_matches(flag_tuple: tuple[str | None, str, str], prefix: str) -> bool:
 
 
 def _print_flag(flag_tuple: tuple[str | None, str, str]) -> None:
-    """Print a flag completion with combined short|long format."""
+    """Print a flag completion with optional short form."""
     short, long, desc = flag_tuple
     if short:
-        _print_completion(long, f"{short} | {long}: {desc}")
+        _print_completion(f"{short}, {long}", desc)
     else:
         _print_completion(long, desc)
 
