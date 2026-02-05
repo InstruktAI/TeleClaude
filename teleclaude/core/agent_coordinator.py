@@ -34,7 +34,7 @@ from teleclaude.core.summarizer import summarize_text
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
-from teleclaude.utils.transcript import extract_last_agent_message
+from teleclaude.utils.transcript import extract_last_agent_message, extract_last_user_message
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -245,10 +245,13 @@ class AgentCoordinator:
                 except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
                     logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
 
-        # 2. Notify local listeners (AI-to-AI on same computer)
+        # 2. For Codex: extract last user input from transcript (no hook support)
+        await self._extract_user_input_for_codex(session_id, payload)
+
+        # 3. Notify local listeners (AI-to-AI on same computer)
         await self._notify_session_listener(session_id, source_computer=source_computer)
 
-        # 3. Forward to remote initiator (AI-to-AI across computers)
+        # 4. Forward to remote initiator (AI-to-AI across computers)
         if not (source_computer and source_computer != config.computer.name):
             await self._forward_stop_to_initiator(session_id)
 
@@ -333,6 +336,48 @@ class AgentCoordinator:
             # Still return raw output even if summarization fails
 
         return last_message, summary
+
+    async def _extract_user_input_for_codex(self, session_id: str, payload: AgentStopPayload) -> None:
+        """Extract last user input from transcript for Codex sessions.
+
+        Codex doesn't have user_prompt_submit hook, so we extract user input
+        from the transcript on agent stop as a fallback.
+        """
+        session = await db.get_session(session_id)
+        if not session:
+            return
+
+        # Only for Codex sessions
+        agent_name_value = session.active_agent
+        if agent_name_value != AgentName.CODEX.value:
+            return
+
+        transcript_path = payload.transcript_path or session.native_log_file
+        if not transcript_path:
+            logger.debug("Codex user input extraction skipped (no transcript)", session=session_id[:8])
+            return
+
+        try:
+            agent_name = AgentName.from_str(agent_name_value)
+        except ValueError:
+            return
+
+        last_user_input = extract_last_user_message(transcript_path, agent_name)
+        if not last_user_input:
+            logger.debug("Codex user input extraction skipped (no user message)", session=session_id[:8])
+            return
+
+        await db.update_session(
+            session_id,
+            last_message_sent=last_user_input[:200],
+            last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+            last_input_origin=InputOrigin.HOOK.value,
+        )
+        logger.debug(
+            "Extracted Codex user input: session=%s input=%s...",
+            session_id[:8],
+            last_user_input[:50],
+        )
 
     async def _notify_session_listener(
         self,
