@@ -1,3 +1,10 @@
+---
+id: general/spec/third-party-docs
+type: spec
+scope: general
+description: Conventions for third-party documentation storage and references.
+---
+
 # Third-Party Docs — Spec
 
 ## What it is

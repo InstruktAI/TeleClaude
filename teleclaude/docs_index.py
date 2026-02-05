@@ -1,7 +1,7 @@
 """Build and manage doc snippet index.yaml files.
 
-Handles title normalization, baseline frontmatter stripping, index generation,
-and global collision checking. Does NOT validate — that's resource_validation.py.
+Handles title normalization, index generation, and global collision checking.
+Does NOT validate — that's resource_validation.py.
 
 Called by ``telec sync``.
 """
@@ -139,65 +139,6 @@ def normalize_titles(snippets_root: Path) -> None:
                     path.write_text(updated, encoding="utf-8")
                 except Exception as exc:
                     logger.warning("title_write_failed", path=str(path), error=str(exc))
-
-
-# ---------------------------------------------------------------------------
-# Baseline management
-# ---------------------------------------------------------------------------
-
-
-def strip_baseline_frontmatter(project_root: Path) -> list[str]:
-    """Remove frontmatter from baseline docs (they shouldn't have any). Returns violations."""
-    baseline_root = project_root / "agents" / "docs" / "baseline"
-    if not baseline_root.exists():
-        return []
-    violations: list[str] = []
-    for path in sorted(baseline_root.rglob("*.md")):
-        try:
-            text = path.read_text(encoding="utf-8")
-        except Exception as exc:
-            logger.warning("baseline_read_failed", path=str(path), error=str(exc))
-            continue
-        if not text.lstrip().startswith("---"):
-            continue
-        try:
-            rel = str(path.relative_to(project_root))
-        except ValueError:
-            rel = str(path)
-        violations.append(rel)
-        lines = text.splitlines(keepends=True)
-        end_idx = None
-        for idx in range(1, len(lines)):
-            if lines[idx].strip() == "---":
-                end_idx = idx
-                break
-        if end_idx is None:
-            continue
-        stripped = "".join(lines[end_idx + 1 :]).lstrip()
-        try:
-            path.write_text(stripped, encoding="utf-8")
-        except Exception as exc:
-            logger.warning("baseline_strip_failed", path=str(path), error=str(exc))
-    return violations
-
-
-def write_baseline_index(project_root: Path) -> None:
-    """Generate baseline/index.md with @refs to all baseline snippets."""
-    baseline_root = project_root / "agents" / "docs" / "baseline"
-    if not baseline_root.exists():
-        return
-    root = _teleclaude_root()
-    entries: list[str] = []
-    for path in sorted(baseline_root.rglob("*.md")):
-        if path.name == "index.md":
-            continue
-        rel = path.relative_to(baseline_root).as_posix()
-        entries.append(f"@{root}/docs/baseline/{rel}")
-    if not entries:
-        return
-    baseline_index = baseline_root / "index.md"
-    content = "\n".join([*entries, ""])
-    baseline_index.write_text(content, encoding="utf-8")
 
 
 def write_third_party_index(project_root: Path) -> None:
@@ -360,7 +301,7 @@ def snippet_files(snippets_root: Path, *, include_baseline: bool) -> list[Path]:
     files = [path for path in snippets_root.rglob("*.md") if path.name != "index.yaml"]
     if include_baseline:
         return files
-    return [path for path in files if "baseline" not in str(path)]
+    return [path for path in files if "baseline" not in path.parts]
 
 
 def iter_snippet_roots(project_root: Path) -> list[Path]:
@@ -486,11 +427,7 @@ def check_global_collisions(
 
 def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload:
     """Build the index.yaml payload for a snippet root. Modifies files as side effects
-    (strips baseline frontmatter, normalizes titles, removes stale indexes)."""
-    violations = strip_baseline_frontmatter(project_root)
-    if violations:
-        logger.warning("baseline_frontmatter_removed", paths=violations)
-    write_baseline_index(project_root)
+    (normalizes titles, removes stale indexes)."""
     remove_non_baseline_indexes(snippets_root)
     normalize_titles(snippets_root)
 

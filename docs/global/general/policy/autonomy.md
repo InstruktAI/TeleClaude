@@ -1,3 +1,10 @@
+---
+id: general/policy/autonomy
+type: policy
+scope: global
+description: Guidelines for agent autonomy, escalation, and user interaction.
+---
+
 # Autonomy and Escalation Policy — Policy
 
 ## Rules

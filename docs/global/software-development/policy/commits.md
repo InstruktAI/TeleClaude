@@ -38,7 +38,7 @@ All Committizen types are allowed.
 - Keep commits small and focused
 - Commit message explains WHY, not WHAT (code shows what)
 - Never commit broken code
-- Never use `--no-verify` to bypass hooks
+- Never use `--no-verify` to bypass hooks unless asked to do so
 - Update or add tests when behavior changes.
 - Include migration notes when schema or data shape changes.
 - Avoid committing generated artifacts unless explicitly required.

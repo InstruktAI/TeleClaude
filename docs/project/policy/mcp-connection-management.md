@@ -1,5 +1,5 @@
 ---
-id: project/baseline/policy/mcp-connection-management
+id: project/policy/mcp-connection-management
 type: policy
 scope: global
 description: Architecture policy for MCP clients - tool-call filtering, connection handling, to guarantee stable connection between daemon restarts.

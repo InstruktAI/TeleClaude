@@ -1,5 +1,5 @@
 ---
-id: project/baseline/policy/daemon-availability
+id: project/policy/daemon-availability
 type: policy
 scope: project
 description: The TeleClaude daemon must stay up; restarts must be brief and verified.

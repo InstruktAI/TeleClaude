@@ -1,60 +1,6 @@
 project_root: ~/.teleclaude
 snippets_root: ~/.teleclaude/docs
 snippets:
-- id: baseline/index
-  description: baseline/index
-  type: principle
-  scope: global
-  path: docs/baseline/index.md
-  source_project: TeleClaude
-- id: baseline/policy/autonomy
-  description: "Autonomy and Escalation Policy \u2014 Policy"
-  type: policy
-  scope: global
-  path: docs/baseline/policy/autonomy.md
-  source_project: TeleClaude
-- id: baseline/policy/conflict-resolution
-  description: "Conflict Resolution Rules \u2014 Policy"
-  type: policy
-  scope: global
-  path: docs/baseline/policy/conflict-resolution.md
-  source_project: TeleClaude
-- id: baseline/policy/context-retrieval
-  description: "Context Retrieval Policy \u2014 Policy"
-  type: policy
-  scope: global
-  path: docs/baseline/policy/context-retrieval.md
-  source_project: TeleClaude
-- id: baseline/policy/version-control-safety
-  description: "Version Control Safety Policy \u2014 Policy"
-  type: policy
-  scope: global
-  path: docs/baseline/policy/version-control-safety.md
-  source_project: TeleClaude
-- id: baseline/principle/autonomy
-  description: "Autonomy \u2014 Principle"
-  type: principle
-  scope: global
-  path: docs/baseline/principle/autonomy.md
-  source_project: TeleClaude
-- id: baseline/principle/explicit-inference
-  description: "Explicit Inference \u2014 Principle"
-  type: principle
-  scope: global
-  path: docs/baseline/principle/explicit-inference.md
-  source_project: TeleClaude
-- id: baseline/principle/parallel-work
-  description: "Parallel Work \u2014 Principle"
-  type: principle
-  scope: global
-  path: docs/baseline/principle/parallel-work.md
-  source_project: TeleClaude
-- id: baseline/spec/third-party-docs
-  description: "Third-Party Docs \u2014 Spec"
-  type: spec
-  scope: global
-  path: docs/baseline/spec/third-party-docs.md
-  source_project: TeleClaude
 - id: general/concept/documentation-snippets
   description: Modular documentation system for selective context delivery to AI agents.
   type: concept
@@ -63,10 +9,30 @@ snippets:
   source_project: TeleClaude
 - id: general/concept/normalized-agent-artifacts
   description: Normalized agent artifact primitives and how they map to supported
-    CLIs.
+    agent CLIs.
   type: concept
   scope: global
   path: docs/general/concept/normalized-agent-artifacts.md
+  source_project: TeleClaude
+- id: general/policy/autonomy
+  description: Guidelines for agent autonomy, escalation, and user interaction.
+  type: policy
+  scope: global
+  path: docs/general/policy/autonomy.md
+  source_project: TeleClaude
+- id: general/policy/conflict-resolution
+  description: Guidelines for resolving conflicts between documentation, instructions,
+    and code.
+  type: policy
+  scope: global
+  path: docs/general/policy/conflict-resolution.md
+  source_project: TeleClaude
+- id: general/policy/context-retrieval
+  description: Guidelines for AI agents to retrieve relevant documentation snippets
+    on demand.
+  type: policy
+  scope: global
+  path: docs/general/policy/context-retrieval.md
   source_project: TeleClaude
 - id: general/policy/referencing-doc-snippets
   description: Policy for referencing documentation snippets in AI agent prompts.
@@ -74,11 +40,32 @@ snippets:
   scope: global
   path: docs/general/policy/referencing-doc-snippets.md
   source_project: TeleClaude
+- id: general/principle/autonomy
+  description: The principle of autonomy for AI agents, emphasizing steady progress
+    and independence.
+  type: principle
+  scope: global
+  path: docs/general/principle/autonomy.md
+  source_project: TeleClaude
+- id: general/principle/explicit-inference
+  description: The principle of explicit inference for AI agents, emphasizing the
+    importance of making assumptions clear before taking action.
+  type: principle
+  scope: global
+  path: docs/general/principle/explicit-inference.md
+  source_project: TeleClaude
 - id: general/principle/intent-first-documentation
   description: Preserve intent, boundaries, and durable reasoning in documentation.
   type: principle
   scope: global
   path: docs/general/principle/intent-first-documentation.md
+  source_project: TeleClaude
+- id: general/principle/parallel-work
+  description: Prefer parallelizing independent work with clear briefs and reconciliation
+    to reduce latency without sacrificing accuracy.
+  type: principle
+  scope: domain
+  path: docs/general/principle/parallel-work.md
   source_project: TeleClaude
 - id: general/principle/priming
   description: Prime agents with the minimal, role-specific context required to act.
@@ -117,6 +104,12 @@ snippets:
   type: spec
   scope: global
   path: docs/general/spec/snippet-authoring-schema.md
+  source_project: TeleClaude
+- id: general/spec/third-party-docs
+  description: Conventions for third-party documentation storage and references.
+  type: spec
+  scope: general
+  path: docs/general/spec/third-party-docs.md
   source_project: TeleClaude
 - id: software-development/concept/architect
   description: Strategic role. Requirements, architecture, use cases. Break down work,
@@ -257,6 +250,12 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/typescript/core.md
+  source_project: TeleClaude
+- id: software-development/policy/version-control-safety
+  description: Safety rules for git operations and handling uncommitted work.
+  type: policy
+  scope: domain
+  path: docs/software-development/policy/version-control-safety.md
   source_project: TeleClaude
 - id: software-development/principle/architecture-boundary-purity
   description: Preserve domain intent by isolating transport and UI concerns from

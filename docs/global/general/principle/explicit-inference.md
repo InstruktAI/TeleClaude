@@ -1,3 +1,10 @@
+---
+id: general/principle/explicit-inference
+type: principle
+scope: global
+description: The principle of explicit inference for AI agents, emphasizing the importance of making assumptions clear before taking action.
+---
+
 # Explicit Inference — Principle
 
 ## Principle

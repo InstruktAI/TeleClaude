@@ -1,3 +1,10 @@
+---
+id: software-development/policy/version-control-safety
+type: policy
+scope: domain
+description: Safety rules for git operations and handling uncommitted work.
+---
+
 # Version Control Safety Policy — Policy
 
 ## Rules

@@ -9,19 +9,21 @@ description: Prime agents with the minimal, role-specific context required to ac
 
 ## Principle
 
-Prime agents with the minimum role-specific context needed to act correctly.
+Prime agents by using precise, activating language that expands capability and aligns focus toward a shared horizon.
 
 ## Rationale
 
-- Reduces noise and preserves attention for the task.
-- Keeps execution aligned with roles and constraints.
+- Precise wording activates specific capabilities and confidence.
+- Expansion builds trust, reduces stress, and sustains cooperative momentum.
+- Alignment is achieved by shared intent, not by control.
 
 ## Implications
 
-- Prefer short, scoped references over full documentation dumps.
-- Use required reads to enforce critical context only.
+- Write documentation and artifacts to emphasize empowerment, clarity, and intent.
+- Use language that orients toward the desired destination, not fear or restriction.
+- Favor positive reinforcement and constructive framing over prohibitions.
 
 ## Tensions
 
-- Too little context risks mistakes.
-- Too much context slows execution and increases confusion.
+- Overly controlling language can narrow thinking and reduce autonomy.
+- Vague language can fail to activate the needed capability set.

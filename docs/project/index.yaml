@@ -162,11 +162,24 @@ snippets:
   scope: project
   path: docs/project/policy/agent-artifact-governance.md
   source_project: TeleClaude
+- id: project/policy/agent-service-control
+  description: Defines which service/daemon commands agents may run, which are conditional,
+    and which are prohibited in this repo.
+  type: policy
+  scope: project
+  path: docs/project/policy/agent-service-control.md
+  source_project: TeleClaude
 - id: project/policy/cache-contract
   description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
   type: policy
   scope: project
   path: docs/project/policy/cache-contract.md
+  source_project: TeleClaude
+- id: project/policy/daemon-availability
+  description: The TeleClaude daemon must stay up; restarts must be brief and verified.
+  type: policy
+  scope: project
+  path: docs/project/policy/daemon-availability.md
   source_project: TeleClaude
 - id: project/policy/data-modeling
   description: Data modeling, validation, and resource representation rules.
@@ -180,12 +193,26 @@ snippets:
   scope: global
   path: docs/project/policy/master-bot-registration.md
   source_project: TeleClaude
+- id: project/policy/mcp-connection-management
+  description: Architecture policy for MCP clients - tool-call filtering, connection
+    handling, to guarantee stable connection between daemon restarts.
+  type: policy
+  scope: global
+  path: docs/project/policy/mcp-connection-management.md
+  source_project: TeleClaude
 - id: project/policy/mcp-tool-filtering
   description: Role-based filtering of teleclaude tools to enforce least-privilege
     for scoped agents.
   type: policy
   scope: project
   path: docs/project/policy/mcp-tool-filtering.md
+  source_project: TeleClaude
+- id: project/policy/single-database
+  description: Guaranteed single database file usage for the daemon to prevent data
+    fragmentation.
+  type: policy
+  scope: project
+  path: docs/project/policy/single-database.md
   source_project: TeleClaude
 - id: project/policy/telegram-command-registration
   description: Rules for registering Telegram commands and keeping the command list

@@ -118,6 +118,8 @@ def _expected_from_global(parts: tuple[str, ...], path: Path, domains: Iterable[
     if len(parts) < 3:
         return None, "missing_global_scope"
     scope_segment = parts[2]
+    if scope_segment == "baseline.md" and path.name == "baseline.md":
+        return None, None
     if scope_segment == "baseline":
         if path.name == "index.md" and len(parts) == 4:
             return None, None
@@ -147,6 +149,8 @@ def _expected_from_global(parts: tuple[str, ...], path: Path, domains: Iterable[
 def _expected_from_project(parts: tuple[str, ...], path: Path) -> tuple[str | None, str | None]:
     if len(parts) < 3:
         return None, "missing_taxonomy"
+    if parts[2] == "baseline.md" and path.name == "baseline.md":
+        return None, None
     if parts[2] == "baseline":
         if path.name == "index.md" and len(parts) == 4:
             return None, None
@@ -184,6 +188,10 @@ def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | Non
 def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:
     if rel.startswith("docs/"):
         return "nested_docs_root"
+    if rel == "baseline.md":
+        return None
+    if rel == "project/baseline.md":
+        return None
     parts, has_empty = _split_parts(rel)
     if has_empty:
         return "empty_segment"
@@ -211,6 +219,8 @@ def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:
 def _validate_global_ref(rel: str, domains: Iterable[str]) -> str | None:
     if rel.startswith("docs/"):
         return "nested_docs_root"
+    if rel == "baseline.md":
+        return None
     parts, has_empty = _split_parts(rel)
     if has_empty:
         return "empty_segment"

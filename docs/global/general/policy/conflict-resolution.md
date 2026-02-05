@@ -1,3 +1,10 @@
+---
+id: general/policy/conflict-resolution
+type: policy
+scope: global
+description: Guidelines for resolving conflicts between documentation, instructions, and code.
+---
+
 # Conflict Resolution Rules — Policy
 
 ## Rules

@@ -305,7 +305,9 @@ def _infer_type_from_path(file_path: Path) -> str | None:
 
 def validate_snippet(path: Path, content: str, project_root: Path, *, domains: set[str]) -> None:
     """Validate a single doc snippet. Collects warnings via ``_warn``."""
-    if path.name == "index.md" and "baseline" in path.parts:
+    if (path.name == "index.md" and "baseline" in path.parts) or (
+        path.name == "baseline.md" and path.parent.name in ("global", "project")
+    ):
         _validate_baseline_index(path, content, project_root, domains=domains)
         return
     has_frontmatter = content.lstrip().startswith("---")
@@ -345,6 +347,12 @@ def validate_snippet(path: Path, content: str, project_root: Path, *, domains: s
 
 
 def _validate_baseline_index(path: Path, content: str, project_root: Path, *, domains: set[str]) -> None:
+    if content.lstrip().startswith("---"):
+        try:
+            post = frontmatter.loads(content)
+            content = post.content
+        except Exception:
+            pass
     lines = [line for line in content.splitlines() if line.strip()]
     for line in lines:
         if not line.startswith("@"):

@@ -4,7 +4,7 @@ This file provides baseline guidance to all agents across all projects and conte
 
 ## Required Reads
 
-- @~/.teleclaude/docs/baseline/index.md
+- @docs/global/baseline.md
 
 ## Facts you should know
 

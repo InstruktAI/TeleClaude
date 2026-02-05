@@ -33,7 +33,7 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 6. Add all required sections for the taxonomy type.
 7. After any doc change, run `telec sync` to deploy all artifacts.
 8. Do not edit `docs/index.yaml` directly; `telec sync` regenerates it.
-9. Avoid creating index.md files; only baseline index.md is allowed and auto-generated.
+9. Avoid creating index.md files; only baseline.md manifests are allowed.
 
 ## Outputs
 

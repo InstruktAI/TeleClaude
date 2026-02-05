@@ -9,7 +9,7 @@ type: procedure
 
 ## Required reads
 
-- @docs/project/baseline/policy/daemon-availability.md
+- @docs/project/policy/daemon-availability.md
 
 ## Goal
 

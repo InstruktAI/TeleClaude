@@ -290,6 +290,8 @@ def _iter_project_agent_masters(project_root: Path) -> list[Path]:
     skip_dirs = {
         ".git",
         ".agents",
+        ".history",
+        "trees",
         "__pycache__",
         "dist",
         "node_modules",
@@ -774,8 +776,8 @@ def main() -> None:
                     elif os.path.isfile(dst_path):
                         os.unlink(dst_path)
 
-                    # Create symlink for directories and index.yaml
-                    if os.path.isdir(src_path) or entry == "index.yaml":
+                    # Create symlink for directories and selected root files
+                    if os.path.isdir(src_path) or entry in {"index.yaml", "baseline.md"}:
                         os.symlink(src_path, dst_path)
                         print(f"  Symlinked: {dst_path} -> {src_path}")
 
