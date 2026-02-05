@@ -128,18 +128,19 @@ Add `ci.yml` for PRs:
 - Lint + tests on PRs.
 - Required status checks before merge.
 
-### 10) Codex Runner Auth Provisioning (automation)
+### 10) Runner Auth Wiring
 
-Automate provisioning of Codex auth on the self-hosted runner:
+Codex CLI:
 
-- Install/ensure Codex CLI on the runner host.
-- Run `codex login` once for the runner user.
-- Persist `~/.codex/auth.json` under the runner’s home.
-- Add a periodic validation step (e.g., cron or workflow check) to confirm the
-  file exists and is readable before running release workflows.
+- **Prerequisite**: `~/.codex/auth.json` already exists on the self-hosted runner.
+- Workflow wiring must set `codex-home` (or the equivalent) to the runner home so
+  Codex reuses the existing auth file.
+- Add a guard step that fails fast if the auth file is missing.
 
-Claude Code auth remains a runner/secret responsibility; the workflow consumes
-what is provided but does not provision it.
+Claude Code:
+
+- **Prerequisite**: valid auth is already provided via secrets/env.
+- Workflow only consumes the provided auth (no provisioning).
 
 ## Implementation Checklist
 
