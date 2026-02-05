@@ -1,11 +1,16 @@
 """Pytest configuration for TeleClaude tests."""
 
 import logging
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
 
 import pytest
+
+_repo_root = Path(__file__).resolve().parents[1]
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", str(_repo_root / "tests" / "integration" / "config.yml"))
+os.environ.setdefault("TELECLAUDE_ENV_PATH", str(_repo_root / "tests" / "integration" / ".env"))
 
 from teleclaude.core.command_registry import reset_command_service
 from teleclaude.core.event_bus import event_bus

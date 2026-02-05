@@ -33,6 +33,7 @@ def test_working_dir_fallback_used_for_database_path(monkeypatch, tmp_path):
     monkeypatch.setenv("TELECLAUDE_CONFIG_PATH", str(config_file))
     monkeypatch.setenv("TELECLAUDE_ENV_PATH", str(env_path))
     monkeypatch.delenv("WORKING_DIR", raising=False)
+    monkeypatch.delenv("TELECLAUDE_DB_PATH", raising=False)
 
     module = _load_config_module(config_py)
 
