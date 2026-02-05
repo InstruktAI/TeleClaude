@@ -8,6 +8,7 @@ Handles agent lifecycle events (start, stop, notification) and routes them to:
 
 import base64
 import random
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
@@ -26,11 +27,13 @@ from teleclaude.core.events import (
     UserPromptSubmitPayload,
 )
 from teleclaude.core.models import MessageMetadata
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import notify_input_request, notify_stop
 from teleclaude.core.session_utils import update_title_with_agent
 from teleclaude.core.summarizer import summarize_text
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
+from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils.transcript import extract_last_agent_message
 
 if TYPE_CHECKING:
@@ -156,14 +159,46 @@ class AgentCoordinator:
             logger.info("Updated session title with agent info: %s", new_title)
 
     async def handle_user_prompt_submit(self, context: AgentEventContext) -> None:
-        """Handle user prompt submission (currently a no-op)."""
+        """Handle user prompt submission.
+
+        For headless sessions: route through unified process_message path.
+        For non-headless: DB write already happened via UI adapter.
+        """
         session_id = context.session_id
         payload = cast(UserPromptSubmitPayload, context.data)
-        logger.debug(
-            "User prompt submit ignored for session %s: %s",
-            session_id[:8],
-            payload.prompt[:50],
+
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Session %s not found for user_prompt_submit", session_id[:8])
+            return
+
+        # Clear notification flag when new prompt starts (all sessions)
+        await db.set_notification_flag(session_id, False)
+
+        # Non-headless: DB write already handled by UI adapter's process_message call
+        if session.lifecycle_status != "headless":
+            logger.debug(
+                "Skipping hook DB write for non-headless session %s (already handled by UI adapter)",
+                session_id[:8],
+            )
+            return
+
+        # Headless: route through unified process_message path
+        # This handles DB write, tmux adoption, and polling start
+        from teleclaude.core.command_registry import get_command_service
+
+        cmd = ProcessMessageCommand(
+            session_id=session_id,
+            text=payload.prompt,
+            origin=InputOrigin.HOOK.value,
         )
+
+        logger.debug(
+            "Routing headless session %s through unified process_message",
+            session_id[:8],
+        )
+
+        await get_command_service().process_message(cmd)
 
     async def handle_stop(self, context: AgentEventContext) -> None:
         """Handle stop event - Agent session stopped."""
@@ -177,12 +212,32 @@ class AgentCoordinator:
             "db",
         )
 
-        await self._speak_stop_summary(session_id, payload)
+        # 1. Extract and summarize agent output, write to DB immediately
+        raw_output, summary = await self._extract_and_summarize(session_id, payload)
+        if raw_output:
+            await db.update_session(
+                session_id,
+                last_feedback_received=raw_output,
+                last_feedback_summary=summary,
+                last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
+            )
+            logger.debug(
+                "Stored agent output: session=%s raw_len=%d summary_len=%d",
+                session_id[:8],
+                len(raw_output),
+                len(summary) if summary else 0,
+            )
+            # Speak the summary via TTS
+            if summary:
+                try:
+                    await self.tts_manager.speak(summary)
+                except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
+                    logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
 
-        # 1. Notify local listeners (AI-to-AI on same computer)
+        # 2. Notify local listeners (AI-to-AI on same computer)
         await self._notify_session_listener(session_id, source_computer=source_computer)
 
-        # 2. Forward to remote initiator (AI-to-AI across computers)
+        # 3. Forward to remote initiator (AI-to-AI across computers)
         if not (source_computer and source_computer != config.computer.name):
             await self._forward_stop_to_initiator(session_id)
 
@@ -227,44 +282,46 @@ class AgentCoordinator:
         except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
             logger.warning("TTS session_start failed: %s", exc)
 
-    async def _speak_stop_summary(self, session_id: str, payload: AgentStopPayload) -> None:
+    async def _extract_and_summarize(self, session_id: str, payload: AgentStopPayload) -> tuple[str | None, str | None]:
+        """Extract last agent output and summarize it.
+
+        Returns:
+            Tuple of (raw_output, summary). Both may be None if extraction fails.
+        """
         session = await db.get_session(session_id)
         transcript_path = payload.transcript_path or (session.native_log_file if session else None)
         if not transcript_path:
-            logger.debug("Stop summary skipped (missing transcript path)", session=session_id[:8])
-            return
+            logger.debug("Extract skipped (missing transcript path)", session=session_id[:8])
+            return None, None
 
         raw_agent_name = payload.raw.get("agent_name")
         agent_name_value = raw_agent_name if isinstance(raw_agent_name, str) and raw_agent_name else None
         if not agent_name_value and session and session.active_agent:
             agent_name_value = session.active_agent
         if not agent_name_value:
-            logger.debug("Stop summary skipped (missing agent name)", session=session_id[:8])
-            return
+            logger.debug("Extract skipped (missing agent name)", session=session_id[:8])
+            return None, None
 
         try:
             agent_name = AgentName.from_str(agent_name_value)
         except ValueError:
-            logger.warning("Stop summary skipped (unknown agent '%s')", agent_name_value)
-            return
+            logger.warning("Extract skipped (unknown agent '%s')", agent_name_value)
+            return None, None
 
         last_message = extract_last_agent_message(transcript_path, agent_name, 1)
         if not last_message:
-            logger.debug("Stop summary skipped (no agent output)", session=session_id[:8])
-            return
+            logger.debug("Extract skipped (no agent output)", session=session_id[:8])
+            return None, None
 
+        # Summarize the raw output
+        summary: str | None = None
         try:
             _title, summary = await summarize_text(last_message)
         except Exception as exc:  # noqa: BLE001 - summarizer failures should not break stop handling
-            logger.warning("Stop summary failed: %s", exc, extra={"session_id": session_id[:8]})
-            return
+            logger.warning("Summarization failed: %s", exc, extra={"session_id": session_id[:8]})
+            # Still return raw output even if summarization fails
 
-        try:
-            await self.tts_manager.speak(summary)
-        except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
-            logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
-
-    # === Helper Methods (extracted from UiAdapter) ===
+        return last_message, summary
 
     async def _notify_session_listener(
         self,

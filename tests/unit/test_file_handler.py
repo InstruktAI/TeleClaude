@@ -197,7 +197,7 @@ class TestHandleFile:
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
             patch("teleclaude.core.file_handler.tmux_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.is_agent_running", return_value=True),
-            patch("teleclaude.core.file_handler.tmux_io.send_text", side_effect=mock_send_keys),
+            patch("teleclaude.core.file_handler.tmux_io.process_text", side_effect=mock_send_keys),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
         ):
             await file_handler.handle_file(
@@ -232,7 +232,7 @@ class TestHandleFile:
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
             patch("teleclaude.core.file_handler.tmux_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.is_agent_running", return_value=False),
-            patch("teleclaude.core.file_handler.tmux_io.send_text", side_effect=mock_send_keys),
+            patch("teleclaude.core.file_handler.tmux_io.process_text", side_effect=mock_send_keys),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
         ):
             await file_handler.handle_file(
@@ -267,7 +267,7 @@ class TestHandleFile:
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
             patch("teleclaude.core.file_handler.tmux_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.is_agent_running", return_value=True),
-            patch("teleclaude.core.file_handler.tmux_io.send_text", side_effect=mock_send_keys),
+            patch("teleclaude.core.file_handler.tmux_io.process_text", side_effect=mock_send_keys),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
         ):
             await file_handler.handle_file(
@@ -300,7 +300,7 @@ class TestHandleFile:
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
             patch("teleclaude.core.file_handler.tmux_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.is_agent_running", return_value=True),
-            patch("teleclaude.core.file_handler.tmux_io.send_text", side_effect=mock_send_keys),
+            patch("teleclaude.core.file_handler.tmux_io.process_text", side_effect=mock_send_keys),
         ):
             await file_handler.handle_file(
                 session_id="test123",

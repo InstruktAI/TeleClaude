@@ -5,18 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
-from teleclaude.resource_validation import clear_warnings
 from teleclaude.sync import sync
 
 
-@pytest.fixture(autouse=True)
-def _clear():
-    clear_warnings()
-    yield
-    clear_warnings()
-
-
-def _write_snippet(path: Path, *, id: str, type: str = "reference", scope: str = "project", desc: str = "Test") -> None:
+def _write_snippet(path: Path, *, id: str, type: str = "spec", scope: str = "project", desc: str = "Test") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         f"---\nid: {id}\ntype: {type}\nscope: {scope}\ndescription: {desc}\n---\n\n# Title\n\n## Body\n\nContent.\n",

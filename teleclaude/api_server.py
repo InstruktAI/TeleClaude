@@ -443,10 +443,10 @@ class APIServer:
                     {"session_id": session_id, "text": request.message},
                     metadata,
                 )
-                await get_command_service().send_message(cmd)
+                await get_command_service().process_message(cmd)
                 return {"status": "success"}
             except Exception as e:
-                logger.error("send_message failed (session=%s): %s", session_id, e, exc_info=True)
+                logger.error("process_message failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
 
         @self.app.post("/sessions/{session_id}/keys")

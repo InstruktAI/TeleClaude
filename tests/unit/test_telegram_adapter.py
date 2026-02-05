@@ -580,21 +580,3 @@ class TestTopicOwnership:
         update.effective_message = message
 
         assert telegram_adapter._topic_owned_by_this_bot(update, topic_id=123) is True
-
-    def test_topic_owned_by_this_bot_uses_cache_fallback(self, telegram_adapter):
-        """Test that cached forum-topic messages can establish ownership."""
-        telegram_adapter.computer_name = "test_computer"
-        update = MagicMock()
-        update.effective_message = MagicMock()
-        update.effective_message.forum_topic_created = None
-        update.effective_message.reply_to_message = None
-
-        cached_message = MagicMock()
-        forum_created = MagicMock()
-        forum_created.name = "TeleClaude: $test_computer - Untitled"
-        cached_message.forum_topic_created = forum_created
-        cached_message.reply_to_message = None
-
-        telegram_adapter._topic_message_cache[456] = [cached_message]
-
-        assert telegram_adapter._topic_owned_by_this_bot(update, topic_id=456) is True

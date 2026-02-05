@@ -2,7 +2,6 @@
   "include": ["teleclaude"],
   "exclude": [".venv", "venv", "**/__pycache__", ".mypy_cache", ".pytest_cache"],
   "ignore": [
-    "teleclaude/core/computer_registry.py",
     "teleclaude/core/db.py",
     "teleclaude/core/db_models.py",
     "teleclaude/hooks/receiver.py",

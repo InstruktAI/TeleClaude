@@ -46,7 +46,6 @@ def mock_daemon():
         patch("teleclaude.core.voice_message_handler.tmux_bridge", mock_tb),
         patch("teleclaude.core.tmux_io.tmux_bridge", mock_tb),
         patch("teleclaude.daemon.TelegramAdapter") as mock_ta,
-        patch("teleclaude.daemon.ComputerRegistry") as mock_cr,
         patch("teleclaude.daemon.TeleClaudeMCPServer") as mock_mcp,
         patch.object(config_module, "_config", None),
     ):  # Reset config before each test
@@ -107,12 +106,7 @@ def mock_daemon():
         # Mock adapter registry
         daemon.adapters = {"telegram": daemon.telegram}
 
-        # Mock computer_registry and mcp_server (Phase 1 MCP support)
-        daemon.computer_registry = mock_cr.return_value
-        daemon.computer_registry.start = AsyncMock()
-        daemon.computer_registry.get_online_computers = Mock(return_value=[])
-        daemon.computer_registry.is_computer_online = Mock(return_value=False)
-
+        # Mock mcp_server (Phase 1 MCP support)
         daemon.mcp_server = mock_mcp.return_value
         daemon.mcp_server.start = AsyncMock()
 
@@ -307,7 +301,7 @@ async def test_agent_then_message_waits_for_stabilization():
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock) as mock_running,
-        patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock) as mock_send,
+        patch("teleclaude.daemon.tmux_io.process_text", new_callable=AsyncMock) as mock_send,
         patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
         patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
         # Patch delays to make test fast
@@ -364,7 +358,7 @@ async def test_agent_then_message_applies_gemini_delay():
 
     with (
         patch("teleclaude.daemon.db") as mock_db,
-        patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock, return_value=True),
+        patch("teleclaude.daemon.tmux_io.process_text", new_callable=AsyncMock, return_value=True),
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock, return_value=True),
         patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
         patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
@@ -440,7 +434,7 @@ async def test_agent_then_message_proceeds_after_stabilization_timeout():
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock) as mock_running,
-        patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock) as mock_send,
+        patch("teleclaude.daemon.tmux_io.process_text", new_callable=AsyncMock) as mock_send,
         patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
         patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
         # Patch delays to make test fast
@@ -484,7 +478,7 @@ async def test_agent_then_message_fails_on_command_acceptance_timeout():
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock) as mock_running,
-        patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock) as mock_send,
+        patch("teleclaude.daemon.tmux_io.process_text", new_callable=AsyncMock) as mock_send,
         patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
         patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
         # Patch delays to make test fast

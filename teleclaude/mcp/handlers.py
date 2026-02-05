@@ -55,7 +55,7 @@ from teleclaude.types.commands import (
     CloseSessionCommand,
     CreateSessionCommand,
     GetSessionDataCommand,
-    SendMessageCommand,
+    ProcessMessageCommand,
     StartAgentCommand,
 )
 from teleclaude.utils.markdown import telegramify_markdown
@@ -510,8 +510,8 @@ class MCPHandlersMixin:
             origin = await self._resolve_origin(caller_session_id)
 
             if self._is_local_computer(computer):
-                cmd = SendMessageCommand(session_id=session_id, text=message, origin=origin)
-                await get_command_service().send_message(cmd)
+                cmd = ProcessMessageCommand(session_id=session_id, text=message, origin=origin)
+                await get_command_service().process_message(cmd)
             else:
                 await self.client.send_request(
                     computer_name=computer,
@@ -937,8 +937,10 @@ class MCPHandlersMixin:
         self,
         areas: list[str] | None = None,
         snippet_ids: list[str] | None = None,
-        include_baseline: bool | None = None,
+        baseline_only: bool | None = None,
         include_third_party: bool | None = None,
+        domains: list[str] | None = None,
+        project_root: str | None = None,
         cwd: str | None = None,
         caller_session_id: str | None = None,
     ) -> str:
@@ -947,15 +949,17 @@ class MCPHandlersMixin:
         Phase 1: Call with areas filter (or no params) to get index.
         Phase 2: Call with snippet_ids to get full content.
         """
-        if not cwd:
-            cwd = str(config.computer.default_working_dir)
+        # Determine effective project root: explicit > cwd > default
+        effective_root = project_root or cwd
+        if not effective_root:
+            effective_root = str(config.computer.default_working_dir)
         if areas is None:
             areas = []
         if snippet_ids and any(sid.startswith("project/") for sid in snippet_ids):
-            root = Path(cwd).expanduser().resolve() if cwd else Path.cwd().resolve()
+            root = Path(effective_root).expanduser().resolve()
             while True:
                 if (root / "teleclaude.yml").exists():
-                    cwd = str(root)
+                    effective_root = str(root)
                     break
                 if root.parent == root:
                     return (
@@ -972,14 +976,17 @@ class MCPHandlersMixin:
                 test_agent = session.active_agent
                 test_mode = session.thinking_mode
                 test_request = session.last_message_sent
-                test_csv_path = str(Path(cwd).expanduser().resolve() / ".agents" / "tests" / "runs" / "get-context.csv")
-        project_root = Path(cwd)
+                test_csv_path = str(
+                    Path(effective_root).expanduser().resolve() / ".agents" / "tests" / "runs" / "get-context.csv"
+                )
+        resolved_root = Path(effective_root)
         return build_context_output(
             areas=areas,
-            project_root=project_root,
+            project_root=resolved_root,
             snippet_ids=snippet_ids,
-            include_baseline=bool(include_baseline),
+            baseline_only=bool(baseline_only),
             include_third_party=bool(include_third_party),
+            domains=domains,
             test_agent=test_agent,
             test_mode=test_mode,
             test_request=test_request,

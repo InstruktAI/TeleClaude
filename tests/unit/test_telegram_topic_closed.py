@@ -19,7 +19,6 @@ class DummyHandlers(InputHandlersMixin):
     def __init__(self) -> None:
         self.client = Mock()
         self.user_whitelist = set()
-        self._topic_message_cache = {}
         self._mcp_message_queues = {}
         self._processed_voice_messages = set()
         self._topic_ready_events = {}

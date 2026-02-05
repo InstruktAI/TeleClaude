@@ -32,13 +32,190 @@ class TelecCommand(str, Enum):
     INIT = "init"
     SYNC = "sync"
     WATCH = "watch"
+    DOCS = "docs"
+
+
+# Completion definitions: (short, long, description)
+_COMMANDS = [cmd.value for cmd in TelecCommand]
+_COMMAND_DESCRIPTIONS = {
+    "list": "List active sessions",
+    "claude": "Start Claude session",
+    "gemini": "Start Gemini session",
+    "codex": "Start Codex session",
+    "init": "Initialize project",
+    "sync": "Sync and validate artifacts",
+    "watch": "Watch for changes",
+    "docs": "Query documentation snippets",
+}
+_DOCS_FLAGS = [
+    ("-b", "--baseline-only", "Show only baseline snippets"),
+    ("-t", "--third-party", "Include third-party docs"),
+    ("-a", "--areas", "Filter by taxonomy type"),
+    ("-d", "--domains", "Filter by domain"),
+    ("-p", "--project-root", "Project root directory"),
+]
+_SYNC_FLAGS = [
+    (None, "--warn-only", "Warn but don't fail"),
+    (None, "--validate-only", "Validate without building"),
+    (None, "--project-root", "Project root directory"),
+]
+_WATCH_FLAGS = [
+    (None, "--project-root", "Project root directory"),
+]
+_AGENT_MODES = [
+    ("fast", "Cheapest, quickest"),
+    ("med", "Balanced"),
+    ("slow", "Most capable"),
+]
+_TAXONOMY_TYPES = [
+    ("principle", "Core principles"),
+    ("concept", "Key concepts"),
+    ("policy", "Rules and policies"),
+    ("procedure", "Step-by-step guides"),
+    ("design", "Architecture docs"),
+    ("spec", "Specifications"),
+]
+_DOMAINS = [
+    ("software-development", "Software dev domain"),
+    ("general", "Cross-domain"),
+]
+
+
+def _print_completion(value: str, description: str) -> None:
+    """Print completion in value<TAB>description format for zsh."""
+    print(f"{value}\t{description}")
+
+
+def _handle_completion() -> None:
+    """Handle shell completion requests."""
+    comp_line = os.environ.get("COMP_LINE", "")
+    parts = comp_line.split()
+
+    # Remove "telec" from parts if present
+    if parts and parts[0] == "telec":
+        parts = parts[1:]
+
+    # No command yet - complete commands
+    if not parts:
+        for cmd in _COMMANDS:
+            _print_completion(cmd, _COMMAND_DESCRIPTIONS.get(cmd, ""))
+        return
+
+    cmd = parts[0]
+    rest = parts[1:]
+    current = parts[-1] if parts else ""
+    is_partial = not comp_line.endswith(" ")
+
+    # Completing the command itself
+    if len(parts) == 1 and is_partial:
+        for c in _COMMANDS:
+            if c.startswith(current):
+                _print_completion(c, _COMMAND_DESCRIPTIONS.get(c, ""))
+        return
+
+    # Command-specific completions
+    if cmd == "docs":
+        _complete_docs(rest, current, is_partial)
+    elif cmd == "sync":
+        _complete_flags(_SYNC_FLAGS, rest, current, is_partial)
+    elif cmd == "watch":
+        _complete_flags(_WATCH_FLAGS, rest, current, is_partial)
+    elif cmd in ("claude", "gemini", "codex"):
+        _complete_agent(rest, current, is_partial)
+    # list, init have no further completions
+
+
+def _flag_used(flag_tuple: tuple[str | None, str, str], used: set[str]) -> bool:
+    """Check if a flag (short or long form) was already used."""
+    short, long, _ = flag_tuple
+    return (short and short in used) or (long in used)
+
+
+def _flag_matches(flag_tuple: tuple[str | None, str, str], prefix: str) -> bool:
+    """Check if a flag matches the current prefix."""
+    short, long, _ = flag_tuple
+    return (short and short.startswith(prefix)) or long.startswith(prefix)
+
+
+def _print_flag(flag_tuple: tuple[str | None, str, str]) -> None:
+    """Print a flag completion with combined short|long format."""
+    short, long, desc = flag_tuple
+    if short:
+        _print_completion(long, f"{short} | {long}: {desc}")
+    else:
+        _print_completion(long, desc)
+
+
+def _complete_docs(rest: list[str], current: str, is_partial: bool) -> None:
+    """Complete telec docs arguments."""
+    used_flags = set(rest)
+
+    # If completing a flag
+    if is_partial and current.startswith("-"):
+        for flag in _DOCS_FLAGS:
+            if _flag_matches(flag, current) and not _flag_used(flag, used_flags):
+                _print_flag(flag)
+        return
+
+    # After --areas, suggest taxonomy types
+    if rest and rest[-1] in ("--areas", "-a"):
+        for value, desc in _TAXONOMY_TYPES:
+            _print_completion(value, desc)
+        return
+
+    # After --domains, suggest common domains
+    if rest and rest[-1] in ("--domains", "-d"):
+        for value, desc in _DOMAINS:
+            _print_completion(value, desc)
+        return
+
+    # Default: suggest unused flags
+    for flag in _DOCS_FLAGS:
+        if not _flag_used(flag, used_flags):
+            _print_flag(flag)
+
+
+def _complete_flags(flags: list[tuple[str | None, str, str]], rest: list[str], current: str, is_partial: bool) -> None:
+    """Complete simple flag-only commands."""
+    used_flags = set(rest)
+    if is_partial and current.startswith("-"):
+        for flag in flags:
+            if _flag_matches(flag, current) and not _flag_used(flag, used_flags):
+                _print_flag(flag)
+    else:
+        for flag in flags:
+            if not _flag_used(flag, used_flags):
+                _print_flag(flag)
+
+
+def _complete_agent(rest: list[str], current: str, is_partial: bool) -> None:
+    """Complete agent commands (claude/gemini/codex)."""
+    # First arg is mode
+    if not rest:
+        for mode_value, mode_desc in _AGENT_MODES:
+            if not is_partial or mode_value.startswith(current):
+                _print_completion(mode_value, mode_desc)
+    elif len(rest) == 1 and is_partial:
+        for mode_value, mode_desc in _AGENT_MODES:
+            if mode_value.startswith(current):
+                _print_completion(mode_value, mode_desc)
 
 
 def main() -> None:
     """Main entry point for telec CLI."""
+    # Handle shell completion before any other setup
+    if os.environ.get("TELEC_COMPLETE"):
+        _handle_completion()
+        return
+
     setup_logging()
     logger = get_logger(__name__)
     argv = sys.argv[1:]
+
+    # Handle --help / -h
+    if argv and argv[0] in ("--help", "-h"):
+        print(_usage())
+        return
 
     if argv:
         token = argv[0].lstrip("/")
@@ -132,6 +309,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         _handle_sync(args)
     elif cmd_enum is TelecCommand.WATCH:
         _handle_watch(args)
+    elif cmd_enum is TelecCommand.DOCS:
+        _handle_docs(args)
     else:
         print(f"Unknown command: /{cmd}")
         print(_usage())
@@ -292,6 +471,93 @@ def _handle_watch(args: list[str]) -> None:
     run_watch(project_root)
 
 
+def _handle_docs(args: list[str]) -> None:
+    """Handle telec docs command.
+
+    Phase 1 (index): telec docs [--baseline-only] [--third-party] [--areas TYPES] [--domains DOMAINS]
+    Phase 2 (content): telec docs id1 id2 id3 (positional args = snippet IDs)
+    """
+    # Handle --help early
+    if args and args[0] in ("--help", "-h"):
+        print(_docs_usage())
+        return
+
+    from teleclaude.context_selector import build_context_output
+
+    project_root = Path.cwd()
+    baseline_only = False
+    third_party = False
+    areas: list[str] = []
+    domains: list[str] | None = None
+    snippet_ids: list[str] = []
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("--help", "-h"):
+            print(_docs_usage())
+            return
+        if arg in ("--project-root", "-p") and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg in ("--baseline-only", "-b"):
+            baseline_only = True
+            i += 1
+        elif arg in ("--third-party", "-t"):
+            third_party = True
+            i += 1
+        elif arg in ("--areas", "-a") and i + 1 < len(args):
+            areas = [a.strip() for a in args[i + 1].split(",") if a.strip()]
+            i += 2
+        elif arg in ("--domains", "-d") and i + 1 < len(args):
+            domains = [d.strip() for d in args[i + 1].split(",") if d.strip()]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_docs_usage())
+            raise SystemExit(1)
+        else:
+            # Positional argument = snippet ID (may be comma-separated)
+            for part in arg.split(","):
+                part = part.strip()
+                if part:
+                    snippet_ids.append(part)
+            i += 1
+
+    # If snippet_ids provided, it's phase 2 - ignore filter flags
+    output = build_context_output(
+        areas=areas if not snippet_ids else [],
+        project_root=project_root,
+        snippet_ids=snippet_ids if snippet_ids else None,
+        baseline_only=baseline_only if not snippet_ids else False,
+        include_third_party=third_party if not snippet_ids else False,
+        domains=domains if not snippet_ids else None,
+    )
+    print(output)
+
+
+def _docs_usage() -> str:
+    """Return usage string for telec docs."""
+    return (
+        "Usage:\n"
+        "  telec docs                                  # Phase 1: Show snippet index\n"
+        "  telec docs --baseline-only                  # Phase 1: Show only baseline snippets\n"
+        "  telec docs --third-party                    # Phase 1: Include third-party docs\n"
+        "  telec docs --areas policy,procedure         # Phase 1: Filter by taxonomy type\n"
+        "  telec docs --domains software-development   # Phase 1: Filter by domain\n"
+        "  telec docs --project-root /path/to/project  # Query different project\n"
+        "  telec docs id1 id2 id3                      # Phase 2: Get content for IDs\n"
+        "  telec docs id1,id2,id3                      # Phase 2: Comma-separated IDs\n"
+        "\n"
+        "Options:\n"
+        "  -b, --baseline-only   Show only baseline snippets (auto-loaded at session start)\n"
+        "  -t, --third-party     Include third-party documentation\n"
+        "  -a, --areas           Comma-separated taxonomy types (principle,concept,policy,etc.)\n"
+        "  -d, --domains         Comma-separated domains (software-development,general,etc.)\n"
+        "  -p, --project-root    Project root directory (defaults to cwd)\n"
+    )
+
+
 def _usage() -> str:
     """Return usage string.
 
@@ -310,6 +576,7 @@ def _usage() -> str:
         "                                 # Validate, build indexes, and deploy artifacts\n"
         "  telec watch [--project-root PATH]\n"
         "                                 # Watch project for changes and auto-sync\n"
+        "  telec docs [OPTIONS] [IDS...]  # Query documentation snippets (use --help for details)\n"
     )
 
 

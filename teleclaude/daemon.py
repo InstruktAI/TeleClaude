@@ -222,22 +222,22 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.tts_manager,
             self.headless_snapshot_service,
         )
-        event_bus.subscribe(TeleClaudeEvents.AGENT_EVENT, self._handle_agent_event)
 
         # Auto-discover and register event handlers
+        # Note: This includes _handle_agent_event for AGENT_EVENT
         for attr_name in dir(TeleClaudeEvents):
             if attr_name.startswith("_"):
                 continue
 
-            event_value = getattr(TeleClaudeEvents, attr_name)  # type: ignore[misc]
-            if not isinstance(event_value, str):  # type: ignore[misc]
+            event_value = getattr(TeleClaudeEvents, attr_name)
+            if not isinstance(event_value, str):
                 continue
 
             handler_name = f"_handle_{event_value}"
-            handler = getattr(self, handler_name, None)  # type: ignore[misc]
+            handler = getattr(self, handler_name, None)
 
-            if handler and callable(handler):  # type: ignore[misc]
-                event_bus.subscribe(cast(EventType, event_value), handler)  # type: ignore[misc]
+            if handler and callable(handler):
+                event_bus.subscribe(cast(EventType, event_value), handler)
                 logger.debug("Auto-registered handler: %s → %s", event_value, handler_name)
             else:
                 logger.debug("No handler for event: %s (skipped)", event_value)
@@ -447,7 +447,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             _reader, writer = await asyncio.wait_for(
                 connect_awaitable,
                 timeout=MCP_SOCKET_HEALTH_TIMEOUT_S,
-            )  # type: ignore[misc]
+            )
         except (FileNotFoundError, ConnectionRefusedError, asyncio.TimeoutError, OSError) as exc:
             logger.warning("MCP socket health check failed: %s", exc)
             return False
@@ -1021,7 +1021,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         sanitized_message = tmux_io.wrap_bracketed_paste(message)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
-        pasted = await tmux_io.send_text(
+        pasted = await tmux_io.process_text(
             session,
             sanitized_message,
             working_dir=working_dir,
@@ -1316,7 +1316,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         sanitized_command = tmux_io.wrap_bracketed_paste(command)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
-        success = await tmux_io.send_text(
+        success = await tmux_io.process_text(
             session,
             sanitized_command,
             working_dir=working_dir,

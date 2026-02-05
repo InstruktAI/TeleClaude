@@ -152,17 +152,11 @@ module = [
   "teleclaude.core.agent_parsers",
   "teleclaude.core.codex_watcher",
   "teleclaude.config",
-  "teleclaude.core.ux_state",
-  "teleclaude.core.computer_registry",
 ]
 disallow_any_expr = false
 disallow_any_unimported = false
 disallow_any_explicit = false
 warn_unused_ignores = false
-
-[[tool.mypy.overrides]]
-module = "teleclaude.core.computer_registry"
-ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "teleclaude.mcp_server"

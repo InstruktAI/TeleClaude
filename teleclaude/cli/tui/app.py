@@ -1,7 +1,7 @@
 """Main TUI application with view switching.
 
 Required reads:
-- @docs/project/architecture/tui-state-layout.md
+- @docs/project/design/tui-state-layout.md
 """
 
 import asyncio

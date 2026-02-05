@@ -1,7 +1,7 @@
 """Sessions view - shows running AI sessions.
 
 Required reads:
-- @docs/project/architecture/tui-state-layout.md
+- @docs/project/design/tui-state-layout.md
 """
 
 from __future__ import annotations

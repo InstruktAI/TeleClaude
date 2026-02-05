@@ -14,8 +14,8 @@ from teleclaude.core.models import Session
 
 
 @pytest.mark.asyncio
-async def test_send_text_prefers_existing_tmux():
-    """Test that send_text targets existing tmux sessions when present."""
+async def test_process_text_prefers_existing_tmux():
+    """Test that process_text targets existing tmux sessions when present."""
     session = Session(
         session_id="sid-123",
         computer_name="test",
@@ -32,15 +32,15 @@ async def test_send_text_prefers_existing_tmux():
             new=AsyncMock(return_value=True),
         ) as mock_send_tmux,
     ):
-        ok = await tmux_io.send_text(session, "hello", send_enter=True, working_dir="/tmp")
+        ok = await tmux_io.process_text(session, "hello", send_enter=True, working_dir="/tmp")
 
         assert ok is True
         assert mock_send_tmux.await_count == 1
 
 
 @pytest.mark.asyncio
-async def test_send_text_creates_tmux_when_missing():
-    """Test that send_text falls back to creating tmux when session missing."""
+async def test_process_text_creates_tmux_when_missing():
+    """Test that process_text falls back to creating tmux when session missing."""
     session = Session(
         session_id="sid-456",
         computer_name="test",
@@ -53,7 +53,7 @@ async def test_send_text_creates_tmux_when_missing():
         patch.object(tmux_io.tmux_bridge, "session_exists", new=AsyncMock(return_value=False)),
         patch.object(tmux_io.tmux_bridge, "send_keys", new=AsyncMock(return_value=True)) as mock_send_keys,
     ):
-        ok = await tmux_io.send_text(session, "hello", send_enter=True, working_dir="/tmp")
+        ok = await tmux_io.process_text(session, "hello", send_enter=True, working_dir="/tmp")
 
         assert ok is True
         assert mock_send_keys.await_count == 1

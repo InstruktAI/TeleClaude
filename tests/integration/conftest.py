@@ -281,7 +281,6 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         "teleclaude.core.file_handler",
         "teleclaude.core.session_utils",
         "teleclaude.core.voice_message_handler",
-        "teleclaude.core.computer_registry",
         "teleclaude.core.agent_coordinator",
         "teleclaude.tts.manager",
     ]

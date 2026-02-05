@@ -84,17 +84,15 @@ Removed `AI:` prefix from AI-to-AI session titles. Title updates automatically w
 
 **Priority order (internal-only swallowing to remove):**
 
-1. `teleclaude/core/ux_state.py`
-   - `get_session_ux_state` / `get_system_ux_state` swallow invalid JSON / DB errors.
-2. `teleclaude/core/command_handlers.py`
+1. `teleclaude/core/command_handlers.py`
    - Missing `native_log_file`, missing `active_agent`, missing session → currently log+return.
-3. `teleclaude/core/agent_parsers.py`
+2. `teleclaude/core/agent_parsers.py`
    - Broad `try/except` during parse; currently logs and continues.
-4. `teleclaude/utils/claude_transcript.py`
+3. `teleclaude/utils/claude_transcript.py`
    - Parse errors logged and ignored; should raise.
-5. `teleclaude/core/session_watcher.py`
+4. `teleclaude/core/session_watcher.py`
    - Directory scan / tail errors logged and continued; should raise (internal contract).
-6. `teleclaude/core/output_poller.py`
+5. `teleclaude/core/output_poller.py`
    - “Failed to read final output” warning; should raise (internal contract).
 
 **Not in scope for this sweep (external IO guards to keep):**

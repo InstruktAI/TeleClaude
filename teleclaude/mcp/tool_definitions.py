@@ -43,7 +43,7 @@ def get_tool_definitions() -> list[Tool]:
                 "This applies to skaffolding, planning, troubleshooting, editing, or answering when local constraints might matter. "
                 "Only skip the tool if the user explicitly says not to or the request is purely mechanical with zero dependency on local guidance. "
                 "If unsure, assume the tool is required. "
-                "Use when you need context beyond what you already have, like policy/procedure/role/checklist/reference/etc. "
+                "Use when you need context beyond what you already have, like policy/procedure/spec/etc. "
                 "Example triggers: "
                 "- Take the role of / act as orchestrator/architect/builder/reviewer/maintainer. "
                 "- Write/update doc snippets. "
@@ -62,9 +62,8 @@ def get_tool_definitions() -> list[Tool]:
                         },
                         "description": (
                             "Phase 1 only: Filter by taxonomy type. "
-                            "Allowed types: policy, guide, procedure, role, checklist, reference, concept, "
-                            "architecture, example, principle. "
-                            'Example: {"areas":["guide","policy"]}. '
+                            "Allowed types: policy, procedure, principle, concept, design, spec. "
+                            'Example: {"areas":["policy","procedure","spec"]}. '
                             "Ignored in Phase 2."
                         ),
                     },
@@ -73,11 +72,12 @@ def get_tool_definitions() -> list[Tool]:
                         "items": {"type": "string"},
                         "description": "Phase 2 only: Array of snippet IDs to retrieve full content for.",
                     },
-                    "include_baseline": {
+                    "baseline_only": {
                         "type": "boolean",
                         "description": (
-                            "Include baseline snippet IDs in the phase-1 index. Baseline IDs can then be "
-                            "passed in snippet_ids for phase-2 retrieval."
+                            "Filter to ONLY baseline snippets (those auto-loaded at session start). "
+                            "Useful for authoring/editing baseline content. When false (default), "
+                            "all snippets including baseline are shown in the index."
                         ),
                     },
                     "include_third_party": {
@@ -87,6 +87,23 @@ def get_tool_definitions() -> list[Tool]:
                             "Third-party docs are separate from the taxonomy (no type field) and "
                             "are not filtered by areas. Use when you need library/framework docs "
                             "and want to see what exists locally (preferable) before searching the web."
+                        ),
+                    },
+                    "domains": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Filter by domain (e.g., 'software-development', 'general'). "
+                            "Overrides project teleclaude.yml config. If not specified, uses project "
+                            "config or defaults to 'software-development'. 'general' snippets are "
+                            "always included regardless of this filter."
+                        ),
+                    },
+                    "project_root": {
+                        "type": "string",
+                        "description": (
+                            "Absolute path to project root. Use to query docs from a different project "
+                            "than the current working directory. Defaults to cwd if not specified."
                         ),
                     },
                 },

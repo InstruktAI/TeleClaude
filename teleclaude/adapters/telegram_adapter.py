@@ -6,7 +6,6 @@ import asyncio
 import os
 import re
 from collections.abc import Callable, Coroutine
-from datetime import datetime
 from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
 
 import httpx
@@ -50,10 +49,6 @@ from teleclaude.core.models import (
     PeerInfo,
     Session,
     TelegramAdapterMetadata,
-)
-from teleclaude.core.ux_state import (
-    get_system_ux_state,
-    update_system_ux_state,
 )
 from teleclaude.types.commands import CloseSessionCommand, KeysCommand
 
@@ -162,16 +157,11 @@ class TelegramAdapter(
         self.is_master = config.computer.is_master
         self.app: Optional[TelegramApp] = None
         self._processed_voice_messages: set[str] = set()  # Track processed voice message IDs with edit state
-        self._topic_message_cache: dict[int | None, list[TelegramMessage]] = {}  # Cache for registry polling
         self._mcp_message_queues: dict[int, asyncio.Queue[object]] = {}  #  Event-driven MCP delivery: topic_id -> queue
         self._pending_edits: dict[str, EditContext] = {}  # Track pending edits (message_id -> mutable context)
         self._topic_creation_locks: dict[str, asyncio.Lock] = {}  # Prevent duplicate topic creation per session_id
         self._topic_ready_events: dict[int, asyncio.Event] = {}  # topic_id -> readiness event
         self._topic_ready_cache: set[int] = set()  # topic_ids confirmed via forum_topic_created
-
-        # Peer discovery state (heartbeat advertisement only)
-        self.registry_message_id: Optional[int] = None  # Message ID for [REGISTRY] heartbeat message
-        self.heartbeat_interval = 60  # Send heartbeat every 60s
 
         # Register simple command handlers dynamically
         self._register_simple_command_handlers()
@@ -412,16 +402,6 @@ class TelegramAdapter(
             )
             self.app.add_handler(cmd_handler)  # type: ignore[arg-type]
 
-        # Cache all commands (for registry discovery) - both new and edited
-        # Group 1 so it runs AFTER CommandHandlers (which are in group 0)
-        cache_handler: object = MessageHandler(
-            filters.COMMAND
-            & filters.ChatType.SUPERGROUP
-            & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
-            self._cache_command_message,
-        )
-        self.app.add_handler(cache_handler, group=1)  # type: ignore[arg-type]
-
         # Handle text messages in topics (not commands) - both new and edited
         text_handler: object = MessageHandler(
             filters.TEXT
@@ -527,22 +507,6 @@ class TelegramAdapter(
         except Exception as e:
             logger.error("Cannot access supergroup %s: %s", self.supergroup_id, e)
             logger.error("Make sure the bot is added to the group as a member!")
-
-        # Restore registry_message_id from system UX state (for clean UX after restart)
-        if db.is_initialized():
-            system_state = await get_system_ux_state(db)
-        else:
-            raise AdapterError("Database connection not available")
-        if system_state.registry.ping_message_id:
-            self.registry_message_id = system_state.registry.ping_message_id
-            logger.info(
-                "Restored registry_message_id from system UX state: %s",
-                self.registry_message_id,
-            )
-
-        # Start peer discovery heartbeat (advertisement only)
-        logger.info("Starting peer discovery heartbeat loop")
-        asyncio.create_task(self._heartbeat_loop())
 
     async def stop(self) -> None:
         """Stop Telegram bot."""
@@ -735,12 +699,6 @@ class TelegramAdapter(
     def _topic_owned_by_this_bot(self, update: Update, topic_id: Optional[int]) -> bool:
         """Best-effort ownership check to avoid cross-bot deletions."""
         title = self._extract_topic_title(update.effective_message)
-        if not title and topic_id is not None:
-            cached = self._topic_message_cache.get(topic_id, [])
-            for message in reversed(cached):
-                title = self._extract_topic_title(message)
-                if title:
-                    break
         if not title:
             return False
         return self._topic_title_mentions_this_computer(title)
@@ -796,142 +754,13 @@ class TelegramAdapter(
 
         return None
 
-    # ==================== Peer Discovery Methods ====================
-
-    async def _heartbeat_loop(self) -> None:
-        """Send heartbeat every N seconds to General topic."""
-        # Send initial heartbeat
-        try:
-            await self._send_heartbeat()
-        except Exception as e:
-            logger.error("Initial heartbeat failed: %s", e)
-
-        # Then send every heartbeat_interval seconds
-        while True:
-            await asyncio.sleep(self.heartbeat_interval)
-            try:
-                await self._send_heartbeat()
-                logger.trace("Heartbeat sent for %s", self.computer_name)
-            except Exception as e:
-                logger.error("Heartbeat failed: %s", e)
-
-    def _build_heartbeat_keyboard(self, bot_username: str) -> InlineKeyboardMarkup:
-        """Build the standard heartbeat keyboard with session and Claude buttons.
-
-        Using short callback codes to stay under Telegram's 64-byte limit:
-        - ssel = session select
-        - csel = claude select (new session)
-        - crsel = claude resume select
-        """
-        keyboard = [
-            [InlineKeyboardButton(text="🚀 Tmux Session", callback_data=f"ssel:{bot_username}")],
-            [
-                InlineKeyboardButton(text="🤖 New Claude", callback_data=f"csel:{bot_username}"),
-                InlineKeyboardButton(text="🔄 Resume Claude", callback_data=f"crsel:{bot_username}"),
-            ],
-            [
-                InlineKeyboardButton(text="✨ New Gemini", callback_data=f"gsel:{bot_username}"),
-                InlineKeyboardButton(text="🔄 Resume Gemini", callback_data=f"grsel:{bot_username}"),
-            ],
-            [
-                InlineKeyboardButton(text="💻 New Codex", callback_data=f"cxsel:{bot_username}"),
-                InlineKeyboardButton(text="🔄 Resume Codex", callback_data=f"cxrsel:{bot_username}"),
-            ],
-        ]
-        return InlineKeyboardMarkup(keyboard)
-
-    async def _send_heartbeat(self) -> None:
-        """Send or edit [REGISTRY] heartbeat message in General topic.
-
-        guard: allow-string-compare
-        """
-        text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-
-        # Get bot info for @mention
-        bot_info = await self.bot.get_me()
-        bot_username = bot_info.username
-        if bot_username is None:
-            logger.error("Bot username is None, cannot build heartbeat keyboard")
-            return
-
-        reply_markup = self._build_heartbeat_keyboard(bot_username)
-
-        if self.registry_message_id is None:
-            # First time - post new message to General topic (thread_id=None) with button
-            try:
-                logger.debug(
-                    "Attempting to send heartbeat - chat_id=%s, message_thread_id=None, text=%s",
-                    self.supergroup_id,
-                    text[:50],
-                )
-                msg = await self.bot.send_message(
-                    chat_id=self.supergroup_id,
-                    message_thread_id=None,  # General topic
-                    text=text,
-                    reply_markup=reply_markup,
-                )
-                self.registry_message_id = msg.message_id
-                logger.info(
-                    "Posted registry heartbeat with button: message_id=%s",
-                    self.registry_message_id,
-                )
-
-                # Persist to system UX state (for clean UX after restart)
-                if db.is_initialized():
-                    await update_system_ux_state(db, registry_ping_message_id=self.registry_message_id)
-            except BadRequest as e:
-                logger.error("Failed to post heartbeat - Full error details: %s", e)
-                logger.error("Error type: %s, Error message: %s", type(e).__name__, str(e))
-                raise
-            except Exception as e:
-                logger.error("Failed to post heartbeat: %s", e)
-                raise
-        else:
-            # Edit existing message (keep General topic clean)
-            try:
-                edited_message_result = await self.bot.edit_message_text(
-                    chat_id=self.supergroup_id,
-                    message_id=self.registry_message_id,
-                    text=text,
-                    reply_markup=reply_markup,
-                )
-                if not isinstance(edited_message_result, Message):
-                    # If edit returns True (message unchanged), skip cache update
-                    return
-                edited_message = edited_message_result
-                # Self-cache the edited message (bots don't get updates for their own edits)
-                topic_id = None  # General topic
-                if topic_id not in self._topic_message_cache:
-                    self._topic_message_cache[topic_id] = []
-                # Replace old version
-                self._topic_message_cache[topic_id] = [
-                    m for m in self._topic_message_cache[topic_id] if m.message_id != self.registry_message_id
-                ]
-                self._topic_message_cache[topic_id].append(edited_message)
-                logger.trace(
-                    "Updated registry heartbeat: message_id=%s",
-                    self.registry_message_id,
-                )
-            except Exception as e:
-                error_lower = str(e).lower()
-                # If message was deleted, post new one
-                if "message to edit not found" in error_lower or "message not found" in error_lower:
-                    logger.warning("Registry message deleted, posting new one")
-                    self.registry_message_id = None
-                    await self._send_heartbeat()
-                else:
-                    logger.error("Failed to edit heartbeat: %s", e)
-                    raise
-
     async def discover_peers(self) -> list[PeerInfo]:
         """Discover peers via Telegram adapter.
 
         NOTE: Due to Telegram Bot API restrictions, bots cannot see messages
-        from other bots. Therefore, TelegramAdapter only ADVERTISES this computer's
-        presence via heartbeat messages (visible to humans in Telegram UI), but
-        cannot discover other computers.
+        from other bots, so this adapter does not support peer discovery.
 
-        Actual peer discovery must be handled by other adapters (e.g., RedisTransport)
+        Actual peer discovery is handled by other adapters (e.g., RedisTransport)
         that support bot-to-bot communication.
 
         Returns:
@@ -956,10 +785,6 @@ class TelegramAdapter(
         For now, we return empty list and rely on database persistence instead.
         """
         self._ensure_started()
-
-        # Workaround: Check if we have cached topic info in database
-        # The registry will store its topic_id and reuse it across restarts
-        # For MVP, we'll implement database-backed persistence instead of API polling
 
         return []
 
@@ -991,14 +816,6 @@ class TelegramAdapter(
                 text=text,
                 parse_mode=parse_mode,
             )
-
-        # Cache the message we just sent (for registry polling)
-        # Messages we send ourselves won't appear in updates, so we cache them manually
-        if topic_id not in self._topic_message_cache:
-            self._topic_message_cache[topic_id] = []
-        self._topic_message_cache[topic_id].append(message)
-        if len(self._topic_message_cache[topic_id]) > 100:
-            self._topic_message_cache[topic_id].pop(0)
 
         return message
 
@@ -1033,28 +850,6 @@ class TelegramAdapter(
         """
         self._mcp_message_queues.pop(topic_id, None)
         logger.info("Unregistered MCP listener for topic %s", topic_id)
-
-    async def get_topic_messages(self, topic_id: Optional[int], limit: int = 100) -> list[Message]:
-        """Get recent messages from a specific topic or General topic using in-memory cache.
-
-        Messages are cached in _handle_text_message as they arrive.
-        This is used by computer_registry to poll the registry topic.
-
-        For real-time MCP delivery, use register_mcp_listener() instead.
-
-        Args:
-            topic_id: Telegram message_thread_id. Use None for General topic.
-            limit: Maximum number of messages to return (default: 100)
-
-        Returns:
-            List of Telegram Message objects from the cache (most recent first)
-        """
-        self._ensure_started()
-
-        # Return cached messages for this topic (None = General topic)
-        cached = self._topic_message_cache.get(topic_id, [])
-        # Return last N messages (most recent first)
-        return list(reversed(cached[-limit:]))
 
     # ==================== AI-to-AI Communication ====================
 

@@ -17,7 +17,7 @@ class CommandType(str, Enum):
     KEYS = "keys"
     START_AGENT = "start_agent"
     RESUME_AGENT = "resume_agent"
-    SEND_MESSAGE = "send_message"
+    PROCESS_MESSAGE = "process_message"
     RUN_AGENT_COMMAND = "run_agent_command"
     RESTART_AGENT = "restart_agent"
     GET_SESSION_DATA = "get_session_data"
@@ -141,8 +141,8 @@ class ResumeAgentCommand(InternalCommand):
 
 
 @dataclass(kw_only=True)
-class SendMessageCommand(InternalCommand):
-    """Intent to send a message to a session."""
+class ProcessMessageCommand(InternalCommand):
+    """Intent to process an incoming user message for a session."""
 
     session_id: str
     text: str
@@ -156,7 +156,7 @@ class SendMessageCommand(InternalCommand):
         origin: str,
         request_id: Optional[str] = None,
     ):
-        super().__init__(command_type=CommandType.SEND_MESSAGE, request_id=request_id)
+        super().__init__(command_type=CommandType.PROCESS_MESSAGE, request_id=request_id)
         self.session_id = session_id
         self.text = text
         self.origin = origin

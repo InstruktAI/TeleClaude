@@ -67,7 +67,7 @@ class TestFileUploadFlow:
             patch("teleclaude.core.file_handler.db", session_manager),
             patch("teleclaude.core.file_handler.is_agent_running", return_value=True),
             patch("teleclaude.core.file_handler.tmux_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.tmux_io.send_text", side_effect=mock_send_keys),
+            patch("teleclaude.core.file_handler.tmux_io.process_text", side_effect=mock_send_keys),
         ):
             await file_handler.handle_file(
                 session_id=test_session.session_id,
@@ -108,7 +108,7 @@ class TestFileUploadFlow:
             patch("teleclaude.core.file_handler.db", session_manager),
             patch("teleclaude.core.file_handler.is_agent_running", return_value=False),
             patch("teleclaude.core.file_handler.tmux_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.tmux_io.send_text", side_effect=mock_send_keys),
+            patch("teleclaude.core.file_handler.tmux_io.process_text", side_effect=mock_send_keys),
         ):
             await file_handler.handle_file(
                 session_id=test_session.session_id,

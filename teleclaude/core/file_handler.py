@@ -131,7 +131,7 @@ async def handle_file(
     # Automatic detection: if process running, no marker
     sanitized_text = tmux_io.wrap_bracketed_paste(input_text)
     working_dir = resolve_working_dir(session.project_path, session.subdir)
-    success = await tmux_io.send_text(
+    success = await tmux_io.process_text(
         session,
         sanitized_text,
         active_agent=active_agent,

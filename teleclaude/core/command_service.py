@@ -18,9 +18,9 @@ from teleclaude.core.command_handlers import (
     handle_file,
     handle_voice,
     keys,
+    process_message,
     resume_agent,
     run_agent_command,
-    send_message,
     start_agent,
 )
 from teleclaude.core.models import ThinkingMode
@@ -32,10 +32,10 @@ from teleclaude.types.commands import (
     HandleFileCommand,
     HandleVoiceCommand,
     KeysCommand,
+    ProcessMessageCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
     RunAgentCommand,
-    SendMessageCommand,
     StartAgentCommand,
 )
 
@@ -79,8 +79,8 @@ class CommandService:
             self._bootstrap_session,
         )
 
-    async def send_message(self, cmd: SendMessageCommand) -> None:
-        await send_message(cmd, self.client, self._start_polling)
+    async def process_message(self, cmd: ProcessMessageCommand) -> None:
+        await process_message(cmd, self.client, self._start_polling)
 
     async def handle_voice(self, cmd: HandleVoiceCommand) -> None:
         await handle_voice(cmd, self.client, self._start_polling)

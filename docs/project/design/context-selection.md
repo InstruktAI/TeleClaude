@@ -98,11 +98,12 @@ sequenceDiagram
     Selector->>AI: Return full snippet texts
 ```
 
-#### Baseline Inclusion (Optional)
+#### Baseline Filtering (Optional)
 
-`get_context` supports `include_baseline=true` to include baseline snippet IDs
-in the phase-1 index output. Those baseline IDs can be passed in phase-2 to
-retrieve their content like any other snippet.
+By default, all snippets including baseline are shown in the phase-1 index.
+`get_context` supports `baseline_only=true` to filter TO only baseline snippets
+(those referenced in `baseline.md` manifests). This focused view is useful for
+authoring/editing baseline content.
 
 ### 3. Requires Expansion Algorithm
 

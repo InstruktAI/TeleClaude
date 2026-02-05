@@ -67,7 +67,7 @@ async def _send_to_tmux(
     )
 
 
-async def send_text(
+async def process_text(
     session: Session,
     text: str,
     *,

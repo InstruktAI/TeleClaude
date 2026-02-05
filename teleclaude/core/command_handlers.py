@@ -55,10 +55,10 @@ from teleclaude.types.commands import (
     HandleFileCommand,
     HandleVoiceCommand,
     KeysCommand,
+    ProcessMessageCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
     RunAgentCommand,
-    SendMessageCommand,
     StartAgentCommand,
 )
 from teleclaude.utils.transcript import (
@@ -219,7 +219,7 @@ async def _ensure_tmux_for_headless(
             native_session_id=session.native_session_id,
         )
         wrapped = tmux_io.wrap_bracketed_paste(resume_cmd)
-        await tmux_io.send_text(
+        await tmux_io.process_text(
             session,
             wrapped,
             working_dir=working_dir,
@@ -730,8 +730,8 @@ async def handle_voice(
         if session:
             await client.delete_message(session, str(cmd.message_id))
 
-    await send_message(
-        SendMessageCommand(session_id=cmd.session_id, text=transcribed, origin=cmd.origin),
+    await process_message(
+        ProcessMessageCommand(session_id=cmd.session_id, text=transcribed, origin=cmd.origin),
         client,
         start_polling,
     )
@@ -776,12 +776,12 @@ async def handle_file(
     )
 
 
-async def send_message(
-    cmd: SendMessageCommand,
+async def process_message(
+    cmd: ProcessMessageCommand,
     client: "AdapterClient",
     start_polling: StartPollingFunc,
 ) -> None:
-    """Send a message to a session (tmux input)."""
+    """Process an incoming user message for a session."""
     session_id = cmd.session_id
     message_text = cmd.text
 
@@ -813,7 +813,7 @@ async def send_message(
     sanitized_text = tmux_io.wrap_bracketed_paste(message_text)
 
     working_dir = resolve_working_dir(session.project_path, session.subdir)
-    success = await tmux_io.send_text(
+    success = await tmux_io.process_text(
         session,
         sanitized_text,
         working_dir=working_dir,
@@ -1011,7 +1011,7 @@ async def escape_command(
         # Send text + ENTER
         sanitized_text = tmux_io.wrap_bracketed_paste(text)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
-        success = await tmux_io.send_text(
+        success = await tmux_io.process_text(
             session,
             sanitized_text,
             working_dir=working_dir,

@@ -254,6 +254,45 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
     return entries
 
 
+def _load_baseline_ids(
+    baseline_path: Path,
+    snippets_by_path: dict[str, SnippetMeta],
+    *,
+    project_root: Path,
+) -> set[str]:
+    """Load baseline manifest and return referenced snippet IDs.
+
+    Args:
+        baseline_path: Path to baseline.md manifest file
+        snippets_by_path: Mapping of resolved paths to snippets
+        project_root: Project root for resolving relative paths
+
+    Returns:
+        Set of snippet IDs referenced in the baseline manifest
+    """
+    if not baseline_path.exists():
+        return set()
+
+    try:
+        content = baseline_path.read_text(encoding="utf-8")
+    except Exception:
+        return set()
+
+    baseline_ids: set[str] = set()
+    for match in _INLINE_REF_RE.finditer(content):
+        ref = match.group(1)
+        candidate = Path(ref).expanduser()
+        if not candidate.is_absolute():
+            candidate = (project_root / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+        snippet = snippets_by_path.get(str(candidate))
+        if snippet:
+            baseline_ids.add(snippet.snippet_id)
+
+    return baseline_ids
+
+
 def _load_third_party_index(index_path: Path) -> list[ThirdPartyMeta]:
     """Load third-party index.yaml (simpler schema: no type field)."""
     if not index_path.exists():
@@ -353,8 +392,9 @@ def build_context_output(
     areas: list[str],
     project_root: Path,
     snippet_ids: list[str] | None = None,
-    include_baseline: bool = False,
+    baseline_only: bool = False,
     include_third_party: bool = False,
+    domains: list[str] | None = None,
     test_agent: str | None = None,
     test_mode: str | None = None,
     test_request: str | None = None,
@@ -374,24 +414,29 @@ def build_context_output(
     snippets.extend(_load_index(global_index))
     snippets.extend(_load_index(project_index))
 
+    # Build path-to-snippet mapping for baseline resolution
+    snippets_by_path = {str(s.path): s for s in snippets}
+
     # Load third-party entries (separate from taxonomy, not filtered by areas)
     third_party_entries: list[ThirdPartyMeta] = []
     if include_third_party:
         third_party_entries.extend(_load_third_party_index(global_third_party_index))
         third_party_entries.extend(_load_third_party_index(project_third_party_index))
 
-    domains = _load_project_domains(project_root)
-    project_domain_roots = {d: p for d, p in domains.items() if p.exists()}
+    # Use explicit domains if provided, otherwise load from project config
+    if domains:
+        domain_config = {d: project_root / "docs" for d in domains}
+    else:
+        domain_config = _load_project_domains(project_root)
+    project_domain_roots = {d: p for d, p in domain_config.items() if p.exists()}
     if not project_domain_roots:
-        project_domain_roots = {d: project_root / "docs" for d in domains.keys()}
+        project_domain_roots = {d: project_root / "docs" for d in domain_config.keys()}
 
     def _include_snippet(snippet: SnippetMeta) -> bool:
         if global_snippets_root in snippet.path.parents:
-            if snippet.snippet_id.startswith("baseline/"):
-                return True
             if snippet.snippet_id.startswith("general/"):
                 return True
-            return any(snippet.snippet_id.startswith(f"{domain}/") for domain in domains)
+            return any(snippet.snippet_id.startswith(f"{domain}/") for domain in domain_config)
         if snippet.scope == "project":
             return any(
                 root in snippet.path.parents or root == snippet.path.parent for root in project_domain_roots.values()
@@ -399,8 +444,15 @@ def build_context_output(
         return True
 
     snippets = [snippet for snippet in snippets if _include_snippet(snippet)]
-    if not include_baseline:
-        snippets = [snippet for snippet in snippets if not snippet.snippet_id.startswith("baseline/")]
+
+    # Load baseline IDs if baseline_only mode is requested
+    if baseline_only:
+        global_baseline = GLOBAL_SNIPPETS_DIR / "baseline.md"
+        project_baseline = project_root / "docs" / "project" / "baseline.md"
+        baseline_ids: set[str] = set()
+        baseline_ids.update(_load_baseline_ids(global_baseline, snippets_by_path, project_root=global_root))
+        baseline_ids.update(_load_baseline_ids(project_baseline, snippets_by_path, project_root=project_root))
+        snippets = [s for s in snippets if s.snippet_id in baseline_ids]
 
     areas_set = set(areas)
     if areas_set:

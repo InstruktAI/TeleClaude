@@ -8,7 +8,6 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-from teleclaude.config import config
 from teleclaude.hooks import receiver
 from teleclaude.hooks.adapters.models import NormalizedHookPayload
 

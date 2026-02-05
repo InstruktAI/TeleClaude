@@ -13,9 +13,9 @@ from teleclaude.types.commands import (
     HandleVoiceCommand,
     InternalCommand,
     KeysCommand,
+    ProcessMessageCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
-    SendMessageCommand,
     StartAgentCommand,
 )
 
@@ -72,7 +72,7 @@ class CommandMapper:
             )
 
         if event == "message":
-            return SendMessageCommand(
+            return ProcessMessageCommand(
                 session_id=session_id or "",
                 text=" ".join(args),
                 origin=metadata.origin,
@@ -135,7 +135,7 @@ class CommandMapper:
             )
 
         if cmd_name == "message":
-            return SendMessageCommand(
+            return ProcessMessageCommand(
                 session_id=session_id or "",
                 text=" ".join(args) if args else "",
                 origin=origin,
@@ -182,7 +182,7 @@ class CommandMapper:
             )
 
         if cmd_name == "message":
-            return SendMessageCommand(
+            return ProcessMessageCommand(
                 session_id=session_id or "",
                 text=" ".join(args),
                 origin=origin,
@@ -248,7 +248,7 @@ class CommandMapper:
             )
 
         if command_name == "message":
-            return SendMessageCommand(
+            return ProcessMessageCommand(
                 session_id=session_id,
                 text=str(payload.get("text", "")),
                 origin=metadata.origin,

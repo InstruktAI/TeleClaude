@@ -73,7 +73,7 @@ class TestCollectInlineRefErrors:
         snippet.touch()
         home = str(Path.home())
         # Use a fully-qualified ref path that passes format validation but points to nonexistent file
-        lines = [f"@{home}/.teleclaude/docs/baseline/principle/nonexistent.md"]
+        lines = [f"@{home}/.teleclaude/docs/general/principle/nonexistent.md"]
         errors = collect_inline_ref_errors(tmp_path, snippet, lines, domains={"software-development"})
         assert any(e["code"] == "snippet_inline_ref_missing" for e in errors)
 
@@ -131,13 +131,14 @@ class TestValidateSnippet:
         codes = [w["code"] for w in get_warnings()]
         assert "snippet_missing_frontmatter_field" in codes
 
-    def test_baseline_index_validates_refs(self, tmp_path: Path) -> None:
-        index = tmp_path / "docs" / "global" / "baseline" / "index.md"
-        index.parent.mkdir(parents=True)
-        target = Path.home() / ".teleclaude" / "docs" / "baseline" / "principle" / "test.md"
+    def test_baseline_manifest_validates_refs(self, tmp_path: Path) -> None:
+        # baseline.md is now a manifest file containing @references to snippets
+        manifest = tmp_path / "docs" / "global" / "baseline.md"
+        manifest.parent.mkdir(parents=True)
+        target = Path.home() / ".teleclaude" / "docs" / "general" / "principle" / "nonexistent-test.md"
         content = f"@{target}\n"
-        index.write_text(content)
-        validate_snippet(index, content, tmp_path, domains=set())
+        manifest.write_text(content)
+        validate_snippet(manifest, content, tmp_path, domains=set())
         warnings = get_warnings()
         # Should warn about missing ref if file doesn't exist
         if not target.exists():

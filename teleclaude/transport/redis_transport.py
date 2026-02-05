@@ -64,10 +64,10 @@ from teleclaude.types.commands import (
     CreateSessionCommand,
     GetSessionDataCommand,
     KeysCommand,
+    ProcessMessageCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
     RunAgentCommand,
-    SendMessageCommand,
     StartAgentCommand,
 )
 
@@ -1212,8 +1212,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             if isinstance(command, CreateSessionCommand):
                 data = await cmds.create_session(command)
                 return {"status": "success", "data": data}
-            if isinstance(command, SendMessageCommand):
-                await cmds.send_message(command)
+            if isinstance(command, ProcessMessageCommand):
+                await cmds.process_message(command)
                 return {"status": "success", "data": None}
             if isinstance(command, KeysCommand):
                 await cmds.keys(command)

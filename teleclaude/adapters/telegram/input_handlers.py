@@ -54,7 +54,6 @@ class InputHandlersMixin:
     Required from host class:
     - client: AdapterClient
     - user_whitelist: set[int]
-    - _topic_message_cache: dict[int | None, list[Message]]
     - _mcp_message_queues: dict[int, asyncio.Queue[Message]]
     - _processed_voice_messages: set[str]
     - _topic_ready_events: dict[int, asyncio.Event]
@@ -68,7 +67,6 @@ class InputHandlersMixin:
     # Abstract properties/attributes (declared for type hints)
     client: "AdapterClient"
     user_whitelist: set[int]
-    _topic_message_cache: dict[int | None, list[Message]]
     _mcp_message_queues: dict[int, "asyncio.Queue[object]"]
     _processed_voice_messages: set[str]
     _topic_ready_events: dict[int, asyncio.Event]
@@ -108,32 +106,6 @@ class InputHandlersMixin:
     # Input Handler Implementation
     # =========================================================================
 
-    async def _cache_command_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Cache command messages for registry polling.
-
-        Commands like /registry_ping and /pong need to be cached so
-        computer_registry can find them when polling.
-        """
-        message: Message | None = update.message or update.edited_message
-        if message:
-            # Use None for General topic, actual ID for forum topics
-            topic_id = message.message_thread_id
-
-            # Cache message for registry polling (get_topic_messages)
-            if topic_id not in self._topic_message_cache:
-                self._topic_message_cache[topic_id] = []
-
-            # For edited messages, replace existing message with same ID
-            if update.edited_message:
-                # Remove old version of this message
-                self._topic_message_cache[topic_id] = [
-                    m for m in self._topic_message_cache[topic_id] if m.message_id != message.message_id
-                ]
-
-            self._topic_message_cache[topic_id].append(message)
-            if len(self._topic_message_cache[topic_id]) > 100:
-                self._topic_message_cache[topic_id].pop(0)
-
     async def _handle_help(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /help command - dynamically generates from UiCommands."""
         user = update.effective_user
@@ -164,31 +136,12 @@ Usage:
         """Handle text messages in topics and General topic.
 
         Messages with message_thread_id are in specific topics.
-        Messages without message_thread_id are in General topic (cached with key None).
-
-        Also handles edited messages (for registry heartbeat updates).
+        Messages without message_thread_id are in General topic.
         """
         # Handle both new messages and edited messages
         message: Message | None = update.message or update.edited_message
         if message:
-            # Use None for General topic, actual ID for forum topics
             topic_id = message.message_thread_id
-
-            # Cache message for registry polling (get_topic_messages)
-            if topic_id not in self._topic_message_cache:
-                self._topic_message_cache[topic_id] = []
-
-            # For edited messages, replace existing message with same ID
-            if update.edited_message:
-                # Remove old version of this message
-                self._topic_message_cache[topic_id] = [
-                    m for m in self._topic_message_cache[topic_id] if m.message_id != message.message_id
-                ]
-
-            self._topic_message_cache[topic_id].append(message)
-            if len(self._topic_message_cache[topic_id]) > 100:
-                self._topic_message_cache[topic_id].pop(0)
-
             # ALSO push to MCP queue if registered (event-driven delivery for AI-to-AI)
             # Only push new messages, not edits (edits are not user input)
             if update.message and topic_id in self._mcp_message_queues:
@@ -252,9 +205,9 @@ Usage:
             session,
             str(update.effective_message.message_id),
             metadata,
-            "send_message",
+            "process_message",
             cmd.to_payload(),
-            lambda: get_command_service().send_message(cmd),
+            lambda: get_command_service().process_message(cmd),
         )
 
     async def _handle_voice_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:

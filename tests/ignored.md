@@ -37,12 +37,6 @@ This file documents source files that don't have dedicated unit tests and why.
 
 - No business logic to test
 
-### teleclaude/core/ux_state.py
-
-**Reason**: Simple state management dataclass.
-
-- Tested implicitly through integration tests
-
 ### teleclaude/transport/redis_transport.py
 
 **Reason**: Integration tested.

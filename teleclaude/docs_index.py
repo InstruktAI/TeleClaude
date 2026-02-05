@@ -189,7 +189,7 @@ def _extract_description_from_md(file_path: Path) -> str:
         stripped = line.strip()
         if stripped.startswith("# "):
             title = stripped[2:].strip()
-            # Remove type suffix if present (e.g., "— Guide")
+            # Remove type suffix if present (e.g., "— Spec")
             if " — " in title:
                 title = title.split(" — ")[0].strip()
             return title
