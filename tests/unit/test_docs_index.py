@@ -10,8 +10,6 @@ from teleclaude.docs_index import (
     build_index_payload,
     extract_required_reads,
     normalize_titles,
-    strip_baseline_frontmatter,
-    write_baseline_index,
     write_index_yaml,
     write_third_party_index,
 )
@@ -102,12 +100,10 @@ class TestBuildIndexPayload:
 
     def test_baseline_snippets_included(self, tmp_path: Path) -> None:
         docs = tmp_path / "docs" / "global"
-        baseline = docs / "baseline" / "principle"
-        baseline.mkdir(parents=True)
-        (baseline / "test.md").write_text("# Test — Principle\n\nContent.\n")
+        _write_snippet(docs / "general" / "policy" / "test.md", id="general/policy/test", type="policy", scope="global")
         payload = build_index_payload(tmp_path, docs)
         ids = [s["id"] for s in payload["snippets"]]
-        assert "baseline/principle/test" in ids
+        assert "general/policy/test" in ids
 
 
 # ---------------------------------------------------------------------------
@@ -132,44 +128,6 @@ class TestNormalizeTitles:
         f.write_text("# Test — Policy\n\nContent.\n")
         normalize_titles(tmp_path / "docs" / "global")
         assert f.read_text().count("Policy") == 1
-
-
-# ---------------------------------------------------------------------------
-# Baseline management
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestStripBaselineFrontmatter:
-    def test_strips_frontmatter(self, tmp_path: Path) -> None:
-        baseline = tmp_path / "agents" / "docs" / "baseline"
-        baseline.mkdir(parents=True)
-        f = baseline / "test.md"
-        f.write_text("---\nid: test\n---\n# Title\n\nContent.\n")
-        violations = strip_baseline_frontmatter(tmp_path)
-        assert len(violations) == 1
-        assert f.read_text().startswith("# Title")
-
-    def test_no_frontmatter_no_change(self, tmp_path: Path) -> None:
-        baseline = tmp_path / "agents" / "docs" / "baseline"
-        baseline.mkdir(parents=True)
-        f = baseline / "test.md"
-        f.write_text("# Title\n\nContent.\n")
-        violations = strip_baseline_frontmatter(tmp_path)
-        assert violations == []
-
-
-@pytest.mark.unit
-class TestWriteBaselineIndex:
-    def test_generates_index(self, tmp_path: Path) -> None:
-        baseline = tmp_path / "agents" / "docs" / "baseline" / "principle"
-        baseline.mkdir(parents=True)
-        (baseline / "test.md").touch()
-        write_baseline_index(tmp_path)
-        index = tmp_path / "agents" / "docs" / "baseline" / "index.md"
-        assert index.exists()
-        content = index.read_text()
-        assert "@~/.teleclaude/docs/baseline/principle/test.md" in content
 
 
 @pytest.mark.unit

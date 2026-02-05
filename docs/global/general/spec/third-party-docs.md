@@ -1,7 +1,7 @@
 ---
 id: general/spec/third-party-docs
 type: spec
-scope: general
+scope: global
 description: Conventions for third-party documentation storage and references.
 ---
 

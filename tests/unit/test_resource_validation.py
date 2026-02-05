@@ -221,8 +221,10 @@ class TestValidateArtifact:
         import frontmatter as fm
 
         body = (
-            "@docs/nonexistent/thing.md\n\n"
-            "# Title\n\nYou are now the x.\n\n"
+            "# Title\n\n"
+            "## Required reads\n\n"
+            "- @docs/nonexistent/thing.md\n\n"
+            "You are now the x.\n\n"
             "## Purpose\n\nX.\n\n## Inputs\n\nX.\n\n## Outputs\n\nX.\n\n## Steps\n\nX.\n"
         )
         post = fm.Post(body, description="Test")

@@ -108,7 +108,7 @@ snippets:
 - id: general/spec/third-party-docs
   description: Conventions for third-party documentation storage and references.
   type: spec
-  scope: general
+  scope: global
   path: docs/general/spec/third-party-docs.md
   source_project: TeleClaude
 - id: software-development/concept/architect
