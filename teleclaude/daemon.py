@@ -769,42 +769,51 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 if not claimed:
                     continue
 
-                try:
-                    payload = cast(
-                        dict[str, object],  # guard: loose-dict - Hook payload JSON
-                        json.loads(row["payload"]),
-                    )
-                except json.JSONDecodeError as exc:
-                    logger.error("Hook outbox payload invalid", row_id=row["id"], error=str(exc))
-                    await db.mark_hook_outbox_delivered(row["id"], error=str(exc))
-                    continue
+                # Fire-and-forget: dispatch work package asynchronously
+                asyncio.create_task(self._process_outbox_item(row))
 
-                try:
-                    await self._dispatch_hook_event(row["session_id"], row["event_type"], payload)
-                    await db.mark_hook_outbox_delivered(row["id"])
-                except Exception as exc:  # pylint: disable=broad-exception-caught
-                    attempt = int(row.get("attempt_count", 0)) + 1
-                    error_str = str(exc)
-                    if not self._is_retryable_hook_error(exc):
-                        logger.error(
-                            "Hook outbox event dropped (non-retryable)",
-                            row_id=row["id"],
-                            attempt=attempt,
-                            error=error_str,
-                        )
-                        await db.mark_hook_outbox_delivered(row["id"], error=error_str)
-                        continue
+    async def _process_outbox_item(
+        self,
+        row: dict[str, object],  # noqa: loose-dict - DB row mapping
+    ) -> None:
+        """Process a single outbox item. Handles its own success/failure lifecycle."""
+        row_id = row["id"]
+        try:
+            payload = cast(
+                dict[str, object],  # guard: loose-dict - Hook payload JSON
+                json.loads(str(row["payload"])),
+            )
+        except json.JSONDecodeError as exc:
+            logger.error("Hook outbox payload invalid", row_id=row_id, error=str(exc))
+            await db.mark_hook_outbox_delivered(row_id, error=str(exc))
+            return
 
-                    delay = self._hook_outbox_backoff(attempt)
-                    next_attempt = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
-                    logger.error(
-                        "Hook outbox dispatch failed (retrying)",
-                        row_id=row["id"],
-                        attempt=attempt,
-                        next_attempt_in_s=round(delay, 2),
-                        error=error_str,
-                    )
-                    await db.mark_hook_outbox_failed(row["id"], attempt, next_attempt, error_str)
+        try:
+            await self._dispatch_hook_event(str(row["session_id"]), str(row["event_type"]), payload)
+            await db.mark_hook_outbox_delivered(row_id)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            attempt = int(row.get("attempt_count", 0)) + 1
+            error_str = str(exc)
+            if not self._is_retryable_hook_error(exc):
+                logger.error(
+                    "Hook outbox event dropped (non-retryable)",
+                    row_id=row_id,
+                    attempt=attempt,
+                    error=error_str,
+                )
+                await db.mark_hook_outbox_delivered(row_id, error=error_str)
+                return
+
+            delay = self._hook_outbox_backoff(attempt)
+            next_attempt = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
+            logger.error(
+                "Hook outbox dispatch failed (retrying)",
+                row_id=row_id,
+                attempt=attempt,
+                next_attempt_in_s=round(delay, 2),
+                error=error_str,
+            )
+            await db.mark_hook_outbox_failed(row_id, attempt, next_attempt, error_str)
 
     def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None:
         """Create and track a background task."""

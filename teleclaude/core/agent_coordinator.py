@@ -29,8 +29,8 @@ from teleclaude.core.events import (
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import notify_input_request, notify_stop
-from teleclaude.core.session_utils import update_title_with_agent
-from teleclaude.core.summarizer import summarize_text
+from teleclaude.core.session_utils import parse_session_title, update_title_with_agent
+from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
@@ -162,6 +162,7 @@ class AgentCoordinator:
         """Handle user prompt submission.
 
         For ALL sessions: write last_message_sent to DB (captures direct terminal input).
+        If title is "Untitled", summarize user input and update title.
         For headless sessions: also route through process_message for tmux adoption.
         """
         session_id = context.session_id
@@ -175,14 +176,27 @@ class AgentCoordinator:
         # Clear notification flag when new prompt starts (all sessions)
         await db.set_notification_flag(session_id, False)
 
-        # Always write last_message_sent - this captures direct terminal input
-        # that doesn't go through UI adapters (e.g., typing in tmux/MCP)
-        await db.update_session(
-            session_id,
-            last_message_sent=payload.prompt[:200],
-            last_message_sent_at=datetime.now(timezone.utc).isoformat(),
-            last_input_origin=InputOrigin.HOOK.value,
-        )
+        # Prepare batched update
+        update_kwargs: dict[str, object] = {  # noqa: loose-dict - Dynamic session updates
+            "last_message_sent": payload.prompt[:200],
+            "last_message_sent_at": datetime.now(timezone.utc).isoformat(),
+            "last_input_origin": InputOrigin.HOOK.value,
+        }
+
+        # Update title if still "Untitled"
+        prefix, description = parse_session_title(session.title)
+        if prefix and description == "Untitled":
+            try:
+                title, _summary = await summarize_user_input(payload.prompt)
+                if title:
+                    new_title = f"{prefix}{title}"
+                    update_kwargs["title"] = new_title
+                    logger.info("Updated session title from user input: %s", new_title)
+            except Exception as exc:  # noqa: BLE001 - title update is best-effort
+                logger.warning("Title summarization failed: %s", exc)
+
+        # Single DB update for all fields
+        await db.update_session(session_id, **update_kwargs)
         logger.debug(
             "Recorded user input via hook for session %s: %s...",
             session_id[:8],
@@ -330,7 +344,7 @@ class AgentCoordinator:
         # Summarize the raw output
         summary: str | None = None
         try:
-            _title, summary = await summarize_text(last_message)
+            _title, summary = await summarize_agent_output(last_message)
         except Exception as exc:  # noqa: BLE001 - summarizer failures should not break stop handling
             logger.warning("Summarization failed: %s", exc, extra={"session_id": session_id[:8]})
             # Still return raw output even if summarization fails

@@ -26,25 +26,52 @@ SUMMARY_SCHEMA: dict[str, object] = {  # noqa: loose-dict - JSON schema definiti
 }
 
 
-def _build_prompt(raw_transcript: str, max_summary_words: int) -> str:
-    return f"""Analyze this AI assistant session to generate a title and summary.
+def _build_user_input_prompt(user_input: str, max_summary_words: int) -> str:
+    """Build prompt for summarizing user input."""
+    return f"""Summarize this user request.
 
-## Latest Agent Output:
-{raw_transcript}
+## User Input:
+{user_input}
 
 ## Output:
-1. **title** (max 7 words, max 70 chars): What the USER is trying to accomplish. Focus on user intent, not agent actions. Use imperative form (e.g., "Fix login bug", "Add dark mode").
-2. **summary** (max {max_summary_words} words, first person "I..."): Summarize the text above. If it is trivial or very short, return it verbatim.
+1. **title** (max 7 words, max 70 chars): What the user wants. Use imperative form (e.g., "Fix login bug", "Add dark mode").
+2. **summary** (max {max_summary_words} words): Summarize the user's request. If trivial or very short, return verbatim.
 """
 
 
-async def summarize_text(raw_transcript: str) -> tuple[str | None, str]:
-    """Summarize a single agent output string."""
-    if not raw_transcript:
-        raise ValueError("Empty transcript")
+def _build_agent_output_prompt(agent_output: str, max_summary_words: int) -> str:
+    """Build prompt for summarizing agent output."""
+    return f"""Summarize this assistant response.
 
+## Agent Output:
+{agent_output}
+
+## Output:
+1. **title** (max 7 words, max 70 chars): What was accomplished. Use past tense (e.g., "Fixed login bug", "Added dark mode").
+2. **summary** (max {max_summary_words} words): Write as the assistant in first person, describing what you did. Start with "I". If trivial or very short, return verbatim.
+"""
+
+
+async def summarize_user_input(user_input: str) -> tuple[str | None, str]:
+    """Summarize user input. Returns (title, summary)."""
+    if not user_input:
+        raise ValueError("Empty user input")
     max_summary_words = config.summarizer.max_summary_words
-    prompt = _build_prompt(raw_transcript, max_summary_words)
+    prompt = _build_user_input_prompt(user_input, max_summary_words)
+    return await _call_summarizer(prompt)
+
+
+async def summarize_agent_output(agent_output: str) -> tuple[str | None, str]:
+    """Summarize agent output. Returns (title, summary)."""
+    if not agent_output:
+        raise ValueError("Empty agent output")
+    max_summary_words = config.summarizer.max_summary_words
+    prompt = _build_agent_output_prompt(agent_output, max_summary_words)
+    return await _call_summarizer(prompt)
+
+
+async def _call_summarizer(prompt: str) -> tuple[str | None, str]:
+    """Call the summarizer API with the given prompt."""
 
     errors: list[str] = []
 
@@ -110,8 +137,12 @@ async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | 
     if not raw_transcript:
         raise ValueError("Empty transcript")
 
-    title, summary = await summarize_text(raw_transcript)
+    title, summary = await summarize_agent_output(raw_transcript)
     return title, summary, raw_transcript
+
+
+# Backwards compatibility alias
+summarize_text = summarize_agent_output
 
 
 def _parse_response(text: str) -> tuple[str | None, str]:
