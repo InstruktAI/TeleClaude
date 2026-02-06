@@ -7,7 +7,7 @@ Config is loaded at module import time and available globally via:
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import yaml
 from dotenv import load_dotenv
@@ -209,6 +209,20 @@ class TerminalConfig:
 
 
 @dataclass
+class ExperimentConfig:
+    """Configuration for a specific experiment.
+
+    Attributes:
+        name: Unique identifier for the experiment
+        agents: Optional list of agents this experiment applies to.
+               If None or empty, applies to all agents.
+    """
+
+    name: str
+    agents: list[str] | None = None
+
+
+@dataclass
 class Config:
     database: DatabaseConfig
     computer: ComputerConfig
@@ -219,6 +233,27 @@ class Config:
     terminal: TerminalConfig
     tts: TTSConfig | None = None
     summarizer: SummarizerConfig = field(default_factory=SummarizerConfig)
+    experiments: list[ExperimentConfig] = field(default_factory=list)
+
+    def is_experiment_enabled(self, name: str, agent: str | None = None) -> bool:
+        """Check if an experiment is enabled, optionally for a specific agent.
+
+        Args:
+            name: Experiment name to check
+            agent: Optional agent key to match against (e.g., "gemini")
+
+        Returns:
+            True if experiment is enabled and matches the agent (if provided)
+        """
+        for exp in self.experiments:
+            if exp.name == name:
+                # If agents list is empty or None, it applies to all agents
+                if not exp.agents:
+                    return True
+                # Otherwise, agent must be in the list
+                if agent and agent in exp.agents:
+                    return True
+        return False
 
 
 # Default configuration values (single source of truth)
@@ -304,6 +339,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
         "enabled": True,
         "max_summary_words": 30,
     },
+    "experiments": [],
 }
 
 
@@ -424,6 +460,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
     agents_raw = raw.get("agents", {})
     tts_raw = raw.get("tts", None)
     summarizer_raw = raw.get("summarizer", {})
+    experiments_raw = raw.get("experiments", [])
 
     # Import AGENT_METADATA from constants
     from teleclaude.constants import AGENT_METADATA
@@ -448,6 +485,17 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
                     non_interactive_flag=str(metadata["non_interactive_flag"]),
                     resume_template=str(metadata["resume_template"]),
                     continue_template=str(metadata.get("continue_template", "")),  # Optional field
+                )
+
+    experiments = []
+    if isinstance(experiments_raw, list):
+        for exp_data in experiments_raw:
+            if isinstance(exp_data, dict):
+                experiments.append(
+                    ExperimentConfig(
+                        name=str(exp_data["name"]),
+                        agents=list(exp_data["agents"]) if exp_data.get("agents") else None,
+                    )
                 )
 
     return Config(
@@ -494,6 +542,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
             if isinstance(summarizer_raw, dict)
             else 30,
         ),
+        experiments=experiments,
     )
 
 
@@ -510,10 +559,27 @@ if not _config_path.exists():
     )
 
 with open(_config_path, encoding="utf-8") as f:
-    _user_config = yaml.safe_load(f)  # type: ignore[misc]
+    _raw_user_config = yaml.safe_load(f)  # type: ignore[misc]
 
 # Expand environment variables
-_user_config = expand_env_vars(_user_config)  # type: ignore[misc]
+_user_config: Any = expand_env_vars(_raw_user_config) if isinstance(_raw_user_config, dict) else {}
+
+# Load optional experiments.yml from same directory as config.yml
+_experiments_path = _config_path.parent / "experiments.yml"
+if _experiments_path.exists():
+    with open(_experiments_path, encoding="utf-8") as f:
+        _raw_experiments_config = yaml.safe_load(f)
+    if isinstance(_raw_experiments_config, dict):
+        # Expand env vars in experiments config too
+        _experiments_config: Any = expand_env_vars(_raw_experiments_config)
+        # Merge into user config (experiments leaf)
+        if "experiments" in _experiments_config:
+            if "experiments" not in _user_config:
+                _user_config["experiments"] = []
+
+            exp_list = _experiments_config["experiments"]
+            if isinstance(exp_list, list):
+                _user_config["experiments"].extend(exp_list)
 
 # Merge with defaults and build typed config
 _merged = _deep_merge(DEFAULT_CONFIG, _user_config)  # type: ignore[arg-type]

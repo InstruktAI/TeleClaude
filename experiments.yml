@@ -1,0 +1,5 @@
+experiments:
+  - name: ui_threaded_agent_stop_output
+    agents: [gemini]
+  - name: ui_threaded_agent_stop_output_include_tools
+    agents: [gemini]
