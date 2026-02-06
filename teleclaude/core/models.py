@@ -518,10 +518,15 @@ class StartSessionArgs:
             raise ValueError(f"Arguments required for teleclaude__start_session: {', '.join(missing)}")
 
         agent = str(arguments.get("agent", "claude"))
-        thinking_mode_raw = str(arguments.get("thinking_mode", ThinkingMode.SLOW))
-        allowed_modes = {ThinkingMode.FAST.value, ThinkingMode.MED.value, ThinkingMode.SLOW.value}
+        thinking_mode_raw = arguments.get("thinking_mode")
+        if isinstance(thinking_mode_raw, ThinkingMode):
+            thinking_mode_raw = thinking_mode_raw.value
+        else:
+            thinking_mode_raw = str(thinking_mode_raw or ThinkingMode.SLOW.value)
+
+        allowed_modes = {mode.value for mode in ThinkingMode}
         if thinking_mode_raw not in allowed_modes:
-            raise ValueError("thinking_mode must be one of: fast, med, slow")
+            raise ValueError(f"thinking_mode must be one of: {', '.join(sorted(allowed_modes))}")
         thinking_mode = ThinkingMode(thinking_mode_raw)
 
         return cls(
@@ -558,10 +563,15 @@ class RunAgentCommandArgs:
         if not arguments or FIELD_COMPUTER not in arguments or FIELD_COMMAND not in arguments:
             raise ValueError("Arguments required for teleclaude__run_agent_command: computer, command")
 
-        thinking_mode_raw = str(arguments.get("thinking_mode", ThinkingMode.SLOW))
-        allowed_modes = {ThinkingMode.FAST.value, ThinkingMode.MED.value, ThinkingMode.SLOW.value}
+        thinking_mode_raw = arguments.get("thinking_mode")
+        if isinstance(thinking_mode_raw, ThinkingMode):
+            thinking_mode_raw = thinking_mode_raw.value
+        else:
+            thinking_mode_raw = str(thinking_mode_raw or ThinkingMode.SLOW.value)
+
+        allowed_modes = {mode.value for mode in ThinkingMode}
         if thinking_mode_raw not in allowed_modes:
-            raise ValueError("thinking_mode must be one of: fast, med, slow")
+            raise ValueError(f"thinking_mode must be one of: {', '.join(sorted(allowed_modes))}")
         thinking_mode = ThinkingMode(thinking_mode_raw)
 
         project_arg = arguments.get("project")

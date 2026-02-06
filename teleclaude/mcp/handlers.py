@@ -85,6 +85,15 @@ class MCPHandlersMixin:
     client: "AdapterClient"
     computer_name: str
 
+    def _normalize_thinking_mode(self, mode: str | ThinkingMode) -> ThinkingMode:
+        """Ensure thinking_mode is a ThinkingMode enum member."""
+        if isinstance(mode, ThinkingMode):
+            return mode
+        try:
+            return ThinkingMode(str(mode))
+        except ValueError:
+            return ThinkingMode.SLOW
+
     def _is_local_computer(self, computer: str) -> bool:
         """Check if the target computer refers to the local machine."""
         raise NotImplementedError
@@ -340,6 +349,7 @@ class MCPHandlersMixin:
         # Start agent in background if message provided (None = skip agent start entirely)
         if message is not None:
             agent_args: list[str] = [message] if message else []
+            thinking_mode = self._normalize_thinking_mode(thinking_mode)
 
             async def _run_agent_start() -> None:
                 try:
@@ -410,6 +420,7 @@ class MCPHandlersMixin:
             # Start agent if message provided (None = skip agent start entirely)
             if message is not None:
                 # Build command: /agent_start agent mode [prompt]
+                thinking_mode = self._normalize_thinking_mode(thinking_mode)
                 cmd_parts = ["/agent", agent, thinking_mode.value]
                 if message:
                     cmd_parts.append(shlex.quote(message))
@@ -551,6 +562,8 @@ class MCPHandlersMixin:
 
         title = full_command
         quoted_command = shlex.quote(full_command)
+
+        thinking_mode = self._normalize_thinking_mode(thinking_mode)
         auto_command = f"agent_then_message {agent} {thinking_mode.value} {quoted_command}"
         normalized_subfolder = subfolder.strip().strip("/") if subfolder else ""
 
