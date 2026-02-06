@@ -68,7 +68,7 @@ class CodexParser(LogParser):
             payload_type = payload["type"]
             if payload_type == "agent_message":
                 yield LogEvent(
-                    event_type="stop",
+                    event_type="agent_stop",
                     data={},
                     timestamp=time.time(),
                 )

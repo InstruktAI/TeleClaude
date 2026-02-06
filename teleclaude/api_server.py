@@ -48,6 +48,7 @@ from teleclaude.core import command_handlers
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
+from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import ErrorEventContext, SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSummary
@@ -195,11 +196,20 @@ class APIServer:
         context: ErrorEventContext,
     ) -> None:
         """Broadcast error events to WS clients."""
+        user_message = get_user_facing_error_message(context)
+        if user_message is None:
+            logger.debug(
+                "Suppressing non-user-facing websocket error",
+                source=context.source,
+                code=context.code,
+            )
+            return
+
         payload = {
             "event": "error",
             "data": {
                 "session_id": context.session_id,
-                "message": context.message,
+                "message": user_message,
                 "source": context.source,
                 "details": context.details,
                 "severity": context.severity,

@@ -12,7 +12,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Protocol, cast
+from typing import Any, Mapping, cast
 
 from instrukt_ai_logging import configure_logging, get_logger
 
@@ -21,16 +21,10 @@ hooks_dir = Path(__file__).parent
 sys.path.append(str(hooks_dir))
 sys.path.append(str(hooks_dir.parent.parent))
 
-from adapters import claude as claude_adapter  # noqa: E402
-from adapters import codex as codex_adapter  # noqa: E402
-from adapters import gemini as gemini_adapter  # noqa: E402
-
-
 from teleclaude.config import config  # noqa: E402
 from teleclaude.core.agents import AgentName  # noqa: E402
 from teleclaude.core import db_models  # noqa: E402
 from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS  # noqa: E402
-from teleclaude.hooks.adapters.models import NormalizedHookPayload  # noqa: E402
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -40,8 +34,8 @@ logger = get_logger("teleclaude.hooks.receiver")
 _HANDLED_EVENTS: frozenset[str] = frozenset(
     {
         "session_start",
-        "prompt",
-        "stop",
+        "user_prompt_submit",
+        "agent_stop",
         "notification",
         "session_end",
         "before_agent",
@@ -72,16 +66,16 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _read_stdin() -> tuple[str, dict[str, object]]:  # guard: loose-dict - Raw stdin JSON payload.
+def _read_stdin() -> tuple[str, Mapping[str, Any]]:
     raw_input = ""
-    data: dict[str, object] = {}  # guard: loose-dict - Raw stdin JSON payload.
-    try:
-        if not sys.stdin.isatty():
-            raw_input = sys.stdin.read()
-            data = json.loads(raw_input) if raw_input.strip() else {}
-    except json.JSONDecodeError:
-        logger.error("Failed to parse JSON from stdin")
-        data = {}
+    data: Mapping[str, Any] = {}
+    if not sys.stdin.isatty():
+        raw_input = sys.stdin.read()
+        if raw_input.strip():
+            parsed = json.loads(raw_input)
+            if not isinstance(parsed, dict):
+                raise ValueError("Hook stdin payload must be a JSON object")
+            data = cast(Mapping[str, Any], parsed)
     return raw_input, data
 
 
@@ -102,18 +96,6 @@ def _log_raw_input(raw_input: str, *, log_raw: bool) -> None:
             raw_len=len(raw_input),
             truncated=truncated,
         )
-
-
-def _send_error_event(
-    session_id: str,
-    message: str,
-    details: Mapping[str, Any],
-) -> None:
-    _enqueue_hook_event(
-        session_id,
-        "error",
-        {"message": message, "source": "hook_receiver", "details": details},
-    )
 
 
 def _enqueue_hook_event(
@@ -397,18 +379,57 @@ def _persist_session_map(agent: str, native_session_id: str | None, session_id: 
         logger.warning("Failed to persist session map: %s", exc)
 
 
-class NormalizeFn(Protocol):
-    def __call__(self, event_type: str, data: Mapping[str, Any]) -> NormalizedHookPayload: ...
+def _emit_receiver_error_best_effort(
+    *,
+    agent: str,
+    event_type: str | None,
+    message: str,
+    code: str,
+    details: Mapping[str, Any] | None = None,
+    raw_data: Mapping[str, Any] | None = None,
+) -> None:
+    """Best-effort error emission for receiver contract violations."""
+    payload = dict(details or {})
+    payload.update(
+        {
+            "agent": agent,
+            "event_type": event_type,
+            "code": code,
+        }
+    )
 
-
-def _get_adapter(agent: str) -> NormalizeFn:
-    if agent == AgentName.CLAUDE.value:
-        return claude_adapter.normalize_payload
-    if agent == AgentName.CODEX.value:
-        return codex_adapter.normalize_payload
-    if agent == AgentName.GEMINI.value:
-        return gemini_adapter.normalize_payload
-    raise ValueError(f"Unknown agent '{agent}'")
+    try:
+        raw_native_session_id = None
+        if raw_data is not None:
+            raw_native_session_id, _ = _extract_native_identity(agent, raw_data)
+        session_id = _get_legacy_tmux_session_id()
+        if not session_id:
+            session_id = _get_cached_session_id(agent, raw_native_session_id)
+        if not session_id:
+            session_id = _find_session_id_by_native(raw_native_session_id)
+        if not session_id:
+            logger.error(
+                "Receiver error with unknown session",
+                agent=agent,
+                event_type=event_type,
+                code=code,
+                message=message,
+            )
+            return
+        _enqueue_hook_event(
+            session_id,
+            "error",
+            {
+                "message": message,
+                "source": "hook_receiver",
+                "code": code,
+                "details": payload,
+                "severity": "error",
+                "retryable": False,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001 - never crash receiver on best-effort error path
+        logger.error("Receiver error reporting failed", error=str(exc), code=code)
 
 
 def main() -> None:
@@ -425,20 +446,50 @@ def main() -> None:
 
     # Read input based on agent type
     if args.agent == AgentName.CODEX.value:
-        # Codex notify passes JSON as command-line argument, event is always "stop"
+        # Codex notify passes JSON as command-line argument, event is always "agent_stop"
         raw_input = args.event_type or ""
         try:
-            raw_data: dict[str, object] = (  # guard: loose-dict - Raw stdin JSON payload.
-                json.loads(raw_input) if raw_input.strip() else {}
-            )
+            parsed = json.loads(raw_input) if raw_input.strip() else {}
         except json.JSONDecodeError:
-            logger.error("Failed to parse JSON from Codex notify argument")
-            raw_data = {}
-        event_type = "stop"
+            _emit_receiver_error_best_effort(
+                agent=args.agent,
+                event_type="agent_stop",
+                message="Invalid hook payload JSON from codex notify argument",
+                code="HOOK_INVALID_JSON",
+                details={"raw_payload_present": bool(raw_input.strip())},
+            )
+            sys.exit(1)
+        if not isinstance(parsed, dict):
+            _emit_receiver_error_best_effort(
+                agent=args.agent,
+                event_type="agent_stop",
+                message="Codex hook payload must be a JSON object",
+                code="HOOK_PAYLOAD_NOT_OBJECT",
+            )
+            sys.exit(1)
+        raw_data = cast(Mapping[str, Any], parsed)
+        event_type = "agent_stop"
     else:
         # Claude/Gemini pass event_type as arg, JSON on stdin
         event_type = cast(str, args.event_type)
-        raw_input, raw_data = _read_stdin()
+        try:
+            raw_input, raw_data = _read_stdin()
+        except json.JSONDecodeError:
+            _emit_receiver_error_best_effort(
+                agent=args.agent,
+                event_type=event_type,
+                message="Invalid hook payload JSON from stdin",
+                code="HOOK_INVALID_JSON",
+            )
+            sys.exit(1)
+        except ValueError as exc:
+            _emit_receiver_error_best_effort(
+                agent=args.agent,
+                event_type=event_type,
+                message=str(exc),
+                code="HOOK_PAYLOAD_NOT_OBJECT",
+            )
+            sys.exit(1)
 
     # log_raw = os.getenv("TELECLAUDE_HOOK_LOG_RAW") == "1"
     log_raw = True
@@ -446,6 +497,15 @@ def main() -> None:
 
     # Early exit for unhandled events - don't spawn mcp-wrapper
     if event_type not in _HANDLED_EVENTS:
+        if event_type in {"prompt", "stop"}:
+            _emit_receiver_error_best_effort(
+                agent=args.agent,
+                event_type=event_type,
+                message="Deprecated hook event type; expected user_prompt_submit or agent_stop",
+                code="HOOK_EVENT_DEPRECATED",
+                raw_data=raw_data,
+            )
+            sys.exit(1)
         logger.trace("Hook receiver skipped: unhandled event", event_type=event_type)
         sys.exit(0)
 
@@ -495,31 +555,7 @@ def main() -> None:
         if not env_session_id or teleclaude_session_id != env_session_id:
             _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
 
-    # Gemini: only allow session_start and stop into outbox.
-    # For other events, exit cleanly (transcript capture only).
-    if args.agent == AgentName.GEMINI.value and event_type not in {"session_start", "stop"}:
-        logger.debug(
-            "Gemini hook metadata updated (event filtered)",
-            event_type=event_type,
-            session_id=teleclaude_session_id,
-        )
-        sys.exit(0)
-
-    normalize_payload = _get_adapter(args.agent)
-    try:
-        normalized = normalize_payload(event_type, raw_data)
-        data = normalized.to_dict()
-    except Exception as e:
-        logger.error("Receiver validation error", error=str(e))
-        _send_error_event(
-            teleclaude_session_id,
-            str(e),
-            {
-                "agent": args.agent,
-                "event_type": event_type,
-            },
-        )
-        sys.exit(1)
+    data = dict(raw_data)
 
     logger.debug(
         "Hook event received",
@@ -565,13 +601,36 @@ def main() -> None:
 
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(timezone.utc).isoformat()
-    if event_type == "stop":
-        internal_event_type = "agent_stop"
-    elif event_type == "prompt":
-        internal_event_type = "user_prompt_submit"
-    else:
-        internal_event_type = event_type
-    _enqueue_hook_event(teleclaude_session_id, internal_event_type, data)
+    # Gemini provides turn payloads on AfterAgent. Split once at boundary:
+    # - prompt => user_prompt_submit
+    # - prompt_response => agent_stop
+    if args.agent == AgentName.GEMINI.value and event_type == "agent_stop":
+        prompt_text = raw_data.get("prompt")
+        prompt_val = prompt_text.strip() if isinstance(prompt_text, str) else ""
+        response_text = raw_data.get("prompt_response")
+        response_val = response_text.strip() if isinstance(response_text, str) else ""
+
+        emitted = False
+        if prompt_val:
+            user_data = dict(data)
+            user_data["prompt"] = prompt_val
+            _enqueue_hook_event(teleclaude_session_id, "user_prompt_submit", user_data)
+            emitted = True
+        if response_val:
+            stop_data = dict(data)
+            stop_data["prompt_response"] = response_val
+            _enqueue_hook_event(teleclaude_session_id, "agent_stop", stop_data)
+            emitted = True
+
+        if not emitted:
+            logger.trace(
+                "Gemini agent_stop skipped (no prompt and no prompt_response)",
+                event_type=event_type,
+                session_id=(teleclaude_session_id or "")[:8],
+            )
+        return
+
+    _enqueue_hook_event(teleclaude_session_id, event_type, data)
 
 
 if __name__ == MAIN_MODULE:

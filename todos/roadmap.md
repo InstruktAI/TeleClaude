@@ -6,12 +6,6 @@
 
 ---
 
-## MCP Role-Based Tool Filtering
-
-- [>] role-tools-injection
-
-Implement role-filtered MCP endpoints so workers can only access appropriate tools via marker file injection.
-
 ## Eliminate Raw SQL from DB Layer
 
 - [ ] db-raw-sql-cleanup

@@ -59,6 +59,33 @@ def test_configure_claude_writes_hook_file(tmp_path, monkeypatch):
     assert 'receiver.py --agent claude --cwd "$PWD" session_start' in command_text
 
 
+def test_configure_gemini_writes_only_required_hook_events(tmp_path, monkeypatch):
+    """Gemini hook configuration should only install start/user_prompt_submit/agent_stop events."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    hook_python = tmp_path / "python"
+    hook_python.write_text("#!/usr/bin/env python3\n")
+    monkeypatch.setenv("TELECLAUDE_HOOK_PYTHON", str(hook_python))
+    repo_root = Path(__file__).resolve().parents[2]
+
+    install_hooks.configure_gemini(repo_root)
+
+    gemini_config = tmp_path / ".gemini" / "settings.json"
+    assert gemini_config.exists()
+
+    data = json.loads(gemini_config.read_text())
+    hooks = data["hooks"]
+    assert set(hooks.keys()) == {"enabled", "SessionStart", "UserPromptSubmit", "AfterAgent"}
+    assert hooks["enabled"] is True
+
+    prompt_hook = hooks["UserPromptSubmit"][0]["hooks"][0]
+    command = prompt_hook["command"]
+    if isinstance(command, list):
+        command_text = " ".join(command)
+    else:
+        command_text = command
+    assert 'receiver.py --agent gemini --cwd "$PWD" user_prompt_submit' in command_text
+
+
 def test_configure_codex_writes_notify_hook(tmp_path, monkeypatch):
     """Codex hook configuration writes notify array to ~/.codex/config.toml."""
     monkeypatch.setenv("HOME", str(tmp_path))

@@ -29,3 +29,4 @@
 | 2026-01-15 | cache-unification            | Cache Unification for Session UI Updates                                                  | DELIVERED | 8b397f4                                  |
 | 2026-01-17 | deferral-automation          | Deferral Automation                                                                       | DELIVERED | c679224709663bb710290a00de6c25ae615fba45 |
 | 2026-01-23 | banner-animations            | Banner Animation System                                                                   | DELIVERED | fb7e5e8                                  |
+| 2026-02-06 | role-tools-injection         | MCP Role-Based Tool Filtering                                                             | DELIVERED | -                                        |

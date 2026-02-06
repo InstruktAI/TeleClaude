@@ -142,23 +142,15 @@ def _build_hook_command(python_exe: Path, receiver_script: Path, agent: str, eve
 # Event mappings by agent
 CLAUDE_EVENTS = {
     "SessionStart": "session_start",
-    "UserPromptSubmit": "prompt",
-    "Stop": "stop",
+    "UserPromptSubmit": "user_prompt_submit",
+    "Stop": "agent_stop",
 }
 
 GEMINI_EVENTS = {
     "SessionStart": "session_start",
-    "SessionEnd": "session_end",
-    # AfterAgent fires when agent loop ends = turn completion = stop event
-    "AfterAgent": "stop",
-    "Notification": "notification",
-    "BeforeAgent": "before_agent",
-    "BeforeModel": "before_model",
-    "AfterModel": "after_model",
-    "BeforeToolSelection": "before_tool_selection",
-    "BeforeTool": "before_tool",
-    "AfterTool": "after_tool",
-    "PreCompress": "pre_compress",
+    "UserPromptSubmit": "user_prompt_submit",
+    # AfterAgent fires when agent loop ends and is used as agent_stop.
+    "AfterAgent": "agent_stop",
 }
 
 
@@ -338,7 +330,7 @@ def configure_codex(repo_root: Path) -> None:
     Codex uses TOML config at ~/.codex/config.toml with a simple `notify` key
     that takes an array of command parts. Unlike Claude/Gemini which use JSON
     with nested hook structures, Codex only supports one hook event type:
-    `agent-turn-complete` which maps to our internal "stop" event.
+    `agent-turn-complete` which maps to our internal "agent_stop" event.
     """
     receiver_script = repo_root / "teleclaude" / "hooks" / "receiver.py"
     if not receiver_script.exists():

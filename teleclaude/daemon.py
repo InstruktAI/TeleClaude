@@ -27,6 +27,7 @@ from teleclaude.core.cache import DaemonCache
 from teleclaude.core.command_registry import init_command_service
 from teleclaude.core.command_service import CommandService
 from teleclaude.core.db import db
+from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
@@ -680,10 +681,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
     ) -> None:
         """Dispatch a hook event directly global Event Bus."""
-        if event_type == "stop":
-            event_type = AgentHookEvents.AGENT_STOP
-        elif event_type == "prompt":
-            event_type = AgentHookEvents.USER_PROMPT_SUBMIT
         session = await db.get_session(session_id)
         if not session:
             if event_type != AgentHookEvents.AGENT_SESSION_START:
@@ -1209,9 +1206,17 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.error("Error event for unknown session %s: %s", context.session_id[:8], context.message)
             return
 
-        source = f" ({context.source})" if context.source else ""
-        message = f"Error{source}: {context.message}"
-        await self.client.send_message(session, message, metadata=MessageMetadata())
+        user_message = get_user_facing_error_message(context)
+        if user_message is None:
+            logger.debug(
+                "Suppressing non-user-facing error event",
+                session_id=context.session_id[:8],
+                source=context.source,
+                code=context.code,
+            )
+            return
+
+        await self.client.send_message(session, f"❌ {user_message}", metadata=MessageMetadata())
 
     async def _handle_deploy(self, _args: DeployArgs) -> None:
         """Execute deployment: git pull + restart daemon via service manager.

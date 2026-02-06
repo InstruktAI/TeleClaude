@@ -665,7 +665,7 @@ async def test_process_agent_stop_sets_native_session_id_from_payload(tmp_path):
 
         await daemon._dispatch_hook_event(
             session_id="tele-123",
-            event_type="stop",
+            event_type="agent_stop",
             data={"native_session_id": "native-123"},
         )
 
@@ -968,7 +968,7 @@ async def test_dispatch_hook_event_updates_tty_before_polling():
         with patch("teleclaude.daemon.event_bus.emit", new_callable=Mock) as mock_emit:
             await daemon._dispatch_hook_event(
                 session_id="sess-tty",
-                event_type="stop",
+                event_type="agent_stop",
                 data={"teleclaude_pid": 123, "teleclaude_tty": "/dev/ttys001", "transcript_path": "/tmp/x.json"},
             )
 
