@@ -6,7 +6,6 @@ import pytest
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
-from teleclaude.core.models import Session
 
 
 class StubUiAdapter(UiAdapter):
@@ -53,10 +52,10 @@ class StubUiAdapter(UiAdapter):
 
 
 @pytest.mark.asyncio
-async def test_ui_adapter_send_output_update_strips_ansi():
+async def test_ui_adapter_send_output_update_strips_ansi(monkeypatch):
     """Verify that UiAdapter.send_output_update strips ANSI codes when enabled."""
     # Mock config
-    config.terminal.strip_ansi = True
+    monkeypatch.setattr(config.terminal, "strip_ansi", True)
 
     # Mock client and DB
     client = MagicMock()
@@ -88,10 +87,10 @@ async def test_ui_adapter_send_output_update_strips_ansi():
 
 
 @pytest.mark.asyncio
-async def test_ui_adapter_send_output_update_preserves_ansi_when_disabled():
+async def test_ui_adapter_send_output_update_preserves_ansi_when_disabled(monkeypatch):
     """Verify that UiAdapter.send_output_update preserves ANSI codes when disabled."""
     # Mock config
-    config.terminal.strip_ansi = False
+    monkeypatch.setattr(config.terminal, "strip_ansi", False)
 
     # Mock client and DB
     client = MagicMock()

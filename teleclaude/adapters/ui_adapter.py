@@ -34,12 +34,17 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.voice_message_handler import handle_voice
+from teleclaude.utils import (
+    format_active_status_line,
+    format_completed_status_line,
+    format_size,
+    strip_ansi_codes,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
 
-from teleclaude.utils import format_active_status_line, format_completed_status_line, format_size
 from teleclaude.utils.markdown import telegramify_markdown
 
 logger = get_logger(__name__)
@@ -214,8 +219,6 @@ class UiAdapter(BaseAdapter):
 
         Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
-        from teleclaude.utils import strip_ansi_codes
-
         # Strip ANSI codes if configured
         if config.terminal.strip_ansi:
             output = strip_ansi_codes(output)
