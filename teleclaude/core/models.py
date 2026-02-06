@@ -132,6 +132,7 @@ class TelegramAdapterMetadata:
     topic_id: Optional[int] = None
     output_message_id: Optional[str] = None
     output_suppressed: bool = False
+    parse_mode: Optional[str] = None
 
 
 @dataclass
@@ -177,11 +178,9 @@ class SessionAdapterMetadata:
                 elif isinstance(topic_id_val, str) and topic_id_val.isdigit():
                     topic_id = int(topic_id_val)
                 output_message_id = str(output_msg_val) if output_msg_val is not None else None
-                output_suppressed = bool(tg_raw.get("output_suppressed", False))
                 telegram_metadata = TelegramAdapterMetadata(
                     topic_id=topic_id,
                     output_message_id=output_message_id,
-                    output_suppressed=output_suppressed,
                 )
 
             redis_raw = data_obj.get("redis")
@@ -300,6 +299,7 @@ class SessionField(Enum):
     LAST_MESSAGE_SENT_AT = "last_message_sent_at"
     LAST_FEEDBACK_RECEIVED = "last_feedback_received"
     LAST_FEEDBACK_RECEIVED_AT = "last_feedback_received_at"
+    LAST_AGENT_OUTPUT_AT = "last_agent_output_at"
 
 
 class TranscriptFormat(str, Enum):
@@ -341,6 +341,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
     last_feedback_received_at: Optional[datetime] = None
     last_feedback_summary: Optional[str] = None
     last_output_digest: Optional[str] = None
+    last_agent_output_at: Optional[datetime] = None
     working_slug: Optional[str] = None
     lifecycle_status: str = "active"
 
@@ -355,6 +356,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
             data["last_message_sent_at"] = self.last_message_sent_at.isoformat()
         if self.last_feedback_received_at:
             data["last_feedback_received_at"] = self.last_feedback_received_at.isoformat()
+        if self.last_agent_output_at:
+            data["last_agent_output_at"] = self.last_agent_output_at.isoformat()
         if self.closed_at:
             data["closed_at"] = self.closed_at.isoformat()
         data["lifecycle_status"] = self.lifecycle_status

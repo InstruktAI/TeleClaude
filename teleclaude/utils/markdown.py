@@ -105,7 +105,10 @@ def telegramify_markdown(text: str, *, strip_heading_icons: bool = True) -> str:
         formatted = _strip_heading_icons(formatted)
     formatted = _escape_nested_backticks(formatted)
     formatted = re.sub(r"^```\n(?!\n|$)", "```md\n", formatted, flags=re.MULTILINE)
-    return formatted
+
+    # Final safety pass: escape literal characters that break Telegram parser
+    # outside of known formatting entities.
+    return escape_markdown_v2(formatted)
 
 
 def _escape_nested_backticks(text: str) -> str:

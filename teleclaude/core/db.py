@@ -528,6 +528,7 @@ class Db:
                     "closed_at",
                     "last_message_sent_at",
                     "last_feedback_received_at",
+                    "last_agent_output_at",
                 }:
                     parsed = self._parse_iso_datetime(value)
                     if parsed and current_val != parsed:

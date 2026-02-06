@@ -285,6 +285,7 @@ class AdapterClient:
         metadata: MessageMetadata | None = None,
         cleanup_trigger: CleanupTrigger = CleanupTrigger.NEXT_NOTICE,
         ephemeral: bool = True,
+        multi_message: bool = False,
     ) -> str | None:
         """Send message to ALL UiAdapters (origin + observers).
 
@@ -297,6 +298,7 @@ class AdapterClient:
                 - CleanupTrigger.NEXT_TURN: removed on next user turn
             ephemeral: If True (default), track message for deletion.
                       Use False for persistent content (agent output, MCP results).
+            multi_message: If True, content is a multi-message payload needing quoting.
 
         Returns:
             message_id from origin adapter, or None if send failed
@@ -341,20 +343,24 @@ class AdapterClient:
         if session.last_input_origin:
             target = self.adapters.get(session.last_input_origin)
             if isinstance(target, UiAdapter):
-                result = await target.send_message(session, text, metadata=metadata)
+                result = await target.send_message(session, text, metadata=metadata, multi_message=multi_message)
             else:
                 logger.debug(
                     "Session %s last_input_origin=%s not available; broadcasting to all UI adapters",
                     session.session_id[:8],
                     session.last_input_origin,
                 )
-                result = await self._route_to_ui(session, "send_message", text, broadcast=True, metadata=metadata)
+                result = await self._route_to_ui(
+                    session, "send_message", text, broadcast=True, metadata=metadata, multi_message=multi_message
+                )
         else:
             logger.debug(
                 "Session %s missing last_input_origin; broadcasting to all UI adapters",
                 session.session_id[:8],
             )
-            result = await self._route_to_ui(session, "send_message", text, broadcast=True, metadata=metadata)
+            result = await self._route_to_ui(
+                session, "send_message", text, broadcast=True, metadata=metadata, multi_message=multi_message
+            )
         message_id = str(result) if result else None
 
         # Track for deletion if ephemeral
@@ -369,38 +375,6 @@ class AdapterClient:
                 )
 
         return message_id
-
-    async def stop_standard_output(self, session_id: str) -> None:
-        """Mark session standard output as suppressed to prevent legacy poller updates."""
-        # Truly definitive: re-fetch from DB to ensure we don't have stale metadata
-        session = await db.get_session(session_id)
-        if not session:
-            logger.error("[OUTPUT_ROUTE] Failed to find session %s to stop standard output", session_id[:8])
-            return
-
-        # Set persistent suppression flag in telegram metadata
-        meta = session.adapter_metadata
-        if not meta.telegram:
-            meta.telegram = TelegramAdapterMetadata()
-
-        meta.telegram.output_suppressed = True
-        logger.debug("[OUTPUT_ROUTE] Setting output_suppressed=True in metadata for session %s", session_id[:8])
-
-        await db.update_session(session_id, adapter_metadata=meta)
-        logger.info("[OUTPUT_ROUTE] Standard output suppression persisted for session %s", session_id[:8])
-
-    async def resume_standard_output(self, session_id: str) -> None:
-        """Clear the suppression flag to allow standard output updates again."""
-        session = await db.get_session(session_id)
-        if not session:
-            return
-
-        # Clear persistent suppression flag in telegram metadata
-        meta = session.adapter_metadata
-        if meta.telegram:
-            meta.telegram.output_suppressed = False
-            await db.update_session(session_id, adapter_metadata=meta)
-            logger.debug("[OUTPUT_ROUTE] Standard output resumed for session %s", session_id[:8])
 
     async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:
         """Edit message in ALL UiAdapters (origin + observers).
@@ -483,15 +457,11 @@ class AdapterClient:
             is_final,
         )
 
-        # Truly definitive check: re-fetch session from DB to bypass stale poller state
-        fresh_session = await db.get_session(session.session_id)
-        if (
-            fresh_session
-            and fresh_session.adapter_metadata.telegram
-            and fresh_session.adapter_metadata.telegram.output_suppressed
-        ):
+        # Check if threaded output experiment is enabled for this session's agent.
+        # If enabled, we suppress the standard poller to avoid double output.
+        if config.is_experiment_enabled("ui_threaded_agent_stop_output", session.active_agent):
             logger.debug(
-                "[OUTPUT_ROUTE] Standard output suppressed for session %s (confirmed via fresh DB check)",
+                "[OUTPUT_ROUTE] Standard output suppressed for session %s (experiment active)",
                 session.session_id[:8],
             )
             return await self.get_output_message_id(session.session_id)

@@ -85,6 +85,7 @@ async def test_close_session_full_cleanup(daemon_with_mocked_telegram):
         if "workspace_dir" in locals() and workspace_dir.exists():
             try:
                 import shutil
+
                 shutil.rmtree(workspace_dir, ignore_errors=True)
             except Exception:
                 pass

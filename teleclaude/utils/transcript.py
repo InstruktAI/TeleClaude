@@ -1,6 +1,7 @@
 """Parse and convert Claude/Gemini/Codex session transcripts to markdown."""
 
 import json
+import logging
 import os
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -10,6 +11,8 @@ from typing import Callable, Optional, cast
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_local_datetime
+
+logger = logging.getLogger(__name__)
 
 
 def parse_claude_transcript(
@@ -301,8 +304,120 @@ def _process_tool_use_block(
         tool_input = {}
     serialized_input = json.dumps(tool_input)
     lines.append("")
-    lines.append(f"{time_prefix}🔧 **TOOL CALL:** {tool_name} {serialized_input}")
+    # Use bold single-backtick monospace for tool invocations
+    lines.append(f"{time_prefix}🔧 **`{tool_name} {serialized_input}`**")
     return "tool_use"
+
+
+def render_clean_agent_output(
+    transcript_path: str,
+    agent_name: AgentName,
+    since_timestamp: Optional[datetime] = None,
+) -> tuple[Optional[str], Optional[datetime]]:
+    """Render metadata-free markdown for assistant activity.
+
+    Used for sequential, incremental output blocks in the UI.
+    Renders thinking in italics and tool invocations in bold monospace.
+    Completely omits tool results.
+
+    Args:
+        transcript_path: Path to transcript file
+        agent_name: Agent name for iterator selection
+        since_timestamp: Optional UTC datetime boundary.
+
+    Returns:
+        Tuple of (markdown text or None, timestamp of last rendered entry or None)
+    """
+    entries = _get_entries_for_agent(transcript_path, agent_name)
+    if not entries:
+        return None, None
+
+    # Find the lower boundary (activity after since_timestamp)
+    start_idx = 0
+    if since_timestamp:
+        if since_timestamp.tzinfo is None:
+            since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
+
+        for i, entry in enumerate(entries):
+            entry_ts_str = entry.get("timestamp")
+            if isinstance(entry_ts_str, str):
+                entry_dt = _parse_timestamp(entry_ts_str)
+                if entry_dt:
+                    if entry_dt.tzinfo is None:
+                        entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+
+                    if entry_dt > since_timestamp:
+                        start_idx = i
+                        break
+        else:
+            return None, None
+    else:
+        # Fall back to last user boundary if no timestamp provided
+        last_user_idx = -1
+        for i in range(len(entries) - 1, -1, -1):
+            entry = entries[i]
+            message = entry.get("message") or entry.get("payload")
+            if isinstance(message, dict) and message.get("role") == "user":
+                last_user_idx = i
+                break
+        start_idx = last_user_idx + 1
+
+    assistant_entries = entries[start_idx:]
+    if not assistant_entries:
+        return None, None
+
+    lines: list[str] = []
+    emitted = False
+    last_entry_dt: Optional[datetime] = None
+
+    for entry in assistant_entries:
+        entry_ts_str = entry.get("timestamp")
+        if isinstance(entry_ts_str, str):
+            last_entry_dt = _parse_timestamp(entry_ts_str)
+
+        message = entry.get("message") or entry.get("payload")
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            block_type = block.get("type")
+
+            if block_type in ("text", "output_text"):
+                text = block.get("text", "")
+                if text:
+                    if lines:
+                        lines.append("")
+                    lines.append(str(text))
+                    emitted = True
+            elif block_type == "thinking":
+                thinking = block.get("thinking", "")
+                if thinking:
+                    if lines:
+                        lines.append("")
+                    # Clean thinking: just italics, no headers
+                    lines.append(f"_{thinking}_")
+                    emitted = True
+            elif block_type == "tool_use":
+                tool_name = block.get("name", "unknown")
+                tool_input = block.get("input", {})
+                serialized = json.dumps(tool_input)
+                if lines:
+                    lines.append("")
+                # Clean tool use: bold single-backtick monospace
+                lines.append(f"🔧 **`{tool_name} {serialized}`**")
+                emitted = True
+            # Tool results are completely omitted in this "clean" renderer
+
+    if not emitted:
+        return None, last_entry_dt
+
+    return "\n".join(lines).strip(), last_entry_dt
 
 
 def _process_tool_result_block(
@@ -654,53 +769,96 @@ def _iter_gemini_entries(
         }
 
 
-def render_stop_turn(
+def render_agent_output(
     transcript_path: str,
     agent_name: AgentName,
     include_tools: bool = False,
+    include_tool_results: bool = True,
+    since_timestamp: Optional[datetime] = None,
     max_chars: int = 4000,
-) -> Optional[str]:
-    """Render markdown for the latest assistant activity since the last user boundary.
+) -> tuple[Optional[str], Optional[datetime]]:
+    """Render markdown for assistant activity since the last user boundary or since_timestamp.
 
-    Used for threaded stop-turn output.
+    Used for sequential, incremental output blocks.
 
     Args:
         transcript_path: Path to transcript file
         agent_name: Agent name for iterator selection
-        include_tools: Whether to include tool call/result blocks
+        include_tools: Whether to include tool call blocks
+        include_tool_results: Whether to include tool result blocks
+        since_timestamp: Optional UTC datetime boundary. If provided, only returns activity AFTER this.
         max_chars: Maximum characters for the entire message (truncates if exceeded)
 
     Returns:
-        Markdown text or None if no new assistant activity
+        Tuple of (markdown text or None, timestamp of last rendered entry or None)
     """
     entries = _get_entries_for_agent(transcript_path, agent_name)
     if not entries:
-        return None
+        return None, None
 
-    # Find the last user boundary
-    last_user_idx = -1
-    for i in range(len(entries) - 1, -1, -1):
-        entry = entries[i]
-        message = entry.get("message")
-        # Handle Codex "response_item" format where message is in payload
-        if not isinstance(message, dict) and entry.get("type") == "response_item":
-            payload = entry.get("payload")
-            if isinstance(payload, dict):
-                message = payload
+    # Find the lower boundary
+    start_idx = 0
+    if since_timestamp:
+        if since_timestamp.tzinfo is None:
+            since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
 
-        if isinstance(message, dict) and message.get("role") == "user":
-            last_user_idx = i
-            break
+        # If we have a since_timestamp, only look at entries after it
+        for i, entry in enumerate(entries):
+            entry_ts_str = entry.get("timestamp")
+            if isinstance(entry_ts_str, str):
+                entry_dt = _parse_timestamp(entry_ts_str)
+                if entry_dt:
+                    if entry_dt.tzinfo is None:
+                        entry_dt = entry_dt.replace(tzinfo=timezone.utc)
 
-    # Collect assistant activity after that boundary
-    assistant_entries = entries[last_user_idx + 1 :]
+                    if entry_dt > since_timestamp:
+                        logger.debug("[STD_RENDER] Found first new entry at index %d (ts: %s)", i, entry_ts_str)
+                        start_idx = i
+                        break
+        else:
+            # All entries are before or at since_timestamp
+            return None, None
+    else:
+        # If no since_timestamp, find the last user boundary
+        last_user_idx = -1
+        for i in range(len(entries) - 1, -1, -1):
+            entry = entries[i]
+            message = entry.get("message")
+            if not isinstance(message, dict) and entry.get("type") == "response_item":
+                payload = entry.get("payload")
+                if isinstance(payload, dict):
+                    message = payload
+
+            if isinstance(message, dict) and message.get("role") == "user":
+                last_user_idx = i
+                break
+        start_idx = last_user_idx + 1
+        logger.debug("[STD_RENDER] No cursor. Starting after last user message at index %d", start_idx)
+
+    # Collect assistant activity from start_idx
+    assistant_entries = entries[start_idx:]
+    logger.debug(
+        "Rendering incremental output",
+        extra={
+            "session": transcript_path,
+            "start_idx": start_idx,
+            "total_entries": len(entries),
+            "assistant_entries": len(assistant_entries),
+            "since_ts": since_timestamp,
+        },
+    )
     if not assistant_entries:
-        return None
+        return None, None
 
     lines: list[str] = []
     emitted = False
+    last_entry_dt: Optional[datetime] = None
 
     for entry in assistant_entries:
+        entry_ts_str = entry.get("timestamp")
+        if isinstance(entry_ts_str, str):
+            last_entry_dt = _parse_timestamp(entry_ts_str)
+
         message = entry.get("message")
         if not isinstance(message, dict) and entry.get("type") == "response_item":
             payload = entry.get("payload")
@@ -714,6 +872,11 @@ def render_stop_turn(
         if not isinstance(content, list):
             continue
 
+        # Restore timestamp if we have a valid entry datetime
+        time_prefix = ""
+        if last_entry_dt:
+            time_prefix = f"[{last_entry_dt.strftime('%H:%M:%S')}] "
+
         for block in content:
             if not isinstance(block, dict):
                 continue
@@ -724,7 +887,7 @@ def render_stop_turn(
                 if text:
                     if lines:
                         lines.append("")
-                    lines.append(str(text))
+                    lines.append(f"{time_prefix}{text}")
                     emitted = True
             elif block_type == "thinking":
                 thinking = block.get("thinking", "")
@@ -732,19 +895,19 @@ def render_stop_turn(
                     if lines:
                         lines.append("")
                     formatted = _format_thinking(str(thinking))
-                    lines.append(formatted)
+                    lines.append(f"{time_prefix}{formatted}")
                     emitted = True
-            elif include_tools:
-                if block_type == "tool_use":
+            elif block_type == "tool_use":
+                if include_tools:
                     lines.append("")
-                    _process_tool_use_block(block, "", lines)
+                    _process_tool_use_block(block, time_prefix, lines)
                     emitted = True
-                elif block_type == "tool_result":
+            elif block_type == "tool_result":
+                if include_tool_results:
                     lines.append("")
-                    # Use a smaller sub-limit for tool results to avoid eating entire budget
                     _process_tool_result_block(
                         block,
-                        "",
+                        time_prefix,
                         lines,
                         collapse_tool_results=False,
                         max_chars=2000,
@@ -752,7 +915,7 @@ def render_stop_turn(
                     emitted = True
 
     if not emitted:
-        return None
+        return None, last_entry_dt
 
     result = "\n".join(lines).strip()
     if len(result) > max_chars:
@@ -760,7 +923,65 @@ def render_stop_turn(
         truncated_msg = "\n\n---\n*Output truncated due to length limits.*"
         result = result[: max_chars - len(truncated_msg)] + truncated_msg
 
-    return result
+    return result, last_entry_dt
+
+
+def get_assistant_messages_since(
+    transcript_path: str,
+    agent_name: AgentName,
+    since_timestamp: Optional[datetime] = None,
+) -> list[dict[str, object]]:  # guard: loose-dict - External transcript messages
+    """Retrieve assistant message objects from transcript since a timestamp.
+
+    Args:
+        transcript_path: Path to transcript file
+        agent_name: Agent name for iterator selection
+        since_timestamp: Optional UTC datetime boundary.
+
+    Returns:
+        List of assistant message objects (with role and content).
+    """
+    entries = _get_entries_for_agent(transcript_path, agent_name)
+    if not entries:
+        return []
+
+    # Find activity AFTER since_timestamp
+    start_idx = 0
+    if since_timestamp:
+        if since_timestamp.tzinfo is None:
+            since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
+
+        for i, entry in enumerate(entries):
+            entry_ts_str = entry.get("timestamp")
+            if isinstance(entry_ts_str, str):
+                entry_dt = _parse_timestamp(entry_ts_str)
+                if entry_dt:
+                    if entry_dt.tzinfo is None:
+                        entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+
+                    if entry_dt > since_timestamp:
+                        start_idx = i
+                        break
+        else:
+            return []
+    else:
+        # If no since_timestamp, find the last user boundary
+        last_user_idx = -1
+        for i in range(len(entries) - 1, -1, -1):
+            entry = entries[i]
+            message = entry.get("message") or entry.get("payload")
+            if isinstance(message, dict) and message.get("role") == "user":
+                last_user_idx = i
+                break
+        start_idx = last_user_idx + 1
+
+    assistant_messages = []
+    for entry in entries[start_idx:]:
+        msg = entry.get("message") or entry.get("payload")
+        if isinstance(msg, dict) and msg.get("role") == "assistant":
+            assistant_messages.append(msg)
+
+    return assistant_messages
 
 
 @dataclass(frozen=True)

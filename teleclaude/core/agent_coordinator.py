@@ -21,6 +21,7 @@ from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
     AgentNotificationPayload,
+    AgentOutputPayload,
     AgentSessionEndPayload,
     AgentSessionStartPayload,
     AgentStopPayload,
@@ -35,10 +36,13 @@ from teleclaude.services.headless_snapshot_service import HeadlessSnapshotServic
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils import strip_ansi_codes
+from teleclaude.utils.markdown import telegramify_markdown
 from teleclaude.utils.transcript import (
     extract_last_agent_message,
     extract_last_user_message,
-    render_stop_turn,
+    get_assistant_messages_since,
+    render_agent_output,
+    render_clean_agent_output,
 )
 
 if TYPE_CHECKING:
@@ -88,7 +92,9 @@ class AgentCoordinator:
         if context.event_type == AgentHookEvents.AGENT_SESSION_START:
             await self.handle_session_start(context)
         elif context.event_type == AgentHookEvents.AGENT_STOP:
-            await self.handle_stop(context)
+            await self.handle_agent_stop(context)
+        elif context.event_type == AgentHookEvents.AGENT_OUTPUT:
+            await self.handle_agent_output(context)
         elif context.event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
             await self.handle_user_prompt_submit(context)
         elif context.event_type == AgentHookEvents.AGENT_NOTIFICATION:
@@ -181,9 +187,6 @@ class AgentCoordinator:
         # Clear notification flag when new prompt starts (all sessions)
         await db.set_notification_flag(session_id, False)
 
-        # Resume standard output (clear suppression flag) for new turn
-        await self.client.resume_standard_output(session_id)
-
         # Prepare batched update
         update_kwargs: dict[str, object] = {  # noqa: loose-dict - Dynamic session updates
             "last_message_sent": payload.prompt[:200],
@@ -233,7 +236,7 @@ class AgentCoordinator:
 
         await get_command_service().process_message(cmd)
 
-    async def handle_stop(self, context: AgentEventContext) -> None:
+    async def handle_agent_stop(self, context: AgentEventContext) -> None:
         """Handle stop event - Agent session stopped."""
         session_id = context.session_id
         payload = cast(AgentStopPayload, context.data)
@@ -274,11 +277,11 @@ class AgentCoordinator:
         # 2. For Codex: extract last user input from transcript (no hook support)
         await self._extract_user_input_for_codex(session_id, payload)
 
-        # 3. Threaded stop-turn output
-        sent_threaded = await self._maybe_send_threaded_stop_output(session_id, payload)
-        if sent_threaded:
-            # Suppress standard poller output update if threaded turn sent
-            await self.client.stop_standard_output(session_id)
+        # 3. Incremental threaded output (final turn portion)
+        await self._maybe_send_incremental_output(session_id, payload)
+
+        # Clear turn-specific cursor at turn completion
+        await db.update_session(session_id, last_agent_output_at=None)
 
         # 4. Notify local listeners (AI-to-AI on same computer)
         await self._notify_session_listener(session_id, source_computer=source_computer)
@@ -287,8 +290,16 @@ class AgentCoordinator:
         if not (source_computer and source_computer != config.computer.name):
             await self._forward_stop_to_initiator(session_id)
 
-    async def _maybe_send_threaded_stop_output(self, session_id: str, payload: AgentStopPayload) -> bool:
-        """Evaluate and potentially send threaded stop output summary.
+    async def handle_agent_output(self, context: AgentEventContext) -> None:
+        """Handle rich incremental agent output (thinking, tools)."""
+        session_id = context.session_id
+        payload = cast(AgentOutputPayload, context.data)
+        await self._maybe_send_incremental_output(session_id, payload)
+
+    async def _maybe_send_incremental_output(
+        self, session_id: str, payload: AgentStopPayload | AgentOutputPayload
+    ) -> bool:
+        """Evaluate and potentially send incremental threaded output summary.
 
         Returns:
             True if threaded message was sent, False otherwise.
@@ -303,14 +314,14 @@ class AgentCoordinator:
 
         # Check if experiment is enabled for this agent
         is_enabled = config.is_experiment_enabled("ui_threaded_agent_stop_output", agent_key)
-        logger.debug("Evaluating threaded stop output", session=session_id[:8], agent=agent_key, is_enabled=is_enabled)
+        logger.debug("Evaluating incremental output", session=session_id[:8], agent=agent_key, is_enabled=is_enabled)
 
         if not is_enabled:
             return False
 
         transcript_path = payload.transcript_path or session.native_log_file
         if not transcript_path:
-            logger.debug("Threaded stop output skipped (missing transcript path)", session=session_id[:8])
+            logger.debug("Incremental output skipped (missing transcript path)", session=session_id[:8])
             return False
 
         try:
@@ -321,16 +332,62 @@ class AgentCoordinator:
         # Check if tools should be included
         include_tools = config.is_experiment_enabled("ui_threaded_agent_stop_output_include_tools", agent_key)
 
-        # Build stop-turn message from transcript
-        message = render_stop_turn(transcript_path, agent_name, include_tools=include_tools)
+        # 1. Retrieve all assistant messages since the last cursor
+        assistant_messages = get_assistant_messages_since(
+            transcript_path, agent_name, since_timestamp=session.last_agent_output_at
+        )
+
+        logger.debug("Incremental output analysis: session=%s count=%d", session_id[:8], len(assistant_messages))
+
+        if not assistant_messages:
+            return False
+
+        # 2. Decide which renderer to use based on message count
+        is_multi = len(assistant_messages) > 1
+
+        if is_multi:
+            # Multi-message: use standard renderer (with headers) for bulk update.
+            # Suppression of tool results is handled inside the renderer for UI.
+            message, last_ts = render_agent_output(
+                transcript_path,
+                agent_name,
+                include_tools=include_tools,
+                include_tool_results=False,
+                since_timestamp=session.last_agent_output_at,
+            )
+        else:
+            # Single message: use clean, metadata-free renderer (italics/bold-monospace).
+            message, last_ts = render_clean_agent_output(
+                transcript_path, agent_name, since_timestamp=session.last_agent_output_at
+            )
 
         if message:
-            logger.info("Sending threaded stop output for session %s (len=%d)", session_id[:8], len(message))
+            logger.info(
+                "Sending incremental output: tc_session=%s len=%d multi_message=%s",
+                session_id[:8],
+                len(message),
+                is_multi,
+            )
             try:
-                await self.client.send_message(session, message, ephemeral=False)
+                # Apply telegram markdown formatting for safety (escapes dots, dashes, etc.)
+                # since we are now rendering directly as MarkdownV2 without quoting.
+                formatted_message = telegramify_markdown(message)
+
+                await self.client.send_message(session, formatted_message, ephemeral=False, multi_message=is_multi)
+
+                # CRITICAL: Update cursor ONLY after successful send to prevent
+                # missing activity if delivery fails.
+                if last_ts:
+                    from teleclaude.core.models import SessionField
+
+                    await db.update_session(
+                        session_id, **{SessionField.LAST_AGENT_OUTPUT_AT.value: last_ts.isoformat()}
+                    )
+                    logger.debug("Updated cursor for session %s to %s", session_id[:8], last_ts.isoformat())
+
                 return True
             except Exception as exc:  # noqa: BLE001 - Message send should never crash event handling
-                logger.warning("Failed to send threaded stop output: %s", exc, extra={"session_id": session_id[:8]})
+                logger.warning("Failed to send incremental output: %s", exc, extra={"session_id": session_id[:8]})
 
         return False
 

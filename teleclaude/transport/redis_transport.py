@@ -648,7 +648,14 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         except Exception as e:
             logger.error("Failed to persist last processed message ID: %s", e)
 
-    async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
+    async def send_message(
+        self,
+        session: Session,
+        text: str,
+        *,
+        metadata: MessageMetadata | None = None,
+        multi_message: bool = False,
+    ) -> str:
         """Redis transport does not stream session output; noop for compatibility."""
         logger.debug(
             "send_message ignored for RedisTransport (session output streaming disabled): %s",

@@ -206,7 +206,9 @@ class TestPollAndSendOutput:
 
         with (
             patch("teleclaude.core.polling_coordinator.db.get_session", new_callable=AsyncMock) as mock_get,
-            patch("teleclaude.core.tmux_bridge.session_exists", new_callable=AsyncMock, return_value=False) as mock_exists,
+            patch(
+                "teleclaude.core.tmux_bridge.session_exists", new_callable=AsyncMock, return_value=False
+            ) as mock_exists,
             patch("teleclaude.core.session_cleanup.terminate_session", new_callable=AsyncMock) as mock_terminate,
         ):
             mock_get.return_value = mock_session

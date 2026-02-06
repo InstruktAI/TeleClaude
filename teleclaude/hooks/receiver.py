@@ -24,7 +24,7 @@ sys.path.append(str(hooks_dir.parent.parent))
 from teleclaude.config import config  # noqa: E402
 from teleclaude.core.agents import AgentName  # noqa: E402
 from teleclaude.core import db_models  # noqa: E402
-from teleclaude.core.events import AgentHookEvents  # noqa: E402
+from teleclaude.core.events import AgentHookEvents, AgentHookEventType  # noqa: E402
 from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS  # noqa: E402
 
 configure_logging("teleclaude")
@@ -33,7 +33,7 @@ logger = get_logger("teleclaude.hooks.receiver")
 # Only these events are forwarded to MCP. All others are silently dropped.
 # This prevents zombie mcp-wrapper processes from intermediate hooks.
 # Derived from HOOK_EVENT_MAP to ensure we only handle what we explicitly support.
-_HANDLED_EVENTS: frozenset[str] = frozenset(AgentHookEvents.ALL)
+_HANDLED_EVENTS: frozenset[AgentHookEventType] = frozenset(AgentHookEvents.ALL)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -485,7 +485,23 @@ def main() -> None:
     log_raw = True
     _log_raw_input(raw_input, log_raw=log_raw)
 
+    # Map agent-specific event_type to TeleClaude internal event_type
+    raw_event_type = event_type
+    agent_map = AgentHookEvents.HOOK_EVENT_MAP.get(args.agent, {})
+
+    # Try direct match, then try title-cased match (e.g., 'after_model' -> 'AfterModel')
+    # Use replace('_', '') to handle snake_case to PascalCase mapping if needed.
+    pascal_event_type = raw_event_type.replace("_", " ").title().replace(" ", "") if raw_event_type else None
+
+    mapped_event_type = agent_map.get(raw_event_type) or agent_map.get(pascal_event_type)
+
+    # Use mapped event if found, otherwise keep original (for direct events like 'agent_output')
+    if mapped_event_type:
+        event_type = mapped_event_type
+        logger.debug("Mapped hook event: %s (pascal: %s) -> %s", raw_event_type, pascal_event_type, event_type)
+
     # Early exit for unhandled events - don't spawn mcp-wrapper
+    # Note: We check against AgentHookEvents.ALL which contains internal types like AGENT_OUTPUT
     if event_type not in _HANDLED_EVENTS:
         if event_type in {"prompt", "stop"}:
             _emit_receiver_error_best_effort(
@@ -496,7 +512,8 @@ def main() -> None:
                 raw_data=raw_data,
             )
             sys.exit(1)
-        logger.trace("Hook receiver skipped: unhandled event", event_type=event_type)
+        logger.trace("Hook receiver skipped: unhandled event", event_type=event_type, raw_event_type=raw_event_type)
+        logger.debug("Dropped unhandled hook event: %s (raw: %s)", event_type, raw_event_type)
         sys.exit(0)
 
     raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, raw_data)
@@ -591,34 +608,6 @@ def main() -> None:
 
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(timezone.utc).isoformat()
-    # Gemini provides turn payloads on AfterAgent. Split once at boundary:
-    # - prompt => user_prompt_submit
-    # - prompt_response => agent_stop
-    if args.agent == AgentName.GEMINI.value and event_type == "agent_stop":
-        prompt_text = raw_data.get("prompt")
-        prompt_val = prompt_text.strip() if isinstance(prompt_text, str) else ""
-        response_text = raw_data.get("prompt_response")
-        response_val = response_text.strip() if isinstance(response_text, str) else ""
-
-        emitted = False
-        if prompt_val:
-            user_data = dict(data)
-            user_data["prompt"] = prompt_val
-            _enqueue_hook_event(teleclaude_session_id, "user_prompt_submit", user_data)
-            emitted = True
-        if response_val:
-            stop_data = dict(data)
-            stop_data["prompt_response"] = response_val
-            _enqueue_hook_event(teleclaude_session_id, "agent_stop", stop_data)
-            emitted = True
-
-        if not emitted:
-            logger.trace(
-                "Gemini agent_stop skipped (no prompt and no prompt_response)",
-                event_type=event_type,
-                session_id=(teleclaude_session_id or "")[:8],
-            )
-        return
 
     _enqueue_hook_event(teleclaude_session_id, event_type, data)
 

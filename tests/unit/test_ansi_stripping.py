@@ -210,7 +210,7 @@ async def test_polling_coordinator_detects_styled_suggestions():
 @pytest.mark.asyncio
 async def test_output_poller_preserves_raw_ansi_internally(tmp_path):
     """Verify that OutputPoller does NOT strip ANSI codes during its internal poll loop."""
-    from teleclaude.core.output_poller import OutputPoller, OutputChanged
+    from teleclaude.core.output_poller import OutputChanged, OutputPoller
 
     poller = OutputPoller()
     output_file = tmp_path / "output.txt"

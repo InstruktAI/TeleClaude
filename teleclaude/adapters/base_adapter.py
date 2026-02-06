@@ -199,6 +199,7 @@ class BaseAdapter(ABC):
         text: str,
         *,
         metadata: MessageMetadata | None = None,
+        multi_message: bool = False,
     ) -> str:
         """Send message to channel.
 
@@ -206,6 +207,7 @@ class BaseAdapter(ABC):
             session: Session object
             text: Message text
             metadata: Adapter-specific metadata (optional)
+            multi_message: If True, content is a multi-message payload needing quoting.
 
         Returns:
             message_id

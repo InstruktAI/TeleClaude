@@ -13,15 +13,15 @@ Diagnose and resolve failures in AI-to-AI session dispatch and notifications.
 
 ## Preconditions
 
--   An AI-to-AI session has been dispatched via `teleclaude__run_agent_command`.
--   Access to daemon logs (`bin/telec logs`).
--   SQLite3 CLI installed for database verification.
+- An AI-to-AI session has been dispatched via `teleclaude__run_agent_command`.
+- Access to daemon logs (`bin/telec logs`).
+- SQLite3 CLI installed for database verification.
 
 ## Steps
 
 1.  **Identify Failures:** Check the Initiator's terminal for timeout errors or missing worker stop notifications.
 2.  **Verify Dispatch:** Check the daemon logs for `Listener register attempt` to confirm the Initiator was correctly registered as a listener.
-3.  **Inspect Database:** 
+3.  **Inspect Database:**
     ```bash
     sqlite3 teleclaude.db "SELECT session_id, initiator_session_id, active_agent, lifecycle_status FROM session WHERE initiator_session_id IS NOT NULL"
     ```
@@ -31,11 +31,11 @@ Diagnose and resolve failures in AI-to-AI session dispatch and notifications.
 
 ## Outputs
 
--   Corrected session configuration or recovered notification flow.
--   Verified worker session state in the database.
+- Corrected session configuration or recovered notification flow.
+- Verified worker session state in the database.
 
 ## Recovery
 
--   **Handshake Failures:** If `handshake replay failed`, manually retry the command or restart the client session.
--   **Missing Notifications:** Manually check worker status with `teleclaude__get_session_data` if the automated notification fails to deliver.
--   **Dead Listeners:** Restart the TeleClaude daemon if in-memory listeners have been cleared due to an unplanned restart.
+- **Handshake Failures:** If `handshake replay failed`, manually retry the command or restart the client session.
+- **Missing Notifications:** Manually check worker status with `teleclaude__get_session_data` if the automated notification fails to deliver.
+- **Dead Listeners:** Restart the TeleClaude daemon if in-memory listeners have been cleared due to an unplanned restart.

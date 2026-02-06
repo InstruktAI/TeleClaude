@@ -202,6 +202,7 @@ class TestMcpArgs:
     def test_start_session_args_accepts_deep(self):
         """Deep is now allowed in MCP args."""
         from teleclaude.core.models import ThinkingMode
+
         args = {
             "computer": "local",
             "project_path": "/tmp/project",

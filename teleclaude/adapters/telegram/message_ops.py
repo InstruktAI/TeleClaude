@@ -81,7 +81,14 @@ class MessageOperationsMixin:
     # Message Operations Implementation
     # =========================================================================
 
-    async def send_message(self, session: "Session", text: str, *, metadata: MessageMetadata | None = None) -> str:
+    async def send_message(
+        self,
+        session: "Session",
+        text: str,
+        *,
+        metadata: MessageMetadata | None = None,
+        multi_message: bool = False,
+    ) -> str:
         """Send message to session's topic with automatic retry on rate limits and network errors."""
         self._ensure_started()
         metadata = metadata or MessageMetadata()
@@ -99,11 +106,19 @@ class MessageOperationsMixin:
         reply_markup = metadata.reply_markup
         parse_mode = metadata.parse_mode
 
+        # Truncation is a platform constraint (Telegram max 4096)
+        from teleclaude.constants import UI_MESSAGE_MAX_CHARS
+
+        if len(text) > UI_MESSAGE_MAX_CHARS:
+            # Truncate at the boundary
+            text = f"[...truncated...]\n{text[-UI_MESSAGE_MAX_CHARS:]}"
+
         # Best-effort wait for topic readiness to avoid "thread not found" races.
         await self._wait_for_topic_ready(topic_id, session.title)
 
         # Send message with retry decorator handling errors
-        message = await self._send_message_with_retry(topic_id, text, reply_markup, parse_mode)
+        # Note: we use MarkdownV2 by default for rich agent output
+        message = await self._send_message_with_retry(topic_id, text, reply_markup, parse_mode or "MarkdownV2")
         return str(message.message_id)
 
     @command_retry(max_retries=3, max_timeout=15.0)

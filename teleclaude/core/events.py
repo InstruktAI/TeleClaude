@@ -23,10 +23,24 @@ EventType = Literal[
 AgentHookEventType = Literal[
     "session_start",
     "user_prompt_submit",
+    "agent_output",
     "agent_stop",
     "session_end",
     "notification",
     "error",
+    "before_agent",
+    "before_model",
+    "after_model",
+    "before_tool_selection",
+    "before_tool",
+    "after_tool",
+    "pre_compress",
+    "pre_tool_use",
+    "post_tool_use",
+    "post_tool_use_failure",
+    "subagent_start",
+    "subagent_stop",
+    "pre_compact",
 ]
 
 
@@ -35,6 +49,7 @@ class AgentHookEvents:
 
     AGENT_SESSION_START: AgentHookEventType = "session_start"
     USER_PROMPT_SUBMIT: AgentHookEventType = "user_prompt_submit"
+    AGENT_OUTPUT: AgentHookEventType = "agent_output"
     AGENT_STOP: AgentHookEventType = "agent_stop"
     AGENT_SESSION_END: AgentHookEventType = "session_end"
     AGENT_NOTIFICATION: AgentHookEventType = "notification"
@@ -58,6 +73,7 @@ class AgentHookEvents:
     # Internal handlers currently only use:
     # - AGENT_SESSION_START: Initialize headless session, anchor native IDs
     # - USER_PROMPT_SUBMIT: Capture last user input for session history
+    # - AGENT_OUTPUT: Rich incremental output (thinking, tools) during a turn
     # - AGENT_STOP: Trigger turn completion, poll transcript for final model response
     # - AGENT_NOTIFICATION: Notify listeners (tmux) and initiators (remote)
     # Other events are enqueued but have no active logic in the daemon yet.
@@ -69,12 +85,12 @@ class AgentHookEvents:
                 {
                     "SessionStart": AGENT_SESSION_START,
                     "UserPromptSubmit": USER_PROMPT_SUBMIT,
-                    "PreToolUse": PRE_TOOL_USE,
+                    "PreToolUse": AGENT_OUTPUT,
                     "PermissionRequest": AGENT_NOTIFICATION,
-                    "PostToolUse": POST_TOOL_USE,
-                    "PostToolUseFailure": POST_TOOL_USE_FAILURE,
-                    "SubagentStart": SUBAGENT_START,
-                    "SubagentStop": SUBAGENT_STOP,
+                    "PostToolUse": AGENT_OUTPUT,
+                    "PostToolUseFailure": AGENT_OUTPUT,
+                    "SubagentStart": AGENT_OUTPUT,
+                    "SubagentStop": AGENT_OUTPUT,
                     "Stop": AGENT_STOP,
                     "PreCompact": PRE_COMPACT,
                     "SessionEnd": AGENT_SESSION_END,
@@ -87,10 +103,10 @@ class AgentHookEvents:
                     "BeforeAgent": USER_PROMPT_SUBMIT,
                     "AfterAgent": AGENT_STOP,
                     "BeforeModel": BEFORE_MODEL,
-                    "AfterModel": AFTER_MODEL,
+                    "AfterModel": AGENT_OUTPUT,
                     "BeforeToolSelection": BEFORE_TOOL_SELECTION,
                     "BeforeTool": BEFORE_TOOL,
-                    "AfterTool": AFTER_TOOL,
+                    "AfterTool": AGENT_OUTPUT,
                     "PreCompress": PRE_COMPRESS,
                     "Notification": AGENT_NOTIFICATION,
                     "SessionEnd": AGENT_SESSION_END,
@@ -105,9 +121,10 @@ class AgentHookEvents:
         }
     )
 
-    ALL: set[AgentHookEventType] = {v for agent_map in HOOK_EVENT_MAP.values() for v in agent_map.values()} | {
-        AGENT_ERROR
-    }
+    ALL: set[AgentHookEventType] = cast(
+        "set[AgentHookEventType]",
+        {v for agent_map in HOOK_EVENT_MAP.values() for v in agent_map.values()} | {AGENT_ERROR},
+    )
 
 
 @dataclass(frozen=True)
@@ -130,6 +147,19 @@ class UserPromptSubmitPayload:
     """
 
     prompt: str
+    session_id: str | None = None
+    transcript_path: str | None = None
+    raw: Mapping[str, object] = field(default_factory=dict)
+    source_computer: str | None = None
+
+
+@dataclass(frozen=True)
+class AgentOutputPayload:
+    """Internal payload for rich incremental agent output.
+
+    guard: loose-dict - Agent hook data varies by agent.
+    """
+
     session_id: str | None = None
     transcript_path: str | None = None
     raw: Mapping[str, object] = field(default_factory=dict)
@@ -178,6 +208,7 @@ class AgentSessionEndPayload:
 AgentEventPayload = Union[
     AgentSessionStartPayload,
     UserPromptSubmitPayload,
+    AgentOutputPayload,
     AgentStopPayload,
     AgentNotificationPayload,
     AgentSessionEndPayload,
@@ -203,6 +234,14 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
             prompt=cast(str, data.get("prompt", "")),
             raw=frozen_raw,
             source_computer=cast(str | None, data.get("source_computer")),
+        )
+
+    if event_type == AgentHookEvents.AGENT_OUTPUT:
+        return AgentOutputPayload(
+            session_id=native_id,
+            transcript_path=cast(str | None, data.get("transcript_path")),
+            source_computer=cast(str | None, data.get("source_computer")),
+            raw=frozen_raw,
         )
 
     if event_type == AgentHookEvents.AGENT_STOP:

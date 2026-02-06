@@ -12,6 +12,7 @@ type: 'concept'
 AI-to-AI coordination is the mechanism by which one AI agent (the Initiator) can spawn and control another AI agent (the Worker) to perform a sub-task.
 
 **How it works**
+
 1.  **Dispatch:** The Initiator AI calls the `teleclaude__run_agent_command` tool.
 2.  **Creation:** The TeleClaude daemon creates a new sub-session (local or remote) and stores the `initiator_session_id`.
 3.  **Registration:** The daemon automatically registers the Initiator as a **Session Listener** for the Worker session.
@@ -21,10 +22,11 @@ AI-to-AI coordination is the mechanism by which one AI agent (the Initiator) can
 7.  **Delivery:** The `AgentCoordinator` detects the stop and notifies all listeners by injecting a status message directly into their terminal (via `deliver_listener_message`).
 
 **Key Components**
--   **`run_agent_command`:** The tool used to start a Worker.
--   **`SessionListener`:** An in-memory registration of an Initiator session watching a Worker session.
--   **`AgentCoordinator`:** Orchestrates the flow of events and notifications.
--   **`deliver_listener_message`:** Injects `[TeleClaude: Worker Stopped]` notifications into the Initiator's tmux pane.
+
+- **`run_agent_command`:** The tool used to start a Worker.
+- **`SessionListener`:** An in-memory registration of an Initiator session watching a Worker session.
+- **`AgentCoordinator`:** Orchestrates the flow of events and notifications.
+- **`deliver_listener_message`:** Injects `[TeleClaude: Worker Stopped]` notifications into the Initiator's tmux pane.
 
 ## Why
 
