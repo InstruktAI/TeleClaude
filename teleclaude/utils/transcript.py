@@ -648,6 +648,100 @@ def _iter_gemini_entries(
         }
 
 
+def render_stop_turn(
+    transcript_path: str,
+    agent_name: AgentName,
+    include_tools: bool = False,
+) -> Optional[str]:
+    """Render markdown for the latest assistant activity since the last user boundary.
+
+    Used for threaded stop-turn output.
+
+    Args:
+        transcript_path: Path to transcript file
+        agent_name: Agent name for iterator selection
+        include_tools: Whether to include tool call/result blocks
+
+    Returns:
+        Markdown text or None if no new assistant activity
+    """
+    entries = _get_entries_for_agent(transcript_path, agent_name)
+    if not entries:
+        return None
+
+    # Find the last user boundary
+    last_user_idx = -1
+    for i in range(len(entries) - 1, -1, -1):
+        entry = entries[i]
+        message = entry.get("message")
+        # Handle Codex "response_item" format where message is in payload
+        if not isinstance(message, dict) and entry.get("type") == "response_item":
+            payload = entry.get("payload")
+            if isinstance(payload, dict):
+                message = payload
+
+        if isinstance(message, dict) and message.get("role") == "user":
+            last_user_idx = i
+            break
+
+    # Collect assistant activity after that boundary
+    assistant_entries = entries[last_user_idx + 1 :]
+    if not assistant_entries:
+        return None
+
+    lines: list[str] = []
+    emitted = False
+
+    for entry in assistant_entries:
+        message = entry.get("message")
+        if not isinstance(message, dict) and entry.get("type") == "response_item":
+            payload = entry.get("payload")
+            if isinstance(payload, dict):
+                message = payload
+
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            block_type = block.get("type")
+
+            if block_type in ("text", "output_text"):
+                text = block.get("text", "")
+                if text:
+                    if lines:
+                        lines.append("")
+                    lines.append(str(text))
+                    emitted = True
+            elif block_type == "thinking":
+                thinking = block.get("thinking", "")
+                if thinking:
+                    if lines:
+                        lines.append("")
+                    formatted = _format_thinking(str(thinking))
+                    lines.append(formatted)
+                    emitted = True
+            elif include_tools:
+                if block_type == "tool_use":
+                    lines.append("")
+                    _process_tool_use_block(block, "", lines)
+                    emitted = True
+                elif block_type == "tool_result":
+                    lines.append("")
+                    _process_tool_result_block(block, "", lines, collapse_tool_results=False)
+                    emitted = True
+
+    if not emitted:
+        return None
+
+    return "\n".join(lines).strip()
+
+
 @dataclass(frozen=True)
 class TranscriptParserInfo:
     """Metadata for formatting a native agent transcript."""
