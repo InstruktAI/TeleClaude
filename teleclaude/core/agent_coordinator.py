@@ -35,7 +35,11 @@ from teleclaude.services.headless_snapshot_service import HeadlessSnapshotServic
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils import strip_ansi_codes
-from teleclaude.utils.transcript import extract_last_agent_message, extract_last_user_message
+from teleclaude.utils.transcript import (
+    extract_last_agent_message,
+    extract_last_user_message,
+    render_stop_turn,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -267,12 +271,52 @@ class AgentCoordinator:
         # 2. For Codex: extract last user input from transcript (no hook support)
         await self._extract_user_input_for_codex(session_id, payload)
 
-        # 3. Notify local listeners (AI-to-AI on same computer)
+        # 3. Threaded stop-turn output
+        await self._maybe_send_threaded_stop_output(session_id, payload)
+
+        # 4. Notify local listeners (AI-to-AI on same computer)
         await self._notify_session_listener(session_id, source_computer=source_computer)
 
-        # 4. Forward to remote initiator (AI-to-AI across computers)
+        # 5. Forward to remote initiator (AI-to-AI across computers)
         if not (source_computer and source_computer != config.computer.name):
             await self._forward_stop_to_initiator(session_id)
+
+    async def _maybe_send_threaded_stop_output(self, session_id: str, payload: AgentStopPayload) -> None:
+        """Evaluate and potentially send threaded stop output summary."""
+        session = await db.get_session(session_id)
+        if not session:
+            return
+
+        agent_key = session.active_agent
+        if not agent_key:
+            return
+
+        # Check if experiment is enabled for this agent
+        if not config.is_experiment_enabled("ui_threaded_agent_stop_output", agent_key):
+            return
+
+        transcript_path = payload.transcript_path or session.native_log_file
+        if not transcript_path:
+            logger.debug("Threaded stop output skipped (missing transcript path)", session=session_id[:8])
+            return
+
+        try:
+            agent_name = AgentName.from_str(agent_key)
+        except ValueError:
+            return
+
+        # Check if tools should be included
+        include_tools = config.is_experiment_enabled("ui_threaded_agent_stop_output_include_tools", agent_key)
+
+        # Build stop-turn message from transcript
+        message = render_stop_turn(transcript_path, agent_name, include_tools=include_tools)
+
+        if message:
+            logger.info("Sending threaded stop output for session %s", session_id[:8])
+            try:
+                await self.client.send_message(session, message, ephemeral=False)
+            except Exception as exc:  # noqa: BLE001 - Message send should never crash event handling
+                logger.warning("Failed to send threaded stop output: %s", exc, extra={"session_id": session_id[:8]})
 
     async def handle_notification(self, context: AgentEventContext) -> None:
         """Handle notification event - input request."""
