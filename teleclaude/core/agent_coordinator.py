@@ -34,6 +34,7 @@ from teleclaude.core.summarizer import summarize_agent_output, summarize_user_in
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
+from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import extract_last_agent_message, extract_last_user_message
 
 if TYPE_CHECKING:
@@ -240,6 +241,10 @@ class AgentCoordinator:
         # 1. Extract and summarize agent output, write to DB immediately
         raw_output, summary = await self._extract_and_summarize(session_id, payload)
         if raw_output:
+            # Strip ANSI codes if configured
+            if config.terminal.strip_ansi:
+                raw_output = strip_ansi_codes(raw_output)
+
             await db.update_session(
                 session_id,
                 last_feedback_received=raw_output,

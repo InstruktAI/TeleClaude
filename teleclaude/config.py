@@ -202,6 +202,13 @@ class SummarizerConfig:
 
 
 @dataclass
+class TerminalConfig:
+    """Terminal display settings."""
+
+    strip_ansi: bool = True
+
+
+@dataclass
 class Config:
     database: DatabaseConfig
     computer: ComputerConfig
@@ -209,6 +216,7 @@ class Config:
     telegram: TelegramConfig
     agents: Dict[str, AgentConfig]
     ui: UIConfig
+    terminal: TerminalConfig
     tts: TTSConfig | None = None
     summarizer: SummarizerConfig = field(default_factory=SummarizerConfig)
 
@@ -241,6 +249,9 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
     },
     "telegram": {
         "trusted_bots": [],
+    },
+    "terminal": {
+        "strip_ansi": True,
     },
     "agents": {
         "claude": {
@@ -409,6 +420,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
     redis_raw = raw["redis"]
     tg_raw = raw["telegram"]
     ui_raw = raw["ui"]
+    terminal_raw = raw.get("terminal", {"strip_ansi": True})
     agents_raw = raw.get("agents", {})
     tts_raw = raw.get("tts", None)
     summarizer_raw = raw.get("summarizer", {})
@@ -471,6 +483,9 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
             animations_enabled=bool(ui_raw["animations_enabled"]),  # type: ignore[index,misc]
             animations_periodic_interval=int(ui_raw["animations_periodic_interval"]),  # type: ignore[index,misc]
             animations_subset=list(ui_raw.get("animations_subset", [])),  # type: ignore[index,misc]
+        ),
+        terminal=TerminalConfig(
+            strip_ansi=bool(terminal_raw.get("strip_ansi", True))  # type: ignore[attr-defined]
         ),
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
         summarizer=SummarizerConfig(

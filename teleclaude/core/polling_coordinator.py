@@ -30,6 +30,7 @@ from teleclaude.core.output_poller import (
     ProcessExited,
 )
 from teleclaude.core.session_utils import split_project_path_and_subdir
+from teleclaude.utils import strip_ansi_codes
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -63,14 +64,13 @@ CODEX_AGENT_MARKERS = frozenset(
     }
 )
 
-_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 _ANSI_DIM_RE = re.compile(r"\x1b\[2m")  # Dim text
 _ANSI_ITALIC_RE = re.compile(r"\x1b\[3m")  # Italic text
 
 
 def _strip_ansi(text: str) -> str:
     """Remove all ANSI escape codes from text."""
-    return _ANSI_ESCAPE_RE.sub("", text)
+    return strip_ansi_codes(text)
 
 
 def _is_suggestion_styled(text: str) -> bool:

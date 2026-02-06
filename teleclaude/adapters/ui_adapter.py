@@ -214,6 +214,12 @@ class UiAdapter(BaseAdapter):
 
         Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
+        from teleclaude.utils import strip_ansi_codes
+
+        # Strip ANSI codes if configured
+        if config.terminal.strip_ansi:
+            output = strip_ansi_codes(output)
+
         # Truncate to platform limit
         is_truncated = len(output) > self.max_message_size
         tmux_output = output[-self.max_message_size :] if is_truncated else output
