@@ -21,6 +21,7 @@ from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
 
 from teleclaude.core.models import MessageMetadata
 from teleclaude.utils import command_retry
+from teleclaude.utils.markdown import _required_markdown_closers, truncate_markdown_v2
 
 if TYPE_CHECKING:
     from telegram.ext import ExtBot
@@ -81,6 +82,20 @@ class MessageOperationsMixin:
     # Message Operations Implementation
     # =========================================================================
 
+    def _truncate_for_platform(self, text: str, parse_mode: Optional[str], max_chars: int) -> str:
+        """Truncate text to Telegram limits while preserving MarkdownV2 validity."""
+        if len(text) <= max_chars:
+            return text
+
+        if parse_mode == "MarkdownV2":
+            # Keep the leading portion and balance markdown entities.
+            return truncate_markdown_v2(text, max_chars=max_chars, suffix="\n\n…")
+
+        suffix = "\n[...truncated...]"
+        if len(suffix) >= max_chars:
+            return suffix[:max_chars]
+        return f"{text[: max_chars - len(suffix)]}{suffix}"
+
     async def send_message(
         self,
         session: "Session",
@@ -109,16 +124,14 @@ class MessageOperationsMixin:
         # Truncation is a platform constraint (Telegram max 4096)
         from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 
-        if len(text) > UI_MESSAGE_MAX_CHARS:
-            # Truncate at the boundary
-            text = f"[...truncated...]\n{text[-UI_MESSAGE_MAX_CHARS:]}"
+        text = self._truncate_for_platform(text, parse_mode, UI_MESSAGE_MAX_CHARS)
 
         # Best-effort wait for topic readiness to avoid "thread not found" races.
         await self._wait_for_topic_ready(topic_id, session.title)
 
         # Send message with retry decorator handling errors
         # Note: we use MarkdownV2 by default for rich agent output
-        message = await self._send_message_with_retry(topic_id, text, reply_markup, parse_mode or "MarkdownV2")
+        message = await self._send_message_with_retry(topic_id, text, reply_markup, parse_mode)
         return str(message.message_id)
 
     @command_retry(max_retries=3, max_timeout=15.0)
@@ -217,6 +230,11 @@ class MessageOperationsMixin:
         reply_markup = metadata.reply_markup
         parse_mode = metadata.parse_mode
 
+        # Apply the same platform-safe truncation rules used for send_message.
+        from teleclaude.constants import UI_MESSAGE_MAX_CHARS
+
+        text = self._truncate_for_platform(text, parse_mode, UI_MESSAGE_MAX_CHARS)
+
         # Platform-specific optimization: if an edit is already pending for this message,
         # just update the existing context with the latest text. The already-running
         # retry loop will use this updated text on its next attempt.
@@ -269,6 +287,18 @@ class MessageOperationsMixin:
                     session.session_id[:8],
                 )
                 return True
+            if "can't parse entities" in str(e).lower():
+                fence_count = text.count("```")
+                closers = _required_markdown_closers(text)
+                logger.error(
+                    "[TELEGRAM %s] Markdown parse diagnostics: len=%d parse_mode=%s fences=%d needs_closers=%s suffix=%r",
+                    session.session_id[:8],
+                    len(text),
+                    parse_mode,
+                    fence_count,
+                    bool(closers),
+                    text[-40:],
+                )
             # Other BadRequest errors (e.g., "Message to edit not found") are real failures
             logger.error("[TELEGRAM %s] edit_message failed: %s", session.session_id[:8], e)
             return False

@@ -1,5 +1,5 @@
 ---
-id: 'project/design/session-lifecycle'
+id: 'project/design/architecture/session-lifecycle'
 type: 'design'
 scope: 'project'
 description: 'Complete lifecycle of a terminal session from creation to cleanup.'

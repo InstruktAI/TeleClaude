@@ -11,6 +11,7 @@ from typing import Callable, Optional, cast
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_local_datetime
+from teleclaude.utils.markdown import truncate_markdown_v2
 
 logger = logging.getLogger(__name__)
 
@@ -919,9 +920,8 @@ def render_agent_output(
 
     result = "\n".join(lines).strip()
     if len(result) > max_chars:
-        # Simple truncation with indicator
         truncated_msg = "\n\n---\n*Output truncated due to length limits.*"
-        result = result[: max_chars - len(truncated_msg)] + truncated_msg
+        result = truncate_markdown_v2(result, max_chars, truncated_msg)
 
     return result, last_entry_dt
 
@@ -982,6 +982,38 @@ def get_assistant_messages_since(
             assistant_messages.append(msg)
 
     return assistant_messages
+
+
+def count_renderable_assistant_blocks(
+    transcript_path: str,
+    agent_name: AgentName,
+    since_timestamp: Optional[datetime] = None,
+    *,
+    include_tools: bool = False,
+    include_tool_results: bool = False,
+) -> int:
+    """Count assistant content blocks renderable by incremental output."""
+    assistant_messages = get_assistant_messages_since(
+        transcript_path,
+        agent_name,
+        since_timestamp=since_timestamp,
+    )
+    block_count = 0
+    for message in assistant_messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            block_type = block.get("type")
+            if block_type in ("text", "output_text", "thinking"):
+                block_count += 1
+            elif block_type == "tool_use" and include_tools:
+                block_count += 1
+            elif block_type == "tool_result" and include_tool_results:
+                block_count += 1
+    return block_count
 
 
 @dataclass(frozen=True)

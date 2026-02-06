@@ -24,6 +24,7 @@ from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents, UiCommands
+from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.feedback import get_last_feedback
 from teleclaude.core.models import (
     AdapterType,
@@ -45,7 +46,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
 
-from teleclaude.utils.markdown import telegramify_markdown
+from teleclaude.utils.markdown import telegramify_markdown, truncate_markdown_v2
 
 logger = get_logger(__name__)
 
@@ -114,6 +115,55 @@ class UiAdapter(BaseAdapter):
             session.session_id[:8],
             message_id,
         )
+
+    async def _get_threaded_footer_message_id(self, session: "Session") -> Optional[str]:
+        """Get threaded footer message id from adapter namespace."""
+        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
+        if not metadata:
+            return None
+        return metadata.threaded_footer_message_id
+
+    async def _store_threaded_footer_message_id(self, session: "Session", message_id: str) -> None:
+        """Store threaded footer message id in adapter namespace."""
+        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
+        if not metadata:
+            metadata = TelegramAdapterMetadata()
+            setattr(session.adapter_metadata, self.ADAPTER_KEY, metadata)
+        typed_metadata: TelegramAdapterMetadata = metadata
+        typed_metadata.threaded_footer_message_id = message_id
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        logger.debug(
+            "Stored threaded_footer_message_id: session=%s message_id=%s",
+            session.session_id[:8],
+            message_id,
+        )
+
+    async def _clear_threaded_footer_message_id(self, session: "Session") -> None:
+        """Clear threaded footer message id from adapter namespace."""
+        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
+        if not metadata:
+            return
+        typed_metadata: TelegramAdapterMetadata = metadata
+        typed_metadata.threaded_footer_message_id = None
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        logger.debug("Cleared threaded_footer_message_id: session=%s", session.session_id[:8])
+
+    async def _cleanup_threaded_footer_if_present(self, session: "Session") -> None:
+        """Delete and clear any tracked threaded footer message."""
+        previous_footer_id = await self._get_threaded_footer_message_id(session)
+        if not previous_footer_id:
+            return
+        try:
+            await self.delete_message(session, previous_footer_id)
+        except Exception as exc:  # noqa: BLE001 - cleanup is best-effort
+            logger.debug(
+                "Best-effort stale threaded footer delete failed: session=%s message_id=%s err=%s",
+                session.session_id[:8],
+                previous_footer_id,
+                exc,
+            )
+        finally:
+            await self._clear_threaded_footer_message_id(session)
 
     async def _clear_output_message_id(self, session: "Session") -> None:
         """Clear output_message_id from adapter namespace."""
@@ -202,6 +252,23 @@ class UiAdapter(BaseAdapter):
 
     # === Output Message Management (Default Implementations) ===
 
+    def _fit_standard_output_to_limit(self, tmux_output: str, status_line: str) -> str:
+        """Build standard output message and enforce platform limit upstream."""
+        display_output = self.format_message(tmux_output, status_line)
+        if len(display_output) <= self.max_message_size:
+            return display_output
+
+        trimmed_output = tmux_output
+        while trimmed_output and len(display_output) > self.max_message_size:
+            overflow = len(display_output) - self.max_message_size
+            drop = max(overflow, 32)
+            trimmed_output = trimmed_output[drop:] if drop < len(trimmed_output) else ""
+            display_output = self.format_message(trimmed_output, status_line)
+
+        if len(display_output) > self.max_message_size:
+            display_output = truncate_markdown_v2(display_output, self.max_message_size, "\n\n…")
+        return display_output
+
     async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         self,
         session: "Session",
@@ -221,11 +288,14 @@ class UiAdapter(BaseAdapter):
         """
         # Check if threaded output experiment is enabled for this session's agent.
         # If enabled, we suppress the standard poller to avoid double output.
-        if config.is_experiment_enabled("ui_threaded_agent_stop_output", session.active_agent):
+        if is_threaded_output_enabled(session.active_agent):
             logger.debug(
                 "[UI_SEND_OUTPUT] Standard output suppressed for session %s (experiment active)", session.session_id[:8]
             )
             return await self._get_output_message_id(session)
+
+        # Non-threaded paths should not keep stale threaded footer messages around.
+        await self._cleanup_threaded_footer_if_present(session)
 
         # Strip ANSI codes if configured
         if config.terminal.strip_ansi:
@@ -284,7 +354,10 @@ class UiAdapter(BaseAdapter):
             if self.ADAPTER_KEY == AdapterType.TELEGRAM.value:
                 display_output = telegramify_markdown(display_output)
         else:
-            display_output = self.format_message(tmux_output, full_status)
+            display_output = self._fit_standard_output_to_limit(tmux_output, full_status)
+
+        if len(display_output) > self.max_message_size and self.ADAPTER_KEY == AdapterType.TELEGRAM.value:
+            display_output = truncate_markdown_v2(display_output, self.max_message_size, "\n\n…")
 
         # Platform-specific metadata (inline keyboards, etc.)
         metadata = self._build_output_metadata(session, is_truncated)
@@ -332,6 +405,38 @@ class UiAdapter(BaseAdapter):
             await self._store_output_message_id(session, new_id)
             await db.update_session(session.session_id, last_output_digest=display_digest)
         return new_id
+
+    async def send_threaded_footer(self, session: "Session", text: str) -> Optional[str]:
+        """Send threaded-output footer as a separate message.
+
+        Deletes the previous footer first so only the latest footer remains visible.
+        """
+        previous_footer_id = await self._get_threaded_footer_message_id(session)
+        if previous_footer_id:
+            try:
+                await self.delete_message(session, previous_footer_id)
+            except Exception as exc:  # noqa: BLE001 - cleanup is best-effort
+                logger.debug(
+                    "Best-effort threaded footer delete failed: session=%s message_id=%s err=%s",
+                    session.session_id[:8],
+                    previous_footer_id,
+                    exc,
+                )
+            finally:
+                await self._clear_threaded_footer_message_id(session)
+
+        metadata = self._build_output_metadata(session, _is_truncated=False)
+        # Footer is plain text to avoid markdown escape artifacts in status lines/IDs.
+        metadata.parse_mode = None
+        new_id = await self.send_message(session, text, metadata=metadata)
+        if new_id:
+            await self._store_threaded_footer_message_id(session, new_id)
+        return new_id
+
+    def build_threaded_footer_text(self, session: "Session") -> str:
+        """Build footer text for threaded output mode."""
+        session_lines = self._build_session_id_lines(session)
+        return session_lines or "📋 session metadata unavailable"
 
     def format_message(self, tmux_output: str, status_line: str) -> str:
         """Format message with tmux output and status line.

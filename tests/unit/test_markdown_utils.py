@@ -1,10 +1,18 @@
 """Unit tests for markdown utilities."""
 
+from pathlib import Path
+
+from teleclaude.core.agents import AgentName
 from teleclaude.utils.markdown import (
+    _required_markdown_closers,
+    collapse_fenced_code_blocks,
     escape_markdown_v2,
     strip_outer_codeblock,
     telegramify_markdown,
+    truncate_markdown_v2,
+    unescape_markdown_v2,
 )
+from teleclaude.utils.transcript import render_agent_output
 
 
 class TestStripOuterCodeblock:
@@ -156,3 +164,46 @@ class TestTelegramifyMarkdown:
         result = telegramify_markdown(text)
         assert "```python\n" in result
         assert "```md\n" not in result
+
+    def test_collapses_code_blocks_into_spoilers(self):
+        text = "```python\nprint(1)\n```"
+        result = telegramify_markdown(text, collapse_code_blocks=True)
+        assert "📦 *CODE BLOCK*" in result
+        assert "||```python" in result
+        assert "```||" in result
+
+
+class TestMarkdownTruncation:
+    def test_truncate_markdown_v2_closes_open_inline_code(self):
+        source = "prefix `inline snippet that keeps going"
+        truncated = truncate_markdown_v2(source, max_chars=30, suffix="...")
+        assert _required_markdown_closers(truncated) == ""
+
+    def test_truncate_markdown_v2_closes_open_fenced_block(self):
+        source = "```python\nprint('a')\nprint('b')\nprint('c')\n```"
+        truncated = truncate_markdown_v2(source, max_chars=28, suffix="...")
+        assert _required_markdown_closers(truncated) == ""
+
+    def test_collapse_fenced_code_blocks_balances_entities(self):
+        collapsed = collapse_fenced_code_blocks("```js\nconsole.log(1)\n```")
+        assert _required_markdown_closers(collapsed) == ""
+
+
+class TestMarkdownFallback:
+    def test_unescape_markdown_v2_from_real_gemini_fixture(self):
+        fixture = Path("tests/fixtures/transcripts/gemini_real_escape_regression_snapshot.json")
+        assert fixture.exists()
+
+        rendered, _ts = render_agent_output(
+            str(fixture),
+            AgentName.GEMINI,
+            include_tools=True,
+            include_tool_results=False,
+        )
+        assert rendered
+
+        formatted = telegramify_markdown(rendered)
+        plain = unescape_markdown_v2(formatted)
+
+        assert plain.count("\\") < formatted.count("\\")
+        assert "\\." not in plain

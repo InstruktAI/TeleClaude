@@ -1,6 +1,6 @@
 ---
 description: 'Context selection pipeline that picks relevant docs for MCP get_context.'
-id: 'project/design/context-selection'
+id: 'project/design/architecture/context-selection'
 scope: 'project'
 type: 'design'
 ---

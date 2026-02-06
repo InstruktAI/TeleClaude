@@ -1,6 +1,6 @@
 ---
 description: 'UI adapters translate human inputs into events and render outputs with UX rules.'
-id: 'project/design/ui-adapter'
+id: 'project/design/architecture/ui-adapter'
 scope: 'project'
 type: 'design'
 ---

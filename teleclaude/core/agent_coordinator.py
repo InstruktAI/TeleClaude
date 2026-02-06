@@ -27,6 +27,7 @@ from teleclaude.core.events import (
     AgentStopPayload,
     UserPromptSubmitPayload,
 )
+from teleclaude.core.feature_flags import is_threaded_output_enabled, is_threaded_output_include_tools_enabled
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import notify_input_request, notify_stop
@@ -38,6 +39,7 @@ from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.markdown import telegramify_markdown
 from teleclaude.utils.transcript import (
+    count_renderable_assistant_blocks,
     extract_last_agent_message,
     extract_last_user_message,
     get_assistant_messages_since,
@@ -47,6 +49,7 @@ from teleclaude.utils.transcript import (
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
 
@@ -109,7 +112,7 @@ class AgentCoordinator:
         native_log_file = payload.transcript_path
         raw_cwd = payload.raw.get("cwd")
 
-        update_kwargs: dict[str, object] = {}  # noqa: loose-dict - Dynamic session updates
+        update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         if native_session_id:
             update_kwargs["native_session_id"] = str(native_session_id)
         if native_log_file:
@@ -188,7 +191,7 @@ class AgentCoordinator:
         await db.set_notification_flag(session_id, False)
 
         # Prepare batched update
-        update_kwargs: dict[str, object] = {  # noqa: loose-dict - Dynamic session updates
+        update_kwargs: dict[str, object] = {  # guard: loose-dict - Dynamic session updates
             "last_message_sent": payload.prompt[:200],
             "last_message_sent_at": datetime.now(timezone.utc).isoformat(),
             "last_input_origin": InputOrigin.HOOK.value,
@@ -312,8 +315,8 @@ class AgentCoordinator:
         if not agent_key:
             return False
 
-        # Check if experiment is enabled for this agent
-        is_enabled = config.is_experiment_enabled("ui_threaded_agent_stop_output", agent_key)
+        # Check if experiment is enabled for this agent (Gemini only).
+        is_enabled = is_threaded_output_enabled(agent_key)
         logger.debug("Evaluating incremental output", session=session_id[:8], agent=agent_key, is_enabled=is_enabled)
 
         if not is_enabled:
@@ -330,20 +333,36 @@ class AgentCoordinator:
             return False
 
         # Check if tools should be included
-        include_tools = config.is_experiment_enabled("ui_threaded_agent_stop_output_include_tools", agent_key)
+        include_tools = is_threaded_output_include_tools_enabled(agent_key)
 
         # 1. Retrieve all assistant messages since the last cursor
         assistant_messages = get_assistant_messages_since(
             transcript_path, agent_name, since_timestamp=session.last_agent_output_at
         )
 
-        logger.debug("Incremental output analysis: session=%s count=%d", session_id[:8], len(assistant_messages))
+        # Decide between clean (single-block) and standard (multi-block) rendering
+        # using the number of renderable blocks, not message objects. Gemini often
+        # emits multiple events (thinking/tool/text) inside a single assistant message.
+        renderable_block_count = count_renderable_assistant_blocks(
+            transcript_path,
+            agent_name,
+            since_timestamp=session.last_agent_output_at,
+            include_tools=include_tools,
+            include_tool_results=False,
+        )
+
+        logger.debug(
+            "Incremental output analysis: session=%s msg_count=%d block_count=%d",
+            session_id[:8],
+            len(assistant_messages),
+            renderable_block_count,
+        )
 
         if not assistant_messages:
             return False
 
-        # 2. Decide which renderer to use based on message count
-        is_multi = len(assistant_messages) > 1
+        # 2. Decide which renderer to use based on renderable block count
+        is_multi = renderable_block_count > 1
 
         if is_multi:
             # Multi-message: use standard renderer (with headers) for bulk update.
@@ -369,11 +388,10 @@ class AgentCoordinator:
                 is_multi,
             )
             try:
-                # Apply telegram markdown formatting for safety (escapes dots, dashes, etc.)
-                # since we are now rendering directly as MarkdownV2 without quoting.
+                # Keep Telegram MarkdownV2 formatting for both renderers.
                 formatted_message = telegramify_markdown(message)
-
                 await self.client.send_message(session, formatted_message, ephemeral=False, multi_message=is_multi)
+                await self.client.send_threaded_footer(session, self._build_threaded_footer_text(session))
 
                 # CRITICAL: Update cursor ONLY after successful send to prevent
                 # missing activity if delivery fails.
@@ -390,6 +408,13 @@ class AgentCoordinator:
                 logger.warning("Failed to send incremental output: %s", exc, extra={"session_id": session_id[:8]})
 
         return False
+
+    def _build_threaded_footer_text(self, session: "Session") -> str:
+        """Build footer text for threaded output mode."""
+        lines: list[str] = [f"📋 tc: {session.session_id}"]
+        if session.native_session_id:
+            lines.append(f"🤖 {session.active_agent or 'ai'}: {session.native_session_id}")
+        return "\n".join(lines)
 
     async def handle_notification(self, context: AgentEventContext) -> None:
         """Handle notification event - input request."""

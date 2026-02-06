@@ -1,5 +1,5 @@
 ---
-id: 'project/design/context-index'
+id: 'project/design/architecture/context-index'
 type: 'design'
 scope: 'project'
 description: 'Snippet index generation that produces docs/index.yaml from snippet frontmatter.'

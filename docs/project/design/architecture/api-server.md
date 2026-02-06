@@ -1,6 +1,6 @@
 ---
 description: 'Local HTTP and WebSocket API that reads from cache and routes writes through the command pipeline.'
-id: 'project/design/api-server'
+id: 'project/design/architecture/api-server'
 scope: 'project'
 type: 'design'
 ---

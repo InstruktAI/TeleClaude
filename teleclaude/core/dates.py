@@ -45,12 +45,26 @@ def ensure_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-def parse_iso_datetime(value: str) -> datetime | None:
-    """Parse ISO datetime string, normalizing to UTC."""
+def parse_iso_datetime(value: object) -> datetime | None:
+    """Parse ISO datetime string, normalizing to UTC.
+
+    Handles string inputs, datetime objects (normalized to UTC),
+    and returns None for other types.
+    """
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        return ensure_utc(value)
+
+    if not isinstance(value, str):
+        logger.warning("Attempted to parse non-string datetime: %s (type: %s)", value, type(value))
+        return None
+
     try:
         normalized = value.replace("Z", "+00:00")
         parsed = datetime.fromisoformat(normalized)
         return ensure_utc(parsed)
     except ValueError:
-        logger.warning("Failed to parse ISO datetime: %s", value)
+        logger.warning("Failed to parse ISO datetime string: %s", value)
         return None

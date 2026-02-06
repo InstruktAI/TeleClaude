@@ -1,6 +1,6 @@
 ---
 description: 'Daemon orchestration responsibilities, boundaries, and background services.'
-id: 'project/design/daemon'
+id: 'project/design/architecture/daemon'
 scope: 'project'
 type: 'design'
 ---

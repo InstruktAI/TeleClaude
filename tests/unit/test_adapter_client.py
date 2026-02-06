@@ -40,8 +40,8 @@ class DummyTelegramAdapter(UiAdapter):
         self.deleted_channels: list[str] = []
         if send_message_return is not None:
 
-            async def record_send_message(_session, _text, *, metadata=None) -> str:  # type: ignore[override]
-                _ = metadata
+            async def record_send_message(_session, _text, *, metadata=None, multi_message=False) -> str:  # type: ignore[override]
+                _ = (metadata, multi_message)
                 self.sent_messages.append(_text)
                 return send_message_return
 
@@ -70,8 +70,8 @@ class DummyTelegramAdapter(UiAdapter):
         self.deleted_channels.append(_session.session_id)
         return True
 
-    async def send_message(self, _session, _text, *, metadata=None) -> str:
-        _ = metadata
+    async def send_message(self, _session, _text, *, metadata=None, multi_message=False) -> str:
+        _ = (metadata, multi_message)
         return "msg"
 
     async def edit_message(self, _session, _message_id, _text, *, metadata=None) -> bool:
@@ -135,8 +135,8 @@ class DummyFailingAdapter(UiAdapter):
     async def delete_channel(self, _session) -> bool:
         return True
 
-    async def send_message(self, _session, _text, *, metadata=None) -> str:
-        _ = metadata
+    async def send_message(self, _session, _text, *, metadata=None, multi_message=False) -> str:
+        _ = (metadata, multi_message)
         raise self._error
 
     async def edit_message(self, _session, _message_id, _text, *, metadata=None) -> bool:
@@ -605,6 +605,75 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
     sent_session = sent_sessions[0]
     assert sent_session.adapter_metadata.telegram
     assert sent_session.adapter_metadata.telegram.topic_id == 999
+
+
+@pytest.mark.asyncio
+async def test_send_output_update_non_gemini_not_suppressed_when_experiment_global():
+    """Threaded suppression applies only to Gemini sessions."""
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client)
+    telegram.send_output_update = AsyncMock(return_value="msg")  # type: ignore[assignment]
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-codex",
+        computer_name="test",
+        tmux_session_name="tc_session_codex",
+        last_input_origin=InputOrigin.API.value,
+        title="Test Session",
+        active_agent="codex",
+    )
+
+    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=False):
+        result = await client.send_output_update(session, "output", 0.0, 0.0)
+
+    assert result == "msg"
+    telegram.send_output_update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_send_threaded_footer_routes_to_origin_adapter():
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client)
+    telegram.send_threaded_footer = AsyncMock(return_value="footer-1")  # type: ignore[assignment]
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-footer",
+        computer_name="test",
+        tmux_session_name="tc_session_footer",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+        active_agent="gemini",
+    )
+
+    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=True):
+        result = await client.send_threaded_footer(session, "📋 tc: session-footer")
+    assert result == "footer-1"
+    telegram.send_threaded_footer.assert_awaited_once_with(session, "📋 tc: session-footer")
+
+
+@pytest.mark.asyncio
+async def test_send_threaded_footer_non_experiment_is_noop():
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client)
+    telegram.send_threaded_footer = AsyncMock(return_value="footer-1")  # type: ignore[assignment]
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-footer-noop",
+        computer_name="test",
+        tmux_session_name="tc_session_footer_noop",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+        active_agent="codex",
+    )
+
+    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=False):
+        result = await client.send_threaded_footer(session, "📋 tc: session-footer-noop")
+
+    assert result is None
+    telegram.send_threaded_footer.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -131,6 +131,7 @@ class TelegramAdapterMetadata:
 
     topic_id: Optional[int] = None
     output_message_id: Optional[str] = None
+    threaded_footer_message_id: Optional[str] = None
     output_suppressed: bool = False
     parse_mode: Optional[str] = None
 
@@ -172,15 +173,22 @@ class SessionAdapterMetadata:
             if isinstance(tg_raw, dict):
                 topic_id_val: object = tg_raw.get("topic_id")
                 output_msg_val: object = tg_raw.get("output_message_id")
+                threaded_footer_val: object = tg_raw.get("threaded_footer_message_id")
                 topic_id: int | None = None
                 if isinstance(topic_id_val, int):
                     topic_id = topic_id_val
                 elif isinstance(topic_id_val, str) and topic_id_val.isdigit():
                     topic_id = int(topic_id_val)
                 output_message_id = str(output_msg_val) if output_msg_val is not None else None
+                threaded_footer_message_id = str(threaded_footer_val) if threaded_footer_val is not None else None
+                output_suppressed = bool(tg_raw.get("output_suppressed", False))
+                parse_mode = str(tg_raw.get("parse_mode")) if tg_raw.get("parse_mode") else None
                 telegram_metadata = TelegramAdapterMetadata(
                     topic_id=topic_id,
                     output_message_id=output_message_id,
+                    threaded_footer_message_id=threaded_footer_message_id,
+                    output_suppressed=output_suppressed,
+                    parse_mode=parse_mode,
                 )
 
             redis_raw = data_obj.get("redis")
@@ -226,7 +234,7 @@ class MessageMetadata:
     """Per-call metadata for message operations."""
 
     reply_markup: Optional["InlineKeyboardMarkup"] = None
-    parse_mode: str = "MarkdownV2"
+    parse_mode: str | None = "MarkdownV2"
     message_thread_id: Optional[int] = None
     raw_format: bool = False
     origin: Optional[str] = None
@@ -396,6 +404,12 @@ class Session:  # pylint: disable=too-many-instance-attributes
             if isinstance(last_feedback_received_at_raw, str)
             else last_feedback_received_at_raw
         )
+        last_agent_output_at_raw = data.get("last_agent_output_at")
+        last_agent_output_at = (
+            parse_iso_datetime(last_agent_output_at_raw)
+            if isinstance(last_agent_output_at_raw, str)
+            else last_agent_output_at_raw
+        )
 
         adapter_metadata: SessionAdapterMetadata
         if FIELD_ADAPTER_METADATA in data and isinstance(data[FIELD_ADAPTER_METADATA], str):
@@ -446,6 +460,9 @@ class Session:  # pylint: disable=too-many-instance-attributes
             last_feedback_received=_get_optional_str("last_feedback_received"),
             last_feedback_received_at=ensure_utc(last_feedback_received_at)
             if isinstance(last_feedback_received_at, datetime)
+            else None,
+            last_agent_output_at=ensure_utc(last_agent_output_at)
+            if isinstance(last_agent_output_at, datetime)
             else None,
             last_feedback_summary=_get_optional_str("last_feedback_summary"),
             last_output_digest=_get_optional_str("last_output_digest"),

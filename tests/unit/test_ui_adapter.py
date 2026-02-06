@@ -11,6 +11,7 @@ from teleclaude.core.origins import InputOrigin
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import Db
 from teleclaude.core.models import (
     CleanupTrigger,
@@ -44,9 +45,16 @@ class MockUiAdapter(UiAdapter):
     async def stop(self):
         pass
 
-    async def send_message(self, session: Session, text: str, metadata: MessageMetadata | None = None) -> str:
+    async def send_message(
+        self,
+        session: Session,
+        text: str,
+        metadata: MessageMetadata | None = None,
+        multi_message: bool = False,
+    ) -> str:
+        _ = multi_message
         self._send_calls.append((text, metadata))
-        return await self._send_message_mock(session, text, metadata)
+        return await self._send_message_mock(session, text, metadata, multi_message)
 
     async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
         self._edit_calls.append(text)
@@ -268,6 +276,108 @@ class TestSendOutputUpdate:
 
         assert "✅" in message_text or "0" in message_text
         assert "```" in message_text
+
+    async def test_non_gemini_not_suppressed_when_experiment_globally_enabled(self, test_db):
+        """Threaded suppression applies only to Gemini sessions."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        await test_db.update_session(session.session_id, active_agent="codex")
+        session = await test_db.get_session(session.session_id)
+
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=False):
+            result = await adapter.send_output_update(
+                session,
+                "codex output",
+                time.time(),
+                time.time(),
+            )
+
+        assert result == "msg-123"
+        assert len(adapter._send_calls) == 1
+
+    async def test_send_threaded_footer_replaces_previous(self, test_db):
+        """Threaded footer keeps only latest footer message."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        if not session.adapter_metadata:
+            session.adapter_metadata = SessionAdapterMetadata()
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(threaded_footer_message_id="old-footer")
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        await adapter.send_threaded_footer(session, "📋 tc: abc")
+
+        adapter._delete_message_mock.assert_awaited_once_with(session, "old-footer")
+        latest = await test_db.get_session(session.session_id)
+        assert latest.adapter_metadata.telegram is not None
+        assert latest.adapter_metadata.telegram.threaded_footer_message_id == "msg-123"
+
+    async def test_standard_output_cleans_stale_threaded_footer(self, test_db):
+        """Non-threaded output should remove stale threaded footer state/messages."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        if not session.adapter_metadata:
+            session.adapter_metadata = SessionAdapterMetadata()
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(threaded_footer_message_id="stale-footer")
+        await test_db.update_session(
+            session.session_id, adapter_metadata=session.adapter_metadata, active_agent="codex"
+        )
+        session = await test_db.get_session(session.session_id)
+
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=False):
+            await adapter.send_output_update(
+                session,
+                "normal output",
+                time.time(),
+                time.time(),
+            )
+
+        adapter._delete_message_mock.assert_awaited_once_with(session, "stale-footer")
+        latest = await test_db.get_session(session.session_id)
+        assert latest.adapter_metadata.telegram is not None
+        assert latest.adapter_metadata.telegram.threaded_footer_message_id is None
+
+    async def test_standard_output_is_fitted_upstream_before_send(self, test_db):
+        """Standard output payload should already fit Telegram limit when sent."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        await test_db.update_session(session.session_id, active_agent="codex")
+        session = await test_db.get_session(session.session_id)
+
+        # Simulate tmux content with dense markdown-like patterns and long body.
+        output = ("line with ```fence``` and symbols [](){}!.\n" * 300) + ("x" * 1500)
+        await adapter.send_output_update(
+            session,
+            output,
+            time.time(),
+            time.time(),
+        )
+
+        assert adapter._send_calls
+        sent_text, _metadata = adapter._send_calls[-1]
+        assert len(sent_text) <= UI_MESSAGE_MAX_CHARS
+        assert sent_text.startswith("```")
+        assert "\n```" in sent_text
 
 
 @pytest.mark.asyncio

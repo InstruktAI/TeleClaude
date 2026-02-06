@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -16,8 +17,11 @@ from teleclaude import config as config_module
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.config import TrustedDir
+from teleclaude.core.agents import AgentName
 from teleclaude.core.models import MessageMetadata, Session, SessionAdapterMetadata, TelegramAdapterMetadata
 from teleclaude.types.commands import KeysCommand
+from teleclaude.utils.markdown import telegramify_markdown
+from teleclaude.utils.transcript import render_agent_output
 
 
 @pytest.fixture
@@ -176,6 +180,141 @@ class TestMessaging:
             assert len(calls) == 1
             call_kwargs = calls[0]
             assert call_kwargs["parse_mode"] == "MarkdownV2"
+
+    @pytest.mark.asyncio
+    async def test_edit_message_truncates_oversized_markdownv2_payload(self, telegram_adapter):
+        """Edit payloads should be truncated safely to Telegram message size limit."""
+        session = Session(
+            session_id="session-edit-truncate",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
+        )
+
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+
+        calls = []
+
+        async def record_edit_message_text(**kwargs):
+            calls.append(kwargs)
+            return True
+
+        telegram_adapter.app.bot.edit_message_text = record_edit_message_text
+
+        # Oversized MarkdownV2 payload with punctuation and open inline code risk.
+        long_text = ("prefix.with.symbols - value! " * 220) + "`unterminated snippet"
+        result = await telegram_adapter.edit_message(
+            session,
+            "456",
+            long_text,
+            metadata=MessageMetadata(parse_mode="MarkdownV2"),
+        )
+
+        assert result is True
+        assert len(calls) == 1
+        sent_text = calls[0]["text"]
+        assert len(sent_text) <= 4096
+        assert not sent_text.endswith("\\")
+
+    @pytest.mark.asyncio
+    async def test_send_message_honors_parse_mode_none(self, telegram_adapter):
+        """Explicit parse_mode=None should send plain text (no markdown parser)."""
+        session = Session(
+            session_id="session-plain",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
+        )
+
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        telegram_adapter._wait_for_topic_ready = AsyncMock()  # type: ignore[method-assign]
+
+        calls = []
+
+        async def record_send_message(**kwargs):
+            calls.append(kwargs)
+            msg = MagicMock()
+            msg.message_id = 777
+            return msg
+
+        telegram_adapter.app.bot.send_message = record_send_message
+
+        result = await telegram_adapter.send_message(session, "plain footer", metadata=MessageMetadata(parse_mode=None))
+        assert result == "777"
+        assert len(calls) == 1
+        assert calls[0]["parse_mode"] is None
+
+    @pytest.mark.asyncio
+    async def test_send_message_markdown_parse_error_is_not_fallbacked(self, telegram_adapter):
+        """Markdown parse errors should surface (no silent plain-text fallback)."""
+        fixture = Path("tests/fixtures/transcripts/gemini_real_escape_regression_snapshot.json")
+        rendered, _ts = render_agent_output(
+            str(fixture),
+            AgentName.GEMINI,
+            include_tools=True,
+            include_tool_results=False,
+        )
+        assert rendered
+        formatted = telegramify_markdown(rendered)
+
+        session = Session(
+            session_id="session-mdv2-fallback",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
+        )
+
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        telegram_adapter._wait_for_topic_ready = AsyncMock()  # type: ignore[method-assign]
+
+        calls = []
+
+        async def fake_send_message(**kwargs):
+            calls.append(kwargs)
+            raise BadRequest("can't parse entities: character '.' is reserved")
+
+        telegram_adapter.app.bot.send_message = fake_send_message
+
+        with pytest.raises(BadRequest):
+            await telegram_adapter.send_message(
+                session,
+                formatted,
+                metadata=MessageMetadata(parse_mode="MarkdownV2"),
+            )
+        assert len(calls) == 1
+        assert calls[0]["parse_mode"] == "MarkdownV2"
+
+    def test_truncate_for_platform_keeps_markdownv2_balanced(self, telegram_adapter):
+        """MarkdownV2 truncation should respect Telegram limit and avoid dangling escapes."""
+        long_text = telegramify_markdown("Line one.\n" * 2000)
+        truncated = telegram_adapter._truncate_for_platform(long_text, "MarkdownV2", 4096)
+        assert len(truncated) <= 4096
+        assert not truncated.endswith("\\")
+
+    def test_build_output_metadata_includes_download_button(self, telegram_adapter):
+        """Output metadata should include download button when native transcript exists."""
+        session = Session(
+            session_id="session-download",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            native_log_file="/tmp/native.log",
+        )
+
+        metadata = telegram_adapter._build_output_metadata(session, _is_truncated=False)
+        assert metadata.reply_markup is not None
+        keyboard = metadata.reply_markup.inline_keyboard
+        assert keyboard[0][0].callback_data == "download_full:session-download"
 
     @pytest.mark.asyncio
     async def test_delete_message_success(self, telegram_adapter):

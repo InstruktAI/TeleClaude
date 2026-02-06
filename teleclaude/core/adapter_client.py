@@ -15,6 +15,7 @@ from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
+from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.models import (
     ChannelMetadata,
     CleanupTrigger,
@@ -376,6 +377,20 @@ class AdapterClient:
 
         return message_id
 
+    async def send_threaded_footer(self, session: "Session", text: str) -> str | None:
+        """Send threaded footer via UI adapters with adapter-local cleanup semantics."""
+        if not is_threaded_output_enabled(session.active_agent):
+            return None
+        if session.last_input_origin:
+            target = self.adapters.get(session.last_input_origin)
+            if isinstance(target, UiAdapter):
+                result = await target.send_threaded_footer(session, text)
+            else:
+                result = await self._route_to_ui(session, "send_threaded_footer", text, broadcast=True)
+        else:
+            result = await self._route_to_ui(session, "send_threaded_footer", text, broadcast=True)
+        return str(result) if result else None
+
     async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:
         """Edit message in ALL UiAdapters (origin + observers).
 
@@ -459,7 +474,7 @@ class AdapterClient:
 
         # Check if threaded output experiment is enabled for this session's agent.
         # If enabled, we suppress the standard poller to avoid double output.
-        if config.is_experiment_enabled("ui_threaded_agent_stop_output", session.active_agent):
+        if is_threaded_output_enabled(session.active_agent):
             logger.debug(
                 "[OUTPUT_ROUTE] Standard output suppressed for session %s (experiment active)",
                 session.session_id[:8],

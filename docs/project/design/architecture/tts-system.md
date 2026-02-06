@@ -1,6 +1,6 @@
 ---
 description: 'Text-to-speech system with multi-backend fallback, per-session voice assignment, and file-locked sequential playback.'
-id: 'project/design/tts-system'
+id: 'project/design/architecture/tts-system'
 scope: 'project'
 type: 'design'
 ---

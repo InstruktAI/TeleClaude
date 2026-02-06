@@ -98,6 +98,7 @@ class Db:
             last_message_sent_at=Db._coerce_datetime(row.last_message_sent_at),
             last_feedback_received=row.last_feedback_received,
             last_feedback_received_at=Db._coerce_datetime(row.last_feedback_received_at),
+            last_agent_output_at=Db._coerce_datetime(row.last_agent_output_at),
             last_feedback_summary=row.last_feedback_summary,
             last_output_digest=row.last_output_digest,
             working_slug=row.working_slug,

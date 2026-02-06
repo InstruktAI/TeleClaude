@@ -15,7 +15,12 @@ from teleclaude.config import (
     UIConfig,
 )
 from teleclaude.core.agents import AgentName
-from teleclaude.utils.transcript import render_agent_output
+from teleclaude.utils.markdown import _required_markdown_closers, telegramify_markdown
+from teleclaude.utils.transcript import (
+    count_renderable_assistant_blocks,
+    get_assistant_messages_since,
+    render_agent_output,
+)
 
 
 def test_render_agent_output_basic(tmp_path):
@@ -123,7 +128,7 @@ def test_render_agent_output_include_tools(tmp_path):
     )
 
     result, _ts = render_agent_output(str(transcript_path), AgentName.CLAUDE, include_tools=True)
-    assert "🔧 **TOOL CALL:** test_tool" in result
+    assert '🔧 **`test_tool {"arg": 1}`**' in result
     assert "Tool used" in result
 
 
@@ -195,10 +200,37 @@ def test_render_agent_output_delta(tmp_path):
 
     dt2 = datetime(2025, 1, 1, 10, 0, 1, tzinfo=timezone.utc)
 
-    # since_timestamp = ts2 should return only "Third"
+    # since_timestamp = ts2 should return only the third entry with timestamp prefix
     result, last_ts = render_agent_output(str(transcript_path), AgentName.CLAUDE, since_timestamp=dt2)
-    assert result == "Third"
+    assert result == "[10:00:02] Third"
     assert last_ts.isoformat().startswith("2025-01-01T10:00:02")
+
+
+def test_real_gemini_artifact_returns_single_message_with_multiple_blocks():
+    fixture = Path("tests/fixtures/transcripts/gemini_real_incremental_snapshot.json")
+    assert fixture.exists(), "Expected real Gemini artifact fixture to exist"
+
+    messages = get_assistant_messages_since(str(fixture), AgentName.GEMINI)
+    assert len(messages) == 1
+
+    block_count = count_renderable_assistant_blocks(str(fixture), AgentName.GEMINI, include_tools=True)
+    assert block_count >= 2
+
+
+def test_real_gemini_artifact_truncation_keeps_markdown_balanced():
+    fixture = Path("tests/fixtures/transcripts/gemini_real_incremental_snapshot.json")
+    result, _last_ts = render_agent_output(
+        str(fixture),
+        AgentName.GEMINI,
+        include_tools=True,
+        include_tool_results=False,
+        max_chars=280,
+    )
+    assert result is not None
+    assert "Output truncated due to length limits." in result
+
+    formatted = telegramify_markdown(result, collapse_code_blocks=True)
+    assert _required_markdown_closers(formatted) == ""
 
 
 def test_is_experiment_enabled():
