@@ -181,6 +181,9 @@ class AgentCoordinator:
         # Clear notification flag when new prompt starts (all sessions)
         await db.set_notification_flag(session_id, False)
 
+        # Resume standard output (clear suppression flag) for new turn
+        await self.client.resume_standard_output(session_id)
+
         # Prepare batched update
         update_kwargs: dict[str, object] = {  # noqa: loose-dict - Dynamic session updates
             "last_message_sent": payload.prompt[:200],
@@ -272,7 +275,10 @@ class AgentCoordinator:
         await self._extract_user_input_for_codex(session_id, payload)
 
         # 3. Threaded stop-turn output
-        await self._maybe_send_threaded_stop_output(session_id, payload)
+        sent_threaded = await self._maybe_send_threaded_stop_output(session_id, payload)
+        if sent_threaded:
+            # Suppress standard poller output update if threaded turn sent
+            await self.client.stop_standard_output(session_id)
 
         # 4. Notify local listeners (AI-to-AI on same computer)
         await self._notify_session_listener(session_id, source_computer=source_computer)
@@ -281,29 +287,36 @@ class AgentCoordinator:
         if not (source_computer and source_computer != config.computer.name):
             await self._forward_stop_to_initiator(session_id)
 
-    async def _maybe_send_threaded_stop_output(self, session_id: str, payload: AgentStopPayload) -> None:
-        """Evaluate and potentially send threaded stop output summary."""
+    async def _maybe_send_threaded_stop_output(self, session_id: str, payload: AgentStopPayload) -> bool:
+        """Evaluate and potentially send threaded stop output summary.
+
+        Returns:
+            True if threaded message was sent, False otherwise.
+        """
         session = await db.get_session(session_id)
         if not session:
-            return
+            return False
 
         agent_key = session.active_agent
         if not agent_key:
-            return
+            return False
 
         # Check if experiment is enabled for this agent
-        if not config.is_experiment_enabled("ui_threaded_agent_stop_output", agent_key):
-            return
+        is_enabled = config.is_experiment_enabled("ui_threaded_agent_stop_output", agent_key)
+        logger.debug("Evaluating threaded stop output", session=session_id[:8], agent=agent_key, is_enabled=is_enabled)
+
+        if not is_enabled:
+            return False
 
         transcript_path = payload.transcript_path or session.native_log_file
         if not transcript_path:
             logger.debug("Threaded stop output skipped (missing transcript path)", session=session_id[:8])
-            return
+            return False
 
         try:
             agent_name = AgentName.from_str(agent_key)
         except ValueError:
-            return
+            return False
 
         # Check if tools should be included
         include_tools = config.is_experiment_enabled("ui_threaded_agent_stop_output_include_tools", agent_key)
@@ -312,11 +325,14 @@ class AgentCoordinator:
         message = render_stop_turn(transcript_path, agent_name, include_tools=include_tools)
 
         if message:
-            logger.info("Sending threaded stop output for session %s", session_id[:8])
+            logger.info("Sending threaded stop output for session %s (len=%d)", session_id[:8], len(message))
             try:
                 await self.client.send_message(session, message, ephemeral=False)
+                return True
             except Exception as exc:  # noqa: BLE001 - Message send should never crash event handling
                 logger.warning("Failed to send threaded stop output: %s", exc, extra={"session_id": session_id[:8]})
+
+        return False
 
     async def handle_notification(self, context: AgentEventContext) -> None:
         """Handle notification event - input request."""

@@ -74,10 +74,23 @@ def test_configure_gemini_writes_only_required_hook_events(tmp_path, monkeypatch
 
     data = json.loads(gemini_config.read_text())
     hooks = data["hooks"]
-    assert set(hooks.keys()) == {"enabled", "SessionStart", "UserPromptSubmit", "AfterAgent"}
+    assert set(hooks.keys()) == {
+        "enabled",
+        "SessionStart",
+        "BeforeAgent",
+        "AfterAgent",
+        "BeforeModel",
+        "AfterModel",
+        "BeforeToolSelection",
+        "BeforeTool",
+        "AfterTool",
+        "PreCompress",
+        "Notification",
+        "SessionEnd",
+    }
     assert hooks["enabled"] is True
 
-    prompt_hook = hooks["UserPromptSubmit"][0]["hooks"][0]
+    prompt_hook = hooks["BeforeAgent"][0]["hooks"][0]
     command = prompt_hook["command"]
     if isinstance(command, list):
         command_text = " ".join(command)

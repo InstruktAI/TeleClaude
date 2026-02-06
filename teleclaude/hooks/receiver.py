@@ -24,6 +24,7 @@ sys.path.append(str(hooks_dir.parent.parent))
 from teleclaude.config import config  # noqa: E402
 from teleclaude.core.agents import AgentName  # noqa: E402
 from teleclaude.core import db_models  # noqa: E402
+from teleclaude.core.events import AgentHookEvents  # noqa: E402
 from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS  # noqa: E402
 
 configure_logging("teleclaude")
@@ -31,22 +32,8 @@ logger = get_logger("teleclaude.hooks.receiver")
 
 # Only these events are forwarded to MCP. All others are silently dropped.
 # This prevents zombie mcp-wrapper processes from intermediate hooks.
-_HANDLED_EVENTS: frozenset[str] = frozenset(
-    {
-        "session_start",
-        "user_prompt_submit",
-        "agent_stop",
-        "notification",
-        "session_end",
-        "before_agent",
-        "before_model",
-        "after_model",
-        "before_tool_selection",
-        "before_tool",
-        "after_tool",
-        "pre_compress",
-    }
-)
+# Derived from HOOK_EVENT_MAP to ensure we only handle what we explicitly support.
+_HANDLED_EVENTS: frozenset[str] = frozenset(AgentHookEvents.ALL)
 
 
 def _parse_args() -> argparse.Namespace:

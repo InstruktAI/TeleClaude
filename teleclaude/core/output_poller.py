@@ -202,7 +202,7 @@ class OutputPoller:
                     curr_last_lines = captured_output.rstrip().split("\n")[-3:]
                     prev_last_lines = previous_output.rstrip().split("\n")[-3:] if previous_output else []
                     if curr_last_lines != prev_last_lines:
-                        logger.debug(
+                        logger.trace(
                             "[POLL %s] Last 3 lines changed: prev=%r, curr=%r",
                             session_id[:8],
                             [line[:50] for line in prev_last_lines],

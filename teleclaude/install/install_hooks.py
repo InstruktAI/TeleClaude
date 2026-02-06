@@ -12,9 +12,10 @@ import re
 import shlex
 import tomllib
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
 from teleclaude.constants import MAIN_MODULE
+from teleclaude.core.events import AgentHookEvents
 
 PY_EXTENSION = ".py"
 RECEIVER_TOKEN = "receiver"
@@ -139,26 +140,11 @@ def _build_hook_command(python_exe: Path, receiver_script: Path, agent: str, eve
     return f'{python_exe} {receiver_script} --agent {agent} --cwd "$PWD" {event_arg}'
 
 
-# Event mappings by agent
-CLAUDE_EVENTS = {
-    "SessionStart": "session_start",
-    "UserPromptSubmit": "user_prompt_submit",
-    "Stop": "agent_stop",
-}
-
-GEMINI_EVENTS = {
-    "SessionStart": "session_start",
-    "UserPromptSubmit": "user_prompt_submit",
-    # AfterAgent fires when agent loop ends and is used as agent_stop.
-    "AfterAgent": "agent_stop",
-}
-
-
 def _build_hook_map(
     python_exe: Path,
     receiver_script: Path,
     agent: str,
-    event_args: Dict[str, str],
+    event_args: Mapping[str, str],
     include_metadata: bool = False,
 ) -> Dict[str, Dict[str, Any]]:
     """Build hook definitions for an agent.
@@ -187,12 +173,14 @@ def _build_hook_map(
 
 def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
     """Return TeleClaude hook definitions for Claude Code."""
-    return _build_hook_map(python_exe, receiver_script, "claude", CLAUDE_EVENTS)
+    return _build_hook_map(python_exe, receiver_script, "claude", AgentHookEvents.HOOK_EVENT_MAP["claude"])
 
 
 def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
     """Return TeleClaude hook definitions for Gemini CLI."""
-    return _build_hook_map(python_exe, receiver_script, "gemini", GEMINI_EVENTS, include_metadata=True)
+    return _build_hook_map(
+        python_exe, receiver_script, "gemini", AgentHookEvents.HOOK_EVENT_MAP["gemini"], include_metadata=True
+    )
 
 
 def _prune_agent_hooks(existing_hooks: Dict[str, Any], allowed_events: set[str]) -> Dict[str, Any]:
@@ -307,7 +295,7 @@ def configure_claude(repo_root: Path) -> None:
         repo_root,
         "claude",
         Path.home() / ".claude" / "settings.json",
-        set(CLAUDE_EVENTS.keys()),
+        set(AgentHookEvents.HOOK_EVENT_MAP["claude"].keys()),
         _claude_hook_map,
     )
 
@@ -318,7 +306,7 @@ def configure_gemini(repo_root: Path) -> None:
         repo_root,
         "gemini",
         Path.home() / ".gemini" / "settings.json",
-        set(GEMINI_EVENTS.keys()),
+        set(AgentHookEvents.HOOK_EVENT_MAP["gemini"].keys()),
         _gemini_hook_map,
         enable_hooks_flag=True,
     )

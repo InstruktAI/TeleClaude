@@ -131,6 +131,7 @@ class TelegramAdapterMetadata:
 
     topic_id: Optional[int] = None
     output_message_id: Optional[str] = None
+    output_suppressed: bool = False
 
 
 @dataclass
@@ -176,9 +177,11 @@ class SessionAdapterMetadata:
                 elif isinstance(topic_id_val, str) and topic_id_val.isdigit():
                     topic_id = int(topic_id_val)
                 output_message_id = str(output_msg_val) if output_msg_val is not None else None
+                output_suppressed = bool(tg_raw.get("output_suppressed", False))
                 telegram_metadata = TelegramAdapterMetadata(
                     topic_id=topic_id,
                     output_message_id=output_message_id,
+                    output_suppressed=output_suppressed,
                 )
 
             redis_raw = data_obj.get("redis")

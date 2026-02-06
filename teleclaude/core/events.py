@@ -39,13 +39,74 @@ class AgentHookEvents:
     AGENT_SESSION_END: AgentHookEventType = "session_end"
     AGENT_NOTIFICATION: AgentHookEventType = "notification"
     AGENT_ERROR: AgentHookEventType = "error"
-    ALL: set[AgentHookEventType] = {
-        AGENT_SESSION_START,
-        USER_PROMPT_SUBMIT,
-        AGENT_STOP,
-        AGENT_SESSION_END,
-        AGENT_NOTIFICATION,
-        AGENT_ERROR,
+
+    # Additional hook events (captured for future-proofing, no active handlers yet)
+    BEFORE_AGENT: AgentHookEventType = "before_agent"
+    BEFORE_MODEL: AgentHookEventType = "before_model"
+    AFTER_MODEL: AgentHookEventType = "after_model"
+    BEFORE_TOOL_SELECTION: AgentHookEventType = "before_tool_selection"
+    BEFORE_TOOL: AgentHookEventType = "before_tool"
+    AFTER_TOOL: AgentHookEventType = "after_tool"
+    PRE_COMPRESS: AgentHookEventType = "pre_compress"
+    PRE_TOOL_USE: AgentHookEventType = "pre_tool_use"
+    POST_TOOL_USE: AgentHookEventType = "post_tool_use"
+    POST_TOOL_USE_FAILURE: AgentHookEventType = "post_tool_use_failure"
+    SUBAGENT_START: AgentHookEventType = "subagent_start"
+    SUBAGENT_STOP: AgentHookEventType = "subagent_stop"
+    PRE_COMPACT: AgentHookEventType = "pre_compact"
+
+    # Internal handlers currently only use:
+    # - AGENT_SESSION_START: Initialize headless session, anchor native IDs
+    # - USER_PROMPT_SUBMIT: Capture last user input for session history
+    # - AGENT_STOP: Trigger turn completion, poll transcript for final model response
+    # - AGENT_NOTIFICATION: Notify listeners (tmux) and initiators (remote)
+    # Other events are enqueued but have no active logic in the daemon yet.
+
+    # Mapping from agent-specific hook event names to TeleClaude internal event types
+    HOOK_EVENT_MAP: Mapping[str, Mapping[str, AgentHookEventType]] = MappingProxyType(
+        {
+            "claude": MappingProxyType(
+                {
+                    "SessionStart": AGENT_SESSION_START,
+                    "UserPromptSubmit": USER_PROMPT_SUBMIT,
+                    "PreToolUse": PRE_TOOL_USE,
+                    "PermissionRequest": AGENT_NOTIFICATION,
+                    "PostToolUse": POST_TOOL_USE,
+                    "PostToolUseFailure": POST_TOOL_USE_FAILURE,
+                    "SubagentStart": SUBAGENT_START,
+                    "SubagentStop": SUBAGENT_STOP,
+                    "Stop": AGENT_STOP,
+                    "PreCompact": PRE_COMPACT,
+                    "SessionEnd": AGENT_SESSION_END,
+                    "Notification": AGENT_NOTIFICATION,
+                }
+            ),
+            "gemini": MappingProxyType(
+                {
+                    "SessionStart": AGENT_SESSION_START,
+                    "BeforeAgent": USER_PROMPT_SUBMIT,
+                    "AfterAgent": AGENT_STOP,
+                    "BeforeModel": BEFORE_MODEL,
+                    "AfterModel": AFTER_MODEL,
+                    "BeforeToolSelection": BEFORE_TOOL_SELECTION,
+                    "BeforeTool": BEFORE_TOOL,
+                    "AfterTool": AFTER_TOOL,
+                    "PreCompress": PRE_COMPRESS,
+                    "Notification": AGENT_NOTIFICATION,
+                    "SessionEnd": AGENT_SESSION_END,
+                }
+            ),
+            "codex": MappingProxyType(
+                {
+                    # Codex only supports a single notify hook (agent-turn-complete)
+                    "agent-turn-complete": AGENT_STOP,
+                }
+            ),
+        }
+    )
+
+    ALL: set[AgentHookEventType] = {v for agent_map in HOOK_EVENT_MAP.values() for v in agent_map.values()} | {
+        AGENT_ERROR
     }
 
 

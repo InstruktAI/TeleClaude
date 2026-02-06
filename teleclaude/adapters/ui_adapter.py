@@ -219,6 +219,12 @@ class UiAdapter(BaseAdapter):
 
         Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
+        # Check if standard output has been explicitly suppressed for this adapter
+        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
+        if metadata and metadata.output_suppressed:
+            logger.debug("[UI_SEND_OUTPUT] Standard output suppressed for session %s", session.session_id[:8])
+            return await self._get_output_message_id(session)
+
         # Strip ANSI codes if configured
         if config.terminal.strip_ansi:
             output = strip_ansi_codes(output)

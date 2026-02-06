@@ -422,6 +422,12 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                     )
                     return
 
+                logger.trace(
+                    "[COORDINATOR %s] Fetched session for output: digest=%s",
+                    event.session_id[:8],
+                    session.last_output_digest,
+                )
+
                 # Detect user input for Codex sessions (no hook support)
                 # Fire-and-forget: best-effort, doesn't block polling loop
                 async def _codex_input_wrapper() -> None:

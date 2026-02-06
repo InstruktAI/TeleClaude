@@ -310,6 +310,7 @@ def _process_tool_result_block(
     time_prefix: str,
     lines: list[str],
     collapse_tool_results: bool,
+    max_chars: Optional[int] = None,
 ) -> str:  # guard: loose-dict - External block
     """Process tool result block.
 
@@ -318,8 +319,13 @@ def _process_tool_result_block(
     is_error = block.get("is_error", False)
     status_emoji = "❌" if is_error else "✅"
     content_data = block.get("content", "")
+    content_str = str(content_data)
+
+    if max_chars and len(content_str) > max_chars:
+        content_str = content_str[:max_chars] + "\n[...tool output truncated...]"
+
     lines.append("")
-    content_lines = str(content_data).splitlines() or [""]
+    content_lines = content_str.splitlines() or [""]
     if collapse_tool_results:
         lines.append(f"{time_prefix}{status_emoji} **TOOL RESPONSE (tap to reveal):**")
         lines.append("")
@@ -652,6 +658,7 @@ def render_stop_turn(
     transcript_path: str,
     agent_name: AgentName,
     include_tools: bool = False,
+    max_chars: int = 4000,
 ) -> Optional[str]:
     """Render markdown for the latest assistant activity since the last user boundary.
 
@@ -661,6 +668,7 @@ def render_stop_turn(
         transcript_path: Path to transcript file
         agent_name: Agent name for iterator selection
         include_tools: Whether to include tool call/result blocks
+        max_chars: Maximum characters for the entire message (truncates if exceeded)
 
     Returns:
         Markdown text or None if no new assistant activity
@@ -733,13 +741,26 @@ def render_stop_turn(
                     emitted = True
                 elif block_type == "tool_result":
                     lines.append("")
-                    _process_tool_result_block(block, "", lines, collapse_tool_results=False)
+                    # Use a smaller sub-limit for tool results to avoid eating entire budget
+                    _process_tool_result_block(
+                        block,
+                        "",
+                        lines,
+                        collapse_tool_results=False,
+                        max_chars=2000,
+                    )
                     emitted = True
 
     if not emitted:
         return None
 
-    return "\n".join(lines).strip()
+    result = "\n".join(lines).strip()
+    if len(result) > max_chars:
+        # Simple truncation with indicator
+        truncated_msg = "\n\n---\n*Output truncated due to length limits.*"
+        result = result[: max_chars - len(truncated_msg)] + truncated_msg
+
+    return result
 
 
 @dataclass(frozen=True)

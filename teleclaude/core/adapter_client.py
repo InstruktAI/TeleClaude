@@ -370,6 +370,38 @@ class AdapterClient:
 
         return message_id
 
+    async def stop_standard_output(self, session_id: str) -> None:
+        """Mark session standard output as suppressed to prevent legacy poller updates."""
+        # Truly definitive: re-fetch from DB to ensure we don't have stale metadata
+        session = await db.get_session(session_id)
+        if not session:
+            logger.error("[OUTPUT_ROUTE] Failed to find session %s to stop standard output", session_id[:8])
+            return
+
+        # Set persistent suppression flag in telegram metadata
+        meta = session.adapter_metadata
+        if not meta.telegram:
+            meta.telegram = TelegramAdapterMetadata()
+
+        meta.telegram.output_suppressed = True
+        logger.debug("[OUTPUT_ROUTE] Setting output_suppressed=True in metadata for session %s", session_id[:8])
+
+        await db.update_session(session_id, adapter_metadata=meta)
+        logger.info("[OUTPUT_ROUTE] Standard output suppression persisted for session %s", session_id[:8])
+
+    async def resume_standard_output(self, session_id: str) -> None:
+        """Clear the suppression flag to allow standard output updates again."""
+        session = await db.get_session(session_id)
+        if not session:
+            return
+
+        # Clear persistent suppression flag in telegram metadata
+        meta = session.adapter_metadata
+        if meta.telegram:
+            meta.telegram.output_suppressed = False
+            await db.update_session(session_id, adapter_metadata=meta)
+            logger.debug("[OUTPUT_ROUTE] Standard output resumed for session %s", session_id[:8])
+
     async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:
         """Edit message in ALL UiAdapters (origin + observers).
 
@@ -450,6 +482,19 @@ class AdapterClient:
             len(output),
             is_final,
         )
+
+        # Truly definitive check: re-fetch session from DB to bypass stale poller state
+        fresh_session = await db.get_session(session.session_id)
+        if (
+            fresh_session
+            and fresh_session.adapter_metadata.telegram
+            and fresh_session.adapter_metadata.telegram.output_suppressed
+        ):
+            logger.debug(
+                "[OUTPUT_ROUTE] Standard output suppressed for session %s (confirmed via fresh DB check)",
+                session.session_id[:8],
+            )
+            return await self.get_output_message_id(session.session_id)
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
             return adapter.send_output_update(
@@ -928,6 +973,17 @@ class AdapterClient:
         if not refreshed:
             raise ValueError(f"Session {session.session_id[:8]} missing after channel creation")
         return refreshed
+
+    async def get_output_message_id(self, session_id: str) -> Optional[str]:
+        """Get output message ID for session.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Message ID of output message, or None if not set
+        """
+        return await db.get_output_message_id(session_id)
 
     async def send_general_message(
         self,

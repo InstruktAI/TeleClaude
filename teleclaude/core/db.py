@@ -392,6 +392,25 @@ class Db:
                 return None
             return self._to_core_session(row)
 
+    async def get_session_field(self, session_id: str, field: str) -> Optional[object]:
+        """Get a single field from a session by ID.
+
+        Args:
+            session_id: Session ID
+            field: Field name (column)
+
+        Returns:
+            Field value or None if session not found
+        """
+        column = getattr(db_models.Session, field, None)
+        if column is None:
+            return None
+        async with self._session() as db_session:
+            from sqlmodel import select
+
+            result = await db_session.exec(select(column).where(db_models.Session.session_id == session_id))
+            return result.first()
+
     async def get_session_by_field(
         self, field: str, value: object, *, include_initializing: bool = False
     ) -> Optional[Session]:
@@ -495,12 +514,15 @@ class Db:
                 if not hasattr(row, attr_name):
                     continue
                 current_val = getattr(row, attr_name)
-                if field == SessionField.ADAPTER_METADATA:
+
+                # Special handling for adapter_metadata: always update if provided
+                # to ensure nested flag changes (like output_suppressed) are persisted.
+                if attr_name == "adapter_metadata":
                     serialized = self._serialize_adapter_metadata(value)
-                    if current_val != serialized:
-                        updates[attr_name] = serialized
+                    updates[attr_name] = serialized
                     continue
-                if isinstance(value, str) and attr_name in {
+
+                if attr_name in {
                     "created_at",
                     "last_activity",
                     "closed_at",

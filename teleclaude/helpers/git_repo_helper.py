@@ -33,35 +33,47 @@ def _current_head(repo_path: Path) -> str | None:
         return None
 
 
-def _ensure_repo(repo_url: str, repo_path: Path) -> list[str]:
-    """Ensure repo exists; return change list."""
+DEFAULT_CHECKOUT_ROOT = Path.home() / "Workspace" / "public-repos"
+
+
+def _dirty_worktree(repo_path: Path) -> list[str]:
+    status = _git_output(["git", "status", "--porcelain"], cwd=repo_path)
+    return [line for line in status.splitlines() if line]
+
+
+def _ensure_repo(repo_url: str, repo_path: Path) -> tuple[list[str], list[str]]:
+    """Ensure repo exists; return (changes, dirty_changes)."""
     if repo_path.exists() and (repo_path / ".git").exists():
+        dirty = _dirty_worktree(repo_path)
+        if dirty:
+            # Do not pull if the working tree is dirty; report the changes instead.
+            return [], dirty
         before = _current_head(repo_path)
         _run(["git", "fetch", "--all", "--prune"], cwd=repo_path)
         _run(["git", "pull", "--ff-only"], cwd=repo_path)
         after = _current_head(repo_path)
         if before and after and before != after:
             commits = _git_output(["git", "log", "--oneline", f"{before}..{after}"], cwd=repo_path)
-            return [line for line in commits.splitlines() if line]
-        return []
+            return [line for line in commits.splitlines() if line], []
+        return [], []
 
     repo_path.parent.mkdir(parents=True, exist_ok=True)
     _run(["git", "clone", repo_url, str(repo_path)])
-    return []
+    return [], []
 
 
 def _load_checkout_root() -> Path:
     config_path = Path.home() / ".teleclaude" / "config" / "teleclaude.yml"
     if not config_path.exists():
-        return Path.home() / "Workspace" / "public-repos"
+        return DEFAULT_CHECKOUT_ROOT
     try:
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     except Exception:
-        return Path.home() / "Workspace" / "public-repos"
+        return DEFAULT_CHECKOUT_ROOT
     gh = raw.get("git", {}) if isinstance(raw, dict) else {}
     root = gh.get("checkout_root") if isinstance(gh, dict) else None
     if not root:
-        return Path.home() / "Workspace" / "public-repos"
+        return DEFAULT_CHECKOUT_ROOT
     return Path(root).expanduser()
 
 
@@ -108,8 +120,12 @@ def main() -> None:
 
     checkout_root = _load_checkout_root()
     repo_path = checkout_root / host / owner / repo
-    changes = _ensure_repo(repo_url, repo_path)
-    payload = {"repo_path": str(repo_path), "latest_changes": changes}
+    changes, dirty_changes = _ensure_repo(repo_url, repo_path)
+    payload = {
+        "repo_path": str(repo_path),
+        "latest_changes": changes,
+        "dirty_changes": dirty_changes,
+    }
     print(json.dumps(payload))
 
 

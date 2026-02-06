@@ -579,6 +579,8 @@ if _experiments_path.exists():
 
             exp_list = _experiments_config["experiments"]
             if isinstance(exp_list, list):
+                # Standard logger not yet available here, but we can add a log entry to DEFAULT_CONFIG or similar
+                # Actually, config.py defines 'config' at the end.
                 _user_config["experiments"].extend(exp_list)
 
 # Merge with defaults and build typed config

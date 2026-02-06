@@ -1,3 +1,6 @@
 business:
   domains:
     software-development: docs
+
+# git:
+#   checkout_root: ~/Workspace/public-repos

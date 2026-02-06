@@ -176,6 +176,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Load environment variables
         load_dotenv(env_path)
 
+        # Log experiment status if any are enabled
+        if config.experiments:
+            logger.info("Loaded %d experiments from overlay", len(config.experiments))
+            for exp in config.experiments:
+                logger.debug("Active experiment: name=%s agents=%s", exp.name, exp.agents)
+
         # PID file for locking - use project root
         project_root = Path(__file__).parent.parent
         self.pid_file = project_root / "teleclaude.pid"
