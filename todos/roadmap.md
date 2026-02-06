@@ -26,6 +26,6 @@ Automated AI-driven release pipeline with Claude Code and Codex CLI inspectors.
 
 ## UI Experiment: Threaded Incremental Output
 
-- [>] threaded-output-experiment
+- [x] threaded-output-experiment
 
 Deliver agent feedback as regular threaded messages instead of one editable pane.

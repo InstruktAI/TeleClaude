@@ -1,11 +1,11 @@
 {
   "slug": "threaded-output-experiment",
   "title": "Threaded Output Experiment",
-  "status": "approved",
+  "status": "complete",
   "phases": {
     "build": "complete",
     "review": "approved",
-    "docstrings": "pending",
-    "snippets": "pending"
+    "docstrings": "complete",
+    "snippets": "complete"
   }
 }
