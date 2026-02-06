@@ -92,7 +92,7 @@ async def transcribe_voice(
 
     audio_path = Path(audio_file_path)
     if not audio_path.exists():
-        logger.error("✗ Audio file not found: %s", audio_file_path)
+        logger.error("✘ Audio file not found: %s", audio_file_path)
         raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
 
     file_size = audio_path.stat().st_size
@@ -115,18 +115,18 @@ async def transcribe_voice(
                 params.get("language", "auto"),
             )
             transcript = await resolved_client.audio.transcriptions.create(**params)  # type: ignore[misc, call-overload]
-            logger.info("✓ Whisper API call successful")
+            logger.info("✔ Whisper API call successful")
 
         transcribed_text: str = str(transcript.text).strip()  # type: ignore[misc]
         logger.info(
-            "✓ Transcription successful: '%s' (length: %s chars)",
+            "✔ Transcription successful: '%s' (length: %s chars)",
             transcribed_text[:100],
             len(transcribed_text),
         )
         return transcribed_text
 
     except Exception as e:
-        logger.error("✗ Transcription failed: %s", e, exc_info=True)
+        logger.error("✘ Transcription failed: %s", e, exc_info=True)
         raise
 
 

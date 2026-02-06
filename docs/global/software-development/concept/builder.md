@@ -1,9 +1,8 @@
 ---
-description: Tactical implementation. Follow architecture, write code matching requirements,
-  pragmatic autonomy, tests after implementation.
-id: software-development/concept/builder
-scope: domain
-type: concept
+description: 'Tactical implementation. Follow architecture, write code matching requirements, pragmatic autonomy, tests after implementation.'
+id: 'software-development/concept/builder'
+scope: 'domain'
+type: 'concept'
 ---
 
 # Builder — Concept
@@ -15,7 +14,6 @@ type: concept
 ## What
 
 Tactical implementation role. Follow architecture, write code matching requirements, pragmatic autonomy, tests after implementation.
-
 
 1. **Implement features** - Write code that matches requirements.
 2. **Follow patterns** - Match existing codebase conventions.

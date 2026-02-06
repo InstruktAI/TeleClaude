@@ -1,8 +1,8 @@
 ---
-id: project/procedure/ssh-agent-keychain
-type: procedure
-scope: global
-description: Procedure for configuring persistent SSH agent access for the daemon.
+id: 'project/procedure/ssh-agent-keychain'
+type: 'procedure'
+scope: 'global'
+description: 'Procedure for configuring persistent SSH agent access for the daemon.'
 ---
 
 # Ssh Agent Keychain — Procedure

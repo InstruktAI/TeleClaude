@@ -1,8 +1,8 @@
 ---
-id: project/spec/agent-artifact-automation
-type: spec
-scope: project
-description: Automation that rebuilds and deploys agent artifacts when sources change.
+id: 'project/spec/agent-artifact-automation'
+type: 'spec'
+scope: 'project'
+description: 'Automation that rebuilds and deploys agent artifacts when sources change.'
 ---
 
 # Agent Artifact Automation — Spec

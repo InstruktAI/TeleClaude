@@ -53,7 +53,7 @@ from teleclaude.core.models import (
 from teleclaude.types.commands import CloseSessionCommand, KeysCommand
 
 from .base_adapter import AdapterError
-from .telegram.callback_handlers import CallbackHandlersMixin
+from .telegram.callback_handlers import CallbackAction, CallbackHandlersMixin
 from .telegram.channel_ops import ChannelOperationsMixin
 from .telegram.command_handlers import CommandHandlersMixin
 from .telegram.input_handlers import InputHandlersMixin
@@ -620,6 +620,48 @@ class TelegramAdapter(
         for idx, trusted_dir in enumerate(self.trusted_dirs):
             button_text = f"{trusted_dir.name} - {trusted_dir.desc}" if trusted_dir.desc else trusted_dir.name
             keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"{callback_prefix}:{idx}")])
+        return InlineKeyboardMarkup(keyboard)
+
+    def _build_heartbeat_keyboard(self, bot_username: str) -> InlineKeyboardMarkup:
+        """Build the heartbeat keyboard with session and agent launch actions."""
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="Tmux Session",
+                    callback_data=f"{CallbackAction.SESSION_SELECT.value}:{bot_username}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="New Claude",
+                    callback_data=f"{CallbackAction.CLAUDE_SELECT.value}:{bot_username}",
+                ),
+                InlineKeyboardButton(
+                    text="Resume Claude",
+                    callback_data=f"{CallbackAction.CLAUDE_RESUME_SELECT.value}:{bot_username}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="New Gemini",
+                    callback_data=f"{CallbackAction.GEMINI_SELECT.value}:{bot_username}",
+                ),
+                InlineKeyboardButton(
+                    text="Resume Gemini",
+                    callback_data=f"{CallbackAction.GEMINI_RESUME_SELECT.value}:{bot_username}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="New Codex",
+                    callback_data=f"{CallbackAction.CODEX_SELECT.value}:{bot_username}",
+                ),
+                InlineKeyboardButton(
+                    text="Resume Codex",
+                    callback_data=f"{CallbackAction.CODEX_RESUME_SELECT.value}:{bot_username}",
+                ),
+            ],
+        ]
         return InlineKeyboardMarkup(keyboard)
 
     async def _get_session_from_topic(self, update: Update) -> Optional[Session]:

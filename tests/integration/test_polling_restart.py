@@ -8,6 +8,7 @@ import pytest
 from teleclaude.core import polling_coordinator
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import ProcessExited
+from teleclaude.services.maintenance_service import MaintenanceService
 
 
 @pytest.mark.asyncio
@@ -49,7 +50,7 @@ async def test_polling_registry_clears_after_exit(daemon_with_mocked_telegram):
         tmux_session_name=tmux_session_name,
         output_poller=output_poller,
         adapter_client=daemon.client,
-        get_output_file=daemon._get_output_file_path,
+        get_output_file=MaintenanceService._get_output_file_path,
     )
     assert scheduled is True
     assert await polling_coordinator.is_polling(session_id) is True
@@ -90,7 +91,7 @@ async def test_polling_guard_prevents_duplicate_polling(daemon_with_mocked_teleg
         tmux_session_name=f"test-{session_id[:8]}",
         output_poller=output_poller,
         adapter_client=daemon.client,
-        get_output_file=daemon._get_output_file_path,
+        get_output_file=MaintenanceService._get_output_file_path,
     )
     assert scheduled is True
 
@@ -99,7 +100,7 @@ async def test_polling_guard_prevents_duplicate_polling(daemon_with_mocked_teleg
         tmux_session_name=f"test-{session_id[:8]}",
         output_poller=output_poller,
         adapter_client=daemon.client,
-        get_output_file=daemon._get_output_file_path,
+        get_output_file=MaintenanceService._get_output_file_path,
     )
     assert scheduled_again is False
 

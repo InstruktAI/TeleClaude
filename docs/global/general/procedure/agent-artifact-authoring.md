@@ -1,8 +1,8 @@
 ---
-id: general/procedure/agent-artifact-authoring
-type: procedure
-scope: global
-description: Author agent artifacts (agents, skills, commands) that compile into tool-specific formats.
+id: 'general/procedure/agent-artifact-authoring'
+type: 'procedure'
+scope: 'global'
+description: 'Author agent artifacts (agents, skills, commands) that compile into tool-specific formats.'
 ---
 
 # Agent Artifact Authoring — Procedure

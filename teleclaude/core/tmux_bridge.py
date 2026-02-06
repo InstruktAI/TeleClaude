@@ -939,6 +939,7 @@ async def capture_pane(session_name: str) -> str:
         # -p = print to stdout
         # -S - = capture entire scrollback buffer (from beginning to end)
         # -J = preserve trailing spaces (better for capturing exact output)
+        # -e = include escape sequences (ANSI codes for styling detection)
         cmd = [
             config.computer.tmux_binary,
             "capture-pane",
@@ -946,6 +947,7 @@ async def capture_pane(session_name: str) -> str:
             session_name,
             "-p",
             "-J",
+            "-e",
             "-S",
             f"-{UI_MESSAGE_MAX_CHARS}",
         ]

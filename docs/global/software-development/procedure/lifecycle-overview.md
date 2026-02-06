@@ -1,10 +1,8 @@
 ---
-description: Deterministic software development lifecycle with prepare, build, review,
-  fix, documentation, finalize, and maintenance phases. Serial workflow managed by
-  Orchestrator.
-id: software-development/procedure/lifecycle-overview
-scope: domain
-type: procedure
+description: 'Deterministic software development lifecycle with prepare, build, review, fix, documentation, finalize, and maintenance phases. Serial workflow managed by Orchestrator.'
+id: 'software-development/procedure/lifecycle-overview'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Lifecycle Overview — Procedure

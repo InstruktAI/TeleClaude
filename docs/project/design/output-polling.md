@@ -1,8 +1,8 @@
 ---
-description: Mechanism for real-time terminal output capture and streaming.
-id: project/design/output-polling
-scope: project
-type: design
+description: 'Mechanism for real-time terminal output capture and streaming.'
+id: 'project/design/output-polling'
+scope: 'project'
+type: 'design'
 ---
 
 # Output Polling — Design

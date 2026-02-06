@@ -1,8 +1,8 @@
 ---
-description: The role of the master bot in a multi-computer Telegram supergroup.
-id: project/concept/master-bot
-scope: global
-type: concept
+description: 'The role of the master bot in a multi-computer Telegram supergroup.'
+id: 'project/concept/master-bot'
+scope: 'global'
+type: 'concept'
 ---
 
 # Master Bot — Concept
@@ -10,7 +10,6 @@ type: concept
 ## What
 
 Role of the master bot in a multi-computer Telegram supergroup.
-
 
 1. **Command registration**: The master bot calls Telegram's `setMyCommands` API.
 2. **User entrypoint**: Provides the autocomplete menu for `/new-session`, `/list-sessions`, etc.

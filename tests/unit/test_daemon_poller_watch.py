@@ -12,17 +12,14 @@ from teleclaude.core.origins import InputOrigin
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.models import Session, SessionAdapterMetadata
-from teleclaude.daemon import TeleClaudeDaemon
+from teleclaude.services.maintenance_service import MaintenanceService
 
 
 @pytest.mark.asyncio
 async def test_poller_watch_does_not_create_ui_channel():
     """Poller watch should not create UI channels (handled by UI lanes)."""
-    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    daemon.client = Mock()
-    daemon.client.ensure_ui_channels = AsyncMock()
-    daemon.output_poller = Mock()
-    daemon._get_output_file_path = Mock()
+    service = MaintenanceService(client=Mock(), output_poller=Mock(), poller_watch_interval_s=1.0)
+    service._client.ensure_ui_channels = AsyncMock()
 
     session = Session(
         session_id="sess-123",
@@ -35,27 +32,26 @@ async def test_poller_watch_does_not_create_ui_channel():
     )
 
     with (
-        patch("teleclaude.daemon.db.get_active_sessions", new=AsyncMock(return_value=[session])),
-        patch("teleclaude.daemon.tmux_bridge.list_tmux_sessions", new=AsyncMock(return_value=["tc_sess"])),
-        patch("teleclaude.daemon.tmux_bridge.is_pane_dead", new=AsyncMock(return_value=False)),
-        patch("teleclaude.daemon.tmux_bridge.is_process_running", new=AsyncMock(return_value=False)),
-        patch("teleclaude.daemon.session_cleanup.terminate_session", new=AsyncMock()),
-        patch("teleclaude.daemon.polling_coordinator.is_polling", new=AsyncMock(return_value=False)),
-        patch("teleclaude.daemon.polling_coordinator.schedule_polling", new=AsyncMock()),
+        patch("teleclaude.services.maintenance_service.db.get_active_sessions", new=AsyncMock(return_value=[session])),
+        patch(
+            "teleclaude.services.maintenance_service.tmux_bridge.list_tmux_sessions",
+            new=AsyncMock(return_value=["tc_sess"]),
+        ),
+        patch("teleclaude.services.maintenance_service.tmux_bridge.is_pane_dead", new=AsyncMock(return_value=False)),
+        patch(
+            "teleclaude.services.maintenance_service.polling_coordinator.is_polling", new=AsyncMock(return_value=False)
+        ),
+        patch("teleclaude.services.maintenance_service.polling_coordinator.schedule_polling", new=AsyncMock()),
     ):
-        await daemon._poller_watch_iteration()
+        await service._poller_watch_iteration()
 
-    daemon.client.ensure_ui_channels.assert_not_called()
+    service._client.ensure_ui_channels.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_poller_watch_recreates_missing_tmux_session():
     """Ensure poller watch recreates missing tmux session before polling."""
-    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    daemon.client = Mock()
-    daemon.output_poller = Mock()
-    daemon._get_output_file_path = Mock()
-    daemon._ensure_tmux_session = AsyncMock(return_value=True)
+    service = MaintenanceService(client=Mock(), output_poller=Mock(), poller_watch_interval_s=1.0)
 
     session = Session(
         session_id="sess-456",
@@ -74,17 +70,18 @@ async def test_poller_watch_recreates_missing_tmux_session():
         captured.append(session_arg)
         return True
 
-    daemon._ensure_tmux_session = record_ensure
+    service.ensure_tmux_session = record_ensure
 
     with (
-        patch("teleclaude.daemon.db.get_active_sessions", new=AsyncMock(return_value=[session])),
-        patch("teleclaude.daemon.tmux_bridge.list_tmux_sessions", new=AsyncMock(return_value=[])),
-        patch("teleclaude.daemon.tmux_bridge.is_pane_dead", new=AsyncMock(return_value=False)),
-        patch("teleclaude.daemon.session_cleanup.terminate_session", new=AsyncMock()),
-        patch("teleclaude.daemon.polling_coordinator.is_polling", new=AsyncMock(return_value=False)),
-        patch("teleclaude.daemon.polling_coordinator.schedule_polling", new=AsyncMock()),
+        patch("teleclaude.services.maintenance_service.db.get_active_sessions", new=AsyncMock(return_value=[session])),
+        patch("teleclaude.services.maintenance_service.tmux_bridge.list_tmux_sessions", new=AsyncMock(return_value=[])),
+        patch("teleclaude.services.maintenance_service.tmux_bridge.is_pane_dead", new=AsyncMock(return_value=False)),
+        patch(
+            "teleclaude.services.maintenance_service.polling_coordinator.is_polling", new=AsyncMock(return_value=False)
+        ),
+        patch("teleclaude.services.maintenance_service.polling_coordinator.schedule_polling", new=AsyncMock()),
     ):
-        await daemon._poller_watch_iteration()
+        await service._poller_watch_iteration()
 
     assert captured == [session]
 
@@ -92,8 +89,8 @@ async def test_poller_watch_recreates_missing_tmux_session():
 @pytest.mark.asyncio
 async def test_ensure_tmux_session_restores_agent_on_recreate():
     """Recreated tmux session should trigger agent restore when metadata available."""
-    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    daemon._build_tmux_env_vars = AsyncMock(return_value={})
+    service = MaintenanceService(client=Mock(), output_poller=Mock(), poller_watch_interval_s=1.0)
+    service._build_tmux_env_vars = AsyncMock(return_value={})
 
     session = Session(
         session_id="sess-789",
@@ -116,13 +113,15 @@ async def test_ensure_tmux_session_restores_agent_on_recreate():
         return True
 
     with (
-        patch("teleclaude.daemon.tmux_bridge.session_exists", new=AsyncMock(return_value=False)),
-        patch("teleclaude.daemon.tmux_bridge.ensure_tmux_session", new=AsyncMock(return_value=True)),
-        patch("teleclaude.daemon.tmux_bridge.send_keys", new=record_send_keys),
-        patch("teleclaude.daemon.resolve_working_dir", new=Mock(return_value="/tmp")),
-        patch("teleclaude.daemon.get_agent_command", new=Mock(return_value="agent resume cmd")),
+        patch("teleclaude.services.maintenance_service.tmux_bridge.session_exists", new=AsyncMock(return_value=False)),
+        patch(
+            "teleclaude.services.maintenance_service.tmux_bridge.ensure_tmux_session", new=AsyncMock(return_value=True)
+        ),
+        patch("teleclaude.services.maintenance_service.tmux_bridge.send_keys", new=record_send_keys),
+        patch("teleclaude.services.maintenance_service.resolve_working_dir", new=Mock(return_value="/tmp")),
+        patch("teleclaude.services.maintenance_service.get_agent_command", new=Mock(return_value="agent resume cmd")),
     ):
-        created = await TeleClaudeDaemon._ensure_tmux_session(daemon, session)
+        created = await service.ensure_tmux_session(session)
 
     assert created is True
     assert len(sent) == 1

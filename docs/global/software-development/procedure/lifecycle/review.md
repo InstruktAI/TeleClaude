@@ -1,8 +1,8 @@
 ---
-description: Review phase. Verify requirements, code quality, tests, and deliver verdict with findings.
-id: software-development/procedure/lifecycle/review
-scope: domain
-type: procedure
+description: 'Review phase. Verify requirements, code quality, tests, and deliver verdict with findings.'
+id: 'software-development/procedure/lifecycle/review'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Review — Procedure

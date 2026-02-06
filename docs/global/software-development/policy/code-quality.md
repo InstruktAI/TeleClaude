@@ -1,9 +1,8 @@
 ---
-description: Architecture, typing, contracts, state management, error handling. Generic
-  quality standards for all code.
-id: software-development/policy/code-quality
-scope: domain
-type: policy
+description: 'Architecture, typing, contracts, state management, error handling. Generic quality standards for all code.'
+id: 'software-development/policy/code-quality'
+scope: 'domain'
+type: 'policy'
 ---
 
 # Code Quality — Policy

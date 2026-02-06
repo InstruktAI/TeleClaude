@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Map component interactions covered by each e2e test to identify:
+Map component interactions covered by each integration test to identify:
 
 - Overlaps (duplication)
 - Gaps (missing interaction coverage)
@@ -29,320 +29,102 @@ Map component interactions covered by each e2e test to identify:
 
 ### test_ai_to_ai_session_init_e2e.py
 
-**Tests:** 3
-**Interactions Covered:**
-
-- Redis → AdapterClient → Command Handlers → Database (create session)
+- Redis → AdapterClient → Command Handlers → Db (session creation)
 - Redis → AdapterClient → Tmux Bridge (session creation)
 - Command Handlers → Tmux Bridge (/agent commands)
 
-**Mocks:** Telegram (all), Redis (connection), Tmux (send_keys, tmux)
-**Focus:** AI-to-AI session initialization flow
-
----
-
 ### test_command_e2e.py
 
-**Tests:** 2
-**Interactions Covered:**
+- Command Handlers → Tmux Bridge → tmux (short + long)
+- Polling → Tmux Bridge (capture)
+- Polling → AdapterClient → Telegram (delivery)
+- Failure path → AdapterClient.send_message (error surface)
 
-- Command Handlers → Tmux Bridge → tmux (short-lived commands)
-- Command Handlers → Tmux Bridge → tmux (long-running commands)
-- Polling → Tmux Bridge (output capture)
-- Polling → AdapterClient → Telegram (output delivery)
+### test_context_selector_e2e.py
 
-**Mocks:** Telegram (all), Tmux (send_keys, tmux)
-**Focus:** Command execution patterns (short vs long-running)
+- Context selector → docs index → output selection
 
----
+### test_e2e_smoke.py
 
-### test_core.py
-
-**Tests:** 3
-**Interactions Covered:**
-
-- Database CRUD operations (direct)
-- Tmux Bridge → tmux (create, send_keys, capture, kill)
-
-**Mocks:** Telegram (all in one test)
-**Focus:** Core component functionality in isolation
-
-**OVERLAP WARNING:** Tmux Bridge operations duplicated with other tests
-
----
+- API server cache notifications → WebSocket broadcast
+- Session updates/removals → cache/event bus
 
 ### test_feedback_cleanup.py
 
-**Tests:** 1
-**Interactions Covered:**
-
-- AdapterClient → Database (UX state management)
-- AdapterClient → Telegram (message deletion)
-- User input → cleanup logic
-
-**Mocks:** Telegram (all)
-**Focus:** Feedback message cleanup on user input
-
----
+- AdapterClient → Db (pending deletions)
+- User input → cleanup logic → Telegram delete_message
 
 ### test_file_upload.py
 
-**Tests:** 4
-**Interactions Covered:**
-
-- File Handler → AdapterClient → Telegram (file upload)
-- File Handler → Database (file tracking)
-- Session cleanup → File deletion
-- Process state → Upload rejection
-
-**Mocks:** Telegram (all), Tmux (send_keys, tmux)
-**Focus:** File upload and cleanup lifecycle
-
----
-
-### test_full_flow.py
-
-**Tests:** 3
-**Interactions Covered:**
-
-- Command execution → Polling → Output delivery (full chain)
-- Tmux Bridge → tmux (direct command execution)
-- Polling Coordinator → OutputPoller → AdapterClient
-
-**Mocks:** Telegram (all), Tmux (send_keys, tmux)
-**Focus:** Complete message → execution → output flow
-
-**OVERLAP WARNING:** Duplicates test_command_e2e.py flow
-
----
-
-### test_idle_notification.py
-
-**Tests:** 4
-**Interactions Covered:**
-
-- Polling → timeout detection → notification
-- AdapterClient → Database (UX state for notifications)
-- Notification → cleanup on output resume
-
-**Mocks:** Telegram (all), Tmux (send_keys, tmux)
-**Focus:** Idle notification lifecycle
-
----
+- File handler → tmux bridge (path injection)
+- File handler → AdapterClient → Telegram (status)
+- File cleanup → Db + filesystem
 
 ### test_mcp_tools.py
 
-**Tests:** 8
-**Interactions Covered:**
-
-- MCP Server → AdapterClient → Redis (list computers, start session)
-- MCP Server → Database (list sessions)
-- MCP Server → AdapterClient → Telegram (send file, send notification)
-- Request/response protocol via Redis
-
-**Mocks:** Telegram (all), Redis (discover_peers, send_request, read_response)
-**Focus:** MCP tool correctness
-
----
+- MCP Server → AdapterClient → Redis (remote)
+- MCP Server → Db (list sessions)
+- MCP Server → AdapterClient → Telegram (send file)
 
 ### test_multi_adapter_broadcasting.py
 
-**Tests:** 5
-**Interactions Covered:**
+- AdapterClient → origin/observer routing
+- Redis/UI adapters as observers
+- Error propagation isolation
 
-- Origin adapter → AdapterClient (message origin)
-- Observer adapters → AdapterClient (broadcast receivers)
-- UI adapter observation
-- Redis adapter observation
-- Error handling in observers
+### test_output_download.py
 
-**Mocks:** Telegram (all), Redis (connection), UI (all)
-**Focus:** Multi-adapter message broadcasting
-
----
-
-### test_notification_hook.py
-
-**Tests:** 1
-**Interactions Covered:**
-
-- MCP socket → notification protocol
-- Hook system → MCP server
-
-**Mocks:** Telegram (all), MCP socket communication
-**Focus:** MCP notification hook integration
-
----
+- UI Adapter → output truncation → Telegram download metadata
+- Telegram callback → transcript parsing → send_document → cleanup
 
 ### test_polling_restart.py
 
-**Tests:** 2
-**Interactions Covered:**
-
+- Polling coordinator → guard + restart
 - Process exit → polling stop
-- New command → polling restart
-- Polling guard (prevent duplicates)
-
-**Mocks:** Telegram (all), Tmux (partial)
-**Focus:** Polling lifecycle across commands
-
-**CRITICAL:** Tests polling state management edge case
-
----
 
 ### test_process_exit_detection.py
 
-**Tests:** 2
-**Interactions Covered:**
+- Polling → exit detection
+- Session state persistence across restart
 
-- Polling → shell-return detection
-- Database → UX state (process state tracking)
-- Daemon restart → state persistence
+### test_projects_digest_refresh.py
 
-**Mocks:** Telegram (all), Tmux (send_keys, tmux)
-**Focus:** Process exit detection reliability
+- Cache → digest computation → refresh gating
 
----
+### test_redis_adapter_warmup.py
+
+- Redis adapter startup → snapshot refresh
 
 ### test_redis_heartbeat.py
 
-**Tests:** 2
-**Interactions Covered:**
-
-- Redis → heartbeat publishing
-- Heartbeat → session metadata inclusion
-- Session count limiting in heartbeat
-
-**Mocks:** Telegram (all), Redis (connection)
-**Focus:** Redis heartbeat mechanism
-
----
-
-### test_send_message_flow.py
-
-**Tests:** 2
-**Interactions Covered:**
-
-- MCP → Redis → remote session (send message)
-- Command parsing
-
-**Mocks:** Telegram (all), MCP methods (start_session, send_message, etc.)
-**Focus:** Remote messaging API
-
-**OVERLAP WARNING:** Heavy mocking makes this more of a unit test
-
----
+- Redis heartbeat publishing → session metadata
 
 ### test_session_lifecycle.py
 
-**Tests:** 4
-**Interactions Covered:**
+- Session cleanup → tmux kill + workspace cleanup + DB close
 
-- Session close → cleanup (tmux, polling, database)
-- Session close → idempotency
-- Session close → database persistence
-- Active polling → session close coordination
+### test_state_machine_workflow.py
 
-**Mocks:** Telegram (all), Tmux (send_keys, tmux)
-**Focus:** Session cleanup lifecycle
+- Todo state machine → workflow transitions
 
----
+### test_telec_cli_commands.py
 
-## Interaction Coverage Matrix
+- CLI parser → context selector (docs index + content)
+- CLI parser → sync orchestrator (validate-only)
+- CLI parser → project init
+- Shell completion → docs flag suggestions
 
-| Component A → Component B                   | Covered By                                                 |
-| ------------------------------------------- | ---------------------------------------------------------- |
-| Telegram → AdapterClient → Command Handlers | test_command_e2e, test_full_flow                           |
-| Command Handlers → Tmux Bridge              | test_command_e2e, test_full_flow, test_ai_to_ai            |
-| Tmux Bridge → tmux                          | test_core, test_command_e2e, test_full_flow, test_ai_to_ai |
-| Polling → Tmux Bridge                       | test_command_e2e, test_full_flow, test_polling_restart     |
-| Polling → AdapterClient → Telegram          | test_command_e2e, test_full_flow, test_idle_notification   |
-| Redis → AdapterClient → Command Handlers    | test_ai_to_ai_session_init                                 |
-| MCP Server → AdapterClient → Redis          | test_mcp_tools                                             |
-| MCP Server → AdapterClient → Telegram       | test_mcp_tools                                             |
-| File Handler → AdapterClient → Telegram     | test_file_upload                                           |
-| Session close → cleanup                     | test_session_lifecycle                                     |
-| Multi-adapter broadcasting                  | test_multi_adapter_broadcasting                            |
-| Redis heartbeat                             | test_redis_heartbeat                                       |
-| Process exit detection                      | test_process_exit_detection                                |
-| Idle notification                           | test_idle_notification                                     |
-| Feedback cleanup                            | test_feedback_cleanup                                      |
+### test_voice_flow.py
+
+- Voice handler → transcription → process_message
+- Transcription failure → no tmux send
+
+### test_worktree_preparation_integration.py
+
+- Worktree setup → todo preparation workflow
 
 ---
 
-## Analysis Summary
+## Current Gaps
 
-### Major Overlaps
-
-1. **test_command_e2e.py + test_full_flow.py**
-   - Both test: Command execution → Polling → Output delivery
-   - **Recommendation:** Consolidate into single comprehensive test
-
-2. **test_core.py (terminal bridge tests)**
-   - Tmux Bridge operations tested in isolation
-   - Same operations tested in context by other tests
-   - **Recommendation:** Remove from integration suite, move to unit tests
-
-3. **test_send_message_flow.py**
-   - Heavily mocked (all MCP methods)
-   - More of a unit test than integration test
-   - **Recommendation:** Move to unit tests or remove
-
-### Gaps Identified
-
-1. **Direct Database → AdapterClient interaction**
-   - Session persistence across adapter restarts (partially in process_exit_detection)
-
-2. **Error propagation chains**
-   - Telegram API failure → AdapterClient error handling
-   - Redis connection loss → fallback behavior
-
-3. **Cross-adapter coordination**
-   - Origin adapter failure while observers succeed
-   - Partial broadcast scenarios
-
-### Strengths
-
-1. **Good coverage of critical paths:**
-   - AI-to-AI session initialization (test_ai_to_ai)
-   - Session lifecycle (test_session_lifecycle)
-   - File upload lifecycle (test_file_upload)
-
-2. **Edge cases well covered:**
-   - Polling restart (test_polling_restart)
-   - Process exit detection (test_process_exit_detection)
-   - Idle notifications (test_idle_notification)
-
-3. **Multi-adapter patterns:**
-   - Broadcasting (test_multi_adapter_broadcasting)
-   - Heartbeat (test_redis_heartbeat)
-
----
-
-## Recommendations
-
-### Remove/Consolidate
-
-1. **test_core.py** → Move terminal bridge tests to unit tests
-2. **test_send_message_flow.py** → Move to unit tests (too heavily mocked)
-3. **test_full_flow.py** → Consolidate with test_command_e2e.py
-
-### Keep (High Value)
-
-1. **test_ai_to_ai_session_init_e2e.py** - Unique AI-to-AI flow
-2. **test_command_e2e.py** - Core command execution patterns
-3. **test_session_lifecycle.py** - Critical cleanup logic
-4. **test_file_upload.py** - File handling lifecycle
-5. **test_polling_restart.py** - Critical edge case
-6. **test_process_exit_detection.py** - Critical reliability feature
-7. **test_multi_adapter_broadcasting.py** - Multi-adapter coordination
-8. **test_mcp_tools.py** - MCP API contract
-9. **test_idle_notification.py** - UX feature
-10. **test_feedback_cleanup.py** - UX cleanup
-11. **test_redis_heartbeat.py** - Discovery mechanism
-12. **test_notification_hook.py** - Hook integration
-
-### Add (Fill Gaps)
-
-1. **test_error_propagation.py** - Error handling across component boundaries
-2. **test_adapter_failure_recovery.py** - Adapter failure scenarios
+- None critical. Remaining gaps should be represented as explicit use cases in `tests/E2E_USE_CASES.md` and tracked in `tests/integration/USE_CASE_COVERAGE.md`.

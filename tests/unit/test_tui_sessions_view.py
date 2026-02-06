@@ -1,5 +1,7 @@
 """Unit tests for SessionsView render logic."""
 
+import curses
+
 import pytest
 
 from teleclaude.cli.models import (
@@ -551,3 +553,103 @@ class TestSessionsViewLogic:
         line2_calls = [call for call in screen.calls if call[0] == 1]
         assert len(line2_calls) == 1
         assert len(line2_calls[0][2]) == width
+
+    def test_headless_session_mutes_header_lines_only(self, sessions_view):
+        """Headless sessions render title/ID muted while keeping output highlight behavior."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text, attr))
+
+        session = self._make_session_node(
+            session_id="headless-1",
+            title="Headless Session",
+            status="headless",
+            active_agent="unknown",
+            thinking_mode="slow",
+            tmux_session_name=None,
+            last_output="agent output",
+            last_output_at="2024-01-01T00:01:00Z",
+        )
+        sessions_view.state.sessions.output_highlights.add("headless-1")
+
+        screen = FakeScreen()
+        lines_used = sessions_view._render_session(screen, 0, session, 80, False, 4)
+
+        assert lines_used == 3
+
+        # Header/title line (row 0): both [idx] and title should be muted for headless.
+        row0_calls = [call for call in screen.calls if call[0] == 0]
+        assert len(row0_calls) == 2
+        assert row0_calls[0][3] == curses.A_DIM
+        assert row0_calls[1][3] == curses.A_DIM
+
+        # Line 2 ID row is also muted for headless.
+        row1_calls = [call for call in screen.calls if call[0] == 1]
+        assert len(row1_calls) == 1
+        assert row1_calls[0][3] == curses.A_DIM
+
+        # Output row keeps activity highlight behavior.
+        row2_calls = [call for call in screen.calls if call[0] == 2]
+        assert len(row2_calls) == 1
+        assert row2_calls[0][3] == curses.A_BOLD
+
+    def test_selected_headless_session_headers_stay_muted(self, sessions_view):
+        """Selected headless rows should keep header lines in muted color."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text, attr))
+
+        session = self._make_session_node(
+            session_id="headless-selected",
+            title="Headless Selected",
+            status="headless",
+            active_agent="unknown",
+            thinking_mode="slow",
+            tmux_session_name=None,
+        )
+
+        screen = FakeScreen()
+        lines_used = sessions_view._render_session(screen, 0, session, 80, True, 3)
+
+        assert lines_used == 2
+        row0_calls = [call for call in screen.calls if call[0] == 0]
+        assert len(row0_calls) == 2
+        assert row0_calls[0][3] == curses.A_DIM
+        assert row0_calls[1][3] == curses.A_DIM
+
+    def test_headless_status_is_normalized_for_header_muting(self, sessions_view, monkeypatch):
+        """Status normalization should treat whitespace/case headless values as headless."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text, attr))
+
+        session = self._make_session_node(
+            session_id="headless-normalized",
+            title="Headless Normalized",
+            status=" HeadLess ",
+            active_agent="claude",
+            thinking_mode="slow",
+            tmux_session_name="tc_headless_normalized",
+        )
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
+
+        screen = FakeScreen()
+        lines_used = sessions_view._render_session(screen, 0, session, 80, False, 3)
+
+        assert lines_used == 2
+        row0_calls = [call for call in screen.calls if call[0] == 0]
+        assert len(row0_calls) == 2
+        assert row0_calls[0][3] == 1  # claude muted pair
+        assert row0_calls[1][3] == 1  # claude muted pair

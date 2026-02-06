@@ -1,8 +1,8 @@
 ---
-description: TTL and scope matrix for cache refresh behavior.
-id: project/spec/cache-ttl-matrix
-scope: project
-type: spec
+description: 'TTL and scope matrix for cache refresh behavior.'
+id: 'project/spec/cache-ttl-matrix'
+scope: 'project'
+type: 'spec'
 ---
 
 # Cache Ttl Matrix — Spec

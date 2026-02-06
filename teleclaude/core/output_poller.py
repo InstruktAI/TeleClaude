@@ -197,6 +197,18 @@ class OutputPoller:
                 output_changed = captured_output != previous_output
                 current_cleaned = captured_output
 
+                # Debug: Log last line changes for Codex input detection
+                if captured_output:
+                    curr_last_lines = captured_output.rstrip().split("\n")[-3:]
+                    prev_last_lines = previous_output.rstrip().split("\n")[-3:] if previous_output else []
+                    if curr_last_lines != prev_last_lines:
+                        logger.debug(
+                            "[POLL %s] Last 3 lines changed: prev=%r, curr=%r",
+                            session_id[:8],
+                            [line[:50] for line in prev_last_lines],
+                            [line[:50] for line in curr_last_lines],
+                        )
+
                 if output_changed:
                     maybe_log_idle_summary(force=True)
                     previous_output = current_cleaned

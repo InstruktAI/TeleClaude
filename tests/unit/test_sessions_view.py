@@ -113,7 +113,8 @@ async def test_refresh_updates_activity_state_marks_idle_when_activity_is_old():
     with patch("teleclaude.cli.tui.views.sessions.datetime", FixedDatetime):
         await view.refresh(computers=[], projects=[], sessions=sessions)
 
-    assert view._active_field["sess-1"] == ActivePane.NONE
+    assert "sess-1" not in view.state.sessions.input_highlights
+    assert "sess-1" not in view.state.sessions.output_highlights
 
 
 @pytest.mark.asyncio

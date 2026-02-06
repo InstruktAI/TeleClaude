@@ -1,9 +1,8 @@
 ---
-description: Linting and type-checking rules. Required fixes, import rules, and suppression
-  limits.
-id: software-development/policy/linting-requirements
-scope: domain
-type: policy
+description: 'Linting and type-checking rules. Required fixes, import rules, and suppression limits.'
+id: 'software-development/policy/linting-requirements'
+scope: 'domain'
+type: 'policy'
 ---
 
 # Linting Requirements — Policy

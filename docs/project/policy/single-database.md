@@ -1,9 +1,8 @@
 ---
-id: project/policy/single-database
-type: policy
-scope: project
-description: Guaranteed single database file usage for the daemon to prevent data
-  fragmentation.
+id: 'project/policy/single-database'
+type: 'policy'
+scope: 'project'
+description: 'Guaranteed single database file usage for the daemon to prevent data fragmentation.'
 ---
 
 # Single Database — Policy

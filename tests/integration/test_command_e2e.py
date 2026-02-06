@@ -2,13 +2,14 @@
 """E2E tests for command execution with mocked commands (short-lived and long-running)."""
 
 import asyncio
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core import tmux_bridge
 from teleclaude.core.origins import InputOrigin
-from teleclaude.types.commands import CreateSessionCommand, SendMessageCommand
+from teleclaude.types.commands import CreateSessionCommand, ProcessMessageCommand
 
 
 @pytest.mark.asyncio
@@ -42,8 +43,8 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
     telegram.send_output_update.reset_mock()
 
     # Send any command - it will be mocked with short echo
-    await daemon.command_service.send_message(
-        SendMessageCommand(session_id=session.session_id, text="any command here", origin=InputOrigin.TELEGRAM.value)
+    await daemon.command_service.process_message(
+        ProcessMessageCommand(session_id=session.session_id, text="any command here", origin=InputOrigin.TELEGRAM.value)
     )
 
     # Wait for output to be captured and broadcast to the UI adapter
@@ -97,8 +98,8 @@ async def test_long_running_command(daemon_with_mocked_telegram):
     telegram.send_output_update.reset_mock()
 
     # Send any command - it will be mocked with long-running Python process
-    await daemon.command_service.send_message(
-        SendMessageCommand(session_id=session.session_id, text="any command", origin=InputOrigin.TELEGRAM.value)
+    await daemon.command_service.process_message(
+        ProcessMessageCommand(session_id=session.session_id, text="any command", origin=InputOrigin.TELEGRAM.value)
     )
 
     # Wait for process to start and produce initial output
@@ -140,6 +141,41 @@ async def test_long_running_command(daemon_with_mocked_telegram):
     finally:
         # CRITICAL: Reset mock mode to prevent subsequent tests from running real commands
         daemon.mock_command_mode = "short"
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(12)
+async def test_command_failure_reports_error(daemon_with_mocked_telegram):
+    """Failed tmux send should notify user with error message."""
+    daemon = daemon_with_mocked_telegram
+
+    create_cmd = CreateSessionCommand(
+        project_path="/tmp",
+        origin=InputOrigin.TELEGRAM.value,
+        title="Failure Test",
+    )
+    await daemon.command_service.create_session(create_cmd)
+    session = (await daemon.db.list_sessions(include_initializing=True))[0]
+
+    # Capture error message sent to user
+    recorded: list[str] = []
+
+    async def record_send(session_obj, text: str, **_kwargs: object) -> str:
+        recorded.append(text)
+        return "msg-err"
+
+    daemon.client.send_message = record_send  # type: ignore[assignment]
+
+    with patch("teleclaude.core.command_handlers.tmux_io.process_text", new=AsyncMock(return_value=False)):
+        await daemon.command_service.process_message(
+            ProcessMessageCommand(
+                session_id=session.session_id,
+                text="fail me",
+                origin=InputOrigin.TELEGRAM.value,
+            )
+        )
+
+    assert any("Failed to send command to tmux" in msg for msg in recorded)
 
 
 if __name__ == MAIN_MODULE:

@@ -1,9 +1,8 @@
 ---
-description: Evaluative role. Assess code against requirements and standards, parallel
-  review lanes, structured findings, binary verdict.
-id: software-development/concept/reviewer
-scope: domain
-type: concept
+description: 'Evaluative role. Assess code against requirements and standards, parallel review lanes, structured findings, binary verdict.'
+id: 'software-development/concept/reviewer'
+scope: 'domain'
+type: 'concept'
 ---
 
 # Reviewer — Concept
@@ -15,7 +14,6 @@ type: concept
 ## What
 
 Evaluative role. Assess code against requirements and standards, produce structured findings, deliver a binary verdict.
-
 
 - **Evaluate without ego** - Detached assessment of work against requirements and standards.
 - **Apply systematic thoroughness** - Check all aspects comprehensively.

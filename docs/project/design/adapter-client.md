@@ -1,8 +1,8 @@
 ---
-description: AdapterClient centralizes UI adapter lifecycle, delivery, and cross-computer routing.
-id: project/design/adapter-client
-scope: project
-type: design
+description: 'AdapterClient centralizes UI adapter lifecycle, delivery, and cross-computer routing.'
+id: 'project/design/adapter-client'
+scope: 'project'
+type: 'design'
 ---
 
 # Adapter Client — Design

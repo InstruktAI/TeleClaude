@@ -202,17 +202,32 @@ def _get_env_session_id() -> str | None:
 
 
 def _get_legacy_tmux_session_id() -> str | None:
-    # Legacy tmux session id file (compat + tests)
+    # Legacy tmux session id file (compat + tests), but only when TMPDIR is
+    # TeleClaude-managed per-session temp space. This avoids stale global TMPDIR
+    # markers hijacking native->TeleClaude mapping for standalone sessions.
     tmpdir = os.getenv("TMPDIR")
-    if tmpdir:
-        legacy_path = Path(tmpdir) / "teleclaude_session_id"
-        if legacy_path.exists():
-            try:
-                contents = legacy_path.read_text(encoding="utf-8").strip()
-            except OSError:
-                contents = ""
-            if contents:
-                return contents
+    if not tmpdir:
+        return None
+    try:
+        tmpdir_path = Path(tmpdir).expanduser().resolve()
+    except OSError:
+        return None
+    base_override = os.environ.get("TELECLAUDE_SESSION_TMPDIR_BASE")
+    base_dir = (
+        Path(base_override).expanduser().resolve()
+        if base_override
+        else Path(os.path.expanduser("~/.teleclaude/tmp/sessions")).resolve()
+    )
+    if base_dir not in tmpdir_path.parents:
+        return None
+    legacy_path = tmpdir_path / "teleclaude_session_id"
+    if legacy_path.exists():
+        try:
+            contents = legacy_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            contents = ""
+        if contents:
+            return contents
     return None
 
 
@@ -281,13 +296,22 @@ def _resolve_or_refresh_session_id(
     from sqlalchemy import create_engine, text
     from sqlmodel import Session as SqlSession
 
-    engine = create_engine(f"sqlite:///{db_path}")
-    with SqlSession(engine) as session:
-        row = session.exec(
-            text(
-                "SELECT native_session_id, lifecycle_status, closed_at FROM sessions WHERE session_id = :session_id"
-            ).bindparams(session_id=candidate_session_id)
-        ).first()
+    try:
+        engine = create_engine(f"sqlite:///{db_path}")
+        with SqlSession(engine) as session:
+            row = session.exec(
+                text(
+                    "SELECT native_session_id, lifecycle_status, closed_at FROM sessions WHERE session_id = :session_id"
+                ).bindparams(session_id=candidate_session_id)
+            ).first()
+    except Exception as exc:  # noqa: BLE001 - fail-open to preserve hook delivery on partial DB fixtures
+        logger.debug(
+            "Session refresh lookup skipped (db unavailable)",
+            agent=agent,
+            session_id=candidate_session_id[:8],
+            error=str(exc),
+        )
+        return candidate_session_id
     if not row:
         return candidate_session_id
 
@@ -436,12 +460,13 @@ def main() -> None:
     else:
         teleclaude_session_id = cached_session_id
 
-    if not env_session_id:
-        teleclaude_session_id = _resolve_or_refresh_session_id(
-            teleclaude_session_id,
-            raw_native_session_id,
-            agent=args.agent,
-        )
+    # Keep precedence order (env > cached), but still validate candidate against DB/native identity.
+    # This heals stale env markers that point to closed/reused sessions.
+    teleclaude_session_id = _resolve_or_refresh_session_id(
+        teleclaude_session_id,
+        raw_native_session_id,
+        agent=args.agent,
+    )
     logger.debug(
         "Hook session resolution",
         agent=args.agent,
@@ -467,7 +492,7 @@ def main() -> None:
             if not env_session_id:
                 _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
     else:
-        if not env_session_id:
+        if not env_session_id or teleclaude_session_id != env_session_id:
             _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
 
     # Gemini: only allow session_start and stop into outbox.

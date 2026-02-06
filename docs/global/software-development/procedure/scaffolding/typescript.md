@@ -1,8 +1,8 @@
 ---
-description: Base TypeScript project scaffolding policy.
-id: software-development/procedure/scaffolding/typescript
-scope: domain
-type: procedure
+description: 'Base TypeScript project scaffolding policy.'
+id: 'software-development/procedure/scaffolding/typescript'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # TypeScript Scaffolding — Procedure

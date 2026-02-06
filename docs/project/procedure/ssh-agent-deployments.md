@@ -1,8 +1,8 @@
 ---
-id: project/procedure/ssh-agent-deployments
-type: procedure
-scope: project
-description: Configure SSH agent access for automated git operations and deployments.
+id: 'project/procedure/ssh-agent-deployments'
+type: 'procedure'
+scope: 'project'
+description: 'Configure SSH agent access for automated git operations and deployments.'
 ---
 
 # SSH Agent Deployments — Procedure

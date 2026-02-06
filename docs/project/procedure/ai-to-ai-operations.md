@@ -1,8 +1,8 @@
 ---
-description: Recommended flow for delegating work using TeleClaude MCP tools.
-id: project/procedure/ai-to-ai-operations
-scope: project
-type: procedure
+description: 'Recommended flow for delegating work using TeleClaude MCP tools.'
+id: 'project/procedure/ai-to-ai-operations'
+scope: 'project'
+type: 'procedure'
 ---
 
 # AI-to-AI Operations — Procedure

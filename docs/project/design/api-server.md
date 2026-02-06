@@ -1,9 +1,8 @@
 ---
-description: Local HTTP and WebSocket API that reads from cache and routes writes
-  through the command pipeline.
-id: project/design/api-server
-scope: project
-type: design
+description: 'Local HTTP and WebSocket API that reads from cache and routes writes through the command pipeline.'
+id: 'project/design/api-server'
+scope: 'project'
+type: 'design'
 ---
 
 # Api Server — Design

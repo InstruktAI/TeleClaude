@@ -1,8 +1,8 @@
 ---
-description: Steps to add a new adapter implementation and wire it into the daemon.
-id: project/procedure/add-adapter
-scope: project
-type: procedure
+description: 'Steps to add a new adapter implementation and wire it into the daemon.'
+id: 'project/procedure/add-adapter'
+scope: 'project'
+type: 'procedure'
 ---
 
 # Add Adapter — Procedure

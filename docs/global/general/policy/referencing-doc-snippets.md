@@ -1,8 +1,8 @@
 ---
-id: general/policy/referencing-doc-snippets
-type: policy
-scope: global
-description: Policy for referencing documentation snippets in AI agent prompts.
+id: 'general/policy/referencing-doc-snippets'
+type: 'policy'
+scope: 'global'
+description: 'Policy for referencing documentation snippets in AI agent prompts.'
 ---
 
 # Referencing Doc Snippets — Policy

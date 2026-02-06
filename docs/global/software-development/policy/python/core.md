@@ -1,9 +1,8 @@
 ---
-description: Python typing, data handling, error patterns, async, idioms. Modern syntax,
-  explicit types, pure functions.
-id: software-development/policy/python/core
-scope: domain
-type: policy
+description: 'Python typing, data handling, error patterns, async, idioms. Modern syntax, explicit types, pure functions.'
+id: 'software-development/policy/python/core'
+scope: 'domain'
+type: 'policy'
 ---
 
 # Core — Policy

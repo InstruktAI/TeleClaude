@@ -626,7 +626,7 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
         command="codex",
         session_dir="~/.codex/sessions",
         log_pattern="*.jsonl",
-        model_flags={"fast": "-m gpt-5.1-codex-mini", "med": "-m gpt-5.1-codex", "slow": "-m gpt-5.2"},
+        model_flags={"fast": "-m gpt-5.1-codex-mini", "med": "-m gpt-5.1-codex", "slow": "-m gpt-5.3"},
         exec_subcommand="exec",
         interactive_flag="",
         non_interactive_flag="",
@@ -1061,7 +1061,7 @@ async def test_handle_voice_sends_transcribed_text(mock_initialized_db) -> None:
 
     with (
         patch.object(command_handlers.voice_message_handler, "handle_voice", new_callable=AsyncMock) as mock_handle,
-        patch.object(command_handlers, "send_message", new=record_send),
+        patch.object(command_handlers, "process_message", new=record_send),
     ):
         mock_handle.return_value = "hello world"
         cmd = HandleVoiceCommand(session_id="sess-123", file_path="/tmp/voice.ogg")

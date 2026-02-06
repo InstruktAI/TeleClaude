@@ -1,8 +1,8 @@
 ---
-id: general/principle/priming
-type: principle
-scope: global
-description: Prime agents with the minimal, role-specific context required to act.
+id: 'general/principle/priming'
+type: 'principle'
+scope: 'global'
+description: 'Prime agents with the minimal, role-specific context required to act.'
 ---
 
 # Priming — Principle

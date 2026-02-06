@@ -1,8 +1,8 @@
 ---
-description: Context selection pipeline that picks relevant docs for MCP get_context.
-id: project/design/context-selection
-scope: project
-type: design
+description: 'Context selection pipeline that picks relevant docs for MCP get_context.'
+id: 'project/design/context-selection'
+scope: 'project'
+type: 'design'
 ---
 
 # Context Selection — Design

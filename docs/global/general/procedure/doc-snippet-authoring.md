@@ -1,8 +1,8 @@
 ---
-id: general/procedure/doc-snippet-authoring
-type: procedure
-scope: global
-description: Author documentation snippets according to the taxonomy and schema.
+id: 'general/procedure/doc-snippet-authoring'
+type: 'procedure'
+scope: 'global'
+description: 'Author documentation snippets according to the taxonomy and schema.'
 ---
 
 # Snippet Authoring — Procedure

@@ -1,9 +1,8 @@
 ---
-description: Prepare phase entry point. Decide roadmap focus, assess input readiness,
-  and review requirements/plan.
-id: software-development/procedure/lifecycle/prepare
-scope: domain
-type: procedure
+description: 'Prepare phase entry point. Decide roadmap focus, assess input readiness, and review requirements/plan.'
+id: 'software-development/procedure/lifecycle/prepare'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Prepare — Procedure

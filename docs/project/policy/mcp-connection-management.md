@@ -1,8 +1,8 @@
 ---
-id: project/policy/mcp-connection-management
-type: policy
-scope: global
-description: Architecture policy for MCP clients - tool-call filtering, connection handling, to guarantee stable connection between daemon restarts.
+id: 'project/policy/mcp-connection-management'
+type: 'policy'
+scope: 'global'
+description: 'Architecture policy for MCP clients - tool-call filtering, connection handling, to guarantee stable connection between daemon restarts.'
 ---
 
 # Mcp Connection Resilience — Policy

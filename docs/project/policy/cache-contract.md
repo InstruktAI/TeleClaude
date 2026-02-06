@@ -1,8 +1,8 @@
 ---
-description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
-id: project/policy/cache-contract
-scope: project
-type: policy
+description: 'Cache contract for snapshot reads, TTL refresh, and websocket updates.'
+id: 'project/policy/cache-contract'
+scope: 'project'
+type: 'policy'
 ---
 
 # Cache Contract — Policy

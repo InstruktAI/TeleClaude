@@ -1,9 +1,8 @@
 ---
-description: Assess input.md readiness using Definition of Ready criteria and decide
-  whether to split.
-id: software-development/procedure/lifecycle/prepare/input-assessment
-scope: domain
-type: procedure
+description: 'Assess input.md readiness using Definition of Ready criteria and decide whether to split.'
+id: 'software-development/procedure/lifecycle/prepare/input-assessment'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Input Assessment — Procedure

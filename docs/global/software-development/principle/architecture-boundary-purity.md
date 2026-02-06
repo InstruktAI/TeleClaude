@@ -1,9 +1,8 @@
 ---
-description: Preserve domain intent by isolating transport and UI concerns from core
-  logic.
-id: software-development/principle/architecture-boundary-purity
-scope: domain
-type: principle
+description: 'Preserve domain intent by isolating transport and UI concerns from core logic.'
+id: 'software-development/principle/architecture-boundary-purity'
+scope: 'domain'
+type: 'principle'
 ---
 
 # Boundary Purity — Principle

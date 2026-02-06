@@ -1,8 +1,8 @@
 ---
-description: Steps to add a new Telegram command end-to-end.
-id: project/procedure/add-telegram-command
-scope: project
-type: procedure
+description: 'Steps to add a new Telegram command end-to-end.'
+id: 'project/procedure/add-telegram-command'
+scope: 'project'
+type: 'procedure'
 ---
 
 # Add Telegram Command — Procedure

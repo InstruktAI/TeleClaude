@@ -155,12 +155,30 @@ class FocusContext:
 
 
 @dataclass
-class Notification:
-    """A temporary notification message."""
+class NotificationLine:
+    """A single line in a notification with its own level."""
 
-    message: str
+    text: str
     level: NotificationLevel
+
+
+@dataclass
+class Notification:
+    """A temporary notification message (supports multi-line)."""
+
+    lines: list[NotificationLine]
     expires_at: float  # timestamp when it should disappear
+
+    @property
+    def level(self) -> NotificationLevel:
+        """Return highest severity level among lines."""
+        if any(line.level is NotificationLevel.ERROR for line in self.lines):
+            return NotificationLevel.ERROR
+        if any(line.level is NotificationLevel.WARNING for line in self.lines):
+            return NotificationLevel.WARNING
+        if any(line.level is NotificationLevel.SUCCESS for line in self.lines):
+            return NotificationLevel.SUCCESS
+        return NotificationLevel.INFO
 
 
 class TelecApp:
@@ -363,10 +381,51 @@ class TelecApp:
         """
         duration = NOTIFICATION_DURATION_ERROR if level is NotificationLevel.ERROR else NOTIFICATION_DURATION_INFO
         self.notification = Notification(
-            message=message,
-            level=level,
+            lines=[NotificationLine(text=message, level=level)],
             expires_at=time.time() + duration,
         )
+
+    def notify_bulk_result(
+        self, operation: str, context: str, total: int, successes: int, errors: list["APIError"]
+    ) -> None:
+        """Central handler for bulk operation results. Shows multi-line toast.
+
+        Args:
+            operation: What was done (e.g., "Restarted")
+            context: Where (e.g., "on MozBook")
+            total: Total attempted
+            successes: How many succeeded
+            errors: List of APIError for failures
+        """
+        lines: list[NotificationLine] = []
+
+        # Success line with green checkmark
+        if successes > 0:
+            count_text = f"{successes}/{total}" if errors else str(successes)
+            lines.append(
+                NotificationLine(
+                    text=f"✔ {operation} {count_text} sessions {context}",
+                    level=NotificationLevel.SUCCESS,
+                )
+            )
+
+        # Error lines with red cross
+        for error in errors:
+            if error.detail:
+                lines.append(
+                    NotificationLine(
+                        text=f"✘ {error.detail}",
+                        level=NotificationLevel.ERROR,
+                    )
+                )
+
+        if not lines:
+            return
+
+        # Use longer duration if there are errors
+        has_errors = any(line.level is NotificationLevel.ERROR for line in lines)
+        duration = NOTIFICATION_DURATION_ERROR if has_errors else NOTIFICATION_DURATION_INFO
+        self.notification = Notification(lines=lines, expires_at=time.time() + duration)
 
     def _sync_focus_subscriptions(self) -> None:
         """Subscribe/unsubscribe remote computers based on current focus."""
@@ -593,14 +652,15 @@ class TelecApp:
 
             key = stdscr.getch()  # type: ignore[attr-defined]
 
+            if self._consume_reload_request():
+                self._reload_self()
+                return
+
             if self._consume_theme_refresh():
                 init_colors()
                 # Re-apply agent colors after theme change
                 self.pane_manager.reapply_agent_colors()
                 self._render(stdscr)
-                if self._consume_reload_request():
-                    self._reload_self()
-                    return
                 continue
 
             if key != -1:
@@ -881,19 +941,10 @@ class TelecApp:
                         len(session_ids),
                     )
                     try:
-                        successes, failures = asyncio.get_event_loop().run_until_complete(
+                        successes, errors = asyncio.get_event_loop().run_until_complete(
                             self._restart_sessions(session_ids)
                         )
-                        if failures:
-                            self.notify(
-                                f"Restarted {successes}/{len(session_ids)} sessions on {computer_name}",
-                                NotificationLevel.ERROR,
-                            )
-                        else:
-                            self.notify(
-                                f"Restarted {successes} sessions on {computer_name}",
-                                NotificationLevel.INFO,
-                            )
+                        self.notify_bulk_result("Restarted", f"on {computer_name}", len(session_ids), successes, errors)
                     except Exception as e:
                         logger.error("Error restarting agents: %s", e)
                         self.notify(f"Restart failed: {e}", NotificationLevel.ERROR)
@@ -911,24 +962,31 @@ class TelecApp:
             else:
                 logger.warning("No view found for current_view=%d", self.current_view)
 
-    async def _restart_sessions(self, session_ids: list[str]) -> tuple[int, int]:
+    async def _restart_sessions(self, session_ids: list[str]) -> tuple[int, list["APIError"]]:
         """Restart multiple sessions in parallel.
 
         Returns:
-            Tuple of (successes, failures)
+            Tuple of (successes, list of APIError for failures)
         """
+        from teleclaude.cli.api_client import APIError
+
         results = await asyncio.gather(
             *(self.api.agent_restart(session_id) for session_id in session_ids),
             return_exceptions=True,
         )
         successes = 0
-        failures = 0
+        errors: list[APIError] = []
         for result in results:
-            if isinstance(result, Exception) or result is False:
-                failures += 1
-            else:
+            if isinstance(result, APIError):
+                errors.append(result)
+            elif isinstance(result, Exception):
+                # Wrap unexpected exceptions
+                errors.append(APIError(str(result), detail=str(result)))
+            elif result is True:
                 successes += 1
-        return successes, failures
+            else:
+                errors.append(APIError("Unknown failure", detail="Restart failed"))
+        return successes, errors
 
     def _switch_view(self, view_num: int) -> None:
         """Switch to a different view.
@@ -1113,7 +1171,7 @@ class TelecApp:
                 pass  # Ignore if can't render
 
     def _render_notification(self, stdscr: object, width: int, row: int) -> None:
-        """Render notification toast if active.
+        """Render notification toast if active (supports multi-line with box).
 
         Args:
             stdscr: Curses screen object
@@ -1128,26 +1186,50 @@ class TelecApp:
             self.notification = None
             return
 
-        # Position: on empty line below tab bar (passed as parameter)
-        msg = self.notification.message
-        msg_len = len(msg) + 4  # Add padding
-        start_col = max(0, (width - msg_len) // 2)
+        lines = self.notification.lines
+        if not lines:
+            return
 
-        # Color based on level
-        if self.notification.level is NotificationLevel.ERROR:
-            attr = curses.color_pair(1) | curses.A_BOLD  # Red
-        elif self.notification.level is NotificationLevel.SUCCESS:
-            attr = curses.color_pair(2) | curses.A_BOLD  # Green
-        else:
-            attr = curses.A_REVERSE  # Info - inverted
+        # Calculate box dimensions
+        max_text_len = max(len(line.text) for line in lines)
+        box_width = max_text_len + 4  # 2 padding + 2 border
+        start_col = max(0, (width - box_width) // 2)
 
-        # Render notification box
-        display_msg = f"  {msg}  "
+        # Box drawing characters
+        top_border = "┌" + "─" * (box_width - 2) + "┐"
+        bottom_border = "└" + "─" * (box_width - 2) + "┘"
+
+        # Determine border color (red if any errors, else normal)
+        has_error = any(line.level is NotificationLevel.ERROR for line in lines)
+        border_attr = curses.color_pair(1) | curses.A_BOLD if has_error else curses.A_NORMAL
+
         try:
-            stdscr.addstr(row, start_col, display_msg[: width - start_col], attr)  # type: ignore[attr-defined]
+            # Top border
+            stdscr.addstr(row, start_col, top_border[: width - start_col], border_attr)  # type: ignore[attr-defined]
+
+            # Content lines
+            for i, line in enumerate(lines):
+                content_row = row + 1 + i
+                # Line color based on level
+                if line.level is NotificationLevel.ERROR:
+                    text_attr = curses.color_pair(1) | curses.A_BOLD  # Red
+                elif line.level is NotificationLevel.SUCCESS:
+                    text_attr = curses.color_pair(2) | curses.A_BOLD  # Green
+                else:
+                    text_attr = curses.A_NORMAL
+
+                # Render line with padding
+                padded_text = line.text.ljust(max_text_len)
+                stdscr.addstr(content_row, start_col, "│", border_attr)  # type: ignore[attr-defined]
+                stdscr.addstr(content_row, start_col + 1, f" {padded_text} ", text_attr)  # type: ignore[attr-defined]
+                stdscr.addstr(content_row, start_col + box_width - 1, "│", border_attr)  # type: ignore[attr-defined]
+
+            # Bottom border
+            bottom_row = row + 1 + len(lines)
+            stdscr.addstr(bottom_row, start_col, bottom_border[: width - start_col], border_attr)  # type: ignore[attr-defined]
         except curses.error:
             pass  # Ignore if can't render (screen too small)
 
 
 if TYPE_CHECKING:
-    from teleclaude.cli.api_client import TelecAPIClient
+    from teleclaude.cli.api_client import APIError, TelecAPIClient

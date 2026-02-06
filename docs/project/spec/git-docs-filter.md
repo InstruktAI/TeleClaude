@@ -1,8 +1,8 @@
 ---
-id: project/spec/git-docs-filter
-type: spec
-scope: project
-description: Git filter that expands tilde paths for agents and normalizes them for portable commits.
+id: 'project/spec/git-docs-filter'
+type: 'spec'
+scope: 'project'
+description: 'Git filter that expands tilde paths for agents and normalizes them for portable commits.'
 ---
 
 # Git Docs Filter — Spec

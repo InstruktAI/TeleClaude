@@ -1,8 +1,8 @@
 ---
-description: Comprehensive operations runbook for TeleClaude troubleshooting and observability.
-id: project/procedure/troubleshooting
-scope: project
-type: procedure
+description: 'Comprehensive operations runbook for TeleClaude troubleshooting and observability.'
+id: 'project/procedure/troubleshooting'
+scope: 'project'
+type: 'procedure'
 ---
 
 # Ops Troubleshooting — Procedure
@@ -17,14 +17,14 @@ TeleClaude runs as a daemon managed by launchd, with multiple sockets (API, MCP)
 
 Key artifacts:
 
-| Artifact           | Purpose                   | Path                                                         |
-| ------------------ | ------------------------- | ------------------------------------------------------------ |
-| Daemon log         | Main operational log      | `/var/log/instrukt-ai/teleclaude/teleclaude.log`             |
+| Artifact           | Purpose                   | Path                                                           |
+| ------------------ | ------------------------- | -------------------------------------------------------------- |
+| Daemon log         | Main operational log      | `/var/log/instrukt-ai/teleclaude/teleclaude.log`               |
 | API unlink watcher | Socket bind/unlink events | `/var/log/instrukt-ai/teleclaude/monitoring/api-unlink.log`    |
 | SIGTERM watcher    | launchctl snapshots       | `/var/log/instrukt-ai/teleclaude/monitoring/sigterm-watch.log` |
-| API socket         | Local API availability    | `/tmp/teleclaude-api.sock`                                   |
-| MCP socket         | MCP availability          | `/tmp/teleclaude.sock`                                       |
-| Daemon PID         | Stale PID detection       | `teleclaude.pid`                                             |
+| API socket         | Local API availability    | `/tmp/teleclaude-api.sock`                                     |
+| MCP socket         | MCP availability          | `/tmp/teleclaude.sock`                                         |
+| Daemon PID         | Stale PID detection       | `teleclaude.pid`                                               |
 
 Launchd services:
 

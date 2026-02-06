@@ -1,9 +1,8 @@
 ---
-description: Triage bugs, decide quick fixes vs new todos, and track resolution in
-  bugs.md.
-id: software-development/procedure/bugs-handling
-scope: domain
-type: procedure
+description: 'Triage bugs, decide quick fixes vs new todos, and track resolution in bugs.md.'
+id: 'software-development/procedure/bugs-handling'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Bugs Handling — Procedure

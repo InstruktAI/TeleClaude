@@ -43,7 +43,7 @@ def _fake_config() -> dict[str, AgentConfig]:
             model_flags={
                 "fast": "-m gpt-5.1-codex-mini",
                 "med": "-m gpt-5.1-codex",
-                "slow": "-m gpt-5.2",
+                "slow": "-m gpt-5.3",
             },
             exec_subcommand="exec",
             interactive_flag="",

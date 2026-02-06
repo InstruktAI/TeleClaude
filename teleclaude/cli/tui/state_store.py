@@ -41,6 +41,18 @@ def load_sticky_state(state: TuiState) -> None:
         if isinstance(expanded_todos, list):
             state.preparation.expanded_todos = set(str(item) for item in expanded_todos)
 
+        input_highlights = data.get("input_highlights", [])
+        if isinstance(input_highlights, list):
+            state.sessions.input_highlights = set(str(item) for item in input_highlights)
+
+        output_highlights = data.get("output_highlights", [])
+        if isinstance(output_highlights, list):
+            state.sessions.output_highlights = set(str(item) for item in output_highlights)
+
+        collapsed_sessions = data.get("collapsed_sessions", [])
+        if isinstance(collapsed_sessions, list):
+            state.sessions.collapsed_sessions = set(str(item) for item in collapsed_sessions)
+
         preview_data = data.get("preview")
         if isinstance(preview_data, dict) and preview_data.get("session_id"):
             state.sessions.preview = PreviewState(
@@ -49,11 +61,13 @@ def load_sticky_state(state: TuiState) -> None:
             )
 
         logger.info(
-            "Loaded %d sticky sessions, %d sticky docs, preview=%s from %s",
+            "Loaded TUI state: %d sticky, %d docs, %d in_hl, %d out_hl, %d collapsed, preview=%s",
             len(state.sessions.sticky_sessions),
             len(state.preparation.sticky_previews),
-            state.sessions.preview.session_id if state.sessions.preview else None,
-            TUI_STATE_PATH,
+            len(state.sessions.input_highlights),
+            len(state.sessions.output_highlights),
+            len(state.sessions.collapsed_sessions),
+            state.sessions.preview.session_id[:8] if state.sessions.preview else None,
         )
     except (json.JSONDecodeError, KeyError, TypeError, OSError) as e:
         logger.warning("Failed to load TUI state from %s: %s", TUI_STATE_PATH, e)
@@ -75,6 +89,9 @@ def save_sticky_state(state: TuiState) -> None:
                 {"doc_id": d.doc_id, "command": d.command, "title": d.title} for d in state.preparation.sticky_previews
             ],
             "expanded_todos": sorted(state.preparation.expanded_todos),
+            "input_highlights": sorted(state.sessions.input_highlights),
+            "output_highlights": sorted(state.sessions.output_highlights),
+            "collapsed_sessions": sorted(state.sessions.collapsed_sessions),
             "preview": {"session_id": preview.session_id, "show_child": preview.show_child} if preview else None,
         }
 

@@ -1,8 +1,8 @@
 ---
-description: Fix phase. Address review findings with minimal changes and re-verify.
-id: software-development/procedure/lifecycle/fix-review
-scope: domain
-type: procedure
+description: 'Fix phase. Address review findings with minimal changes and re-verify.'
+id: 'software-development/procedure/lifecycle/fix-review'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Fix Review — Procedure

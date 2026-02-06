@@ -143,9 +143,11 @@ async def test_cleanup_all_stale_sessions_handles_empty_list():
 @pytest.mark.asyncio
 async def test_cleanup_orphan_workspaces_removes_orphans(tmp_path: Path):
     """Paranoid test that cleanup_orphan_workspaces removes directories not in DB."""
+    workspace_dir = tmp_path / "workspaces"
+    workspace_dir.mkdir()
     # Create orphan workspace directories
-    orphan1 = tmp_path / "orphan-session-1"
-    orphan2 = tmp_path / "orphan-session-2"
+    orphan1 = workspace_dir / "orphan-session-1"
+    orphan2 = workspace_dir / "orphan-session-2"
     orphan1.mkdir()
     orphan2.mkdir()
 
@@ -157,7 +159,7 @@ async def test_cleanup_orphan_workspaces_removes_orphans(tmp_path: Path):
 
     with (
         patch("teleclaude.core.session_cleanup.db.get_all_sessions", new_callable=AsyncMock) as mock_db,
-        patch("teleclaude.core.session_cleanup.OUTPUT_DIR", tmp_path),
+        patch("teleclaude.core.session_cleanup.OUTPUT_DIR", workspace_dir),
     ):
         mock_db.return_value = mock_sessions
 
@@ -172,14 +174,16 @@ async def test_cleanup_orphan_workspaces_removes_orphans(tmp_path: Path):
 async def test_cleanup_orphan_workspaces_keeps_known_sessions(tmp_path: Path):
     """Paranoid test that cleanup_orphan_workspaces keeps directories that exist in DB."""
     known_session_id = "known-session-123"
+    workspace_dir = tmp_path / "workspaces"
+    workspace_dir.mkdir()
 
     # Create workspace for known session
-    known_dir = tmp_path / known_session_id
+    known_dir = workspace_dir / known_session_id
     known_dir.mkdir()
     (known_dir / "tmux.txt").write_text("session output")
 
     # Create orphan workspace
-    orphan_dir = tmp_path / "orphan-session"
+    orphan_dir = workspace_dir / "orphan-session"
     orphan_dir.mkdir()
 
     # Mock db to return the known session
@@ -188,7 +192,7 @@ async def test_cleanup_orphan_workspaces_keeps_known_sessions(tmp_path: Path):
 
     with (
         patch("teleclaude.core.session_cleanup.db.get_all_sessions", new_callable=AsyncMock) as mock_db,
-        patch("teleclaude.core.session_cleanup.OUTPUT_DIR", tmp_path),
+        patch("teleclaude.core.session_cleanup.OUTPUT_DIR", workspace_dir),
     ):
         mock_db.return_value = [mock_session]
 

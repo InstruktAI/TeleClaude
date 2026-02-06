@@ -1,9 +1,8 @@
 ---
-description: Security posture, defense in depth, OWASP surface, auth, crypto, transport,
-  secrets, supply chain, observability. Assume breach, fail closed, contain blast radius.
-id: software-development/policy/security-awareness
-scope: domain
-type: policy
+description: 'Security posture, defense in depth, OWASP surface, auth, crypto, transport, secrets, supply chain, observability. Assume breach, fail closed, contain blast radius.'
+id: 'software-development/policy/security-awareness'
+scope: 'domain'
+type: 'policy'
 ---
 
 # Security Awareness — Policy

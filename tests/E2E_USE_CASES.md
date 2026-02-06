@@ -100,16 +100,21 @@ Purpose: list user-facing interactions we want covered by a mix of view snapshot
 3. telec send message
 4. telec start session
 5. telec end session
-6. error handling (invalid session, offline computer)
+6. telec docs phase 1 (index output)
+7. telec docs phase 2 (snippet content)
+8. telec sync --validate-only (no deploy)
+9. telec init (project bootstrap)
+10. shell completion (TELEC_COMPLETE)
+11. error handling (invalid session, offline computer)
 
 ## E. Telegram / Human Interaction
 
 1. Command -> tmux -> output -> telegram (success path)
 2. Command failure -> error output -> telegram
-3. Long-running command -> idle notification -> cleared on output
+3. Long-running command -> output polling stays active (idle status line updates)
 4. File upload -> path injected into terminal
-5. Large output -> download button -> temp file cleanup
-6. Voice -> transcription -> confirmation -> execute
+5. Agent transcript download -> download button -> temp file cleanup
+6. Voice -> transcription -> execute
 
 ## F. MCP / AI-to-AI
 

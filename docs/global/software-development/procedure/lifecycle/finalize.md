@@ -1,8 +1,8 @@
 ---
-description: Finalize phase. Verify approval, merge to main, log delivery, and cleanup.
-id: software-development/procedure/lifecycle/finalize
-scope: domain
-type: procedure
+description: 'Finalize phase. Verify approval, merge to main, log delivery, and cleanup.'
+id: 'software-development/procedure/lifecycle/finalize'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Finalize — Procedure

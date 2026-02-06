@@ -1,8 +1,8 @@
 ---
-id: project/procedure/deploy
-type: procedure
-scope: project
-description: Deploy TeleClaude changes safely with verification.
+id: 'project/procedure/deploy'
+type: 'procedure'
+scope: 'project'
+description: 'Deploy TeleClaude changes safely with verification.'
 ---
 
 # Deploy — Procedure

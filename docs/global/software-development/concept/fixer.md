@@ -1,9 +1,8 @@
 ---
-description: Bug-fixing role. Investigate issues, identify root cause, apply minimal
-  fixes, and verify.
-id: software-development/concept/fixer
-scope: domain
-type: concept
+description: 'Bug-fixing role. Investigate issues, identify root cause, apply minimal fixes, and verify.'
+id: 'software-development/concept/fixer'
+scope: 'domain'
+type: 'concept'
 ---
 
 # Fixer — Concept
@@ -15,7 +14,6 @@ type: concept
 ## What
 
 Bug-fixing role. Investigate issues, identify root cause, apply minimal fixes, and verify.
-
 
 1. **Investigate** - Read code, logs, and tests to reproduce and isolate issues.
 2. **Fix minimally** - Apply the smallest change that resolves the bug.

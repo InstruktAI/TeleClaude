@@ -1,8 +1,8 @@
 ---
-description: Stateless state machine for orchestrating multi-phase project workflows.
-id: project/design/next-machine
-scope: global
-type: design
+description: 'Stateless state machine for orchestrating multi-phase project workflows.'
+id: 'project/design/next-machine'
+scope: 'global'
+type: 'design'
 ---
 
 # Next Machine — Design

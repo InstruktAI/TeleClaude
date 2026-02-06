@@ -1,8 +1,8 @@
 ---
-id: project/policy/master-bot-registration
-type: policy
-scope: global
-description: Policy for Telegram command registration in multi-computer setups.
+id: 'project/policy/master-bot-registration'
+type: 'policy'
+scope: 'global'
+description: 'Policy for Telegram command registration in multi-computer setups.'
 ---
 
 # Master Bot Registration — Policy

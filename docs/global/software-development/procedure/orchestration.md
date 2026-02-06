@@ -1,9 +1,8 @@
 ---
-description: Orchestration loop for the next-work state machine and worker session
-  handling.
-id: software-development/procedure/orchestration
-scope: domain
-type: procedure
+description: 'Orchestration loop for the next-work state machine and worker session handling.'
+id: 'software-development/procedure/orchestration'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Orchestration — Procedure

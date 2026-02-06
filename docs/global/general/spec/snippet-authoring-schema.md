@@ -1,8 +1,8 @@
 ---
-id: general/spec/snippet-authoring-schema
-type: spec
-scope: global
-description: Schema and section requirements for documentation snippets belonging to a taxonomy.
+id: 'general/spec/snippet-authoring-schema'
+type: 'spec'
+scope: 'global'
+description: 'Schema and section requirements for documentation snippets belonging to a taxonomy.'
 ---
 
 # Snippet Authoring Schema — Spec

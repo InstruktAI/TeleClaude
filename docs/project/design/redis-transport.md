@@ -1,9 +1,8 @@
 ---
-description: Redis Streams transport for cross-computer request/response and peer
-  discovery.
-id: project/design/redis-transport
-scope: project
-type: design
+description: 'Redis Streams transport for cross-computer request/response and peer discovery.'
+id: 'project/design/redis-transport'
+scope: 'project'
+type: 'design'
 ---
 
 # Redis Transport — Design

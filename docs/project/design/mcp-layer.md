@@ -1,8 +1,8 @@
 ---
-id: project/design/mcp-layer
-type: design
-scope: global
-description: Resilient two-layer MCP architecture for AI-to-AI communication.
+id: 'project/design/mcp-layer'
+type: 'design'
+scope: 'global'
+description: 'Resilient two-layer MCP architecture for AI-to-AI communication.'
 ---
 
 # Mcp Layer — Design

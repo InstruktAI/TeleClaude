@@ -1,8 +1,8 @@
 ---
-description: Analyze or verify requirements.md content for completeness and clarity.
-id: software-development/procedure/lifecycle/prepare/requirements-analysis
-scope: domain
-type: procedure
+description: 'Analyze or verify requirements.md content for completeness and clarity.'
+id: 'software-development/procedure/lifecycle/prepare/requirements-analysis'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Requirements Analysis — Procedure

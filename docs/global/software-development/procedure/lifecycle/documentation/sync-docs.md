@@ -1,8 +1,8 @@
 ---
-description: Sync docs and indexes after documentation changes.
-id: software-development/procedure/lifecycle/documentation/sync-docs
-scope: domain
-type: procedure
+description: 'Sync docs and indexes after documentation changes.'
+id: 'software-development/procedure/lifecycle/documentation/sync-docs'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Sync Docs — Procedure

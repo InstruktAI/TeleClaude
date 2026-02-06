@@ -32,6 +32,62 @@ def _teleclaude_root() -> str:
     return "~/.teleclaude"
 
 
+def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:
+    """Split top-level frontmatter block from body.
+
+    Returns:
+        header_with_fences, body, has_frontmatter
+    """
+    lines = content.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return "", content, False
+    end_idx = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            end_idx = i
+            break
+    if end_idx is None:
+        return "", content, False
+    header = "".join(lines[: end_idx + 1])
+    body = "".join(lines[end_idx + 1 :])
+    return header, body, True
+
+
+def _normalize_frontmatter_single_quotes(content: str) -> str:
+    """Normalize frontmatter scalars to single-quoted values.
+
+    TODO(codex-compat): Remove this compatibility normalization once Codex CLI
+    frontmatter false positives are fixed upstream.
+    """
+    header, body, has_frontmatter = _split_frontmatter_block(content)
+    if not has_frontmatter:
+        return content
+
+    header_lines = header.splitlines(keepends=False)
+    if len(header_lines) < 2:
+        return content
+    raw_frontmatter = "\n".join(header_lines[1:-1])
+    try:
+        payload = yaml.safe_load(raw_frontmatter)
+    except Exception:
+        return content
+    if not isinstance(payload, dict):
+        return content
+    if any(isinstance(v, (dict, list, tuple, set)) for v in payload.values()):
+        return content
+
+    rendered_lines: list[str] = ["---"]
+    for key, value in payload.items():
+        value_str = "" if value is None else str(value)
+        value_quoted = "'" + value_str.replace("'", "''") + "'"
+        rendered_lines.append(f"{key}: {value_quoted}")
+    rendered_lines.append("---")
+    rendered_header = "\n".join(rendered_lines) + "\n"
+
+    normalized = rendered_header + body
+    return normalized if normalized != content else content
+
+
 # ---------------------------------------------------------------------------
 # Type definitions
 # ---------------------------------------------------------------------------
@@ -113,32 +169,31 @@ def normalize_titles(snippets_root: Path) -> None:
         except Exception as exc:
             logger.warning("title_read_failed", path=str(path), error=str(exc))
             continue
+        normalized_text = _normalize_frontmatter_single_quotes(text)
         declared_type = None
-        if text.lstrip().startswith("---"):
+        if normalized_text.lstrip().startswith("---"):
             try:
-                post = frontmatter.loads(text)
+                post = frontmatter.loads(normalized_text)
                 meta = post.metadata or {}
                 declared_type = meta.get("type") if isinstance(meta.get("type"), str) else None
                 body = post.content
             except Exception:
-                body = text
+                body = normalized_text
         else:
-            body = text
+            body = normalized_text
         updated = _normalize_title(path, body, declared_type)
+        final_content = normalized_text
         if updated != body:
-            if text.lstrip().startswith("---"):
-                try:
-                    post = frontmatter.loads(text)
-                    post.content = updated
-                    full_content = frontmatter.dumps(post)
-                    path.write_text(full_content, encoding="utf-8")
-                except Exception as exc:
-                    logger.warning("title_write_failed", path=str(path), error=str(exc))
+            if normalized_text.lstrip().startswith("---"):
+                header, _, has_frontmatter = _split_frontmatter_block(normalized_text)
+                final_content = f"{header}{updated}" if has_frontmatter else updated
             else:
-                try:
-                    path.write_text(updated, encoding="utf-8")
-                except Exception as exc:
-                    logger.warning("title_write_failed", path=str(path), error=str(exc))
+                final_content = updated
+        if final_content != text:
+            try:
+                path.write_text(final_content, encoding="utf-8")
+            except Exception as exc:
+                logger.warning("title_write_failed", path=str(path), error=str(exc))
 
 
 def write_third_party_index(project_root: Path) -> None:

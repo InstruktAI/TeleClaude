@@ -1,8 +1,8 @@
 ---
-description: Build phase. Execute implementation plan tasks, commit per task, and manage deferrals.
-id: software-development/procedure/lifecycle/build
-scope: domain
-type: procedure
+description: 'Build phase. Execute implementation plan tasks, commit per task, and manage deferrals.'
+id: 'software-development/procedure/lifecycle/build'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Build — Procedure

@@ -1,9 +1,8 @@
 ---
-description: DaemonCache snapshot layer for computers, projects, todos, sessions,
-  and agent availability.
-id: project/design/cache
-scope: project
-type: design
+description: 'DaemonCache snapshot layer for computers, projects, todos, sessions, and agent availability.'
+id: 'project/design/cache'
+scope: 'project'
+type: 'design'
 ---
 
 # Cache — Design

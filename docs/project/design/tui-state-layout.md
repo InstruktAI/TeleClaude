@@ -1,8 +1,8 @@
 ---
-id: project/design/tui-state-layout
-type: design
-scope: project
-description: State-driven layout model for the Telec TUI sessions and preparation views.
+id: 'project/design/tui-state-layout'
+type: 'design'
+scope: 'project'
+description: 'State-driven layout model for the Telec TUI sessions and preparation views.'
 ---
 
 # Tui State Layout — Design

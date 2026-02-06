@@ -1,8 +1,8 @@
 ---
-description: Practical guidance for applying code-quality policy in day-to-day work.
-id: software-development/policy/code-quality-practices
-scope: domain
-type: policy
+description: 'Practical guidance for applying code-quality policy in day-to-day work.'
+id: 'software-development/policy/code-quality-practices'
+scope: 'domain'
+type: 'policy'
 ---
 
 # Code Quality Practices — Policy

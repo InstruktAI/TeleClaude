@@ -1,8 +1,8 @@
 ---
-description: Documentation phase ensuring inline docstrings and docs match the code.
-id: software-development/procedure/lifecycle/documentation/overview
-scope: domain
-type: procedure
+description: 'Documentation phase ensuring inline docstrings and docs match the code.'
+id: 'software-development/procedure/lifecycle/documentation/overview'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Overview — Procedure

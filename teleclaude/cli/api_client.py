@@ -49,7 +49,12 @@ WsPayload: TypeAlias = dict[str, dict[str, str | list[str]]]
 
 
 class APIError(Exception):
-    """API request failed."""
+    """API request failed with structured error info."""
+
+    def __init__(self, message: str, status_code: int | None = None, detail: str | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.detail = detail or message  # Fallback to full message if no detail
 
 
 class TelecAPIClient:
@@ -298,7 +303,19 @@ class TelecAPIClient:
                     if attempt >= (1 + len(API_CONNECT_RETRY_DELAYS_S)):
                         raise APIError("Cannot connect to API server. Socket may be missing.") from e
         except httpx.HTTPStatusError as e:
-            raise APIError(f"API request failed: {e.response.status_code} {e.response.text}") from e
+            # Parse JSON response to extract human-friendly detail
+            status_code = e.response.status_code
+            detail = None
+            try:
+                body = e.response.json()
+                detail = body.get("detail")
+            except (json.JSONDecodeError, ValueError):
+                detail = e.response.text
+            raise APIError(
+                f"API request failed: {status_code} {detail or e.response.text}",
+                status_code=status_code,
+                detail=detail,
+            ) from e
         except httpx.TimeoutException as e:
             raise APIError("API request timed out. Server may be blocked or overloaded.") from e
         except APIError:

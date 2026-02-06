@@ -1,8 +1,8 @@
 ---
-id: project/spec/event-types
-type: spec
-scope: project
-description: TeleClaude event names used between adapters, daemon, and clients.
+id: 'project/spec/event-types'
+type: 'spec'
+scope: 'project'
+description: 'TeleClaude event names used between adapters, daemon, and clients.'
 ---
 
 # Event Types — Spec

@@ -1,8 +1,8 @@
 ---
-id: project/policy/data-modeling
-type: policy
-scope: project
-description: Data modeling, validation, and resource representation rules.
+id: 'project/policy/data-modeling'
+type: 'policy'
+scope: 'project'
+description: 'Data modeling, validation, and resource representation rules.'
 ---
 
 # Data Modeling — Policy

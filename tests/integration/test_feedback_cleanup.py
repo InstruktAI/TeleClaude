@@ -78,7 +78,7 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
             metadata,
             "send_message",
             cmd.to_payload(),
-            lambda: daemon.command_service.send_message(cmd),
+            lambda: daemon.command_service.process_message(cmd),
         )
 
     # System boundary: verify the adapter attempted deletes for the tracked message ids.

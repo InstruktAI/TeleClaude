@@ -1,8 +1,8 @@
 ---
-description: Update inline docstrings and comments to match current code behavior.
-id: software-development/procedure/lifecycle/documentation/sync-docstrings
-scope: domain
-type: procedure
+description: 'Update inline docstrings and comments to match current code behavior.'
+id: 'software-development/procedure/lifecycle/documentation/sync-docstrings'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Sync Docstrings — Procedure

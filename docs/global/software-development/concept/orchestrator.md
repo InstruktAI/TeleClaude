@@ -1,9 +1,8 @@
 ---
-description: Supervisory role. Dispatch workers, monitor progress, drive state machine.
-  Follow next-work output verbatim.
-id: software-development/concept/orchestrator
-scope: domain
-type: concept
+description: 'Supervisory role. Dispatch workers, monitor progress, drive state machine. Follow next-work output verbatim.'
+id: 'software-development/concept/orchestrator'
+scope: 'domain'
+type: 'concept'
 ---
 
 # Orchestrator — Concept
@@ -15,7 +14,6 @@ type: concept
 ## What
 
 Supervisory role. Dispatch workers, monitor progress, drive state machine execution.
-
 
 1. **Drive state machines** - Invoke work and maintenance state machines, following outputs verbatim.
 2. **Dispatch workers** - Execute tool calls exactly as instructed.

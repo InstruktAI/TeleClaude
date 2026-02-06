@@ -173,7 +173,8 @@ class TestDaemonStartupRetryIntegration:
                 patch("teleclaude.daemon.init_voice_handler") as mock_init_voice,
                 patch("teleclaude.daemon.polling_coordinator") as mock_polling,
                 patch.object(TeleClaudeDaemon, "_acquire_lock"),
-                patch.object(TeleClaudeDaemon, "_periodic_cleanup"),
+                patch("teleclaude.daemon.MaintenanceService.periodic_cleanup", new_callable=AsyncMock),
+                patch("teleclaude.daemon.MaintenanceService.poller_watch_loop", new_callable=AsyncMock),
             ):
                 # Setup mocks
                 mock_db.initialize = AsyncMock()

@@ -531,18 +531,25 @@ class APIServer:
             """Restart agent in session (preserves conversation via --resume)."""
             try:
                 logger.info("API agent_restart requested (session=%s, origin=api)", session_id[:8])
-                # Normalize command through mapper before dispatching
+
+                # Quick validation before dispatching
+                session = await db.get_session(session_id)
+                if not session:
+                    raise HTTPException(status_code=404, detail="Session not found")
+                if not session.active_agent:
+                    raise HTTPException(status_code=409, detail="No active agent for this session")
+                if not session.native_session_id:
+                    raise HTTPException(status_code=409, detail="No native session ID - start agent first")
+
+                # Dispatch work asynchronously - don't await
                 metadata = self._metadata()
                 cmd = CommandMapper.map_api_input(
                     "agent_restart",
                     {"session_id": session_id, "args": []},
                     metadata,
                 )
-                ok, error = await get_command_service().restart_agent(cmd)
-                if not ok:
-                    detail = error or "Restart failed"
-                    raise HTTPException(status_code=409, detail=detail)
-                return {"status": "ok"}
+                asyncio.create_task(get_command_service().restart_agent(cmd))
+                return {"status": "accepted"}
             except HTTPException:
                 raise
             except Exception as e:

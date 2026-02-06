@@ -1,8 +1,8 @@
 ---
-description: Tmux session orchestration, input injection, and per-session temp directories.
-id: project/design/tmux-management
-scope: project
-type: design
+description: 'Tmux session orchestration, input injection, and per-session temp directories.'
+id: 'project/design/tmux-management'
+scope: 'project'
+type: 'design'
 ---
 
 # Tmux Management — Design

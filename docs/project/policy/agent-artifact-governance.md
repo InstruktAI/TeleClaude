@@ -1,8 +1,8 @@
 ---
-id: project/policy/agent-artifact-governance
-type: policy
-scope: project
-description: Governance rules for agent artifact sources, transforms, and ownership.
+id: 'project/policy/agent-artifact-governance'
+type: 'policy'
+scope: 'project'
+description: 'Governance rules for agent artifact sources, transforms, and ownership.'
 ---
 
 # Agent Artifact Governance — Policy

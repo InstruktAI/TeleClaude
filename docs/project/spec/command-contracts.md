@@ -1,9 +1,8 @@
 ---
-id: project/spec/command-contracts
-type: spec
-scope: project
-description: Command contract highlights for session creation, messaging, and agent
-  control.
+id: 'project/spec/command-contracts'
+type: 'spec'
+scope: 'project'
+description: 'Command contract highlights for session creation, messaging, and agent control.'
 ---
 
 # Command Contracts — Spec

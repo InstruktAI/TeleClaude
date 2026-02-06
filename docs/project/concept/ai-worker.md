@@ -1,8 +1,8 @@
 ---
-description: The role of an AI agent session in the TeleClaude network.
-id: project/concept/ai-worker
-scope: global
-type: concept
+description: 'The role of an AI agent session in the TeleClaude network.'
+id: 'project/concept/ai-worker'
+scope: 'global'
+type: 'concept'
 ---
 
 # Ai Worker — Concept
@@ -10,7 +10,6 @@ type: concept
 ## What
 
 Role of an AI agent session in the TeleClaude network.
-
 
 1. **Execution**: Performs tasks (coding, testing, analysis) in a dedicated tmux session.
 2. **Collaboration**: Uses MCP tools to delegate sub-tasks to other workers or computers.

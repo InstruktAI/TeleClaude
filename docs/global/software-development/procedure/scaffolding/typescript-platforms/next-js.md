@@ -1,8 +1,8 @@
 ---
-description: Next.js TypeScript project scaffolding policy.
-id: software-development/procedure/scaffolding/typescript-platforms/next-js
-scope: domain
-type: procedure
+description: 'Next.js TypeScript project scaffolding policy.'
+id: 'software-development/procedure/scaffolding/typescript-platforms/next-js'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # TypeScript Next.js Scaffolding — Procedure

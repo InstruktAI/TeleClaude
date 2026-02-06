@@ -30,6 +30,7 @@ def test_receiver_emits_error_event_on_normalize_failure(monkeypatch, tmp_path):
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-1")
     monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
 
     with pytest.raises(SystemExit) as exc:
         receiver.main()
@@ -117,13 +118,14 @@ def test_receiver_recovers_from_native_session_id(monkeypatch, tmp_path):
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-native")
     monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
 
     receiver.main()
 
     assert sent
     session_id, event_type, _data = sent[0]
     assert session_id == "sess-native"
-    assert event_type == "stop"
+    assert event_type == "agent_stop"
 
 
 def test_receiver_accepts_gemini_stop_event(monkeypatch, tmp_path):
@@ -144,13 +146,14 @@ def test_receiver_accepts_gemini_stop_event(monkeypatch, tmp_path):
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-1")
     monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
 
     receiver.main()
 
     assert sent
     session_id, event_type, _data = sent[0]
     assert session_id == "sess-1"
-    assert event_type == "stop"
+    assert event_type == "agent_stop"
 
 
 def test_receiver_updates_native_fields_for_gemini_session_start(monkeypatch, tmp_path):
@@ -181,6 +184,7 @@ def test_receiver_updates_native_fields_for_gemini_session_start(monkeypatch, tm
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-1")
     monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
 
     receiver.main()
 
@@ -216,6 +220,7 @@ def test_receiver_persists_native_fields_to_db(monkeypatch, tmp_path):
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-1")
     monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
 
     receiver.main()
 
@@ -250,6 +255,7 @@ def test_receiver_filters_gemini_non_terminal_events(monkeypatch, tmp_path):
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-2")
     monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
 
     with pytest.raises(SystemExit) as exc:
         receiver.main()
@@ -275,6 +281,7 @@ def test_receiver_includes_agent_name_in_payload(monkeypatch, tmp_path):
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-1")
     monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
 
     receiver.main()
 
@@ -304,13 +311,14 @@ def test_receiver_prefers_tmux_session_id_over_session_map(monkeypatch, tmp_path
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("tmux-1")
     monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
 
     receiver.main()
 
     assert sent
     session_id, event_type, _data = sent[0]
     assert session_id == "tmux-1"
-    assert event_type == "stop"
+    assert event_type == "agent_stop"
     assert persisted == []
 
 
@@ -340,5 +348,70 @@ def test_receiver_persists_session_map_for_headless(monkeypatch, tmp_path):
     assert sent
     session_id, event_type, _data = sent[0]
     assert session_id == "headless-1"
-    assert event_type == "stop"
+    assert event_type == "agent_stop"
     assert persisted == [("claude", "native-2", "headless-1")]
+
+
+def test_receiver_refreshes_stale_env_session_id(monkeypatch, tmp_path):
+    """When env session id is stale, receiver should refresh and persist new mapping."""
+    sent = []
+    persisted = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    def fake_persist(agent, native_session_id, session_id):
+        persisted.append((agent, native_session_id, session_id))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_persist_session_map", fake_persist)
+    monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: lambda _event_type, _data: NormalizedHookPayload())
+    monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: None)
+    monkeypatch.setattr(
+        receiver,
+        "_resolve_or_refresh_session_id",
+        lambda _candidate, _native, *, agent: "refreshed-1",  # noqa: ARG005
+    )
+    monkeypatch.setattr(receiver, "_read_stdin", lambda: ('{"session_id": "native-3"}', {"session_id": "native-3"}))
+    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="session_start"))
+
+    tmpdir = tmp_path / "tmp-stale-env"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("stale-env-1")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
+
+    receiver.main()
+
+    assert sent
+    session_id, event_type, _data = sent[0]
+    assert session_id == "refreshed-1"
+    assert event_type == "session_start"
+    assert persisted == [("claude", "native-3", "refreshed-1")]
+
+
+def test_receiver_ignores_legacy_marker_outside_teleclaude_tmp_base(monkeypatch, tmp_path):
+    """Global TMPDIR markers must not override native->session map resolution."""
+    sent = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: lambda _event_type, _data: NormalizedHookPayload())
+    monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: "cached-1")
+    monkeypatch.setattr(receiver, "_read_stdin", lambda: ('{"session_id": "native-4"}', {"session_id": "native-4"}))
+    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
+
+    tmpdir = tmp_path / "global-tmp"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("stale-global-marker")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "teleclaude-sessions"))
+
+    receiver.main()
+
+    assert sent
+    session_id, event_type, _data = sent[0]
+    assert session_id == "cached-1"
+    assert event_type == "agent_stop"

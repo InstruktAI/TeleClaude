@@ -40,11 +40,11 @@ class Footer:
             color_pair_id = agent_colors["normal"] if available else agent_colors["muted"]
 
             if available:
-                agent_parts.append((f"{agent} ✓", color_pair_id))
+                agent_parts.append((f"{agent} ✔", color_pair_id))
             else:
                 until = info.unavailable_until if info else None
                 countdown = self._format_countdown(until) if until else "?"
-                agent_parts.append((f"{agent} ✗ ({countdown})", color_pair_id))
+                agent_parts.append((f"{agent} ✘ ({countdown})", color_pair_id))
 
         # Calculate total width needed for right alignment
         total_text_width = sum(len(text) for text, _ in agent_parts) + (len(agent_parts) - 1) * 2  # 2 spaces between

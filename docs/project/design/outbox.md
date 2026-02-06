@@ -1,8 +1,8 @@
 ---
-description: Durable outbox table for agent hook events.
-id: project/design/outbox
-scope: project
-type: design
+description: 'Durable outbox table for agent hook events.'
+id: 'project/design/outbox'
+scope: 'project'
+type: 'design'
 ---
 
 # Outbox — Design

@@ -1,9 +1,8 @@
 ---
-description: Pre-commit quality gates, test principles, linting, isolation, anti-patterns.
-  Hooks-first verification.
-id: software-development/policy/testing
-scope: domain
-type: policy
+description: 'Pre-commit quality gates, test principles, linting, isolation, anti-patterns. Hooks-first verification.'
+id: 'software-development/policy/testing'
+scope: 'domain'
+type: 'policy'
 ---
 
 # Testing — Policy
@@ -19,11 +18,27 @@ type: policy
 2. **Do not run full suites by default** - Run targeted tests only when developing, debugging, or when hooks fail
 3. Never commit code with failing hooks, lint violations, or type errors
 
+### Test Levels (Required Strategy)
+
+Use a layered approach: **unit → functional → smoke**. Each layer proves a different slice of the system.
+
+1. **Unit tests** — isolated behavior with minimal dependencies.
+   - Single function/class behavior, pure logic, data transforms.
+   - Mock external boundaries (I/O, DB, network, adapters).
+2. **Functional tests (integration chain tests)** — one chain of interaction, not full end-to-end.
+   - Validate a focused segment of the flow (one actor communicating with another).
+   - Mock the rest of the system to keep scope tight and behavior deterministic.
+   - Avoid testing the entire user journey here.
+3. **Smoke tests** — minimal end-to-end touches that hit all major paths.
+   - Tiny, fast, and intentionally shallow.
+   - Proves wiring across the application without deep assertions.
+
 ### Running Tests
 
 - `make test` — run the full test suite (unit + integration)
 - `make test-unit` — run unit tests only
 - `make test-e2e` — run integration tests only
+- Smoke tests live in `tests/integration/test_e2e_smoke.py` and run under `make test-e2e`.
 
 ### Targeted Tests Only (Default)
 

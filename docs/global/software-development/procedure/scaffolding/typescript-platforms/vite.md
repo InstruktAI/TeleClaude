@@ -1,8 +1,8 @@
 ---
-description: Vite + React TypeScript project scaffolding policy.
-id: software-development/procedure/scaffolding/typescript-platforms/vite
-scope: domain
-type: procedure
+description: 'Vite + React TypeScript project scaffolding policy.'
+id: 'software-development/procedure/scaffolding/typescript-platforms/vite'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # TypeScript Vite + React Scaffolding — Procedure

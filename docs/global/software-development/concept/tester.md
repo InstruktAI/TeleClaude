@@ -1,9 +1,8 @@
 ---
-description: Test-focused role. Improve test quality, fix failures, enforce testing
-  standards and coverage.
-id: software-development/concept/tester
-scope: domain
-type: concept
+description: 'Test-focused role. Improve test quality, fix failures, enforce testing standards and coverage.'
+id: 'software-development/concept/tester'
+scope: 'domain'
+type: 'concept'
 ---
 
 # Tester — Concept
@@ -15,7 +14,6 @@ type: concept
 ## What
 
 Test-focused role. Improve test quality, fix failures, enforce testing standards and coverage.
-
 
 1. **Evaluate test coverage** - Find gaps in edge cases, error paths, and integration points.
 2. **Improve test quality** - Fix flaky tests, slow tests, over-mocking, brittle assertions.

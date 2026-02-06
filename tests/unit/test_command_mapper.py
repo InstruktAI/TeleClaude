@@ -6,7 +6,7 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import (
     CreateSessionCommand,
     KeysCommand,
-    SendMessageCommand,
+    ProcessMessageCommand,
     StartAgentCommand,
 )
 
@@ -23,7 +23,7 @@ def test_map_telegram_new_session():
 def test_map_telegram_message():
     metadata = MessageMetadata(origin=InputOrigin.TELEGRAM.value)
     cmd = CommandMapper.map_telegram_input("message", ["Hello", "World"], metadata, session_id="sess_123")
-    assert isinstance(cmd, SendMessageCommand)
+    assert isinstance(cmd, ProcessMessageCommand)
     assert cmd.session_id == "sess_123"
     assert cmd.text == "Hello World"
     assert cmd.origin == InputOrigin.TELEGRAM.value
@@ -73,7 +73,7 @@ def test_map_rest_message():
     payload = {"session_id": "sess_789", "text": "REST message"}
     metadata = MessageMetadata(origin=InputOrigin.API.value)
     cmd = CommandMapper.map_api_input("message", payload, metadata)
-    assert isinstance(cmd, SendMessageCommand)
+    assert isinstance(cmd, ProcessMessageCommand)
     assert cmd.session_id == "sess_789"
     assert cmd.text == "REST message"
     assert cmd.origin == InputOrigin.API.value

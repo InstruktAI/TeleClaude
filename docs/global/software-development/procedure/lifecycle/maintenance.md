@@ -1,8 +1,8 @@
 ---
-description: Maintenance phase for repo-wide upkeep (security, dependencies, infra).
-id: software-development/procedure/lifecycle/maintenance
-scope: domain
-type: procedure
+description: 'Maintenance phase for repo-wide upkeep (security, dependencies, infra).'
+id: 'software-development/procedure/lifecycle/maintenance'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Maintenance — Procedure

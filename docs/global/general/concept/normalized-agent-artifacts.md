@@ -1,8 +1,8 @@
 ---
-id: general/concept/normalized-agent-artifacts
-type: concept
-scope: global
-description: Normalized agent artifact primitives and how they map to supported agent CLIs.
+id: 'general/concept/normalized-agent-artifacts'
+type: 'concept'
+scope: 'global'
+description: 'Normalized agent artifact primitives and how they map to supported agent CLIs.'
 ---
 
 # Normalized Agent Artifacts — Concept

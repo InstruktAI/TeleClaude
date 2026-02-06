@@ -1,9 +1,8 @@
 ---
-description: InstruktAI Python logging standard. Logfmt format, dual-level control,
-  structured pairs, tail-friendly output.
-id: software-development/policy/python/logging
-scope: domain
-type: policy
+description: 'InstruktAI Python logging standard. Logfmt format, dual-level control, structured pairs, tail-friendly output.'
+id: 'software-development/policy/python/logging'
+scope: 'domain'
+type: 'policy'
 ---
 
 # Logging — Policy

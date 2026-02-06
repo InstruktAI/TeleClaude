@@ -1,9 +1,8 @@
 ---
-description: Baseline quality gates defining when work is truly complete. Functionality,
-  quality, testing, security, documentation.
-id: software-development/policy/definition-of-done
-scope: domain
-type: policy
+description: 'Baseline quality gates defining when work is truly complete. Functionality, quality, testing, security, documentation.'
+id: 'software-development/policy/definition-of-done'
+scope: 'domain'
+type: 'policy'
 ---
 
 # Definition Of Done — Policy

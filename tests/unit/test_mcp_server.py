@@ -29,7 +29,7 @@ def mock_mcp_server():
     mock_commands = MagicMock()
     mock_commands.create_session = AsyncMock(return_value={"session_id": "test-session-123"})
     mock_commands.start_agent = AsyncMock()
-    mock_commands.send_message = AsyncMock()
+    mock_commands.process_message = AsyncMock()
     mock_commands.end_session = AsyncMock(return_value={"status": "success"})
     mock_commands.get_session_data = AsyncMock(return_value={"status": "success", "messages": ""})
 
@@ -311,7 +311,7 @@ async def test_teleclaude_send_message_forwards_to_handler(mock_mcp_server):
     """Test that send_message forwards to command handler."""
     server = mock_mcp_server
 
-    server.command_service.send_message = AsyncMock(return_value=None)
+    server.command_service.process_message = AsyncMock(return_value=None)
 
     chunks = []
     async for chunk in server.teleclaude__send_message(

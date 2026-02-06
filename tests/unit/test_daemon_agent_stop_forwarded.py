@@ -1,41 +1,31 @@
 """Unit tests for forwarded agent stop handling."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 
 @pytest.mark.asyncio
-async def test_process_agent_stop_forwarded_skips_summary(monkeypatch):
-    """Forwarded stop events should skip summarization and just notify listeners."""
-    import teleclaude.daemon as daemon_module
+async def test_process_agent_stop_forwarded_skips_forward():
+    """Forwarded stop events should not re-forward to initiator."""
+    from teleclaude.core.agent_coordinator import AgentCoordinator
     from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
-    from teleclaude.daemon import TeleClaudeDaemon
 
-    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    daemon._last_stop_time = {}
-    daemon._stop_debounce_seconds = 0.0
-    daemon.agent_coordinator = MagicMock()
-    calls = []
-
-    async def record_handle_stop(ctx):
-        calls.append(ctx)
-
-    daemon.agent_coordinator.handle_stop = record_handle_stop
-
-    monkeypatch.setattr(
-        daemon_module,
-        "summarize",
-        AsyncMock(side_effect=AssertionError("summarize should not be called")),
+    coordinator = AgentCoordinator(
+        client=MagicMock(),
+        tts_manager=MagicMock(),
+        headless_snapshot_service=MagicMock(),
     )
-
-    mock_db = MagicMock()
-    mock_db.get_ux_state = AsyncMock(side_effect=AssertionError("db.get_ux_state should not be called"))
-    monkeypatch.setattr(daemon_module, "db", mock_db)
+    coordinator._notify_session_listener = AsyncMock()
+    coordinator._forward_stop_to_initiator = AsyncMock()
+    coordinator._extract_user_input_for_codex = AsyncMock()
+    coordinator.tts_manager.speak = AsyncMock()
 
     payload = AgentStopPayload(
         session_id="sess-123",
         source_computer="RemotePC",
+        raw={"agent_name": "claude"},
+        transcript_path="/tmp/native.jsonl",
     )
     context = AgentEventContext(
         session_id="sess-123",
@@ -43,6 +33,18 @@ async def test_process_agent_stop_forwarded_skips_summary(monkeypatch):
         data=payload,
     )
 
-    await daemon._process_agent_stop(context)
+    session = MagicMock()
+    session.active_agent = "claude"
+    session.native_log_file = "/tmp/native.jsonl"
 
-    assert calls == [context]
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new=AsyncMock(return_value=session)),
+        patch("teleclaude.core.agent_coordinator.db.update_session", new=AsyncMock()),
+        patch("teleclaude.core.agent_coordinator.extract_last_agent_message", return_value="raw output"),
+        patch("teleclaude.core.agent_coordinator.summarize_text", new_callable=AsyncMock, return_value=("t", "s")),
+        patch("teleclaude.core.agent_coordinator.config") as mock_config,
+    ):
+        mock_config.computer.name = "LocalPC"
+        await coordinator.handle_stop(context)
+
+    coordinator._forward_stop_to_initiator.assert_not_awaited()

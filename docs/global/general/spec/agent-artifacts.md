@@ -1,8 +1,8 @@
 ---
-id: general/spec/agent-artifacts
-type: spec
-scope: global
-description: Minimal schema used for agent artifacts (commands and skills).
+id: 'general/spec/agent-artifacts'
+type: 'spec'
+scope: 'global'
+description: 'Minimal schema used for agent artifacts (commands and skills).'
 ---
 
 # Agent Artifacts — Spec

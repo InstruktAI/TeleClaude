@@ -10,7 +10,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TypedDict, cast
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.cli.tui.types import StickySessionInfo
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -52,6 +56,9 @@ class SessionViewState:
     collapsed_sessions: set[str] = field(default_factory=set)
     sticky_sessions: list[StickySessionInfo] = field(default_factory=list)
     preview: PreviewState | None = None
+    # Highlight state: sessions with active input/output highlights
+    input_highlights: set[str] = field(default_factory=set)
+    output_highlights: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -94,6 +101,7 @@ class IntentType(str, Enum):
     SET_SELECTION = "set_selection"
     SET_SCROLL_OFFSET = "set_scroll_offset"
     SET_SELECTION_METHOD = "set_selection_method"
+    SESSION_ACTIVITY = "session_activity"
     SYNC_SESSIONS = "sync_sessions"
     SYNC_TODOS = "sync_todos"
     SET_FILE_PANE_ID = "set_file_pane_id"
@@ -123,6 +131,8 @@ class IntentPayload(TypedDict, total=False):
     doc_id: str
     command: str
     title: str
+    input_changed: bool
+    output_changed: bool
 
 
 MAX_STICKY_PANES = 5
@@ -145,6 +155,8 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
                 return
             state.sessions.preview = PreviewState(session_id=session_id, show_child=show_child)
             state.preparation.preview = None
+            # User viewed session: clear output highlight
+            state.sessions.output_highlights.discard(session_id)
         return
 
     if t is IntentType.CLEAR_PREVIEW:
@@ -169,6 +181,8 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.sticky_sessions.append(StickySessionInfo(session_id, show_child))
             if state.sessions.preview and state.sessions.preview.session_id == session_id:
                 state.sessions.preview = None
+            # User viewed session: clear output highlight
+            state.sessions.output_highlights.discard(session_id)
         return
 
     if t is IntentType.SET_PREP_PREVIEW:
@@ -254,12 +268,24 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         session_id = p.get("session_id")
         source = p.get("source")
         if view == "sessions" and isinstance(idx, int):
+            prev_session_id = state.sessions.selected_session_id
             state.sessions.selected_index = idx
             if isinstance(session_id, str):
                 state.sessions.selected_session_id = session_id
                 state.sessions.last_selection_session_id = session_id
                 if source in ("user", "pane", "system"):
                     state.sessions.last_selection_source = source
+                # User actively switched to a DIFFERENT session: clear output highlight
+                # Skip if no previous selection (startup) or if same session (no real change)
+                if source in ("user", "pane") and prev_session_id and session_id != prev_session_id:
+                    if session_id in state.sessions.output_highlights:
+                        logger.debug(
+                            "SET_SELECTION clearing output_highlight for %s (source=%s, prev=%s)",
+                            session_id[:8],
+                            source,
+                            prev_session_id[:8] if prev_session_id else None,
+                        )
+                    state.sessions.output_highlights.discard(session_id)
         if view == "preparation" and isinstance(idx, int):
             state.preparation.selected_index = idx
         return
@@ -279,6 +305,35 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.selection_method = method
         return
 
+    if t is IntentType.SESSION_ACTIVITY:
+        session_id = p.get("session_id")
+        if not session_id:
+            return
+        input_changed = p.get("input_changed", False)
+        output_changed = p.get("output_changed", False)
+        had_input_highlight = session_id in state.sessions.input_highlights
+        if output_changed:
+            # New output: highlight output, clear input highlight (agent responded)
+            state.sessions.output_highlights.add(session_id)
+            state.sessions.input_highlights.discard(session_id)
+            if had_input_highlight:
+                logger.debug(
+                    "input_highlight CLEARED for %s (output_changed=True)",
+                    session_id[:8],
+                )
+        elif input_changed:
+            # New input: highlight input, clear output highlight (user responded to agent)
+            state.sessions.input_highlights.add(session_id)
+            had_output_highlight = session_id in state.sessions.output_highlights
+            state.sessions.output_highlights.discard(session_id)
+            if had_output_highlight:
+                logger.debug(
+                    "output_highlight CLEARED for %s (input_changed=True, user responded)",
+                    session_id[:8],
+                )
+            logger.debug("input_highlight ADDED for %s", session_id[:8])
+        return
+
     if t is IntentType.SYNC_SESSIONS:
         session_ids = set(p.get("session_ids", []))
         if state.sessions.preview and state.sessions.preview.session_id not in session_ids:
@@ -286,6 +341,12 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         if state.sessions.sticky_sessions:
             state.sessions.sticky_sessions = [s for s in state.sessions.sticky_sessions if s.session_id in session_ids]
         state.sessions.collapsed_sessions.intersection_update(session_ids)
+        # Log any input highlights that will be pruned
+        pruned_input = state.sessions.input_highlights - session_ids
+        if pruned_input:
+            logger.info("input_highlights PRUNED by SYNC_SESSIONS: %s", [s[:8] for s in pruned_input])
+        state.sessions.input_highlights.intersection_update(session_ids)
+        state.sessions.output_highlights.intersection_update(session_ids)
         return
 
     if t is IntentType.SYNC_TODOS:

@@ -1,8 +1,8 @@
 ---
-description: Post-review delivery role. Merge, clean up, and log delivery after approval.
-id: software-development/concept/finalizer
-scope: domain
-type: concept
+description: 'Post-review delivery role. Merge, clean up, and log delivery after approval.'
+id: 'software-development/concept/finalizer'
+scope: 'domain'
+type: 'concept'
 ---
 
 # Finalizer — Concept
@@ -14,7 +14,6 @@ type: concept
 ## What
 
 Post-review delivery role. Merge, clean up, and log delivery after approval.
-
 
 1. **Verify approval** - Only finalize after explicit APPROVE verdict.
 2. **Merge and push** - Preserve local changes safely, keep main clean.

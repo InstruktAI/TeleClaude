@@ -239,7 +239,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
                     model_flags={
                         "fast": "-m gpt-5.1-codex-mini",
                         "med": "-m gpt-5.1-codex",
-                        "slow": "-m gpt-5.2",
+                        "slow": "-m gpt-5.3",
                     },
                     exec_subcommand="exec",
                     interactive_flag="",
@@ -277,6 +277,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         "teleclaude.core.polling_coordinator",
         "teleclaude.core.command_handlers",
         "teleclaude.core.session_cleanup",
+        "teleclaude.services.maintenance_service",
         "teleclaude.adapters.ui_adapter",
         "teleclaude.core.file_handler",
         "teleclaude.core.session_utils",

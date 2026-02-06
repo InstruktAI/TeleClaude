@@ -40,7 +40,7 @@ def test_phase2_returns_snippet_content(tmp_path: Path, monkeypatch: pytest.Monk
     global_snippets_root = global_root / "agents" / "docs"
 
     base_path = project_root / "docs" / "software-development" / "standards" / "base.md"
-    child_path = project_root / "docs" / "software-development" / "roles" / "role.md"
+    child_path = project_root / "docs" / "software-development" / "concepts" / "role.md"
 
     _write(
         base_path,
@@ -49,9 +49,9 @@ def test_phase2_returns_snippet_content(tmp_path: Path, monkeypatch: pytest.Monk
     )
     _write(
         child_path,
-        "---\nid: software-development/roles/role\ntype: role\n"
+        "---\nid: software-development/concepts/role\ntype: concept\n"
         "scope: project\ndescription: Role description\n---\n\n"
-        f"## Required reads\n\n- @{base_path}\n\nRole content.\n",
+        f"## Required reads\n\n- @{base_path}\n\n## Overview\n\nRole content.\n",
     )
 
     _write_index(
@@ -66,11 +66,11 @@ def test_phase2_returns_snippet_content(tmp_path: Path, monkeypatch: pytest.Monk
                 "path": "docs/software-development/standards/base.md",
             },
             {
-                "id": "software-development/roles/role",
+                "id": "software-development/concepts/role",
                 "description": "Role description",
-                "type": "role",
+                "type": "concept",
                 "scope": "project",
-                "path": "docs/software-development/roles/role.md",
+                "path": "docs/software-development/concepts/role.md",
             },
         ],
     )
@@ -79,12 +79,12 @@ def test_phase2_returns_snippet_content(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
 
     output = context_selector.build_context_output(
-        snippet_ids=["software-development/roles/role"],
-        areas=["role"],
+        snippet_ids=["software-development/concepts/role"],
+        areas=["concept"],
         project_root=project_root,
     )
 
-    assert "software-development/roles/role" in output
+    assert "software-development/concepts/role" in output
     assert "Role content." in output
     assert "domain: software-development" in output
     # Dependency resolved from file @ ref

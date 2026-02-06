@@ -43,7 +43,6 @@ from teleclaude.cli.tui.tree import (
     is_session_node,
 )
 from teleclaude.cli.tui.types import (
-    ActivePane,
     CursesWindow,
     FocusLevelType,
     NodeType,
@@ -148,9 +147,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self.flat_items: list[TreeNode] = []
         # State tracking for color coding (detect changes between refreshes)
         self._prev_state: dict[str, dict[str, str]] = {}  # session_id -> {input, output}
-        self._active_field: dict[str, ActivePane] = {}
-        # Track highlight expiry (monotonic time) for 60-second auto-dim
-        self._highlight_until: dict[str, float] = {}
         # Store sessions for child lookup
         self._sessions: list[SessionInfo] = []
         # Store computers for SSH connection lookup
@@ -180,6 +176,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_detected_pane_id: str | None = None
         self._we_caused_focus: bool = False
         self._initial_layout_done: bool = False
+        # Auto-clear timer for currently viewed session (60s viewing = seen)
+        self._viewing_timer_session: str | None = None
+        self._viewing_timer_expires: float | None = None
 
         # Load persisted sticky state (sessions + docs)
         load_sticky_state(self.state)
@@ -499,29 +498,16 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if self.notify:
                 self.notify(f"Revive failed: {exc}", NotificationLevel.ERROR)
 
-    def _start_highlight_timer(self, session_id: str, field: ActivePane) -> None:
-        """Start 60-second highlight timer, canceling any existing timer.
-
-        Args:
-            session_id: Session ID
-            field: Which field to highlight (INPUT or OUTPUT)
-        """
-        # Set highlight
-        self._active_field[session_id] = field
-        self._highlight_until[session_id] = time.monotonic() + 60
-        logger.debug("Started highlight timer for session %s (%s)", session_id[:8], field.name)
-
     def _update_activity_state(self, sessions: list[SessionInfo]) -> None:
         """Update activity state tracking for color coding.
 
-        Event-based highlighting: when input/output changes, start 60-second timer.
-        When timer completes (no new changes), remove highlight.
+        Detects input/output changes and dispatches SESSION_ACTIVITY intent.
+        Highlight clearing is handled centrally in reduce_state when user views session.
 
         Args:
             sessions: List of session dicts
         """
         now = datetime.now(timezone.utc)
-        now_mono = time.monotonic()
 
         def _is_recent(last_activity: str | None) -> bool:
             if not last_activity:
@@ -534,58 +520,103 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 last_dt = last_dt.replace(tzinfo=timezone.utc)
             return (now - last_dt).total_seconds() <= 60
 
-        # Clear expired highlights before processing new changes.
-        self._expire_highlights(now_mono)
-
         for session in sessions:
             session_id = session.session_id
             curr_input = session.last_input or ""
-            curr_output = session.last_output or ""
+            # Use digest for output change detection (updates during polling, not just on agent_stop)
+            curr_output_digest = session.last_output_digest or ""
 
             # Get previous state
             prev = self._prev_state.get(session_id)
             if prev is None:
                 # New session - store state and check if there's activity
-                self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
-                # If there's recent activity, highlight it
+                self._prev_state[session_id] = {"input": curr_input, "output_digest": curr_output_digest}
+                # If there's recent activity, dispatch intent
                 if _is_recent(session.last_activity):
-                    if curr_input:
-                        self._start_highlight_timer(session_id, ActivePane.INPUT)
-                    elif curr_output:
-                        self._start_highlight_timer(session_id, ActivePane.OUTPUT)
-                else:
-                    self._active_field[session_id] = ActivePane.NONE
+                    if curr_output_digest:
+                        self.controller.dispatch(
+                            Intent(IntentType.SESSION_ACTIVITY, {"session_id": session_id, "output_changed": True})
+                        )
+                    elif curr_input:
+                        self.controller.dispatch(
+                            Intent(IntentType.SESSION_ACTIVITY, {"session_id": session_id, "input_changed": True})
+                        )
                 continue
 
             # Existing session - check what changed
             prev_input = prev.get("input", "")
-            prev_output = prev.get("output", "")
+            prev_output_digest = prev.get("output_digest", "")
 
             input_changed = curr_input != prev_input
-            output_changed = curr_output != prev_output
+            output_changed = curr_output_digest != prev_output_digest
 
-            if output_changed:
-                # New output → highlight output, start timer
-                self._start_highlight_timer(session_id, ActivePane.OUTPUT)
-                if self._on_agent_output and session.active_agent:
+            if output_changed or input_changed:
+                if output_changed:
+                    logger.debug(
+                        "output_changed detected for %s: digest changed %s -> %s",
+                        session_id[:8],
+                        prev_output_digest[:16] if prev_output_digest else None,
+                        curr_output_digest[:16] if curr_output_digest else None,
+                    )
+                if input_changed:
+                    logger.debug(
+                        "input_changed detected for %s: prev_input=%r -> curr_input=%r",
+                        session_id[:8],
+                        prev_input[:50] if prev_input else None,
+                        curr_input[:50] if curr_input else None,
+                    )
+                    # Cancel viewing timer when user sends new input
+                    if self._viewing_timer_session == session_id:
+                        logger.debug("Cancelling viewing timer for %s (user sent input)", session_id[:8])
+                        self._viewing_timer_session = None
+                        self._viewing_timer_expires = None
+                self.controller.dispatch(
+                    Intent(
+                        IntentType.SESSION_ACTIVITY,
+                        {"session_id": session_id, "input_changed": input_changed, "output_changed": output_changed},
+                    )
+                )
+                if output_changed and self._on_agent_output and session.active_agent:
                     self._on_agent_output(session.active_agent)
-            elif input_changed:
-                # New input → highlight input, start timer
-                self._start_highlight_timer(session_id, ActivePane.INPUT)
 
             # Store current state for next comparison
-            self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
+            self._prev_state[session_id] = {"input": curr_input, "output_digest": curr_output_digest}
 
-    def _expire_highlights(self, now_mono: float | None = None) -> bool:
-        """Expire highlight timers based on monotonic time."""
-        current = now_mono if now_mono is not None else time.monotonic()
-        expired_any = False
-        for session_id, until in list(self._highlight_until.items()):
-            if until <= current:
-                self._active_field[session_id] = ActivePane.NONE
-                self._highlight_until.pop(session_id, None)
-                expired_any = True
-        return expired_any
+    def _update_viewing_timer(self) -> None:
+        """Manage 60-second auto-clear timer for currently selected session.
+
+        If user is viewing a session with output highlight for 60 seconds,
+        auto-clear the highlight. Timer resets when user selects a different session.
+        """
+        selected_id = self.state.sessions.selected_session_id
+        now = time.monotonic()
+
+        # Check if timer expired
+        if self._viewing_timer_session and self._viewing_timer_expires and now >= self._viewing_timer_expires:
+            # Timer expired - clear highlight if still present
+            if self._viewing_timer_session in self.state.sessions.output_highlights:
+                self.controller.dispatch(
+                    Intent(
+                        IntentType.SESSION_ACTIVITY,
+                        {"session_id": self._viewing_timer_session, "output_changed": False, "input_changed": False},
+                    )
+                )
+                # Also directly clear since SESSION_ACTIVITY with both False won't clear
+                self.state.sessions.output_highlights.discard(self._viewing_timer_session)
+            self._viewing_timer_session = None
+            self._viewing_timer_expires = None
+
+        # Check if selection changed - reset timer
+        if selected_id != self._viewing_timer_session:
+            # Selection changed - cancel old timer
+            self._viewing_timer_session = None
+            self._viewing_timer_expires = None
+
+            # Start new timer if selected session has output highlight
+            if selected_id and selected_id in self.state.sessions.output_highlights:
+                self._viewing_timer_session = selected_id
+                self._viewing_timer_expires = now + 60
+                logger.debug("Started 60s viewing timer for session %s", selected_id[:8])
 
     def update_session_node(self, session: SessionInfo) -> bool:
         """Update a session node in the tree if it exists."""
@@ -1570,8 +1601,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         """
         # Store visible height for scroll calculations
         self._visible_height = height
-        # Expire highlights even if no data refresh occurs.
-        self._expire_highlights()
+
+        # Check/update viewing timer for auto-clear
+        self._update_viewing_timer()
 
         logger.trace(
             "SessionsView.render: start_row=%d, height=%d, width=%d, flat_items=%d, scroll=%d",
@@ -1742,16 +1774,22 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         normal_attr = curses.color_pair(normal_pair) if normal_pair else 0
         highlight_attr = curses.color_pair(highlight_pair) if highlight_pair else curses.A_BOLD
 
+        status_raw = session.status or ""
+        status_normalized = status_raw.strip().lower()
+        is_headless = status_normalized.startswith("headless") or not session.tmux_session_name
+        header_attr = muted_attr if is_headless else normal_attr
+
         # Sticky sessions get highlighted [N] indicator
         if is_sticky and sticky_position is not None:
             idx_text = f"[{sticky_position}]"
             idx_attr = curses.A_REVERSE | curses.A_BOLD
         else:
             idx_text = f"[{idx}]"
-            idx_attr = normal_attr
+            idx_attr = header_attr
 
-        # Title line uses normal color (the original agent color)
-        title_attr = curses.A_REVERSE if selected else normal_attr
+        # Headless sessions render header lines in muted color until adopted.
+        # Do not apply reverse selection styling for headless headers.
+        title_attr = header_attr if is_headless else (curses.A_REVERSE if selected else header_attr)
 
         # Collapse indicator
         collapse_indicator = "▶" if is_collapsed else "▼"
@@ -1762,9 +1800,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             col = 0
             # Render child indent first
             if child_indent:
-                stdscr.addstr(row, col, child_indent, normal_attr)  # type: ignore[attr-defined]
+                stdscr.addstr(row, col, child_indent, header_attr)  # type: ignore[attr-defined]
                 col += len(child_indent)
-            stdscr.addstr(row, col, idx_text, idx_attr if not selected else curses.A_REVERSE)  # type: ignore[attr-defined]
+            selected_idx_attr = header_attr if is_headless else curses.A_REVERSE
+            stdscr.addstr(row, col, idx_text, idx_attr if not selected else selected_idx_attr)  # type: ignore[attr-defined]
             col += len(idx_text)
             rest = f' {collapse_indicator} {agent}/{mode}  "{title}"'
             stdscr.addstr(row, col, rest[: width - col], title_attr)  # type: ignore[attr-defined]
@@ -1785,16 +1824,24 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Line 2 (expanded only): ID + last activity time
         activity_time = _format_time(session.last_activity)
         line2 = f"{detail_indent}[{activity_time}] ID: {session_id}"
-        _safe_addstr(row + lines_used, line2, normal_attr)
+        _safe_addstr(row + lines_used, line2, header_attr)
         self._row_to_id_item[row + lines_used] = item
         lines_used += 1
         if lines_used >= remaining:
             return lines_used
 
-        # Determine which field is "active" (highlight) based on state tracking
-        active = self._active_field.get(session_id, ActivePane.NONE)
-        input_attr = highlight_attr if active is ActivePane.INPUT else muted_attr
-        output_attr = highlight_attr if active is ActivePane.OUTPUT else muted_attr
+        # Determine which field is "active" (highlight) based on centralized state
+        has_input_highlight = session_id in self.state.sessions.input_highlights
+        has_output_highlight = session_id in self.state.sessions.output_highlights
+        if has_input_highlight or has_output_highlight:
+            logger.debug(
+                "render highlight: session=%s input=%s output=%s",
+                session_id[:8],
+                has_input_highlight,
+                has_output_highlight,
+            )
+        input_attr = highlight_attr if has_input_highlight else muted_attr
+        output_attr = highlight_attr if has_output_highlight else muted_attr
 
         # Line 3: Last input (only if content exists)
         last_input = (session.last_input or "").strip()

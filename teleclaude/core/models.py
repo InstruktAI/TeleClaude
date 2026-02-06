@@ -612,6 +612,7 @@ class SessionSummary:
     last_input_at: Optional[str] = None
     last_output: Optional[str] = None
     last_output_at: Optional[str] = None
+    last_output_digest: Optional[str] = None
     tmux_session_name: Optional[str] = None
     initiator_session_id: Optional[str] = None
     computer: Optional[str] = None
@@ -632,6 +633,7 @@ class SessionSummary:
             "last_input_at": self.last_input_at,
             "last_output": self.last_output,
             "last_output_at": self.last_output_at,
+            "last_output_digest": self.last_output_digest,
             "tmux_session_name": self.tmux_session_name,
             "initiator_session_id": self.initiator_session_id,
             "computer": self.computer,
@@ -655,6 +657,7 @@ class SessionSummary:
             last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
             last_output=get_last_feedback(session),
             last_output_at=session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None,
+            last_output_digest=session.last_output_digest,
             tmux_session_name=session.tmux_session_name,
             initiator_session_id=session.initiator_session_id,
             computer=computer,
@@ -678,6 +681,7 @@ class SessionSummary:
             last_input_at=str(data.get("last_input_at")) if data.get("last_input_at") else None,
             last_output=str(data.get("last_output")) if data.get("last_output") else None,
             last_output_at=str(data.get("last_output_at")) if data.get("last_output_at") else None,
+            last_output_digest=str(data.get("last_output_digest")) if data.get("last_output_digest") else None,
             tmux_session_name=str(data.get("tmux_session_name")) if data.get("tmux_session_name") else None,
             initiator_session_id=str(data.get("initiator_session_id")) if data.get("initiator_session_id") else None,
             computer=str(data.get("computer")) if data.get("computer") else None,

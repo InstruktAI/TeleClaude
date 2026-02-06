@@ -1,8 +1,8 @@
 ---
-id: project/design/session-lifecycle
-type: design
-scope: project
-description: Complete lifecycle of a terminal session from creation to cleanup.
+id: 'project/design/session-lifecycle'
+type: 'design'
+scope: 'project'
+description: 'Complete lifecycle of a terminal session from creation to cleanup.'
 ---
 
 # Session Lifecycle — Design

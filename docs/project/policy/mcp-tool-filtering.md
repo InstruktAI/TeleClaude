@@ -1,8 +1,8 @@
 ---
-id: project/policy/mcp-tool-filtering
-type: policy
-scope: project
-description: Role-based filtering of teleclaude tools to enforce least-privilege for scoped agents.
+id: 'project/policy/mcp-tool-filtering'
+type: 'policy'
+scope: 'project'
+description: 'Role-based filtering of teleclaude tools to enforce least-privilege for scoped agents.'
 ---
 
 # MCP Tool Filtering — Policy

@@ -1,8 +1,8 @@
 ---
-id: project/spec/command-surface
-type: spec
-scope: project
-description: Command surface contract for TeleClaude client interfaces.
+id: 'project/spec/command-surface'
+type: 'spec'
+scope: 'project'
+description: 'Command surface contract for TeleClaude client interfaces.'
 ---
 
 # Command Surface — Spec

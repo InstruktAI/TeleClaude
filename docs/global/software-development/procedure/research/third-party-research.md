@@ -1,9 +1,8 @@
 ---
-description: 'Research third-party docs: search authoritative sources, fetch, summarize,
-  and index findings.'
-id: software-development/procedure/research/third-party-research
-scope: domain
-type: procedure
+description: 'Research third-party docs: search authoritative sources, fetch, summarize, and index findings.'
+id: 'software-development/procedure/research/third-party-research'
+scope: 'domain'
+type: 'procedure'
 ---
 
 # Third-Party Research — Procedure

@@ -30,7 +30,7 @@ def mock_command_service():  # type: ignore[explicit-any, unused-ignore]
     commands = MagicMock()
     commands.create_session = AsyncMock()
     commands.end_session = AsyncMock()
-    commands.send_message = AsyncMock()
+    commands.process_message = AsyncMock()
     commands.handle_voice = AsyncMock()
     commands.handle_file = AsyncMock()
     commands.restart_agent = AsyncMock()
@@ -335,7 +335,7 @@ def test_end_session_success(test_client, mock_command_service):  # type: ignore
 
 def test_send_message_success(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """Test send_message endpoint."""
-    mock_command_service.send_message.return_value = None
+    mock_command_service.process_message.return_value = None
 
     response = test_client.post(
         "/sessions/sess-123/message?computer=local",
@@ -346,7 +346,7 @@ def test_send_message_success(test_client, mock_command_service):  # type: ignor
     assert data["status"] == "success"
 
     # Verify send_message was called
-    call_args = mock_command_service.send_message.call_args
+    call_args = mock_command_service.process_message.call_args
     cmd = call_args.args[0]
     assert cmd.session_id == "sess-123"
     assert cmd.text == "Hello AI"
@@ -666,10 +666,9 @@ def test_api_server_subscriptions(mock_adapter_client, mock_cache):
     assert TeleClaudeEvents.SESSION_UPDATED in handlers
     assert TeleClaudeEvents.SESSION_STARTED in handlers
     assert TeleClaudeEvents.SESSION_CLOSED in handlers
-
-    assert api._handle_session_updated_event in handlers[TeleClaudeEvents.SESSION_UPDATED]
-    assert api._handle_session_started_event in handlers[TeleClaudeEvents.SESSION_STARTED]
-    assert api._handle_session_closed_event in handlers[TeleClaudeEvents.SESSION_CLOSED]
+    assert handlers[TeleClaudeEvents.SESSION_UPDATED]
+    assert handlers[TeleClaudeEvents.SESSION_STARTED]
+    assert handlers[TeleClaudeEvents.SESSION_CLOSED]
 
 
 # ==================== Error Path Tests ====================
@@ -699,7 +698,7 @@ def test_create_session_handler_exception(test_client, mock_command_service):  #
 
 def test_send_message_handler_exception(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """Test send_message endpoint with handler exception."""
-    mock_command_service.send_message.side_effect = Exception("Internal error")
+    mock_command_service.process_message.side_effect = Exception("Internal error")
 
     response = test_client.post(
         "/sessions/sess-123/message?computer=local",

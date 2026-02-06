@@ -10,6 +10,8 @@
 
 This comprehensive audit examined the TeleClaude codebase (~168K lines of source code) across five dimensions: code quality/DRY, error handling, type design, test coverage, and adapter boundary purity. The codebase demonstrates solid fundamentals with explicit types, structured data models, and clear module organization. However, significant opportunities exist for improvement.
 
+**Recent change check**: Headless sessions now route through the unified `process_message` pipeline (new command approach). This report is updated to reflect that change and the new testing/refactor implications.
+
 ### Finding Summary
 
 | Category           | CRITICAL | IMPORTANT | SUGGESTION |
@@ -18,8 +20,8 @@ This comprehensive audit examined the TeleClaude codebase (~168K lines of source
 | Adapter Boundaries | 1        | 4         | 0          |
 | Type Design        | 4        | 10+       | 14         |
 | Code Quality/DRY   | 0        | 6         | 10         |
-| Test Coverage      | 3        | 4         | 3          |
-| **Total**          | **20**   | **69+**   | **239**    |
+| Test Coverage      | 3        | 5         | 3          |
+| **Total**          | **20**   | **70+**   | **239**    |
 
 ---
 
@@ -162,14 +164,15 @@ This comprehensive audit examined the TeleClaude codebase (~168K lines of source
 | TD-I9  | Config dataclasses lack immutability          | `config.py:38-213`                        |
 | TD-I10 | AGENT_METADATA deeply nested dicts            | `constants.py:151-240`                    |
 
-### 2.4 Test Coverage (4 issues)
+### 2.4 Test Coverage (5 issues)
 
-| ID    | File                           | Gap                                   |
-| ----- | ------------------------------ | ------------------------------------- |
-| TC-I1 | `core/event_bus.py`            | No dedicated tests                    |
-| TC-I2 | `transport/redis_transport.py` | Limited error path tests              |
-| TC-I3 | `tests/unit/test_lifecycle.py` | Only 1 test, missing shutdown/restart |
-| TC-I4 | `services/deploy_service.py`   | No tests                              |
+| ID    | File                           | Gap                                                                 |
+| ----- | ------------------------------ | ------------------------------------------------------------------- |
+| TC-I1 | `core/event_bus.py`            | No dedicated tests                                                  |
+| TC-I2 | `transport/redis_transport.py` | Limited error path tests                                            |
+| TC-I3 | `tests/unit/test_lifecycle.py` | Only 1 test, missing shutdown/restart                               |
+| TC-I4 | `services/deploy_service.py`   | No tests                                                            |
+| TC-I5 | `core/command_handlers.py`     | Headless adoption + unified process_message path lacks direct tests |
 
 ---
 
@@ -193,6 +196,10 @@ This comprehensive audit examined the TeleClaude codebase (~168K lines of source
 4. **Roadmap Operations** (`next_machine/core.py`)
    - 4 functions read roadmap, check existence, apply regex
    - Extract to `RoadmapReader` utility class
+
+5. **Headless Adoption Routing** (`core/command_handlers.py`)
+   - Unified `process_message` path now handles headless adoption in multiple branches
+   - Extract a single helper to reduce branching and keep headless handling consistent
 
 ### 3.2 Architecture Improvements
 
@@ -240,8 +247,9 @@ This comprehensive audit examined the TeleClaude codebase (~168K lines of source
 1. Split `MCPHandlersMixin` into focused mixins
 2. Split `next_machine/core.py` into smaller modules
 3. Add event bus and lifecycle tests
-4. Extract listing pattern in MCP handlers
-5. Replace `print()` with `logger` in `tmux_bridge.py`
+4. Add tests for headless adoption + unified `process_message` path
+5. Extract listing pattern in MCP handlers
+6. Replace `print()` with `logger` in `tmux_bridge.py`
 
 ### Phase 3: Technical Debt (Backlog)
 
@@ -260,6 +268,7 @@ After fixes are applied, verify:
 - [ ] Zero `except: pass` blocks without logging
 - [ ] All domain enums used consistently (no string literals for known values)
 - [ ] All tests have at least one assertion
+- [ ] Headless `process_message` adoption path has direct tests
 - [ ] `MCPHandlersMixin` < 500 lines
 - [ ] `next_machine/core.py` < 800 lines
 - [ ] Error return format consistent across all handlers
@@ -277,6 +286,7 @@ After fixes are applied, verify:
 | `teleclaude/context_selector.py`         | 1        | 1         | 2     |
 | `teleclaude/docs_index.py`               | 1        | 1         | 2     |
 | `tests/unit/test_polling_coordinator.py` | 1        | 0         | 1     |
+| `teleclaude/core/command_handlers.py`    | 0        | 1         | 1     |
 
 ---
 

@@ -1,9 +1,8 @@
 ---
-description: In-memory listener registry that notifies callers when target sessions
-  stop.
-id: project/design/session-listeners
-scope: project
-type: design
+description: 'In-memory listener registry that notifies callers when target sessions stop.'
+id: 'project/design/session-listeners'
+scope: 'project'
+type: 'design'
 ---
 
 # Session Listeners — Design
