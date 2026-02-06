@@ -111,18 +111,18 @@ This todo changes behavior for handled `agent_stop` events, not outbox/session l
 
 ## Test Plan
 ### Unit tests
-1. Config overlay tests
+1. [x] Config overlay tests
 - `experiments.yml` missing -> no crash, no experiments enabled.
 - `experiments.yml` present -> experiments parsed correctly.
 - Name + agent matching logic works.
 
-2. Transcript formatter tests (`tests/unit/test_transcript.py`)
+2. [x] Transcript formatter tests (`tests/unit/test_transcript.py`, `tests/unit/test_threaded_output.py`)
 - thinking/text included.
 - tools excluded by default.
 - tools included when flag true.
 - user boundary respected.
 
-3. Coordinator tests (`tests/unit/test_daemon.py` or focused coordinator tests)
+3. [x] Coordinator tests (`tests/unit/test_agent_coordinator.py`)
 - experiment disabled -> legacy path.
 - experiment enabled + agent match -> threaded `send_message` called.
 - experiment enabled + agent mismatch -> legacy path.
