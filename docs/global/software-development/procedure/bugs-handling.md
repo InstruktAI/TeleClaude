@@ -40,31 +40,37 @@ Convert raw bug reports into action: fix quickly when safe, otherwise create a t
 - Add `{new_slug}` to `todos/roadmap.md` as `[ ]`
 - Mark the bug as converted (note the new slug)
 
-### 2.4 If Quick Fix
+### 2.4 If Quick Fix (Self-Healing Route)
 
-- Mark `[>]` in `bugs.md` while working
-- Apply minimal fix
-- Verify via commit hooks (lint + unit tests)
-- Mark `[x]` when fixed
-- Commit one bug per commit
+If the fix is small and localized, follow the **Bugs Self-Healing** route:
+
+1. **Use Special Worktree:** All bug fixes must be performed in the persistent `.bugs-worktree` directory (located at the project root, NOT in `worktrees/`).
+2. **Update Worktree:** Always ensure the worktree is up to date:
+   ```bash
+   cd .bugs-worktree && git pull origin main
+   ```
+3. **Mark and Fix:**
+   - Mark `[>]` in `bugs.md` while working.
+   - Apply minimal fix.
+   - Verify via commit hooks (lint + unit tests).
+   - Mark `[x]` when fixed.
+   - Commit one bug per commit with a descriptive message.
+4. **Push:** Push the changes to main once verified.
 
 Summarize fixes and any new todos created.
-
-- If not reproducible: add note and mark `[?]`
-- If fix causes regression: document and mark `[!]`
-- If stuck: document what was tried and continue
 
 ## Preconditions
 
 - Bug report exists with reproduction steps or evidence.
 - Access to the repository and relevant test environment.
+- `.bugs-worktree` exists or can be created via `git worktree add .bugs-worktree main`.
 
 ## Steps
 
 - Triage the report and attempt to reproduce.
 - Record the bug in `todos/bugs.md` with severity and scope.
-- Decide quick fix vs roadmap item.
-- Apply fix or create a new work item and update roadmap.
+- Decide quick fix (Self-Healing) vs roadmap item.
+- Apply fix in `.bugs-worktree` or create a new work item and update roadmap.
 
 ## Outputs
 

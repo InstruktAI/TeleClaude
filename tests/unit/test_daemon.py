@@ -168,7 +168,7 @@ async def test_enrich_with_summary_dedupes_transcript() -> None:
     with (
         patch("teleclaude.core.agent_coordinator.db.get_session", new=AsyncMock(return_value=session)),
         patch("teleclaude.core.agent_coordinator.extract_last_agent_message", return_value="raw output"),
-        patch("teleclaude.core.agent_coordinator.summarize_text", new_callable=AsyncMock) as mock_sum,
+        patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_sum,
     ):
         mock_sum.return_value = ("Title 1", "Summary 1")
         raw, summary = await coordinator._extract_and_summarize("sess-123", payload)
@@ -194,7 +194,7 @@ async def test_enrich_with_summary_dedupes_native_session() -> None:
     with (
         patch("teleclaude.core.agent_coordinator.db.get_session", new=AsyncMock(return_value=session)),
         patch("teleclaude.core.agent_coordinator.extract_last_agent_message", return_value="raw output"),
-        patch("teleclaude.core.agent_coordinator.summarize_text", new_callable=AsyncMock) as mock_sum,
+        patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_sum,
     ):
         mock_sum.return_value = ("Title 2", "Summary 2")
         raw, summary = await coordinator._extract_and_summarize("sess-123", payload)
@@ -629,7 +629,7 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
     with (
         patch("teleclaude.core.agent_coordinator.db.get_session", new=AsyncMock(return_value=mock_session)),
         patch("teleclaude.core.agent_coordinator.extract_last_agent_message", return_value="raw output"),
-        patch("teleclaude.core.agent_coordinator.summarize_text", new_callable=AsyncMock) as mock_summarize,
+        patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_summarize,
     ):
         mock_summarize.return_value = ("title", "summary")
         raw, summary = await coordinator._extract_and_summarize("tele-123", payload)
@@ -704,7 +704,7 @@ async def test_process_agent_stop_sets_active_agent_from_payload(tmp_path):
         patch(
             "teleclaude.core.agent_coordinator.extract_last_agent_message", return_value="raw output"
         ) as mock_extract,
-        patch("teleclaude.core.agent_coordinator.summarize_text", new_callable=AsyncMock) as mock_summarize,
+        patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_summarize,
     ):
         mock_summarize.return_value = ("title", "summary")
 
@@ -783,7 +783,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
         patch("teleclaude.core.agent_coordinator.db.get_session", new=AsyncMock(return_value=session)),
         patch("teleclaude.core.agent_coordinator.db.update_session", new=AsyncMock()),
         patch("teleclaude.core.agent_coordinator.extract_last_agent_message", return_value="raw output"),
-        patch("teleclaude.core.agent_coordinator.summarize_text", new_callable=AsyncMock) as mock_summarize,
+        patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_summarize,
     ):
         mock_summarize.return_value = ("title", "summary")
         await coordinator.handle_stop(context)

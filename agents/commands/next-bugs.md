@@ -35,7 +35,10 @@ Triage bugs, apply quick fixes, and create new todos when needed.
 
 ## Steps
 
+- **Prepare Worktree:**
+  - Go to `.bugs-worktree` (create if missing: `git worktree add .bugs-worktree main`).
+  - Pull latest main: `git pull origin main`.
 - Read `todos/bugs.md`.
 - Investigate each bug.
-- For quick fixes (< 30 min): fix and commit. For larger issues: create a new todo in the roadmap.
+- For quick fixes (< 30 min): fix in `.bugs-worktree`, verify, and commit. For larger issues: create a new todo in the roadmap.
 - Update status in `todos/bugs.md`.

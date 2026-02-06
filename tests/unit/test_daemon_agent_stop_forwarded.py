@@ -41,7 +41,9 @@ async def test_process_agent_stop_forwarded_skips_forward():
         patch("teleclaude.core.agent_coordinator.db.get_session", new=AsyncMock(return_value=session)),
         patch("teleclaude.core.agent_coordinator.db.update_session", new=AsyncMock()),
         patch("teleclaude.core.agent_coordinator.extract_last_agent_message", return_value="raw output"),
-        patch("teleclaude.core.agent_coordinator.summarize_text", new_callable=AsyncMock, return_value=("t", "s")),
+        patch(
+            "teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock, return_value=("t", "s")
+        ),
         patch("teleclaude.core.agent_coordinator.config") as mock_config,
     ):
         mock_config.computer.name = "LocalPC"

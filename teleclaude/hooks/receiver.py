@@ -12,7 +12,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, cast
+from typing import cast
 
 from instrukt_ai_logging import configure_logging, get_logger
 
@@ -66,16 +66,17 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _read_stdin() -> tuple[str, Mapping[str, Any]]:
+# guard: loose-dict-func - Raw stdin JSON payload at process boundary.
+def _read_stdin() -> tuple[str, dict[str, object]]:
     raw_input = ""
-    data: Mapping[str, Any] = {}
+    data: dict[str, object] = {}
     if not sys.stdin.isatty():
         raw_input = sys.stdin.read()
         if raw_input.strip():
             parsed = json.loads(raw_input)
             if not isinstance(parsed, dict):
                 raise ValueError("Hook stdin payload must be a JSON object")
-            data = cast(Mapping[str, Any], parsed)
+            data = cast(dict[str, object], parsed)
     return raw_input, data
 
 
@@ -101,7 +102,7 @@ def _log_raw_input(raw_input: str, *, log_raw: bool) -> None:
 def _enqueue_hook_event(
     session_id: str,
     event_type: str,
-    data: Mapping[str, Any],
+    data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON.
 ) -> None:
     """Persist hook event to local outbox for durable delivery."""
     db_path = config.database.path
@@ -160,7 +161,8 @@ def _update_session_native_fields(
         session.commit()
 
 
-def _extract_native_identity(agent: str, data: Mapping[str, Any]) -> tuple[str | None, str | None]:
+# guard: loose-dict-func - Native identity fields come from dynamic hook payloads.
+def _extract_native_identity(agent: str, data: dict[str, object]) -> tuple[str | None, str | None]:
     """Extract native session id + transcript path from raw hook payload."""
     native_session_id: str | None = None
     native_log_file: str | None = None
@@ -385,8 +387,8 @@ def _emit_receiver_error_best_effort(
     event_type: str | None,
     message: str,
     code: str,
-    details: Mapping[str, Any] | None = None,
-    raw_data: Mapping[str, Any] | None = None,
+    details: dict[str, object] | None = None,  # guard: loose-dict - Error details are context-specific.
+    raw_data: dict[str, object] | None = None,  # guard: loose-dict - Raw hook payload for best-effort context.
 ) -> None:
     """Best-effort error emission for receiver contract violations."""
     payload = dict(details or {})
@@ -432,6 +434,7 @@ def _emit_receiver_error_best_effort(
         logger.error("Receiver error reporting failed", error=str(exc), code=code)
 
 
+# guard: loose-dict-func - Main path processes raw hook payload boundaries.
 def main() -> None:
     args = _parse_args()
 
@@ -467,7 +470,7 @@ def main() -> None:
                 code="HOOK_PAYLOAD_NOT_OBJECT",
             )
             sys.exit(1)
-        raw_data = cast(Mapping[str, Any], parsed)
+        raw_data = cast(dict[str, object], parsed)
         event_type = "agent_stop"
     else:
         # Claude/Gemini pass event_type as arg, JSON on stdin

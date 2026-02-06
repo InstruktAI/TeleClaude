@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 
@@ -48,17 +49,24 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
         repo_root / "scripts",
         repo_root / "bin",
     ]
-    patterns = ("dict[str, object]", "dict[str, Any]")  # guard: loose-dict - Pattern definition
+    patterns = (
+        "dict[str, object]",
+        "dict[str, Any]",
+        "Mapping[str, Any]",
+        "MutableMapping[str, Any]",
+    )  # guard: loose-dict - Pattern definition
     matches: list[str] = []
     # Accept multiple marker styles for backwards compatibility
     exception_markers = (
         "# guard: loose-dict",  # New preferred style
         "# guard:loose-dict",  # No space variant
+        "# guard: loose-dict-func",  # Function-scope exception marker
         "# noqa: loose-dict",  # Legacy (causes ruff warnings but works)
         "# type: boundary",  # Legacy (avoid - causes mypy issues)
     )
 
     excluded_files = {
+        repo_root / "bin" / "lint" / "guardrails.py",
         repo_root / "teleclaude" / "adapters" / "redis_adapter.py",
         repo_root / "teleclaude" / "transport" / "redis_transport.py",
     }
@@ -73,10 +81,13 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
                 lines = path.read_text(encoding="utf-8").splitlines()
             except OSError:
                 continue
+            guarded_ranges = _collect_function_guard_ranges(lines)
             for lineno, line in enumerate(lines, start=1):
                 if any(pattern in line for pattern in patterns):
                     # Skip if line has documented exception
                     if any(marker in line for marker in exception_markers):
+                        continue
+                    if _line_in_ranges(lineno, guarded_ranges):
                         continue
                     matches.append(f"{path.relative_to(repo_root)}:{lineno}: {line.strip()}")
 
@@ -95,6 +106,40 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
 
     if len(matches) > 0:
         _fail("guardrails warning: loose dict typings detected\n")
+
+
+def _collect_function_guard_ranges(lines: list[str]) -> list[tuple[int, int]]:
+    """Collect line ranges guarded by function-scope loose-dict markers.
+
+    Marker usage:
+    - Add `# guard: loose-dict-func - reason` directly above a function/class def.
+    - That marker exempts loose-dict checks for the entire function/class block.
+    """
+    source = "\n".join(lines)
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+
+    ranges: list[tuple[int, int]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        end_lineno = getattr(node, "end_lineno", None)
+        if end_lineno is None:
+            continue
+        marker_found = False
+        for marker_lineno in range(max(1, node.lineno - 3), node.lineno):
+            if "# guard: loose-dict-func" in lines[marker_lineno - 1]:
+                marker_found = True
+                break
+        if marker_found:
+            ranges.append((node.lineno, end_lineno))
+    return ranges
+
+
+def _line_in_ranges(lineno: int, ranges: list[tuple[int, int]]) -> bool:
+    return any(start <= lineno <= end for start, end in ranges)
 
 
 if __name__ == "__main__":

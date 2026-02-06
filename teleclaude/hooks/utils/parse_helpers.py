@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
-
 
 def coerce_str(value: object) -> str | None:
     """Normalize a value to a non-empty string, or None."""
@@ -13,6 +11,7 @@ def coerce_str(value: object) -> str | None:
     return None
 
 
-def get_str(data: Mapping[str, Any], key: str) -> str | None:
+# guard: loose-dict-func - Hook adapters consume dynamic top-level JSON objects.
+def get_str(data: dict[str, object], key: str) -> str | None:
     """Fetch a string from a specific top-level key (no nesting)."""
     return coerce_str(data.get(key))

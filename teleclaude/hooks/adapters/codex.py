@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Mapping
 
 from teleclaude.hooks.adapters.models import NormalizedHookPayload
 from teleclaude.hooks.utils.parse_helpers import get_str
@@ -83,7 +82,8 @@ def _discover_transcript_path(session_id: str) -> str:
     return ""
 
 
-def normalize_payload(event_type: str, data: Mapping[str, Any]) -> NormalizedHookPayload:
+# guard: loose-dict-func - External hook payload is dynamic JSON from agent CLI.
+def normalize_payload(event_type: str, data: dict[str, object]) -> NormalizedHookPayload:
     """Map Codex notify fields to internal schema.
 
     Codex notify payload format:

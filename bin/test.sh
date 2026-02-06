@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
+set -eu
+
 . .venv/bin/activate
 
 # Force tests to use sandboxed config and env files

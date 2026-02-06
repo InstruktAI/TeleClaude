@@ -11,7 +11,7 @@ def test_codex_parser_stop():
 
     events = list(parser.parse_line(line))
     assert len(events) == 1
-    assert events[0].event_type == "stop"
+    assert events[0].event_type == "agent_stop"
 
 
 def test_codex_parser_notification():
