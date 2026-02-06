@@ -118,6 +118,70 @@ async def test_ui_adapter_send_output_update_preserves_ansi_when_disabled(monkey
 
 
 @pytest.mark.asyncio
+async def test_ui_adapter_strips_various_ansi_variants(monkeypatch):
+    """Verify stripping of CSI, OSC, and simple escape sequences."""
+    monkeypatch.setattr(config.terminal, "strip_ansi", True)
+    client = MagicMock()
+    with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
+        mock_db.update_session = AsyncMock()
+        adapter = StubUiAdapter(client)
+        adapter.ADAPTER_KEY = "test"
+        adapter.edit_message = AsyncMock(return_value=True)
+        adapter._get_output_message_id = AsyncMock(return_value="msg_123")
+
+        variants = [
+            ("\x1b[31;1mComplex CSI\x1b[0m", "Complex CSI"),
+            ("\x1b]0;Title\x07OSC Sequence", "OSC Sequence"),
+            ("\x1b=Simple\x1b>Sequence", "SimpleSequence"),
+            ("Normal \x1b[KClear Line", "Normal Clear Line"),
+        ]
+
+        for raw, expected in variants:
+            await adapter.send_output_update(
+                session=MagicMock(session_id="sess_123", last_output_digest=None, adapter_metadata=MagicMock()),
+                output=raw,
+                started_at=1000.0,
+                last_output_changed_at=1000.0,
+            )
+            args, _ = adapter.edit_message.call_args
+            assert expected in args[2]
+            assert "\x1b" not in args[2]
+
+
+@pytest.mark.asyncio
+async def test_agent_coordinator_handle_stop_strips_ansi(monkeypatch):
+    """Verify that AgentCoordinator strips ANSI codes from agent feedback before storage."""
+    from teleclaude.core.agent_coordinator import AgentCoordinator
+    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
+
+    monkeypatch.setattr(config.terminal, "strip_ansi", True)
+
+    client = MagicMock()
+    tts = MagicMock()
+    headless = MagicMock()
+    coordinator = AgentCoordinator(client, tts, headless)
+
+    # Mock DB and extraction
+    raw_ansi_output = "\x1b[32mSuccess!\x1b[0m"
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch.object(coordinator, "_extract_and_summarize", return_value=(raw_ansi_output, "Summary")),
+    ):
+        mock_db.get_session = AsyncMock(return_value=MagicMock(active_agent="claude"))
+        mock_db.update_session = AsyncMock()
+
+        payload = AgentStopPayload(source_computer="local", transcript_path="/tmp/log")
+        context = AgentEventContext(session_id="sess_123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
+
+        await coordinator.handle_stop(context)
+
+        # Verify stored value is clean
+        args, kwargs = mock_db.update_session.call_args
+        assert kwargs["last_feedback_received"] == "Success!"
+        assert "\x1b[" not in kwargs["last_feedback_received"]
+
+
+@pytest.mark.asyncio
 async def test_polling_coordinator_detects_styled_suggestions():
     """Verify that polling_coordinator detects dim/italic suggestions."""
     from teleclaude.core.polling_coordinator import _find_prompt_input, _is_suggestion_styled
@@ -141,3 +205,31 @@ async def test_polling_coordinator_detects_styled_suggestions():
     # Test _find_prompt_input captures normal input
     codex_real_input = "› Real Input"
     assert _find_prompt_input(codex_real_input) == "Real Input"
+
+
+@pytest.mark.asyncio
+async def test_output_poller_preserves_raw_ansi_internally(tmp_path):
+    """Verify that OutputPoller does NOT strip ANSI codes during its internal poll loop."""
+    from teleclaude.core.output_poller import OutputPoller, OutputChanged
+
+    poller = OutputPoller()
+    output_file = tmp_path / "output.txt"
+
+    # Raw output with ANSI codes
+    raw_ansi = "\x1b[31mRaw\x1b[0m"
+
+    with patch("teleclaude.core.output_poller.tmux_bridge") as mock_tb:
+        mock_tb.session_exists = AsyncMock(side_effect=[True, False])
+        mock_tb.capture_pane = AsyncMock(return_value=raw_ansi)
+        mock_tb.is_pane_dead = AsyncMock(return_value=False)
+
+        with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+            events = []
+            async for event in poller.poll("sess_123", "tmux_123", output_file):
+                events.append(event)
+
+            # OutputChanged event should contain RAW ANSI codes
+            output_events = [e for e in events if isinstance(e, OutputChanged)]
+            assert output_events
+            assert output_events[0].output == raw_ansi
+            assert "\x1b[31m" in output_events[0].output

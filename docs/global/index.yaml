@@ -111,6 +111,13 @@ snippets:
   scope: global
   path: docs/general/spec/third-party-docs.md
   source_project: TeleClaude
+- id: software-development/concept/ai-to-ai-coordination
+  description: How AI agents coordinate using sub-sessions, listeners, and terminal
+    notifications.
+  type: concept
+  scope: domain
+  path: docs/software-development/concept/ai-to-ai-coordination.md
+  source_project: TeleClaude
 - id: software-development/concept/architect
   description: Strategic role. Requirements, architecture, use cases. Break down work,
     create implementation plans, ensure readiness.
@@ -276,6 +283,13 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/agent-artifacts-quickstart.md
+  source_project: TeleClaude
+- id: software-development/procedure/ai-to-ai-troubleshooting
+  description: Identify and fix common issues with AI-to-AI coordination, timeouts,
+    and notifications.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/ai-to-ai-troubleshooting.md
   source_project: TeleClaude
 - id: software-development/procedure/bugs-handling
   description: Triage bugs, decide quick fixes vs new todos, and track resolution

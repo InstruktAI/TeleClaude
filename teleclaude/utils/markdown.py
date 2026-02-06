@@ -114,8 +114,10 @@ def _escape_nested_backticks(text: str) -> str:
     def escape_nested_backticks(match: re.Match[str]) -> str:
         lang = str(match.group(1) or "")
         block_content = str(match.group(2))
-        escaped = block_content.replace(
-            MARKDOWN_FENCE, f"{MARKDOWN_INLINE_CODE}\u200b{MARKDOWN_INLINE_CODE}{MARKDOWN_INLINE_CODE}"
+        # Replace both raw and escaped fences (the latter can be added by markdownify)
+        replacement = f"{MARKDOWN_INLINE_CODE}\u200b{MARKDOWN_INLINE_CODE}{MARKDOWN_INLINE_CODE}"
+        escaped = block_content.replace(MARKDOWN_FENCE, replacement).replace(
+            f"\\{MARKDOWN_INLINE_CODE}\\{MARKDOWN_INLINE_CODE}\\{MARKDOWN_INLINE_CODE}", replacement
         )
         return f"{MARKDOWN_FENCE}{lang}\n{escaped}{MARKDOWN_FENCE}"
 

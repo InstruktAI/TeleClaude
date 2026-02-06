@@ -83,9 +83,11 @@ async def test_close_session_full_cleanup(daemon_with_mocked_telegram):
     finally:
         # Cleanup
         if "workspace_dir" in locals() and workspace_dir.exists():
-            for child in workspace_dir.iterdir():
-                child.unlink()
-            workspace_dir.rmdir()
+            try:
+                import shutil
+                shutil.rmtree(workspace_dir, ignore_errors=True)
+            except Exception:
+                pass
 
 
 @pytest.mark.integration

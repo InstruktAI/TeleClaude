@@ -118,6 +118,42 @@ async def test_next_prepare_autonomous_dispatch():
 
 
 @pytest.mark.asyncio
+async def test_next_prepare_hitl_bugs_sentinel_detected():
+    """Test that next_prepare detects open bugs and adds a sentinel note."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+
+    # Mock: bugs.md exists and has open bugs ([ ])
+    def mock_check_file_exists(path_cwd, relative_path):
+        if "bugs.md" in relative_path:
+            return True
+        return False
+
+    async def mock_read_text_async(path):
+        if "bugs.md" in str(path):
+            return "## Open Bugs\n- [ ] Fix critical bug"
+        return ""
+
+    def mock_exists(self_path):
+        if "bugs.md" in str(self_path):
+            return True
+        return False
+
+    with (
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
+        patch("teleclaude.core.next_machine.core.read_text_async", side_effect=mock_read_text_async),
+        patch("teleclaude.core.next_machine.core.Path.exists", autospec=True, side_effect=mock_exists),
+        patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=None),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
+        assert "Bugs Sentinel" in result
+        assert "Open bugs found in `todos/bugs.md`" in result
+        assert ".bugs-worktree" in result
+
+
+@pytest.mark.asyncio
 async def test_next_prepare_hitl_slug_missing_from_roadmap():
     """Test that HITL next_prepare explains missing roadmap entry for slug."""
     db = MagicMock(spec=Db)

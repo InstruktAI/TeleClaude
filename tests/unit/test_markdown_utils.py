@@ -1,6 +1,10 @@
 """Unit tests for markdown utilities."""
 
-from teleclaude.utils.markdown import escape_markdown_v2, strip_outer_codeblock
+from teleclaude.utils.markdown import (
+    escape_markdown_v2,
+    strip_outer_codeblock,
+    telegramify_markdown,
+)
 
 
 class TestStripOuterCodeblock:
@@ -118,3 +122,37 @@ class TestEscapeMarkdownV2:
         # Pipes and dashes should be escaped
         assert "\\|" in result
         assert "\\-" in result
+
+
+class TestTelegramifyMarkdown:
+    """Tests for telegramify_markdown function."""
+
+    def test_strips_heading_icons(self):
+        """Test that heading icons added by telegramify_markdown are stripped."""
+        # The library adds icons like 📌 to headings
+        text = "# Section Title"
+        result = telegramify_markdown(text, strip_heading_icons=True)
+        # Result should be bold but without the icon
+        assert "*Section Title*" in result
+        assert "📌" not in result
+
+    def test_escapes_nested_code_blocks(self):
+        """Test that nested code blocks are escaped to prevent breaking outer fence."""
+        # Realistic case: a code block containing triple backticks (e.g. in a string or comment)
+        text = "Here is a block:\n```python\n# This would break if not escaped:\n# ```\nprint('hello')\n```"
+        result = telegramify_markdown(text)
+        # Should contain escaped backticks sequence
+        assert "`\u200b``" in result
+
+    def test_adds_md_tag_to_plain_code_blocks(self):
+        """Test that plain code blocks get a 'md' tag for better Telegram rendering."""
+        text = "```\nplain code\n```"
+        result = telegramify_markdown(text)
+        assert "```md\n" in result
+
+    def test_preserves_existing_language_tags(self):
+        """Test that existing language tags are not overwritten with 'md'."""
+        text = "```python\nprint(1)\n```"
+        result = telegramify_markdown(text)
+        assert "```python\n" in result
+        assert "```md\n" not in result

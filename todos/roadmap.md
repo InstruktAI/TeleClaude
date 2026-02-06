@@ -23,3 +23,9 @@ Refactor test suite to verify observable behavior, add docstrings, document syst
 - [ ] release-automation
 
 Automated AI-driven release pipeline with Claude Code and Codex CLI inspectors.
+
+## UI Experiment: Threaded Incremental Output
+
+- [>] threaded-output-experiment
+
+Deliver agent feedback as regular threaded messages instead of one editable pane.

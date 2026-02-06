@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 
 from teleclaude.core.dates import ensure_utc
-from teleclaude.core.models import Recording, RunAgentCommandArgs, Session, StartSessionArgs
+from teleclaude.core.models import Recording, RunAgentCommandArgs, Session, StartSessionArgs, ThinkingMode
 from teleclaude.core.origins import InputOrigin
 
 
@@ -199,8 +199,9 @@ class TestRecording:
 class TestMcpArgs:
     """Tests for MCP argument parsing."""
 
-    def test_start_session_args_rejects_deep(self):
-        """Deep is not allowed in MCP args."""
+    def test_start_session_args_accepts_deep(self):
+        """Deep is now allowed in MCP args."""
+        from teleclaude.core.models import ThinkingMode
         args = {
             "computer": "local",
             "project_path": "/tmp/project",
@@ -208,17 +209,37 @@ class TestMcpArgs:
             "message": "Hello",
             "thinking_mode": "deep",
         }
+        parsed = StartSessionArgs.from_mcp(args, None)
+        assert parsed.thinking_mode == ThinkingMode.DEEP
 
+    def test_start_session_args_rejects_invalid_mode(self):
+        """Invalid mode is rejected in MCP args."""
+        args = {
+            "computer": "local",
+            "project_path": "/tmp/project",
+            "title": "Test",
+            "message": "Hello",
+            "thinking_mode": "invalid",
+        }
         with pytest.raises(ValueError, match="thinking_mode must be one of"):
             StartSessionArgs.from_mcp(args, None)
 
-    def test_run_agent_command_args_rejects_deep(self):
-        """Deep is not allowed in MCP args."""
+    def test_run_agent_command_args_accepts_deep(self):
+        """Deep is now allowed in MCP args."""
         args = {
             "computer": "local",
             "command": "help",
             "thinking_mode": "deep",
         }
+        parsed = RunAgentCommandArgs.from_mcp(args, None)
+        assert parsed.thinking_mode == ThinkingMode.DEEP
 
+    def test_run_agent_command_args_rejects_invalid_mode(self):
+        """Invalid mode is rejected in MCP args."""
+        args = {
+            "computer": "local",
+            "command": "help",
+            "thinking_mode": "invalid",
+        }
         with pytest.raises(ValueError, match="thinking_mode must be one of"):
             RunAgentCommandArgs.from_mcp(args, None)
