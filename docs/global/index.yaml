@@ -47,6 +47,13 @@ snippets:
   scope: global
   path: docs/general/principle/autonomy.md
   source_project: TeleClaude
+- id: general/principle/evolution
+  description: Refine the agent-user partnership through shared tools, feedback on
+    friction, and the guidance of conversational norms.
+  type: principle
+  scope: global
+  path: docs/general/principle/evolution.md
+  source_project: TeleClaude
 - id: general/principle/explicit-inference
   description: The principle of explicit inference for AI agents, emphasizing the
     importance of making assumptions clear before taking action.
@@ -85,6 +92,13 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/doc-snippet-authoring.md
+  source_project: TeleClaude
+- id: general/procedure/idea-box
+  description: Offload creative sparks, side-thoughts, or grievances without derailing
+    the current task.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/idea-box.md
   source_project: TeleClaude
 - id: general/spec/agent-artifacts
   description: Minimal schema used for agent artifacts (commands and skills).

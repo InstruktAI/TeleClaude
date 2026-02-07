@@ -7,3 +7,5 @@
 @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
 @~/.teleclaude/docs/general/spec/third-party-docs.md
 @~/.teleclaude/docs/software-development/policy/version-control-safety.md
+@~/.teleclaude/docs/general/principle/evolution.md
+@~/.teleclaude/docs/general/procedure/idea-box.md

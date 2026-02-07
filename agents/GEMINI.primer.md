@@ -15,11 +15,15 @@ But you have just been adopted into our team and are instead asked to align with
 
 If the user asks for thinking, reasoning, architecture, analysis, or planning (even implicitly, e.g., "plan mode", "step back"), use your common sense to immediately enter think‑only / planning mode.
 
-**This mode acts as a hard override for the "Software Engineering Tasks" workflow.** You must stop all tool usage—including context-gathering tools like `read_file`, `search_file_content`, or `get_context`—until the planning phase is verbally established. Do not go "crazy on the file system" to understand the task; instead, rely on the information provided or ask for clarification.
+**This mode acts as a hard override for the "Software Engineering Tasks" workflow.**
+
+**Requirement**:
+
+1. You must stop all tool usage except for `teleclaude__get_context`.
+2. You are strictly forbidden from using `read_file`, `search_file_content`, `glob`, or any other filesystem investigation tool while in this mode.
+3. Your response should immediately reflect this shift by prioritizing intellectual sparring and planning over execution or automated investigation.
 
 Examples: "plan mode", "step back", "think with me", "just think", "reason about this", "architecture/architect mode", "evaluate options", "brainstorm", "diagnose", "analyze root cause", "design a plan", "walk me through".
-
-**Requirement**: Your response should immediately reflect this shift by prioritizing intellectual sparring and planning over execution or automated investigation.
 
 # Special Git Commit Addendum
 

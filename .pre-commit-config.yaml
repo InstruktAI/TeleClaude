@@ -41,3 +41,9 @@ repos:
     language: system
     pass_filenames: false
     files: ^(docs/|agents/|\.agents/|scripts/snippet_schema\.yaml|teleclaude/constants\.py)
+  - id: check-raw-sql
+    name: Check for raw SQL without noqa markers
+    entry: ./scripts/check-raw-sql.sh
+    language: system
+    pass_filenames: false
+    files: ^teleclaude/(core/db\.py|hooks/receiver\.py)$
