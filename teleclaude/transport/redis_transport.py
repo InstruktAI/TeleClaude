@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable, Optional, cast
 
 from instrukt_ai_logging import get_logger
-from redis.asyncio import Redis
+from redis.asyncio import BlockingConnectionPool, Redis
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
@@ -33,14 +33,10 @@ from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
     DeployArgs,
-    SessionLifecycleContext,
-    SessionUpdatedContext,
     SystemCommandContext,
-    TeleClaudeEvents,
     build_agent_payload,
     parse_command_string,
 )
-from teleclaude.core.feedback import get_last_feedback
 from teleclaude.core.models import (
     ChannelMetadata,
     ComputerInfo,
@@ -52,7 +48,6 @@ from teleclaude.core.models import (
     Session,
     SessionLaunchIntent,
     SessionSummary,
-    ThinkingMode,
     TodoInfo,
 )
 from teleclaude.core.origins import InputOrigin
@@ -109,9 +104,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         # Store client reference (ONLY interface to daemon)
         self.client = adapter_client
-        event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
-        event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started)
-        event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed)
+        # Note: Session event bus subscriptions removed to enforce Pull-Only architecture.
+        # We no longer push session updates to Redis streams.
 
         # Task registry for tracked background tasks
         self.task_registry = task_registry
@@ -122,7 +116,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         # Transport state
         self._message_poll_task: Optional[asyncio.Task[object]] = None
         self._heartbeat_task: Optional[asyncio.Task[object]] = None
-        self._session_events_poll_task: Optional[asyncio.Task[object]] = None
         self._peer_refresh_task: Optional[asyncio.Task[object]] = None
         self._connection_task: Optional[asyncio.Task[object]] = None
         self._reconnect_task: Optional[asyncio.Task[object]] = None
@@ -268,9 +261,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             self._message_poll_task = self.task_registry.spawn(self._poll_redis_messages(), name="redis-message-poll")
             self._heartbeat_task = self.task_registry.spawn(self._heartbeat_loop(), name="redis-heartbeat")
             self._peer_refresh_task = self.task_registry.spawn(self._peer_refresh_loop(), name="redis-peer-refresh")
-            self._session_events_poll_task = self.task_registry.spawn(
-                self._poll_session_events(), name="redis-session-events"
-            )
         else:
             self._message_poll_task = asyncio.create_task(self._poll_redis_messages())
             self._message_poll_task.add_done_callback(self._log_task_exception)
@@ -278,8 +268,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             self._heartbeat_task.add_done_callback(self._log_task_exception)
             self._peer_refresh_task = asyncio.create_task(self._peer_refresh_loop())
             self._peer_refresh_task.add_done_callback(self._log_task_exception)
-            self._session_events_poll_task = asyncio.create_task(self._poll_session_events())
-            self._session_events_poll_task.add_done_callback(self._log_task_exception)
 
         logger.info("RedisTransport connected and background tasks started")
 
@@ -503,16 +491,17 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
     def _create_redis_client(self) -> Redis:
         """Create a Redis client with the configured settings."""
-        redis_client: Redis = Redis.from_url(
+        # Create blocking pool explicitly to avoid argument passing issues with from_url
+        pool = BlockingConnectionPool.from_url(
             self.redis_url,
             password=self.redis_password,
             max_connections=self.max_connections,
             socket_timeout=self.socket_timeout,
-            health_check_interval=30,  # Ping connection if idle > 30s to prevent SSL errors
-            decode_responses=False,  # We handle decoding manually
-            ssl_cert_reqs=ssl.CERT_NONE,  # Disable certificate verification for self-signed certs
+            health_check_interval=10,
+            decode_responses=False,
+            ssl_cert_reqs=ssl.CERT_NONE,
         )
-        return redis_client
+        return Redis(connection_pool=pool)
 
     async def _await_redis_ready(self) -> None:
         """Wait until Redis connection is ready or transport stops."""
@@ -549,7 +538,14 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         while self._running:
             try:
                 if self.redis:
-                    await self.redis.aclose()
+                    try:
+                        await asyncio.wait_for(self.redis.aclose(), timeout=2.0)
+                    except (TimeoutError, Exception):
+                        # Force-disconnect stale pool to avoid fd leaks
+                        try:
+                            await self.redis.connection_pool.disconnect(inuse_connections=True)
+                        except Exception:
+                            pass
                 self.redis = self._create_redis_client()
                 await self.redis.ping()  # pyright: ignore[reportGeneralTypeIssues]
                 self._redis_ready.set()
@@ -608,13 +604,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             self._peer_refresh_task.cancel()
             try:
                 await self._peer_refresh_task
-            except asyncio.CancelledError:
-                pass
-
-        if self._session_events_poll_task:
-            self._session_events_poll_task.cancel()
-            try:
-                await self._session_events_poll_task
             except asyncio.CancelledError:
                 pass
 
@@ -1177,7 +1166,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 event_type=AgentHookEvents.AGENT_STOP,
                 data=build_agent_payload(AgentHookEvents.AGENT_STOP, event_data),
             )
-            event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
+            if self.client.agent_event_handler:
+                await self.client.agent_event_handler(context)
             return {"status": "success", "data": None}
 
         if cmd_name == "input_notification":
@@ -1208,7 +1198,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 event_type=AgentHookEvents.AGENT_NOTIFICATION,
                 data=build_agent_payload(AgentHookEvents.AGENT_NOTIFICATION, event_data),
             )
-            event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
+            if self.client.agent_event_handler:
+                await self.client.agent_event_handler(context)
             return {"status": "success", "data": None}
 
         return {"status": "error", "error": f"unsupported agent notification: {cmd_name}"}
@@ -1382,206 +1373,15 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             json.dumps(payload),
         )
 
-    # === Event Push (Phase 5) ===
+    # === Event Push (Phase 5) - DISABLED ===
 
     def _on_cache_change(self, event: str, data: object) -> None:
-        """Handle cache change notifications and push to interested peers.
+        """Handle cache change notifications.
 
-        Args:
-            event: Event type from cache (e.g., "session_updated", "session_started")
-            data: Event data (session info dict, etc.)
+        Note: Push-based synchronization is DISABLED to enforce Request/Response architecture.
+        This handler is now a no-op for network traffic.
         """
-        # Only push session-related events
-        if event not in ("session_updated", "session_started", "session_closed"):
-            return
-
-        # Push events asynchronously without blocking cache notification
-        if self.task_registry:
-            task = self.task_registry.spawn(self._push_session_event_to_peers(event, data), name="redis-push-event")
-        else:
-            task = asyncio.create_task(self._push_session_event_to_peers(event, data))
-        task.add_done_callback(
-            lambda t: logger.error("Push task failed: %s", t.exception())
-            if t.done() and not t.cancelled() and t.exception()
-            else None
-        )
-
-    async def _push_session_event_to_peers(self, event: str, data: object) -> None:
-        """Push session event to interested remote peers.
-
-        Args:
-            event: Event type ("session_updated", "session_started", or "session_closed")
-            data: Session data dict
-        """
-        try:
-            # Get interested computers
-            interested = await self._get_interested_computers("sessions")
-            if not interested:
-                logger.trace("No peers interested in sessions, skipping event push")
-                return
-
-            # Prepare event payload
-            if not isinstance(data, dict):
-                logger.warning("Event data is not a dict, cannot push: %s", type(data))
-                return
-
-            payload: dict[str, object] = {  # guard: loose-dict - event payload
-                "event": event,
-                "data": data,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "source_computer": self.computer_name,
-            }
-
-            # Push to each interested peer
-            redis_client = await self._get_redis()
-            for computer in interested:
-                stream_key = f"session_events:{computer}"
-                try:
-                    await redis_client.xadd(
-                        stream_key.encode("utf-8"),
-                        {b"payload": json.dumps(payload).encode("utf-8")},
-                        maxlen=100,  # Keep last 100 events
-                    )
-                    logger.debug("Pushed %s event to %s", event, computer)
-                except Exception as e:
-                    logger.error("Failed to push event to %s: %s", computer, e)
-
-        except Exception as e:
-            logger.error("Failed to push session event: %s", e, exc_info=True)
-
-    async def _get_interested_computers(self, interest_type: str) -> list[str]:
-        """Get list of computers interested in a specific type of event.
-
-        Args:
-            interest_type: Interest type to filter by (e.g., "sessions", "preparation")
-
-        Returns:
-            List of computer names that advertised interest in this type. Returns
-            empty list on error to allow graceful degradation when Redis is
-            unavailable.
-
-        Note:
-            Errors are logged but do not propagate. This enables the system to
-            continue operating in single-computer mode when Redis is down.
-        """
-        try:
-            redis_client = await self._get_redis()
-
-            # Scan all heartbeat keys using non-blocking SCAN
-            keys: object = await scan_keys(redis_client, b"computer:*:heartbeat")
-            if not keys:
-                return []
-
-            interested_computers = []
-            for key in keys:  # pyright: ignore[reportGeneralTypeIssues]
-                # Get heartbeat data
-                data_bytes: object = await redis_client.get(key)
-                if not data_bytes:
-                    continue
-
-                # Parse heartbeat payload
-                data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
-                info_obj: object = json.loads(data_str)
-                if not isinstance(info_obj, dict):
-                    continue
-                info: dict[str, object] = info_obj
-
-                computer_name: str = str(info["computer_name"])
-
-                # Skip self
-                if computer_name == self.computer_name:
-                    continue
-
-                # Populate cache with computer info from heartbeat
-                if self.cache:
-                    computer_info = ComputerInfo(
-                        name=computer_name,
-                        status="online",
-                        user=None,
-                        host=None,
-                        role=None,
-                        system_stats=None,
-                    )
-                    self.cache.update_computer(computer_info)
-
-                # Check if computer is interested in this type
-                interested_in_obj: object = info.get("interested_in", [])
-                if not isinstance(interested_in_obj, list):
-                    continue
-                interested_in: list[object] = interested_in_obj
-
-                if interest_type in interested_in:
-                    interested_computers.append(computer_name)
-                    logger.trace("Computer %s is interested in %s", computer_name, interest_type)
-
-            return interested_computers
-        except Exception as e:
-            logger.error("Failed to get interested computers: %s", e)
-            self._schedule_reconnect("get_interested_computers", e)
-            return []
-
-    async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
-        """Push local session updates to interested peers via Redis."""
-        session = await db.get_session(context.session_id)
-        if not session:
-            return
-        if session.closed_at:
-            await self._push_session_event_to_peers("session_closed", {"session_id": session.session_id})
-            return
-
-        summary = SessionSummary(
-            session_id=session.session_id,
-            last_input_origin=session.last_input_origin,
-            title=session.title,
-            project_path=session.project_path,
-            subdir=session.subdir,
-            thinking_mode=session.thinking_mode or ThinkingMode.SLOW.value,
-            active_agent=session.active_agent,
-            status="active",
-            created_at=session.created_at.isoformat() if session.created_at else None,
-            last_activity=session.last_activity.isoformat() if session.last_activity else None,
-            last_input=session.last_message_sent,
-            last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
-            last_output=get_last_feedback(session),
-            last_output_at=session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None,
-            last_output_digest=session.last_output_digest,
-            tmux_session_name=session.tmux_session_name,
-            initiator_session_id=session.initiator_session_id,
-        )
-
-        await self._push_session_event_to_peers("session_updated", summary.to_dict())
-
-    async def _handle_session_started(self, _event: str, context: SessionLifecycleContext) -> None:
-        """Push local session creations to interested peers via Redis."""
-        session = await db.get_session(context.session_id)
-        if not session:
-            return
-
-        summary = SessionSummary(
-            session_id=session.session_id,
-            last_input_origin=session.last_input_origin,
-            title=session.title,
-            project_path=session.project_path,
-            subdir=session.subdir,
-            thinking_mode=session.thinking_mode or ThinkingMode.SLOW.value,
-            active_agent=session.active_agent,
-            status="active",
-            created_at=session.created_at.isoformat() if session.created_at else None,
-            last_activity=session.last_activity.isoformat() if session.last_activity else None,
-            last_input=session.last_message_sent,
-            last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
-            last_output=get_last_feedback(session),
-            last_output_at=session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None,
-            last_output_digest=session.last_output_digest,
-            tmux_session_name=session.tmux_session_name,
-            initiator_session_id=session.initiator_session_id,
-        )
-
-        await self._push_session_event_to_peers("session_started", summary.to_dict())
-
-    async def _handle_session_closed(self, _event: str, context: SessionLifecycleContext) -> None:
-        """Push local session removals to interested peers via Redis."""
-        await self._push_session_event_to_peers("session_closed", {"session_id": context.session_id})
+        pass
 
     async def _pull_initial_sessions(self) -> None:
         """Pull existing sessions from remote computers that have registered interest.
@@ -1816,83 +1616,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         except Exception as e:
             logger.warning("Failed to pull todos from %s:%s: %s", computer, project_path, e)
-
-    async def _poll_session_events(self) -> None:
-        """Poll session events stream for incoming events from remote peers (Phase 6)."""
-        stream_key = f"session_events:{self.computer_name}"
-        last_id = b"$"  # Start from current position
-        initial_pull_done = False
-
-        logger.info("Starting session events polling for stream: %s", stream_key)
-
-        while self._running:
-            try:
-                # Only poll if cache has interest in sessions (from any computer)
-                if not self.cache or not self.cache.get_interested_computers("sessions"):
-                    await asyncio.sleep(5)  # Check again in 5s
-                    initial_pull_done = False  # Reset flag when interest is lost
-                    continue
-
-                # Perform initial pull when interest is first detected
-                if not initial_pull_done:
-                    await self._pull_initial_sessions()
-                    initial_pull_done = True
-
-                # Read from session events stream
-                redis_client = await self._get_redis()
-                messages = await redis_client.xread(
-                    {stream_key.encode("utf-8"): last_id},
-                    block=1000,
-                    count=10,
-                )
-
-                if not messages:
-                    continue
-
-                # Process incoming events
-                for _stream_name, stream_messages in messages:
-                    for message_id, data in stream_messages:
-                        last_id = message_id
-
-                        # Parse event payload
-                        payload_bytes: bytes = data.get(b"payload", b"")
-                        if not payload_bytes:
-                            continue
-
-                        payload_str = payload_bytes.decode("utf-8")
-                        payload_obj: object = json.loads(payload_str)
-                        if not isinstance(payload_obj, dict):
-                            continue
-                        payload: dict[str, object] = payload_obj
-
-                        # Extract event details
-                        event: str = str(payload.get("event", ""))
-                        event_data: object = payload.get("data")
-                        source_computer: str = str(payload.get("source_computer", "unknown"))
-
-                        if not isinstance(event_data, dict):
-                            logger.warning("Event data is not a dict: %s", type(event_data))
-                            continue
-
-                        # Update cache based on event type
-                        if event == "session_updated":
-                            # Event data is a SessionSummary dict from remote
-                            summary = SessionSummary.from_dict(event_data)
-                            summary.computer = source_computer
-                            self.cache.update_session(summary)
-                            logger.debug("Updated cache with session from %s", source_computer)
-                        elif event == "session_closed":
-                            session_id: str = str(event_data.get("session_id", ""))
-                            if session_id:
-                                self.cache.remove_session(session_id)
-                                logger.debug(
-                                    "Removed session %s from cache (source: %s)", session_id[:8], source_computer
-                                )
-
-            except Exception as e:
-                await self._handle_redis_error("Session events polling error", e)
-
-        logger.info("Stopped session events polling")
 
     # === Session Observation (Interest Window) ===
 

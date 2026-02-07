@@ -104,13 +104,13 @@ def _enqueue_hook_event(
     db_path = config.database.path
     now = datetime.now(timezone.utc).isoformat()
     payload_json = json.dumps(data)
-    from sqlalchemy import create_engine, text
+    from sqlalchemy import create_engine, text  # noqa: raw-sql - Sync hook context
     from sqlmodel import Session as SqlSession
 
     engine = create_engine(f"sqlite:///{db_path}")
     with SqlSession(engine) as session:
-        session.exec(text("PRAGMA journal_mode = WAL"))
-        session.exec(text("PRAGMA busy_timeout = 5000"))
+        session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
+        session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
         row = db_models.HookOutbox(
             session_id=session_id,
             event_type=event_type,
@@ -133,7 +133,7 @@ def _update_session_native_fields(
     if not native_log_file and not native_session_id:
         return
     db_path = config.database.path
-    from sqlalchemy import create_engine, text
+    from sqlalchemy import create_engine, text  # noqa: raw-sql - Sync hook context
     from sqlmodel import Session as SqlSession
 
     engine = create_engine(f"sqlite:///{db_path}")
@@ -148,12 +148,12 @@ def _update_session_native_fields(
     if not update_parts:
         return
 
-    sql = f"UPDATE sessions SET {', '.join(update_parts)} WHERE session_id = :session_id"
-    statement = text(sql).bindparams(**params)
+    sql = f"UPDATE sessions SET {', '.join(update_parts)} WHERE session_id = :session_id"  # noqa: raw-sql
+    statement = text(sql).bindparams(**params)  # noqa: raw-sql
     with SqlSession(engine) as session:
-        session.exec(text("PRAGMA journal_mode = WAL"))
-        session.exec(text("PRAGMA busy_timeout = 5000"))
-        session.exec(statement)
+        session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
+        session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
+        session.exec(statement)  # noqa: raw-sql
         session.commit()
 
 
@@ -276,14 +276,14 @@ def _resolve_or_refresh_session_id(
         return candidate_session_id
 
     db_path = config.database.path
-    from sqlalchemy import create_engine, text
+    from sqlalchemy import create_engine, text  # noqa: raw-sql - Sync hook context
     from sqlmodel import Session as SqlSession
 
     try:
         engine = create_engine(f"sqlite:///{db_path}")
         with SqlSession(engine) as session:
             row = session.exec(
-                text(
+                text(  # noqa: raw-sql
                     "SELECT native_session_id, lifecycle_status, closed_at FROM sessions WHERE session_id = :session_id"
                 ).bindparams(session_id=candidate_session_id)
             ).first()
@@ -330,13 +330,13 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
     if not native_session_id:
         return None
     db_path = config.database.path
-    from sqlalchemy import create_engine, text
+    from sqlalchemy import create_engine, text  # noqa: raw-sql - Sync hook context
     from sqlmodel import Session as SqlSession
 
     engine = create_engine(f"sqlite:///{db_path}")
     with SqlSession(engine) as session:
         row = session.exec(
-            text(
+            text(  # noqa: raw-sql
                 "SELECT session_id FROM sessions "
                 "WHERE native_session_id = :native_session_id AND closed_at IS NULL "
                 "ORDER BY created_at DESC LIMIT 1"

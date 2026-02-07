@@ -1148,30 +1148,26 @@ class APIServer:
     def _broadcast_payload(self, event: str, payload: dict[str, object]) -> None:  # guard: loose-dict - WS payload
         """Send a WS payload to all connected clients."""
         for ws in list(self._ws_clients):
-            # Create tracked async task to send message (don't block)
-            coro = ws.send_json(payload)
-            if self.task_registry:
-                task = self.task_registry.spawn(coro, name=f"ws-broadcast-{event}")
-            else:
-                task = asyncio.create_task(coro)
 
-            def on_done(t: asyncio.Task[object], client: WebSocket = ws) -> None:
-                if t.done() and t.exception():
-                    logger.warning("WebSocket send failed, removing client: %s", t.exception())
+            async def _send_with_timeout(client: WebSocket = ws) -> None:
+                try:
+                    await asyncio.wait_for(client.send_json(payload), timeout=2.0)
+                except (TimeoutError, Exception) as exc:
+                    logger.warning("WebSocket send failed, removing client: %s", exc)
                     self._ws_clients.discard(client)
                     self._client_subscriptions.pop(client, None)
-                    if self.task_registry:
-                        self.task_registry.spawn(self._close_ws(client), name="ws-close")
-                    else:
-                        asyncio.create_task(self._close_ws(client))
+                    await self._close_ws(client)
 
-            task.add_done_callback(on_done)
+            if self.task_registry:
+                self.task_registry.spawn(_send_with_timeout(), name=f"ws-broadcast-{event}")
+            else:
+                asyncio.create_task(_send_with_timeout())
 
     async def _close_ws(self, websocket: WebSocket) -> None:
-        """Close a WebSocket connection safely."""
+        """Close a WebSocket connection safely with timeout."""
         try:
-            await websocket.close()
-        except Exception:
+            await asyncio.wait_for(websocket.close(), timeout=1.0)
+        except (TimeoutError, Exception):
             pass
 
     async def start(self) -> None:

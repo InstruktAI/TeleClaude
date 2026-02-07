@@ -12,6 +12,7 @@ from teleclaude.core.models import Session
 def mock_client():
     client = MagicMock()
     client.send_message = AsyncMock()
+    client.send_threaded_output = AsyncMock(return_value="msg-123")
     client.send_threaded_footer = AsyncMock()
     return client
 
@@ -78,13 +79,13 @@ async def test_handle_agent_stop_experiment_enabled(coordinator, mock_client):
 
         await coordinator.handle_agent_stop(context)
 
-        mock_client.send_message.assert_called_once_with(
-            session,
-            "Summary message",
-            ephemeral=False,
-            multi_message=True,
-        )
-        mock_client.send_threaded_footer.assert_called_once()
+        mock_client.send_threaded_output.assert_called_once()
+        call_args = mock_client.send_threaded_output.call_args
+        assert call_args[0][0] is session
+        assert call_args[0][1] == "Summary message"
+        assert call_args[1]["multi_message"] is True
+        assert "footer_text" in call_args[1]
+        mock_client.send_message.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -169,6 +169,7 @@ async def test_stop_notification_emits_agent_stop_event():
     from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
+    mock_client.agent_event_handler = AsyncMock()
     adapter = RedisTransport(mock_client)
 
     adapter.send_response = AsyncMock()
@@ -180,17 +181,10 @@ async def test_stop_notification_emits_agent_stop_event():
         b"origin": b"telegram",
     }
 
-    emitted: list[tuple[object, object]] = []
+    await adapter._handle_incoming_message("msg-1", data)
 
-    def record_emit(event, context) -> None:
-        emitted.append((event, context))
-
-    with patch("teleclaude.core.event_bus.event_bus.emit", new=record_emit):
-        await adapter._handle_incoming_message("msg-1", data)
-
-    assert len(emitted) == 1
-    event, context = emitted[0]
-    assert event == TeleClaudeEvents.AGENT_EVENT
+    mock_client.agent_event_handler.assert_called_once()
+    context = mock_client.agent_event_handler.call_args[0][0]
     assert context.event_type == AgentHookEvents.AGENT_STOP
 
 

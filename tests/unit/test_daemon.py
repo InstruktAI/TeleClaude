@@ -646,6 +646,9 @@ async def test_process_agent_stop_sets_native_session_id_from_payload(tmp_path):
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
     daemon._ensure_output_polling = AsyncMock()
+    mock_coordinator = MagicMock()
+    mock_coordinator.handle_event = AsyncMock()
+    daemon.agent_coordinator = mock_coordinator
 
     session = Session(
         session_id="tele-123",
@@ -943,6 +946,9 @@ async def test_dispatch_hook_event_updates_tty_before_polling():
     daemon.client = MagicMock()
     daemon.client.create_channel = AsyncMock()
     daemon._ensure_output_polling = AsyncMock()
+    mock_coordinator = MagicMock()
+    mock_coordinator.handle_event = AsyncMock()
+    daemon.agent_coordinator = mock_coordinator
 
     session = Session(
         session_id="sess-tty",

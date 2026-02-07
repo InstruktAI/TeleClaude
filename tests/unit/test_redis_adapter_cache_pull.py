@@ -569,7 +569,7 @@ async def test_heartbeat_populates_cache():
     mock_cache.update_computer = record_computer
 
     # Execute
-    await adapter._get_interested_computers("sessions")
+    await adapter.refresh_peers_from_heartbeats()
 
     # Verify cache was updated
     assert len(captured) == 1

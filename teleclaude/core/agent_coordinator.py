@@ -9,6 +9,7 @@ Handles agent lifecycle events (start, stop, notification) and routes them to:
 import base64
 import random
 from datetime import datetime, timezone
+from hashlib import sha256
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
@@ -214,6 +215,9 @@ class AgentCoordinator:
         payload = cast(AgentStopPayload, context.data)
         source_computer = payload.source_computer
 
+        # Fetch session early for logic checks
+        session = await db.get_session(session_id)
+
         logger.debug(
             "Agent stop event for session %s (title: %s)",
             session_id[:8],
@@ -221,37 +225,57 @@ class AgentCoordinator:
         )
 
         # 1. Extract and summarize agent output, write to DB immediately
-        raw_output, summary = await self._extract_and_summarize(session_id, payload)
-        if raw_output:
-            # Strip ANSI codes if configured
-            if config.terminal.strip_ansi:
-                raw_output = strip_ansi_codes(raw_output)
+        # SKIP summary if threaded output experiment is enabled (output already sent)
+        active_agent = (session.active_agent if session else None) or (
+            payload.raw.get("agent_name") if payload.raw else None
+        )
+        if not (active_agent and is_threaded_output_enabled(str(active_agent))):
+            raw_output, summary = await self._extract_and_summarize(session_id, payload)
+            if raw_output:
+                # Strip ANSI codes if configured
+                if config.terminal.strip_ansi:
+                    raw_output = strip_ansi_codes(raw_output)
 
-            await db.update_session(
-                session_id,
-                reason="agent_stopped",
-                last_feedback_received=raw_output,
-                last_feedback_summary=summary,
-                last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
-            )
-            logger.debug(
-                "Stored agent output: session=%s raw_len=%d summary_len=%d",
-                session_id[:8],
-                len(raw_output),
-                len(summary) if summary else 0,
-            )
-            # Speak the summary via TTS
-            if summary:
-                try:
-                    await self.tts_manager.speak(summary)
-                except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
-                    logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
+                await db.update_session(
+                    session_id,
+                    reason="agent_stopped",
+                    last_feedback_received=raw_output,
+                    last_feedback_summary=summary,
+                    last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
+                )
+                logger.debug(
+                    "Stored agent output: session=%s raw_len=%d summary_len=%d",
+                    session_id[:8],
+                    len(raw_output),
+                    len(summary) if summary else 0,
+                )
+                # Speak the summary via TTS
+                if summary:
+                    try:
+                        await self.tts_manager.speak(summary)
+                    except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
+                        logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
+        else:
+            logger.debug("Skipping summary generation for threaded session %s", session_id[:8])
 
         # 2. For Codex: extract last user input from transcript (no hook support)
         await self._extract_user_input_for_codex(session_id, payload)
 
         # 3. Incremental threaded output (final turn portion)
         await self._maybe_send_incremental_output(session_id, payload)
+
+        # Clear threaded output state for this turn (only for threaded sessions).
+        # Non-threaded sessions rely on the poller's output_message_id for in-place edits.
+        session = await db.get_session(session_id)  # Refresh to get latest metadata
+        if (
+            session
+            and session.adapter_metadata.telegram
+            and active_agent
+            and is_threaded_output_enabled(str(active_agent))
+        ):
+            session.adapter_metadata.telegram.output_message_id = None
+            session.adapter_metadata.telegram.char_offset = 0
+            await db.update_session(session_id, adapter_metadata=session.adapter_metadata)
 
         # Clear turn-specific cursor at turn completion
         await db.update_session(session_id, last_agent_output_at=None)
@@ -337,18 +361,25 @@ class AgentCoordinator:
         if is_multi:
             # Multi-message: use standard renderer (with headers) for bulk update.
             # Suppression of tool results is handled inside the renderer for UI.
+            # No truncation; adapter handles pagination/splitting.
             message, last_ts = render_agent_output(
                 transcript_path,
                 agent_name,
                 include_tools=include_tools,
                 include_tool_results=False,
                 since_timestamp=session.last_agent_output_at,
+                include_timestamps=False,
             )
         else:
             # Single message: use clean, metadata-free renderer (italics/bold-monospace).
             message, last_ts = render_clean_agent_output(
                 transcript_path, agent_name, since_timestamp=session.last_agent_output_at
             )
+
+        if not message:
+            # Activity detected but no renderable text (e.g. empty thinking blocks or hidden tool output).
+            # Use a placeholder to ensure the UI shows liveness (and the footer updates).
+            message = "_..._"
 
         if message:
             logger.info(
@@ -360,20 +391,46 @@ class AgentCoordinator:
             try:
                 # Keep Telegram MarkdownV2 formatting for both renderers.
                 formatted_message = telegramify_markdown(message)
-                await self.client.send_message(session, formatted_message, ephemeral=False, multi_message=is_multi)
-                await self.client.send_threaded_footer(session, self._build_threaded_footer_text(session))
 
-                # CRITICAL: Update cursor ONLY after successful send to prevent
-                # missing activity if delivery fails.
-                if last_ts:
+                # Check for no-op update (skip adapter call if content unchanged)
+                # This prevents "footer spam" where the footer is deleted/resent on every poll cycle
+                # even if the agent is just "thinking" without new output.
+                display_digest = sha256(formatted_message.encode("utf-8")).hexdigest()
+
+                # Only update main message if content actually changed
+                if session.last_output_digest != display_digest:
+                    # Pass footer text to adapter so it can send/manage the footer atomically
+                    footer_text = self._build_threaded_footer_text(session)
+                    await self.client.send_threaded_output(
+                        session, formatted_message, footer_text=footer_text, multi_message=is_multi
+                    )
+
+                # CRITICAL: Update cursor ONLY if we are NOT tracking this message for future updates.
+                # If we are tracking (is_threaded_active), we want to re-render from the start of the turn
+                # each time (accumulating content), so we do NOT update the cursor.
+                # NOTE: We fetch fresh session/metadata to check the ID set by send_threaded_output
+                fresh_session = await db.get_session(session_id)
+                is_threaded_active = (
+                    fresh_session
+                    and fresh_session.adapter_metadata.telegram
+                    and fresh_session.adapter_metadata.telegram.output_message_id is not None
+                )
+                should_update_cursor = not is_threaded_active
+
+                # Always update session to refresh last_activity (heartbeat),
+                # but conditionally update the cursor.
+                update_kwargs = {}
+                if should_update_cursor and last_ts:
                     from teleclaude.core.models import SessionField
 
-                    await db.update_session(
-                        session_id,
-                        reason="agent_output",
-                        **{SessionField.LAST_AGENT_OUTPUT_AT.value: last_ts.isoformat()},
-                    )
-                    logger.debug("Updated cursor for session %s to %s", session_id[:8], last_ts.isoformat())
+                    update_kwargs[SessionField.LAST_AGENT_OUTPUT_AT.value] = last_ts.isoformat()
+                    logger.debug("Updating cursor for session %s to %s", session_id[:8], last_ts.isoformat())
+
+                await db.update_session(
+                    session_id,
+                    reason="agent_output",
+                    **update_kwargs,
+                )
 
                 return True
             except Exception as exc:  # noqa: BLE001 - Message send should never crash event handling

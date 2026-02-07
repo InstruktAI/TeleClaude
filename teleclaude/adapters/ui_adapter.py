@@ -285,13 +285,16 @@ class UiAdapter(BaseAdapter):
 
         Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
-        # Check if threaded output experiment is enabled for this session's agent.
-        # If enabled, we suppress the standard poller to avoid double output.
+        # Check if threaded output experiment is enabled AND hooks have actually delivered output.
+        # Only suppress when threaded output is active (output_message_id set by hooks).
         if is_threaded_output_enabled(session.active_agent):
-            logger.debug(
-                "[UI_SEND_OUTPUT] Standard output suppressed for session %s (experiment active)", session.session_id[:8]
-            )
-            return await self._get_output_message_id(session)
+            telegram_meta = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
+            if telegram_meta and getattr(telegram_meta, "output_message_id", None):
+                logger.debug(
+                    "[UI_SEND_OUTPUT] Standard output suppressed for session %s (threaded output active)",
+                    session.session_id[:8],
+                )
+                return await self._get_output_message_id(session)
 
         # Non-threaded paths should not keep stale threaded footer messages around.
         await self._cleanup_threaded_footer_if_present(session)
@@ -405,27 +408,152 @@ class UiAdapter(BaseAdapter):
             await db.update_session(session.session_id, last_output_digest=display_digest)
         return new_id
 
-    async def send_threaded_footer(self, session: "Session", text: str) -> Optional[str]:
-        """Send threaded-output footer as a separate message.
+    async def send_threaded_output(
+        self,
+        session: "Session",
+        text: str,
+        footer_text: str | None = None,
+        multi_message: bool = False,
+    ) -> Optional[str]:
+        """Send or edit threaded output message with smart pagination.
 
-        Deletes the previous footer first so only the latest footer remains visible.
+        Handles message length limits by splitting into multiple messages
+        with "..." continuity markers.
         """
-        previous_footer_id = await self._get_threaded_footer_message_id(session)
-        if previous_footer_id:
-            try:
-                await self.delete_message(session, previous_footer_id)
-            except Exception as exc:  # noqa: BLE001 - cleanup is best-effort
-                logger.debug(
-                    "Best-effort threaded footer delete failed: session=%s message_id=%s err=%s",
-                    session.session_id[:8],
-                    previous_footer_id,
-                    exc,
-                )
-            finally:
-                await self._clear_threaded_footer_message_id(session)
+        # 1. Get current offset and ID
+        telegram_meta = session.adapter_metadata.telegram
+        if not telegram_meta:
+            telegram_meta = TelegramAdapterMetadata()
+            session.adapter_metadata.telegram = telegram_meta
 
+        char_offset = telegram_meta.char_offset
+        output_message_id = telegram_meta.output_message_id
+
+        # 2. Slice text to get the "active" portion
+        # If text is shorter than offset (e.g. restart?), reset offset
+        if len(text) < char_offset:
+            char_offset = 0
+            telegram_meta.char_offset = 0
+            # If we reset, we might need to send a new message if the old one is "full"
+            # But let's assume we just continue editing or send new.
+
+        active_text = text[char_offset:]
+        if not active_text and output_message_id:
+            # No new text, nothing to do
+            return output_message_id
+
+        # 3. Add continuity markers (escaped for MarkdownV2 if Telegram)
+        is_telegram = self.ADAPTER_KEY == AdapterType.TELEGRAM.value
+        ellipsis = "\\.\\.\\." if is_telegram else "..."
+        display_text = active_text
+        prefix = ""
+        if char_offset > 0:
+            prefix = f"{ellipsis} "
+            display_text = prefix + active_text
+
+        # 4. Check for overflow
+        # Reserve space for suffix " <ellipsis>" if needed
+        limit = self.max_message_size - 10
+
+        if len(display_text) > limit:
+            # --- OVERFLOW: SEAL AND SPLIT ---
+
+            # Calculate how much actual text fits (subtracting prefix)
+            suffix = f" {ellipsis}"
+            available_for_content = limit - len(prefix) - len(suffix)
+
+            # Find split point (smart truncate on space)
+            # Take a safe chunk
+            candidate = active_text[:available_for_content]
+            last_space = candidate.rfind(" ")
+
+            if last_space > (len(candidate) * 0.8):  # Only split on space if it's near the end
+                split_idx = last_space
+            else:
+                split_idx = available_for_content  # Hard split if no good space
+
+            chunk = active_text[:split_idx]
+            sealed_text = f"{prefix}{chunk}{suffix}"
+
+            # Clean up footer before sealing so it doesn't sit between sealed and new message
+            await self._cleanup_threaded_footer_if_present(session)
+
+            # Commit this chunk
+            if output_message_id:
+                await self._try_edit_output_message(session, sealed_text, self._build_metadata_for_thread())
+            else:
+                await self._send_new_thread_message(session, sealed_text, footer_text, multi_message)
+
+            # Update state for next message
+            new_offset = char_offset + split_idx
+            telegram_meta.char_offset = new_offset
+            telegram_meta.output_message_id = None  # Detach from full message
+            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+
+            # Recursive call to handle the remainder
+            return await self.send_threaded_output(session, text, footer_text, multi_message)
+
+        # --- NORMAL CASE: FIT AND SEND ---
+
+        # Calculate digest to check for changes
+        display_digest = sha256(display_text.encode("utf-8")).hexdigest()
+
+        # Check for no-op edit (skip if content matches last successful output)
+        if output_message_id and session.last_output_digest == display_digest:
+            return output_message_id
+
+        # Build metadata (no truncation flag needed for threaded)
+        metadata = self._build_metadata_for_thread()
+
+        # Try to edit
+        if await self._try_edit_output_message(session, display_text, metadata):
+            await db.update_session(session.session_id, last_output_digest=display_digest)
+            # Footer NOT updated on edit - it stays static at bottom
+            return await self._get_output_message_id(session)
+
+        # Edit failed or no ID -> Send new
+        new_id = await self._send_new_thread_message(session, display_text, footer_text, multi_message)
+        if new_id:
+            await db.update_session(session.session_id, last_output_digest=display_digest)
+        return new_id
+
+    def _build_metadata_for_thread(self) -> MessageMetadata:
+        """Helper to build metadata for threaded content messages (no download button)."""
+        metadata = MessageMetadata()
+        if self.ADAPTER_KEY == AdapterType.TELEGRAM.value:
+            metadata.parse_mode = "MarkdownV2"
+        return metadata
+
+    async def _send_new_thread_message(
+        self, session: "Session", text: str, footer_text: str | None, multi_message: bool
+    ) -> Optional[str]:
+        """Helper to send new message and update session state."""
+        # 1. Clean up old footer (atomic group management)
+        await self._cleanup_threaded_footer_if_present(session)
+
+        # 2. Send new output message
+        metadata = self._build_metadata_for_thread()
+        new_id = await self.send_message(
+            session,
+            text,
+            metadata=metadata,
+            multi_message=multi_message,
+        )
+
+        if new_id:
+            await self._store_output_message_id(session, new_id)
+
+            # 3. Send new footer (only on new message creation)
+            if footer_text:
+                await self.send_threaded_footer(session, footer_text)
+
+        return new_id
+
+    async def send_threaded_footer(self, session: "Session", text: str) -> Optional[str]:
+        """Send threaded-output footer message, replacing any previous footer."""
+        # Always clean up old footer before sending new one to prevent accumulation
+        await self._cleanup_threaded_footer_if_present(session)
         metadata = self._build_output_metadata(session, _is_truncated=False)
-        # Footer is plain text to avoid markdown escape artifacts in status lines/IDs.
         metadata.parse_mode = None
         new_id = await self.send_message(session, text, metadata=metadata)
         if new_id:

@@ -448,3 +448,211 @@ class TestFormatMessage:
 
         assert "```\nSimple tmux output\nNo code blocks here\n```" in result
         assert "status line" in result
+
+
+@pytest.mark.asyncio
+class TestSendThreadedOutput:
+    """Test send_threaded_output smart pagination and overflow handling."""
+
+    async def test_normal_sends_new_message(self, test_db):
+        """Text fits in limit with no existing message → sends new."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata.telegram = TelegramAdapterMetadata()
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        result = await adapter.send_threaded_output(session, "Hello world", footer_text="📋 tc: test")
+
+        assert result == "msg-123"
+        assert len(adapter._send_calls) >= 1
+        # The output message should contain "Hello world"
+        assert any("Hello world" in text for text, _ in adapter._send_calls)
+
+    async def test_edits_existing_message(self, test_db):
+        """Text fits in limit with existing output_message_id → edits."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="msg-456")
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        result = await adapter.send_threaded_output(session, "Updated text")
+
+        assert result == "msg-456"
+        assert len(adapter._edit_calls) == 1
+        assert "Updated text" in adapter._edit_calls[0]
+
+    async def test_digest_noop_skips_edit(self, test_db):
+        """Same content digest → returns early without edit."""
+        from hashlib import sha256
+
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        text = "Same text"
+        digest = sha256(text.encode("utf-8")).hexdigest()
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="msg-789")
+        await test_db.update_session(
+            session.session_id,
+            adapter_metadata=session.adapter_metadata,
+            last_output_digest=digest,
+        )
+        session = await test_db.get_session(session.session_id)
+
+        result = await adapter.send_threaded_output(session, text)
+
+        assert result == "msg-789"
+        assert len(adapter._edit_calls) == 0
+        assert len(adapter._send_calls) == 0
+
+    async def test_no_active_text_returns_existing_id(self, test_db):
+        """No new text after char_offset → returns existing message_id."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="msg-existing", char_offset=10)
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        result = await adapter.send_threaded_output(session, "0123456789")  # exactly 10 chars
+
+        assert result == "msg-existing"
+        assert len(adapter._send_calls) == 0
+        assert len(adapter._edit_calls) == 0
+
+    async def test_resets_offset_when_text_shorter(self, test_db):
+        """Text shorter than char_offset → resets offset and continues."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(char_offset=1000)
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        result = await adapter.send_threaded_output(session, "short")
+
+        assert result == "msg-123"
+        # Offset should have been reset
+        refreshed = await test_db.get_session(session.session_id)
+        assert refreshed.adapter_metadata.telegram.char_offset == 0
+
+    async def test_continuity_marker_when_offset_nonzero(self, test_db):
+        """Text with nonzero char_offset → adds "..." prefix."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(char_offset=5)
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        result = await adapter.send_threaded_output(session, "Hello World!")
+
+        assert result == "msg-123"
+        # Should contain continuity marker (escaped for Telegram MarkdownV2)
+        assert len(adapter._send_calls) >= 1
+        sent_text = adapter._send_calls[0][0]
+        assert "\\.\\.\\." in sent_text  # Telegram escaped ellipsis
+
+    async def test_overflow_splits_into_multiple_messages(self, test_db):
+        """Text exceeding limit → seals first chunk, sends new for remainder."""
+        adapter = MockUiAdapter()
+        # Set a small limit for testing
+        adapter.max_message_size = 100
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata.telegram = TelegramAdapterMetadata()
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        # Create text that will overflow the 100-char limit (limit - 10 = 90 effective)
+        long_text = "word " * 30  # 150 chars
+
+        result = await adapter.send_threaded_output(session, long_text, footer_text="footer")
+
+        # Should have sent at least 2 messages (sealed + remainder)
+        assert len(adapter._send_calls) >= 2
+        assert result is not None
+
+        # Verify char_offset was advanced in DB
+        refreshed = await test_db.get_session(session.session_id)
+        assert refreshed.adapter_metadata.telegram.char_offset > 0
+
+
+@pytest.mark.asyncio
+class TestSendOutputUpdateSuppression:
+    """Test send_output_update suppression fallback for threaded output."""
+
+    async def test_suppressed_when_threaded_active_and_output_message_id_set(self, test_db):
+        """Threaded output experiment on + output_message_id set → suppressed."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="threaded-msg")
+        await test_db.update_session(
+            session.session_id, adapter_metadata=session.adapter_metadata, active_agent="gemini"
+        )
+        session = await test_db.get_session(session.session_id)
+
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=True):
+            result = await adapter.send_output_update(session, "output text", time.time(), time.time())
+
+        assert result == "threaded-msg"
+        assert len(adapter._send_calls) == 0
+        assert len(adapter._edit_calls) == 0
+
+    async def test_not_suppressed_when_threaded_but_no_output_message_id(self, test_db):
+        """Threaded experiment on but no output_message_id → falls through to normal output."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata.telegram = TelegramAdapterMetadata()  # No output_message_id
+        await test_db.update_session(
+            session.session_id, adapter_metadata=session.adapter_metadata, active_agent="gemini"
+        )
+        session = await test_db.get_session(session.session_id)
+
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=True):
+            result = await adapter.send_output_update(session, "output text", time.time(), time.time())
+
+        # Should fall through and send normally
+        assert result == "msg-123"
+        assert len(adapter._send_calls) == 1

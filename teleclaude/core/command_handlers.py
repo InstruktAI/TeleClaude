@@ -780,6 +780,10 @@ async def process_message(
         last_input_origin=cmd.origin,
     )
 
+    # Broadcast user input to other adapters (e.g. TUI input -> Telegram)
+    if cmd.origin:
+        await client.broadcast_user_input(session, message_text, cmd.origin)
+
     active_agent = session.active_agent
     sanitized_text = tmux_io.wrap_bracketed_paste(message_text)
 

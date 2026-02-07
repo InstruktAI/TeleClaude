@@ -11,7 +11,6 @@ from typing import Callable, Optional, cast
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_local_datetime
-from teleclaude.utils.markdown import truncate_markdown_v2
 
 logger = logging.getLogger(__name__)
 
@@ -776,11 +775,12 @@ def render_agent_output(
     include_tools: bool = False,
     include_tool_results: bool = True,
     since_timestamp: Optional[datetime] = None,
-    max_chars: int = 4000,
+    include_timestamps: bool = True,
 ) -> tuple[Optional[str], Optional[datetime]]:
     """Render markdown for assistant activity since the last user boundary or since_timestamp.
 
-    Used for sequential, incremental output blocks.
+    Used for sequential, incremental output blocks. No truncation is applied;
+    the adapter handles pagination/splitting for platform limits.
 
     Args:
         transcript_path: Path to transcript file
@@ -788,7 +788,7 @@ def render_agent_output(
         include_tools: Whether to include tool call blocks
         include_tool_results: Whether to include tool result blocks
         since_timestamp: Optional UTC datetime boundary. If provided, only returns activity AFTER this.
-        max_chars: Maximum characters for the entire message (truncates if exceeded)
+        include_timestamps: Whether to prefix blocks with [HH:MM:SS] timestamps
 
     Returns:
         Tuple of (markdown text or None, timestamp of last rendered entry or None)
@@ -875,7 +875,7 @@ def render_agent_output(
 
         # Restore timestamp if we have a valid entry datetime
         time_prefix = ""
-        if last_entry_dt:
+        if include_timestamps and last_entry_dt:
             time_prefix = f"[{last_entry_dt.strftime('%H:%M:%S')}] "
 
         for block in content:
@@ -919,10 +919,6 @@ def render_agent_output(
         return None, last_entry_dt
 
     result = "\n".join(lines).strip()
-    if len(result) > max_chars:
-        truncated_msg = "\n\n---\n*Output truncated due to length limits.*"
-        result = truncate_markdown_v2(result, max_chars, truncated_msg)
-
     return result, last_entry_dt
 
 

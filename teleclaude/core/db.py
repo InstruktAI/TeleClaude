@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Literal, Optional, TypedDict
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
@@ -148,21 +147,32 @@ class Db:
 
         await run_pending_migrations(self.conn)
 
+        # Close bootstrap connection — runtime access uses the SQLAlchemy pool
+        await self.conn.close()
+        self.conn = None
+
         # Async engine for runtime access
         db_url = f"sqlite+aiosqlite:///{db_path}"
         from sqlalchemy.ext.asyncio import create_async_engine
         from sqlalchemy.orm import sessionmaker
 
         connect_args = {"uri": True} if use_uri else {}
-        self._engine = create_async_engine(db_url, future=True, connect_args=connect_args)
+        self._engine = create_async_engine(
+            db_url,
+            future=True,
+            connect_args=connect_args,
+            pool_size=5,
+            max_overflow=3,
+            pool_pre_ping=True,
+        )
         self._sessionmaker = sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)
 
         async with self._engine.begin() as conn:
-            from sqlalchemy import text
+            from sqlalchemy import text  # noqa: raw-sql - PRAGMAs require raw SQL
 
-            await conn.execute(text("PRAGMA journal_mode = WAL"))
-            await conn.execute(text("PRAGMA synchronous = NORMAL"))
-            await conn.execute(text("PRAGMA busy_timeout = 5000"))
+            await conn.execute(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
+            await conn.execute(text("PRAGMA synchronous = NORMAL"))  # noqa: raw-sql
+            await conn.execute(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
 
         await self._normalize_adapter_metadata()
 
@@ -218,6 +228,16 @@ class Db:
     def set_client(self, client: "AdapterClient") -> None:
         """Deprecated no-op: events are emitted via the global event bus."""
         _ = client
+
+    async def wal_checkpoint(self) -> None:
+        """Run WAL checkpoint to prevent unbounded WAL growth."""
+        async with self._session() as session:
+            from sqlalchemy import text  # noqa: raw-sql - PRAGMA requires raw SQL
+
+            result = await session.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))  # noqa: raw-sql
+            row = result.fetchone()
+            if row:
+                logger.debug("WAL checkpoint: busy=%s, log=%s, checkpointed=%s", *row)
 
     async def close(self) -> None:
         """Close database connection."""
@@ -764,32 +784,27 @@ class Db:
         Returns:
             List of matching sessions
         """
-        # SQLite JSON functions - adapter_metadata is nested: {adapter_type: {metadata_key: value}}
-        base_query = f"""
-            SELECT * FROM sessions
-            WHERE json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = :value
-        """
-        if not include_closed:
-            base_query += " AND closed_at IS NULL"
+        from sqlalchemy import func, or_
+        from sqlmodel import select
 
-        params: dict[str, object] = {"value": metadata_value}  # guard: loose-dict - SQL params.
+        # SQLite JSON path: $.{adapter_type}.{metadata_key}
+        json_path = f"$.{adapter_type}.{metadata_key}"
+        json_expr = func.json_extract(db_models.Session.adapter_metadata, json_path)
+
+        # Handle int values that may be stored as strings in JSON
         if isinstance(metadata_value, int):
-            base_query = f"""
-                SELECT * FROM sessions
-                WHERE json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = :value
-                   OR json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = :value_str
-            """
-            if not include_closed:
-                base_query += " AND closed_at IS NULL"
-            params["value_str"] = str(metadata_value)
+            condition = or_(json_expr == metadata_value, json_expr == str(metadata_value))
+        else:
+            condition = json_expr == metadata_value
+
+        stmt = select(db_models.Session).where(condition)
+        if not include_closed:
+            stmt = stmt.where(db_models.Session.closed_at.is_(None))
 
         async with self._session() as db_session:
-            from sqlalchemy import text
-
-            stmt = text(base_query).bindparams(**params)
             result = await db_session.exec(stmt)
-            rows = result.mappings().all()
-            return [Session.from_dict(dict(row)) for row in rows]
+            rows = result.all()
+            return [self._to_core_session(row) for row in rows]
 
     async def get_sessions_by_title_pattern(self, pattern: str, include_closed: bool = False) -> list[Session]:
         """Get sessions where title starts with the given pattern.
@@ -911,23 +926,25 @@ class Db:
             voice_id: Either teleclaude session ID or Agent session ID
             voice: VoiceConfig to assign
         """
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+        now = datetime.now(timezone.utc)
+        stmt = sqlite_insert(db_models.VoiceAssignment).values(
+            id=voice_id,
+            service_name=voice.service_name,
+            voice=voice.voice,
+            assigned_at=now,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "service_name": stmt.excluded.service_name,
+                "voice": stmt.excluded.voice,
+                "assigned_at": now,
+            },
+        )
         async with self._session() as db_session:
-            stmt = text(
-                "INSERT INTO voice_assignments (id, service_name, voice, assigned_at) "
-                "VALUES (:id, :service_name, :voice, CURRENT_TIMESTAMP) "
-                "ON CONFLICT(id) DO UPDATE SET "
-                "service_name = excluded.service_name, "
-                "voice = excluded.voice, "
-                "assigned_at = CURRENT_TIMESTAMP"
-            )
-            await db_session.exec(
-                stmt,
-                params={
-                    "id": voice_id,
-                    "service_name": voice.service_name,
-                    "voice": voice.voice,
-                },
-            )
+            await db_session.exec(stmt)
             await db_session.commit()
         logger.debug("Assigned voice '%s' from service '%s' to %s", voice.voice, voice.service_name, voice_id[:8])
 
@@ -979,11 +996,12 @@ class Db:
         Returns:
             Number of records deleted
         """
-        from sqlalchemy import text
+        from datetime import timedelta
 
-        stmt = text("DELETE FROM voice_assignments WHERE assigned_at < datetime('now', :delta || ' days')").bindparams(
-            delta=f"-{max_age_days}"
-        )
+        from sqlalchemy import delete
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        stmt = delete(db_models.VoiceAssignment).where(db_models.VoiceAssignment.assigned_at < cutoff)
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
@@ -1088,13 +1106,17 @@ class Db:
         Returns:
             Number of agents reset to available
         """
-        now = datetime.now(timezone.utc).isoformat()
-        from sqlalchemy import text
+        from sqlalchemy import update
 
-        stmt = text(
-            "UPDATE agent_availability SET available = 1, unavailable_until = NULL, reason = NULL "
-            "WHERE unavailable_until IS NOT NULL AND unavailable_until < :now"
-        ).bindparams(now=now)
+        now = datetime.now(timezone.utc).isoformat()
+        stmt = (
+            update(db_models.AgentAvailability)
+            .where(
+                db_models.AgentAvailability.unavailable_until.is_not(None),
+                db_models.AgentAvailability.unavailable_until < now,
+            )
+            .values(available=1, unavailable_until=None, reason=None)
+        )
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
@@ -1161,13 +1183,20 @@ class Db:
 
     async def claim_hook_outbox(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
         """Claim a hook outbox row for processing."""
-        from sqlalchemy import text
+        from sqlalchemy import or_, update
 
-        stmt = text(
-            "UPDATE hook_outbox SET locked_at = :now "
-            "WHERE id = :row_id AND delivered_at IS NULL "
-            "AND (locked_at IS NULL OR locked_at <= :cutoff)"
-        ).bindparams(now=now_iso, row_id=row_id, cutoff=lock_cutoff_iso)
+        stmt = (
+            update(db_models.HookOutbox)
+            .where(
+                db_models.HookOutbox.id == row_id,
+                db_models.HookOutbox.delivered_at.is_(None),
+                or_(
+                    db_models.HookOutbox.locked_at.is_(None),
+                    db_models.HookOutbox.locked_at <= lock_cutoff_iso,
+                ),
+            )
+            .values(locked_at=now_iso)
+        )
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
@@ -1175,12 +1204,14 @@ class Db:
 
     async def mark_hook_outbox_delivered(self, row_id: int, error: str | None = None) -> None:
         """Mark a hook outbox row delivered (optionally capturing last error)."""
-        now = datetime.now(timezone.utc).isoformat()
-        from sqlalchemy import text
+        from sqlalchemy import update
 
-        stmt = text(
-            "UPDATE hook_outbox SET delivered_at = :now, last_error = :error, locked_at = NULL WHERE id = :row_id"
-        ).bindparams(now=now, error=error, row_id=row_id)
+        now = datetime.now(timezone.utc).isoformat()
+        stmt = (
+            update(db_models.HookOutbox)
+            .where(db_models.HookOutbox.id == row_id)
+            .values(delivered_at=now, last_error=error, locked_at=None)
+        )
         async with self._session() as db_session:
             await db_session.exec(stmt)
             await db_session.commit()
@@ -1193,23 +1224,24 @@ class Db:
         error: str,
     ) -> None:
         """Record a hook outbox failure and schedule a retry."""
-        from sqlalchemy import text
+        from sqlalchemy import update
 
-        stmt = text(
-            "UPDATE hook_outbox SET attempt_count = :attempt, next_attempt_at = :next_attempt, "
-            "last_error = :error, locked_at = NULL WHERE id = :row_id"
-        ).bindparams(
-            attempt=attempt_count,
-            next_attempt=next_attempt_at,
-            error=error,
-            row_id=row_id,
+        stmt = (
+            update(db_models.HookOutbox)
+            .where(db_models.HookOutbox.id == row_id)
+            .values(
+                attempt_count=attempt_count,
+                next_attempt_at=next_attempt_at,
+                last_error=error,
+                locked_at=None,
+            )
         )
         async with self._session() as db_session:
             await db_session.exec(stmt)
             await db_session.commit()
 
 
-def _field_query(field: str) -> str:
+def _field_query(field: str) -> str:  # noqa: raw-sql - Sync helper for standalone scripts
     """Build query to find session by direct column value."""
     return (
         f"SELECT session_id FROM sessions WHERE {field} = :value "
@@ -1221,16 +1253,17 @@ def _fetch_session_id_sync(db_path: str, query: str, value: object) -> str | Non
     """Sync helper for raw session_id queries.
 
     guard: allow-string-compare
+    noqa: raw-sql - Sync context requires raw SQL for lightweight lookups
     """
-    from sqlalchemy import create_engine, text
+    from sqlalchemy import create_engine, text  # noqa: raw-sql
     from sqlmodel import Session as SqlSession
 
     engine = create_engine(f"sqlite:///{db_path}")
     with SqlSession(engine) as session:
-        session.exec(text("PRAGMA journal_mode = WAL"))
-        session.exec(text("PRAGMA busy_timeout = 5000"))
+        session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
+        session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
         try:
-            result = session.exec(text(query), {"value": value})
+            result = session.exec(text(query), {"value": value})  # noqa: raw-sql
         except Exception as exc:  # noqa: BLE001 - Boundary DB operation
             if "no such table" in str(exc).lower():
                 return None
@@ -1248,7 +1281,7 @@ def get_session_id_by_field_sync(db_path: str, field: str, value: object) -> str
     return _fetch_session_id_sync(db_path, _field_query(field), value)
 
 
-def get_session_id_by_tmux_name_sync(db_path: str, tmux_name: str) -> str | None:
+def get_session_id_by_tmux_name_sync(db_path: str, tmux_name: str) -> str | None:  # noqa: raw-sql
     """Sync helper to find session_id by tmux session name."""
     query = (
         "SELECT session_id FROM sessions WHERE tmux_session_name = :value "

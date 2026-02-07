@@ -288,7 +288,9 @@ async def test_route_to_ui_skips_exceptions_without_origin():
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=1)),
     )
 
-    with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
         result = await client.send_message(session, "hello", ephemeral=False)
     assert result == "123"
 
@@ -647,7 +649,12 @@ async def test_send_threaded_footer_routes_to_origin_adapter():
         active_agent="gemini",
     )
 
-    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=True):
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with (
+        patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=True),
+        patch("teleclaude.core.adapter_client.db", mock_db),
+    ):
         result = await client.send_threaded_footer(session, "📋 tc: session-footer")
     assert result == "footer-1"
     telegram.send_threaded_footer.assert_awaited_once_with(session, "📋 tc: session-footer")
@@ -699,7 +706,9 @@ async def test_send_message_broadcasts_to_ui_adapters():
         title="Test Session",
     )
 
-    with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
         message_id = await client.send_message(session, "hello")
 
     assert message_id == "tg-msg-1"
@@ -723,6 +732,7 @@ async def test_send_message_ephemeral_tracks_for_deletion():
     )
 
     mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
     with patch("teleclaude.core.adapter_client.db", mock_db):
         # Default ephemeral=True should track for deletion
         await client.send_message(session, "hello")
@@ -775,7 +785,9 @@ async def test_send_message_notice_broadcasts_when_missing_origin():
         title="Test Session",
     )
 
-    with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id == "tg-feedback"
@@ -801,7 +813,9 @@ async def test_send_message_notice_targets_last_input_origin():
         title="Test Session",
     )
 
-    with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id == "slack-feedback"
@@ -825,7 +839,9 @@ async def test_send_message_notice_api_origin_routes_to_ui():
         title="Test Session",
     )
 
-    with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id == "tg-feedback"
@@ -875,8 +891,189 @@ async def test_delete_channel_always_broadcasts():
         title="Test Session",
     )
 
-    ok = await client.delete_channel(session)
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        ok = await client.delete_channel(session)
 
     assert ok is True
     assert telegram_adapter.deleted_channels == [session.session_id]
     assert slack_adapter.deleted_channels == [session.session_id]
+
+
+@pytest.mark.asyncio
+async def test_send_threaded_output_routes_through_route_to_ui():
+    """send_threaded_output should route via _route_to_ui with broadcast=False."""
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client)
+    telegram.send_threaded_output = AsyncMock(return_value="threaded-msg-1")  # type: ignore[assignment]
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-threaded",
+        computer_name="test",
+        tmux_session_name="tc_threaded",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+        active_agent="gemini",
+    )
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        result = await client.send_threaded_output(session, "Output text", footer_text="📋 footer", multi_message=True)
+
+    assert result == "threaded-msg-1"
+    telegram.send_threaded_output.assert_awaited_once_with(
+        session, "Output text", footer_text="📋 footer", multi_message=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_threaded_output_no_broadcast_to_observers():
+    """send_threaded_output must NOT broadcast to observer adapters."""
+    client = AdapterClient()
+
+    telegram = DummyTelegramAdapter(client)
+    telegram.send_threaded_output = AsyncMock(return_value="tg-threaded")  # type: ignore[assignment]
+
+    slack = DummyTelegramAdapter(client)
+    slack.send_threaded_output = AsyncMock(return_value="slack-threaded")  # type: ignore[assignment]
+
+    client.register_adapter("telegram", telegram)
+    client.register_adapter("slack", slack)
+
+    session = Session(
+        session_id="session-threaded-no-broadcast",
+        computer_name="test",
+        tmux_session_name="tc_threaded_nb",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+    )
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        result = await client.send_threaded_output(session, "Output text")
+
+    assert result == "tg-threaded"
+    telegram.send_threaded_output.assert_awaited_once()
+    slack.send_threaded_output.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_broadcast_user_input_sends_to_observers_not_origin():
+    """broadcast_user_input should send formatted text to non-origin UI adapters."""
+    client = AdapterClient()
+
+    telegram = DummyTelegramAdapter(client, send_message_return="tg-broadcast")
+    slack = DummyTelegramAdapter(client, send_message_return="slack-broadcast")
+    client.register_adapter("telegram", telegram)
+    client.register_adapter("slack", slack)
+
+    session = Session(
+        session_id="session-broadcast",
+        computer_name="test",
+        tmux_session_name="tc_broadcast",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+    )
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        await client.broadcast_user_input(session, "Hello from user", "telegram")
+
+    # Origin (telegram) should NOT receive the broadcast
+    assert telegram.sent_messages == []
+    # Observer (slack) should receive formatted user input
+    assert len(slack.sent_messages) == 1
+    assert "Hello from user" in slack.sent_messages[0]
+
+
+@pytest.mark.asyncio
+async def test_broadcast_user_input_includes_origin_attribution():
+    """broadcast_user_input formats with origin + computer name."""
+    client = AdapterClient()
+
+    slack = DummyTelegramAdapter(client, send_message_return="slack-msg")
+    client.register_adapter("slack", slack)
+
+    session = Session(
+        session_id="session-attribution",
+        computer_name="test",
+        tmux_session_name="tc_attribution",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+    )
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        await client.broadcast_user_input(session, "test input", "api")
+
+    assert len(slack.sent_messages) == 1
+    msg = slack.sent_messages[0]
+    # "api" origin should display as "TUI"
+    assert "TUI" in msg
+    assert "test input" in msg
+
+
+@pytest.mark.asyncio
+async def test_send_output_update_suppressed_when_threaded_active():
+    """send_output_update suppressed when threaded experiment on + output_message_id set."""
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client)
+    telegram.send_output_update = AsyncMock(return_value="should-not-be-called")  # type: ignore[assignment]
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-suppressed",
+        computer_name="test",
+        tmux_session_name="tc_suppressed",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+        active_agent="gemini",
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(output_message_id="threaded-msg-id")),
+    )
+
+    mock_db = AsyncMock()
+    mock_db.get_output_message_id = AsyncMock(return_value="threaded-msg-id")
+    with (
+        patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=True),
+        patch("teleclaude.core.adapter_client.db", mock_db),
+    ):
+        result = await client.send_output_update(session, "output", 0.0, 0.0)
+
+    assert result == "threaded-msg-id"
+    telegram.send_output_update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_send_output_update_falls_through_when_no_output_message_id():
+    """send_output_update falls through when threaded experiment on but no output_message_id."""
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client)
+    telegram.send_output_update = AsyncMock(return_value="normal-msg")  # type: ignore[assignment]
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-fallthrough",
+        computer_name="test",
+        tmux_session_name="tc_fallthrough",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+        active_agent="gemini",
+        adapter_metadata=SessionAdapterMetadata(
+            telegram=TelegramAdapterMetadata()  # No output_message_id
+        ),
+    )
+
+    with (
+        patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=True),
+        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)),
+    ):
+        result = await client.send_output_update(session, "output", 0.0, 0.0)
+
+    assert result == "normal-msg"
+    telegram.send_output_update.assert_awaited_once()

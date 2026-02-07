@@ -230,14 +230,23 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.headless_snapshot_service,
         )
 
-        # Auto-discover and register event handlers
-        # Note: This includes _handle_agent_event for AGENT_EVENT
+        # Wire direct agent event handler — replaces event bus for AGENT_EVENT.
+        # polling_coordinator and redis_transport call this directly instead of
+        # fire-and-forget through event_bus.emit().
+        self.client.agent_event_handler = self.agent_coordinator.handle_event
+
+        # Auto-discover and register event handlers (SESSION_*, ERROR only —
+        # AGENT_EVENT is routed directly via adapter_client.agent_event_handler)
         for attr_name in dir(TeleClaudeEvents):
             if attr_name.startswith("_"):
                 continue
 
             event_value = getattr(TeleClaudeEvents, attr_name)
             if not isinstance(event_value, str):
+                continue
+
+            # AGENT_EVENT bypasses event bus — routed directly
+            if event_value == TeleClaudeEvents.AGENT_EVENT:
                 continue
 
             handler_name = f"_handle_{event_value}"
@@ -264,6 +273,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task[object]] = set()
+        self._session_locks: dict[str, asyncio.Lock] = {}  # per-session outbox serialization
         self.resource_monitor_task: asyncio.Task[object] | None = None
         self.launchd_watch_task: asyncio.Task[object] | None = None
         self._start_time = time.time()
@@ -300,6 +310,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             start_time=self._start_time,
             resource_snapshot_interval_s=RESOURCE_SNAPSHOT_INTERVAL_S,
             launchd_watch_interval_s=LAUNCHD_WATCH_INTERVAL_S,
+            db_path=db.db_path,
         )
 
     def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
@@ -751,10 +762,27 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 event_type=cast(AgentHookEvents, event_type),
                 data=build_agent_payload(cast(AgentHookEvents, event_type), data),
             )
-            event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
+            # Directly await coordinator — outbox serialization depends on this completing
+            # before the item is marked delivered. event_bus.emit would fire-and-forget.
+            await self._handle_agent_event(TeleClaudeEvents.AGENT_EVENT, context)
+
+    async def _wal_checkpoint_loop(self) -> None:
+        """Periodically checkpoint the SQLite WAL to prevent unbounded growth."""
+        while not self.shutdown_event.is_set():
+            await asyncio.sleep(300)  # 5 minutes
+            if self.shutdown_event.is_set():
+                break
+            try:
+                await db.wal_checkpoint()
+            except Exception as exc:
+                logger.warning("WAL checkpoint failed: %s", exc)
 
     async def _hook_outbox_worker(self) -> None:
-        """Drain hook outbox for durable, restart-safe delivery."""
+        """Drain hook outbox for durable, restart-safe delivery.
+
+        Items for the same session are serialized via per-session locks.
+        Items for different sessions run in parallel for throughput.
+        """
         while not self.shutdown_event.is_set():
             now = datetime.now(timezone.utc)
             now_iso = now.isoformat()
@@ -772,8 +800,21 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 if not claimed:
                     continue
 
-                # Fire-and-forget: dispatch work package asynchronously
-                asyncio.create_task(self._process_outbox_item(row))
+                session_id = str(row["session_id"])
+                self._queue_background_task(
+                    self._process_outbox_item_serialized(session_id, row),
+                    f"outbox:{session_id[:8]}",
+                )
+
+    async def _process_outbox_item_serialized(self, session_id: str, row: dict[str, object]) -> None:  # noqa: loose-dict - DB row mapping
+        """Process an outbox item under the per-session lock for ordered delivery."""
+        lock = self._session_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._session_locks[session_id] = lock
+
+        async with lock:
+            await self._process_outbox_item(row)
 
     async def _process_outbox_item(
         self,
@@ -820,6 +861,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None:
         """Create and track a background task."""
+        if len(self._background_tasks) > 200:
+            logger.warning(
+                "Background task cap reached (%d), skipping %s",
+                len(self._background_tasks),
+                label,
+            )
+            return
         task = asyncio.create_task(coro)
         self._track_background_task(task, label)
 
@@ -836,6 +884,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not session:
             logger.warning("Session %s not found for termination event", ctx.session_id[:8])
             return
+
+        self._session_locks.pop(ctx.session_id, None)  # cleanup per-session outbox lock
+        polling_coordinator._cleanup_codex_input_state(ctx.session_id)
 
         logger.info("Handling session_closed for %s", ctx.session_id[:8])
         await session_cleanup.terminate_session(
@@ -1384,6 +1435,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.resource_monitor_task = asyncio.create_task(self.monitoring_service.resource_monitor_loop())
         self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
         logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
+
+        self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop())
+        self._wal_checkpoint_task.add_done_callback(self._log_background_task_exception("wal_checkpoint"))
+        logger.info("WAL checkpoint task started (interval=300s)")
         self.monitoring_service.log_resource_snapshot("startup")
 
         if LAUNCHD_WATCH_ENABLED:
@@ -1430,6 +1485,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Resource monitor stopped")
+
+        if hasattr(self, "_wal_checkpoint_task") and self._wal_checkpoint_task:
+            self._wal_checkpoint_task.cancel()
+            try:
+                await self._wal_checkpoint_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("WAL checkpoint task stopped")
 
         if self.launchd_watch_task:
             self.launchd_watch_task.cancel()

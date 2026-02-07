@@ -95,16 +95,17 @@ class TestDbSettings:
 
     @pytest.mark.asyncio
     async def test_pragmas_applied(self, test_db):
-        """Ensure WAL + busy_timeout are configured on the main connection."""
-        cursor = await test_db.conn.execute("PRAGMA journal_mode")
-        row = await cursor.fetchone()
-        assert row is not None
-        assert str(row[0]).lower() == "wal"
+        """Ensure WAL + busy_timeout are configured on SQLAlchemy pool connections."""
+        from sqlalchemy import text
 
-        cursor = await test_db.conn.execute("PRAGMA busy_timeout")
-        row = await cursor.fetchone()
-        assert row is not None
-        assert int(row[0]) >= 5000
+        async with test_db._session() as session:
+            row = (await session.execute(text("PRAGMA journal_mode"))).fetchone()  # noqa: raw-sql
+            assert row is not None
+            assert str(row[0]).lower() == "wal"
+
+            row = (await session.execute(text("PRAGMA busy_timeout"))).fetchone()  # noqa: raw-sql
+            assert row is not None
+            assert int(row[0]) >= 5000
 
 
 class TestGetSession:
@@ -218,47 +219,57 @@ class TestAgentAvailability:
     @pytest.mark.asyncio
     async def test_get_agent_availability_clears_expired(self, test_db):
         """Expired unavailability should be cleared on read."""
+        from sqlalchemy import text
+
         past = (FIXED_NOW - timedelta(minutes=5)).isoformat()
-        await test_db.conn.execute(
-            """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
-               VALUES (?, 0, ?, ?)""",
-            ("gemini", past, "rate_limited"),
-        )
-        await test_db.conn.commit()
+        async with test_db._session() as session:
+            await session.execute(  # noqa: raw-sql
+                text(
+                    "INSERT INTO agent_availability (agent, available, unavailable_until, reason) VALUES (:a, 0, :u, :r)"
+                ),
+                {"a": "gemini", "u": past, "r": "rate_limited"},
+            )
+            await session.commit()
 
         info = await test_db.get_agent_availability("gemini")
 
         assert info == {"available": True, "unavailable_until": None, "reason": None}
-        row = await test_db.conn.execute(
-            "SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = ?",
-            ("gemini",),
-        )
-        persisted = await row.fetchone()
-        assert persisted["available"] == 1  # type: ignore[index]
-        assert persisted["unavailable_until"] is None  # type: ignore[index]
-        assert persisted["reason"] is None  # type: ignore[index]
+        async with test_db._session() as session:
+            result = await session.execute(  # noqa: raw-sql
+                text("SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = :a"),
+                {"a": "gemini"},
+            )
+            persisted = result.fetchone()
+        assert persisted[0] == 1  # available
+        assert persisted[1] is None  # unavailable_until
+        assert persisted[2] is None  # reason
 
     @pytest.mark.asyncio
     async def test_mark_agent_available_clears_unavailability(self, test_db):
         """Marking available should clear unavailable_until and reason."""
+        from sqlalchemy import text
+
         future = (FIXED_NOW + timedelta(minutes=10)).isoformat()
-        await test_db.conn.execute(
-            """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
-               VALUES (?, 0, ?, ?)""",
-            ("codex", future, "rate_limited"),
-        )
-        await test_db.conn.commit()
+        async with test_db._session() as session:
+            await session.execute(  # noqa: raw-sql
+                text(
+                    "INSERT INTO agent_availability (agent, available, unavailable_until, reason) VALUES (:a, 0, :u, :r)"
+                ),
+                {"a": "codex", "u": future, "r": "rate_limited"},
+            )
+            await session.commit()
 
         await test_db.mark_agent_available("codex")
 
-        row = await test_db.conn.execute(
-            "SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = ?",
-            ("codex",),
-        )
-        persisted = await row.fetchone()
-        assert persisted["available"] == 1  # type: ignore[index]
-        assert persisted["unavailable_until"] is None  # type: ignore[index]
-        assert persisted["reason"] is None  # type: ignore[index]
+        async with test_db._session() as session:
+            result = await session.execute(  # noqa: raw-sql
+                text("SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = :a"),
+                {"a": "codex"},
+            )
+            persisted = result.fetchone()
+        assert persisted[0] == 1  # available
+        assert persisted[1] is None  # unavailable_until
+        assert persisted[2] is None  # reason
 
 
 class TestUpdateSession:

@@ -508,6 +508,12 @@ class TelegramAdapter(
             logger.error("Cannot access supergroup %s: %s", self.supergroup_id, e)
             logger.error("Make sure the bot is added to the group as a member!")
 
+        # Send or update the menu message in the general topic
+        try:
+            await self._send_or_update_menu_message()
+        except Exception as e:
+            logger.error("Failed to send/update menu message: %s", e)
+
     async def stop(self) -> None:
         """Stop Telegram bot."""
         if self.app and self.app.updater:
@@ -663,6 +669,44 @@ class TelegramAdapter(
             ],
         ]
         return InlineKeyboardMarkup(keyboard)
+
+    async def _send_or_update_menu_message(self) -> None:
+        """Send or update the menu message in the general topic.
+
+        On daemon startup, checks for an existing menu message ID in system_settings.
+        If found, attempts to edit it. If edit fails (message deleted), creates a new one.
+        If not found, creates a new message.
+
+        The menu message shows a registry line with the heartbeat keyboard.
+        """
+        from datetime import datetime
+
+        from teleclaude.core.models import MessageMetadata
+
+        setting_key = f"menu_message_id:{self.computer_name}"
+        bot_info = await self.bot.get_me()
+        bot_username = bot_info.username or "unknown"
+
+        # Build menu content (parse_mode=None to avoid MarkdownV2 escaping issues)
+        reply_markup = self._build_heartbeat_keyboard(bot_username)
+        text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        metadata = MessageMetadata(reply_markup=reply_markup, parse_mode=None)
+
+        # Check for existing message ID
+        existing_msg_id = await db.get_system_setting(setting_key)
+
+        if existing_msg_id:
+            # Try to edit existing message
+            success = await self.edit_general_message(existing_msg_id, text, metadata=metadata)
+            if success:
+                logger.info("Updated menu message %s in general topic", existing_msg_id)
+                return
+            # Edit failed (message deleted), fall through to create new
+
+        # Create new message
+        new_msg_id = await self.send_general_message(text, metadata=metadata)
+        await db.set_system_setting(setting_key, new_msg_id)
+        logger.info("Created new menu message %s in general topic", new_msg_id)
 
     async def _get_session_from_topic(self, update: Update) -> Optional[Session]:
         """Get session from current topic (silent - no feedback on failure).

@@ -28,6 +28,7 @@ from teleclaude.core.session_utils import get_display_title_for_session
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
+    from teleclaude.core.events import AgentEventContext
     from teleclaude.core.models import Session
     from teleclaude.core.task_registry import TaskRegistry
 
@@ -57,12 +58,12 @@ class AdapterClient:
 
         Args:
             task_registry: Optional TaskRegistry for tracking background tasks
-
-        No daemon reference - event dispatch uses the global event bus.
         """
         self.task_registry = task_registry
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
         self.is_shutting_down = False
+        # Direct handler for agent events (set by daemon, replaces event bus for AGENT_EVENT)
+        self.agent_event_handler: Callable[["AgentEventContext"], Awaitable[None]] | None = None
 
     def mark_shutting_down(self) -> None:
         """Mark client as shutting down to suppress adapter restarts."""
@@ -209,9 +210,13 @@ class AdapterClient:
             operation: Operation name for logging
             task_factory: Function that takes adapter and returns awaitable
         """
+        # Fetch fresh origin from DB (session object may be stale)
+        fresh_session = await db.get_session(session.session_id)
+        last_input_origin = fresh_session.last_input_origin if fresh_session else session.last_input_origin
+
         observer_tasks: list[tuple[str, Awaitable[object]]] = []
         for adapter_type, adapter in self.adapters.items():
-            if adapter_type == session.last_input_origin:
+            if adapter_type == last_input_origin:
                 continue
             if isinstance(adapter, UiAdapter):
                 observer_tasks.append((adapter_type, self._run_ui_lane(session, adapter_type, adapter, task_factory)))
@@ -241,10 +246,13 @@ class AdapterClient:
         broadcast: bool = True,
         **kwargs: object,
     ) -> object:
-        """Route operation to origin UI adapter + broadcast to observers.
+        """Route operation to origin UI adapter via _run_ui_lane, then broadcast to observers.
+
+        ALL calls go through _run_ui_lane which guarantees ensure_channel runs,
+        providing thread-gone resilience (topic deleted, channel missing, etc.).
 
         If no origin adapter, broadcasts to all UI adapters and returns first truthy result.
-        If origin exists, calls origin and broadcasts to observers (best-effort).
+        If origin exists, calls origin via lane and broadcasts to observers (best-effort).
 
         Args:
             session: Session object
@@ -270,8 +278,9 @@ class AdapterClient:
                     return result
             return None
 
-        # Call origin (let exceptions propagate)
-        result = await cast(Awaitable[object], getattr(origin_ui, method)(session, *args, **kwargs))
+        # Route origin through _run_ui_lane for ensure_channel resilience
+        origin_type = session.last_input_origin or "unknown"
+        result = await self._run_ui_lane(session, origin_type, origin_ui, make_task)
 
         # Broadcast to observers (best-effort) unless disabled
         if broadcast:
@@ -342,15 +351,19 @@ class AdapterClient:
                 )
                 await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
 
-        if session.last_input_origin:
-            target = self.adapters.get(session.last_input_origin)
+        # Fetch fresh last_input_origin from DB (session object may be stale after origin update)
+        fresh_session = await db.get_session(session.session_id)
+        last_input_origin = fresh_session.last_input_origin if fresh_session else session.last_input_origin
+
+        if last_input_origin:
+            target = self.adapters.get(last_input_origin)
             if isinstance(target, UiAdapter):
                 result = await target.send_message(session, text, metadata=metadata, multi_message=multi_message)
             else:
                 logger.debug(
                     "Session %s last_input_origin=%s not available; broadcasting to all UI adapters",
                     session.session_id[:8],
-                    session.last_input_origin,
+                    last_input_origin,
                 )
                 result = await self._route_to_ui(
                     session, "send_message", text, broadcast=True, metadata=metadata, multi_message=multi_message
@@ -378,18 +391,33 @@ class AdapterClient:
 
         return message_id
 
+    async def send_threaded_output(
+        self,
+        session: "Session",
+        text: str,
+        footer_text: str | None = None,
+        multi_message: bool = False,
+    ) -> str | None:
+        """Send threaded output via UI adapters (edit if exists, else new).
+
+        Always routes through _run_ui_lane to guarantee ensure_channel runs,
+        which handles thread-gone resilience (topic deleted from Telegram, etc.).
+        """
+        result = await self._route_to_ui(
+            session,
+            "send_threaded_output",
+            text,
+            broadcast=False,
+            footer_text=footer_text,
+            multi_message=multi_message,
+        )
+        return str(result) if result else None
+
     async def send_threaded_footer(self, session: "Session", text: str) -> str | None:
         """Send threaded footer via UI adapters with adapter-local cleanup semantics."""
         if not is_threaded_output_enabled(session.active_agent):
             return None
-        if session.last_input_origin:
-            target = self.adapters.get(session.last_input_origin)
-            if isinstance(target, UiAdapter):
-                result = await target.send_threaded_footer(session, text)
-            else:
-                result = await self._route_to_ui(session, "send_threaded_footer", text, broadcast=True)
-        else:
-            result = await self._route_to_ui(session, "send_threaded_footer", text, broadcast=True)
+        result = await self._route_to_ui(session, "send_threaded_footer", text)
         return str(result) if result else None
 
     async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:
@@ -473,14 +501,21 @@ class AdapterClient:
             is_final,
         )
 
-        # Check if threaded output experiment is enabled for this session's agent.
-        # If enabled, we suppress the standard poller to avoid double output.
+        # Check if threaded output experiment is enabled AND hooks have actually delivered output.
+        # Only suppress standard poller when threaded output is active (output_message_id set),
+        # otherwise fall through so the session isn't silenced when hooks don't fire.
         if is_threaded_output_enabled(session.active_agent):
+            telegram_meta = getattr(session.adapter_metadata, "telegram", None)
+            if telegram_meta and telegram_meta.output_message_id:
+                logger.debug(
+                    "[OUTPUT_ROUTE] Standard output suppressed for session %s (threaded output active)",
+                    session.session_id[:8],
+                )
+                return await self.get_output_message_id(session.session_id)
             logger.debug(
-                "[OUTPUT_ROUTE] Standard output suppressed for session %s (experiment active)",
+                "[OUTPUT_ROUTE] Experiment active but no threaded output yet for session %s, falling through",
                 session.session_id[:8],
             )
-            return await self.get_output_message_id(session.session_id)
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
             return adapter.send_output_update(
@@ -540,6 +575,37 @@ class AdapterClient:
             )
 
         return first_success
+
+    async def broadcast_user_input(
+        self,
+        session: "Session",
+        text: str,
+        origin: str,
+    ) -> None:
+        """Broadcast user input to observer UI adapters.
+
+        Formats input with source attribution (e.g. "TUI @ macbook") and
+        sends to all UI adapters except the origin via _broadcast_to_observers,
+        which routes through _run_ui_lane for ensure_channel resilience.
+        """
+        from teleclaude.utils.markdown import escape_markdown_v2
+
+        origin_display = "TUI" if origin.lower() == "api" else origin.upper()
+        computer_name = config.computer.name
+        header = f"{origin_display} @ {computer_name}:"
+
+        escaped_header = escape_markdown_v2(header)
+        escaped_text = escape_markdown_v2(text)
+        final_text = f"*{escaped_header}*\n_{escaped_text}_"
+
+        async def send_broadcast(ui_adapter: UiAdapter, lane_session: "Session") -> Optional[str]:
+            return await ui_adapter.send_message(
+                lane_session,
+                final_text,
+                metadata=MessageMetadata(parse_mode="MarkdownV2"),
+            )
+
+        await self._broadcast_to_observers(session, "broadcast_user_input", send_broadcast)
 
     async def _run_ui_lane(
         self,

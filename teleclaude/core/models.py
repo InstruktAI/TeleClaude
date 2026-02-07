@@ -143,6 +143,7 @@ class TelegramAdapterMetadata:
     threaded_footer_message_id: Optional[str] = None
     output_suppressed: bool = False
     parse_mode: Optional[str] = None
+    char_offset: int = 0
 
 
 @dataclass
@@ -192,12 +193,14 @@ class SessionAdapterMetadata:
                 threaded_footer_message_id = str(threaded_footer_val) if threaded_footer_val is not None else None
                 output_suppressed = bool(tg_raw.get("output_suppressed", False))
                 parse_mode = str(tg_raw.get("parse_mode")) if tg_raw.get("parse_mode") else None
+                char_offset = int(tg_raw.get("char_offset", 0))
                 telegram_metadata = TelegramAdapterMetadata(
                     topic_id=topic_id,
                     output_message_id=output_message_id,
                     threaded_footer_message_id=threaded_footer_message_id,
                     output_suppressed=output_suppressed,
                     parse_mode=parse_mode,
+                    char_offset=char_offset,
                 )
 
             redis_raw = data_obj.get("redis")

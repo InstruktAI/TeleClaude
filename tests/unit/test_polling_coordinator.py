@@ -63,7 +63,6 @@ class TestPollAndSendOutput:
 
         with (
             patch("teleclaude.core.polling_coordinator.db.get_session", new_callable=AsyncMock) as mock_get,
-            patch("teleclaude.core.polling_coordinator.event_bus.emit") as mock_emit,
         ):
             mock_get.return_value = mock_session
             await polling_coordinator.poll_and_send_output(

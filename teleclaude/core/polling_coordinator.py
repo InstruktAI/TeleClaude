@@ -9,18 +9,16 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core import session_cleanup, tmux_bridge
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
-    TeleClaudeEvents,
     UserPromptSubmitPayload,
 )
 from teleclaude.core.output_poller import (
@@ -149,7 +147,11 @@ def _has_agent_marker(output: str) -> bool:
     return False
 
 
-async def _fast_poll_for_marker(session_id: str, captured_input: str) -> None:
+async def _fast_poll_for_marker(
+    session_id: str,
+    captured_input: str,
+    emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
+) -> None:
     """Fast-poll tmux for agent marker after user input detected.
 
     Polls every 100ms until agent marker found or timeout.
@@ -185,7 +187,7 @@ async def _fast_poll_for_marker(session_id: str, captured_input: str) -> None:
                     event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
                     data=payload,
                 )
-                event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
+                await emit_agent_event(context)
 
                 # Clear state after emit
                 state = _codex_input_state.get(session_id)
@@ -216,6 +218,7 @@ async def _maybe_emit_codex_input(
     active_agent: str | None,
     current_output: str,
     output_changed: bool,
+    emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
 ) -> None:
     """Detect and emit synthetic user_prompt_submit for Codex sessions.
 
@@ -271,7 +274,7 @@ async def _maybe_emit_codex_input(
                 event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
                 data=payload,
             )
-            event_bus.emit(TeleClaudeEvents.AGENT_EVENT, context)
+            await emit_agent_event(context)
 
             # Clear state after emit
             state.last_prompt_input = ""
@@ -302,7 +305,9 @@ async def _maybe_emit_codex_input(
                     session_id[:8],
                     time_since_last,
                 )
-                state.fast_poll_task = asyncio.create_task(_fast_poll_for_marker(session_id, current_input))
+                state.fast_poll_task = asyncio.create_task(
+                    _fast_poll_for_marker(session_id, current_input, emit_agent_event)
+                )
 
         # Update last change time only when output actually changed
         if output_changed:
@@ -430,14 +435,18 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
 
                 # Detect user input for Codex sessions (no hook support)
                 # Fire-and-forget: best-effort, doesn't block polling loop
+                emit_handler = adapter_client.agent_event_handler
+
                 async def _codex_input_wrapper() -> None:
                     try:
-                        await _maybe_emit_codex_input(
-                            session_id=event.session_id,
-                            active_agent=session.active_agent,
-                            current_output=clean_output,
-                            output_changed=True,  # OutputChanged event means output changed
-                        )
+                        if emit_handler:
+                            await _maybe_emit_codex_input(
+                                session_id=event.session_id,
+                                active_agent=session.active_agent,
+                                current_output=clean_output,
+                                output_changed=True,  # OutputChanged event means output changed
+                                emit_agent_event=emit_handler,
+                            )
                     except Exception as e:
                         logger.error("[CODEX] Error in input detection: %s", e, exc_info=True)
 

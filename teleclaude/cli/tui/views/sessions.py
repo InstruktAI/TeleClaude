@@ -1805,7 +1805,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Determine which field is "active" (highlight) based on centralized state
         has_input_highlight = session_id in self.state.sessions.input_highlights
-        has_output_highlight = session_id in self.state.sessions.output_highlights
+        has_output_highlight = (
+            session_id in self.state.sessions.output_highlights
+            or session_id in self.state.sessions.temp_output_highlights
+        )
         input_attr = highlight_attr if has_input_highlight else normal_attr
         output_attr = highlight_attr if has_output_highlight else normal_attr
 

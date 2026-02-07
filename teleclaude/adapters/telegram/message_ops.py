@@ -400,11 +400,63 @@ class MessageOperationsMixin:
 
         message_thread_id = metadata.message_thread_id
         parse_mode = metadata.parse_mode
+        reply_markup = metadata.reply_markup
+
+        # Type guard for reply_markup
+        if reply_markup is not None and not isinstance(
+            reply_markup,
+            (
+                InlineKeyboardMarkup,
+                ReplyKeyboardMarkup,
+                ReplyKeyboardRemove,
+                ForceReply,
+            ),
+        ):
+            reply_markup = None
 
         result = await self.bot.send_message(
             chat_id=self.supergroup_id,
             message_thread_id=message_thread_id,
             text=text,
             parse_mode=parse_mode,
+            reply_markup=reply_markup,
         )
         return str(result.message_id)
+
+    async def edit_general_message(
+        self, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+    ) -> bool:
+        """Edit an existing message in the general topic.
+
+        Returns True on success, False if message not found or other error.
+        """
+        self._ensure_started()
+        metadata = metadata or MessageMetadata()
+
+        parse_mode = metadata.parse_mode
+        reply_markup = metadata.reply_markup
+
+        # Type guard for reply_markup (edits only support InlineKeyboardMarkup)
+        if reply_markup is not None and not isinstance(reply_markup, InlineKeyboardMarkup):
+            reply_markup = None
+
+        try:
+            await self.bot.edit_message_text(
+                chat_id=self.supergroup_id,
+                message_id=int(message_id),
+                text=text,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup,
+            )
+            return True
+        except BadRequest as e:
+            if "message is not modified" in str(e).lower():
+                return True  # Content unchanged, still valid
+            if "message to edit not found" in str(e).lower():
+                logger.debug("Menu message %s not found, will recreate", message_id)
+                return False
+            logger.error("Failed to edit general message %s: %s", message_id, e)
+            return False
+        except Exception as e:
+            logger.error("Failed to edit general message %s: %s", message_id, e)
+            return False

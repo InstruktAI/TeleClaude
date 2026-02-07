@@ -218,17 +218,15 @@ def test_real_gemini_artifact_returns_single_message_with_multiple_blocks():
     assert block_count >= 2
 
 
-def test_real_gemini_artifact_truncation_keeps_markdown_balanced():
+def test_real_gemini_artifact_renders_full_output():
     fixture = Path("tests/fixtures/transcripts/gemini_real_incremental_snapshot.json")
     result, _last_ts = render_agent_output(
         str(fixture),
         AgentName.GEMINI,
         include_tools=True,
         include_tool_results=False,
-        max_chars=280,
     )
     assert result is not None
-    assert "Output truncated due to length limits." in result
 
     formatted = telegramify_markdown(result, collapse_code_blocks=True)
     assert _required_markdown_closers(formatted) == ""
@@ -282,7 +280,6 @@ def test_heavy_fixture_render_produces_output():
         AgentName.GEMINI,
         include_tools=True,
         include_tool_results=False,
-        max_chars=200000,
     )
     assert result is not None
     assert len(result) > 1000, "Expected substantial rendered output"
@@ -296,7 +293,6 @@ def test_heavy_fixture_telegramify_without_collapse():
         AgentName.GEMINI,
         include_tools=True,
         include_tool_results=False,
-        max_chars=200000,
     )
     assert result is not None
 
@@ -305,34 +301,6 @@ def test_heavy_fixture_telegramify_without_collapse():
 
     # Spurious || markers from telegramify-markdown are stripped in our wrapper
     assert closers == "", f"Unexpected unclosed entities: {repr(closers)}"
-
-
-def test_heavy_fixture_truncation_at_various_limits():
-    """Test truncation at various limits - collect metrics on markdown balance."""
-    limits = [500, 1000, 2000, 4000, 8000, 16000]
-    balanced_count = 0
-    total_count = 0
-
-    for limit in limits:
-        result, _last_ts = render_agent_output(
-            str(HEAVY_FIXTURE),
-            AgentName.GEMINI,
-            include_tools=True,
-            include_tool_results=False,
-            max_chars=limit,
-        )
-        if result is None:
-            continue
-
-        total_count += 1
-        # Don't use collapse_code_blocks to avoid introducing spoiler markers
-        formatted = telegramify_markdown(result, collapse_code_blocks=False)
-        closers = _required_markdown_closers(formatted)
-        if closers == "":
-            balanced_count += 1
-
-    # At least half of truncation limits should produce balanced output
-    assert balanced_count >= total_count // 2, f"Only {balanced_count}/{total_count} limits produced balanced markdown"
 
 
 def test_heavy_fixture_clean_render_returns_content():
@@ -363,7 +331,6 @@ def test_heavy_fixture_contains_diverse_content():
         AgentName.GEMINI,
         include_tools=True,
         include_tool_results=False,
-        max_chars=200000,
     )
     assert result is not None
     # Check for diverse content markers
