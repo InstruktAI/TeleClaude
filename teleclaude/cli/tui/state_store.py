@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from instrukt_ai_logging import get_logger
 
@@ -76,7 +77,10 @@ def load_sticky_state(state: TuiState) -> None:
 
 
 def save_sticky_state(state: TuiState) -> None:
-    """Save sticky session/doc state to ~/.teleclaude/tui_state.json."""
+    """Save sticky session/doc state to ~/.teleclaude/tui_state.json.
+
+    Uses atomic replacement and advisory locking to prevent race conditions.
+    """
     try:
         TUI_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -95,8 +99,30 @@ def save_sticky_state(state: TuiState) -> None:
             "preview": {"session_id": preview.session_id, "show_child": preview.show_child} if preview else None,
         }
 
-        with open(TUI_STATE_PATH, "w", encoding="utf-8") as f:
-            json.dump(state_data, f, indent=2)
+        # Atomic write with lock to prevent race conditions
+        lock_path = TUI_STATE_PATH.with_suffix(".lock")
+        try:
+            # Use a lock file to serialize writes
+            with open(lock_path, "w", encoding="utf-8") as lock_file:
+                try:
+                    import fcntl
+
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                except (ImportError, OSError):
+                    pass  # fcntl not available or locking failed, proceed best-effort
+
+                # Write to temp file then atomic replace
+                tmp_path = TUI_STATE_PATH.with_suffix(".tmp")
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    json.dump(state_data, f, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+
+                os.replace(tmp_path, TUI_STATE_PATH)
+
+        except (OSError, IOError) as e:
+            logger.error("Failed to atomic save TUI state: %s", e)
+            return  # Skip write rather than risk corruption
 
         logger.debug(
             "Saved %d sticky sessions, %d sticky docs, %d expanded todos to %s",

@@ -237,7 +237,10 @@ def _load_session_map(path: Path) -> dict[str, str]:
 
 def _write_session_map_atomic(path: Path, data: dict[str, str]) -> None:
     tmp_path = path.with_suffix(".tmp")
-    tmp_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, sort_keys=True)
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp_path, path)
 
 
