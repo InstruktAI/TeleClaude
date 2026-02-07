@@ -34,7 +34,7 @@ def coordinator(mock_client, mock_tts_manager, mock_headless_snapshot_service):
 
 
 @pytest.mark.asyncio
-async def test_handle_stop_experiment_enabled(coordinator, mock_client):
+async def test_handle_agent_stop_experiment_enabled(coordinator, mock_client):
     session_id = "session-123"
     payload = AgentStopPayload(
         session_id="native-123",
@@ -88,7 +88,7 @@ async def test_handle_stop_experiment_enabled(coordinator, mock_client):
 
 
 @pytest.mark.asyncio
-async def test_handle_stop_experiment_disabled(coordinator, mock_client):
+async def test_handle_agent_stop_experiment_disabled(coordinator, mock_client):
     session_id = "session-123"
     payload = AgentStopPayload(
         session_id="native-123",
@@ -129,7 +129,7 @@ async def test_handle_stop_experiment_disabled(coordinator, mock_client):
 
 
 @pytest.mark.asyncio
-async def test_handle_stop_experiment_not_applied_to_non_gemini(coordinator, mock_client):
+async def test_handle_agent_stop_experiment_not_applied_to_non_gemini(coordinator, mock_client):
     session_id = "session-123"
     payload = AgentStopPayload(
         session_id="native-123",

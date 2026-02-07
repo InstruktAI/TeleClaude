@@ -412,7 +412,7 @@ def test_parse_gemini_transcript(tmp_path):
     assert "gemini user input" in result
     assert "gemini assistant answer" in result
     assert "Considering options" in result
-    assert "TOOL CALL" in result
+    assert "🔧" in result  # Tool use indicator
     assert "TOOL RESPONSE" in result
     assert "> no matches found" in result
 

@@ -28,7 +28,9 @@ class MockTelegramAdapter(UiAdapter):
         self.edit_message_calls = []
         self.delete_message_calls = []
 
-    async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
+    async def send_message(
+        self, session: Session, text: str, *, metadata: MessageMetadata | None = None, multi_message: bool = False
+    ) -> str:
         self.send_message_calls.append((session, text, metadata))
         return "msg-123"
 
@@ -88,7 +90,9 @@ class MockRedisTransport(BaseAdapter):
         super().__init__()
         self.send_message_calls = []
 
-    async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
+    async def send_message(
+        self, session: Session, text: str, *, metadata: MessageMetadata | None = None, multi_message: bool = False
+    ) -> str:
         self.send_message_calls.append((session, text, metadata))
         return "redis-msg-123"
 
@@ -270,7 +274,9 @@ async def test_ui_observer_receives_broadcasts():
             super().__init__(mock_client)
             self.send_message_calls = []
 
-        async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
+        async def send_message(
+            self, session: Session, text: str, *, metadata: MessageMetadata | None = None, multi_message: bool = False
+        ) -> str:
             self.send_message_calls.append((session, text, metadata))
             return "slack-msg-123"
 
@@ -389,7 +395,9 @@ async def test_observer_failure_does_not_affect_origin():
             super().__init__(mock_client)
             self.send_message_calls = []
 
-        async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
+        async def send_message(
+            self, session: Session, text: str, *, metadata: MessageMetadata | None = None, multi_message: bool = False
+        ) -> str:
             self.send_message_calls.append((session, text, metadata))
             raise Exception("Slack API error")
 
@@ -504,7 +512,9 @@ async def test_origin_failure_raises_exception():
         def __init__(self, client: AdapterClient):
             self.client = client
 
-        async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
+        async def send_message(
+            self, session: Session, text: str, *, metadata: MessageMetadata | None = None, multi_message: bool = False
+        ) -> str:
             raise Exception("Telegram API error")
 
         async def edit_message(
@@ -615,7 +625,9 @@ async def test_discover_peers_respects_redis_enabled_flag():
             super().__init__()
             self.discover_peers_called = False
 
-        async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
+        async def send_message(
+            self, session: Session, text: str, *, metadata: MessageMetadata | None = None, multi_message: bool = False
+        ) -> str:
             return "redis-msg-123"
 
         async def edit_message(

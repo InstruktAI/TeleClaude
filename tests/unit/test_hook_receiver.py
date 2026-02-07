@@ -290,8 +290,8 @@ def test_receiver_forwards_gemini_prompt_event(monkeypatch, tmp_path):
     assert data["native_log_file"] == "/tmp/gemini-2.jsonl"
 
 
-def test_receiver_skips_gemini_agent_stop_without_prompt_response(monkeypatch, tmp_path):
-    """Gemini agent_stop with prompt only should emit user_prompt_submit only."""
+def test_receiver_gemini_agent_stop_forwards_directly(monkeypatch, tmp_path):
+    """Gemini agent_stop now forwards directly without splitting (BeforeAgent handles prompt)."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -311,7 +311,7 @@ def test_receiver_skips_gemini_agent_stop_without_prompt_response(monkeypatch, t
             },
         ),
     )
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="agent_stop"))
+    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="AfterAgent"))
     tmpdir = tmp_path / "tmp-gemini-empty-stop"
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-9")
@@ -322,12 +322,11 @@ def test_receiver_skips_gemini_agent_stop_without_prompt_response(monkeypatch, t
     assert len(sent) == 1
     session_id, event_type, data = sent[0]
     assert session_id == "sess-9"
-    assert event_type == "user_prompt_submit"
-    assert data["prompt"] == "hi"
+    assert event_type == "agent_stop"  # AfterAgent maps to agent_stop
 
 
-def test_receiver_splits_gemini_agent_stop_into_prompt_and_stop(monkeypatch, tmp_path):
-    """Gemini agent_stop with prompt and response should emit two internal events."""
+def test_receiver_gemini_before_agent_emits_user_prompt_submit(monkeypatch, tmp_path):
+    """Gemini BeforeAgent hook should emit user_prompt_submit."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -338,17 +337,16 @@ def test_receiver_splits_gemini_agent_stop_into_prompt_and_stop(monkeypatch, tmp
         receiver,
         "_read_stdin",
         lambda: (
-            '{"session_id":"native-10","transcript_path":"/tmp/g2.json","prompt":"user turn","prompt_response":"assistant turn"}',
+            '{"session_id":"native-10","transcript_path":"/tmp/g2.json","prompt":"user turn"}',
             {
                 "session_id": "native-10",
                 "transcript_path": "/tmp/g2.json",
                 "prompt": "user turn",
-                "prompt_response": "assistant turn",
             },
         ),
     )
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="agent_stop"))
-    tmpdir = tmp_path / "tmp-gemini-split-stop"
+    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="BeforeAgent"))
+    tmpdir = tmp_path / "tmp-gemini-before-agent"
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-10")
     monkeypatch.setenv("TMPDIR", str(tmpdir))
@@ -356,9 +354,8 @@ def test_receiver_splits_gemini_agent_stop_into_prompt_and_stop(monkeypatch, tmp
 
     receiver.main()
 
-    assert len(sent) == 2
+    assert len(sent) == 1
     assert sent[0][1] == "user_prompt_submit"
-    assert sent[1][1] == "agent_stop"
 
 
 def test_receiver_includes_agent_name_in_payload(monkeypatch, tmp_path):

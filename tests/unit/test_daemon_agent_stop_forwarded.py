@@ -47,6 +47,6 @@ async def test_process_agent_stop_forwarded_skips_forward():
         patch("teleclaude.core.agent_coordinator.config") as mock_config,
     ):
         mock_config.computer.name = "LocalPC"
-        await coordinator.handle_stop(context)
+        await coordinator.handle_agent_stop(context)
 
     coordinator._forward_stop_to_initiator.assert_not_awaited()

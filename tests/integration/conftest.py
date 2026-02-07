@@ -333,7 +333,9 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         async def stop(self) -> None:
             pass
 
-        async def send_message(self, session: object, text: str, metadata: object) -> str:
+        async def send_message(
+            self, session: object, text: str, metadata: object = None, multi_message: bool = False
+        ) -> str:
             return "msg-123"
 
         async def edit_message(self, session: object, message_id: str, text: str, metadata: object) -> bool:

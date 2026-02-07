@@ -46,7 +46,9 @@ class DummyUiAdapter(UiAdapter):
     async def delete_channel(self, session: Session) -> bool:
         return True
 
-    async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
+    async def send_message(
+        self, session: Session, text: str, *, metadata: MessageMetadata | None = None, multi_message: bool = False
+    ) -> str:
         self.sent_messages.append((session.session_id, text))
         return "msg-1"
 

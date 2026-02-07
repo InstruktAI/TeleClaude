@@ -63,6 +63,7 @@ class TestTelegramAdapter(UiAdapter):
         text: str,
         *,
         metadata: MessageMetadata | None = None,
+        multi_message: bool = False,
     ) -> Optional[str]:
         self.sent.append((text, metadata or MessageMetadata()))
         return "msg-1"

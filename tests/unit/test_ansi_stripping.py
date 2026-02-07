@@ -149,7 +149,7 @@ async def test_ui_adapter_strips_various_ansi_variants(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_agent_coordinator_handle_stop_strips_ansi(monkeypatch):
+async def test_agent_coordinator_handle_agent_stop_strips_ansi(monkeypatch):
     """Verify that AgentCoordinator strips ANSI codes from agent feedback before storage."""
     from teleclaude.core.agent_coordinator import AgentCoordinator
     from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
@@ -173,12 +173,15 @@ async def test_agent_coordinator_handle_stop_strips_ansi(monkeypatch):
         payload = AgentStopPayload(source_computer="local", transcript_path="/tmp/log")
         context = AgentEventContext(session_id="sess_123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
 
-        await coordinator.handle_stop(context)
+        await coordinator.handle_agent_stop(context)
 
-        # Verify stored value is clean
-        args, kwargs = mock_db.update_session.call_args
-        assert kwargs["last_feedback_received"] == "Success!"
-        assert "\x1b[" not in kwargs["last_feedback_received"]
+        # Verify stored value is clean (check first call which contains last_feedback_received)
+        calls = mock_db.update_session.call_args_list
+        # Find the call that has last_feedback_received
+        feedback_call = next((c for c in calls if "last_feedback_received" in c.kwargs), None)
+        assert feedback_call is not None, "Expected update_session call with last_feedback_received"
+        assert feedback_call.kwargs["last_feedback_received"] == "Success!"
+        assert "\x1b[" not in feedback_call.kwargs["last_feedback_received"]
 
 
 @pytest.mark.asyncio

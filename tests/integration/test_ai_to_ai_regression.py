@@ -115,7 +115,7 @@ async def test_ai_to_ai_notification_delivery(daemon_with_mocked_telegram):
             data=build_agent_payload(AgentHookEvents.AGENT_STOP, {"session_id": "native-id"}),
         )
 
-        await daemon.agent_coordinator.handle_stop(context)
+        await daemon.agent_coordinator.handle_agent_stop(context)
 
         # Verify notification was delivered to initiator
         assert mock_deliver.called
