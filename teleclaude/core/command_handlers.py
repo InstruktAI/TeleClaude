@@ -39,13 +39,7 @@ from teleclaude.core.models import (
     TodoInfo,
 )
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
-from teleclaude.core.session_utils import (
-    build_session_title,
-    ensure_unique_title,
-    get_short_project_name,
-    resolve_working_dir,
-    update_title_with_agent,
-)
+from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import (
@@ -265,20 +259,11 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     tmux_name = f"{TMUX_SESSION_PREFIX}{session_id[:8]}"
 
     # Extract metadata from channel_metadata if present (AI-to-AI session)
-    initiator = None
-    initiator_agent = None
-    initiator_mode = None
     subfolder = cmd.subdir
     working_slug = cmd.working_slug
     initiator_session_id = cmd.initiator_session_id
 
     if cmd.channel_metadata:
-        initiator_raw = cmd.channel_metadata.get("target_computer")
-        initiator = str(initiator_raw) if initiator_raw else None
-        initiator_agent_raw = cmd.channel_metadata.get("initiator_agent")
-        initiator_agent = str(initiator_agent_raw) if initiator_agent_raw else None
-        initiator_mode_raw = cmd.channel_metadata.get("initiator_mode")
-        initiator_mode = str(initiator_mode_raw) if initiator_mode_raw else None
         # subfolder/slug/initiator_id can also be in metadata, but command fields take precedence
         subfolder = subfolder or cast(Optional[str], cmd.channel_metadata.get("subfolder"))
         working_slug = working_slug or cast(Optional[str], cmd.channel_metadata.get("working_slug"))
@@ -308,7 +293,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             raise ValueError(f"subdir must be relative: {subfolder}")
         subfolder = subfolder.strip("/")
 
-    # Derive working_dir and short_project from raw inputs (project_path + subfolder)
+    # Derive working_dir from raw inputs (project_path + subfolder)
     # project_path is the base project, subfolder is the optional worktree/branch path
     if subfolder:
         working_dir = resolve_working_dir(project_path, subfolder)
@@ -316,25 +301,11 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         if not working_dir_path.exists():
             working_dir_path.mkdir(parents=True, exist_ok=True)
         working_dir = str(working_dir_path)
-    short_project = get_short_project_name(project_path, subfolder)
 
-    # Build session title using standard format
-    # Target agent info not yet known (will be updated when agent starts)
-    # Initiator agent info is known if this is an AI-to-AI session
-    description = cmd.title or "Untitled"
-    base_title = build_session_title(
-        computer_name=computer_name,
-        short_project=short_project,
-        description=description,
-        initiator_computer=initiator,
-        agent_name=None,
-        thinking_mode=None,
-        initiator_agent=initiator_agent,
-        initiator_mode=initiator_mode,
-    )
-
-    # Ensure title is unique (appends counter if needed)
-    title = await ensure_unique_title(base_title)
+    # Store only the description as title - UI adapters construct display title
+    # The full formatted title (with agent/computer prefix) is built by UI adapters
+    # using build_display_title() when displaying to users
+    title = cmd.title or "Untitled"
 
     # Assign random voice for TTS
     voice = await get_random_voice()
@@ -1432,16 +1403,9 @@ async def start_agent(
     logger.info("Executing agent start command for %s: %s", agent_name, command_str)
 
     # Batch all state updates into a single DB write to reduce contention.
+    # Note: title is kept as pure description - UI adapters construct display title
     initial_prompt = " ".join(start_args.user_args) if start_args.user_args else None
     truncated_prompt = initial_prompt[:200] if initial_prompt is not None else None
-
-    # Calculate new title (but don't save yet, we want to start the process ASAP)
-    new_title = update_title_with_agent(
-        session.title,
-        agent_name,
-        start_args.thinking_mode.value,
-        config.computer.name,
-    )
 
     # Perform unified update synchronously to guarantee state
     await db.update_session(
@@ -1450,7 +1414,6 @@ async def start_agent(
         thinking_mode=start_args.thinking_mode.value,
         last_message_sent=truncated_prompt,
         last_message_sent_at=datetime.now(timezone.utc).isoformat(),
-        title=new_title or session.title,
     )
 
     # Execute command WITH polling (agents are long-running)

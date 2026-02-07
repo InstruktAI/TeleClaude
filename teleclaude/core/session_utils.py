@@ -7,10 +7,13 @@ to avoid code duplication across command handlers and MCP server.
 import os
 import re
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 
 from teleclaude.constants import RELATIVE_CURRENT
 from teleclaude.core.db import db
+
+if TYPE_CHECKING:
+    from teleclaude.core.models import Session
 
 # Session workspace directory (workspace/{session_id}/)
 OUTPUT_DIR = Path("workspace")
@@ -279,3 +282,86 @@ def update_title_with_agent(
         return title.replace(old_pattern, new_pattern, 1)
 
     return None
+
+
+def build_display_title(
+    description: str,
+    computer_name: str,
+    project_path: Optional[str],
+    subdir: Optional[str] = None,
+    agent_name: Optional[str] = None,
+    thinking_mode: Optional[str] = None,
+    initiator_computer: Optional[str] = None,
+    initiator_agent: Optional[str] = None,
+    initiator_mode: Optional[str] = None,
+) -> str:
+    """Build a display title for UI adapters from a pure description.
+
+    The database stores only the description (e.g., "Untitled", "Debug auth flow").
+    UI adapters call this to construct the full display title.
+
+    Format:
+    - Human session: "{project}: {prefix} - {description}"
+    - AI-to-AI session: "{project}: {initiator} > {target} - {description}"
+
+    Args:
+        description: The pure title/description from database
+        computer_name: Target computer name
+        project_path: Project path for short project name
+        subdir: Optional subdir for project name
+        agent_name: Target agent name if known
+        thinking_mode: Target thinking mode if known
+        initiator_computer: Initiator computer for AI-to-AI sessions
+        initiator_agent: Initiator agent name (AI-to-AI only)
+        initiator_mode: Initiator thinking mode (AI-to-AI only)
+
+    Returns:
+        Formatted display title for UI presentation
+    """
+    short_project = get_short_project_name(project_path, subdir)
+
+    if initiator_computer:
+        # AI-to-AI session - drop target @Computer if same as initiator
+        same_computer = initiator_computer == computer_name
+        initiator_prefix = build_computer_prefix(initiator_computer, initiator_agent, initiator_mode)
+        target_prefix = build_computer_prefix(
+            computer_name, agent_name, thinking_mode, include_computer=not same_computer
+        )
+        return f"{short_project}: {initiator_prefix} > {target_prefix} - {description}"
+
+    # Human session
+    target_prefix = build_computer_prefix(computer_name, agent_name, thinking_mode)
+    return f"{short_project}: {target_prefix} - {description}"
+
+
+async def get_display_title_for_session(session: "Session") -> str:
+    """Construct display title for UI adapters from session.
+
+    Database stores only the description (e.g., "Untitled", "Debug auth flow").
+    This function builds the full display title with computer/agent prefix.
+
+    This is an async helper that fetches initiator info for AI-to-AI sessions.
+    """
+    # For AI-to-AI sessions, get initiator info from parent session
+    initiator_computer = None
+    initiator_agent = None
+    initiator_mode = None
+
+    if session.initiator_session_id:
+        parent = await db.get_session(session.initiator_session_id)
+        if parent:
+            initiator_computer = parent.computer_name
+            initiator_agent = parent.active_agent
+            initiator_mode = parent.thinking_mode
+
+    return build_display_title(
+        description=session.title,
+        computer_name=session.computer_name,
+        project_path=session.project_path,
+        subdir=session.subdir,
+        agent_name=session.active_agent,
+        thinking_mode=session.thinking_mode,
+        initiator_computer=initiator_computer,
+        initiator_agent=initiator_agent,
+        initiator_mode=initiator_mode,
+    )

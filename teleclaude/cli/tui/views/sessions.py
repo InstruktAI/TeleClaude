@@ -179,6 +179,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Auto-clear timer for currently viewed session (60s viewing = seen)
         self._viewing_timer_session: str | None = None
         self._viewing_timer_expires: float | None = None
+        # Per-session 3-second streaming timers (session_id -> expiry time)
+        self._streaming_timers: dict[str, float] = {}
 
         # Load persisted sticky state (sessions + docs)
         load_sticky_state(self.state)
@@ -499,85 +501,32 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 self.notify(f"Revive failed: {exc}", NotificationLevel.ERROR)
 
     def _update_activity_state(self, sessions: list[SessionInfo]) -> None:
-        """Update activity state tracking for color coding.
+        """Update activity state tracking for animations.
 
-        Detects input/output changes and dispatches SESSION_ACTIVITY intent.
-        Highlight clearing is handled centrally in reduce_state when user views session.
+        Note: SESSION_ACTIVITY intents with reason are now dispatched from app.py
+        when WebSocket events arrive. This method only tracks state for animation triggers.
 
         Args:
             sessions: List of session dicts
         """
-        now = datetime.now(timezone.utc)
-
-        def _is_recent(last_activity: str | None) -> bool:
-            if not last_activity:
-                return False
-            try:
-                last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
-            except ValueError:
-                return False
-            if last_dt.tzinfo is None:
-                last_dt = last_dt.replace(tzinfo=timezone.utc)
-            return (now - last_dt).total_seconds() <= 60
-
         for session in sessions:
             session_id = session.session_id
             curr_input = session.last_input or ""
-            # Use digest for output change detection (updates during polling, not just on agent_stop)
             curr_output_digest = session.last_output_digest or ""
 
             # Get previous state
             prev = self._prev_state.get(session_id)
             if prev is None:
-                # New session - store state and check if there's activity
+                # New session - store state
                 self._prev_state[session_id] = {"input": curr_input, "output_digest": curr_output_digest}
-                # If there's recent activity, dispatch intent
-                if _is_recent(session.last_activity):
-                    if curr_output_digest:
-                        self.controller.dispatch(
-                            Intent(IntentType.SESSION_ACTIVITY, {"session_id": session_id, "output_changed": True})
-                        )
-                    elif curr_input:
-                        self.controller.dispatch(
-                            Intent(IntentType.SESSION_ACTIVITY, {"session_id": session_id, "input_changed": True})
-                        )
                 continue
 
-            # Existing session - check what changed
-            prev_input = prev.get("input", "")
+            # Existing session - check what changed for animation triggers
             prev_output_digest = prev.get("output_digest", "")
-
-            input_changed = curr_input != prev_input
             output_changed = curr_output_digest != prev_output_digest
 
-            if output_changed or input_changed:
-                if output_changed:
-                    logger.debug(
-                        "output_changed detected for %s: digest changed %s -> %s",
-                        session_id[:8],
-                        prev_output_digest[:16] if prev_output_digest else None,
-                        curr_output_digest[:16] if curr_output_digest else None,
-                    )
-                if input_changed:
-                    logger.debug(
-                        "input_changed detected for %s: prev_input=%r -> curr_input=%r",
-                        session_id[:8],
-                        prev_input[:50] if prev_input else None,
-                        curr_input[:50] if curr_input else None,
-                    )
-                    # Cancel viewing timer when user sends new input
-                    if self._viewing_timer_session == session_id:
-                        logger.debug("Cancelling viewing timer for %s (user sent input)", session_id[:8])
-                        self._viewing_timer_session = None
-                        self._viewing_timer_expires = None
-                self.controller.dispatch(
-                    Intent(
-                        IntentType.SESSION_ACTIVITY,
-                        {"session_id": session_id, "input_changed": input_changed, "output_changed": output_changed},
-                    )
-                )
-                if output_changed and self._on_agent_output and session.active_agent:
-                    self._on_agent_output(session.active_agent)
+            if output_changed and self._on_agent_output and session.active_agent:
+                self._on_agent_output(session.active_agent)
 
             # Store current state for next comparison
             self._prev_state[session_id] = {"input": curr_input, "output_digest": curr_output_digest}
@@ -593,16 +542,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Check if timer expired
         if self._viewing_timer_session and self._viewing_timer_expires and now >= self._viewing_timer_expires:
-            # Timer expired - clear highlight if still present
+            # Timer expired - clear highlight directly
             if self._viewing_timer_session in self.state.sessions.output_highlights:
-                self.controller.dispatch(
-                    Intent(
-                        IntentType.SESSION_ACTIVITY,
-                        {"session_id": self._viewing_timer_session, "output_changed": False, "input_changed": False},
-                    )
-                )
-                # Also directly clear since SESSION_ACTIVITY with both False won't clear
                 self.state.sessions.output_highlights.discard(self._viewing_timer_session)
+                logger.debug("60s viewing timer expired, cleared highlight for %s", self._viewing_timer_session[:8])
             self._viewing_timer_session = None
             self._viewing_timer_expires = None
 
@@ -617,6 +560,34 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 self._viewing_timer_session = selected_id
                 self._viewing_timer_expires = now + 60
                 logger.debug("Started 60s viewing timer for session %s", selected_id[:8])
+
+    def _update_streaming_timers(self) -> None:
+        """Manage 3-second timers for streaming output highlights.
+
+        When agent_output events add sessions to temp_output_highlights,
+        we start/reset a 3-second timer. When the timer expires (no new output),
+        we clear the temp highlight and keep the regular output highlight.
+        """
+        now = time.monotonic()
+
+        # Check for expired timers
+        expired = [sid for sid, expiry in self._streaming_timers.items() if now >= expiry]
+        for session_id in expired:
+            del self._streaming_timers[session_id]
+            if session_id in self.state.sessions.temp_output_highlights:
+                self.controller.dispatch(Intent(IntentType.CLEAR_TEMP_HIGHLIGHT, {"session_id": session_id}))
+                logger.debug("Streaming timer expired for %s, cleared temp highlight", session_id[:8])
+
+        # Start/reset timers for sessions with temp highlights
+        for session_id in self.state.sessions.temp_output_highlights:
+            if session_id not in self._streaming_timers:
+                self._streaming_timers[session_id] = now + 3.0
+                logger.debug("Started 3s streaming timer for %s", session_id[:8])
+
+        # Remove timers for sessions no longer in temp highlights
+        stale = [sid for sid in self._streaming_timers if sid not in self.state.sessions.temp_output_highlights]
+        for session_id in stale:
+            del self._streaming_timers[session_id]
 
     def update_session_node(self, session: SessionInfo) -> bool:
         """Update a session node in the tree if it exists."""
@@ -1604,6 +1575,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Check/update viewing timer for auto-clear
         self._update_viewing_timer()
+        # Check/update streaming timers for 3s output highlights
+        self._update_streaming_timers()
 
         logger.trace(
             "SessionsView.render: start_row=%d, height=%d, width=%d, flat_items=%d, scroll=%d",
@@ -1833,8 +1806,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Determine which field is "active" (highlight) based on centralized state
         has_input_highlight = session_id in self.state.sessions.input_highlights
         has_output_highlight = session_id in self.state.sessions.output_highlights
-        input_attr = highlight_attr if has_input_highlight else muted_attr
-        output_attr = highlight_attr if has_output_highlight else muted_attr
+        input_attr = highlight_attr if has_input_highlight else normal_attr
+        output_attr = highlight_attr if has_output_highlight else normal_attr
 
         # Line 3: Last input (only if content exists)
         last_input = (session.last_input or "").strip()

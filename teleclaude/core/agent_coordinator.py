@@ -31,7 +31,6 @@ from teleclaude.core.feature_flags import is_threaded_output_enabled, is_threade
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import notify_input_request, notify_stop
-from teleclaude.core.session_utils import parse_session_title, update_title_with_agent
 from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
@@ -141,36 +140,8 @@ class AgentCoordinator:
             str(native_session_id)[:8],
         )
 
-        # Update session title if it still uses old $Computer format but we have agent info
-        await self._update_title_if_needed(context.session_id)
         await self._maybe_send_headless_snapshot(context.session_id)
         await self._speak_session_start()
-
-    async def _update_title_if_needed(self, session_id: str) -> None:
-        """Update session title to include agent info if it uses old format."""
-        session = await db.get_session(session_id)
-        if not session:
-            return
-
-        # Check if title still uses old $Computer format
-        if f"${config.computer.name}" not in session.title:
-            return  # Already has new format or different computer
-
-        # Get agent info from session
-        if not session.active_agent or not session.thinking_mode:
-            return  # No agent info available
-
-        # Build new title with agent info
-        new_title = update_title_with_agent(
-            session.title,
-            session.active_agent,
-            session.thinking_mode,
-            config.computer.name,
-        )
-
-        if new_title and new_title != session.title:
-            await db.update_session(session_id, title=new_title)
-            logger.info("Updated session title with agent info: %s", new_title)
 
     async def handle_user_prompt_submit(self, context: AgentEventContext) -> None:
         """Handle user prompt submission.
@@ -197,20 +168,18 @@ class AgentCoordinator:
             "last_input_origin": InputOrigin.HOOK.value,
         }
 
-        # Update title if still "Untitled"
-        prefix, description = parse_session_title(session.title)
-        if prefix and description == "Untitled":
+        # Update title if still "Untitled" (pure description stored in DB)
+        if session.title == "Untitled":
             try:
-                title, _summary = await summarize_user_input(payload.prompt)
-                if title:
-                    new_title = f"{prefix}{title}"
+                new_title, _summary = await summarize_user_input(payload.prompt)
+                if new_title:
                     update_kwargs["title"] = new_title
                     logger.info("Updated session title from user input: %s", new_title)
             except Exception as exc:  # noqa: BLE001 - title update is best-effort
                 logger.warning("Title summarization failed: %s", exc)
 
         # Single DB update for all fields
-        await db.update_session(session_id, **update_kwargs)
+        await db.update_session(session_id, reason="user_input", **update_kwargs)
         logger.debug(
             "Recorded user input via hook for session %s: %s...",
             session_id[:8],
@@ -260,6 +229,7 @@ class AgentCoordinator:
 
             await db.update_session(
                 session_id,
+                reason="agent_stopped",
                 last_feedback_received=raw_output,
                 last_feedback_summary=summary,
                 last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
@@ -399,7 +369,9 @@ class AgentCoordinator:
                     from teleclaude.core.models import SessionField
 
                     await db.update_session(
-                        session_id, **{SessionField.LAST_AGENT_OUTPUT_AT.value: last_ts.isoformat()}
+                        session_id,
+                        reason="agent_output",
+                        **{SessionField.LAST_AGENT_OUTPUT_AT.value: last_ts.isoformat()},
                     )
                     logger.debug("Updated cursor for session %s to %s", session_id[:8], last_ts.isoformat())
 
@@ -530,6 +502,7 @@ class AgentCoordinator:
 
         await db.update_session(
             session_id,
+            reason="user_input",
             last_message_sent=last_user_input[:200],
             last_message_sent_at=datetime.now(timezone.utc).isoformat(),
             last_input_origin=InputOrigin.HOOK.value,

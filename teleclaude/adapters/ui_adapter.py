@@ -8,7 +8,6 @@ UI adapters provide:
 
 from __future__ import annotations
 
-import re
 import time
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -33,7 +32,7 @@ from teleclaude.core.models import (
     SessionField,
     TelegramAdapterMetadata,
 )
-from teleclaude.core.session_utils import get_output_file
+from teleclaude.core.session_utils import get_display_title_for_session, get_output_file
 from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils import (
     format_active_status_line,
@@ -644,8 +643,12 @@ class UiAdapter(BaseAdapter):
         """Handle session_updated event - update channel title when fields change.
 
         Handles:
-        - title: Direct title update (from summary) → sync to UiAdapter instances
-        - project_path/subdir: Path change → update path portion in title
+        - title: Direct title update (from summary) → rebuild display title
+        - project_path/subdir: Path change → rebuild display title
+        - active_agent/thinking_mode: Agent change → rebuild display title
+
+        The database stores only the description; UI adapters construct the
+        full display title (with agent/computer prefix) via get_display_title().
 
         Args:
             event: Event type
@@ -659,48 +662,19 @@ class UiAdapter(BaseAdapter):
         if not session:
             return
 
-        title_updated = False
+        # Rebuild display title when any title-affecting field changes
+        title_affecting_fields = {
+            SessionField.TITLE.value,
+            SessionField.PROJECT_PATH.value,
+            SessionField.SUBDIR.value,
+            "active_agent",
+            "thinking_mode",
+        }
 
-        # Handle direct title update (from summary)
-        if SessionField.TITLE.value in updated_fields:
-            new_title = str(updated_fields[SessionField.TITLE.value])
-            await self.client.update_channel_title(session, new_title)
-            logger.info("Synced title to UiAdapters for session %s: %s", session_id[:8], new_title)
-            title_updated = True
-
-        # project_path/subdir update adjusts the path portion in the title
-        if not title_updated and (
-            SessionField.PROJECT_PATH.value in updated_fields or SessionField.SUBDIR.value in updated_fields
-        ):
-            project_path = str(updated_fields.get(SessionField.PROJECT_PATH.value) or session.project_path or "")
-            subdir = str(updated_fields.get(SessionField.SUBDIR.value) or session.subdir or "")
-            new_path = project_path
-            if subdir:
-                new_path = str(Path(project_path) / subdir)
-
-            # Extract last 2 path components
-            path_parts = Path(new_path).parts
-            last_two = "/".join(path_parts[-2:]) if len(path_parts) >= 2 else path_parts[-1] if path_parts else ""
-
-            # Parse old title and replace path portion in brackets
-            # Title format: $ComputerName[old/path] - Description
-            # We want: $ComputerName[new/path] - Description
-            title_pattern = r"^(\$\w+\[)[^\]]+(\]\[.*)$"
-            match = re.match(title_pattern, session.title)
-
-            if not match:
-                logger.warning(
-                    "Session %s title doesn't match expected format '$Computer[path] - Description': %s. Skipping title update.",
-                    session_id[:8],
-                    session.title,
-                )
-            else:
-                # Replace path portion in brackets
-                new_title = f"{match.group(1)}{last_two}{match.group(2)}"
-
-                # Update via client to distribute to all adapters
-                await self.client.update_channel_title(session, new_title)
-                logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
+        if updated_fields.keys() & title_affecting_fields:
+            display_title = await get_display_title_for_session(session)
+            await self.client.update_channel_title(session, display_title)
+            logger.info("Synced display title to UiAdapters for session %s: %s", session_id[:8], display_title)
 
         # Handle feedback output updates (check both raw and summary fields)
         feedback_updated = (

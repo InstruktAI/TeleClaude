@@ -162,6 +162,12 @@ snippets:
   scope: project
   path: docs/project/design/ux/session-highlight.md
   source_project: TeleClaude
+- id: project/design/ux/session-highlight/implementation-plan
+  description: Implementation plan for explicit reason-driven highlight system.
+  type: design
+  scope: project
+  path: docs/project/design/ux/session-highlight/implementation-plan.md
+  source_project: TeleClaude
 - id: project/policy/adapter-boundaries
   description: Strict separation between adapters and core logic.
   type: policy
@@ -198,6 +204,12 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/data-modeling.md
+  source_project: TeleClaude
+- id: project/policy/feature-flag-usage
+  description: Rules for when to use feature flags and when to avoid them.
+  type: policy
+  scope: project
+  path: docs/project/policy/feature-flag-usage.md
   source_project: TeleClaude
 - id: project/policy/master-bot-registration
   description: Policy for Telegram command registration in multi-computer setups.

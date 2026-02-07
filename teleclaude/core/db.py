@@ -21,7 +21,7 @@ from teleclaude.core.event_bus import event_bus
 from . import db_models
 from .dates import ensure_utc, parse_iso_datetime
 from .events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
-from .models import Session, SessionAdapterMetadata, SessionField
+from .models import Session, SessionAdapterMetadata, SessionField, SessionUpdateReason
 from .voice_assignment import VoiceConfig
 
 if TYPE_CHECKING:
@@ -485,11 +485,18 @@ class Db:
             rows = result.all()
             return [self._to_core_session(row) for row in rows]
 
-    async def update_session(self, session_id: str, **fields: object) -> Session | None:
+    async def update_session(
+        self,
+        session_id: str,
+        *,
+        reason: SessionUpdateReason | None = None,
+        **fields: object,
+    ) -> Session | None:
         """Update session fields and handle events.
 
         Args:
             session_id: Session ID
+            reason: Why the session was updated (for highlight logic)
             **fields: Fields to update (title, status, tmux_size, etc.)
         """
         if not fields:
@@ -569,7 +576,7 @@ class Db:
         # Emit SESSION_UPDATED event (UI handlers will update channel titles)
         event_bus.emit(
             TeleClaudeEvents.SESSION_UPDATED,
-            SessionUpdatedContext(session_id=session_id, updated_fields=updates),
+            SessionUpdatedContext(session_id=session_id, updated_fields=updates, reason=reason),
         )
 
     async def close_session(self, session_id: str) -> None:

@@ -525,6 +525,16 @@ class TelecApp:
                         NotificationLevel.INFO,
                     )
                 self._session_status_cache[updated_session.session_id] = new_status
+
+                # Dispatch SESSION_ACTIVITY with reason for highlight logic
+                if event.reason:
+                    self.controller.dispatch(
+                        Intent(
+                            IntentType.SESSION_ACTIVITY,
+                            {"session_id": updated_session.session_id, "reason": event.reason},
+                        )
+                    )
+
                 if self._loop:
                     self._loop.run_until_complete(self.refresh_data(include_todos=False))
 

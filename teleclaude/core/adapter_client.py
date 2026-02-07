@@ -24,6 +24,7 @@ from teleclaude.core.models import (
     TelegramAdapterMetadata,
 )
 from teleclaude.core.protocols import RemoteExecutionProtocol
+from teleclaude.core.session_utils import get_display_title_for_session
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
@@ -547,15 +548,17 @@ class AdapterClient:
         adapter: UiAdapter,
         task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
     ) -> object | None:
+        # Build display title for UI adapters (DB stores only description)
+        display_title = await get_display_title_for_session(session)
         logger.debug(
             "[UI_LANE] Starting lane for adapter=%s session=%s title=%s",
             adapter_type,
             session.session_id[:8],
-            session.title,
+            display_title,
         )
         lane_session = session
         try:
-            lane_session = await adapter.ensure_channel(lane_session, lane_session.title)
+            lane_session = await adapter.ensure_channel(lane_session, display_title)
             logger.debug(
                 "[UI_LANE] ensure_channel succeeded for %s session %s",
                 adapter_type,

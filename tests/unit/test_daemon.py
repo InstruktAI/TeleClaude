@@ -22,6 +22,7 @@ from teleclaude.core.events import (
     AgentHookEvents,
     AgentStopPayload,
     TeleClaudeEvents,
+    UserPromptSubmitPayload,
 )
 from teleclaude.core.models import (
     Session,
@@ -786,7 +787,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
         patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_summarize,
     ):
         mock_summarize.return_value = ("title", "summary")
-        await coordinator.handle_stop(context)
+        await coordinator.handle_agent_stop(context)
 
     assert not coordinator.client.send_output_update.called
 
@@ -1006,6 +1007,132 @@ async def test_ensure_output_polling_uses_tmux():
     assert args == (session.session_id, session.tmux_session_name)
 
 
+@pytest.mark.asyncio
+class TestTitleUpdate:
+    """Test session title updates and display title construction."""
+
+    async def test_build_display_title_with_agent_info(self):
+        """Display title should include agent info when available."""
+        from teleclaude.core.session_utils import build_display_title
+
+        display_title = build_display_title(
+            description="Untitled",
+            computer_name="TestMac",
+            project_path="/home/user/TeleClaude",
+            agent_name="claude",
+            thinking_mode="slow",
+        )
+
+        assert display_title == "TeleClaude: Claude-slow@TestMac - Untitled"
+
+    async def test_build_display_title_with_counter_suffix(self):
+        """Display title should preserve counter suffix in description."""
+        from teleclaude.core.session_utils import build_display_title
+
+        display_title = build_display_title(
+            description="Untitled (2)",
+            computer_name="TestMac",
+            project_path="/home/user/TeleClaude",
+            agent_name="claude",
+            thinking_mode="slow",
+        )
+
+        assert display_title == "TeleClaude: Claude-slow@TestMac - Untitled (2)"
+
+    async def test_build_display_title_without_agent_info(self):
+        """Display title should use $Computer format when agent info is missing."""
+        from teleclaude.core.session_utils import build_display_title
+
+        display_title = build_display_title(
+            description="Untitled",
+            computer_name="TestMac",
+            project_path="/home/user/TeleClaude",
+            agent_name=None,
+            thinking_mode=None,
+        )
+
+        assert display_title == "TeleClaude: $TestMac - Untitled"
+
+    async def test_title_summarization_skips_non_untitled(self):
+        """Title summarization should skip sessions with meaningful descriptions."""
+        coordinator = AgentCoordinator(
+            client=MagicMock(),
+            tts_manager=MagicMock(),
+            headless_snapshot_service=MagicMock(),
+        )
+
+        session = Session(
+            session_id="sess-1",
+            computer_name="TestMac",
+            tmux_session_name="tmux-1",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Fix login bug",  # Already has meaningful description
+            active_agent="claude",
+            thinking_mode="slow",
+        )
+
+        context = AgentEventContext(
+            session_id="sess-1",
+            event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+            data=UserPromptSubmitPayload(prompt="some user input"),
+        )
+
+        with (
+            patch("teleclaude.core.agent_coordinator.db") as mock_db,
+            patch("teleclaude.core.agent_coordinator.summarize_user_input", new_callable=AsyncMock) as mock_summarize,
+        ):
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+            mock_db.set_notification_flag = AsyncMock()
+
+            await coordinator.handle_user_prompt_submit(context)
+
+            # summarize_user_input should not be called for non-Untitled sessions
+            mock_summarize.assert_not_called()
+            # update_session is still called but should NOT include title
+            call_kwargs = mock_db.update_session.call_args.kwargs
+            assert "title" not in call_kwargs
+
+    async def test_title_summarization_updates_untitled(self):
+        """Title summarization should update sessions with 'Untitled' description."""
+        coordinator = AgentCoordinator(
+            client=MagicMock(),
+            tts_manager=MagicMock(),
+            headless_snapshot_service=MagicMock(),
+        )
+
+        session = Session(
+            session_id="sess-1",
+            computer_name="TestMac",
+            tmux_session_name="tmux-1",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Untitled",  # Should be updated
+            active_agent="claude",
+            thinking_mode="slow",
+        )
+
+        context = AgentEventContext(
+            session_id="sess-1",
+            event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+            data=UserPromptSubmitPayload(prompt="Help me debug the authentication flow"),
+        )
+
+        with (
+            patch("teleclaude.core.agent_coordinator.db") as mock_db,
+            patch("teleclaude.core.agent_coordinator.summarize_user_input", new_callable=AsyncMock) as mock_summarize,
+        ):
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+            mock_db.set_notification_flag = AsyncMock()
+            mock_summarize.return_value = ("Debug auth flow", "User wants to debug authentication")
+
+            await coordinator.handle_user_prompt_submit(context)
+
+            mock_summarize.assert_called_once()
+            call_kwargs = mock_db.update_session.call_args.kwargs
+            assert call_kwargs["title"] == "Debug auth flow"
+
+
 def test_all_events_have_handlers():
     """Test that every event in TeleClaudeEvents has a registered handler.
 
@@ -1039,117 +1166,3 @@ def test_all_events_have_handlers():
     assert not missing_handlers, (
         f"Events missing handlers: {missing_handlers}\nAdd handler method on TeleClaudeDaemon or mark as skipped."
     )
-
-
-@pytest.mark.asyncio
-class TestTitleUpdate:
-    """Test session title updates."""
-
-    async def test_update_session_title_updates_new_session(self):
-        """Title should update when agent info is available and title uses $Computer."""
-        coordinator = AgentCoordinator(
-            client=MagicMock(),
-            tts_manager=MagicMock(),
-            headless_snapshot_service=MagicMock(),
-        )
-
-        session = Session(
-            session_id="sess-1",
-            computer_name="TestMac",
-            tmux_session_name="tmux-1",
-            last_input_origin=InputOrigin.TELEGRAM.value,
-            title="TeleClaude: $TestMac - Untitled",
-            active_agent="claude",
-            thinking_mode="slow",
-        )
-
-        with (
-            patch("teleclaude.core.agent_coordinator.db") as mock_db,
-            patch(
-                "teleclaude.core.agent_coordinator.update_title_with_agent",
-                return_value="TeleClaude: claude-slow@TestMac - Untitled",
-            ),
-            patch("teleclaude.core.agent_coordinator.config") as mock_config,
-        ):
-            mock_config.computer.name = "TestMac"
-            mock_db.get_session = AsyncMock(return_value=session)
-            updates: list[tuple[str, dict[str, object]]] = []  # guard: loose-dict - capture update payloads
-
-            async def record_update(session_id: str, **kwargs):
-                updates.append((session_id, kwargs))
-
-            mock_db.update_session = AsyncMock(side_effect=record_update)
-
-            await coordinator._update_title_if_needed("sess-1")
-
-            assert updates == [("sess-1", {"title": "TeleClaude: claude-slow@TestMac - Untitled"})]
-
-    async def test_update_session_title_updates_new_session_with_counter(self):
-        """Title should update when title uses $Computer and agent info is available."""
-        coordinator = AgentCoordinator(
-            client=MagicMock(),
-            tts_manager=MagicMock(),
-            headless_snapshot_service=MagicMock(),
-        )
-
-        session = Session(
-            session_id="sess-1",
-            computer_name="TestMac",
-            tmux_session_name="tmux-1",
-            last_input_origin=InputOrigin.TELEGRAM.value,
-            title="TeleClaude: $TestMac - Untitled (2)",
-            active_agent="claude",
-            thinking_mode="slow",
-        )
-
-        with (
-            patch("teleclaude.core.agent_coordinator.db") as mock_db,
-            patch(
-                "teleclaude.core.agent_coordinator.update_title_with_agent",
-                return_value="TeleClaude: claude-slow@TestMac - Untitled (2)",
-            ),
-            patch("teleclaude.core.agent_coordinator.config") as mock_config,
-        ):
-            mock_config.computer.name = "TestMac"
-            mock_db.get_session = AsyncMock(return_value=session)
-            updates: list[tuple[str, dict[str, object]]] = []  # guard: loose-dict - capture update payloads
-
-            async def record_update(session_id: str, **kwargs):
-                updates.append((session_id, kwargs))
-
-            mock_db.update_session = AsyncMock(side_effect=record_update)
-
-            await coordinator._update_title_if_needed("sess-1")
-
-            assert updates == [("sess-1", {"title": "TeleClaude: claude-slow@TestMac - Untitled (2)"})]
-
-    async def test_update_session_title_skips_already_updated(self):
-        """Title should NOT update when already has LLM-generated title."""
-        coordinator = AgentCoordinator(
-            client=MagicMock(),
-            tts_manager=MagicMock(),
-            headless_snapshot_service=MagicMock(),
-        )
-
-        session = Session(
-            session_id="sess-1",
-            computer_name="TestMac",
-            tmux_session_name="tmux-1",
-            last_input_origin=InputOrigin.TELEGRAM.value,
-            title="TeleClaude: claude-slow@TestMac - Fix login bug",  # Already updated
-            active_agent="claude",
-            thinking_mode="slow",
-        )
-
-        with (
-            patch("teleclaude.core.agent_coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator.config") as mock_config,
-        ):
-            mock_config.computer.name = "TestMac"
-            mock_db.get_session = AsyncMock(return_value=session)
-            mock_db.update_session = AsyncMock()
-
-            await coordinator._update_title_if_needed("sess-1")
-
-            # Should NOT update - title was already set
-            assert not mock_db.update_session.called

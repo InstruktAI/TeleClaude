@@ -162,7 +162,7 @@ class APIServer:
             self.cache.remove_session(context.session_id)
             return
         summary = SessionSummary.from_db_session(session, computer=config.computer.name)
-        self.cache.update_session(summary)
+        self.cache.update_session(summary, reason=context.reason)
 
     async def _handle_session_started_event(
         self,
@@ -1036,8 +1036,21 @@ class APIServer:
         # Convert to DTO payload if necessary
         payload: dict[str, object]  # guard: loose-dict - WebSocket payload assembly
         if event in ("session_started", "session_updated"):
-            if isinstance(data, SessionSummary):
-                dto = SessionSummaryDTO.from_core(data, computer=data.computer)
+            # Extract session and reason from cache notification
+            session: SessionSummary | None = None
+            reason: str | None = None
+            if isinstance(data, dict):
+                session_val = data.get("session")
+                if isinstance(session_val, SessionSummary):
+                    session = session_val
+                reason_val = data.get("reason")
+                if isinstance(reason_val, str):
+                    reason = reason_val
+            elif isinstance(data, SessionSummary):
+                session = data
+
+            if session:
+                dto = SessionSummaryDTO.from_core(session, computer=session.computer)
                 if event == "session_started":
                     payload = SessionStartedEventDTO(
                         event=event,
@@ -1047,10 +1060,8 @@ class APIServer:
                     payload = SessionUpdatedEventDTO(
                         event=event,
                         data=dto,
+                        reason=reason,  # type: ignore[arg-type]
                     ).model_dump(exclude_none=True)
-            elif isinstance(data, dict):
-                # Already a dict (e.g. from _handle_session_updated)
-                payload = {"event": event, "data": data}
             else:
                 payload = {"event": event, "data": data}
         elif event == "session_closed":

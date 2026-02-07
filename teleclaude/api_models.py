@@ -240,6 +240,7 @@ class SessionUpdatedEventDTO(BaseModel):  # type: ignore[explicit-any]
 
     event: Literal["session_updated"]
     data: SessionSummaryDTO
+    reason: Literal["user_input", "agent_output", "agent_stopped", "state_change"] | None = None
 
 
 class SessionClosedDataDTO(BaseModel):  # type: ignore[explicit-any]

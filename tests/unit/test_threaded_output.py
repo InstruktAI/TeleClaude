@@ -20,6 +20,7 @@ from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
     get_assistant_messages_since,
     render_agent_output,
+    render_clean_agent_output,
 )
 
 
@@ -253,3 +254,122 @@ def test_is_experiment_enabled():
     assert config.is_experiment_enabled("exp_gemini", "gemini") is True
     assert config.is_experiment_enabled("exp_gemini", "claude") is False
     assert config.is_experiment_enabled("non_existent") is False
+
+
+# Heavy fixture tests - comprehensive coverage for real-world Gemini output
+# Tests the final turn's content (after last user boundary) which is the actual use case
+HEAVY_FIXTURE = Path("tests/fixtures/transcripts/gemini_real_heavy_output_fixture.json")
+
+
+def test_heavy_fixture_exists():
+    """Ensure the heavy Gemini fixture is available for testing."""
+    assert HEAVY_FIXTURE.exists(), "Heavy Gemini fixture missing"
+
+
+def test_heavy_fixture_has_content_after_last_user():
+    """Verify the heavy fixture has assistant content in the final turn."""
+    messages = get_assistant_messages_since(str(HEAVY_FIXTURE), AgentName.GEMINI)
+    assert len(messages) >= 1, "Expected at least 1 assistant message after last user"
+
+    block_count = count_renderable_assistant_blocks(str(HEAVY_FIXTURE), AgentName.GEMINI, include_tools=True)
+    assert block_count >= 2, "Expected at least 2 renderable blocks"
+
+
+def test_heavy_fixture_render_produces_output():
+    """Render the heavy fixture's final turn and verify output exists."""
+    result, last_ts = render_agent_output(
+        str(HEAVY_FIXTURE),
+        AgentName.GEMINI,
+        include_tools=True,
+        include_tool_results=False,
+        max_chars=200000,
+    )
+    assert result is not None
+    assert len(result) > 1000, "Expected substantial rendered output"
+    assert last_ts is not None
+
+
+def test_heavy_fixture_telegramify_without_collapse():
+    """Test telegramify_markdown on heavy content produces balanced markdown."""
+    result, _last_ts = render_agent_output(
+        str(HEAVY_FIXTURE),
+        AgentName.GEMINI,
+        include_tools=True,
+        include_tool_results=False,
+        max_chars=200000,
+    )
+    assert result is not None
+
+    formatted = telegramify_markdown(result, collapse_code_blocks=False)
+    closers = _required_markdown_closers(formatted)
+
+    # Spurious || markers from telegramify-markdown are stripped in our wrapper
+    assert closers == "", f"Unexpected unclosed entities: {repr(closers)}"
+
+
+def test_heavy_fixture_truncation_at_various_limits():
+    """Test truncation at various limits - collect metrics on markdown balance."""
+    limits = [500, 1000, 2000, 4000, 8000, 16000]
+    balanced_count = 0
+    total_count = 0
+
+    for limit in limits:
+        result, _last_ts = render_agent_output(
+            str(HEAVY_FIXTURE),
+            AgentName.GEMINI,
+            include_tools=True,
+            include_tool_results=False,
+            max_chars=limit,
+        )
+        if result is None:
+            continue
+
+        total_count += 1
+        # Don't use collapse_code_blocks to avoid introducing spoiler markers
+        formatted = telegramify_markdown(result, collapse_code_blocks=False)
+        closers = _required_markdown_closers(formatted)
+        if closers == "":
+            balanced_count += 1
+
+    # At least half of truncation limits should produce balanced output
+    assert balanced_count >= total_count // 2, f"Only {balanced_count}/{total_count} limits produced balanced markdown"
+
+
+def test_heavy_fixture_clean_render_returns_content():
+    """Verify render_clean_agent_output produces output from heavy fixture."""
+    result, _last_ts = render_clean_agent_output(str(HEAVY_FIXTURE), AgentName.GEMINI)
+    # Clean render should produce content from the heavy fixture
+    assert result is not None, "Expected clean render to produce output"
+    assert len(result) > 100, "Expected substantial clean render output"
+
+
+def test_heavy_fixture_with_tools_includes_tool_emoji():
+    """Verify render_agent_output includes tool blocks when requested."""
+    result, _last_ts = render_agent_output(
+        str(HEAVY_FIXTURE),
+        AgentName.GEMINI,
+        include_tools=True,
+        include_tool_results=False,
+    )
+    assert result is not None
+    # Heavy fixture has tool calls, so we expect tool emoji
+    assert "🔧" in result, "Expected tool emoji in output with include_tools=True"
+
+
+def test_heavy_fixture_contains_diverse_content():
+    """Verify the fixture has diverse content types for thorough testing."""
+    result, _last_ts = render_agent_output(
+        str(HEAVY_FIXTURE),
+        AgentName.GEMINI,
+        include_tools=True,
+        include_tool_results=False,
+        max_chars=200000,
+    )
+    assert result is not None
+    # Check for diverse content markers
+    has_thinking = "*" in result  # Italics from thinking blocks
+    has_headers = "###" in result or "**" in result  # Bold/headers
+    has_tool = "🔧" in result
+    has_text = len(result) > 500
+    diversity = sum([has_thinking, has_headers, has_tool, has_text])
+    assert diversity >= 3, f"Expected diverse content types, got only {diversity}/4"

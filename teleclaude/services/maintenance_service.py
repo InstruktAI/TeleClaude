@@ -15,7 +15,7 @@ from teleclaude.core.db import db
 from teleclaude.core.models import Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.session_utils import get_output_file, resolve_working_dir
+from teleclaude.core.session_utils import get_display_title_for_session, get_output_file, resolve_working_dir
 from teleclaude.core.voice_assignment import get_voice_env_vars
 
 logger = get_logger(__name__)
@@ -89,7 +89,8 @@ class MaintenanceService:
                     or not session.adapter_metadata.telegram.output_message_id
                 ):
                     try:
-                        await self._client.ensure_ui_channels(session, session.title)
+                        display_title = await get_display_title_for_session(session)
+                        await self._client.ensure_ui_channels(session, display_title)
                     except Exception as exc:
                         logger.warning(
                             "Failed to ensure UI channels for session %s: %s",

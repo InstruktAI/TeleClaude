@@ -59,6 +59,7 @@ class SessionViewState:
     # Highlight state: sessions with active input/output highlights
     input_highlights: set[str] = field(default_factory=set)
     output_highlights: set[str] = field(default_factory=set)
+    temp_output_highlights: set[str] = field(default_factory=set)  # For 3s streaming timer
 
 
 @dataclass
@@ -106,6 +107,7 @@ class IntentType(str, Enum):
     SYNC_TODOS = "sync_todos"
     SET_FILE_PANE_ID = "set_file_pane_id"
     CLEAR_FILE_PANE_ID = "clear_file_pane_id"
+    CLEAR_TEMP_HIGHLIGHT = "clear_temp_highlight"
 
 
 @dataclass(frozen=True)
@@ -131,8 +133,7 @@ class IntentPayload(TypedDict, total=False):
     doc_id: str
     command: str
     title: str
-    input_changed: bool
-    output_changed: bool
+    reason: str  # SessionUpdateReason: "user_input", "agent_output", "agent_stopped", "state_change"
 
 
 MAX_STICKY_PANES = 5
@@ -307,31 +308,47 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
 
     if t is IntentType.SESSION_ACTIVITY:
         session_id = p.get("session_id")
+        reason = p.get("reason")
         if not session_id:
             return
-        input_changed = p.get("input_changed", False)
-        output_changed = p.get("output_changed", False)
-        had_input_highlight = session_id in state.sessions.input_highlights
-        if output_changed:
-            # New output: highlight output, clear input highlight (agent responded)
-            state.sessions.output_highlights.add(session_id)
-            state.sessions.input_highlights.discard(session_id)
-            if had_input_highlight:
-                logger.debug(
-                    "input_highlight CLEARED for %s (output_changed=True)",
-                    session_id[:8],
-                )
-        elif input_changed:
-            # New input: highlight input, clear output highlight (user responded to agent)
+        if reason == "user_input":
+            # User sent input: highlight input, clear output highlight (user is waiting)
             state.sessions.input_highlights.add(session_id)
-            had_output_highlight = session_id in state.sessions.output_highlights
             state.sessions.output_highlights.discard(session_id)
-            if had_output_highlight:
-                logger.debug(
-                    "output_highlight CLEARED for %s (input_changed=True, user responded)",
-                    session_id[:8],
-                )
-            logger.debug("input_highlight ADDED for %s", session_id[:8])
+            state.sessions.temp_output_highlights.discard(session_id)
+            logger.debug("input_highlight ADDED for %s (reason=user_input)", session_id[:8])
+        elif reason == "agent_output":
+            # Streaming: just flicker temp, don't touch input/output
+            state.sessions.temp_output_highlights.add(session_id)
+            logger.debug("temp_output_highlight ADDED for %s (streaming)", session_id[:8])
+        elif reason == "agent_stopped":
+            # Agent finished: clear input, set output based on whether user is watching
+            state.sessions.input_highlights.discard(session_id)
+
+            # Check if user is watching this session
+            is_selected = session_id == state.sessions.selected_session_id
+            is_sticky = any(s.session_id == session_id for s in state.sessions.sticky_sessions)
+            is_preview = state.sessions.preview and state.sessions.preview.session_id == session_id
+            is_watching = is_selected or is_sticky or is_preview
+
+            if is_watching:
+                # Ephemeral 3-sec highlight
+                state.sessions.output_highlights.discard(session_id)
+                state.sessions.temp_output_highlights.add(session_id)
+                logger.debug("temp_output_highlight ADDED for %s (agent_stopped, watching)", session_id[:8])
+            else:
+                # Permanent highlight
+                state.sessions.temp_output_highlights.discard(session_id)
+                state.sessions.output_highlights.add(session_id)
+                logger.debug("output_highlight ADDED for %s (agent_stopped, not watching)", session_id[:8])
+        # "state_change" reason: no highlight changes (status, title, etc.)
+        return
+
+    if t is IntentType.CLEAR_TEMP_HIGHLIGHT:
+        session_id = p.get("session_id")
+        if session_id:
+            state.sessions.temp_output_highlights.discard(session_id)
+            logger.debug("temp_output_highlight CLEARED for %s (timer expired)", session_id[:8])
         return
 
     if t is IntentType.SYNC_SESSIONS:
@@ -347,6 +364,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             logger.info("input_highlights PRUNED by SYNC_SESSIONS: %s", [s[:8] for s in pruned_input])
         state.sessions.input_highlights.intersection_update(session_ids)
         state.sessions.output_highlights.intersection_update(session_ids)
+        state.sessions.temp_output_highlights.intersection_update(session_ids)
         return
 
     if t is IntentType.SYNC_TODOS:

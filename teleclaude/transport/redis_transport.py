@@ -508,6 +508,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             password=self.redis_password,
             max_connections=self.max_connections,
             socket_timeout=self.socket_timeout,
+            health_check_interval=30,  # Ping connection if idle > 30s to prevent SSL errors
             decode_responses=False,  # We handle decoding manually
             ssl_cert_reqs=ssl.CERT_NONE,  # Disable certificate verification for self-signed certs
         )

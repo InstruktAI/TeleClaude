@@ -119,6 +119,10 @@ def telegramify_markdown(
     formatted = _tag_plain_opening_fences(formatted)
     if collapse_code_blocks:
         formatted = collapse_fenced_code_blocks(formatted)
+    else:
+        # Strip spurious || markers introduced by telegramify-markdown bug.
+        # GitHub markdown has no spoiler syntax, so any || in output is spurious.
+        formatted = formatted.replace("||", "")
     return formatted
 
 
