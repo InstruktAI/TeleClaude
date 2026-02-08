@@ -128,6 +128,13 @@ snippets:
   scope: global
   path: docs/general/procedure/idea-box.md
   source_project: TeleClaude
+- id: general/procedure/memory-management
+  description: Guidelines for saving high-signal memories to the long-term database,
+    distinguishing them from documentation, bugs, and ideas.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/memory-management.md
+  source_project: TeleClaude
 - id: general/procedure/tool-spec-authoring
   description: Author lean tool specs under spec/tools while preserving schema compliance
     and progressive disclosure.
