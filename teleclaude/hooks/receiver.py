@@ -51,32 +51,60 @@ MEM_BASE_URL = os.getenv("MEM_BASE_URL", "http://127.0.0.1:37777")
 
 def _fetch_memory_index(project: str | None = None) -> list[dict[str, str]]:
     """Fetch lightweight memory index (id/title) from API."""
+
     query = f"{MEM_BASE_URL}/api/observations?limit=50"
+
     if project:
         query += f"&project={urllib.request.quote(project)}"
 
     try:
         req = urllib.request.Request(query)
+
         # Set short timeout to not block session start if worker is down
+
         with urllib.request.urlopen(req, timeout=0.5) as response:
             if response.status != 200:
                 return []
+
             data = json.loads(response.read().decode())
+
             items = data.get("items", [])
+
             # Extract only id and title for lean index
+
             return [{"id": str(item.get("id")), "title": str(item.get("title"))} for item in items if item.get("title")]
+
     except Exception:
         # Fail silently on connection errors (worker down)
+
         return []
 
 
-def _print_memory_injection(cwd: str | None) -> None:
+def _format_injection_payload(agent: str, xml_content: str) -> str:
+    """Format memory XML into agent-specific hook response JSON."""
+
+    if agent == AgentName.GEMINI.value:
+        return json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": xml_content}})
+
+    elif agent == AgentName.CLAUDE.value:
+        return json.dumps({"continue": True, "systemMessage": f"Memory Index:\n{xml_content}"})
+
+    # Default fallback (Codex/other): raw XML might be safest or nothing
+
+    return xml_content
+
+
+def _print_memory_injection(cwd: str | None, agent: str) -> None:
     """Print XML memory index to stdout for agent context injection."""
+
     # Determine project name from CWD
+
     project_name = Path(cwd).name if cwd else None
 
     # Fetch both scopes
+
     global_mems = _fetch_memory_index("global")
+
     project_mems = _fetch_memory_index(project_name) if project_name else []
 
     logger.debug(
@@ -87,35 +115,37 @@ def _print_memory_injection(cwd: str | None) -> None:
     )
 
     if not global_mems and not project_mems:
-        # Must return valid JSON even if empty, or print nothing?
-        # CLI likely ignores empty stdout, but safer to print valid empty JSON or nothing.
-        # Docs say: "If validation fails... script will report errors".
-        # Let's print nothing if no memories, effectively doing nothing.
+        # Must return valid JSON even if empty for Claude to not hang/error?
+
+        # Standard hook contract usually allows empty output to mean "no op".
+
         return
 
     # Build XML
+
     lines = ["<memory_index>"]
 
     if global_mems:
         lines.append("  <global>")
+
         for m in global_mems:
             lines.append(f'    <entry id="{m["id"]}">{m["title"]}</entry>')
+
         lines.append("  </global>")
 
     if project_mems and project_name:
         lines.append(f'  <project name="{project_name}">')
+
         for m in project_mems:
             lines.append(f'    <entry id="{m["id"]}">{m["title"]}</entry>')
+
         lines.append("  </project>")
 
     lines.append("</memory_index>")
 
     xml_content = "\n".join(lines)
 
-    # Wrap in Gemini CLI Hook JSON Contract
-    response = {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": xml_content}}
-
-    print(json.dumps(response))
+    print(_format_injection_payload(agent, xml_content))
 
 
 def _parse_args() -> argparse.Namespace:
@@ -693,9 +723,13 @@ def main() -> None:
 
     # Inject memory index into STDOUT for SessionStart (Agent Context)
     if event_type == AgentHookEvents.AGENT_SESSION_START:
-        project_name = Path(data.get("cwd") or os.getcwd()).name
-        logger.debug("Injecting memory index for session_start", project=project_name)
-        _print_memory_injection(data.get("cwd") or os.getcwd())
+        cwd = args.cwd
+        if cwd:
+            project_name = Path(cwd).name
+            logger.debug("Injecting memory index for session_start", project=project_name)
+            _print_memory_injection(cwd, args.agent)
+        else:
+            logger.error("Skipping memory injection: no CWD provided (contract violation)")
 
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(timezone.utc).isoformat()
