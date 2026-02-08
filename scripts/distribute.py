@@ -145,11 +145,17 @@ def transform_skill_to_codex(post: Post, name: str) -> str:
 
 
 def transform_skill_to_gemini(post: Post, name: str) -> str:
-    """Transform a skill post to Gemini TOML format."""
-    description = post.metadata.get("description", "")
-    description_str = f'"""{description}"""'
-    content = post.content.strip()
-    return f"name = \"{name}\"\ndescription = {description_str}\nprompt = '''\n{content}\n'''\n"
+    """Transform a skill post to Gemini SKILL.md format.
+
+    Same YAML frontmatter as Claude but strips hooks (not supported by Gemini).
+    """
+    metadata = {"name": name, "description": post.metadata.get("description", "")}
+    # Preserve any other metadata except hooks (Gemini doesn't support them)
+    for key, value in post.metadata.items():
+        if key not in ("name", "description", "hooks"):
+            metadata[key] = value
+    transformed_post = Post(post.content, **metadata)
+    return dump_frontmatter(transformed_post)
 
 
 def _should_expand_inline(agent_name: str) -> bool:
@@ -204,6 +210,7 @@ def process_file(content: str, agent_prefix: str, agent_name: str) -> str:
 def expand_inline_refs(content: str, *, project_root: Path, current_path: Path, warn_only: bool = False) -> str:
     """Inline @path.md references into the content (Codex speedup)."""
     seen: set[Path] = set()
+
     def _expand_document(text: str, *, current_path: Path, depth: int) -> str:
         if depth <= 0:
             return text
@@ -429,7 +436,7 @@ def main() -> None:
             "commands_dest_dir": os.path.join(dist_dir, "gemini", "commands"),
             "agents_dest_dir": os.path.join(dist_dir, "gemini", "agents"),
             "skills_dest_dir": os.path.join(dist_dir, "gemini", "skills"),
-            "skills_ext": ".toml",
+            "skills_ext": ".md",
             "deploy_master_dest": os.path.join(os.path.expanduser("~/.gemini"), "GEMINI.md"),
             "deploy_commands_dest": os.path.join(os.path.expanduser("~/.gemini"), "commands"),
             "deploy_agents_dest": os.path.join(os.path.expanduser("~/.gemini"), "agents"),

@@ -417,6 +417,10 @@ def build_context_output(
     # Build path-to-snippet mapping for baseline resolution
     snippets_by_path = {str(s.path): s for s in snippets}
 
+    # Auto-enable third-party loading when snippet_ids reference them
+    if snippet_ids and any(sid.startswith("third-party/") for sid in snippet_ids):
+        include_third_party = True
+
     # Load third-party entries (separate from taxonomy, not filtered by areas)
     third_party_entries: list[ThirdPartyMeta] = []
     if include_third_party:
