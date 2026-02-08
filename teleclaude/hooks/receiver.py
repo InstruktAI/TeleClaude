@@ -79,7 +79,18 @@ def _print_memory_injection(cwd: str | None) -> None:
     global_mems = _fetch_memory_index("global")
     project_mems = _fetch_memory_index(project_name) if project_name else []
 
+    logger.debug(
+        "Memory fetch result",
+        project=project_name,
+        global_count=len(global_mems),
+        project_count=len(project_mems),
+    )
+
     if not global_mems and not project_mems:
+        # Must return valid JSON even if empty, or print nothing?
+        # CLI likely ignores empty stdout, but safer to print valid empty JSON or nothing.
+        # Docs say: "If validation fails... script will report errors".
+        # Let's print nothing if no memories, effectively doing nothing.
         return
 
     # Build XML
@@ -98,7 +109,13 @@ def _print_memory_injection(cwd: str | None) -> None:
         lines.append("  </project>")
 
     lines.append("</memory_index>")
-    print("\n".join(lines))
+
+    xml_content = "\n".join(lines)
+
+    # Wrap in Gemini CLI Hook JSON Contract
+    response = {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": xml_content}}
+
+    print(json.dumps(response))
 
 
 def _parse_args() -> argparse.Namespace:
@@ -676,6 +693,8 @@ def main() -> None:
 
     # Inject memory index into STDOUT for SessionStart (Agent Context)
     if event_type == AgentHookEvents.AGENT_SESSION_START:
+        project_name = Path(data.get("cwd") or os.getcwd()).name
+        logger.debug("Injecting memory index for session_start", project=project_name)
         _print_memory_injection(data.get("cwd") or os.getcwd())
 
     data["agent_name"] = args.agent
