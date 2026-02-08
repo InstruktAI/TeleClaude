@@ -24,6 +24,8 @@ Work through the Validate → Capture protocol when a checkpoint message arrives
 
 ### Phase 1: Validate (if you performed any work this turn)
 
+> **Note:** Running validation commands (tests, logs) counts as "producing work" and will trigger a subsequent checkpoint. This is expected. Validate thoroughly first; go silent on the _subsequent_ checkpoint once you confirm clean results.
+
 1. Check logs for errors from your changes (`instrukt-ai-logs <service> --since <window> --grep <pattern>`).
 2. Run tests if you changed code (`.venv/bin/python -m pytest tests/unit/ -x -q`).
 3. Verify services are healthy after restarts or config changes (`make status`).
@@ -38,7 +40,7 @@ Route each item to its proper destination. Only act where relevant:
 1. Bugs discovered → `todos/bugs.md`
 2. Work items beyond this session's scope → `todos/`
 3. Patterns, lessons, or gotchas worth remembering → auto memory
-4. Ideas, friction, or creative sparks → `ideas/`
+4. Ideas, friction, or evolution opportunities → `ideas/`
 
 ### Exit
 

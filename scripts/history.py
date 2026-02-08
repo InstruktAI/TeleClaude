@@ -7,7 +7,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
@@ -144,6 +144,7 @@ def _scan_one(path: Path, mtime: float, agent_name: AgentName, search_term: str)
         return None
     return {
         "timestamp": format_timestamp(mtime),
+        "agent": agent_name.value,
         "project": _extract_project_from_path(path, agent_name),
         "topic": truncate_display(snippet, 70),
         "session_id": _extract_session_id(path, agent_name),
@@ -152,13 +153,11 @@ def _scan_one(path: Path, mtime: float, agent_name: AgentName, search_term: str)
     }
 
 
-def display_history(agent_name: AgentName, search_term: str = "", limit: int = 20) -> None:
-    """Display session history by scanning native agent transcript dirs."""
+def scan_agent_history(agent_name: AgentName, search_term: str) -> List[dict[str, str]]:
+    """Scan history for a single agent."""
     transcripts = _discover_transcripts(agent_name)
-
     if not transcripts:
-        print(f"No transcripts found for {agent_name.value}")
-        return
+        return []
 
     # Cap files to scan but use threads to scan them in parallel
     to_scan = transcripts[:500]
@@ -171,51 +170,81 @@ def display_history(agent_name: AgentName, search_term: str = "", limit: int = 2
             if result:
                 results.append(result)
 
-    # Sort by mtime descending (newest first) and cap
-    results.sort(key=lambda r: float(r["_mtime"]), reverse=True)
-    results = results[:limit]
+    return results
 
-    if not results:
-        print(f"No conversations found matching '{search_term}'")
+
+def display_combined_history(agents: List[AgentName], search_term: str = "", limit: int = 20) -> None:
+    """Display session history for multiple agents."""
+    all_results: List[dict[str, str]] = []
+    total_scanned = 0
+
+    # Parallel scan across agents? We already parallelize file scanning within agents.
+    # Sequential agent scanning is fine as it's just gathering file lists.
+    for agent in agents:
+        results = scan_agent_history(agent, search_term)
+        all_results.extend(results)
+        # We don't track exact scan count per agent here easily without refactor,
+        # but results count is what matters most.
+
+    if not all_results:
+        print(f"No conversations found matching '{search_term}' across {', '.join(a.value for a in agents)}")
         return
 
-    scanned = len(to_scan)
-    print(f"\nSearch results for '{search_term}' ({len(results)} found, {scanned} files scanned):\n")
+    # Sort by mtime descending (newest first) and cap
+    all_results.sort(key=lambda r: float(r["_mtime"]), reverse=True)
+    all_results = all_results[:limit]
 
-    # Header
-    print(f"{'#':>4} | {'Date/Time':<17} | {'Project':<20} | {'Topic':<70} | {'Session':<12}")
-    print("-" * 130)
+    print(f"\nSearch results for '{search_term}' ({len(all_results)} found):\n")
 
-    for i, entry in enumerate(results, 1):
+    # Header with Agent column
+    print(f"{'#':>4} | {'Date/Time':<17} | {'Agent':<8} | {'Project':<20} | {'Topic':<70} | {'Session':<12}")
+    print("-" * 140)
+
+    for i, entry in enumerate(all_results, 1):
         print(
-            f"{i:>4} | {entry['timestamp']:<17} | {entry['project']:<20} | {entry['topic']:<70} | {entry['session_id']:<12}"
+            f"{i:>4} | {entry['timestamp']:<17} | {entry['agent']:<8} | {entry['project']:<20} | {entry['topic']:<70} | {entry['session_id']:<12}"
         )
 
     print("\n" + "-" * 80)
-    resume_tpl = str(AGENT_METADATA[agent_name.value].get("resume_template", ""))
-    if resume_tpl:
-        example = resume_tpl.format(base_cmd=agent_name.value, session_id="<session-id>")
-        print(f"Resume: {example}")
+    # Resume hints
+    shown_agents = {entry["agent"] for entry in all_results}
+    for agent_str in sorted(shown_agents):
+        meta = AGENT_METADATA.get(agent_str)
+        if meta:
+            resume_tpl = str(meta.get("resume_template", ""))
+            if resume_tpl:
+                example = resume_tpl.format(base_cmd=agent_str, session_id="<session-id>")
+                print(f"Resume {agent_str}: {example}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Search native agent session transcripts.")
-    parser.add_argument("--agent", required=True, help="Agent name (claude|codex|gemini).")
+    parser.add_argument("--agent", required=True, help="Agent name(s) (claude,codex,gemini) or 'all'.")
     parser.add_argument("terms", nargs=argparse.REMAINDER, help="Search terms.")
     args = parser.parse_args()
 
-    agent_str = args.agent.strip()
-    try:
-        agent_name = AgentName.from_str(agent_str)
-    except ValueError:
-        print(f"Unknown agent: {agent_str}")
-        sys.exit(1)
+    agent_arg = args.agent.strip().lower()
+    selected_agents: List[AgentName] = []
+
+    if agent_arg == "all":
+        selected_agents = [AgentName.CLAUDE, AgentName.CODEX, AgentName.GEMINI]
+    else:
+        parts = [p.strip() for p in agent_arg.split(",")]
+        for p in parts:
+            if not p:
+                continue
+            try:
+                selected_agents.append(AgentName.from_str(p))
+            except ValueError:
+                print(f"Unknown agent: {p}")
+                sys.exit(1)
 
     search_term = " ".join(args.terms).strip()
     if not search_term:
-        print("Search terms are required. Example: history.py --agent claude <terms>")
+        print("Search terms are required. Example: history.py --agent all <terms>")
         sys.exit(1)
-    display_history(agent_name, search_term)
+
+    display_combined_history(selected_agents, search_term)
 
 
 if __name__ == "__main__":

@@ -14,12 +14,12 @@ Defines the canonical command signatures and usage patterns for searching native
 ## Canonical fields
 
 - Tool: `$HOME/.teleclaude/scripts/history.py`
-- Signature: `history.py --agent <claude|codex|gemini> <search terms...>`
+- Signature: `history.py --agent <agents> <search terms...>`
 - Required input:
-  - `--agent`
-  - At least one search term
+  - `--agent`: Comma-separated list of agents (e.g., `claude,gemini`) or `all`.
+  - At least one search term.
 - Output shape:
-  - Matching sessions with date/time, project, topic snippet, session ID, and resume hint
+  - Matching sessions with date/time, agent, project, topic snippet, session ID, and resume hints.
 - Canonical examples:
 
 ```bash
@@ -27,16 +27,16 @@ $HOME/.teleclaude/scripts/history.py --agent claude memory observations claude-m
 ```
 
 ```bash
-$HOME/.teleclaude/scripts/history.py --agent claude "api/memory/save"
+$HOME/.teleclaude/scripts/history.py --agent all api memory save
 ```
 
 ```bash
-$HOME/.teleclaude/scripts/history.py --agent codex checkpoint
+$HOME/.teleclaude/scripts/history.py --agent claude,gemini checkpoint
 ```
 
 ## Allowed values
 
-- `--agent` must be one of: `claude`, `codex`, `gemini`
+- `--agent`: `claude`, `codex`, `gemini`, comma-separated combinations, or `all`.
 - Search terms are free text and support multi-word narrowing by passing additional terms.
 
 ## Known caveats
