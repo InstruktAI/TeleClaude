@@ -67,6 +67,23 @@ AGENTS files, doc snippets) have changed on disk and you need to pick them up.
 **Do not** restart for routine work — only when you have evidence that your loaded
 artifacts are stale relative to what was just deployed.
 
+### Checkpoint Messages — Debrief
+
+After each turn, the system injects a checkpoint message. It is not from the user.
+Any response you give starts a new turn, which triggers another checkpoint.
+If your work is done and you have nothing to report, **do not respond** — silence
+breaks the cycle and is the correct answer.
+
+When a checkpoint arrives, think through:
+
+1. Done or more to do?
+2. Anything worth preserving beyond this session?
+3. Issues or work beyond this session's scope to surface?
+4. Any friction, thoughts, or ideas worth offloading?
+
+Only act if something genuinely needs surfacing. Do not debrief prematurely —
+the checkpoint will come at the right moment. Trust it.
+
 ## REMINDERS
 
 - ALWAYS RESPOND IN ENGLISH, ALSO WHEN YOU RECEIVE INPUT IN DUTCH!

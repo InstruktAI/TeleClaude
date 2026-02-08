@@ -7,6 +7,13 @@ snippets:
   scope: global
   path: docs/general/concept/documentation-snippets.md
   source_project: TeleClaude
+- id: general/concept/memory-tiers
+  description: The layered memory architecture that gives AI agents continuity, context,
+    and the capacity to learn across sessions.
+  type: concept
+  scope: global
+  path: docs/general/concept/memory-tiers.md
+  source_project: TeleClaude
 - id: general/concept/normalized-agent-artifacts
   description: Normalized agent artifact primitives and how they map to supported
     agent CLIs.
@@ -19,6 +26,13 @@ snippets:
   type: policy
   scope: global
   path: docs/general/policy/autonomy.md
+  source_project: TeleClaude
+- id: general/policy/checkpoint
+  description: System-injected debrief at natural work breakpoints for knowledge capture,
+    issue surfacing, and idea offloading.
+  type: policy
+  scope: global
+  path: docs/general/policy/checkpoint.md
   source_project: TeleClaude
 - id: general/policy/conflict-resolution
   description: Guidelines for resolving conflicts between documentation, instructions,
@@ -33,6 +47,13 @@ snippets:
   type: policy
   scope: global
   path: docs/general/policy/context-retrieval.md
+  source_project: TeleClaude
+- id: general/policy/heartbeat
+  description: Periodic self-awareness timer that keeps agents aligned during sustained
+    work.
+  type: policy
+  scope: global
+  path: docs/general/policy/heartbeat.md
   source_project: TeleClaude
 - id: general/policy/referencing-doc-snippets
   description: Policy for referencing documentation snippets in AI agent prompts.

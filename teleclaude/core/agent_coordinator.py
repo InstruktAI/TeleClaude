@@ -33,6 +33,7 @@ from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import notify_input_request, notify_stop
 from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input
+from teleclaude.core.tmux_bridge import send_keys_existing_tmux
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
@@ -52,6 +53,8 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
+
+CHECKPOINT_MESSAGE = "Checkpoint \u2014 your work has paused. If you have nothing to report, do not respond."
 
 SESSION_START_MESSAGES = [
     "Standing by with grep patterns locked and loaded. What can I find?",
@@ -89,6 +92,7 @@ class AgentCoordinator:
         self.client = client
         self.tts_manager = tts_manager
         self.headless_snapshot_service = headless_snapshot_service
+        self._checkpointed_sessions: set[str] = set()
 
     async def handle_event(self, context: AgentEventContext) -> None:
         """Handle any agent lifecycle event."""
@@ -162,6 +166,10 @@ class AgentCoordinator:
         # Clear notification flag when new prompt starts (all sessions)
         await db.set_notification_flag(session_id, False)
 
+        # Clear checkpoint flag on real user input (not system-injected checkpoints)
+        if CHECKPOINT_MESSAGE not in payload.prompt:
+            self._checkpointed_sessions.discard(session_id)
+
         # Prepare batched update
         update_kwargs: dict[str, object] = {  # guard: loose-dict - Dynamic session updates
             "last_message_sent": payload.prompt[:200],
@@ -224,39 +232,36 @@ class AgentCoordinator:
             "db",
         )
 
-        # 1. Extract and summarize agent output, write to DB immediately
-        # SKIP summary if threaded output experiment is enabled (output already sent)
+        # 1. Extract and summarize agent output, write to DB with reason="agent_stopped"
         active_agent = (session.active_agent if session else None) or (
             payload.raw.get("agent_name") if payload.raw else None
         )
-        if not (active_agent and is_threaded_output_enabled(str(active_agent))):
-            raw_output, summary = await self._extract_and_summarize(session_id, payload)
-            if raw_output:
-                # Strip ANSI codes if configured
-                if config.terminal.strip_ansi:
-                    raw_output = strip_ansi_codes(raw_output)
+        prev_feedback = session.last_feedback_received if session else None
+        raw_output, summary = await self._extract_and_summarize(session_id, payload)
+        if raw_output:
+            # Strip ANSI codes if configured
+            if config.terminal.strip_ansi:
+                raw_output = strip_ansi_codes(raw_output)
 
-                await db.update_session(
-                    session_id,
-                    reason="agent_stopped",
-                    last_feedback_received=raw_output,
-                    last_feedback_summary=summary,
-                    last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
-                )
-                logger.debug(
-                    "Stored agent output: session=%s raw_len=%d summary_len=%d",
-                    session_id[:8],
-                    len(raw_output),
-                    len(summary) if summary else 0,
-                )
-                # Speak the summary via TTS
-                if summary:
-                    try:
-                        await self.tts_manager.speak(summary)
-                    except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
-                        logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
-        else:
-            logger.debug("Skipping summary generation for threaded session %s", session_id[:8])
+            await db.update_session(
+                session_id,
+                reason="agent_stopped",
+                last_feedback_received=raw_output,
+                last_feedback_summary=summary,
+                last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
+            )
+            logger.debug(
+                "Stored agent output: session=%s raw_len=%d summary_len=%d",
+                session_id[:8],
+                len(raw_output),
+                len(summary) if summary else 0,
+            )
+            # Speak the summary via TTS
+            if summary:
+                try:
+                    await self.tts_manager.speak(summary)
+                except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
+                    logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
 
         # 2. For Codex: extract last user input from transcript (no hook support)
         await self._extract_user_input_for_codex(session_id, payload)
@@ -273,7 +278,9 @@ class AgentCoordinator:
             and active_agent
             and is_threaded_output_enabled(str(active_agent))
         ):
-            session.adapter_metadata.telegram.output_message_id = None
+            # Clear output_message_id via dedicated column (not adapter_metadata blob)
+            # to prevent concurrent adapter_metadata writes from clobbering it.
+            await db.set_output_message_id(session_id, None)
             session.adapter_metadata.telegram.char_offset = 0
             await db.update_session(session_id, adapter_metadata=session.adapter_metadata)
 
@@ -286,6 +293,12 @@ class AgentCoordinator:
         # 5. Forward to remote initiator (AI-to-AI across computers)
         if not (source_computer and source_computer != config.computer.name):
             await self._forward_stop_to_initiator(session_id)
+
+        # 6. Inject checkpoint into the stopped agent's tmux pane
+        # Clear checkpoint flag if agent produced new output (real work after a checkpoint)
+        if raw_output and raw_output != prev_feedback:
+            self._checkpointed_sessions.discard(session_id)
+        await self._inject_checkpoint(session_id, session)
 
     async def handle_agent_output(self, context: AgentEventContext) -> None:
         """Handle rich incremental agent output (thinking, tools)."""
@@ -410,11 +423,7 @@ class AgentCoordinator:
                 # each time (accumulating content), so we do NOT update the cursor.
                 # NOTE: We fetch fresh session/metadata to check the ID set by send_threaded_output
                 fresh_session = await db.get_session(session_id)
-                is_threaded_active = (
-                    fresh_session
-                    and fresh_session.adapter_metadata.telegram
-                    and fresh_session.adapter_metadata.telegram.output_message_id is not None
-                )
+                is_threaded_active = fresh_session and fresh_session.output_message_id is not None
                 should_update_cursor = not is_threaded_active
 
                 # Always update session to refresh last_activity (heartbeat),
@@ -639,3 +648,29 @@ class AgentCoordinator:
             )
         except Exception as e:
             logger.warning("Failed to forward notification to %s: %s", initiator_computer, e)
+
+    async def _inject_checkpoint(self, session_id: str, session: "Session | None") -> None:
+        """Inject checkpoint message into the stopped agent's tmux pane.
+
+        Uses an in-memory set to prevent re-injection: once checkpointed,
+        the flag is only cleared when a real user message arrives
+        (via handle_user_prompt_submit).
+        """
+        if not session:
+            return
+        tmux_name = session.tmux_session_name
+        if not tmux_name:
+            return
+
+        if session_id in self._checkpointed_sessions:
+            logger.debug("Checkpoint skipped (already checkpointed) for session %s", session_id[:8])
+            return
+
+        delivered = await send_keys_existing_tmux(
+            session_name=tmux_name,
+            text=CHECKPOINT_MESSAGE,
+            send_enter=True,
+        )
+        if delivered:
+            self._checkpointed_sessions.add(session_id)
+            logger.debug("Checkpoint injected for session %s", session_id[:8])
