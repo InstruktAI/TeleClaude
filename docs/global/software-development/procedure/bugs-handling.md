@@ -1,5 +1,5 @@
 ---
-description: 'Triage bugs, decide quick fixes vs new todos, and track resolution in bugs.md.'
+description: 'Two-track bug handling: inline for internal discovery, maintenance for external reports.'
 id: 'software-development/procedure/bugs-handling'
 scope: 'domain'
 type: 'procedure'
@@ -9,75 +9,63 @@ type: 'procedure'
 
 ## Goal
 
-Convert raw bug reports into action: fix quickly when safe, otherwise create a todo with clear scope.
+Fix bugs the moment you discover them. For external bug reports (GitHub Issues), a
+periodic maintenance routine handles triage and resolution in a controlled worktree.
 
-- Read `todos/bugs.md`.
-- Find unchecked items (`[ ]`).
-- If none, report and stop.
+There is no bugs backlog. There is no `bugs.md`. Internal bugs are fixed inline.
+External bugs arrive via GitHub Issues and are processed by the maintenance runner.
 
-### 2.1 Understand
+## Track 1: Inline (Internal Discovery)
 
-- Read the bug description.
-- Identify affected files/components.
-- Understand expected vs actual behavior.
+### Preconditions
 
-### 2.2 Investigate
+- You discovered a bug during your current work.
 
-- Search the codebase and logs.
-- Identify the root cause if possible.
+### Steps
 
-### 2.3 Decide: Quick Fix or Todo
+1. **Assess scope.** Can you fix this in a few minutes without derailing your current
+   task? Most bugs encountered during active work are small — a wrong condition, a
+   missing guard, a stale reference.
 
-**Quick fix** if all are true:
+2. **Fix inline.** Fix it right where you are, on whatever branch you are on. Apply the
+   minimal fix, verify via commit hooks (lint + unit tests), commit, continue.
 
-- Small, localized change
-- Low risk of regressions
-- Clear expected outcome
+3. **If the bug is too large for inline fixing**, it is not a bug — it is a work item.
+   Create `todos/{slug}/input.md` with the issue details and add it to
+   `todos/roadmap.md`. Do not create a separate bugs file.
 
-**Otherwise create a todo**:
+4. **Never log a bug and move on.** That middle ground — "I'll note it for later" —
+   creates noise that goes stale. Either fix it or promote it. There is no third option.
 
-- Create `todos/{new_slug}/input.md` with the bug details
-- Add `{new_slug}` to `todos/roadmap.md` as `[ ]`
-- Mark the bug as converted (note the new slug)
+### Outputs
 
-### 2.4 If Quick Fix (Self-Healing Route)
+- Bug fixed and committed on the current branch, or
+- New work item in `todos/` with the issue promoted to a roadmap entry.
 
-If the fix is small and localized, follow the **Bugs Self-Healing** route:
+## Track 2: Maintenance (External Reports)
 
-1. **Use Special Worktree:** All bug fixes must be performed in the persistent `.bugs-worktree` directory (located at the project root, NOT in `worktrees/`).
-2. **Update Worktree:** Always ensure the worktree is up to date:
-   ```bash
-   cd .bugs-worktree && git pull origin main
-   ```
-3. **Mark and Fix:**
-   - Mark `[>]` in `bugs.md` while working.
-   - Apply minimal fix.
-   - Verify via commit hooks (lint + unit tests).
-   - Mark `[x]` when fixed.
-   - Commit one bug per commit with a descriptive message.
-4. **Push:** Push the changes to main once verified.
+### Preconditions
 
-Summarize fixes and any new todos created.
+- Bug reports exist as GitHub Issues (labeled `bug`).
+- The maintenance runner (jobs/maintenance.py) triggers periodically.
 
-## Preconditions
+### Steps
 
-- Bug report exists with reproduction steps or evidence.
-- Access to the repository and relevant test environment.
-- `.bugs-worktree` exists or can be created via `git worktree add .bugs-worktree main`.
+1. **Pull issues.** `gh issue list --label bug --state open` to discover actionable reports.
+2. **Triage.** Skip stale, duplicates, issues already with linked PRs.
+3. **Dispatch.** The `next-bugs` worker fixes each issue in `.bugs-worktree`, creates a
+   PR referencing the issue (`gh pr create --closes #N`).
+4. **Review.** Accumulated PRs are reviewed and merged on a controlled cadence.
 
-## Steps
+### Outputs
 
-- Triage the report and attempt to reproduce.
-- Record the bug in `todos/bugs.md` with severity and scope.
-- Decide quick fix (Self-Healing) vs roadmap item.
-- Apply fix in `.bugs-worktree` or create a new work item and update roadmap.
-
-## Outputs
-
-- Updated `todos/bugs.md` and/or a new roadmap item.
-- Fix committed if resolved.
+- PRs created for each resolved issue, referencing the GitHub Issue number.
+- Issues auto-closed when PRs merge.
 
 ## Recovery
 
-- If not reproducible, mark with `[?]` and document attempts.
-- If regression occurs, mark `[!]` and create follow-up tasks.
+- If you cannot reproduce an inline bug, investigate briefly. If it remains elusive,
+  create a work item with your investigation notes.
+- If your fix introduces a regression, fix the regression immediately.
+- For external bugs that cannot be reproduced, comment on the issue asking for more
+  information. Let the `no-response` bot handle stale reporter silence.

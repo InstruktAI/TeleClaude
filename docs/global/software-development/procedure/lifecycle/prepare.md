@@ -16,12 +16,11 @@ type: 'procedure'
 ## Goal
 
 1. Read `todos/roadmap.md`.
-2. **Bugs Sentinel:** Read `todos/bugs.md` and identify any blockers or relevant bugs that must be addressed before this item is ready.
-3. Report current items and recommendations:
+2. Report current items and recommendations:
    - What items are pending?
    - What should be prioritized and why?
    - Any items that need clarification?
-4. Discuss with the orchestrator until a slug is chosen.
+3. Discuss with the orchestrator until a slug is chosen.
 
 ```
 ANALYSIS: {slug}
@@ -40,9 +39,6 @@ ANALYSIS: {slug}
 - [Question 1]
 - [Question 2]
 
-**Bugs Check:**
-- [ ] Any blockers or relevant bugs found in `todos/bugs.md` have been addressed or accounted for.
-
 What are your thoughts?
 ```
 
@@ -55,16 +51,15 @@ Ready for implementation.
 
 ## Preconditions
 
-- `todos/roadmap.md` and `todos/bugs.md` exist and are readable.
+- `todos/roadmap.md` exists and is readable.
 - Target slug folder exists or can be created.
 
 ## Steps
 
 1. Review roadmap and identify candidate slugs.
-2. **Scan Bugs:** Check `todos/bugs.md`. If blockers exist, prioritize fixing them via the **Bugs Self-Healing** route before preparing new features.
-3. Run input assessment and requirements analysis for the chosen slug.
-4. Review or draft the implementation plan.
-5. Confirm readiness with the orchestrator and return `PREPARED`.
+2. Run input assessment and requirements analysis for the chosen slug.
+3. Review or draft the implementation plan.
+4. Confirm readiness with the orchestrator and return `PREPARED`.
 
 ## Outputs
 

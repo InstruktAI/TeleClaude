@@ -17,7 +17,7 @@ Before saving anything, route the information to its proper home.
 
 | Item Type                  | Destination       | Why?                                                                    |
 | :------------------------- | :---------------- | :---------------------------------------------------------------------- |
-| **Defect / Error**         | `todos/bugs.md`   | It's a flaw in the code to be fixed.                                    |
+| **Defect / Error**         | **Fix inline**    | Fix it now, right where you are. If too large, promote to `todos/`.     |
 | **Work Item / Task**       | `todos/`          | It's a unit of work to be executed.                                     |
 | **Potential / Suggestion** | `ideas/`          | It's an unverified hunch or future project.                             |
 | **System Rule / How-To**   | **Documentation** | It's a formal instruction for _all_ agents. (Update doc snippet).       |
@@ -43,19 +43,35 @@ Memory is **sacred ground**. Do not pollute it with gravel. Save only "Gems".
 - **"I am analyzing..."** (Meta-commentary).
 - **AI-to-AI Chatter:** Worker agents reporting to Orchestrators should _never_ save memories. Their interaction is transactional, not relational.
 
+## Observation Types
+
+Each memory observation is classified by type for progressive disclosure:
+
+| Type         | When to use                                                    |
+| ------------ | -------------------------------------------------------------- |
+| `preference` | User likes/dislikes, working style, communication preferences. |
+| `decision`   | Architectural or design choices with rationale.                |
+| `discovery`  | Something learned about a system, codebase, or domain.         |
+| `gotcha`     | Pitfalls, traps, surprising behavior that bit us.              |
+| `pattern`    | Recurring approaches that work well.                           |
+| `friction`   | What causes slowdowns, miscommunication, or frustration.       |
+| `context`    | Project/team/domain background knowledge.                      |
+
 ## Steps
 
 1.  **Spot the Gem:** You realize something important about the _relationship_, _context_, or _user preference_.
 2.  **Route Check:**
-    - Is it a bug? -> `bugs.md`.
+    - Is it a bug? -> Fix it inline now. If too large, create a todo.
     - Is it a doc update? -> Update the doc snippet (PR).
     - Is it an idea? -> Idea Box.
-3.  **Refine:** Strip the noise.
+3.  **Classify:** Pick the observation type that best matches the gem.
+4.  **Refine:** Strip the noise.
     - _Bad:_ "I noticed the user prefers concise answers so I will be concise."
     - _Good:_ "User demands extreme conciseness; max 3 lines for non-tool responses."
-4.  **Save:** Use the `save_memory` tool (or `memory-management-api`).
+5.  **Save:** Use the memory HTTP API (see `memory-management-api` spec).
     - Title: Short, searchable hook.
     - Text: The standalone truth.
+    - Type: One of the observation types above.
 
 ## Recovery
 

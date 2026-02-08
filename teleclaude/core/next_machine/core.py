@@ -79,11 +79,6 @@ PREPARE_FALLBACK: dict[str, list[tuple[str, str]]] = {
 }
 
 WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
-    "bugs": [
-        (AgentName.CODEX.value, ThinkingMode.MED.value),
-        (AgentName.CLAUDE.value, ThinkingMode.MED.value),
-        (AgentName.GEMINI.value, ThinkingMode.MED.value),
-    ],
     "build": [
         (AgentName.GEMINI.value, ThinkingMode.MED.value),
         (AgentName.CLAUDE.value, ThinkingMode.MED.value),
@@ -119,14 +114,6 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
 # Post-completion instructions for each command (used in format_tool_call)
 # These tell the orchestrator what to do AFTER a worker completes
 POST_COMPLETION: dict[str, str] = {
-    "next-bugs": """WHEN WORKER COMPLETES:
-1. Verify bugs fixed and tests pass
-2. If success:
-   - teleclaude__end_session(computer="local", session_id="<session_id>")
-   - Call {next_call}
-3. If bugs remain or tests fail:
-   - Keep session alive and guide worker to resolution
-""",
     "next-build": """WHEN WORKER COMPLETES:
 1. MANDATORY VERIFICATION - Never trust worker self-reports, so FROM WITHIN WORKTREE:
      - Run linter
@@ -633,19 +620,6 @@ def slug_in_roadmap(cwd: str, slug: str) -> bool:
     content = read_text_sync(roadmap_path)
     pattern = re.compile(rf"^-\s+\[[ .>x]\]\s+{re.escape(slug)}(\s|$)", re.MULTILINE)
     return bool(pattern.search(content))
-
-
-def has_pending_bugs(cwd: str) -> bool:
-    """Check if todos/bugs.md has unchecked items.
-
-    Returns:
-        True if bugs.md exists and contains unchecked checkboxes ([ ]).
-    """
-    bugs_path = Path(cwd) / "todos" / "bugs.md"
-    if not bugs_path.exists():
-        return False
-    content = read_text_sync(bugs_path)
-    return RoadmapBox.PENDING.value in content
 
 
 # =============================================================================
@@ -1228,26 +1202,14 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
     # 1. Resolve slug
     resolved_slug = slug
 
-    # Bugs Sentinel check
-    bugs_path = Path(cwd) / "todos" / "bugs.md"
-    bugs_note = ""
-    if bugs_path.exists():
-        content = await read_text_async(bugs_path)
-        if "[ ]" in content:
-            bugs_note = (
-                "\n\n**Bugs Sentinel:** Open bugs found in `todos/bugs.md`. "
-                "Ensure blockers are handled via `next-bugs` in `.bugs-worktree` "
-                "(after `git pull origin main`) before proceeding."
-            )
-
     if resolved_slug == DEFAULT_INPUT_SLUG:
         created_slug, note = await _create_input_todo_from_latest_session(db, cwd)
         if created_slug:
             return format_hitl_guidance(
                 f"Captured discussion into todos/{created_slug}/input.md. "
-                f'Next: call teleclaude__next_prepare(slug="{created_slug}").' + bugs_note
+                f'Next: call teleclaude__next_prepare(slug="{created_slug}").'
             )
-        return format_hitl_guidance(f"Input capture failed. {note}" + bugs_note)
+        return format_hitl_guidance(f"Input capture failed. {note}")
 
     if not slug and not hitl:
         resolved_slug, _, _ = await resolve_slug_async(cwd, None)
@@ -1257,7 +1219,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             return format_hitl_guidance(
                 "Read todos/roadmap.md. Discuss with the user to identify or propose a "
                 "work item slug. Once decided, write requirements.md and "
-                "implementation-plan.md yourself and commit." + bugs_note
+                "implementation-plan.md yourself and commit."
             )
 
         # Dispatch next-prepare (no slug) when hitl=False
@@ -1269,7 +1231,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             agent=agent,
             thinking_mode=mode,
             subfolder="",
-            note="Roadmap is empty or no item selected. Groom the roadmap to add work items." + bugs_note,
+            note="Roadmap is empty or no item selected. Groom the roadmap to add work items.",
             next_call="teleclaude__next_prepare",
         )
 
@@ -1292,7 +1254,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
         )
         note = f"Preparing: {resolved_slug}. This slug is not in todos/roadmap.md. {next_step}"
         if hitl:
-            return format_hitl_guidance(note + bugs_note)
+            return format_hitl_guidance(note)
 
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
         return format_tool_call(
@@ -1302,7 +1264,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             agent=agent,
             thinking_mode=mode,
             subfolder="",
-            note=note + bugs_note,
+            note=note,
             next_call="teleclaude__next_prepare",
         )
 
@@ -1316,7 +1278,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             return format_hitl_guidance(
                 f"Preparing: {resolved_slug}. Read todos/{resolved_slug}/input.md and assess "
                 "Definition of Ready. If complex, split into smaller todos. Then update state.json "
-                "and create breakdown.md." + bugs_note
+                "and create breakdown.md."
             )
         # Non-HITL: dispatch architect to assess
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
@@ -1327,7 +1289,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             agent=agent,
             thinking_mode=mode,
             subfolder="",
-            note=f"Assess todos/{resolved_slug}/input.md for complexity. Split if needed." + bugs_note,
+            note=f"Assess todos/{resolved_slug}/input.md for complexity. Split if needed.",
             next_call="teleclaude__next_prepare",
         )
 
@@ -1335,15 +1297,15 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
     if breakdown_state and breakdown_state.get("todos"):
         dep_todos = breakdown_state["todos"]
         if isinstance(dep_todos, list):
-            return f"CONTAINER: {resolved_slug} was split into: {', '.join(dep_todos)}. Work on those first.{bugs_note}"
-        return f"CONTAINER: {resolved_slug} was split. Check state.json for dependent todos.{bugs_note}"
+            return f"CONTAINER: {resolved_slug} was split into: {', '.join(dep_todos)}. Work on those first."
+        return f"CONTAINER: {resolved_slug} was split. Check state.json for dependent todos."
 
     # 2. Check requirements
     if not check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md"):
         if hitl:
             return format_hitl_guidance(
                 f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/requirements.md "
-                f"and todos/{resolved_slug}/implementation-plan.md yourself and commit." + bugs_note
+                f"and todos/{resolved_slug}/implementation-plan.md yourself and commit."
             )
 
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
@@ -1354,8 +1316,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             agent=agent,
             thinking_mode=mode,
             subfolder="",
-            note=f"Discuss until you have enough input. Write todos/{resolved_slug}/requirements.md yourself and commit."
-            + bugs_note,
+            note=f"Discuss until you have enough input. Write todos/{resolved_slug}/requirements.md yourself and commit.",
             next_call="teleclaude__next_prepare",
         )
 
@@ -1364,7 +1325,6 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
         if hitl:
             return format_hitl_guidance(
                 f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/implementation-plan.md yourself and commit."
-                + bugs_note
             )
 
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
@@ -1375,8 +1335,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             agent=agent,
             thinking_mode=mode,
             subfolder="",
-            note=f"Discuss until you have enough input. Write todos/{resolved_slug}/implementation-plan.md yourself and commit."
-            + bugs_note,
+            note=f"Discuss until you have enough input. Write todos/{resolved_slug}/implementation-plan.md yourself and commit.",
             next_call="teleclaude__next_prepare",
         )
 
@@ -1385,7 +1344,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
     if current_state == RoadmapMarker.PENDING.value:  # Only transition pending -> ready
         await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, RoadmapMarker.READY.value)
     # else: already [.], [>], or [x] - no state change needed
-    return format_prepared(resolved_slug) + (f"\n\n{bugs_note.strip()}" if bugs_note else "")
+    return format_prepared(resolved_slug)
 
 
 async def next_work(db: Db, slug: str | None, cwd: str) -> str:

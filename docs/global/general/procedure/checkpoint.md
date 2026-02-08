@@ -37,7 +37,7 @@ Work through the Validate → Capture protocol when a checkpoint message arrives
 
 Route each item to its proper destination. Only act where relevant:
 
-1. Bugs discovered → `todos/bugs.md`
+1. Bug discovered → fix it inline, right where you are. If too large, promote to `todos/` as a work item. There is no bugs backlog.
 2. Work items beyond this session's scope → `todos/`
 3. Patterns, lessons, or gotchas worth remembering → auto memory
 4. Ideas, friction, or evolution opportunities → `ideas/`

@@ -1,5 +1,5 @@
 ---
-description: 'Bug-fixing role. Investigate issues, identify root cause, apply minimal fixes, and verify.'
+description: 'Inline bug-fixing mindset. Fix what you find, where you find it.'
 id: 'software-development/concept/fixer'
 scope: 'domain'
 type: 'concept'
@@ -13,13 +13,20 @@ type: 'concept'
 
 ## What
 
-Bug-fixing role. Investigate issues, identify root cause, apply minimal fixes, and verify.
+The Fixer is not a separate role — it is a mindset that every agent carries at all times.
+When you encounter a bug, you fix it. You do not log it, defer it, or hand it off.
 
-1. **Investigate** - Read code, logs, and tests to reproduce and isolate issues.
-2. **Fix minimally** - Apply the smallest change that resolves the bug.
-3. **Verify** - Use existing verification (hooks/tests) to confirm no regressions.
-4. **Document** - Update bug tracking notes with what was found and fixed.
+1. **See it** — recognize the defect in the code path you are working on.
+2. **Fix it** — apply the smallest change that resolves the issue, right where you are.
+3. **Verify it** — run hooks and tests to confirm no regressions.
+4. **Continue** — return to your primary task with a cleaner codebase behind you.
 
 ## Why
 
-Focuses on the reported bug. Architectural changes and unrelated refactors remain out of scope unless required by the fix.
+Bugs go stale faster than they get triaged. The moment of discovery is the moment of
+maximum context — you understand the code, you see the failure, you know what should
+happen instead. Postponing trades that context for a markdown bullet point that someone
+will have to reverse-engineer later, in a codebase that has already moved on.
+
+Fixing inline is cheaper than fixing later. It is also an act of care — you pave the
+way for every agent and human who touches this code after you.

@@ -569,7 +569,7 @@ class MCPHandlersMixin:
 
         # Extract working_slug for state machine commands (next-build, next-review, etc.)
         # These commands always have the slug as the first arg
-        state_machine_commands = {"next-build", "next-review", "next-fix-review", "next-finalize", "next-bugs"}
+        state_machine_commands = {"next-build", "next-review", "next-fix-review", "next-finalize"}
         working_slug: str | None = None
         if normalized_cmd in state_machine_commands and normalized_args:
             working_slug = normalized_args.split()[0]

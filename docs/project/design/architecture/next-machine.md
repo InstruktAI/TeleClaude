@@ -29,9 +29,7 @@ stateDiagram-v2
     CheckRoadmap --> Prepare: Item needs prep
     CheckRoadmap --> Work: Item ready to build
     Prepare --> Work: Prep complete
-    Work --> Bugs: Deferrals found
-    Work --> Build: No deferrals
-    Bugs --> Build: Bugs processed
+    Work --> Build: Ready to build
     Build --> Review: Build complete
     Review --> Fix: Changes requested
     Review --> Finalize: Approved
@@ -89,16 +87,13 @@ flowchart TD
 flowchart TD
     Start[next_work called]
     CheckState{Read state.json}
-    Bugs{Deferrals<br/>exist?}
     Build{Build<br/>complete?}
     Review{Review<br/>status?}
     Fix{Fix<br/>needed?}
     Finalize[Finalize]
 
     Start --> CheckState
-    CheckState --> Bugs
-    Bugs -->|Yes| ProcessBugs[Dispatch bugs processor]
-    Bugs -->|No| Build
+    CheckState --> Build
     Build -->|No| DispatchBuilder[Dispatch builder AI]
     Build -->|Yes| Review
     Review -->|Pending| DispatchReviewer[Dispatch reviewer AI]
@@ -130,7 +125,6 @@ sequenceDiagram
 | Phase    | Worker Role | Command Example                                |
 | -------- | ----------- | ---------------------------------------------- |
 | Prepare  | Architect   | `/prime-architect` then collaborate with user  |
-| Bugs     | Triage      | `/next-bugs` - categorize deferrals            |
 | Build    | Builder     | `/next-build` in worktree                      |
 | Review   | Reviewer    | `/next-review` - evaluate against requirements |
 | Fix      | Fixer       | `/next-fix-review` - address findings          |
