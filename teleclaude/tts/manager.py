@@ -9,6 +9,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import TTSConfig, config
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.voice_assignment import VoiceConfig
 from teleclaude.tts.queue_runner import run_tts_with_lock_async
 
@@ -171,6 +172,16 @@ class TTSManager:
 
         if not text_to_speak:
             logger.debug(f"No message for event {event_name}")
+            return False
+
+        # Get session to check origin
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Session %s not found for TTS", session_id)
+            return False
+
+        if session.last_input_origin == InputOrigin.TELEGRAM.value:
+            logger.info(f"Skipping TTS for session {session_id[:8]} (origin: telegram)")
             return False
 
         # Get or assign voice for this session (persisted in DB)

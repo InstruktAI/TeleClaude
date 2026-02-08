@@ -168,7 +168,9 @@ async def test_agent_coordinator_handle_agent_stop_strips_ansi(monkeypatch):
         patch.object(coordinator, "_extract_and_summarize", return_value=(raw_ansi_output, "Summary")),
     ):
         mock_db.get_session = AsyncMock(
-            return_value=MagicMock(active_agent="claude", last_after_model_at=None, last_checkpoint_at=None)
+            return_value=MagicMock(
+                active_agent="claude", last_after_model_at=None, last_checkpoint_at=None, last_message_sent_at=None
+            )
         )
         mock_db.update_session = AsyncMock()
 

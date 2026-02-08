@@ -87,6 +87,14 @@ Removed `AI:` prefix from AI-to-AI session titles. Title updates automatically w
 - Multiple investigation attempts ruled out: scroll_offset logic, curses scrollok/idlok/idcok/nonl settings, stray prints, bottom-right corner writes
 - Next approach: add debug logging to observe exact state changes during click, and check if the jump correlates with tmux pane operations (preview activation)
 
+### 6. Codex sessions never receive checkpoint injection
+
+**Problem:** Codex only fires a single hook event (`agent-turn-complete` → `AGENT_STOP`). There is no equivalent of Claude's `PreToolUse` or Gemini's `AfterModel` that maps to `AFTER_MODEL`. Without `after_model` events, `last_after_model_at` is never set, and `_maybe_inject_checkpoint` always skips at rule 1 ("no after_model → text-only response").
+
+**Evidence:** Logs show multiple `agent_stop` events for Codex session `1a77cbc2` over 15 minutes, zero `after_model` events, zero checkpoint injections.
+
+**Fix direction:** For agents that lack `after_model` support, fall back to a simpler checkpoint policy — either skip the 30s threshold entirely, or use `last_activity` timestamps as a turn-start proxy.
+
 ---
 
 ## High Priority (Correctness / Observability)

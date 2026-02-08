@@ -128,6 +128,13 @@ snippets:
   scope: global
   path: docs/general/procedure/idea-box.md
   source_project: TeleClaude
+- id: general/procedure/tool-spec-authoring
+  description: Author lean tool specs under spec/tools while preserving schema compliance
+    and progressive disclosure.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/tool-spec-authoring.md
+  source_project: TeleClaude
 - id: general/spec/agent-artifacts
   description: Minimal schema used for agent artifacts (commands and skills).
   type: spec
@@ -152,6 +159,33 @@ snippets:
   type: spec
   scope: global
   path: docs/general/spec/third-party-docs.md
+  source_project: TeleClaude
+- id: general/spec/tools/agent-restart
+  description: Canonical self-restart call for reloading synchronized artifacts without
+    losing session continuity.
+  type: spec
+  scope: global
+  path: docs/general/spec/tools/agent-restart.md
+  source_project: TeleClaude
+- id: general/spec/tools/baseline
+  description: Progressive-disclosure entrypoint for the global tool cabinet.
+  type: spec
+  scope: global
+  path: docs/general/spec/tools/baseline.md
+  source_project: TeleClaude
+- id: general/spec/tools/history-search
+  description: Canonical usage of history.py for recovering prior conversations with
+    progressive narrowing.
+  type: spec
+  scope: global
+  path: docs/general/spec/tools/history-search.md
+  source_project: TeleClaude
+- id: general/spec/tools/memory-management-api
+  description: Canonical curl signatures for writing and retrieving memory through
+    the external worker API.
+  type: spec
+  scope: global
+  path: docs/general/spec/tools/memory-management-api.md
   source_project: TeleClaude
 - id: software-development/concept/ai-to-ai-coordination
   description: How AI agents coordinate using sub-sessions, listeners, and terminal

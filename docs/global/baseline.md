@@ -11,4 +11,5 @@
 @~/.teleclaude/docs/general/procedure/checkpoint.md
 @~/.teleclaude/docs/general/procedure/idea-box.md
 @~/.teleclaude/docs/general/spec/third-party-docs.md
+@~/.teleclaude/docs/general/spec/tools/baseline.md
 @~/.teleclaude/docs/software-development/policy/version-control-safety.md

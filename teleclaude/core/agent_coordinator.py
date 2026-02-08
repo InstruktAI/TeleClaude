@@ -29,7 +29,7 @@ from teleclaude.core.events import (
     UserPromptSubmitPayload,
 )
 from teleclaude.core.feature_flags import is_threaded_output_enabled, is_threaded_output_include_tools_enabled
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import CleanupTrigger, MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import notify_input_request, notify_stop
 from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input
@@ -165,12 +165,16 @@ class AgentCoordinator:
             logger.warning("Session %s not found for user_prompt_submit", session_id[:8])
             return
 
+        # System-injected checkpoint — not real user input, skip entirely
+        if CHECKPOINT_MESSAGE in payload.prompt:
+            logger.debug("Checkpoint prompt detected, skipping user input persistence for session %s", session_id[:8])
+            return
+
         # Clear notification flag when new prompt starts (all sessions)
         await db.set_notification_flag(session_id, False)
 
-        # Clear checkpoint state on real user input (not system-injected checkpoints)
-        if CHECKPOINT_MESSAGE not in payload.prompt:
-            await db.update_session(session_id, last_checkpoint_at=None, last_after_model_at=None)
+        # Clear checkpoint state on real user input
+        await db.update_session(session_id, last_checkpoint_at=None, last_after_model_at=None)
 
         # Prepare batched update
         update_kwargs: dict[str, object] = {  # guard: loose-dict - Dynamic session updates
@@ -244,6 +248,11 @@ class AgentCoordinator:
             if config.terminal.strip_ansi:
                 raw_output = strip_ansi_codes(raw_output)
 
+            # Dedup: skip if this is the same output we already processed
+            # (happens when checkpoint injection triggers agent_stop without new output)
+            prev_feedback = session.last_feedback_received if session else None
+            is_new_output = raw_output != prev_feedback
+
             await db.update_session(
                 session_id,
                 reason="agent_stopped",
@@ -252,17 +261,27 @@ class AgentCoordinator:
                 last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
             )
             logger.debug(
-                "Stored agent output: session=%s raw_len=%d summary_len=%d",
+                "Stored agent output: session=%s raw_len=%d summary_len=%d new=%s",
                 session_id[:8],
                 len(raw_output),
                 len(summary) if summary else 0,
+                is_new_output,
             )
-            # Speak the summary via TTS
-            if summary:
+            # Speak the summary via TTS (only for genuinely new output)
+            if summary and is_new_output:
                 try:
                     await self.tts_manager.speak(summary)
                 except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
                     logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
+
+                # Send text summary as feedback message (only when threaded output is NOT enabled)
+                # Threaded output updates already trigger notifications, so we skip the summary message to avoid double-notification.
+                if not is_threaded_output_enabled(session.active_agent if session else None):
+                    await self.client.send_message(
+                        session,
+                        f"📝 {summary}",
+                        cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
+                    )
 
         # 2. For Codex: extract last user input from transcript (no hook support)
         await self._extract_user_input_for_codex(session_id, payload)
@@ -580,6 +599,11 @@ class AgentCoordinator:
             logger.debug("Codex user input extraction skipped (no user message)", session=session_id[:8])
             return
 
+        # Don't persist our own checkpoint message as user input
+        if CHECKPOINT_MESSAGE[:50] in last_user_input:
+            logger.debug("Codex user input skipped (checkpoint message) for session %s", session_id[:8])
+            return
+
         await db.update_session(
             session_id,
             reason="user_input",
@@ -666,16 +690,13 @@ class AgentCoordinator:
     async def _maybe_inject_checkpoint(self, session_id: str, session: "Session | None") -> None:
         """Conditionally inject a checkpoint message into the agent's tmux pane.
 
-        All state is DB-persisted (survives daemon restarts):
-        - last_after_model_at: when the agent last finished thinking (timer start)
-        - last_checkpoint_at: when we last injected a checkpoint
-
-        Rules (applied universally — first turn and re-injection alike):
-        1. No last_after_model_at → skip (text-only response, no tool use)
-        2. (now - last_after_model_at) < threshold → skip (short turn)
-        3. last_checkpoint_at set AND last_after_model_at <= last_checkpoint_at
-           → skip (no new activity since last checkpoint)
-        4. Otherwise → inject, persist last_checkpoint_at
+        Unified logic for all agents:
+        1. Determine turn start: max(last_message_sent_at, last_checkpoint_at)
+           — the most recent input event marks when the current work period began.
+        2. If elapsed < threshold → skip (short/interactive response).
+        3. Dedup (agents without after_model, e.g. Codex): if last transcript
+           input is our checkpoint message → skip (prevents injection loops).
+        4. Otherwise → inject, persist last_checkpoint_at.
         """
         if not session:
             return
@@ -689,17 +710,18 @@ class AgentCoordinator:
         if not fresh:
             return
 
-        after_model_at = fresh.last_after_model_at
         checkpoint_at = fresh.last_checkpoint_at
+        message_at = fresh.last_message_sent_at
         now = datetime.now(timezone.utc)
 
-        # 1. No after_model → agent gave a text-only response
-        if not after_model_at:
-            logger.debug("Checkpoint skipped (no after_model) for session %s", session_id[:8])
+        # Turn start = most recent input event (real user message or checkpoint)
+        turn_start = max(filter(None, [message_at, checkpoint_at]), default=None)
+        if not turn_start:
+            logger.debug("Checkpoint skipped (no turn start) for session %s", session_id[:8])
             return
 
-        # 2. Short turn — agent was active less than threshold
-        elapsed = (now - after_model_at).total_seconds()
+        # Short turn — agent was active less than threshold
+        elapsed = (now - turn_start).total_seconds()
         if elapsed < CHECKPOINT_REACTIVATION_THRESHOLD_S:
             logger.debug(
                 "Checkpoint skipped (%.1fs < %ds threshold) for session %s",
@@ -709,12 +731,29 @@ class AgentCoordinator:
             )
             return
 
-        # 3. Already checkpointed and no new activity since
-        if checkpoint_at and after_model_at <= checkpoint_at:
-            logger.debug("Checkpoint skipped (no new activity since last checkpoint) for session %s", session_id[:8])
-            return
+        # For agents without after_model (Codex): dedup via transcript to prevent
+        # checkpoint → response → stop → checkpoint loops.
+        agent_name = str(fresh.active_agent or "")
+        agent_hooks = AgentHookEvents.HOOK_EVENT_MAP.get(agent_name, {})
+        has_after_model = AgentHookEvents.AFTER_MODEL in agent_hooks.values()
 
-        # 4. Inject
+        if not has_after_model:
+            transcript_path = fresh.native_log_file
+            if transcript_path:
+                try:
+                    agent_enum = AgentName.from_str(agent_name)
+                    last_input = extract_last_user_message(transcript_path, agent_enum) or ""
+                except ValueError:
+                    last_input = ""
+            else:
+                last_input = ""
+            if CHECKPOINT_MESSAGE[:50] in last_input:
+                logger.debug(
+                    "Checkpoint skipped (last input was checkpoint) for %s agent session %s", agent_name, session_id[:8]
+                )
+                return
+
+        # Inject
         delivered = await send_keys_existing_tmux(
             session_name=tmux_name,
             text=CHECKPOINT_MESSAGE,

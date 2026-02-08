@@ -9,66 +9,117 @@ description: 'Checkpoint injection mechanism that delivers structured debrief pr
 
 ## Purpose
 
-Inject checkpoint messages into AI agent tmux sessions at natural work boundaries, prompting agents to validate their work and capture artifacts. The system operates through the hook event pipeline with DB-persisted state that survives daemon restarts.
+Inject checkpoint messages into AI agent tmux sessions at natural work boundaries, prompting agents to validate their work and capture artifacts. The system uses a unified timer based on the most recent input event, works identically across all agent types, and keeps checkpoint messages invisible to session state.
 
 ## Inputs/Outputs
 
 **Inputs:**
 
-- `after_model` hook event — Agent finished reasoning, tool call may follow. Recorded once per turn as the turn start timestamp.
 - `agent_stop` hook event — Agent's turn ended. Triggers checkpoint evaluation.
 - `user_prompt_submit` hook event — New user input. Clears checkpoint state for the new turn.
+- `after_model` hook event — Agent finished reasoning. Tracked for other uses but not used in checkpoint decisions.
 - Agent restart via API — Triggers unconditional checkpoint injection after a delay.
 
 **Outputs:**
 
 - Checkpoint message injected into the agent's tmux pane via `send_keys`.
-- DB fields updated: `last_after_model_at`, `last_checkpoint_at`.
+- DB field updated: `last_checkpoint_at`.
 
 ## Invariants
 
-1. **30-second minimum threshold**: A checkpoint never fires unless the agent was actively working for at least 30 seconds, measured from the first `after_model` event to `agent_stop`.
+1. **Unified turn timer**: `turn_start = max(last_message_sent_at, last_checkpoint_at)`. The most recent input event (real user message or previous checkpoint) marks when the agent's current work period began. If `now - turn_start < 30s`, the checkpoint is skipped. This works identically for all agent types.
 
-2. **First-only recording**: `handle_after_model` records only the FIRST `after_model` per turn (when `last_after_model_at` is NULL). Subsequent tool calls in the same turn are skipped. This ensures elapsed time measures the full turn, not just the last tool call.
+2. **Checkpoint messages are invisible to session state**: They never persist as user input. `handle_user_prompt_submit` returns early (before notification clearing or DB writes). `_extract_user_input_for_codex` filters them out before writing to `last_message_sent`. The native session transcript retains them as ground truth.
 
-3. **Per-turn clearing**: `handle_user_prompt_submit` clears both `last_after_model_at` and `last_checkpoint_at` so each turn starts fresh — unless the prompt contains the checkpoint message itself (loop prevention).
+3. **Notification flag preservation**: Checkpoint injections do not clear the notification flag. Only real user input clears it. This prevents users from missing notifications about completed agent work.
 
-4. **Loop prevention**: When an agent responds to a checkpoint, that response triggers `user_prompt_submit`. The handler detects the checkpoint message in the prompt text and skips clearing, preventing a re-injection cycle.
+4. **Per-turn clearing**: `handle_user_prompt_submit` clears `last_checkpoint_at` and `last_after_model_at` on real user input so each turn starts fresh.
 
-5. **DB-persisted state**: All checkpoint state lives in the sessions table (`last_after_model_at`, `last_checkpoint_at`). No in-memory state. Survives daemon restarts.
+5. **Transcript-based dedup (Codex)**: For agents without `after_model` support (e.g. Codex), an additional check reads the last user message from the session transcript via `extract_last_user_message`. If it matches the checkpoint constant, injection is skipped. This prevents checkpoint-response-stop loops specific to agents that fire `agent_stop` rapidly.
 
-6. **Post-restart unconditional injection**: After an agent restart via the API, a checkpoint is injected after a 5-second delay regardless of the 30-second threshold. The agent is resuming with context and should debrief immediately.
+6. **TTS dedup**: Agent output extracted at `agent_stop` is compared against `last_feedback_received` in the session. If identical, summarization and TTS are skipped. This prevents double-speaking when a checkpoint-induced `agent_stop` re-extracts the same output.
+
+7. **DB-persisted state**: Checkpoint state lives in the sessions table (`last_checkpoint_at`, `last_message_sent_at`). No in-memory state. Survives daemon restarts.
+
+8. **Post-restart unconditional injection**: After an agent restart via the API, a checkpoint is injected after a 5-second delay regardless of the 30-second threshold.
 
 ## Primary flows
 
-### 1. Normal turn checkpoint (30s threshold)
+### 1. Normal turn checkpoint (unified timer)
 
 ```mermaid
 sequenceDiagram
+    participant User
     participant Agent
     participant Hook as Hook Receiver
-    participant Outbox
     participant Daemon
     participant DB
     participant Tmux
 
-    Agent->>Hook: PreToolUse fires
-    Hook->>Outbox: Enqueue after_model
-    Outbox->>Daemon: Poll delivers event
-    Daemon->>DB: Set last_after_model_at (first only)
+    User->>Agent: Send message
+    Agent->>Hook: user_prompt_submit
+    Hook->>Daemon: Deliver event
+    Daemon->>DB: Clear last_checkpoint_at, set last_message_sent_at
 
     Note over Agent: Agent works for 30+ seconds...
 
-    Agent->>Hook: Stop fires
-    Hook->>Outbox: Enqueue agent_stop
-    Outbox->>Daemon: Poll delivers event
-    Daemon->>DB: Read last_after_model_at
+    Agent->>Hook: agent_stop
+    Hook->>Daemon: Deliver event
+    Daemon->>DB: Read last_message_sent_at, last_checkpoint_at
+    Daemon->>Daemon: turn_start = max(message_at, checkpoint_at)
     Daemon->>Daemon: elapsed > 30s? Yes
     Daemon->>Tmux: send_keys(CHECKPOINT_MESSAGE)
     Daemon->>DB: Set last_checkpoint_at
 ```
 
-### 2. Post-restart checkpoint (unconditional)
+### 2. Checkpoint response cycle (no re-injection for quick responses)
+
+```mermaid
+sequenceDiagram
+    participant Tmux
+    participant Agent
+    participant Hook as Hook Receiver
+    participant Daemon
+    participant DB
+
+    Tmux->>Agent: Checkpoint message injected
+    Agent->>Hook: user_prompt_submit (contains checkpoint text)
+    Hook->>Daemon: Deliver event
+    Daemon->>Daemon: CHECKPOINT_MESSAGE detected → early return
+    Note over Daemon: No DB writes, no notification clearing
+
+    Note over Agent: Agent responds briefly (< 30s)
+
+    Agent->>Hook: agent_stop
+    Hook->>Daemon: Deliver event
+    Daemon->>DB: Read timestamps
+    Daemon->>Daemon: turn_start = last_checkpoint_at (most recent)
+    Daemon->>Daemon: elapsed < 30s → skip
+```
+
+### 3. Post-checkpoint substantial work (re-injection)
+
+```mermaid
+sequenceDiagram
+    participant Tmux
+    participant Agent
+    participant Hook as Hook Receiver
+    participant Daemon
+    participant DB
+
+    Tmux->>Agent: Checkpoint message injected (checkpoint_at = T=0)
+    Agent->>Hook: user_prompt_submit → early return
+    Note over Agent: Agent does 45s of real work responding to checkpoint
+
+    Agent->>Hook: agent_stop at T=45
+    Hook->>Daemon: Deliver event
+    Daemon->>Daemon: turn_start = checkpoint_at (T=0)
+    Daemon->>Daemon: elapsed = 45s > 30s → inject
+    Daemon->>Tmux: send_keys(CHECKPOINT_MESSAGE)
+    Daemon->>DB: Set last_checkpoint_at = T=45
+```
+
+### 4. Post-restart checkpoint (unconditional)
 
 ```mermaid
 sequenceDiagram
@@ -87,38 +138,16 @@ sequenceDiagram
     Handler->>DB: Set last_checkpoint_at
 ```
 
-### 3. Loop prevention
-
-```mermaid
-sequenceDiagram
-    participant Tmux
-    participant Agent
-    participant Hook as Hook Receiver
-    participant Daemon
-
-    Tmux->>Agent: Checkpoint message injected
-    Agent->>Hook: user_prompt_submit (contains checkpoint text)
-    Hook->>Daemon: Deliver event
-    Daemon->>Daemon: CHECKPOINT_MESSAGE in prompt? Yes
-    Daemon->>Daemon: Skip clearing last_after_model_at
-
-    Note over Agent: Agent responds to checkpoint...
-
-    Agent->>Hook: agent_stop
-    Hook->>Daemon: Deliver event
-    Daemon->>Daemon: last_checkpoint_at >= last_after_model_at?
-    Daemon->>Daemon: Skip injection (no new activity)
-```
-
 ## Failure modes
 
-| Scenario                                      | Behavior                                                                                            | Recovery                                                                        |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Stale hooks in running session                | PreToolUse sends wrong event type (`agent_output` instead of `after_model`)                         | Re-run `telec init` + restart session to load new hooks from settings.json      |
-| Daemon restart during active turn             | Outbox event reordering may cause `user_prompt_submit` to clear state before `agent_stop` checks it | Next turn will work correctly; single missed checkpoint is acceptable           |
-| DB field missing (migration not run)          | `AttributeError` on session access crashes hook dispatch                                            | Run migration 004; daemon auto-runs migrations on startup                       |
-| Agent responds to checkpoint with no tool use | `after_model` never fires for text-only response, no re-injection                                   | Correct behavior — text-only checkpoint responses don't trigger new checkpoints |
-| Rapid successive stops (< 30s)                | Checkpoint skipped due to threshold                                                                 | Correct behavior — short turns don't warrant checkpoints                        |
+| Scenario                                                      | Behavior                                                        | Recovery                                            |
+| ------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------- |
+| Daemon restart during active turn                             | Timestamps persist in DB; next `agent_stop` evaluates correctly | No action needed                                    |
+| DB field missing (migration not run)                          | `AttributeError` on session access                              | Run migration 004; daemon auto-runs on startup      |
+| Agent silent after checkpoint                                 | Same output re-extracted at next `agent_stop`                   | TTS dedup skips speaking; DB still updates          |
+| Rapid successive stops (< 30s)                                | Checkpoint skipped due to threshold                             | Correct behavior                                    |
+| Codex checkpoint loop                                         | Transcript dedup detects own message                            | Correct behavior                                    |
+| Both `last_message_sent_at` and `last_checkpoint_at` are None | No turn start → checkpoint skipped                              | First real user message sets `last_message_sent_at` |
 
 ## See also
 
