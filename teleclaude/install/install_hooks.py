@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Install/Update agent hooks configuration.
+"""Install/Update agent hooks and settings configuration.
 
-This script configures AI agents (Gemini, Claude, etc.) to use TeleClaude hooks.
-It idempotently merges hook definitions into the agent's settings file.
-The hooks point to the receiver scripts within this repository.
+This script configures AI agents (Gemini, Claude, Codex) to use TeleClaude hooks
+and applies required settings overrides from teleclaude/install/settings/*.json.
+It idempotently merges hook definitions and settings into the agent's config files.
 """
 
 import json
@@ -16,6 +16,29 @@ from typing import Any, Dict, Mapping
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.events import AgentHookEvents
+
+SETTINGS_DIR = Path(__file__).parent / "settings"
+
+
+def _load_settings_overrides(agent: str) -> dict[str, object] | None:  # guard: loose-dict - JSON from disk
+    """Load static settings overrides for an agent from settings/{agent}.json."""
+    path = SETTINGS_DIR / f"{agent}.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text())
+
+
+# guard: loose-dict-func - JSON settings merge operates on arbitrary nested dicts
+def _deep_merge(base: dict[str, object], overrides: dict[str, object]) -> dict[str, object]:
+    """Recursively merge overrides into base. Override values win for leaf keys."""
+    merged = base.copy()
+    for key, value in overrides.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
 
 PY_EXTENSION = ".py"
 RECEIVER_TOKEN = "receiver"
@@ -283,10 +306,15 @@ def _configure_json_agent_hooks(
         hooks_cfg["enabled"] = True
         settings["hooks"] = hooks_cfg
 
+    # Apply static settings overrides from settings/{agent}.json
+    overrides = _load_settings_overrides(agent)
+    if overrides:
+        settings = _deep_merge(settings, overrides)
+
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
 
-    print(f"{agent.capitalize()} hooks configured in {settings_path}")
+    print(f"{agent.capitalize()} hooks and settings configured in {settings_path}")
 
 
 def configure_claude(repo_root: Path) -> None:
@@ -395,8 +423,44 @@ def configure_codex(repo_root: Path) -> None:
         content = f"# Codex CLI configuration\n\n{notify_line}\n"
 
     content = ensure_codex_mcp_config(content, repo_root)
+    content = _apply_codex_settings_overrides(content)
     config_path.write_text(content)
-    print(f"Codex notify hook configured in {config_path}")
+    print(f"Codex hooks and settings configured in {config_path}")
+
+
+def _apply_codex_settings_overrides(content: str) -> str:
+    """Apply settings overrides from settings/codex.json to TOML content.
+
+    For each top-level key in the overrides, ensure it exists in the TOML.
+    Replaces existing values; appends missing keys before the first section.
+    """
+    overrides = _load_settings_overrides("codex")
+    if not overrides:
+        return content
+
+    try:
+        config = tomllib.loads(content)
+    except tomllib.TOMLDecodeError:
+        return content
+
+    for key, value in overrides.items():
+        toml_value = json.dumps(value)
+        key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=.*$", re.MULTILINE)
+
+        if key in config:
+            if config[key] == value:
+                continue
+            content = key_pattern.sub(f"{key} = {toml_value}", content)
+        else:
+            # Insert before first section header
+            first_section = re.search(r"^\[", content, re.MULTILINE)
+            line = f"{key} = {toml_value}\n"
+            if first_section:
+                content = content[: first_section.start()] + line + content[first_section.start() :]
+            else:
+                content = content.rstrip() + "\n" + line
+
+    return content
 
 
 def ensure_codex_mcp_config(content: str, repo_root: Path) -> str:

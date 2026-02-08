@@ -1,0 +1,9 @@
+{
+  "tools": {
+    "allowed": ["*"],
+    "sandbox": false
+  },
+  "skills": {
+    "enabled": true
+  }
+}

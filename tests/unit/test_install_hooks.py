@@ -144,9 +144,11 @@ def test_configure_codex_preserves_existing_config(tmp_path, monkeypatch):
     install_hooks.configure_codex(repo_root)
 
     data = tomllib.loads(codex_config.read_text())
-    # Existing settings preserved
+    # Non-override settings preserved
     assert data["model"] == "gpt-4"
-    assert data["sandbox_mode"] == "safe"
+    # Override settings applied (settings/codex.json wins over existing values)
+    assert data["sandbox_mode"] == "danger-full-access"
+    assert data["approval_policy"] == "never"
     # New notify hook added
     assert "notify" in data
     assert "receiver.py" in data["notify"][2]
