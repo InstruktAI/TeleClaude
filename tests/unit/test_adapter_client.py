@@ -1021,7 +1021,7 @@ async def test_broadcast_user_input_includes_origin_attribution():
 
 @pytest.mark.asyncio
 async def test_send_output_update_suppressed_when_threaded_active():
-    """send_output_update suppressed when threaded experiment on + output_message_id set."""
+    """send_output_update suppressed immediately when threaded experiment is enabled."""
     client = AdapterClient()
     telegram = DummyTelegramAdapter(client)
     telegram.send_output_update = AsyncMock(return_value="should-not-be-called")  # type: ignore[assignment]
@@ -1034,33 +1034,28 @@ async def test_send_output_update_suppressed_when_threaded_active():
         last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Session",
         active_agent="gemini",
-        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(output_message_id="threaded-msg-id")),
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata()),
     )
 
-    mock_db = AsyncMock()
-    mock_db.get_output_message_id = AsyncMock(return_value="threaded-msg-id")
-    with (
-        patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=True),
-        patch("teleclaude.core.adapter_client.db", mock_db),
-    ):
+    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=True):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    assert result == "threaded-msg-id"
+    assert result is None
     telegram.send_output_update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_send_output_update_falls_through_when_no_output_message_id():
-    """send_output_update falls through when threaded experiment on but no output_message_id."""
+async def test_send_output_update_suppressed_when_threaded_active_no_output_message_id():
+    """send_output_update suppressed even without output_message_id when experiment is enabled."""
     client = AdapterClient()
     telegram = DummyTelegramAdapter(client)
-    telegram.send_output_update = AsyncMock(return_value="normal-msg")  # type: ignore[assignment]
+    telegram.send_output_update = AsyncMock(return_value="should-not-be-called")  # type: ignore[assignment]
     client.register_adapter("telegram", telegram)
 
     session = Session(
-        session_id="session-fallthrough",
+        session_id="session-suppressed-no-id",
         computer_name="test",
-        tmux_session_name="tc_fallthrough",
+        tmux_session_name="tc_suppressed_no_id",
         last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Session",
         active_agent="gemini",
@@ -1069,11 +1064,8 @@ async def test_send_output_update_falls_through_when_no_output_message_id():
         ),
     )
 
-    with (
-        patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=True),
-        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)),
-    ):
+    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=True):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    assert result == "normal-msg"
-    telegram.send_output_update.assert_awaited_once()
+    assert result is None
+    telegram.send_output_update.assert_not_awaited()

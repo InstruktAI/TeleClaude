@@ -143,11 +143,8 @@ class TestSendOutputUpdate:
             title="Test Session",
         )
 
-        # Set output_message_id in adapter namespace
-        if not session.adapter_metadata:
-            session.adapter_metadata = SessionAdapterMetadata()
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="msg-456")
-        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        # Set output_message_id via dedicated top-level column
+        await test_db.set_output_message_id(session.session_id, "msg-456")
 
         # Refresh session from DB
         session = await test_db.get_session(session.session_id)
@@ -225,11 +222,8 @@ class TestSendOutputUpdate:
             title="Test Session",
         )
 
-        # Set output_message_id in adapter namespace
-        if not session.adapter_metadata:
-            session.adapter_metadata = SessionAdapterMetadata()
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="msg-stale")
-        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        # Set output_message_id via dedicated top-level column
+        await test_db.set_output_message_id(session.session_id, "msg-stale")
 
         # Refresh session from DB
         session = await test_db.get_session(session.session_id)
@@ -246,10 +240,9 @@ class TestSendOutputUpdate:
         assert "output after edit fail" in adapter._edit_calls[0]
         assert len(adapter._send_calls) >= 1
 
-        # Verify stale message_id was cleared and new one stored
+        # Verify stale message_id was cleared and new one stored via top-level column
         session = await test_db.get_session(session.session_id)
-        assert session.adapter_metadata.telegram is not None
-        assert session.adapter_metadata.telegram.output_message_id == "msg-123"
+        assert session.output_message_id == "msg-123"
 
     async def test_includes_exit_code_in_final_message(self, test_db):
         """Paranoid test final message includes exit code."""
@@ -483,8 +476,7 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="msg-456")
-        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        await test_db.set_output_message_id(session.session_id, "msg-456")
         session = await test_db.get_session(session.session_id)
 
         result = await adapter.send_threaded_output(session, "Updated text")
@@ -506,10 +498,9 @@ class TestSendThreadedOutput:
         )
         text = "Same text"
         digest = sha256(text.encode("utf-8")).hexdigest()
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="msg-789")
+        await test_db.set_output_message_id(session.session_id, "msg-789")
         await test_db.update_session(
             session.session_id,
-            adapter_metadata=session.adapter_metadata,
             last_output_digest=digest,
         )
         session = await test_db.get_session(session.session_id)
@@ -529,8 +520,9 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="msg-existing", char_offset=10)
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(char_offset=10)
         await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        await test_db.set_output_message_id(session.session_id, "msg-existing")
         session = await test_db.get_session(session.session_id)
 
         result = await adapter.send_threaded_output(session, "0123456789")  # exactly 10 chars
@@ -613,8 +605,8 @@ class TestSendThreadedOutput:
 class TestSendOutputUpdateSuppression:
     """Test send_output_update suppression fallback for threaded output."""
 
-    async def test_suppressed_when_threaded_active_and_output_message_id_set(self, test_db):
-        """Threaded output experiment on + output_message_id set → suppressed."""
+    async def test_suppressed_when_threaded_active(self, test_db):
+        """Threaded output experiment on → suppressed immediately."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -622,21 +614,18 @@ class TestSendOutputUpdateSuppression:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="threaded-msg")
-        await test_db.update_session(
-            session.session_id, adapter_metadata=session.adapter_metadata, active_agent="gemini"
-        )
+        await test_db.update_session(session.session_id, active_agent="gemini")
         session = await test_db.get_session(session.session_id)
 
         with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=True):
             result = await adapter.send_output_update(session, "output text", time.time(), time.time())
 
-        assert result == "threaded-msg"
+        assert result is None
         assert len(adapter._send_calls) == 0
         assert len(adapter._edit_calls) == 0
 
-    async def test_not_suppressed_when_threaded_but_no_output_message_id(self, test_db):
-        """Threaded experiment on but no output_message_id → falls through to normal output."""
+    async def test_suppressed_when_threaded_active_no_output_message_id(self, test_db):
+        """Threaded experiment on but no output_message_id → still suppressed."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -653,6 +642,6 @@ class TestSendOutputUpdateSuppression:
         with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=True):
             result = await adapter.send_output_update(session, "output text", time.time(), time.time())
 
-        # Should fall through and send normally
-        assert result == "msg-123"
-        assert len(adapter._send_calls) == 1
+        assert result is None
+        assert len(adapter._send_calls) == 0
+        assert len(adapter._edit_calls) == 0

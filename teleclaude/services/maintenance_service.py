@@ -86,7 +86,7 @@ class MaintenanceService:
                     not session.adapter_metadata
                     or not session.adapter_metadata.telegram
                     or not session.adapter_metadata.telegram.topic_id
-                    or not session.adapter_metadata.telegram.output_message_id
+                    or not session.output_message_id
                 ):
                     try:
                         display_title = await get_display_title_for_session(session)

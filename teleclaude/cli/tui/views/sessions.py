@@ -661,7 +661,12 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Reset selection if out of bounds
         if self.selected_index >= len(self.flat_items):
             self._select_index(0)
-        self.scroll_offset = 0
+        # Clamp scroll_offset to valid range (don't reset to 0 — _select_index
+        # already adjusts scroll to keep the selected item visible, and resetting
+        # here causes a visible one-line jump on every WebSocket data refresh).
+        max_offset = max(0, len(self.flat_items) - 1)
+        if self.scroll_offset > max_offset:
+            self.scroll_offset = max_offset
         self._sync_selected_session_id()
 
     def _flatten_tree(self, nodes: list[TreeNode], base_depth: int = 0) -> list[TreeNode]:
@@ -1418,8 +1423,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             session_id = item.data.session.session_id
             is_sticky = any(sticky.session_id == session_id for sticky in self.sticky_sessions)
             if is_sticky:
-                if self._preview:
-                    self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
+                # Don't clear preview here — the layout change causes a visible
+                # screen jump.  The preview pane will be replaced naturally on
+                # the next non-sticky activation.
                 self._queue_focus_session(session_id)
             else:
                 self._schedule_activate_session(item, clear_preview=False)

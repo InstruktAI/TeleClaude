@@ -40,6 +40,13 @@ snippets:
   scope: project
   path: docs/project/design/architecture/cache-system.md
   source_project: TeleClaude
+- id: project/design/architecture/checkpoint-system
+  description: Checkpoint injection mechanism that delivers structured debrief prompts
+    to AI agents at turn boundaries.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/checkpoint-system.md
+  source_project: TeleClaude
 - id: project/design/architecture/context-index
   description: Snippet index generation that produces docs/index.yaml from snippet
     frontmatter.

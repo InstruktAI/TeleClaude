@@ -68,6 +68,25 @@ This command appears in running TUI sessions at random times.
 
 Removed `AI:` prefix from AI-to-AI session titles. Title updates automatically when agent starts.
 
+### 5. TUI screen jumps up one line on mouse click
+
+**Steps to reproduce:**
+
+1. Open telec TUI with sessions visible
+2. Click on any tree node (computer, project, or session)
+3. Observe the entire screen briefly jumps up ~1 line and back down
+
+**Expected:** Screen stays stable; only the selection highlight changes
+**Actual:** Whole screen scrolls up one line then recovers after ~150-200ms (matches ncurses click detection interval / mouseinterval — curses holds the BUTTON_PRESSED event for ~166ms to distinguish click from double-click, strongly suggesting the jump is caused by the raw PRESS event before curses delivers the CLICKED event)
+
+**Notes:**
+
+- Happens "most times" but not always
+- Arrow key navigation does NOT trigger it
+- The ENTIRE screen jumps (banner, tabs, content, footer), not just the content area
+- Multiple investigation attempts ruled out: scroll_offset logic, curses scrollok/idlok/idcok/nonl settings, stray prints, bottom-right corner writes
+- Next approach: add debug logging to observe exact state changes during click, and check if the jump correlates with tmux pane operations (preview activation)
+
 ---
 
 ## High Priority (Correctness / Observability)

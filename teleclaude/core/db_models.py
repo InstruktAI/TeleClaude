@@ -49,6 +49,8 @@ class Session(SQLModel, table=True):
     last_feedback_summary: Optional[str] = None
     last_output_digest: Optional[str] = None
     last_agent_output_at: Optional[datetime] = None
+    last_after_model_at: Optional[datetime] = None
+    last_checkpoint_at: Optional[datetime] = None
     working_slug: Optional[str] = None
     lifecycle_status: Optional[str] = "active"
 

@@ -4,6 +4,7 @@
 
 import argparse
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -92,14 +93,28 @@ def _extract_session_id(path: Path, agent: AgentName) -> str:
 
 
 def _match_context(text: str, term: str, window: int = 80) -> Optional[str]:
-    """Return a context snippet with term in the middle, or None."""
+    """Return a context snippet if ALL words in term appear in text (AND logic).
+
+    Shows context around the rarest (last-found) word for most relevant snippet.
+    """
     lower = text.lower()
-    term_lower = term.lower()
-    idx = lower.find(term_lower)
-    if idx == -1:
+    words = term.lower().split()
+    if not words:
         return None
-    start = max(0, idx - window)
-    end = min(len(text), idx + len(term) + window)
+
+    # All words must be present
+    best_idx = -1
+    best_word = words[0]
+    for word in words:
+        idx = lower.find(word)
+        if idx == -1:
+            return None  # AND: all words must match
+        # Use last word's position (often most specific)
+        best_idx = idx
+        best_word = word
+
+    start = max(0, best_idx - window)
+    end = min(len(text), best_idx + len(best_word) + window)
     prefix = "…" if start > 0 else ""
     suffix = "…" if end < len(text) else ""
     return f"{prefix}{text[start:end]}{suffix}"
@@ -118,6 +133,25 @@ def format_timestamp(mtime: float) -> str:
     return format_local_datetime(dt, include_date=True)
 
 
+def _scan_one(path: Path, mtime: float, agent_name: AgentName, search_term: str) -> Optional[dict[str, str]]:
+    """Scan a single transcript file. Returns a result dict or None."""
+    messages = collect_transcript_messages(str(path), agent_name)
+    if not messages:
+        return None
+    transcript_text = "\n\n".join(text for _, text in messages)
+    snippet = _match_context(transcript_text, search_term)
+    if not snippet:
+        return None
+    return {
+        "timestamp": format_timestamp(mtime),
+        "project": _extract_project_from_path(path, agent_name),
+        "topic": truncate_display(snippet, 70),
+        "session_id": _extract_session_id(path, agent_name),
+        "path": str(path),
+        "_mtime": str(mtime),
+    }
+
+
 def display_history(agent_name: AgentName, search_term: str = "", limit: int = 20) -> None:
     """Display session history by scanning native agent transcript dirs."""
     transcripts = _discover_transcripts(agent_name)
@@ -126,43 +160,27 @@ def display_history(agent_name: AgentName, search_term: str = "", limit: int = 2
         print(f"No transcripts found for {agent_name.value}")
         return
 
+    # Cap files to scan but use threads to scan them in parallel
+    to_scan = transcripts[:500]
     results: list[dict[str, str]] = []
-    scanned = 0
 
-    for path, mtime in transcripts:
-        if len(results) >= limit:
-            break
-        # Limit scanning to avoid being too slow on 1600+ files
-        scanned += 1
-        if scanned > 200:
-            break
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(_scan_one, path, mtime, agent_name, search_term): mtime for path, mtime in to_scan}
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                results.append(result)
 
-        messages = collect_transcript_messages(str(path), agent_name)
-        if not messages:
-            continue
-
-        transcript_text = "\n\n".join(text for _, text in messages)
-
-        snippet = _match_context(transcript_text, search_term)
-        if not snippet:
-            continue
-        topic = truncate_display(snippet, 70)
-
-        results.append(
-            {
-                "timestamp": format_timestamp(mtime),
-                "project": _extract_project_from_path(path, agent_name),
-                "topic": topic,
-                "session_id": _extract_session_id(path, agent_name),
-                "path": str(path),
-            }
-        )
+    # Sort by mtime descending (newest first) and cap
+    results.sort(key=lambda r: float(r["_mtime"]), reverse=True)
+    results = results[:limit]
 
     if not results:
         print(f"No conversations found matching '{search_term}'")
         return
 
-    print(f"\nSearch results for '{search_term}' ({len(results)} found):\n")
+    scanned = len(to_scan)
+    print(f"\nSearch results for '{search_term}' ({len(results)} found, {scanned} files scanned):\n")
 
     # Header
     print(f"{'#':>4} | {'Date/Time':<17} | {'Project':<20} | {'Topic':<70} | {'Session':<12}")

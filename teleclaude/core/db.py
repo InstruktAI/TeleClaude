@@ -98,6 +98,8 @@ class Db:
             last_feedback_received=row.last_feedback_received,
             last_feedback_received_at=Db._coerce_datetime(row.last_feedback_received_at),
             last_agent_output_at=Db._coerce_datetime(row.last_agent_output_at),
+            last_after_model_at=Db._coerce_datetime(row.last_after_model_at),
+            last_checkpoint_at=Db._coerce_datetime(row.last_checkpoint_at),
             last_feedback_summary=row.last_feedback_summary,
             last_output_digest=row.last_output_digest,
             working_slug=row.working_slug,
@@ -519,81 +521,89 @@ class Db:
             reason: Why the session was updated (for highlight logic)
             **fields: Fields to update (title, status, tmux_size, etc.)
         """
-        if not fields:
+        updates: dict[str, object] = {}  # guard: loose-dict - Dynamic update payload
+
+        if fields:
+            async with self._session() as db_session:
+                row = await db_session.get(db_models.Session, session_id)
+                if not row:
+                    logger.warning("Attempted to update non-existent session: %s", session_id[:8])
+                    return
+
+                for key, value in fields.items():
+                    field = None
+                    if isinstance(key, SessionField):
+                        field = key
+                    else:
+                        try:
+                            field = SessionField(str(key))
+                        except ValueError:
+                            field = None
+                    attr_name = field.value if field else str(key)
+                    if not hasattr(row, attr_name):
+                        continue
+                    current_val = getattr(row, attr_name)
+
+                    # Special handling for adapter_metadata: always update if provided
+                    # to ensure nested flag changes (like output_suppressed) are persisted.
+                    if attr_name == "adapter_metadata":
+                        serialized = self._serialize_adapter_metadata(value)
+                        updates[attr_name] = serialized
+                        continue
+
+                    if attr_name in {
+                        "created_at",
+                        "last_activity",
+                        "closed_at",
+                        "last_message_sent_at",
+                        "last_feedback_received_at",
+                        "last_agent_output_at",
+                        "last_after_model_at",
+                        "last_checkpoint_at",
+                    }:
+                        if value is None:
+                            if current_val is not None:
+                                updates[attr_name] = None
+                        else:
+                            parsed = self._parse_iso_datetime(value)
+                            if parsed and current_val != parsed:
+                                updates[attr_name] = parsed
+                        continue
+                    if current_val != value:
+                        updates[attr_name] = value
+
+                if updates:
+                    now = datetime.now(timezone.utc)
+                    if (
+                        SessionField.LAST_MESSAGE_SENT.value in updates
+                        and SessionField.LAST_MESSAGE_SENT_AT.value not in updates
+                    ):
+                        updates[SessionField.LAST_MESSAGE_SENT_AT.value] = now
+                    if (
+                        SessionField.LAST_FEEDBACK_RECEIVED.value in updates
+                        and SessionField.LAST_FEEDBACK_RECEIVED_AT.value not in updates
+                    ):
+                        updates[SessionField.LAST_FEEDBACK_RECEIVED_AT.value] = now
+                        summary_val = updates.get(SessionField.LAST_FEEDBACK_RECEIVED.value)
+                        summary_len = len(str(summary_val)) if summary_val is not None else 0
+                        logger.debug(
+                            "Summary updated: session=%s len=%d",
+                            session_id[:8],
+                            summary_len,
+                        )
+
+                    for key, value in updates.items():
+                        setattr(row, key, value)
+                    db_session.add(row)
+                    await db_session.commit()
+
+        if not updates and not reason:
+            logger.trace("Skipping redundant update for session %s", session_id[:8])
             return
 
-        async with self._session() as db_session:
-            row = await db_session.get(db_models.Session, session_id)
-            if not row:
-                logger.warning("Attempted to update non-existent session: %s", session_id[:8])
-                return
-
-            updates: dict[str, object] = {}  # guard: loose-dict - Dynamic update payload
-            for key, value in fields.items():
-                field = None
-                if isinstance(key, SessionField):
-                    field = key
-                else:
-                    try:
-                        field = SessionField(str(key))
-                    except ValueError:
-                        field = None
-                attr_name = field.value if field else str(key)
-                if not hasattr(row, attr_name):
-                    continue
-                current_val = getattr(row, attr_name)
-
-                # Special handling for adapter_metadata: always update if provided
-                # to ensure nested flag changes (like output_suppressed) are persisted.
-                if attr_name == "adapter_metadata":
-                    serialized = self._serialize_adapter_metadata(value)
-                    updates[attr_name] = serialized
-                    continue
-
-                if attr_name in {
-                    "created_at",
-                    "last_activity",
-                    "closed_at",
-                    "last_message_sent_at",
-                    "last_feedback_received_at",
-                    "last_agent_output_at",
-                }:
-                    parsed = self._parse_iso_datetime(value)
-                    if parsed and current_val != parsed:
-                        updates[attr_name] = parsed
-                    continue
-                if current_val != value:
-                    updates[attr_name] = value
-
-            if not updates:
-                logger.trace("Skipping redundant update for session %s", session_id[:8])
-                return
-
-            now = datetime.now(timezone.utc)
-            if (
-                SessionField.LAST_MESSAGE_SENT.value in updates
-                and SessionField.LAST_MESSAGE_SENT_AT.value not in updates
-            ):
-                updates[SessionField.LAST_MESSAGE_SENT_AT.value] = now
-            if (
-                SessionField.LAST_FEEDBACK_RECEIVED.value in updates
-                and SessionField.LAST_FEEDBACK_RECEIVED_AT.value not in updates
-            ):
-                updates[SessionField.LAST_FEEDBACK_RECEIVED_AT.value] = now
-                summary_val = updates.get(SessionField.LAST_FEEDBACK_RECEIVED.value)
-                summary_len = len(str(summary_val)) if summary_val is not None else 0
-                logger.debug(
-                    "Summary updated: session=%s len=%d",
-                    session_id[:8],
-                    summary_len,
-                )
-
-            for key, value in updates.items():
-                setattr(row, key, value)
-            db_session.add(row)
-            await db_session.commit()
-
-        # Emit SESSION_UPDATED event (UI handlers will update channel titles)
+        # Emit SESSION_UPDATED event — decoupled from DB writes so that
+        # reason-only signals (e.g. agent_output with no field change) still
+        # reach the TUI for highlight logic.
         event_bus.emit(
             TeleClaudeEvents.SESSION_UPDATED,
             SessionUpdatedContext(session_id=session_id, updated_fields=updates, reason=reason),

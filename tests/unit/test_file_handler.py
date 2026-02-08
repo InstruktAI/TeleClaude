@@ -20,9 +20,8 @@ def mock_session():
         computer_name="test-computer",
         tmux_session_name="tmux_test123",
         last_input_origin=InputOrigin.TELEGRAM.value,
-        adapter_metadata=SessionAdapterMetadata(
-            telegram=TelegramAdapterMetadata(topic_id=456, output_message_id="msg_123")
-        ),
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=456)),
+        output_message_id="msg_123",
         title="Test Session",
         project_path="/tmp",
     )

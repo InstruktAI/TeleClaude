@@ -36,6 +36,8 @@ async def test_process_agent_stop_forwarded_skips_forward():
     session = MagicMock()
     session.active_agent = "claude"
     session.native_log_file = "/tmp/native.jsonl"
+    session.last_after_model_at = None
+    session.last_checkpoint_at = None
 
     with (
         patch("teleclaude.core.agent_coordinator.db.get_session", new=AsyncMock(return_value=session)),

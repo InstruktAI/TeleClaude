@@ -195,8 +195,9 @@ class TelegramAdapter(
             current = await db.get_session(session.session_id)
             if current and current.adapter_metadata and current.adapter_metadata.telegram:
                 current.adapter_metadata.telegram.topic_id = None
-                current.adapter_metadata.telegram.output_message_id = None
                 await db.update_session(current.session_id, adapter_metadata=current.adapter_metadata)
+                # Clear output_message_id via dedicated column (not adapter_metadata blob)
+                await db.set_output_message_id(current.session_id, None)
             await self.create_channel(current or session, title, metadata=ChannelMetadata(origin=False))
 
         refreshed = await db.get_session(session.session_id)
@@ -633,37 +634,37 @@ class TelegramAdapter(
         keyboard = [
             [
                 InlineKeyboardButton(
-                    text="Tmux Session",
+                    text="🚀 Tmux Session",
                     callback_data=f"{CallbackAction.SESSION_SELECT.value}:{bot_username}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="New Claude",
+                    text="🤖 New Claude",
                     callback_data=f"{CallbackAction.CLAUDE_SELECT.value}:{bot_username}",
                 ),
                 InlineKeyboardButton(
-                    text="Resume Claude",
+                    text="🔄 Resume Claude",
                     callback_data=f"{CallbackAction.CLAUDE_RESUME_SELECT.value}:{bot_username}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="New Gemini",
+                    text="✨ New Gemini",
                     callback_data=f"{CallbackAction.GEMINI_SELECT.value}:{bot_username}",
                 ),
                 InlineKeyboardButton(
-                    text="Resume Gemini",
+                    text="🔄 Resume Gemini",
                     callback_data=f"{CallbackAction.GEMINI_RESUME_SELECT.value}:{bot_username}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="New Codex",
+                    text="💻 New Codex",
                     callback_data=f"{CallbackAction.CODEX_SELECT.value}:{bot_username}",
                 ),
                 InlineKeyboardButton(
-                    text="Resume Codex",
+                    text="🔄 Resume Codex",
                     callback_data=f"{CallbackAction.CODEX_RESUME_SELECT.value}:{bot_username}",
                 ),
             ],

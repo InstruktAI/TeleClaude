@@ -88,7 +88,7 @@ class AgentHookEvents:
                 {
                     "SessionStart": AGENT_SESSION_START,
                     "UserPromptSubmit": USER_PROMPT_SUBMIT,
-                    "PreToolUse": AGENT_OUTPUT,
+                    "PreToolUse": AFTER_MODEL,
                     "PermissionRequest": AGENT_NOTIFICATION,
                     "PostToolUse": AGENT_OUTPUT,
                     "PostToolUseFailure": AGENT_OUTPUT,
@@ -106,7 +106,7 @@ class AgentHookEvents:
                     "BeforeAgent": USER_PROMPT_SUBMIT,
                     "AfterAgent": AGENT_STOP,
                     "BeforeModel": BEFORE_MODEL,
-                    "AfterModel": AGENT_OUTPUT,
+                    "AfterModel": AFTER_MODEL,
                     "BeforeToolSelection": BEFORE_TOOL_SELECTION,
                     "BeforeTool": BEFORE_TOOL,
                     "AfterTool": AGENT_OUTPUT,
@@ -268,6 +268,14 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
     if event_type == AgentHookEvents.AGENT_SESSION_END:
         return AgentSessionEndPayload(
             session_id=native_id,
+            raw=frozen_raw,
+        )
+
+    if event_type == AgentHookEvents.AFTER_MODEL:
+        return AgentOutputPayload(
+            session_id=native_id,
+            transcript_path=cast(str | None, data.get("transcript_path")),
+            source_computer=cast(str | None, data.get("source_computer")),
             raw=frozen_raw,
         )
 

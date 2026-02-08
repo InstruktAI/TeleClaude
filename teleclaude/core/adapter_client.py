@@ -501,21 +501,16 @@ class AdapterClient:
             is_final,
         )
 
-        # Check if threaded output experiment is enabled AND hooks have actually delivered output.
-        # Only suppress standard poller when threaded output is active (output_message_id set),
-        # otherwise fall through so the session isn't silenced when hooks don't fire.
+        # Suppress standard poller output when threaded output experiment is enabled.
+        # The experiment config and active_agent are both known at session creation —
+        # no need to wait for output_message_id (which created a startup race condition
+        # where the first poller output leaked through the standard path).
         if is_threaded_output_enabled(session.active_agent):
-            telegram_meta = getattr(session.adapter_metadata, "telegram", None)
-            if telegram_meta and telegram_meta.output_message_id:
-                logger.debug(
-                    "[OUTPUT_ROUTE] Standard output suppressed for session %s (threaded output active)",
-                    session.session_id[:8],
-                )
-                return await self.get_output_message_id(session.session_id)
             logger.debug(
-                "[OUTPUT_ROUTE] Experiment active but no threaded output yet for session %s, falling through",
+                "[OUTPUT_ROUTE] Standard output suppressed for session %s (threaded output experiment active)",
                 session.session_id[:8],
             )
+            return None
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
             return adapter.send_output_update(

@@ -97,9 +97,8 @@ async def handle_file(
         )
         return
 
-    # Get output_message_id from Telegram metadata (files come via Telegram regardless of origin)
-    telegram_metadata = session.adapter_metadata.telegram if session.adapter_metadata else None
-    current_message_id = telegram_metadata.output_message_id if telegram_metadata else None
+    # Get output_message_id from top-level DB column (not adapter_metadata blob)
+    current_message_id = session.output_message_id
     if current_message_id is None:
         logger.warning("No output message yet for session %s, polling may have just started", session_id[:8])
         await send_message(

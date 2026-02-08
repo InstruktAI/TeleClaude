@@ -86,29 +86,24 @@ class UiAdapter(BaseAdapter):
         return session
 
     async def _get_output_message_id(self, session: "Session") -> Optional[str]:
-        """Get output_message_id from adapter namespace.
+        """Get output_message_id from top-level DB column.
+
+        Uses the dedicated DB column (not adapter_metadata blob) to avoid
+        lost-update races from concurrent adapter_metadata writes.
 
         Returns:
             message_id or None if not set
         """
-        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
-        if not metadata:
-            return None
-
-        return metadata.output_message_id
+        return session.output_message_id
 
     async def _store_output_message_id(self, session: "Session", message_id: str) -> None:
-        """Store output_message_id in adapter namespace."""
-        # Get or create adapter metadata
-        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
-        if not metadata:
-            metadata = TelegramAdapterMetadata()
-            setattr(session.adapter_metadata, self.ADAPTER_KEY, metadata)
+        """Store output_message_id in dedicated DB column.
 
-        # Store message_id (type narrowed by if-check above)
-        typed_metadata: TelegramAdapterMetadata = metadata
-        typed_metadata.output_message_id = message_id
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        Uses atomic column write (not adapter_metadata blob) to prevent
+        concurrent adapter_metadata writes from clobbering the value.
+        """
+        await db.set_output_message_id(session.session_id, message_id)
+        session.output_message_id = message_id  # Keep in-memory session consistent
         logger.debug(
             "Stored output_message_id: session=%s message_id=%s",
             session.session_id[:8],
@@ -165,17 +160,13 @@ class UiAdapter(BaseAdapter):
             await self._clear_threaded_footer_message_id(session)
 
     async def _clear_output_message_id(self, session: "Session") -> None:
-        """Clear output_message_id from adapter namespace."""
-        # Get or create adapter metadata
-        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
-        if not metadata:
-            metadata = TelegramAdapterMetadata()
-            setattr(session.adapter_metadata, self.ADAPTER_KEY, metadata)
+        """Clear output_message_id in dedicated DB column.
 
-        # Clear message_id (type narrowed by if-check above)
-        typed_metadata: TelegramAdapterMetadata = metadata
-        typed_metadata.output_message_id = None
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        Uses atomic column write (not adapter_metadata blob) to prevent
+        concurrent adapter_metadata writes from clobbering the value.
+        """
+        await db.set_output_message_id(session.session_id, None)
+        session.output_message_id = None  # Keep in-memory session consistent
         logger.debug(
             "Cleared output_message_id: session=%s",
             session.session_id[:8],
@@ -285,16 +276,13 @@ class UiAdapter(BaseAdapter):
 
         Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
-        # Check if threaded output experiment is enabled AND hooks have actually delivered output.
-        # Only suppress when threaded output is active (output_message_id set by hooks).
+        # Suppress standard poller output when threaded output experiment is enabled.
         if is_threaded_output_enabled(session.active_agent):
-            telegram_meta = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
-            if telegram_meta and getattr(telegram_meta, "output_message_id", None):
-                logger.debug(
-                    "[UI_SEND_OUTPUT] Standard output suppressed for session %s (threaded output active)",
-                    session.session_id[:8],
-                )
-                return await self._get_output_message_id(session)
+            logger.debug(
+                "[UI_SEND_OUTPUT] Standard output suppressed for session %s (threaded output experiment active)",
+                session.session_id[:8],
+            )
+            return None
 
         # Non-threaded paths should not keep stale threaded footer messages around.
         await self._cleanup_threaded_footer_if_present(session)
@@ -427,15 +415,14 @@ class UiAdapter(BaseAdapter):
             session.adapter_metadata.telegram = telegram_meta
 
         char_offset = telegram_meta.char_offset
-        output_message_id = telegram_meta.output_message_id
+        output_message_id = session.output_message_id
 
         # 2. Slice text to get the "active" portion
         # If text is shorter than offset (e.g. restart?), reset offset
         if len(text) < char_offset:
             char_offset = 0
             telegram_meta.char_offset = 0
-            # If we reset, we might need to send a new message if the old one is "full"
-            # But let's assume we just continue editing or send new.
+            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
 
         active_text = text[char_offset:]
         if not active_text and output_message_id:
@@ -487,8 +474,10 @@ class UiAdapter(BaseAdapter):
             # Update state for next message
             new_offset = char_offset + split_idx
             telegram_meta.char_offset = new_offset
-            telegram_meta.output_message_id = None  # Detach from full message
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+            # Clear output_message_id via dedicated column (not adapter_metadata blob)
+            await db.set_output_message_id(session.session_id, None)
+            session.output_message_id = None  # Keep in-memory session consistent
 
             # Recursive call to handle the remainder
             return await self.send_threaded_output(session, text, footer_text, multi_message)

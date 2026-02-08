@@ -85,10 +85,8 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
 
     session = sessions[0]
     assert session.last_input_origin == "telegram"
-    # Title format: {project}: $initiator > $computer - custom title
-    # (Agent info not yet known at session creation - will be updated when agent starts)
-    assert session.title.startswith(f"TeleClaude: ${initiator_computer} > ${session.computer_name} -")
-    assert "Test AI-to-AI Session" in session.title
+    # Title stores raw description; UI adapters build display title via build_display_title()
+    assert session.title == "Test AI-to-AI Session"
     # Description is optional, just verify session was created
 
     # NOTE: Command orchestration (agent start, etc.) is handled by MCP client flow.

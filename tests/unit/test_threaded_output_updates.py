@@ -102,8 +102,7 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
     )
     context = AgentEventContext(event_type=AgentHookEvents.AGENT_OUTPUT, session_id=session_id, data=payload)
 
-    # Session with existing message ID
-    telegram_meta = TelegramAdapterMetadata(output_message_id="msg_123")
+    # Session with existing message ID (top-level column, not nested in adapter_metadata)
     session = Session(
         session_id=session_id,
         computer_name="macbook",
@@ -111,7 +110,8 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         title="Test Session",
         active_agent="gemini",
         native_log_file="/path/to/transcript.jsonl",
-        adapter_metadata=SessionAdapterMetadata(telegram=telegram_meta),
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata()),
+        output_message_id="msg_123",
     )
 
     with (
@@ -155,7 +155,6 @@ async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
     )
     context = AgentEventContext(event_type=AgentHookEvents.AGENT_STOP, session_id=session_id, data=payload)
 
-    telegram_meta = TelegramAdapterMetadata(output_message_id="msg_123")
     session = Session(
         session_id=session_id,
         computer_name="macbook",
@@ -163,7 +162,8 @@ async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
         title="Test Session",
         active_agent="gemini",
         native_log_file="/path/to/transcript.jsonl",
-        adapter_metadata=SessionAdapterMetadata(telegram=telegram_meta),
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata()),
+        output_message_id="msg_123",
     )
 
     with (
@@ -176,6 +176,9 @@ async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
         patch("teleclaude.core.agent_coordinator.db.update_session", new_callable=AsyncMock) as mock_update_session,
         patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_sum,
         patch("teleclaude.core.agent_coordinator.extract_last_agent_message") as mock_extract,
+        patch(
+            "teleclaude.core.agent_coordinator.db.set_output_message_id", new_callable=AsyncMock
+        ) as mock_set_output_msg,
     ):
         mock_get_session.return_value = session
         mock_get_messages.return_value = [{"role": "assistant", "content": []}]
@@ -192,17 +195,12 @@ async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
             session, "Final Message", footer_text="footer", multi_message=True
         )
 
-        # 2. Should clear output_message_id
-        # We expect a call to update_session with adapter_metadata where output_message_id is None
-        # And another call for last_agent_output_at=None
+        # 2. Should clear output_message_id via dedicated column write
+        mock_set_output_msg.assert_called_once_with(session_id, None)
 
-        # Check if ID was cleared in the object (since we modify in place)
-        assert session.adapter_metadata.telegram.output_message_id is None
-
-        # Verify DB updates
+        # 3. Verify DB updates: adapter_metadata (char_offset reset) and cursor clear
         calls = mock_update_session.call_args_list
 
-        # Look for metadata update
         meta_update_found = False
         cursor_clear_found = False
 
@@ -213,5 +211,5 @@ async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
             if "last_agent_output_at" in kwargs and kwargs["last_agent_output_at"] is None:
                 cursor_clear_found = True
 
-        assert meta_update_found, "Should persist cleared metadata"
+        assert meta_update_found, "Should persist adapter_metadata (char_offset reset)"
         assert cursor_clear_found, "Should clear turn cursor"

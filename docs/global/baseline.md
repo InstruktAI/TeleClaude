@@ -8,6 +8,7 @@
 @~/.teleclaude/docs/general/policy/conflict-resolution.md
 @~/.teleclaude/docs/general/policy/context-retrieval.md
 @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
+@~/.teleclaude/docs/general/procedure/checkpoint.md
 @~/.teleclaude/docs/general/procedure/idea-box.md
 @~/.teleclaude/docs/general/spec/third-party-docs.md
 @~/.teleclaude/docs/software-development/policy/version-control-safety.md

@@ -554,12 +554,17 @@ class TmuxPaneManager:
         layout = LAYOUT_SPECS.get(total_panes)
         if not layout:
             return None
-        spec_keys = tuple(spec.session_id for spec in session_specs)
+        # Track structural layout only — sticky IDs + whether an active slot
+        # exists.  The active session_id is intentionally excluded so that
+        # switching the preview between non-sticky sessions takes the
+        # lightweight _update_active_pane path (respawn-pane) instead of
+        # tearing down and recreating all tmux panes (_render_layout).
+        structural_keys = tuple(spec.session_id if spec.is_sticky else "__active__" for spec in session_specs)
         return (
             layout.rows,
             layout.cols,
             tuple(tuple(row) for row in layout.grid),
-            spec_keys,
+            structural_keys,
         )
 
     def _sync_sticky_mappings(self) -> None:

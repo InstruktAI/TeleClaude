@@ -205,6 +205,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             "redis": MockRedis(),
             "telegram": MockTelegram(),
             "tts": None,
+            "experiments": [],
             "agents": {
                 "claude": config_module.AgentConfig(
                     command="mock_claude_command --arg",

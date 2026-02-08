@@ -283,11 +283,13 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+timeout = 3
 addopts = [
   "-v",
   "--strict-markers",
   "--strict-config",
   "--tb=short",
+  "-n", "auto",
 ]
 markers = [
   "unit: Unit tests (fast, isolated, mocked)",

@@ -320,6 +320,8 @@ class SessionField(Enum):
     LAST_FEEDBACK_RECEIVED = "last_feedback_received"
     LAST_FEEDBACK_RECEIVED_AT = "last_feedback_received_at"
     LAST_AGENT_OUTPUT_AT = "last_agent_output_at"
+    LAST_AFTER_MODEL_AT = "last_after_model_at"
+    LAST_CHECKPOINT_AT = "last_checkpoint_at"
 
 
 class TranscriptFormat(str, Enum):
@@ -362,6 +364,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
     last_feedback_summary: Optional[str] = None
     last_output_digest: Optional[str] = None
     last_agent_output_at: Optional[datetime] = None
+    last_after_model_at: Optional[datetime] = None
+    last_checkpoint_at: Optional[datetime] = None
     working_slug: Optional[str] = None
     lifecycle_status: str = "active"
 
@@ -378,6 +382,10 @@ class Session:  # pylint: disable=too-many-instance-attributes
             data["last_feedback_received_at"] = self.last_feedback_received_at.isoformat()
         if self.last_agent_output_at:
             data["last_agent_output_at"] = self.last_agent_output_at.isoformat()
+        if self.last_after_model_at:
+            data["last_after_model_at"] = self.last_after_model_at.isoformat()
+        if self.last_checkpoint_at:
+            data["last_checkpoint_at"] = self.last_checkpoint_at.isoformat()
         if self.closed_at:
             data["closed_at"] = self.closed_at.isoformat()
         data["lifecycle_status"] = self.lifecycle_status
@@ -421,6 +429,18 @@ class Session:  # pylint: disable=too-many-instance-attributes
             parse_iso_datetime(last_agent_output_at_raw)
             if isinstance(last_agent_output_at_raw, str)
             else last_agent_output_at_raw
+        )
+        last_after_model_at_raw = data.get("last_after_model_at")
+        last_after_model_at = (
+            parse_iso_datetime(last_after_model_at_raw)
+            if isinstance(last_after_model_at_raw, str)
+            else last_after_model_at_raw
+        )
+        last_checkpoint_at_raw = data.get("last_checkpoint_at")
+        last_checkpoint_at = (
+            parse_iso_datetime(last_checkpoint_at_raw)
+            if isinstance(last_checkpoint_at_raw, str)
+            else last_checkpoint_at_raw
         )
 
         adapter_metadata: SessionAdapterMetadata
@@ -476,6 +496,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
             last_agent_output_at=ensure_utc(last_agent_output_at)
             if isinstance(last_agent_output_at, datetime)
             else None,
+            last_after_model_at=ensure_utc(last_after_model_at) if isinstance(last_after_model_at, datetime) else None,
+            last_checkpoint_at=ensure_utc(last_checkpoint_at) if isinstance(last_checkpoint_at, datetime) else None,
             last_feedback_summary=_get_optional_str("last_feedback_summary"),
             last_output_digest=_get_optional_str("last_output_digest"),
             working_slug=_get_optional_str("working_slug"),

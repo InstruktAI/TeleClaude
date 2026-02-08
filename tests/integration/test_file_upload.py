@@ -37,12 +37,13 @@ async def test_session(session_manager):
         computer_name="test-computer",
         tmux_session_name="tmux_test",
         last_input_origin=InputOrigin.TELEGRAM.value,
-        adapter_metadata=SessionAdapterMetadata(
-            telegram=TelegramAdapterMetadata(topic_id=12345, output_message_id="msg_out")
-        ),
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=12345)),
         title="Test Session",
         project_path="/tmp",
     )
+    # Set output_message_id via dedicated column (not adapter_metadata blob)
+    await session_manager.set_output_message_id(session.session_id, "msg_out")
+    session = await session_manager.get_session(session.session_id)
     return session
 
 

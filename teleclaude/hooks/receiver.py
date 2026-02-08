@@ -38,6 +38,7 @@ _HANDLED_EVENTS: frozenset[AgentHookEventType] = frozenset(
         AgentHookEvents.AGENT_SESSION_START,
         AgentHookEvents.USER_PROMPT_SUBMIT,
         AgentHookEvents.AGENT_OUTPUT,
+        AgentHookEvents.AFTER_MODEL,
         AgentHookEvents.AGENT_STOP,
         AgentHookEvents.AGENT_NOTIFICATION,
         AgentHookEvents.AGENT_ERROR,

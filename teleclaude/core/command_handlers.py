@@ -1614,6 +1614,29 @@ async def agent_restart(
     )
 
     await execute_terminal_command(session.session_id, restart_cmd, None, True)
+
+    # Inject checkpoint after restart — the agent is resuming with context,
+    # so it should debrief immediately without waiting for the 30s threshold.
+    async def _inject_checkpoint_after_restart() -> None:
+        from teleclaude.core.agent_coordinator import CHECKPOINT_MESSAGE
+        from teleclaude.core.tmux_bridge import send_keys_existing_tmux
+
+        await asyncio.sleep(5)  # Let agent initialize before injecting
+        tmux_name = session.tmux_session_name
+        if not tmux_name:
+            return
+        delivered = await send_keys_existing_tmux(
+            session_name=tmux_name,
+            text=CHECKPOINT_MESSAGE,
+            send_enter=True,
+        )
+        if delivered:
+            now = datetime.now(timezone.utc)
+            await db.update_session(session.session_id, last_checkpoint_at=now.isoformat())
+            logger.debug("Post-restart checkpoint injected for session %s", session.session_id[:8])
+
+    asyncio.create_task(_inject_checkpoint_after_restart())
+
     return True, None
 
 

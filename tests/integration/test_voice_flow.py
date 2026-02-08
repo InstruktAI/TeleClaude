@@ -43,6 +43,7 @@ async def test_voice_transcription_executes_command(session_manager: Db) -> None
     client.pre_handle_command = AsyncMock()
     client.send_message = AsyncMock()
     client.delete_message = AsyncMock()
+    client.broadcast_user_input = AsyncMock()
 
     start_polling = AsyncMock()
 
@@ -87,6 +88,7 @@ async def test_voice_transcription_none_skips_execution(session_manager: Db) -> 
     client.pre_handle_command = AsyncMock()
     client.send_message = AsyncMock()
     client.delete_message = AsyncMock()
+    client.broadcast_user_input = AsyncMock()
 
     start_polling = AsyncMock()
 

@@ -143,7 +143,10 @@ class CallbackHandlersMixin:
         try:
             action = CallbackAction(action_raw)
         except ValueError:
+            logger.debug("Unknown callback action: %s", action_raw)
             return
+
+        logger.debug("Callback: action=%s args=%s", action.value, args)
 
         if action is CallbackAction.DOWNLOAD_FULL:
             await self._handle_download_full(query, args)
@@ -323,19 +326,22 @@ class CallbackHandlersMixin:
             parse_mode="Markdown",
         )
 
-    async def _handle_cancel(self, query: object, args: list[str]) -> None:
-        """Handle ccancel callback to return to heartbeat view."""
+    async def _restore_heartbeat_menu(self, query: object) -> None:
+        """Restore the menu message back to the heartbeat keyboard view."""
         from telegram import CallbackQuery
 
         if not isinstance(query, CallbackQuery):
             return
 
-        bot_username = args[0] if args else None
-        if bot_username is None:
-            return
+        bot_info = await self.bot.get_me()
+        bot_username = bot_info.username or "unknown"
         reply_markup = self._build_heartbeat_keyboard(bot_username)
         text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         await query.edit_message_text(text, reply_markup=reply_markup)
+
+    async def _handle_cancel(self, query: object, args: list[str]) -> None:
+        """Handle ccancel callback to return to heartbeat view."""
+        await self._restore_heartbeat_menu(query)
 
     async def _handle_session_start(self, query: object, args: list[str]) -> None:
         """Handle s callback to create Tmux Session in selected project."""
@@ -363,10 +369,10 @@ class CallbackHandlersMixin:
             await query.answer("❌ Invalid project selection", show_alert=True)
             return
 
-        # Acknowledge immediately
-        await query.answer("Creating session...", show_alert=False)
+        # Restore menu immediately (optimistic UX)
+        await self._restore_heartbeat_menu(query)
 
-        # Normalize create-session intent
+        # Create session in background
         logger.info("_handle_session_start: creating session with project_path=%s", project_path)
         metadata = self._metadata(project_path=project_path)
         cmd = CommandMapper.map_telegram_input(
@@ -413,12 +419,12 @@ class CallbackHandlersMixin:
         }
 
         # Trust that action is in map (guaranteed by if condition)
-        auto_command, mode_label = event_map[action]
+        auto_command, _mode_label = event_map[action]
 
-        # Acknowledge immediately
-        await query.answer(f"Creating session with {mode_label}...", show_alert=False)
+        # Restore menu immediately (optimistic UX)
+        await self._restore_heartbeat_menu(query)
 
-        # Normalize create-session intent with auto_command
+        # Create session in background
         logger.info(
             "_handle_agent_start: creating session with project_path=%s, auto_command=%s",
             project_path,
