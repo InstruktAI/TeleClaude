@@ -1,22 +1,26 @@
 # Roadmap
 
 > **Last Updated**: 2026-02-09
-> **Status Legend**: `[ ]` = Pending | `[.]` = Ready | `[>]` = In Progress
-> (DONE work is tracked in [delivered.md](./delivered.md))
+>
+> **Status**: `[ ]` Pending | `[.]` Ready (has requirements) | `[>]` In Progress
+>
+> **Other lists**:
+> [delivered.md](./delivered.md) — completed work |
+> [icebox.md](./icebox.md) — parked, no active priority
 
 ---
-
-## Rolling Session Titles
-
-- [.] rolling-session-titles
-
-Re-summarize session titles based on the last 3 user inputs instead of only the first. Use a dedicated rolling prompt that captures session direction. Reset the output message on any title change so the topic floats to the top in Telegram.
 
 ## Config Schema Validation
 
 - [ ] config-schema-validation
 
 Pydantic-based schema for teleclaude.yml across all three config levels (project, global, per-person). Enforce level constraints (only global can configure `people`), validate before interpreting/merging, fix interests schema mismatch (flat list vs nested dict in discovery.py).
+
+## Job Contract Refinements
+
+- [ ] job-contract-refinements (after: config-schema-validation)
+
+Agent jobs use `job` field (spec doc reference) instead of inline `message`. Add job validation to `telec sync` pipeline. Fix discovery.py interests handling. Lightweight input declarations for jobs that need per-person data.
 
 ## Eliminate Raw SQL from DB Layer
 
@@ -65,9 +69,3 @@ Daily job that mines `ideas/` using multi-lens AI analysis (feasibility, impact,
 - [ ] role-based-notifications
 
 Notification routing subsystem that sends job outputs, reports, and alerts to people based on their role and channel subscriptions in per-person teleclaude.yml. Generalizes the existing personal Telegram script into a multi-person delivery layer.
-
-## UI Experiment: Threaded Incremental Output
-
-- [x] threaded-output-experiment
-
-Deliver agent feedback as regular threaded messages instead of one editable pane.
