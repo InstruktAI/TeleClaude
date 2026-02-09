@@ -13,6 +13,22 @@ logger = get_logger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
+def _warn_unknown_keys(model: BaseModel, path: str, config_path: Path) -> None:
+    """Recursively warn about unknown keys in a model and its nested models."""
+    if hasattr(model, "model_extra") and model.model_extra:
+        logger.warning("Unknown keys in %s at %s: %s", path, config_path, list(model.model_extra.keys()))
+
+    # Check nested BaseModel instances
+    for field_name, field_value in model.__dict__.items():
+        if isinstance(field_value, BaseModel):
+            _warn_unknown_keys(field_value, f"{path}.{field_name}", config_path)
+        elif isinstance(field_value, dict):
+            # Check dict values for nested BaseModels
+            for key, value in field_value.items():
+                if isinstance(value, BaseModel):
+                    _warn_unknown_keys(value, f"{path}.{field_name}.{key}", config_path)
+
+
 def load_config(path: Path, model_class: Type[T]) -> T:
     """Load and validate configuration from a YAML file.
 
@@ -35,8 +51,7 @@ def load_config(path: Path, model_class: Type[T]) -> T:
 
     expanded = expand_env_vars(raw)
     model = model_class.model_validate(expanded)
-    if model.model_extra:
-        logger.warning("Unknown keys in %s: %s", path, list(model.model_extra.keys()))
+    _warn_unknown_keys(model, "root", path)
     return model
 
 
