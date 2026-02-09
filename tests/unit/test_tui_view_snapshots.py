@@ -89,7 +89,7 @@ def _make_session(
     title: str,
     initiator_session_id: str | None = None,
     last_input: str | None = None,
-    last_output: str | None = None,
+    last_output_summary: str | None = None,
 ) -> SessionInfo:
     return SessionInfo(
         session_id=session_id,
@@ -103,8 +103,8 @@ def _make_session(
         last_activity=None,
         last_input=last_input,
         last_input_at=None,
-        last_output=last_output,
-        last_output_at=None,
+        last_output_summary=last_output_summary,
+        last_output_summary_at=None,
         tmux_session_name=None,
         initiator_session_id=initiator_session_id,
         computer="local",
@@ -144,7 +144,7 @@ async def test_sessions_view_snapshot_basic(sessions_view: SessionsView) -> None
             project_path="/Users/tester/TeleClaude",
             title="Bootstrap",
             last_input="ls",
-            last_output="ok",
+            last_output_summary="ok",
         )
     ]
 
@@ -192,7 +192,7 @@ async def test_sessions_view_snapshot_collapsed(sessions_view: SessionsView) -> 
             project_path="/Users/tester/TeleClaude",
             title="Collapsed",
             last_input="echo hi",
-            last_output="hi",
+            last_output_summary="hi",
         )
     ]
 

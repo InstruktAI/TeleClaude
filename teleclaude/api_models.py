@@ -93,8 +93,8 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
     last_activity: str | None = None
     last_input: str | None = None
     last_input_at: str | None = None
-    last_output: str | None = None
-    last_output_at: str | None = None
+    last_output_summary: str | None = None
+    last_output_summary_at: str | None = None
     last_output_digest: str | None = None
     native_session_id: str | None = None
     tmux_session_name: str | None = None
@@ -117,8 +117,8 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
             last_activity=summary.last_activity,
             last_input=summary.last_input,
             last_input_at=summary.last_input_at,
-            last_output=summary.last_output,
-            last_output_at=summary.last_output_at,
+            last_output_summary=summary.last_output_summary,
+            last_output_summary_at=summary.last_output_summary_at,
             last_output_digest=summary.last_output_digest,
             native_session_id=summary.native_session_id,
             tmux_session_name=summary.tmux_session_name,

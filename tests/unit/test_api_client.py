@@ -65,7 +65,7 @@ async def test_list_sessions_success():
                 "created_at": None,
                 "last_activity": None,
                 "last_input": None,
-                "last_output": None,
+                "last_output_summary": None,
                 "tmux_session_name": None,
                 "initiator_session_id": None,
                 "computer": "local",

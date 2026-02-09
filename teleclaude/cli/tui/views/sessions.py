@@ -1495,8 +1495,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             lines.append(line3[:width])
 
         # Line 4: Last output (only if content exists)
-        last_output = (session.last_output or "").strip()
-        last_output_at = session.last_output_at
+        last_output = (session.last_output_summary or "").strip()
+        last_output_at = session.last_output_summary_at
         has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
         if has_temp_output_highlight:
             output_time = _format_time(last_output_at or session.last_activity)
@@ -1771,8 +1771,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 return lines_used
 
         # Line 4: Last output (only if content exists)
-        last_output = (session.last_output or "").strip()
-        last_output_at = session.last_output_at
+        last_output = (session.last_output_summary or "").strip()
+        last_output_at = session.last_output_summary_at
         if last_output and not last_input and session_id not in self._missing_last_input_logged:
             self._missing_last_input_logged.add(session_id)
             logger.trace("missing_last_input", session=session_id[:8])

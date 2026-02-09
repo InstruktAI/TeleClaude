@@ -371,8 +371,10 @@ async def list_sessions() -> list[SessionSummary]:
                 last_activity=s.last_activity.isoformat() if s.last_activity else None,
                 last_input=s.last_message_sent,
                 last_input_at=s.last_message_sent_at.isoformat() if s.last_message_sent_at else None,
-                last_output=get_last_feedback(s),
-                last_output_at=s.last_feedback_received_at.isoformat() if s.last_feedback_received_at else None,
+                last_output_summary=get_last_feedback(s),
+                last_output_summary_at=(
+                    s.last_feedback_received_at.isoformat() if s.last_feedback_received_at else None
+                ),
                 native_session_id=s.native_session_id,
                 tmux_session_name=s.tmux_session_name,
                 initiator_session_id=s.initiator_session_id,

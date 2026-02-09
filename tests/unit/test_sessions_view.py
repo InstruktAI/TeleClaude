@@ -102,7 +102,7 @@ async def test_refresh_updates_activity_state_marks_idle_when_activity_is_old():
             computer="local",
             project_path="/tmp",
             last_input="hello",
-            last_output="world",
+            last_output_summary="world",
             last_activity=old_activity,
             title="test",
             active_agent="claude",

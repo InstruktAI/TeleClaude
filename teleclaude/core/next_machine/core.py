@@ -14,7 +14,6 @@ import os
 import re
 import shutil
 import subprocess
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import cast
@@ -26,7 +25,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
 from teleclaude.core.models import ThinkingMode
-from teleclaude.core.session_utils import parse_session_title
 
 logger = get_logger(__name__)
 
@@ -63,7 +61,6 @@ class WorktreeScript(str, Enum):
     PREPARE = "worktree:prepare"
 
 
-DEFAULT_INPUT_SLUG = "input"
 SCRIPTS_KEY = "scripts"
 UNCHECKED_TASK_MARKER = "- [ ]"
 REVIEW_APPROVE_MARKER = "[x] APPROVE"
@@ -295,69 +292,6 @@ def format_hitl_guidance(context: str) -> str:
     return f"""Before proceeding, read ~/.agents/commands/next-prepare.md if you haven't already.
 
 {context}"""
-
-
-def _slugify(value: str) -> str:
-    base = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-    return base or DEFAULT_INPUT_SLUG
-
-
-def _ensure_unique_slug(cwd: str, base: str) -> str:
-    slug = base
-    counter = 2
-    while (Path(cwd) / "todos" / slug).exists() or slug_in_roadmap(cwd, slug):
-        slug = f"{base}-{counter}"
-        counter += 1
-    return slug
-
-
-def _insert_roadmap_item(cwd: str, slug: str) -> None:
-    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
-    if not roadmap_path.exists():
-        return
-    content = read_text_sync(roadmap_path)
-    if re.search(rf"^- \[[ .>x]\] {re.escape(slug)}(\s|$)", content, re.MULTILINE):
-        return
-    insert_at = content.find("\n## ")
-    if insert_at == -1:
-        updated = content.rstrip() + f"\n- [ ] {slug}\n"
-    else:
-        updated = content[:insert_at] + f"\n- [ ] {slug}\n" + content[insert_at:]
-    write_text_sync(roadmap_path, updated)
-
-
-async def _create_input_todo_from_latest_session(db: Db, cwd: str) -> tuple[str | None, str]:
-    sessions = await db.get_active_sessions()
-    if not sessions:
-        return None, "No active sessions found to capture input."
-    session = sessions[0]
-    _, description = parse_session_title(session.title or "")
-    base = _slugify(description or DEFAULT_INPUT_SLUG)
-    slug = await asyncio.to_thread(_ensure_unique_slug, cwd, base)
-
-    todo_dir = Path(cwd) / "todos" / slug
-    todo_dir.mkdir(parents=True, exist_ok=True)
-
-    captured_at = datetime.now().isoformat(timespec="seconds")
-    user_text = session.last_message_sent or "No recent user input captured."
-    ai_text = session.last_feedback_received or "No recent assistant output captured."
-
-    input_body = (
-        f"# Input: {slug}\n\n"
-        "## Source\n"
-        f"- session_id: {session.session_id}\n"
-        f"- title: {session.title}\n"
-        f"- captured_at: {captured_at}\n\n"
-        "## User Input (latest)\n"
-        f"{user_text}\n\n"
-        "## Assistant Output (latest)\n"
-        f"{ai_text}\n"
-    )
-    await write_text_async(todo_dir / "input.md", input_body)
-
-    await asyncio.to_thread(_insert_roadmap_item, cwd, slug)
-
-    return slug, "Created input.md from latest session."
 
 
 # =============================================================================
@@ -1207,15 +1141,6 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
     """
     # 1. Resolve slug
     resolved_slug = slug
-
-    if resolved_slug == DEFAULT_INPUT_SLUG:
-        created_slug, note = await _create_input_todo_from_latest_session(db, cwd)
-        if created_slug:
-            return format_hitl_guidance(
-                f"Captured discussion into todos/{created_slug}/input.md. "
-                f'Next: call teleclaude__next_prepare(slug="{created_slug}").'
-            )
-        return format_hitl_guidance(f"Input capture failed. {note}")
 
     if not slug and not hitl:
         resolved_slug, _, _ = await resolve_slug_async(cwd, None)

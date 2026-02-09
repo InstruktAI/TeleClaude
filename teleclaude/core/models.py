@@ -677,8 +677,8 @@ class SessionSummary:
     last_activity: Optional[str] = None
     last_input: Optional[str] = None
     last_input_at: Optional[str] = None
-    last_output: Optional[str] = None
-    last_output_at: Optional[str] = None
+    last_output_summary: Optional[str] = None
+    last_output_summary_at: Optional[str] = None
     last_output_digest: Optional[str] = None
     native_session_id: Optional[str] = None
     tmux_session_name: Optional[str] = None
@@ -699,8 +699,8 @@ class SessionSummary:
             "last_activity": self.last_activity,
             "last_input": self.last_input,
             "last_input_at": self.last_input_at,
-            "last_output": self.last_output,
-            "last_output_at": self.last_output_at,
+            "last_output_summary": self.last_output_summary,
+            "last_output_summary_at": self.last_output_summary_at,
             "last_output_digest": self.last_output_digest,
             "native_session_id": self.native_session_id,
             "tmux_session_name": self.tmux_session_name,
@@ -724,8 +724,10 @@ class SessionSummary:
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
             last_input=session.last_message_sent,
             last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
-            last_output=get_last_feedback(session),
-            last_output_at=session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None,
+            last_output_summary=get_last_feedback(session),
+            last_output_summary_at=(
+                session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None
+            ),
             last_output_digest=session.last_output_digest,
             native_session_id=session.native_session_id,
             tmux_session_name=session.tmux_session_name,
@@ -749,8 +751,16 @@ class SessionSummary:
             last_activity=str(data.get("last_activity")) if data.get("last_activity") else None,
             last_input=str(data.get("last_input")) if data.get("last_input") else None,
             last_input_at=str(data.get("last_input_at")) if data.get("last_input_at") else None,
-            last_output=str(data.get("last_output")) if data.get("last_output") else None,
-            last_output_at=str(data.get("last_output_at")) if data.get("last_output_at") else None,
+            last_output_summary=(
+                str(data.get("last_output_summary") or data.get("last_output"))
+                if (data.get("last_output_summary") or data.get("last_output"))
+                else None
+            ),
+            last_output_summary_at=(
+                str(data.get("last_output_summary_at") or data.get("last_output_at"))
+                if (data.get("last_output_summary_at") or data.get("last_output_at"))
+                else None
+            ),
             last_output_digest=str(data.get("last_output_digest")) if data.get("last_output_digest") else None,
             native_session_id=str(data.get("native_session_id")) if data.get("native_session_id") else None,
             tmux_session_name=str(data.get("tmux_session_name")) if data.get("tmux_session_name") else None,

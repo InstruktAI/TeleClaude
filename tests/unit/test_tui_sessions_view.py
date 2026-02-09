@@ -94,8 +94,8 @@ class TestSessionsViewLogic:
         thinking_mode: str = "slow",
         last_input: str | None = None,
         last_input_at: str | None = "2024-01-01T00:00:00Z",
-        last_output: str | None = None,
-        last_output_at: str | None = "2024-01-01T00:01:00Z",
+        last_output_summary: str | None = None,
+        last_output_summary_at: str | None = "2024-01-01T00:01:00Z",
         last_activity: str = "2024-01-01T00:02:00Z",
         tmux_session_name: str | None = None,
         display_index: str = "1",
@@ -112,8 +112,8 @@ class TestSessionsViewLogic:
             last_activity=last_activity,
             last_input=last_input,
             last_input_at=last_input_at,
-            last_output=last_output,
-            last_output_at=last_output_at,
+            last_output_summary=last_output_summary,
+            last_output_summary_at=last_output_summary_at,
             tmux_session_name=tmux_session_name,
             initiator_session_id=None,
             computer=computer,
@@ -130,8 +130,8 @@ class TestSessionsViewLogic:
         thinking_mode: str = "slow",
         last_input: str | None = None,
         last_input_at: str | None = None,
-        last_output: str | None = None,
-        last_output_at: str | None = None,
+        last_output_summary: str | None = None,
+        last_output_summary_at: str | None = None,
         tmux_session_name: str | None = None,
         depth: int = 0,
         display_index: str = "1",
@@ -145,8 +145,8 @@ class TestSessionsViewLogic:
             thinking_mode=thinking_mode,
             last_input=last_input,
             last_input_at=last_input_at,
-            last_output=last_output,
-            last_output_at=last_output_at,
+            last_output_summary=last_output_summary,
+            last_output_summary_at=last_output_summary_at,
             tmux_session_name=tmux_session_name,
             display_index=display_index,
         )
@@ -234,7 +234,7 @@ class TestSessionsViewLogic:
             session_id="s1",
             title="Test Session",
             last_input="Some input",
-            last_output="Some output",
+            last_output_summary="Some output",
         )
         sessions_view.flat_items = [session]
         sessions_view.collapsed_sessions.add("s1")
@@ -254,8 +254,8 @@ class TestSessionsViewLogic:
             title="Test Session",
             last_input="Test input",
             last_input_at="2024-01-01T00:00:00Z",
-            last_output="Test output",
-            last_output_at="2024-01-01T00:01:00Z",
+            last_output_summary="Test output",
+            last_output_summary_at="2024-01-01T00:01:00Z",
         )
         sessions_view.flat_items = [session]
         # Don't add to collapsed_sessions = expanded by default
@@ -420,8 +420,8 @@ class TestSessionsViewLogic:
             session_id="s1",
             last_input="hello",
             last_input_at="2024-01-01T00:00:00Z",
-            last_output="world",
-            last_output_at="2024-01-01T00:01:00Z",
+            last_output_summary="world",
+            last_output_summary_at="2024-01-01T00:01:00Z",
         )
         sessions_view.flat_items = [session]
 
@@ -438,8 +438,8 @@ class TestSessionsViewLogic:
 
         session = self._make_session_node(
             session_id="s1",
-            last_output="final answer text",
-            last_output_at="2024-01-01T00:01:00Z",
+            last_output_summary="final answer text",
+            last_output_summary_at="2024-01-01T00:01:00Z",
         )
         sessions_view.state.sessions.temp_output_highlights.add("s1")
         sessions_view.flat_items = [session]
@@ -583,8 +583,8 @@ class TestSessionsViewLogic:
             active_agent="unknown",
             thinking_mode="slow",
             tmux_session_name=None,
-            last_output="agent output",
-            last_output_at="2024-01-01T00:01:00Z",
+            last_output_summary="agent output",
+            last_output_summary_at="2024-01-01T00:01:00Z",
         )
         sessions_view.state.sessions.output_highlights.add("headless-1")
 
@@ -680,8 +680,8 @@ class TestSessionsViewLogic:
         session = self._make_session_node(
             session_id="temp-italic",
             active_agent="unknown",
-            last_output="old output",
-            last_output_at="2024-01-01T00:01:00Z",
+            last_output_summary="old output",
+            last_output_summary_at="2024-01-01T00:01:00Z",
         )
         sessions_view.state.sessions.temp_output_highlights.add("temp-italic")
 

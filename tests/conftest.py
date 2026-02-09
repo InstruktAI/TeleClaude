@@ -108,7 +108,7 @@ def create_mock_session(
     active_agent: str = "claude",
     thinking_mode: str = "slow",
     last_input: str | None = None,
-    last_output: str | None = None,
+    last_output_summary: str | None = None,
     last_activity: str | None = None,
 ) -> dict[str, object]:  # guard: loose-dict
     """Create mock session data for testing.
@@ -121,7 +121,7 @@ def create_mock_session(
         active_agent: Active agent name
         thinking_mode: Thinking mode
         last_input: Last input text
-        last_output: Last output text
+        last_output_summary: Last output text
         last_activity: Last activity timestamp (ISO format)
 
     Returns:
@@ -140,7 +140,7 @@ def create_mock_session(
         "created_at": now,
         "last_activity": last_activity or now,
         "last_input": last_input,
-        "last_output": last_output,
+        "last_output_summary": last_output_summary,
         "display_index": "1",
         "tmux_session_name": f"teleclaude-{session_id}",
     }
