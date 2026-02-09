@@ -8,18 +8,22 @@ The current checkpoint message is generic ("Continue or validate your work if ne
 
 Checkpoint messages at `agent_stop` boundaries include:
 
-1. Automated test results when Python files changed
+1. Context-aware validation instructions based on changed files
 2. Specific follow-up actions based on which files changed (restart daemon, SIGUSR2 TUI, agent-restart)
-3. An uncommitted-changes gate on the second stop (escape hatch) that blocks until code changes are committed
+3. The same instruction logic for both delivery paths:
+   - Hook route (Claude/Gemini): checkpoint reason JSON
+   - Codex route: tmux checkpoint injection
+4. Single-block-per-turn escape hatch: first checkpoint may block, second stop must pass through
 
 ## Requirements
 
-### R1: Git Diff Inspection
+### R1: Git Diff Inspection (Shared Source of Truth)
 
-In `_maybe_checkpoint_output()`, before building the checkpoint message:
+Before building a checkpoint message on either route:
 
 - Run `git diff --name-only HEAD` (subprocess) to get all uncommitted changed files
 - Categorize changed files into action buckets using pattern matching
+- Use one shared formatter/mapping routine so hook and codex produce equivalent checkpoint instructions
 
 ### R2: File-to-Action Categorization
 
@@ -28,8 +32,8 @@ In `_maybe_checkpoint_output()`, before building the checkpoint message:
 | daemon code     | `teleclaude/**/*.py` excluding `hooks/receiver.py` and `cli/tui/**` | "Run `make restart` then `make status`"                 |
 | hook code       | `teleclaude/hooks/receiver.py`                                      | _(none — auto-reloads)_                                 |
 | TUI code        | `teleclaude/cli/tui/**`                                             | "Run `pkill -SIGUSR2 -f -- '-m teleclaude.cli.telec$'`" |
-| tests only      | `tests/**/*.py` with no source changes                              | _(none if green)_                                       |
-| agent artifacts | `.claude/agents/**`, `.claude/commands/**`, `.claude/skills/**`     | "Run agent-restart to reload artifacts"                 |
+| tests only      | `tests/**/*.py` with no source changes                              | "Run targeted tests for changed behavior before commit" |
+| agent artifacts | `agents/**`, `.agents/**`, `**/AGENTS.master.md`                    | "Run agent-restart to reload artifacts"                 |
 | config          | `config.yml`                                                        | "Run `make restart` + `make status`"                    |
 | no code changes | Only docs, todos, ideas, markdown                                   | Capture-only message                                    |
 
@@ -39,56 +43,67 @@ Already-automated triggers (excluded from checkpoint instructions):
 - `agents/**/*.md` sources — same
 - Lint/format — pre-commit hooks
 
-### R3: Automated Test Execution
+### R3: Test Guidance (No Hook-Time Test Execution)
 
-When any `.py` file has uncommitted changes:
+When code or tests changed:
 
-- Run `pytest tests/unit/ -x -q` as a subprocess
-- Capture pass/fail status and output
-- Apply a 30-second timeout to prevent runaway test suites
-- If tests fail: instruction is "Fix failing tests before proceeding" with output
-- If tests pass: proceed to follow-up action instructions
+- Do not run pytest inside checkpoint delivery logic.
+- Include explicit instruction to run targeted tests for changed behavior.
+- Keep hard enforcement at commit/pre-commit quality gates.
 
 ### R4: Message Composition
 
 Build a structured checkpoint message from matched categories:
 
-1. Test results line (if applicable): pass count + time, or FAILED + output
+1. Header indicating context-aware checkpoint
 2. Changed files list
-3. Deduplicated instruction list from matched categories
-4. If nothing code-related changed: capture-only message
+3. "Required actions" list with strict execution precedence (the order is the contract)
+4. Baseline instruction always included: check recent logs for errors
+5. Deduplicated category instructions appended in deterministic order
+6. If nothing code-related changed: capture-only message (still include baseline log check)
+
+Execution precedence (fixed):
+
+1. Runtime reload/restart actions (daemon restart, TUI reload, agent artifact restart)
+2. Observability action (check recent logs for errors)
+3. Validation actions (targeted tests)
+4. Commit only after steps 1-3 are complete
+5. Capture reminder (memories/bugs/ideas) as closing note, not part of required-action numbering
+
+Formatting note:
+
+- Numbering may be used for readability, but precedence must remain explicit even if formatting changes.
 
 ### R5: Uncommitted Changes Gate
 
 On the second stop (`stop_hook_active=true` for Claude):
 
-- Instead of unconditionally passing through, check `git diff --name-only HEAD`
-- If uncommitted `.py` or config changes exist: block again with "Commit your changes before stopping"
-- If clean (or only non-gated files like docs/ideas/todos): pass through
+- Do not re-block based on dirty files.
+- Always pass through on the second stop (single-block-per-turn model).
+- Keep dirty-tree enforcement at commit/pre-commit, not in repeated stop-hook blocks.
 
 ### R6: Existing Behavior Preservation
 
 - The 30-second unified turn timer is unchanged
-- The escape hatch logic (`stop_hook_active`) gains the uncommitted-changes check but otherwise behaves the same
-- Codex still uses tmux injection (no hook mechanism) — Phase 2 enhances only the Claude/Gemini hook path
+- Escape hatch invariant: checkpoint may block at most once per turn; second stop must pass through
+- Codex still uses tmux injection (no hook mechanism), but now uses the same context-aware checkpoint content as hook agents
 - DB-persisted checkpoint state is unchanged
 - Fail-open on DB errors is unchanged
 
 ## Success Criteria
 
-1. When Python files changed: checkpoint includes test results (pass/fail + summary)
+1. When Python files changed: checkpoint includes explicit validation instructions
 2. When daemon code changed: checkpoint instructs "make restart"
 3. When TUI code changed: checkpoint instructs SIGUSR2 reload
 4. When only docs/todos changed: generic capture-only message
-5. When tests fail: checkpoint says "Fix failing tests" with output
-6. Second stop with uncommitted code: blocks with "Commit your changes"
-7. Second stop with clean state: passes through normally
+5. Hook and codex routes produce equivalent instructions for the same changed-file set
+6. Second stop always passes through (no repeated blocking loops)
+7. Commit-time hooks remain the hard quality gate for dirty or broken code
 8. All existing Phase 1 tests continue to pass
-9. New tests cover each file category, test execution, message composition, and the uncommitted-changes gate
+9. New tests cover each file category, shared message composition, codex parity, and the uncommitted-changes gate
 
 ## Constraints
 
 - `receiver.py` is a fresh Python process per hook call — no daemon impact from subprocess overhead
-- pytest timeout must be bounded (30s max) to prevent indefinite blocking
 - git subprocess calls must handle missing git gracefully (fail-open)
 - Message format must work with both Claude (`<system-reminder>`) and Gemini (retry prompt) delivery

@@ -2,109 +2,115 @@
 
 ## Approach
 
-Enhance `_maybe_checkpoint_output()` in `receiver.py` to inspect `git diff --name-only HEAD`, run pytest when Python files changed, compose a context-specific checkpoint message, and add an uncommitted-changes gate on the escape hatch path. All logic stays in the receiver (fresh process per hook call — no daemon changes needed).
+Introduce a shared context-aware checkpoint builder used by both delivery paths:
+
+- Hook path (`receiver.py`) for Claude/Gemini
+- Tmux injection path (`agent_coordinator.py`) for Codex
+
+Both paths will inspect `git diff --name-only HEAD`, map changed files to instructions, and emit equivalent checkpoint guidance. No pytest execution occurs inside hook/coordinator checkpoint logic.
 
 ## Files to Change
 
-| File                                                    | Change                                                                                   |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `teleclaude/hooks/receiver.py`                          | Add git diff inspection, pytest execution, message composition, uncommitted-changes gate |
-| `teleclaude/constants.py`                               | Add constants for pytest timeout, file category patterns, gated file extensions          |
-| `tests/unit/test_checkpoint_hook.py`                    | Add tests for all new behavior                                                           |
-| `docs/project/design/architecture/checkpoint-system.md` | Update to document Phase 2 context-aware flow                                            |
+| File                                                    | Change                                                                           |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `teleclaude/hooks/receiver.py`                          | Use shared context-aware message builder with single-block-per-turn escape hatch |
+| `teleclaude/core/agent_coordinator.py`                  | Use shared context-aware message builder for codex tmux injection                |
+| `teleclaude/constants.py`                               | Add/adjust constants for file category patterns, gated file extensions           |
+| `tests/unit/test_checkpoint_hook.py`                    | Add/adjust tests for hook route behavior                                         |
+| `tests/unit/test_agent_coordinator.py`                  | Add tests for codex route parity and context-aware injection                     |
+| `docs/project/design/architecture/checkpoint-system.md` | Update to document Phase 2 context-aware flow                                    |
 
 ## Task Sequence
 
-### Task 1: Add constants
+### Task 1: Define shared checkpoint mapping constants
 
 Add to `teleclaude/constants.py`:
 
-- `CHECKPOINT_PYTEST_TIMEOUT_S = 30` — max seconds for test subprocess
 - `CHECKPOINT_GATED_EXTENSIONS` — set of file extensions that trigger the uncommitted-changes gate (`.py`, `.yml` for config)
 - File category patterns as a data structure (list of tuples: category name, include patterns, exclude patterns, instruction template)
+- Ensure artifact categories reflect repo reality: `agents/**`, `.agents/**`, and `**/AGENTS.master.md`
 
 **Verify:** Import succeeds, no syntax errors.
 
-### Task 2: Add git diff + file categorization helpers
+### Task 2: Add shared context-aware checkpoint builder
 
-Add to `receiver.py`:
+Add helper(s) in a shared module (or existing appropriate module) and wire both routes to use it:
 
 - `_get_uncommitted_files() -> list[str]` — runs `git diff --name-only HEAD` via subprocess, returns list of changed file paths. Returns empty list on error (fail-open).
-- `_categorize_files(files: list[str]) -> list[tuple[str, str]]` — maps file list against category patterns, returns deduplicated list of (category, instruction) tuples.
+- `_categorize_files(files: list[str]) -> list[tuple[str, str]]` — maps file list against category patterns, returns deduplicated list of instructions.
+- `build_checkpoint_message(files: list[str]) -> str` — returns context-aware checkpoint guidance text.
+  - Always emit required actions in fixed execution precedence:
+    1. Restart/reload actions
+    2. Log-check action
+    3. Validation actions
+    4. Commit only after steps 1-3
+  - Always include baseline non-blocking log-check instruction.
 
-**Verify:** Unit tests for categorization with various file lists.
+**Verify:** Unit tests for categorization and message composition with various file lists.
 
-### Task 3: Add pytest execution helper
+### Task 3: Hook route integration (Claude/Gemini)
 
-Add to `receiver.py`:
+Modify `_maybe_checkpoint_output()` in `receiver.py`:
 
-- `_run_pytest() -> tuple[bool, str]` — runs `pytest tests/unit/ -x -q` via subprocess with `CHECKPOINT_PYTEST_TIMEOUT_S` timeout. Returns (passed: bool, output: str). Returns (True, "") on timeout or error (fail-open).
+1. Call shared helper to compute changed-file categories and message text
+2. Return agent-specific block/deny JSON using that message
+3. Keep 30-second timing behavior unchanged
 
-**Verify:** Unit tests mocking subprocess.
+**Verify:** Hook tests assert JSON shape and context-aware message content.
 
-### Task 4: Compose context-aware checkpoint message
+### Task 4: Codex route integration (tmux injection)
 
-Modify the checkpoint message composition in `_maybe_checkpoint_output()`:
+Modify `_maybe_inject_checkpoint()` in `agent_coordinator.py`:
 
-1. Call `_get_uncommitted_files()` to get changed files
-2. If any `.py` files in the list: call `_run_pytest()`, capture results
-3. Call `_categorize_files()` to get action instructions
-4. Build structured message:
-   - If tests failed: "Checkpoint — Tests: FAILED\n`\n{output}\n`\nFix the failing tests before proceeding."
-   - If tests passed with actions: "Checkpoint — Tests: {count} passed ({time})\n\nChanged: {files}\n\nRequired:\n- {actions}\n\nThen capture anything worth keeping. If everything is clean, do not respond."
-   - If no code changes: "Checkpoint — No code changes detected.\n\nCapture anything worth keeping (memories, bugs, ideas). If everything is clean, do not respond."
-5. Use this composed message instead of the generic `CHECKPOINT_MESSAGE` constant
+1. Call same shared helper used by receiver
+2. Inject resulting context-aware message via `send_keys_existing_tmux`
+3. Preserve existing codex dedup and threshold checks
 
-**Verify:** End-to-end unit tests with mocked git/pytest subprocesses checking full message output.
+**Verify:** Coordinator tests assert codex receives context-aware content and unchanged timing rules.
 
-### Task 5: Uncommitted changes gate on escape hatch
+### Task 5: Escape hatch behavior (single block per turn)
 
 Modify the `stop_hook_active` escape hatch path in `_maybe_checkpoint_output()`:
 
-1. When `stop_hook_active` is True, call `_get_uncommitted_files()`
-2. Check if any files match `CHECKPOINT_GATED_EXTENSIONS`
-3. If gated files exist: return blocking JSON with "You have uncommitted code changes. Commit your work before stopping.\n\nChanged: {files}"
-4. If no gated files (only docs/ideas/todos): return None (pass through)
+1. When `stop_hook_active` is True, always return pass-through (`None`)
+2. Do not re-block based on dirty working tree state
+3. Keep commit/pre-commit as the strict enforcement layer
 
-**Verify:** Unit tests for gate behavior with various file states.
+**Verify:** Unit tests confirm second stop always passes and does not deadlock.
 
 ### Task 6: Update tests
 
-Add comprehensive tests to `test_checkpoint_hook.py`:
+Add/adjust tests:
 
 - `test_git_diff_empty_returns_generic_message` — no changes → capture-only
-- `test_git_diff_py_files_runs_pytest` — Python files trigger test execution
-- `test_pytest_pass_includes_results` — passing tests show count + time
-- `test_pytest_fail_shows_output` — failing tests show failure output
+- `test_message_always_includes_log_check` — all checkpoints include baseline log-check instruction
+- `test_message_action_precedence_is_deterministic` — actions follow fixed execution order regardless of pattern discovery order
+- `test_message_precedence_is_explicit` — message text makes clear what must be done first
 - `test_daemon_code_change_instructs_restart` — `teleclaude/*.py` → "make restart"
 - `test_tui_code_change_instructs_sigusr2` — `teleclaude/cli/tui/*.py` → SIGUSR2
 - `test_hook_code_no_instruction` — `receiver.py` → no follow-up action
-- `test_agent_artifacts_instructs_restart` — `.claude/agents/**` → agent-restart
+- `test_agent_artifacts_instructs_restart` — `agents/**`, `.agents/**`, or `**/AGENTS.master.md` → agent-restart
 - `test_config_change_instructs_restart` — `config.yml` → "make restart"
-- `test_escape_hatch_blocks_uncommitted_code` — `stop_hook_active` + uncommitted `.py` → block
-- `test_escape_hatch_passes_clean_state` — `stop_hook_active` + no gated files → pass through
-- `test_escape_hatch_passes_docs_only` — `stop_hook_active` + only markdown → pass through
+- `test_codex_injection_uses_context_aware_message` — codex tmux path uses same mapping/message routine
+- `test_escape_hatch_second_stop_always_passes` — `stop_hook_active` always passes through
 - `test_git_diff_failure_is_fail_open` — subprocess error → generic checkpoint
-- `test_pytest_timeout_is_fail_open` — timeout → treat as passed
 
-**Verify:** `pytest tests/unit/test_checkpoint_hook.py -v` all green.
+**Verify:** `pytest tests/unit/test_checkpoint_hook.py tests/unit/test_agent_coordinator.py -q` all green.
 
 ### Task 7: Update design doc
 
 Update `docs/project/design/architecture/checkpoint-system.md`:
 
 - Add Phase 2 context-aware flow to Primary flows section
-- Add git diff + pytest execution to Inputs
+- Add shared file-mapping logic used by hook and codex paths
 - Add context-aware message format to Outputs
 - Add uncommitted-changes gate to Invariants
-- Update failure modes table with new scenarios (git unavailable, pytest timeout, subprocess errors)
+- Update failure modes table with new scenarios (git unavailable, subprocess errors)
 
 **Verify:** `telec sync` succeeds.
 
 ## Risks and Assumptions
 
 - **Assumption:** `git` is available on PATH in the hook receiver's subprocess environment. If not, fail-open returns generic checkpoint.
-- **Assumption:** `pytest` is available via the project's venv. The receiver imports from the project already, so venv activation is inherited.
-- **Risk:** pytest execution adds ~10s latency. Acceptable because the receiver is a fresh process (no daemon blocking) and the agent just waits slightly longer.
-- **Risk:** Large test suites could exceed the 30s timeout. Mitigated by the timeout guard and fail-open behavior.
+- **Assumption:** checkpoint is guidance and gating, while test enforcement remains at commit/pre-commit.
 - **Risk:** git diff might include staged but not committed files — `git diff --name-only HEAD` includes both staged and unstaged changes relative to HEAD, which is the correct behavior for "uncommitted work."
