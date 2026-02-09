@@ -162,6 +162,7 @@ class TTSServiceConfig:
 
     enabled: bool
     voices: list[TTSServiceVoiceConfig] | None = None
+    model: str | None = None  # Optional local path or HF repo id (used by qwen3)
 
 
 @dataclass
@@ -444,6 +445,7 @@ def _parse_tts_config(raw_tts: dict[str, object] | None) -> TTSConfig | None:  #
                 services[service_name] = TTSServiceConfig(
                     enabled=bool(service_data.get("enabled", False)),
                     voices=voices if voices else None,
+                    model=str(service_data.get("model")) if service_data.get("model") else None,
                 )
 
     return TTSConfig(enabled=tts_enabled, service_priority=service_priority, events=events, services=services)

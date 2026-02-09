@@ -129,6 +129,10 @@ tts:
         - name: "Zoe (Premium)"
     qwen3:
       enabled: true
+      # Optional: local model path or HF repo id.
+      # Example local path:
+      # ${HOME}/.cache/lm-studio/models/mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16
+      model: mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
       voices:
         - name: serena
         - name: vivian
