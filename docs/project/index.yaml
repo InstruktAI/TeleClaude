@@ -403,10 +403,31 @@ snippets:
   scope: project
   path: docs/project/spec/git-docs-filter.md
   source_project: TeleClaude
+- id: project/spec/hook-normalized-events
+  description: Canonical TeleClaude hook normalization and forwarding contract for
+    project runtime behavior.
+  type: spec
+  scope: project
+  path: docs/project/spec/hook-normalized-events.md
+  source_project: TeleClaude
 - id: project/spec/jobs/youtube-sync-subscriptions
   description: 'YouTube subscription tagger job: nightly AI classification of untagged
     channels.'
   type: spec
   scope: project
   path: docs/project/spec/jobs/youtube-sync-subscriptions.md
+  source_project: TeleClaude
+- id: project/spec/runtime-operations-truth
+  description: Operational source of truth for TeleClaude daemon runtime operations,
+    impact, and recovery steps.
+  type: spec
+  scope: project
+  path: docs/project/spec/runtime-operations-truth.md
+  source_project: TeleClaude
+- id: project/spec/session-identity-truth
+  description: Canonical TeleClaude session identity mapping rules for managed and
+    headless session routes.
+  type: spec
+  scope: project
+  path: docs/project/spec/session-identity-truth.md
   source_project: TeleClaude
