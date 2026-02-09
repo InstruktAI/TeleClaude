@@ -78,6 +78,41 @@ SESSION_START_MESSAGES = [
 ]
 
 
+def _is_checkpoint_prompt(
+    prompt: str,
+    *,
+    raw_payload: object = None,
+) -> bool:
+    """Return True when prompt text is our system checkpoint message.
+
+    Codex synthetic input detection truncates captured prompt text to a fixed
+    max length. For those synthetic events, treat long-enough prefixes of the
+    checkpoint constant as checkpoint input too.
+    """
+    prompt_clean = (prompt or "").strip()
+    if not prompt_clean:
+        return False
+
+    checkpoint_clean = CHECKPOINT_MESSAGE.strip()
+
+    # Exact/contained match (Claude/Gemini hooks and full Codex text)
+    if checkpoint_clean in prompt_clean:
+        return True
+
+    # Truncated Codex synthetic prompt (from output polling / fast-poll)
+    is_codex_synthetic = False
+    if isinstance(raw_payload, dict):
+        source = raw_payload.get("source")
+        is_codex_synthetic = (
+            bool(raw_payload.get("synthetic")) and isinstance(source, str) and source.startswith("codex_")
+        )
+
+    if is_codex_synthetic and len(prompt_clean) >= 40 and checkpoint_clean.startswith(prompt_clean):
+        return True
+
+    return False
+
+
 class AgentCoordinator:
     """Coordinator for agent events and inter-agent communication."""
 
@@ -163,7 +198,7 @@ class AgentCoordinator:
             return
 
         # System-injected checkpoint — not real user input, skip entirely
-        if CHECKPOINT_MESSAGE in payload.prompt:
+        if _is_checkpoint_prompt(payload.prompt, raw_payload=payload.raw):
             logger.debug("Checkpoint prompt detected, skipping user input persistence for session %s", session_id[:8])
             return
 
@@ -589,7 +624,7 @@ class AgentCoordinator:
             return None
 
         # Don't persist our own checkpoint message as user input
-        if CHECKPOINT_MESSAGE[:50] in last_user_input:
+        if _is_checkpoint_prompt(last_user_input):
             logger.debug("Codex user input skipped (checkpoint message) for session %s", session_id[:8])
             return None
 
@@ -740,7 +775,7 @@ class AgentCoordinator:
                     last_input = ""
             else:
                 last_input = ""
-            if CHECKPOINT_MESSAGE[:50] in last_input:
+            if _is_checkpoint_prompt(last_input):
                 logger.debug(
                     "Checkpoint skipped (last input was checkpoint) for %s agent session %s", agent_name, session_id[:8]
                 )

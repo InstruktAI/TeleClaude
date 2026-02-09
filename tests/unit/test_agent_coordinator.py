@@ -2,8 +2,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.constants import CHECKPOINT_MESSAGE
 from teleclaude.core.agent_coordinator import AgentCoordinator
-from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
+from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload, UserPromptSubmitPayload
 from teleclaude.core.models import Session
 
 
@@ -158,3 +159,66 @@ async def test_handle_agent_stop_experiment_not_applied_to_non_gemini(coordinato
         await coordinator.handle_agent_stop(context)
 
         mock_client.send_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_user_prompt_submit_skips_truncated_codex_checkpoint(coordinator):
+    session = Session(
+        session_id="sess-1",
+        computer_name="macbook",
+        tmux_session_name="tmux-1",
+        title="Untitled",
+        active_agent="codex",
+    )
+    payload = UserPromptSubmitPayload(
+        prompt=CHECKPOINT_MESSAGE[:70],
+        session_id="sess-1",
+        raw={"synthetic": True, "source": "codex_output_polling"},
+    )
+    context = AgentEventContext(
+        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+        session_id="sess-1",
+        data=payload,
+    )
+
+    with patch("teleclaude.core.agent_coordinator.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.set_notification_flag = AsyncMock()
+        mock_db.update_session = AsyncMock()
+
+        await coordinator.handle_user_prompt_submit(context)
+
+        mock_db.set_notification_flag.assert_not_called()
+        mock_db.update_session.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_user_prompt_submit_persists_non_checkpoint_codex_synthetic_prompt(coordinator):
+    session = Session(
+        session_id="sess-1",
+        computer_name="macbook",
+        tmux_session_name="tmux-1",
+        title="Untitled",
+        active_agent="codex",
+    )
+    payload = UserPromptSubmitPayload(
+        prompt="Please investigate the output highlight regression",
+        session_id="sess-1",
+        raw={"synthetic": True, "source": "codex_output_polling"},
+    )
+    context = AgentEventContext(
+        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+        session_id="sess-1",
+        data=payload,
+    )
+
+    with patch("teleclaude.core.agent_coordinator.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.set_notification_flag = AsyncMock()
+        mock_db.update_session = AsyncMock()
+        with patch("teleclaude.core.agent_coordinator.summarize_user_input", new_callable=AsyncMock) as mock_summarize:
+            mock_summarize.return_value = ("Output regression follow-up", "summary")
+            await coordinator.handle_user_prompt_submit(context)
+
+        mock_db.set_notification_flag.assert_called_once_with("sess-1", False)
+        assert mock_db.update_session.await_count >= 1

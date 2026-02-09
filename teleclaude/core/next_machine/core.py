@@ -289,9 +289,47 @@ def format_hitl_guidance(context: str) -> str:
 
     Used when HITL=True.
     """
-    return f"""Before proceeding, read ~/.agents/commands/next-prepare.md if you haven't already.
+    return f"""Before proceeding, read docs/global/general/procedure/maintenance/next-prepare.md if you haven't already.
 
 {context}"""
+
+
+def _find_next_prepare_slug(cwd: str) -> str | None:
+    """Find the next active slug that still needs preparation work.
+
+    Active slugs are roadmap entries with [ ], [.], or [>] state.
+    Returns the first slug that still needs action:
+    - breakdown assessment pending for input.md
+    - requirements.md missing
+    - implementation-plan.md missing
+    - roadmap state still pending [ ] (needs promotion to [.])
+    """
+    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
+    if not roadmap_path.exists():
+        return None
+
+    content = read_text_sync(roadmap_path)
+    pattern = re.compile(r"^-\s+\[([ .>])\]\s+(\S+)", re.MULTILINE)
+
+    for match in pattern.finditer(content):
+        state = match.group(1)
+        slug = match.group(2)
+
+        has_input = check_file_exists(cwd, f"todos/{slug}/input.md")
+        if has_input:
+            breakdown_state = read_breakdown_state(cwd, slug)
+            if breakdown_state is None or not breakdown_state.get("assessed"):
+                return slug
+
+        has_requirements = check_file_exists(cwd, f"todos/{slug}/requirements.md")
+        has_impl_plan = check_file_exists(cwd, f"todos/{slug}/implementation-plan.md")
+        if not has_requirements or not has_impl_plan:
+            return slug
+
+        if state == RoadmapMarker.PENDING.value:
+            return slug
+
+    return None
 
 
 # =============================================================================
@@ -1141,16 +1179,15 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
     """
     # 1. Resolve slug
     resolved_slug = slug
-
-    if not slug and not hitl:
-        resolved_slug, _, _ = await resolve_slug_async(cwd, None)
+    if not resolved_slug:
+        resolved_slug = await asyncio.to_thread(_find_next_prepare_slug, cwd)
 
     if not resolved_slug:
         if hitl:
             return format_hitl_guidance(
-                "Read todos/roadmap.md. Discuss with the user to identify or propose a "
-                "work item slug. Once decided, write requirements.md and "
-                "implementation-plan.md yourself."
+                "No active preparation work found. "
+                "All active slugs already have requirements.md and implementation-plan.md "
+                "with breakdown assessed where needed."
             )
 
         # Dispatch next-prepare (no slug) when hitl=False
@@ -1162,7 +1199,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             agent=agent,
             thinking_mode=mode,
             subfolder="",
-            note="Roadmap is empty or no item selected. Groom the roadmap to add work items.",
+            note="No active preparation work found.",
             next_call="teleclaude__next_prepare",
         )
 

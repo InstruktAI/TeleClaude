@@ -18,6 +18,11 @@ Run an idempotent maintenance pass that brings active todos to a high-quality
 Definition-of-Ready state by improving preparation artifacts and recording
 auditable results.
 
+The same procedure is used for:
+
+- single-slug execution (`slug` provided),
+- batch execution (no `slug`, iterate active slugs needing work).
+
 ## Preconditions
 
 1. Job was launched as `next-prepare` agent job.
@@ -27,43 +32,48 @@ auditable results.
 
 ## Steps
 
-1. Discover active slugs:
+1. Discover scope:
+   - if `slug` provided: process only that slug,
+   - else discover active slugs from roadmap and process those needing preparation work.
+2. Discover active slugs (batch mode):
    - enumerate folders under `todos/`,
    - exclude system entries and non-slug files,
    - exclude slugs in `icebox.md` and `delivered.md`.
-2. For each active slug, evaluate freshness skip:
+3. For each active slug, evaluate freshness skip:
    - if `dor-report.md` exists,
    - and is newer than `requirements.md` and `implementation-plan.md`,
    - and `state.json.dor.schema_version` matches current schema,
    - and `state.json.dor.status == "pass"`,
    - then skip this slug.
-3. Identify artifact state for non-skipped slugs:
+4. Identify artifact state for non-skipped slugs:
    - State A: only `input.md` present (brain dump)
    - State B: `requirements.md` present, `implementation-plan.md` missing
    - State C: `implementation-plan.md` present, `requirements.md` missing
    - State D: both present but stale/weak
    - State E: both missing
-4. Apply ordered handling:
+5. Apply ordered handling:
    - State A: derive `requirements.md` from `input.md`, then derive `implementation-plan.md`.
    - State B: derive `implementation-plan.md` from `requirements.md` (+ optional `input.md`).
    - State C: reconstruct `requirements.md` from plan + context, then reconcile plan.
    - State D: refine requirements first, then reconcile plan against updated requirements.
    - State E: create minimal placeholder `requirements.md` and `implementation-plan.md`, mark low score and blockers.
-5. Run DOR quality assessment:
+6. Run DOR quality assessment:
    - evaluate clarity, scope atomicity, verifiability, dependency correctness, and uncertainty control,
    - assign score `1..10`,
    - set status:
      - `pass` for `>= 8`,
      - `needs_work` for `< 8` with safe improvements applied,
      - `needs_human_review` for `< 7` when further safe improvement is not possible.
-6. Enforce autonomy boundary:
+7. Enforce autonomy boundary:
    - improve structure and precision,
    - do not invent behavior or architecture unsupported by repo/docs context,
    - if blocked by uncertainty, stop editing and record blockers.
-7. Write outputs for each assessed slug:
+8. Write outputs for each assessed slug:
    - `dor-report.md` with verdict, changes, remaining gaps, and explicit human decisions needed,
    - update `state.json.dor` with assessment metadata.
-8. Continue to next slug until batch completes.
+9. For slug-targeted execution, if roadmap state is `[ ]` and both required files
+   exist, transition roadmap to `[.]`.
+10. Continue to next slug until batch completes.
 
 ## Outputs
 
