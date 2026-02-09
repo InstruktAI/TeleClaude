@@ -16,7 +16,7 @@ if str(_REPO_ROOT) not in sys.path:
 from teleclaude.constants import AGENT_METADATA
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_local_datetime
-from teleclaude.utils.transcript import collect_transcript_messages
+from teleclaude.utils.transcript import collect_transcript_messages, parse_session_transcript
 
 
 def _discover_transcripts(agent: AgentName) -> list[tuple[Path, float]]:
@@ -173,13 +173,50 @@ def scan_agent_history(agent_name: AgentName, search_term: str) -> List[dict[str
     return results
 
 
+def find_transcript(agents: List[AgentName], session_id: str) -> Optional[Tuple[Path, AgentName]]:
+    """Find a transcript file by session ID prefix across agents."""
+    needle = session_id.lower()
+    for agent in agents:
+        for path, _ in _discover_transcripts(agent):
+            extracted = _extract_session_id(path, agent).lower()
+            # Match against extracted ID or the raw stem for fuller matches
+            if extracted.startswith(needle) or path.stem.lower().startswith(needle):
+                return path, agent
+            # Also match partial UUID anywhere in stem (e.g. "f3625680")
+            if needle in path.stem.lower():
+                return path, agent
+    return None
+
+
+def show_transcript(
+    agents: List[AgentName],
+    session_id: str,
+    tail_chars: int = 0,
+    include_thinking: bool = False,
+) -> None:
+    """Find and render a session transcript using the existing parser."""
+    match = find_transcript(agents, session_id)
+    if not match:
+        print(f"No transcript found for session '{session_id}'")
+        sys.exit(1)
+
+    path, agent = match
+    rendered = parse_session_transcript(
+        str(path),
+        f"{agent.value} session — {path.stem}",
+        agent_name=agent,
+        tail_chars=tail_chars,
+        include_thinking=include_thinking,
+        include_tools=False,
+    )
+    print(rendered)
+
+
 def display_combined_history(agents: List[AgentName], search_term: str = "", limit: int = 20) -> None:
     """Display session history for multiple agents."""
     all_results: List[dict[str, str]] = []
-    total_scanned = 0
 
-    # Parallel scan across agents? We already parallelize file scanning within agents.
-    # Sequential agent scanning is fine as it's just gathering file lists.
+    # Sequential agent scanning is fine — file scanning within agents is already parallel.
     for agent in agents:
         results = scan_agent_history(agent, search_term)
         all_results.extend(results)
@@ -217,27 +254,41 @@ def display_combined_history(agents: List[AgentName], search_term: str = "", lim
                 print(f"Resume {agent_str}: {example}")
 
 
+def _parse_agents(agent_arg: str) -> List[AgentName]:
+    """Parse agent argument into list of AgentName."""
+    agent_arg = agent_arg.strip().lower()
+    if agent_arg == "all":
+        return [AgentName.CLAUDE, AgentName.CODEX, AgentName.GEMINI]
+
+    agents: List[AgentName] = []
+    for p in agent_arg.split(","):
+        p = p.strip()
+        if not p:
+            continue
+        try:
+            agents.append(AgentName.from_str(p))
+        except ValueError:
+            print(f"Unknown agent: {p}")
+            sys.exit(1)
+    return agents
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Search native agent session transcripts.")
     parser.add_argument("--agent", required=True, help="Agent name(s) (claude,codex,gemini) or 'all'.")
+    parser.add_argument("--show", metavar="SESSION_ID", help="Show full parsed transcript for a session.")
+    parser.add_argument("--thinking", action="store_true", help="Include thinking blocks in --show output.")
+    parser.add_argument(
+        "--tail", type=int, default=0, help="Limit output to last N chars (0=unlimited, default for --show)."
+    )
     parser.add_argument("terms", nargs=argparse.REMAINDER, help="Search terms.")
     args = parser.parse_args()
 
-    agent_arg = args.agent.strip().lower()
-    selected_agents: List[AgentName] = []
+    selected_agents = _parse_agents(args.agent)
 
-    if agent_arg == "all":
-        selected_agents = [AgentName.CLAUDE, AgentName.CODEX, AgentName.GEMINI]
-    else:
-        parts = [p.strip() for p in agent_arg.split(",")]
-        for p in parts:
-            if not p:
-                continue
-            try:
-                selected_agents.append(AgentName.from_str(p))
-            except ValueError:
-                print(f"Unknown agent: {p}")
-                sys.exit(1)
+    if args.show:
+        show_transcript(selected_agents, args.show, tail_chars=args.tail, include_thinking=args.thinking)
+        return
 
     search_term = " ".join(args.terms).strip()
     if not search_term:

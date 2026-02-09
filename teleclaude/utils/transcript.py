@@ -150,6 +150,8 @@ def _process_entry(
     lines: list[str],
     last_section: Optional[str],
     collapse_tool_results: bool,
+    include_thinking: bool = True,
+    include_tools: bool = True,
 ) -> Optional[str]:  # guard: loose-dict - External entry
     """Process a transcript entry and append formatted content to lines.
 
@@ -182,7 +184,16 @@ def _process_entry(
         return _process_string_content(content, time_prefix, lines, last_section)
 
     if isinstance(content, list):
-        return _process_list_content(content, role, time_prefix, lines, last_section, collapse_tool_results)
+        return _process_list_content(
+            content,
+            role,
+            time_prefix,
+            lines,
+            last_section,
+            collapse_tool_results,
+            include_thinking=include_thinking,
+            include_tools=include_tools,
+        )
 
     return last_section
 
@@ -207,6 +218,8 @@ def _process_list_content(
     lines: list[str],
     last_section: Optional[str],
     collapse_tool_results: bool,
+    include_thinking: bool = True,
+    include_tools: bool = True,
 ) -> Optional[str]:
     """Process list of content blocks.
 
@@ -225,16 +238,19 @@ def _process_list_content(
         if block_type in ("text", "input_text", "output_text"):
             current_section = _process_text_block(block, role, time_prefix, lines, current_section)
         elif block_type == "thinking":
-            current_section = _process_thinking_block(block, time_prefix, lines, current_section)
+            if include_thinking:
+                current_section = _process_thinking_block(block, time_prefix, lines, current_section)
         elif block_type == "tool_use":
-            current_section = _process_tool_use_block(block, time_prefix, lines)
+            if include_tools:
+                current_section = _process_tool_use_block(block, time_prefix, lines)
         elif block_type == "tool_result":
-            current_section = _process_tool_result_block(
-                block,
-                time_prefix,
-                lines,
-                collapse_tool_results,
-            )
+            if include_tools:
+                current_section = _process_tool_result_block(
+                    block,
+                    time_prefix,
+                    lines,
+                    collapse_tool_results,
+                )
 
     return current_section
 
@@ -581,6 +597,8 @@ def _render_transcript_from_entries(
     *,
     tail_limit_fn: Callable[[str, int], str] = _apply_tail_limit,
     collapse_tool_results: bool = False,
+    include_thinking: bool = True,
+    include_tools: bool = True,
 ) -> str:
     """Render markdown from normalized transcript entries."""
 
@@ -596,7 +614,14 @@ def _render_transcript_from_entries(
             continue
 
         before_len = len(lines)
-        last_section = _process_entry(entry, lines, last_section, collapse_tool_results)
+        last_section = _process_entry(
+            entry,
+            lines,
+            last_section,
+            collapse_tool_results,
+            include_thinking=include_thinking,
+            include_tools=include_tools,
+        )
         if len(lines) != before_len:
             emitted = True
 
@@ -1202,6 +1227,8 @@ def parse_session_transcript(
     tail_chars: int = 2000,
     escape_triple_backticks: bool = False,
     collapse_tool_results: bool = False,
+    include_thinking: bool = True,
+    include_tools: bool = True,
 ) -> str:
     """Parse a session transcript using the agent-specific parser.
 
@@ -1213,16 +1240,33 @@ def parse_session_transcript(
         until_timestamp: Optional ISO 8601 UTC end filter (inclusive)
         tail_chars: Max characters to return from end (default 2000, 0 for unlimited)
         escape_triple_backticks: If True, escape ``` to avoid breaking outer code blocks
+        include_thinking: Include thinking blocks (default True)
+        include_tools: Include tool calls and results (default True)
     """
+    path = Path(transcript_path).expanduser()
+    if not path.exists():
+        return f"Transcript file not found: {transcript_path}"
 
-    parser_info = get_transcript_parser_info(agent_name)
-    rendered = parser_info.parse(
-        transcript_path,
+    iterators = {
+        AgentName.CLAUDE: _iter_claude_entries,
+        AgentName.GEMINI: _iter_gemini_entries,
+        AgentName.CODEX: _iter_codex_entries,
+    }
+    iter_fn = iterators.get(agent_name)
+    if not iter_fn:
+        return f"Unknown agent: {agent_name}"
+
+    tail_fn = _apply_tail_limit_codex if agent_name == AgentName.CODEX else _apply_tail_limit
+    rendered = _render_transcript_from_entries(
+        iter_fn(path),
         title,
         since_timestamp,
         until_timestamp,
         tail_chars,
-        collapse_tool_results,
+        tail_limit_fn=tail_fn,
+        collapse_tool_results=collapse_tool_results,
+        include_thinking=include_thinking,
+        include_tools=include_tools,
     )
     if escape_triple_backticks:
         return _escape_triple_backticks(rendered)
