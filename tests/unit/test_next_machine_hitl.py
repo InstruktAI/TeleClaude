@@ -27,10 +27,10 @@ async def test_next_prepare_hitl_no_slug():
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
 
-    with patch("teleclaude.core.next_machine.core.resolve_slug", return_value=(None, False, "")):
+    with patch("teleclaude.core.next_machine.core._find_next_prepare_slug", return_value=None):
         result = await next_prepare(db, slug=None, cwd=cwd, hitl=True)
-        assert "Read todos/roadmap.md" in result
-        assert "Before proceeding, read ~/.agents/commands/next-prepare.md" in result
+        assert "No active preparation work found." in result
+        assert "Before proceeding, read docs/global/general/procedure/maintenance/next-prepare.md" in result
 
 
 @pytest.mark.asyncio
@@ -47,7 +47,7 @@ async def test_next_prepare_hitl_missing_requirements():
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"Preparing: {slug}" in result
         assert "Write todos/test-slug/requirements.md" in result
-        assert "Before proceeding, read ~/.agents/commands/next-prepare.md" in result
+        assert "Before proceeding, read docs/global/general/procedure/maintenance/next-prepare.md" in result
 
 
 @pytest.mark.asyncio
@@ -69,7 +69,7 @@ async def test_next_prepare_hitl_missing_impl_plan():
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"Preparing: {slug}" in result
         assert "Write todos/test-slug/implementation-plan.md" in result
-        assert "Before proceeding, read ~/.agents/commands/next-prepare.md" in result
+        assert "Before proceeding, read docs/global/general/procedure/maintenance/next-prepare.md" in result
 
 
 @pytest.mark.asyncio
@@ -90,6 +90,7 @@ async def test_next_prepare_hitl_both_exist():
         patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
         patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=None),
         patch("teleclaude.core.next_machine.core.get_roadmap_state", return_value=" "),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value={"dor": {"status": "pass"}}),
         patch("teleclaude.core.next_machine.core.update_roadmap_state"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
@@ -114,7 +115,7 @@ async def test_next_prepare_autonomous_dispatch():
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
         assert "teleclaude__run_agent_command" in result
         assert f'args="{slug}"' in result
-        assert 'command="/next-prepare"' in result
+        assert 'command="/next-prepare-draft"' in result
 
 
 @pytest.mark.asyncio
@@ -131,7 +132,7 @@ async def test_next_prepare_hitl_slug_missing_from_roadmap():
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert "not in todos/roadmap.md" in result
         assert "add it to the roadmap" in result
-        assert "Before proceeding, read ~/.agents/commands/next-prepare.md" in result
+        assert "Before proceeding, read docs/global/general/procedure/maintenance/next-prepare.md" in result
 
 
 @pytest.mark.asyncio
@@ -167,7 +168,7 @@ async def test_next_prepare_hitl_slug_missing_from_roadmap_when_docs_exist():
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert "not in todos/roadmap.md" in result
-        assert "add it to the roadmap and commit" in result
+        assert "add it to the roadmap" in result
 
 
 # =============================================================================

@@ -1190,10 +1190,10 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 "with breakdown assessed where needed."
             )
 
-        # Dispatch next-prepare (no slug) when hitl=False
+        # Dispatch next-prepare-draft (no slug) when hitl=False
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
         return format_tool_call(
-            command="next-prepare",
+            command="next-prepare-draft",
             args="",
             project=cwd,
             agent=agent,
@@ -1226,7 +1226,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
 
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
         return format_tool_call(
-            command="next-prepare",
+            command="next-prepare-draft",
             args=resolved_slug,
             project=cwd,
             agent=agent,
@@ -1251,7 +1251,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
         # Non-HITL: dispatch architect to assess
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
         return format_tool_call(
-            command="next-prepare",
+            command="next-prepare-draft",
             args=resolved_slug,
             project=cwd,
             agent=agent,
@@ -1278,7 +1278,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
 
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
         return format_tool_call(
-            command="next-prepare",
+            command="next-prepare-draft",
             args=resolved_slug,
             project=cwd,
             agent=agent,
@@ -1297,7 +1297,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
 
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
         return format_tool_call(
-            command="next-prepare",
+            command="next-prepare-draft",
             args=resolved_slug,
             project=cwd,
             agent=agent,
@@ -1307,11 +1307,39 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             next_call="teleclaude__next_prepare",
         )
 
-    # 4. Both exist - mark as ready if pending (avoid downgrading [>] or [x])
+    # 4. Both exist - mark as ready only after DOR pass (avoid downgrading [>] or [x])
     current_state = await asyncio.to_thread(get_roadmap_state, cwd, resolved_slug)
     if current_state == RoadmapMarker.PENDING.value:  # Only transition pending -> ready
-        await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, RoadmapMarker.READY.value)
-        await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
+        phase_state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
+        dor = phase_state.get("dor")
+        dor_status = dor.get("status") if isinstance(dor, dict) else None
+        dor_status_str = dor_status if isinstance(dor_status, str) else None
+        if dor_status_str == "pass":
+            await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, RoadmapMarker.READY.value)
+            await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
+        else:
+            if hitl:
+                return format_hitl_guidance(
+                    f"Preparing: {resolved_slug}. Requirements and implementation plan exist, "
+                    "but DOR is not pass yet. Complete DOR assessment, update "
+                    f"todos/{resolved_slug}/dor-report.md and todos/{resolved_slug}/state.json.dor "
+                    'with status "pass". Then run /next-prepare-gate (separate worker) and call teleclaude__next_prepare again.'
+                )
+
+            agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+            return format_tool_call(
+                command="next-prepare-gate",
+                args=resolved_slug,
+                project=cwd,
+                agent=agent,
+                thinking_mode=mode,
+                subfolder="",
+                note=(
+                    f"Requirements/plan exist for {resolved_slug}, but DOR status is not pass. "
+                    "Complete DOR assessment and set state.json.dor.status to pass."
+                ),
+                next_call="teleclaude__next_prepare",
+            )
     # else: already [.], [>], or [x] - no state change needed
     return format_prepared(resolved_slug)
 

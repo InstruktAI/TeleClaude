@@ -438,6 +438,20 @@ snippets:
   scope: project
   path: docs/project/spec/jobs/next-prepare.md
   source_project: TeleClaude
+- id: project/spec/jobs/next-prepare-draft
+  description: Draft phase job for next-prepare. Builds or refines todo preparation
+    artifacts without final readiness decisions.
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/next-prepare-draft.md
+  source_project: TeleClaude
+- id: project/spec/jobs/next-prepare-gate
+  description: Gate phase job for next-prepare. Runs formal DOR validation and is
+    the only phase allowed to authorize readiness.
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/next-prepare-gate.md
+  source_project: TeleClaude
 - id: project/spec/jobs/youtube-sync-subscriptions
   description: 'YouTube subscription tagger job: nightly AI classification of untagged
     channels.'

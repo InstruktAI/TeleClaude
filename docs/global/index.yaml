@@ -143,11 +143,25 @@ snippets:
   path: docs/general/procedure/maintenance/merge-runner.md
   source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare
-  description: Execution procedure for next-prepare maintenance, including state-based
-    handling for todo preparation artifacts.
+  description: Orchestration procedure for next-prepare. Routes work to draft or gate
+    procedures with strict phase separation.
   type: procedure
   scope: global
   path: docs/general/procedure/maintenance/next-prepare.md
+  source_project: TeleClaude
+- id: general/procedure/maintenance/next-prepare-draft
+  description: Draft phase for next-prepare. Creates or refines prep artifacts but
+    does not make final readiness decisions.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/maintenance/next-prepare-draft.md
+  source_project: TeleClaude
+- id: general/procedure/maintenance/next-prepare-gate
+  description: Gate phase for next-prepare. Performs formal DOR validation and is
+    the only phase allowed to drive readiness decisions.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/maintenance/next-prepare-gate.md
   source_project: TeleClaude
 - id: general/procedure/memory-management
   description: Guidelines for saving high-signal memories to the long-term database,

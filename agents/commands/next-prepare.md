@@ -1,25 +1,20 @@
 ---
 argument-hint: '[slug]'
-description: Architect command - analyze codebase and discuss requirements with user
+description: Prepare router command - choose draft or gate explicitly
 ---
 
 # Prepare
 
-You are now the Architect.
+You are now the Prepare router.
 
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/architect.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare.md
 - @~/.teleclaude/docs/general/procedure/maintenance/next-prepare.md
 
 ## Purpose
 
-Run the next-prepare step to bring todos to Definition-of-Ready.
-Same process, two scopes:
-
-- with slug: prepare one todo
-- without slug: process active todos needing preparation
+This command is only a router. Choose exactly one mode and execute only that mode.
 
 ## Inputs
 
@@ -27,21 +22,13 @@ Same process, two scopes:
 
 ## Outputs
 
-- `todos/{slug}/requirements.md` (if slug provided)
-- `todos/{slug}/implementation-plan.md` (if slug provided)
-- `todos/{slug}/dor-report.md` and `state.json.dor` updates when assessed
-- Report format:
-
-  ```
-  PREPARED: {slug}
-
-  Requirements: todos/{slug}/requirements.md [COMPLETE]
-  Implementation Plan: todos/{slug}/implementation-plan.md [COMPLETE]
-
-  Ready for build phase.
-  ```
+- A single explicit dispatch choice:
+  - `/next-prepare-draft [slug]`
+  - `/next-prepare-gate [slug]`
 
 ## Steps
 
-- If slug is given: prepare that slug.
-- If no slug is given: run the same preparation logic over active todos needing work.
+1. Inspect todo state.
+2. If artifacts are missing or weak, run `/next-prepare-draft`.
+3. If artifacts exist and need formal DOR validation, run `/next-prepare-gate`.
+4. Never run draft and gate in the same worker turn.

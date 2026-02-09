@@ -11,17 +11,25 @@ type: 'spec'
 
 - @~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
 - @~/.teleclaude/docs/general/procedure/maintenance/next-prepare.md
+- @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-draft.md
+- @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-gate.md
 
 ## Job contract
 
-This spec defines only the stable contract of the `next-prepare` job.
-Execution flow and state handling live in:
-`docs/global/general/procedure/maintenance/next-prepare.md`.
+This spec defines the stable contract for the `next-prepare` job family.
+Execution flow and state handling live in maintenance procedures.
 
-The same process supports two scopes:
+The job family has two explicit variants:
 
-- `slug` provided: prepare one specific todo.
-- no `slug`: iterate active todos that still need preparation work.
+- `next-prepare-draft`
+- `next-prepare-gate`
+
+Both support two scopes:
+
+- `slug` provided: process one specific todo.
+- no `slug`: iterate active todos needing that phase.
+
+Hard rule: draft and gate must never run in the same worker session.
 
 ## Configuration surface
 
@@ -29,12 +37,20 @@ Configured in `teleclaude.yml`:
 
 ```yaml
 jobs:
-  next_prepare:
+  next_prepare_draft:
     schedule: weekly
     preferred_weekday: 0
     preferred_hour: 7
     type: agent
-    job: next-prepare
+    job: next-prepare-draft
+    agent: claude
+    thinking_mode: med
+  next_prepare_gate:
+    schedule: weekly
+    preferred_weekday: 0
+    preferred_hour: 8
+    type: agent
+    job: next-prepare-gate
     agent: claude
     thinking_mode: med
 ```
@@ -45,12 +61,8 @@ jobs:
 - Excludes slugs listed in `todos/icebox.md` and `todos/delivered.md`
 - Runs idempotently
 - Improves preparation artifacts only (not feature implementation)
-- Must handle these starting states:
-  - `input.md` only
-  - `requirements.md` only
-  - `implementation-plan.md` only
-  - both files present
-  - neither file present
+- Draft variant handles artifact creation/refinement states.
+- Gate variant handles formal DOR validation of draft artifacts.
 
 ## Output contract
 
@@ -93,7 +105,10 @@ Threshold constants:
 ## Roadmap state contract
 
 For slug-targeted prepare, when both `requirements.md` and `implementation-plan.md`
-exist and roadmap state is pending `[ ]`, transition to ready `[.]`.
+exist, roadmap state is pending `[ ]`, and `state.json.dor.status == "pass"`,
+transition to ready `[.]`.
+
+Only `next-prepare-gate` may authorize this transition.
 
 ## Ownership boundary
 
