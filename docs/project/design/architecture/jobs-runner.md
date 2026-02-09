@@ -31,19 +31,32 @@ scripts/cron_runner.py          CLI entry point
   ▼
 teleclaude/cron/runner.py       Engine: config → discover → schedule check → execute
   │  ├── _load_job_schedules()  Read schedule config from teleclaude.yml
-  │  ├── discover_jobs()        Dynamic import of jobs/*.py
+  │  ├── discover_jobs()        Dynamic import of jobs/*.py (python-type jobs)
+  │  ├── _run_agent_job()       Spawn headless agent session (agent-type jobs)
   │  ├── _is_due()              Evaluate schedule against last run timestamp
-  │  └── run_due_jobs()         Main loop: config → is_due() → run() → mark state
+  │  └── run_due_jobs()         Main loop: config → is_due() → run/spawn → mark state
   │
   ▼
-teleclaude.yml                  Schedule configuration (frequency, timing)
+teleclaude.yml                  Schedule configuration (frequency, timing, job type)
   │
-  ▼
-jobs/*.py                       Job modules (each exports a JOB instance)
+  ├── type: python (default)    → jobs/*.py modules (each exports a JOB instance)
+  └── type: agent               → POST /sessions via daemon API (headless session)
   │
   ▼
 ~/.teleclaude/cron_state.json   Persistent state (last_run, status, errors)
 ```
+
+### Job Types
+
+**Python jobs** — Traditional modules in `jobs/*.py` with a `Job` subclass. The runner
+imports the module, calls `job.run()`, and captures the `JobResult`. Use for jobs
+with custom data processing logic (e.g., YouTube subscription tagging).
+
+**Agent jobs** — Declared entirely in `teleclaude.yml` with `type: agent`. The runner
+calls the daemon's `POST /sessions` REST API to spawn a headless agent session with a
+message. The agent boots with full context (doc snippets, MCP tools, file system) and
+runs to completion. Use for any job where the work IS "an AI doing things with tools."
+No Python module needed.
 
 ### Components
 
@@ -102,8 +115,17 @@ jobs:
 | `preferred_weekday` | int (0–6)  | 0        | Day of week (0=Mon, weekly only)                  |
 | `preferred_day`     | int (1–31) | 1        | Day of month (monthly only)                       |
 
-To add a new scheduled job, create the job module in `jobs/` AND register it
-in `teleclaude.yml` with its schedule. Both are required.
+#### Agent-type fields
+
+| Field           | Type   | Default  | Description                                     |
+| --------------- | ------ | -------- | ----------------------------------------------- |
+| `type`          | string | (none)   | Set to `agent` for headless agent jobs          |
+| `agent`         | string | `claude` | AI agent to use (`claude`, `gemini`, `codex`)   |
+| `thinking_mode` | string | `fast`   | Model tier (`fast`, `med`, `slow`)              |
+| `message`       | string | required | Task message sent to the agent at session start |
+
+To add a Python job, create the module in `jobs/` AND register in `teleclaude.yml`.
+To add an agent job, only a `teleclaude.yml` entry with `type: agent` is needed.
 
 ### Per-person: `~/.teleclaude/people/{name}/teleclaude.yml`
 
@@ -145,7 +167,7 @@ regardless of config or last run time.
 
 ## Job Contract
 
-To add a new job:
+### Python jobs
 
 1. Create `jobs/<name>.py`
 2. Subclass `Job` from `jobs.base`
@@ -174,6 +196,33 @@ jobs:
     schedule: daily
     preferred_hour: 8
 ```
+
+### Agent jobs
+
+For jobs where the work IS "an AI doing things with tools," no Python module
+is needed. Declare the job in `teleclaude.yml` with `type: agent`:
+
+```yaml
+jobs:
+  memory_review:
+    schedule: weekly
+    preferred_weekday: 0
+    preferred_hour: 8
+    type: agent
+    agent: claude
+    thinking_mode: fast
+    message: >-
+      Your task instructions here. The agent boots with full context
+      (doc snippets, MCP tools, file system) and runs to completion.
+```
+
+The runner spawns a headless agent session via `POST /sessions` on the daemon's
+unix socket. The agent receives the message, does its work, and exits.
+Fire-and-forget: the cron runner marks success when the session spawns, not
+when the agent completes.
+
+Create a spec doc at `docs/project/spec/jobs/<name>.md` for agent jobs —
+the agent can read it via `@docs/...` references in the message.
 
 ### Schedule Semantics
 

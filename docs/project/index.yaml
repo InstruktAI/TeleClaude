@@ -410,6 +410,13 @@ snippets:
   scope: project
   path: docs/project/spec/hook-normalized-events.md
   source_project: TeleClaude
+- id: project/spec/jobs/memory-review
+  description: 'Memory review job: periodic AI analysis of accumulated memories for
+    patterns, staleness, and actionable insights.'
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/memory-review.md
+  source_project: TeleClaude
 - id: project/spec/jobs/youtube-sync-subscriptions
   description: 'YouTube subscription tagger job: nightly AI classification of untagged
     channels.'

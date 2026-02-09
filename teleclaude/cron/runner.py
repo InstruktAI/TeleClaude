@@ -1,9 +1,15 @@
 """Cron runner — discovers jobs and executes those whose configured schedule is due.
 
-Job modules in jobs/*.py define what work to do. Scheduling configuration
-(frequency, preferred timing) lives in teleclaude.yml under the `jobs:` key.
-The runner reads this config, evaluates whether each job is due based on its
-last run timestamp and the configured schedule, and invokes due jobs.
+Two job types are supported:
+
+1. **Python jobs** — modules in jobs/*.py that export a JOB instance.
+2. **Agent jobs** — declared in teleclaude.yml with `type: agent`. The runner
+   spawns a headless agent session via the daemon API. No Python module needed.
+
+Scheduling configuration (frequency, preferred timing) lives in teleclaude.yml
+under the `jobs:` key. The runner reads this config, evaluates whether each job
+is due based on its last run timestamp and the configured schedule, and invokes
+due jobs.
 
 Jobs that have no entry in teleclaude.yml are skipped unless --force is used.
 Jobs that have never run execute immediately on first discovery.
@@ -12,9 +18,12 @@ Jobs that have never run execute immediately on first discovery.
 from __future__ import annotations
 
 import importlib
+import json
+import socket
 import sys
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from http.client import HTTPConnection
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -99,6 +108,69 @@ def _is_due(
             return now.day == preferred_day and now.hour >= preferred_hour
 
 
+_DAEMON_SOCKET = "/tmp/teleclaude-api.sock"
+
+
+class _UnixSocketConnection(HTTPConnection):
+    """HTTP connection over a Unix domain socket."""
+
+    def __init__(self, socket_path: str) -> None:
+        super().__init__("localhost")
+        self._socket_path = socket_path
+
+    def connect(self) -> None:
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(self._socket_path)
+
+
+def _run_agent_job(job_name: str, config: dict[str, str | int]) -> bool:
+    """Spawn a headless agent session for an agent-type job.
+
+    Calls the daemon's POST /sessions endpoint via the unix socket.
+    Fire-and-forget: the agent session runs to completion independently.
+    """
+    message = str(config.get("message", ""))
+    if not message:
+        logger.error("agent job has no message", name=job_name)
+        return False
+
+    agent = str(config.get("agent", "claude"))
+    thinking_mode = str(config.get("thinking_mode", "fast"))
+    project_path = str(_REPO_ROOT)
+
+    payload = json.dumps(
+        {
+            "computer": "local",
+            "project_path": project_path,
+            "title": job_name,
+            "agent": agent,
+            "thinking_mode": thinking_mode,
+            "launch_kind": "agent_then_message",
+            "message": message,
+        }
+    )
+
+    try:
+        conn = _UnixSocketConnection(_DAEMON_SOCKET)
+        conn.request("POST", "/sessions", body=payload, headers={"Content-Type": "application/json"})
+        resp = conn.getresponse()
+        body = json.loads(resp.read().decode())
+        conn.close()
+
+        if resp.status != 200 or body.get("status") != "success":
+            error = body.get("detail") or body.get("message") or "unknown error"
+            logger.error("agent job session creation failed", name=job_name, error=error)
+            return False
+
+        session_id = body.get("session_id", "?")
+        logger.info("agent job session spawned", name=job_name, session_id=session_id[:8])
+        return True
+
+    except Exception as e:
+        logger.error("agent job dispatch failed", name=job_name, error=str(e))
+        return False
+
+
 def discover_jobs(jobs_dir: Path | None = None) -> list[Job]:
     """
     Discover all job definitions from the jobs/ directory.
@@ -141,6 +213,10 @@ def run_due_jobs(
     """
     Run all jobs that are due based on their teleclaude.yml schedule.
 
+    Supports two job types:
+    - Python jobs: discovered from jobs/*.py modules
+    - Agent jobs: declared in teleclaude.yml with ``type: agent``
+
     Args:
         force: Run jobs regardless of schedule
         job_filter: Only run job with this name
@@ -150,25 +226,34 @@ def run_due_jobs(
         Dict mapping job name to success status
     """
     state = CronState.load()
-    jobs = discover_jobs()
+    python_jobs = discover_jobs()
     schedules = _load_job_schedules()
     now = datetime.now(timezone.utc)
     results: dict[str, bool] = {}
 
-    logger.info("checking jobs", count=len(jobs), force=force, dry_run=dry_run)
+    # Build a unified job list: Python modules + agent jobs from config
+    python_job_names = {job.name for job in python_jobs}
 
-    for job in jobs:
-        # Filter by name if specified
-        if job_filter and job.name != job_filter:
+    # Collect all job names to process (Python + agent-type from config)
+    all_job_names: list[str] = [job.name for job in python_jobs]
+    for name, config in schedules.items():
+        if str(config.get("type", "")) == "agent" and name not in python_job_names:
+            all_job_names.append(name)
+
+    logger.info("checking jobs", count=len(all_job_names), force=force, dry_run=dry_run)
+
+    for job_name in all_job_names:
+        if job_filter and job_name != job_filter:
             continue
 
-        # Check schedule config exists
-        schedule_config = schedules.get(job.name)
+        schedule_config = schedules.get(job_name)
+        is_agent_job = schedule_config and str(schedule_config.get("type", "")) == "agent"
+
         if not schedule_config and not force:
-            logger.debug("job has no schedule config, skipping", name=job.name)
+            logger.debug("job has no schedule config, skipping", name=job_name)
             continue
 
-        job_state = state.get_job(job.name)
+        job_state = state.get_job(job_name)
 
         if force:
             is_due = True
@@ -178,39 +263,55 @@ def run_due_jobs(
             is_due = False
 
         if not is_due:
-            logger.debug("job not due", name=job.name, last_run=job_state.last_run)
+            logger.debug("job not due", name=job_name, last_run=job_state.last_run)
             continue
 
         schedule_name = schedule_config.get("schedule", "?") if schedule_config else "forced"
-        logger.info("job due", name=job.name, schedule=schedule_name)
+        logger.info("job due", name=job_name, schedule=schedule_name, type="agent" if is_agent_job else "python")
 
         if dry_run:
-            results[job.name] = True
+            results[job_name] = True
             continue
 
-        try:
-            result = job.run()
-            if result.success:
-                state.mark_success(job.name)
-                logger.info(
-                    "job completed",
-                    name=job.name,
-                    message=result.message,
-                    items=result.items_processed,
-                )
+        if is_agent_job:
+            # Agent job: spawn headless session via daemon API
+            success = _run_agent_job(job_name, schedule_config)  # type: ignore[arg-type]
+            if success:
+                state.mark_success(job_name)
             else:
-                state.mark_failed(job.name, result.message)
-                logger.error(
-                    "job failed",
-                    name=job.name,
-                    message=result.message,
-                    errors=result.errors,
-                )
-            results[job.name] = result.success
+                state.mark_failed(job_name, "agent session spawn failed")
+            results[job_name] = success
+        else:
+            # Python job: find and execute the module
+            python_job = next((j for j in python_jobs if j.name == job_name), None)
+            if not python_job:
+                logger.error("python job module not found", name=job_name)
+                results[job_name] = False
+                continue
 
-        except Exception as e:
-            state.mark_failed(job.name, str(e))
-            logger.exception("job error", name=job.name, error=str(e))
-            results[job.name] = False
+            try:
+                result = python_job.run()
+                if result.success:
+                    state.mark_success(job_name)
+                    logger.info(
+                        "job completed",
+                        name=job_name,
+                        message=result.message,
+                        items=result.items_processed,
+                    )
+                else:
+                    state.mark_failed(job_name, result.message)
+                    logger.error(
+                        "job failed",
+                        name=job_name,
+                        message=result.message,
+                        errors=result.errors,
+                    )
+                results[job_name] = result.success
+
+            except Exception as e:
+                state.mark_failed(job_name, str(e))
+                logger.exception("job error", name=job_name, error=str(e))
+                results[job_name] = False
 
     return results

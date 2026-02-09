@@ -7,5 +7,21 @@ jobs:
     schedule: daily
     preferred_hour: 6
 
+  memory_review:
+    schedule: weekly
+    preferred_weekday: 0
+    preferred_hour: 8
+    type: agent
+    agent: claude
+    thinking_mode: fast
+    message: >-
+      You are running the memory review job. Read @docs/project/spec/jobs/memory-review.md
+      for your full instructions.
+
+      1. Search all recent memories via the Memory API (search with a broad query, limit 100).
+      2. Analyze for: recurring themes, stale entries, contradictions, actionable patterns.
+      3. For each actionable finding, create an ideas/ file (YYMMDD-slug.md format).
+      4. Summarize what you found and what you promoted.
+
 # git:
 #   checkout_root: ~/Workspace/public-repos
