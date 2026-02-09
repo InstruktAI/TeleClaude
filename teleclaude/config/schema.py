@@ -8,6 +8,24 @@ class JobWhenConfig(BaseModel):
     at: Optional[Union[str, List[str]]] = None  # "HH:MM" or list of times
     weekdays: List[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]] = []
 
+    @field_validator("every")
+    @classmethod
+    def validate_every_format(cls, v: Optional[str]) -> Optional[str]:
+        """Validate duration format and enforce minimum of 1 minute."""
+        if v is None:
+            return v
+        import re
+
+        match = re.match(r"^(\d+)([mhd])$", v)
+        if not match:
+            raise ValueError(
+                f"Invalid duration format: {v}. Expected format: <number><m|h|d> (e.g., '10m', '2h', '1d')"
+            )
+        value_int = int(match.group(1))
+        if value_int < 1:
+            raise ValueError(f"Duration must be at least 1 minute, got: {v}")
+        return v
+
     @model_validator(mode="after")
     def validate_mode(self) -> "JobWhenConfig":
         # exactly one mode
@@ -38,10 +56,12 @@ class JobScheduleConfig(BaseModel):
 
 
 class BusinessConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
     domains: Dict[str, str] = {}
 
 
 class GitConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
     checkout_root: Optional[str] = None
 
 
@@ -85,7 +105,7 @@ class ProjectConfig(BaseModel):
     def reject_disallowed_keys(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
-        disallowed = {"people", "ops", "creds", "notifications"}
+        disallowed = {"people", "ops", "creds", "notifications", "timezone"}
         present = disallowed.intersection(data.keys())
         if present:
             raise ValueError(f"Keys not allowed at project level: {', '.join(present)}")
@@ -114,7 +134,7 @@ class GlobalConfig(ProjectConfig):
         # We need to ensure GlobalConfig allows people/ops.
         if not isinstance(data, dict):
             return data
-        disallowed = {"creds", "notifications"}
+        disallowed = {"creds", "notifications", "timezone"}
         present = disallowed.intersection(data.keys())
         if present:
             raise ValueError(f"Keys not allowed at global level: {', '.join(present)}")
@@ -140,7 +160,7 @@ class PersonConfig(BaseModel):
     def reject_disallowed_keys(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
-        disallowed = {"people", "ops", "business"}
+        disallowed = {"people", "ops", "business", "timezone"}
         present = disallowed.intersection(data.keys())
         if present:
             raise ValueError(f"Keys not allowed at per-person level: {', '.join(present)}")
