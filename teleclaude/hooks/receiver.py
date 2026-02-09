@@ -49,103 +49,53 @@ _HANDLED_EVENTS: frozenset[AgentHookEventType] = frozenset(
 MEM_BASE_URL = os.getenv("MEM_BASE_URL", "http://127.0.0.1:37777")
 
 
-def _fetch_memory_index(project: str | None = None) -> list[dict[str, str]]:
-    """Fetch lightweight memory index (id/title) from API."""
-
-    query = f"{MEM_BASE_URL}/api/observations?limit=50"
-
-    if project:
-        query += f"&project={urllib.request.quote(project)}"
-
+def _fetch_context_inject(project_name: str) -> str:
+    """Fetch pre-formatted memory context from claude-mem inject endpoint."""
+    url = f"{MEM_BASE_URL}/api/context/inject?projects={urllib.request.quote(project_name)}"
     try:
-        req = urllib.request.Request(query)
-
-        # Set short timeout to not block session start if worker is down
-
-        with urllib.request.urlopen(req, timeout=0.5) as response:
+        with urllib.request.urlopen(url, timeout=2) as response:
             if response.status != 200:
-                return []
-
-            data = json.loads(response.read().decode())
-
-            items = data.get("items", [])
-
-            # Extract only id and title for lean index
-
-            return [{"id": str(item.get("id")), "title": str(item.get("title"))} for item in items if item.get("title")]
-
+                return ""
+            return response.read().decode().strip()
     except Exception:
-        # Fail silently on connection errors (worker down)
-
-        return []
+        return ""
 
 
-def _format_injection_payload(agent: str, xml_content: str) -> str:
-    """Format memory XML into agent-specific hook response JSON."""
-
+def _format_injection_payload(agent: str, context: str) -> str:
+    """Format context into agent-specific SessionStart hook response JSON."""
+    if agent == AgentName.CLAUDE.value:
+        return json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": context,
+                }
+            }
+        )
     if agent == AgentName.GEMINI.value:
-        return json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": xml_content}})
-
-    elif agent == AgentName.CLAUDE.value:
-        return json.dumps({"continue": True, "systemMessage": f"Memory Index:\n{xml_content}"})
-
-    # Default fallback (Codex/other): raw XML might be safest or nothing
-
-    return xml_content
+        return json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "additionalContext": context,
+                }
+            }
+        )
+    # Codex has no SessionStart hook mechanism
+    return ""
 
 
 def _print_memory_injection(cwd: str | None, agent: str) -> None:
-    """Print XML memory index to stdout for agent context injection."""
-
-    # Determine project name from CWD
-
+    """Print memory context to stdout for agent context injection via SessionStart hook."""
     project_name = Path(cwd).name if cwd else None
-
-    # Fetch both scopes
-
-    global_mems = _fetch_memory_index("global")
-
-    project_mems = _fetch_memory_index(project_name) if project_name else []
-
-    logger.debug(
-        "Memory fetch result",
-        project=project_name,
-        global_count=len(global_mems),
-        project_count=len(project_mems),
-    )
-
-    if not global_mems and not project_mems:
-        # Must return valid JSON even if empty for Claude to not hang/error?
-
-        # Standard hook contract usually allows empty output to mean "no op".
-
+    if not project_name:
         return
 
-    # Build XML
+    context = _fetch_context_inject(project_name)
+    if not context:
+        return
 
-    lines = ["<memory_index>"]
-
-    if global_mems:
-        lines.append("  <global>")
-
-        for m in global_mems:
-            lines.append(f'    <entry id="{m["id"]}">{m["title"]}</entry>')
-
-        lines.append("  </global>")
-
-    if project_mems and project_name:
-        lines.append(f'  <project name="{project_name}">')
-
-        for m in project_mems:
-            lines.append(f'    <entry id="{m["id"]}">{m["title"]}</entry>')
-
-        lines.append("  </project>")
-
-    lines.append("</memory_index>")
-
-    xml_content = "\n".join(lines)
-
-    print(_format_injection_payload(agent, xml_content))
+    logger.debug("Memory context fetched", project=project_name, length=len(context))
+    print(_format_injection_payload(agent, context))
 
 
 def _parse_args() -> argparse.Namespace:

@@ -433,6 +433,24 @@ class TestSessionsViewLogic:
         assert "[17:43:21] in: hello" in output
         assert "[17:43:21] out: world" in output
 
+    def test_temp_output_highlight_shows_thinking_placeholder(self, sessions_view, monkeypatch):
+        """Temporary output highlight replaces output content with thinking placeholder."""
+        monkeypatch.setattr("teleclaude.cli.tui.views.sessions._format_time", lambda _ts: "17:43:21")
+        monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
+
+        session = self._make_session_node(
+            session_id="s1",
+            last_output="final answer text",
+            last_output_at="2024-01-01T00:01:00Z",
+        )
+        sessions_view.state.sessions.temp_output_highlights.add("s1")
+        sessions_view.flat_items = [session]
+
+        output = "\n".join(sessions_view.get_render_lines(120, 10))
+
+        assert "[17:43:21] out: **thinking" in output
+        assert "final answer text" not in output
+
     def test_double_clicking_session_id_row_toggles_sticky_parent_only(self, mock_focus):
         """Double-clicking the ID row toggles sticky with parent-only mode (no child)."""
 
@@ -653,3 +671,32 @@ class TestSessionsViewLogic:
         assert len(row0_calls) == 2
         assert row0_calls[0][3] == 1  # claude muted pair
         assert row0_calls[1][3] == 1  # claude muted pair
+
+    def test_temp_output_highlight_uses_italic_attr_when_available(self, sessions_view, monkeypatch):
+        """When italics are supported, temp output uses italic style without markdown asterisks."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text, attr))
+
+        monkeypatch.setattr(curses, "A_ITALIC", 2048, raising=False)
+        session = self._make_session_node(
+            session_id="temp-italic",
+            active_agent="unknown",
+            last_output="old output",
+            last_output_at="2024-01-01T00:01:00Z",
+        )
+        sessions_view.state.sessions.temp_output_highlights.add("temp-italic")
+
+        screen = FakeScreen()
+        lines_used = sessions_view._render_session(screen, 0, session, 120, False, 4)
+
+        assert lines_used == 3
+        output_row_calls = [call for call in screen.calls if call[0] == 2]
+        assert len(output_row_calls) == 1
+        assert "thinking" in output_row_calls[0][2]
+        assert "**thinking" not in output_row_calls[0][2]
+        assert output_row_calls[0][3] == (curses.A_BOLD | curses.A_ITALIC)

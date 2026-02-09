@@ -60,6 +60,8 @@ if TYPE_CHECKING:
     from teleclaude.cli.tui.app import FocusContext
 
 logger = get_logger(__name__)
+_THINKING_DOT_COUNT = 32
+_THINKING_BASE_TEXT = "thinking" + ("." * _THINKING_DOT_COUNT)
 
 
 def _format_time(iso_timestamp: str | None) -> str:
@@ -111,6 +113,13 @@ def _shorten_path(path: str) -> str:
         return "~" + path[len(home_prefix) :]
 
     return path
+
+
+def _thinking_placeholder_text() -> str:
+    """Return placeholder text shown during temporary streaming highlight."""
+    if getattr(curses, "A_ITALIC", 0):
+        return _THINKING_BASE_TEXT
+    return f"**{_THINKING_BASE_TEXT}**"
 
 
 class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
@@ -1544,7 +1553,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Line 2 (expanded only): ID + last activity time
         activity_time = _format_time(session.last_activity)
-        line2 = f"{detail_indent}[{activity_time}] ID: {session_id}"
+        native_session_id = session.native_session_id or "-"
+        line2 = f"{detail_indent}[{activity_time}] {session_id} / {native_session_id}"
         lines.append(line2[:width])
 
         # Line 3: Last input (only if content exists)
@@ -1559,7 +1569,12 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Line 4: Last output (only if content exists)
         last_output = (session.last_output or "").strip()
         last_output_at = session.last_output_at
-        if last_output:
+        has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
+        if has_temp_output_highlight:
+            output_time = _format_time(last_output_at or session.last_activity)
+            line4 = f"{detail_indent}[{output_time}] out: {_thinking_placeholder_text()}"
+            lines.append(line4[:width])
+        elif last_output:
             output_text = last_output.replace("\n", " ")[:60]
             output_time = _format_time(last_output_at)
             line4 = f"{detail_indent}[{output_time}] out: {output_text}"
@@ -1802,7 +1817,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Line 2 (expanded only): ID + last activity time
         activity_time = _format_time(session.last_activity)
-        line2 = f"{detail_indent}[{activity_time}] ID: {session_id}"
+        native_session_id = session.native_session_id or "-"
+        line2 = f"{detail_indent}[{activity_time}] {session_id} / {native_session_id}"
         _safe_addstr(row + lines_used, line2, header_attr)
         self._row_to_id_item[row + lines_used] = item
         lines_used += 1
@@ -1811,10 +1827,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Determine which field is "active" (highlight) based on centralized state
         has_input_highlight = session_id in self.state.sessions.input_highlights
-        has_output_highlight = (
-            session_id in self.state.sessions.output_highlights
-            or session_id in self.state.sessions.temp_output_highlights
-        )
+        has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
+        has_output_highlight = session_id in self.state.sessions.output_highlights or has_temp_output_highlight
         input_attr = highlight_attr if has_input_highlight else normal_attr
         output_attr = highlight_attr if has_output_highlight else normal_attr
 
@@ -1836,7 +1850,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if last_output and not last_input and session_id not in self._missing_last_input_logged:
             self._missing_last_input_logged.add(session_id)
             logger.trace("missing_last_input", session=session_id[:8])
-        if last_output:
+        if has_temp_output_highlight:
+            output_time = _format_time(last_output_at or session.last_activity)
+            line4 = f"{detail_indent}[{output_time}] out: {_thinking_placeholder_text()}"
+            italic_attr = getattr(curses, "A_ITALIC", 0)
+            _safe_addstr(row + lines_used, line4, output_attr | italic_attr if italic_attr else output_attr)
+            lines_used += 1
+        elif last_output:
             output_text = last_output.replace("\n", " ")[:60]
             output_time = _format_time(last_output_at)
             line4 = f"{detail_indent}[{output_time}] out: {output_text}"

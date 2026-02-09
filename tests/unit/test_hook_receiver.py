@@ -21,7 +21,9 @@ def test_receiver_emits_error_on_invalid_stdin_json(monkeypatch, tmp_path):
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: (_ for _ in ()).throw(json.JSONDecodeError("bad", "{", 1)))
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop", cwd=None)
+    )
     tmpdir = tmp_path / "tmp"
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-1")
@@ -49,7 +51,9 @@ def test_receiver_exits_cleanly_without_session(monkeypatch):
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop", cwd=None)
+    )
     monkeypatch.delenv("TMPDIR", raising=False)
     monkeypatch.delenv("TMUX", raising=False)  # Prevent tmux recovery from running
 
@@ -69,7 +73,9 @@ def test_receiver_exits_cleanly_when_tmux_recovery_fails(monkeypatch):
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop", cwd=None)
+    )
     monkeypatch.delenv("TMPDIR", raising=False)
 
     with pytest.raises(SystemExit) as exc:
@@ -88,7 +94,9 @@ def test_receiver_exits_cleanly_when_session_not_in_db(monkeypatch):
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop", cwd=None)
+    )
     monkeypatch.delenv("TMPDIR", raising=False)
 
     with pytest.raises(SystemExit) as exc:
@@ -107,7 +115,9 @@ def test_receiver_emits_error_on_deprecated_event_name(monkeypatch, tmp_path):
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="prompt"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="prompt", cwd=None)
+    )
 
     tmpdir = tmp_path / "tmp-deprecated"
     tmpdir.mkdir(parents=True, exist_ok=True)
@@ -135,7 +145,9 @@ def test_receiver_recovers_from_native_session_id(monkeypatch, tmp_path):
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(
-        receiver, "_parse_args", lambda: argparse.Namespace(agent="codex", event_type='{"thread-id": "native-1"}')
+        receiver,
+        "_parse_args",
+        lambda: argparse.Namespace(agent="codex", event_type='{"thread-id": "native-1"}', cwd=None),
     )
     tmpdir = tmp_path / "tmp-native"
     tmpdir.mkdir(parents=True, exist_ok=True)
@@ -167,7 +179,9 @@ def test_receiver_accepts_gemini_stop_event(monkeypatch, tmp_path):
             {"prompt_response": "done"},
         ),
     )
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="agent_stop"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="agent_stop", cwd=None)
+    )
     tmpdir = tmp_path / "tmp-gemini"
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-1")
@@ -201,7 +215,9 @@ def test_receiver_updates_native_fields_for_gemini_session_start(monkeypatch, tm
             },
         ),
     )
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="session_start"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="session_start", cwd=None)
+    )
     tmpdir = tmp_path / "tmp-gemini-start"
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-1")
@@ -236,7 +252,9 @@ def test_receiver_persists_native_fields_to_db(monkeypatch, tmp_path):
             {"session_id": "native-1", "transcript_path": "/tmp/native.jsonl"},
         ),
     )
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop", cwd=None)
+    )
     tmpdir = tmp_path / "tmp-native"
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-1")
@@ -272,7 +290,7 @@ def test_receiver_forwards_gemini_prompt_event(monkeypatch, tmp_path):
         ),
     )
     monkeypatch.setattr(
-        receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="user_prompt_submit")
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="user_prompt_submit", cwd=None)
     )
     tmpdir = tmp_path / "tmp-gemini-prompt"
     tmpdir.mkdir(parents=True, exist_ok=True)
@@ -311,7 +329,9 @@ def test_receiver_gemini_agent_stop_forwards_directly(monkeypatch, tmp_path):
             },
         ),
     )
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="AfterAgent"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="AfterAgent", cwd=None)
+    )
     tmpdir = tmp_path / "tmp-gemini-empty-stop"
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-9")
@@ -345,7 +365,9 @@ def test_receiver_gemini_before_agent_emits_user_prompt_submit(monkeypatch, tmp_
             },
         ),
     )
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="BeforeAgent"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="BeforeAgent", cwd=None)
+    )
     tmpdir = tmp_path / "tmp-gemini-before-agent"
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-10")
@@ -366,7 +388,9 @@ def test_receiver_includes_agent_name_in_payload(monkeypatch, tmp_path):
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop", cwd=None)
+    )
     tmpdir = tmp_path / "tmp-agent"
     tmpdir.mkdir(parents=True, exist_ok=True)
     (tmpdir / "teleclaude_session_id").write_text("sess-1")
@@ -393,7 +417,9 @@ def test_receiver_prefers_tmux_session_id_over_session_map(monkeypatch, tmp_path
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ('{"session_id": "native-1"}', {"session_id": "native-1"}))
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop", cwd=None)
+    )
     monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: "cached-1")
     monkeypatch.setattr(receiver, "_persist_session_map", fake_persist)
     tmpdir = tmp_path / "tmp-tmux"
@@ -424,7 +450,9 @@ def test_receiver_persists_session_map_for_headless(monkeypatch, tmp_path):
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ('{"session_id": "native-2"}', {"session_id": "native-2"}))
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop", cwd=None)
+    )
     monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: None)
     monkeypatch.setattr(receiver, "_find_session_id_by_native", lambda _native: None)
     monkeypatch.setattr(receiver, "_persist_session_map", fake_persist)
@@ -460,7 +488,9 @@ def test_receiver_refreshes_stale_env_session_id(monkeypatch, tmp_path):
         lambda _candidate, _native, *, agent: "refreshed-1",  # noqa: ARG005
     )
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ('{"session_id": "native-3"}', {"session_id": "native-3"}))
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="session_start"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="session_start", cwd=None)
+    )
 
     tmpdir = tmp_path / "tmp-stale-env"
     tmpdir.mkdir(parents=True, exist_ok=True)
@@ -487,7 +517,9 @@ def test_receiver_ignores_legacy_marker_outside_teleclaude_tmp_base(monkeypatch,
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: "cached-1")
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ('{"session_id": "native-4"}', {"session_id": "native-4"}))
-    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop"))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop", cwd=None)
+    )
 
     tmpdir = tmp_path / "global-tmp"
     tmpdir.mkdir(parents=True, exist_ok=True)

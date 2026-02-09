@@ -30,7 +30,7 @@ type: 'design'
 
 **Inputs:**
 
-- Agent lifecycle events from mcp-wrapper hooks (agent_start, agent_stop, agent_compact, agent_error)
+- Agent lifecycle events from agent CLI hooks (mapped to internal `event_type` values such as `session_start`, `user_prompt_submit`, `after_model`, `agent_output`, `agent_stop`, `notification`, `error`)
 - Hook payloads with session metadata and event data
 - Daemon polling loop triggers for batch processing
 
@@ -74,7 +74,7 @@ sequenceDiagram
     participant Receiver
     participant SQLite
 
-    Hook->>Receiver: agent_stop(session_id, payload)
+    Hook->>Receiver: Raw hook event + payload
     Receiver->>Receiver: Parse event_type + payload
     Receiver->>SQLite: INSERT hook_outbox (session_id, event_type, payload, next_attempt_at=now)
     SQLite->>Receiver: row_id
@@ -125,12 +125,15 @@ sequenceDiagram
 
 ### 5. Hook Event Types Processed
 
-| Event Type    | Payload Fields              | Action                                  |
-| ------------- | --------------------------- | --------------------------------------- |
-| agent_start   | session_id, timestamp       | Session metadata initialization         |
-| agent_stop    | session_id, transcript_tail | Parse transcript, extract title, notify |
-| agent_compact | session_id, context_usage   | Log context usage, update session state |
-| agent_error   | session_id, error_message   | Log error, mark session as failed       |
+| Event Type           | Payload Fields (selected)                 | Action                                                                    |
+| -------------------- | ----------------------------------------- | ------------------------------------------------------------------------- |
+| `session_start`      | `session_id`, `transcript_path`           | Initialize/anchor headless lifecycle and capture native identity          |
+| `user_prompt_submit` | `session_id`, `prompt`                    | Update last user input for session history                                |
+| `after_model`        | `session_id`, `transcript_path`           | Treated as output-bearing event (currently typed as `AgentOutputPayload`) |
+| `agent_output`       | `session_id`, `transcript_path`           | Process rich incremental output events                                    |
+| `agent_stop`         | `session_id`, `transcript_path`, `prompt` | Complete turn handling and downstream summary/notification flow           |
+| `notification`       | `session_id`, `message`                   | Relay permission/notification signals                                     |
+| `error`              | `message`, `code`, `details`              | Surface hook receiver/runtime failures                                    |
 
 ## Failure modes
 

@@ -96,6 +96,7 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
     last_output: str | None = None
     last_output_at: str | None = None
     last_output_digest: str | None = None
+    native_session_id: str | None = None
     tmux_session_name: str | None = None
     initiator_session_id: str | None = None
     computer: str | None = None
@@ -119,6 +120,7 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
             last_output=summary.last_output,
             last_output_at=summary.last_output_at,
             last_output_digest=summary.last_output_digest,
+            native_session_id=summary.native_session_id,
             tmux_session_name=summary.tmux_session_name,
             initiator_session_id=summary.initiator_session_id,
             computer=computer,
