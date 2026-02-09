@@ -46,7 +46,7 @@ type: 'design'
 - **At-Least-Once Delivery**: Every hook event is persisted before processing; daemon crash doesn't lose events.
 - **Ordered Processing**: Rows processed in creation order (FIFO by created_at).
 - **Exactly-Once Lock**: Each row claimed exclusively by one worker using locked_at + lock_cutoff.
-- **Exponential Backoff**: Failed rows retry with increasing delays; permanent failures after max attempts.
+- **Exponential Backoff**: Retryable failures back off exponentially and cap at the configured max delay.
 - **Idempotent Processing**: Handlers tolerate duplicate delivery if lock expires during processing.
 
 ## Primary flows
@@ -61,9 +61,7 @@ stateDiagram-v2
     Processing --> Delivered: Success
     Processing --> Failed: Error
     Failed --> Pending: Retry scheduled
-    Failed --> DeadLetter: Max attempts
     Delivered --> [*]
-    DeadLetter --> [*]
 ```
 
 ### 2. Hook Receiver → Outbox Write
@@ -92,7 +90,7 @@ sequenceDiagram
     participant Adapters
 
     loop Every 1s
-        Worker->>DB: fetch_hook_outbox_batch(now, limit=10, lock_cutoff=30s)
+        Worker->>DB: fetch_hook_outbox_batch(now, limit=25, lock_cutoff=30s)
         DB->>Worker: Pending rows
         loop For each row
             Worker->>DB: claim_hook_outbox(row_id, now, lock_cutoff)
@@ -113,15 +111,15 @@ sequenceDiagram
 
 ### 4. Retry Backoff Schedule
 
-| Attempt | Delay       | Cumulative Time |
-| ------- | ----------- | --------------- |
-| 1       | 1s          | 1s              |
-| 2       | 2s          | 3s              |
-| 3       | 4s          | 7s              |
-| 4       | 8s          | 15s             |
-| 5       | 16s         | 31s             |
-| 6       | 32s         | 63s             |
-| 7+      | Dead letter | —               |
+| Attempt | Delay (default) |
+| ------- | --------------- |
+| 1       | 1s              |
+| 2       | 2s              |
+| 3       | 4s              |
+| 4       | 8s              |
+| 5       | 16s             |
+| 6       | 32s             |
+| 7+      | 60s cap         |
 
 ### 5. Hook Event Types Processed
 
@@ -140,7 +138,7 @@ sequenceDiagram
 - **Hook Fire During Daemon Offline**: Event persisted in outbox; processed when daemon restarts. No message loss.
 - **Worker Crash Mid-Processing**: Row lock expires after 30s; another worker reclaims and retries. Idempotent handlers prevent double-effect.
 - **Database Lock Contention**: Multiple workers racing to claim same row. Only one succeeds; others skip cleanly.
-- **Handler Permanent Failure**: Row retries 7 times over 63s, then dead-lettered. Logged for manual investigation.
-- **Corrupted Payload**: Handler fails immediately; row dead-lettered after max attempts. No infinite retry loop.
+- **Non-Retryable Failure**: Event is marked delivered with an error and not retried.
+- **Corrupted Payload**: JSON decode failure is marked delivered with error immediately (no retry loop).
 - **Stale Locks**: Rows locked >30s are reclaimed. Prevents stuck rows from blocking queue indefinitely.
 - **Outbox Table Growth**: Delivered rows accumulate. Periodic cleanup required (e.g., prune rows >7 days old).

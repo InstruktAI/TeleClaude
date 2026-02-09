@@ -31,7 +31,7 @@ flowchart LR
         Worker["Command Worker"]
         Sessions["Session Manager"]
         Poller["Output Poller"]
-        Hooks["Hook Receiver (AgentCoordinator)"]
+        Hooks["Hook Receiver + Agent Coordinator"]
         Events["Domain Events"]
         Cache["Read Cache (Snapshots)"]
         RedisIngress["Redis Transport Listener"]

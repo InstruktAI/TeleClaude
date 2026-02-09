@@ -40,6 +40,7 @@ flowchart LR
 - MCP protocol messages from AI client (via stdio)
 - Tool call requests with parameters
 - Session ID injection from environment (`TMPDIR/teleclaude_session_id`)
+- Role marker (`teleclaude_role`) for least-privilege tool filtering
 - Backend reconnection events
 
 **Outputs:**
@@ -54,6 +55,7 @@ flowchart LR
 - **Zero-Downtime Reconnection**: Client never restarts due to backend unavailability; wrapper handles reconnection transparently.
 - **Cached Handshake**: `initialize` response cached and replayed during backend reconnection without refetching.
 - **Session ID Injection**: Every tool call includes `caller_session_id` from environment; enables AI-to-AI coordination.
+- **Role-Based Filtering**: When role marker is `worker`, orchestration tools are filtered from the visible tool list.
 - **Stdio Isolation**: Wrapper logs only to stderr; stdout reserved for MCP protocol.
 - **Graceful Degradation**: If backend is down, wrapper returns error responses but remains connected to client.
 

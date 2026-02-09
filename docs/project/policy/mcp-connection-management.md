@@ -12,9 +12,9 @@ description: 'Architecture policy for MCP clients - tool-call filtering, connect
 - MCP clients connect via `bin/mcp-wrapper.py`, not directly to the daemon.
 - The wrapper must provide the mcp client zero-downtime behavior across daemon restarts and reconnects.
 - Wrapper must inject `caller_session_id` into tool calls for coordination.
-- When wrapper receives a `teleclaude__run_agent_command(cmd="/next-{step}")` call, it must set the contents of the `teleclaude_role` file to `builder`
+- When wrapper receives a `teleclaude__run_agent_command(cmd="/next-{step}")` call, it must set the contents of the `teleclaude_role` file to `worker`.
 - Wrapper must filter `teleclaude__*` tools for agents with roles:
-  - `builder`: allow ONLY `teleclaude__get_context`.
+  - `worker`: hide orchestration tools (`teleclaude__next_work`, `teleclaude__next_prepare`, `teleclaude__mark_phase`, `teleclaude__start_session`, `teleclaude__send_message`, `teleclaude__run_agent_command`).
   - no role found: ALL `teleclaude__*` tools are ALLOWED.
 
 ## Rationale
