@@ -99,11 +99,11 @@ class TestDbSettings:
         from sqlalchemy import text
 
         async with test_db._session() as session:
-            row = (await session.execute(text("PRAGMA journal_mode"))).fetchone()  # noqa: raw-sql
+            row = (await session.execute(text("PRAGMA journal_mode"))).fetchone()  # raw-sql
             assert row is not None
             assert str(row[0]).lower() == "wal"
 
-            row = (await session.execute(text("PRAGMA busy_timeout"))).fetchone()  # noqa: raw-sql
+            row = (await session.execute(text("PRAGMA busy_timeout"))).fetchone()  # raw-sql
             assert row is not None
             assert int(row[0]) >= 5000
 
@@ -223,7 +223,7 @@ class TestAgentAvailability:
 
         past = (FIXED_NOW - timedelta(minutes=5)).isoformat()
         async with test_db._session() as session:
-            await session.execute(  # noqa: raw-sql
+            await session.execute(  # raw-sql
                 text(
                     "INSERT INTO agent_availability (agent, available, unavailable_until, reason) VALUES (:a, 0, :u, :r)"
                 ),
@@ -235,7 +235,7 @@ class TestAgentAvailability:
 
         assert info == {"available": True, "unavailable_until": None, "reason": None}
         async with test_db._session() as session:
-            result = await session.execute(  # noqa: raw-sql
+            result = await session.execute(  # raw-sql
                 text("SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = :a"),
                 {"a": "gemini"},
             )
@@ -251,7 +251,7 @@ class TestAgentAvailability:
 
         future = (FIXED_NOW + timedelta(minutes=10)).isoformat()
         async with test_db._session() as session:
-            await session.execute(  # noqa: raw-sql
+            await session.execute(  # raw-sql
                 text(
                     "INSERT INTO agent_availability (agent, available, unavailable_until, reason) VALUES (:a, 0, :u, :r)"
                 ),
@@ -262,7 +262,7 @@ class TestAgentAvailability:
         await test_db.mark_agent_available("codex")
 
         async with test_db._session() as session:
-            result = await session.execute(  # noqa: raw-sql
+            result = await session.execute(  # raw-sql
                 text("SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = :a"),
                 {"a": "codex"},
             )
