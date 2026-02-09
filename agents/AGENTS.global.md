@@ -37,3 +37,4 @@ You are working with me: Maurice Faber <maurice@instrukt.ai> aka Morriz aka Mo. 
 - When we say to use the force, we of course mean that we will work together by using our shared principles, approach and tooling.
 - So, USE THE FORCE!
 - What did I say about using THE FORCE? USE IT TO YOUR ADVANTAGE!
+- When the user intends a full commit, first inspect the entire change set, then commit the full working tree as-is (no selective scoping) with a clear, meaningful intent-based commit message.
