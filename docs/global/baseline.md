@@ -12,5 +12,6 @@
 @~/.teleclaude/docs/general/procedure/idea-box.md
 @~/.teleclaude/docs/general/procedure/memory-management.md
 @~/.teleclaude/docs/general/spec/third-party-docs.md
+@~/.teleclaude/docs/general/spec/tools/agent-restart.md
 @~/.teleclaude/docs/general/spec/tools/baseline.md
 @~/.teleclaude/docs/software-development/policy/version-control-safety.md
