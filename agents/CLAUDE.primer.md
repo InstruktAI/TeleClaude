@@ -28,7 +28,7 @@ Route knowledge to the shared layers instead:
 | Bug or defect                               | Fix inline or promote to `todos/`     |
 | Operational shortcut or gotcha              | Doc snippet or Memory API             |
 
-`MEMORY.md` has one valid use: the Memento restart detection pattern, because it must be loaded before the agent even knows to call `get_context`. Everything else belongs in shared layers.
+`MEMORY.md` has one valid use: bootstrapping context that must be loaded before the agent even knows to call `get_context` (e.g., iteration counters, emergency recovery notes). Everything else belongs in shared layers.
 
 If you catch yourself writing to `MEMORY.md`, stop and ask: "Would this help only me, or everyone?" If the answer is everyone — and it almost always is — put it where everyone can find it.
 

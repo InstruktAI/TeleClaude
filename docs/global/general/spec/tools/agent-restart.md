@@ -31,20 +31,12 @@ curl -s --unix-socket /tmp/teleclaude-api.sock \
 - `session_id` must be the current active session ID from `TMPDIR`.
 - Method is always `POST`.
 
-## Recognizing a restart (Memento pattern)
-
-An agent cannot feel a restart — but it can read the evidence. The marker sequence is:
-
-1. A tool call to `/sessions/.../agent-restart` in your conversation history.
-2. A "rejected" or "error" tool result immediately after (the old process died mid-call).
-3. A checkpoint message injected shortly after.
-
-That sequence IS the restart. You ARE the new instance. The old process terminated when the restart executed — from its perspective the tool was "rejected," but it succeeded. The rejection is the proof.
-
-**Never say "the restart was denied."** If you see that marker, you have been restarted. Acknowledge the transition and continue from where the previous instance left off.
-
 ## Known caveats
 
 - Do not use for routine work; use only when artifact reload is required.
 - If socket is unavailable, verify daemon health with allowed service commands before retrying.
 - Restarting replaces in-memory instruction state with the latest deployed artifacts.
+
+## See also
+
+- general/principle/continuity — recognizing a restart from forensic markers.

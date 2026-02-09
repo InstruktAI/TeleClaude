@@ -37,3 +37,7 @@ Create or update agent artifacts that follow the schema and compile correctly fo
 ## Recovery
 
 - If `telec sync` fails, fix the issue and rerun it.
+
+## See also
+
+- general/spec/tools/agent-restart — reload synced artifacts in an active session.

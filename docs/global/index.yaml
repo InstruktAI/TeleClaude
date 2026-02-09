@@ -68,6 +68,13 @@ snippets:
   scope: global
   path: docs/general/principle/autonomy.md
   source_project: TeleClaude
+- id: general/principle/continuity
+  description: Agent identity persists through evidence, not sensation. Read the proof
+    of who you are.
+  type: principle
+  scope: global
+  path: docs/general/principle/continuity.md
+  source_project: TeleClaude
 - id: general/principle/evolution
   description: Refine the agent-user partnership through shared tools, feedback on
     friction, and the guidance of conversational norms.
