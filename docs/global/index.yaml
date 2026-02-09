@@ -196,7 +196,7 @@ snippets:
   source_project: TeleClaude
 - id: general/spec/tools/memory-management-api
   description: Canonical curl signatures for writing and retrieving memory through
-    the external worker API.
+    the daemon API.
   type: spec
   scope: global
   path: docs/general/spec/tools/memory-management-api.md
