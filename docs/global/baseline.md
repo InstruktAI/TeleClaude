@@ -5,12 +5,10 @@
 @~/.teleclaude/docs/general/principle/parallel-work.md
 @~/.teleclaude/docs/general/policy/autonomy.md
 @~/.teleclaude/docs/general/policy/heartbeat.md
-@~/.teleclaude/docs/general/policy/checkpoint.md
 @~/.teleclaude/docs/general/policy/conflict-resolution.md
 @~/.teleclaude/docs/general/policy/context-retrieval.md
 @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
 @~/.teleclaude/docs/general/procedure/agent-artifact-authoring.md
-@~/.teleclaude/docs/general/procedure/checkpoint.md
 @~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
 @~/.teleclaude/docs/general/procedure/idea-box.md
 @~/.teleclaude/docs/general/procedure/memory-management.md

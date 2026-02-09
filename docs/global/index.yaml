@@ -27,13 +27,6 @@ snippets:
   scope: global
   path: docs/general/policy/autonomy.md
   source_project: TeleClaude
-- id: general/policy/checkpoint
-  description: System-injected checkpoint at natural work breakpoints triggering validation
-    and knowledge capture.
-  type: policy
-  scope: global
-  path: docs/general/policy/checkpoint.md
-  source_project: TeleClaude
 - id: general/policy/conflict-resolution
   description: Guidelines for resolving conflicts between documentation, instructions,
     and code.
@@ -128,13 +121,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/agent-job-hygiene.md
-  source_project: TeleClaude
-- id: general/procedure/checkpoint
-  description: 'Concrete steps for responding to a checkpoint message: validate work,
-    then capture artifacts.'
-  type: procedure
-  scope: global
-  path: docs/general/procedure/checkpoint.md
   source_project: TeleClaude
 - id: general/procedure/doc-snippet-authoring
   description: Author documentation snippets according to the taxonomy and schema.

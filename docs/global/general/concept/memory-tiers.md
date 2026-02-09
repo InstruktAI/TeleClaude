@@ -114,6 +114,5 @@ tiers is understanding why the pieces fit.
 
 - general/principle/evolution
 - general/policy/heartbeat
-- general/policy/checkpoint
 - general/procedure/idea-box
 - general/concept/documentation-snippets

@@ -156,6 +156,4 @@ sequenceDiagram
 
 ## See also
 
-- general/policy/checkpoint — Behavioral policy for agents receiving checkpoints
-- general/procedure/checkpoint — Step-by-step protocol for Validate → Capture
 - project/spec/event-types — Canonical event type definitions including `after_model`
