@@ -42,13 +42,7 @@ from teleclaude.cli.tui.tree import (
     is_project_node,
     is_session_node,
 )
-from teleclaude.cli.tui.types import (
-    CursesWindow,
-    FocusLevelType,
-    NodeType,
-    NotificationLevel,
-    StickySessionInfo,
-)
+from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NodeType, NotificationLevel, StickySessionInfo
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
 from teleclaude.paths import TUI_STATE_PATH as _TUI_STATE_PATH
@@ -60,8 +54,7 @@ if TYPE_CHECKING:
     from teleclaude.cli.tui.app import FocusContext
 
 logger = get_logger(__name__)
-_THINKING_DOT_COUNT = 32
-_THINKING_BASE_TEXT = "thinking" + ("." * _THINKING_DOT_COUNT)
+_THINKING_BASE_TEXT = "thinking..."
 
 
 def _format_time(iso_timestamp: str | None) -> str:

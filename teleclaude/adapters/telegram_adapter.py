@@ -384,7 +384,7 @@ class TelegramAdapter(
 
     def _build_footer_metadata(self, session: "Session") -> MessageMetadata:
         """Build Telegram footer metadata with download button when applicable."""
-        metadata = MessageMetadata()
+        metadata = MessageMetadata(parse_mode=None)
         if session.native_log_file:
             keyboard = [
                 [
