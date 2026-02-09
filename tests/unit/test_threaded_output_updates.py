@@ -12,7 +12,6 @@ def mock_client():
     client = MagicMock()
     client.send_message = AsyncMock()
     client.edit_message = AsyncMock()
-    client.send_threaded_footer = AsyncMock()
     client.send_threaded_output = AsyncMock()
     return client
 
@@ -74,14 +73,10 @@ async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(co
         # Mock send_message returning an ID
         mock_client.send_message.return_value = "msg_123"
 
-        # Mock build_threaded_footer_text
-        with patch.object(coordinator, "_build_threaded_footer_text", return_value="footer"):
-            await coordinator.handle_agent_output(context)
+        await coordinator.handle_agent_output(context)
 
         # 1. Should call send_threaded_output
-        mock_client.send_threaded_output.assert_called_once_with(
-            session, "Message 1", footer_text="footer", multi_message=False
-        )
+        mock_client.send_threaded_output.assert_called_once_with(session, "Message 1", multi_message=False)
 
         # 2. Should update session to persist metadata (cursor check)
         # Verify cursor update was NOT called (no LAST_AGENT_OUTPUT_AT in kwargs)
@@ -127,14 +122,10 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         mock_get_messages.return_value = [{"role": "assistant", "content": []}]
         mock_render.return_value = ("Message 1 + 2", "timestamp_2")
 
-        # Mock build_threaded_footer_text
-        with patch.object(coordinator, "_build_threaded_footer_text", return_value="footer"):
-            await coordinator.handle_agent_output(context)
+        await coordinator.handle_agent_output(context)
 
         # 1. Should call send_threaded_output
-        mock_client.send_threaded_output.assert_called_once_with(
-            session, "Message 1 + 2", footer_text="footer", multi_message=True
-        )
+        mock_client.send_threaded_output.assert_called_once_with(session, "Message 1 + 2", multi_message=True)
 
         # 2. Should call update_session (heartbeat) but NOT update cursor
         mock_update_session.assert_called_once()
@@ -186,14 +177,10 @@ async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
         mock_sum.return_value = ("Title", "Summary")
         mock_extract.return_value = "last message"
 
-        # Mock build_threaded_footer_text
-        with patch.object(coordinator, "_build_threaded_footer_text", return_value="footer"):
-            await coordinator.handle_agent_stop(context)
+        await coordinator.handle_agent_stop(context)
 
         # 1. Should call send_threaded_output (final update)
-        mock_client.send_threaded_output.assert_called_once_with(
-            session, "Final Message", footer_text="footer", multi_message=True
-        )
+        mock_client.send_threaded_output.assert_called_once_with(session, "Final Message", multi_message=True)
 
         # 2. Should clear output_message_id via dedicated column write
         mock_set_output_msg.assert_called_once_with(session_id, None)

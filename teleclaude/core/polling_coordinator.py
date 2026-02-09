@@ -433,24 +433,21 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                     session.last_output_digest,
                 )
 
-                # Detect user input for Codex sessions (no hook support)
-                # Fire-and-forget: best-effort, doesn't block polling loop
+                # Detect user input for Codex sessions (no hook support).
+                # Keep this inline to avoid spawning unbounded background tasks
+                # on high-frequency output updates.
                 emit_handler = adapter_client.agent_event_handler
-
-                async def _codex_input_wrapper() -> None:
+                if emit_handler:
                     try:
-                        if emit_handler:
-                            await _maybe_emit_codex_input(
-                                session_id=event.session_id,
-                                active_agent=session.active_agent,
-                                current_output=clean_output,
-                                output_changed=True,  # OutputChanged event means output changed
-                                emit_agent_event=emit_handler,
-                            )
+                        await _maybe_emit_codex_input(
+                            session_id=event.session_id,
+                            active_agent=session.active_agent,
+                            current_output=clean_output,
+                            output_changed=True,  # OutputChanged event means output changed
+                            emit_agent_event=emit_handler,
+                        )
                     except Exception as e:
                         logger.error("[CODEX] Error in input detection: %s", e, exc_info=True)
-
-                asyncio.create_task(_codex_input_wrapper())
 
                 # Unified output handling - ALL sessions use send_output_update
                 start_time = time.time()

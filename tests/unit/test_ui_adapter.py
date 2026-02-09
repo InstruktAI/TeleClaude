@@ -11,7 +11,6 @@ from teleclaude.core.origins import InputOrigin
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import Db
 from teleclaude.core.models import (
     CleanupTrigger,
@@ -129,7 +128,7 @@ class TestSendOutputUpdate:
         )
 
         assert result == "msg-123"
-        assert len(adapter._send_calls) == 1
+        assert len(adapter._send_calls) >= 1
         assert "test output" in adapter._send_calls[0][0]
         assert adapter._edit_calls == []
 
@@ -161,7 +160,7 @@ class TestSendOutputUpdate:
         assert "updated output" in adapter._edit_calls[0]
 
     async def test_render_markdown_skips_code_block(self, test_db):
-        """Paranoid test that render_markdown sends output without code block wrapper."""
+        """render_markdown sends output without code block wrapper."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -180,12 +179,11 @@ class TestSendOutputUpdate:
 
         assert result == "msg-123"
         assert adapter._send_calls
-        sent_text, metadata = adapter._send_calls[-1]
+        sent_text, _metadata = adapter._send_calls[0]
         assert "```" not in sent_text
-        assert metadata.parse_mode == "MarkdownV2"
 
-    async def test_render_markdown_strips_heading_icons(self, test_db):
-        """Paranoid test that render_markdown renders headings without emoji prefixes."""
+    async def test_render_markdown_preserves_content(self, test_db):
+        """render_markdown passes through content without platform conversion in base class."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -204,12 +202,10 @@ class TestSendOutputUpdate:
             render_markdown=True,
         )
 
-        sent_text, _ = adapter._send_calls[-1]
-        assert "## " not in sent_text
-        assert "📌" not in sent_text
-        assert "✏" not in sent_text
-        assert "*Title*" in sent_text
-        assert "*23:03:31 · 🤖 Assistant*" in sent_text
+        sent_text, _ = adapter._send_calls[0]
+        # Base class passes through without transformation
+        assert "# Title" in sent_text
+        assert "Body text" in sent_text
 
     async def test_creates_new_when_edit_fails(self, test_db):
         """Paranoid test creating new message when edit fails (stale message_id)."""
@@ -244,8 +240,8 @@ class TestSendOutputUpdate:
         session = await test_db.get_session(session.session_id)
         assert session.output_message_id == "msg-123"
 
-    async def test_includes_exit_code_in_final_message(self, test_db):
-        """Paranoid test final message includes exit code."""
+    async def test_includes_exit_code_in_footer(self, test_db):
+        """Final message puts exit code in footer, not in output."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -264,11 +260,14 @@ class TestSendOutputUpdate:
             exit_code=0,
         )
 
-        assert adapter._send_calls
-        message_text, _ = adapter._send_calls[-1]
-
-        assert "✅" in message_text or "0" in message_text
-        assert "```" in message_text
+        assert len(adapter._send_calls) >= 2
+        # Output message: code block with tmux output
+        output_text, _ = adapter._send_calls[0]
+        assert "```" in output_text
+        assert "command output" in output_text
+        # Footer message: status line with exit code + session IDs
+        footer_text, _ = adapter._send_calls[1]
+        assert "✅" in footer_text or "0" in footer_text
 
     async def test_non_gemini_not_suppressed_when_experiment_globally_enabled(self, test_db):
         """Threaded suppression applies only to Gemini sessions."""
@@ -291,10 +290,10 @@ class TestSendOutputUpdate:
             )
 
         assert result == "msg-123"
-        assert len(adapter._send_calls) == 1
+        assert len(adapter._send_calls) >= 1
 
-    async def test_send_threaded_footer_replaces_previous(self, test_db):
-        """Threaded footer keeps only latest footer message."""
+    async def test_send_footer_edits_existing(self, test_db):
+        """Footer edits existing footer message in place."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -304,19 +303,20 @@ class TestSendOutputUpdate:
         )
         if not session.adapter_metadata:
             session.adapter_metadata = SessionAdapterMetadata()
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(threaded_footer_message_id="old-footer")
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(footer_message_id="old-footer")
         await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
-        await adapter.send_threaded_footer(session, "📋 tc: abc")
+        result = await adapter._send_footer(session)
 
-        adapter._delete_message_mock.assert_awaited_once_with(session, "old-footer")
-        latest = await test_db.get_session(session.session_id)
-        assert latest.adapter_metadata.telegram is not None
-        assert latest.adapter_metadata.telegram.threaded_footer_message_id == "msg-123"
+        # Should edit in place, not delete and re-send
+        assert result == "old-footer"
+        adapter._delete_message_mock.assert_not_awaited()
+        assert len(adapter._edit_calls) == 1
+        assert "📋 tc:" in adapter._edit_calls[0]
 
-    async def test_standard_output_cleans_stale_threaded_footer(self, test_db):
-        """Non-threaded output should remove stale threaded footer state/messages."""
+    async def test_standard_output_sends_footer(self, test_db):
+        """Standard output should send a separate footer message."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -326,7 +326,7 @@ class TestSendOutputUpdate:
         )
         if not session.adapter_metadata:
             session.adapter_metadata = SessionAdapterMetadata()
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(threaded_footer_message_id="stale-footer")
+        session.adapter_metadata.telegram = TelegramAdapterMetadata()
         await test_db.update_session(
             session.session_id, adapter_metadata=session.adapter_metadata, active_agent="codex"
         )
@@ -340,13 +340,14 @@ class TestSendOutputUpdate:
                 time.time(),
             )
 
-        adapter._delete_message_mock.assert_awaited_once_with(session, "stale-footer")
+        # Output + footer = at least 2 sends
+        assert len(adapter._send_calls) >= 2
         latest = await test_db.get_session(session.session_id)
         assert latest.adapter_metadata.telegram is not None
-        assert latest.adapter_metadata.telegram.threaded_footer_message_id is None
+        assert latest.adapter_metadata.telegram.footer_message_id is not None
 
-    async def test_standard_output_is_fitted_upstream_before_send(self, test_db):
-        """Standard output payload should already fit Telegram limit when sent."""
+    async def test_standard_output_wraps_in_code_block(self, test_db):
+        """Standard output is wrapped in code fences by base format_message."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -357,8 +358,7 @@ class TestSendOutputUpdate:
         await test_db.update_session(session.session_id, active_agent="codex")
         session = await test_db.get_session(session.session_id)
 
-        # Simulate tmux content with dense markdown-like patterns and long body.
-        output = ("line with ```fence``` and symbols [](){}!.\n" * 300) + ("x" * 1500)
+        output = "simple tmux output line"
         await adapter.send_output_update(
             session,
             output,
@@ -367,10 +367,10 @@ class TestSendOutputUpdate:
         )
 
         assert adapter._send_calls
-        sent_text, _metadata = adapter._send_calls[-1]
-        assert len(sent_text) <= UI_MESSAGE_MAX_CHARS
+        sent_text, _metadata = adapter._send_calls[0]
         assert sent_text.startswith("```")
         assert "\n```" in sent_text
+        assert "simple tmux output line" in sent_text
 
 
 @pytest.mark.asyncio
@@ -404,43 +404,43 @@ class TestSendMessageNotice:
         assert msg_id in pending, "Notice message should be tracked for deletion"
 
 
-class TestFormatMessage:
-    """Paranoid test format_message method and markdown sanitization."""
+class TestFormatOutput:
+    """Test format_output method — base UiAdapter produces plain text code block."""
 
-    def test_sanitizes_internal_code_blocks(self):
-        """Paranoid test that internal ``` markers are escaped to prevent nested code blocks."""
+    def test_wraps_output_in_code_block(self):
+        """Base format_output wraps tmux output in code fences without escaping."""
         adapter = MockUiAdapter()
-        output_with_code = "Here is code:\n```python\nprint('hello')\n```\nEnd"
+        output = "Here is code:\n```python\nprint('hello')\n```\nEnd"
 
-        result = adapter.format_message(output_with_code, "status line")
+        result = adapter.format_output(output)
 
-        # Should have outer code block markers
         assert result.startswith("```\n")
-        # Internal ``` should be escaped with zero-width space
-        assert "`\u200b``python" in result
-        assert "`\u200b``\n" in result  # Closing marker also escaped
-
-    def test_handles_multiple_code_blocks(self):
-        """Paranoid test multiple internal code blocks are all escaped."""
-        adapter = MockUiAdapter()
-        output = "```js\ncode1\n```\ntext\n```py\ncode2\n```"
-
-        result = adapter.format_message(output, "status")
-
-        # Count escaped markers (should be 4 - two opening, two closing)
-        assert result.count("`\u200b``") == 4
-        # Should only have 2 real ``` markers (outer wrapper)
-        assert result.count("```") == 2
+        # Internal ``` should NOT be escaped (base class is platform-agnostic)
+        assert "```python" in result
 
     def test_preserves_output_without_code_blocks(self):
-        """Paranoid test normal output without ``` is unchanged."""
+        """Normal output without ``` is unchanged."""
         adapter = MockUiAdapter()
         output = "Simple tmux output\nNo code blocks here"
 
-        result = adapter.format_message(output, "status line")
+        result = adapter.format_output(output)
 
         assert "```\nSimple tmux output\nNo code blocks here\n```" in result
-        assert "status line" in result
+
+    def test_no_escaping_in_base_class(self):
+        """Base class does not escape backslashes or special chars."""
+        adapter = MockUiAdapter()
+        output = "path C:\\repo\\teleclaude"
+
+        result = adapter.format_output(output)
+
+        # Backslashes should pass through unmodified
+        assert "C:\\repo\\teleclaude" in result
+
+    def test_empty_output_returns_empty(self):
+        """Empty input returns empty string."""
+        adapter = MockUiAdapter()
+        assert adapter.format_output("") == ""
 
 
 @pytest.mark.asyncio
@@ -460,7 +460,7 @@ class TestSendThreadedOutput:
         await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
-        result = await adapter.send_threaded_output(session, "Hello world", footer_text="📋 tc: test")
+        result = await adapter.send_threaded_output(session, "Hello world")
 
         assert result == "msg-123"
         assert len(adapter._send_calls) >= 1
@@ -590,7 +590,7 @@ class TestSendThreadedOutput:
         # Create text that will overflow the 100-char limit (limit - 10 = 90 effective)
         long_text = "word " * 30  # 150 chars
 
-        result = await adapter.send_threaded_output(session, long_text, footer_text="footer")
+        result = await adapter.send_threaded_output(session, long_text)
 
         # Should have sent at least 2 messages (sealed + remainder)
         assert len(adapter._send_calls) >= 2
@@ -599,6 +599,57 @@ class TestSendThreadedOutput:
         # Verify char_offset was advanced in DB
         refreshed = await test_db.get_session(session.session_id)
         assert refreshed.adapter_metadata.telegram.char_offset > 0
+
+    async def test_overflow_preserves_markdown_escape_boundaries(self, test_db):
+        """Telegram threaded overflow should not split between backslash and escaped char."""
+        adapter = MockUiAdapter()
+        # Keep room tight so chunking happens at problematic boundaries.
+        adapter.max_message_size = 30
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata.telegram = TelegramAdapterMetadata()
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        # Pre-escaped MarkdownV2 payload (same shape coordinator sends to threaded output).
+        escaped_text = "a\\." * 20
+        result = await adapter.send_threaded_output(session, escaped_text)
+        assert result is not None
+
+        # Inspect threaded content messages (footer has no escaped dots).
+        content_chunks = [text for text, _meta in adapter._send_calls if "\\.\\.\\." in text or "a\\." in text]
+        assert content_chunks, "Expected threaded content chunks to be sent"
+
+        for chunk in content_chunks:
+            for idx, char in enumerate(chunk):
+                if char == ".":
+                    assert idx > 0 and chunk[idx - 1] == "\\", f"Found unescaped dot in chunk: {chunk!r}"
+
+    async def test_overflow_reopens_code_block_in_next_chunk(self, test_db):
+        """When a chunk is closed for balance, next chunk should reopen the fence."""
+        adapter = MockUiAdapter()
+        adapter.max_message_size = 70
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata.telegram = TelegramAdapterMetadata()
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        text = "```python\n" + ("x" * 180) + "\n```"
+        result = await adapter.send_threaded_output(session, text)
+        assert result is not None
+
+        content_chunks = [chunk for chunk, _meta in adapter._send_calls if "x" in chunk]
+        assert len(content_chunks) >= 2
+        assert any(chunk.startswith("\\.\\.\\. ```\n") for chunk in content_chunks[1:])
 
 
 @pytest.mark.asyncio

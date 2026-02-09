@@ -119,3 +119,55 @@ class HookOutbox(SQLModel, table=True):
     last_error: Optional[str] = None
     delivered_at: Optional[str] = None
     locked_at: Optional[str] = None
+
+
+class MemoryObservation(SQLModel, table=True):
+    """memory_observations table."""
+
+    __tablename__ = "memory_observations"
+    __table_args__ = {"extend_existing": True}
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    memory_session_id: str
+    project: str
+    type: str
+    title: Optional[str] = None
+    subtitle: Optional[str] = None
+    facts: Optional[str] = None
+    narrative: Optional[str] = None
+    concepts: Optional[str] = None
+    files_read: Optional[str] = None
+    files_modified: Optional[str] = None
+    prompt_number: Optional[int] = None
+    discovery_tokens: Optional[int] = 0
+    created_at: str
+    created_at_epoch: int
+
+
+class MemorySummary(SQLModel, table=True):
+    """memory_summaries table."""
+
+    __tablename__ = "memory_summaries"
+    __table_args__ = {"extend_existing": True}
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    memory_session_id: str
+    project: str
+    request: Optional[str] = None
+    investigated: Optional[str] = None
+    learned: Optional[str] = None
+    completed: Optional[str] = None
+    next_steps: Optional[str] = None
+    created_at: str
+    created_at_epoch: int
+
+
+class MemoryManualSession(SQLModel, table=True):
+    """memory_manual_sessions table."""
+
+    __tablename__ = "memory_manual_sessions"
+    __table_args__ = {"extend_existing": True}
+
+    memory_session_id: str = Field(primary_key=True)
+    project: str
+    created_at_epoch: int

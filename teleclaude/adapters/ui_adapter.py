@@ -26,7 +26,6 @@ from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents, UiCo
 from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.feedback import get_last_feedback
 from teleclaude.core.models import (
-    AdapterType,
     CleanupTrigger,
     MessageMetadata,
     SessionField,
@@ -45,7 +44,12 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
 
-from teleclaude.utils.markdown import telegramify_markdown, truncate_markdown_v2
+from teleclaude.utils.markdown import (
+    MarkdownV2State,
+    continuation_prefix_for_markdown_v2_state,
+    scan_markdown_v2_state,
+    truncate_markdown_v2_with_consumed,
+)
 
 logger = get_logger(__name__)
 
@@ -110,41 +114,41 @@ class UiAdapter(BaseAdapter):
             message_id,
         )
 
-    async def _get_threaded_footer_message_id(self, session: "Session") -> Optional[str]:
+    async def _get_footer_message_id(self, session: "Session") -> Optional[str]:
         """Get threaded footer message id from adapter namespace."""
         metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
         if not metadata:
             return None
-        return metadata.threaded_footer_message_id
+        return metadata.footer_message_id
 
-    async def _store_threaded_footer_message_id(self, session: "Session", message_id: str) -> None:
+    async def _store_footer_message_id(self, session: "Session", message_id: str) -> None:
         """Store threaded footer message id in adapter namespace."""
         metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
         if not metadata:
             metadata = TelegramAdapterMetadata()
             setattr(session.adapter_metadata, self.ADAPTER_KEY, metadata)
         typed_metadata: TelegramAdapterMetadata = metadata
-        typed_metadata.threaded_footer_message_id = message_id
+        typed_metadata.footer_message_id = message_id
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         logger.debug(
-            "Stored threaded_footer_message_id: session=%s message_id=%s",
+            "Stored footer_message_id: session=%s message_id=%s",
             session.session_id[:8],
             message_id,
         )
 
-    async def _clear_threaded_footer_message_id(self, session: "Session") -> None:
+    async def _clear_footer_message_id(self, session: "Session") -> None:
         """Clear threaded footer message id from adapter namespace."""
         metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
         if not metadata:
             return
         typed_metadata: TelegramAdapterMetadata = metadata
-        typed_metadata.threaded_footer_message_id = None
+        typed_metadata.footer_message_id = None
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-        logger.debug("Cleared threaded_footer_message_id: session=%s", session.session_id[:8])
+        logger.debug("Cleared footer_message_id: session=%s", session.session_id[:8])
 
-    async def _cleanup_threaded_footer_if_present(self, session: "Session") -> None:
+    async def _cleanup_footer_if_present(self, session: "Session") -> None:
         """Delete and clear any tracked threaded footer message."""
-        previous_footer_id = await self._get_threaded_footer_message_id(session)
+        previous_footer_id = await self._get_footer_message_id(session)
         if not previous_footer_id:
             return
         try:
@@ -157,7 +161,7 @@ class UiAdapter(BaseAdapter):
                 exc,
             )
         finally:
-            await self._clear_threaded_footer_message_id(session)
+            await self._clear_footer_message_id(session)
 
     async def _clear_output_message_id(self, session: "Session") -> None:
         """Clear output_message_id in dedicated DB column.
@@ -171,6 +175,35 @@ class UiAdapter(BaseAdapter):
             "Cleared output_message_id: session=%s",
             session.session_id[:8],
         )
+
+    async def _deliver_output(
+        self,
+        session: "Session",
+        text: str,
+        metadata: MessageMetadata,
+        multi_message: bool = False,
+        status_line: str = "",
+    ) -> Optional[str]:
+        """Unified output delivery: dedup, edit/send, footer management."""
+        # 1. Digest-based dedup
+        display_digest = sha256(text.encode("utf-8")).hexdigest()
+        if session.last_output_digest == display_digest:
+            return await self._get_output_message_id(session)
+
+        # 2. Try edit existing
+        if await self._try_edit_output_message(session, text, metadata):
+            await db.update_session(session.session_id, last_output_digest=display_digest)
+            await self._send_footer(session, status_line=status_line)
+            return await self._get_output_message_id(session)
+
+        # 3. Edit failed → cleanup footer, send new, send footer below
+        await self._cleanup_footer_if_present(session)
+        new_id = await self.send_message(session, text, metadata=metadata, multi_message=multi_message)
+        if new_id:
+            await self._store_output_message_id(session, new_id)
+            await db.update_session(session.session_id, last_output_digest=display_digest)
+            await self._send_footer(session, status_line=status_line)
+        return new_id
 
     async def _try_edit_output_message(self, session: "Session", text: str, metadata: MessageMetadata) -> bool:
         """Try to edit existing output message, clear message_id if edit fails.
@@ -242,22 +275,18 @@ class UiAdapter(BaseAdapter):
 
     # === Output Message Management (Default Implementations) ===
 
-    def _fit_standard_output_to_limit(self, tmux_output: str, status_line: str) -> str:
-        """Build standard output message and enforce platform limit upstream."""
-        display_output = self.format_message(tmux_output, status_line)
-        if len(display_output) <= self.max_message_size:
-            return display_output
+    def _convert_markdown_for_platform(self, text: str) -> str:
+        """Convert markdown to platform-specific format. Override for platform escaping."""
+        return text
 
-        trimmed_output = tmux_output
-        while trimmed_output and len(display_output) > self.max_message_size:
-            overflow = len(display_output) - self.max_message_size
-            drop = max(overflow, 32)
-            trimmed_output = trimmed_output[drop:] if drop < len(trimmed_output) else ""
-            display_output = self.format_message(trimmed_output, status_line)
+    def _fit_output_to_limit(self, tmux_output: str) -> str:
+        """Build output message within platform limits. Override for platform-specific fitting."""
+        return self.format_output(tmux_output)
 
-        if len(display_output) > self.max_message_size:
-            display_output = truncate_markdown_v2(display_output, self.max_message_size, "\n\n…")
-        return display_output
+    @staticmethod
+    def _fits_budget(text: str, max_bytes: int) -> bool:
+        """Check if text fits within both char and byte budgets."""
+        return len(text.encode("utf-8")) <= max_bytes
 
     async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         self,
@@ -283,9 +312,6 @@ class UiAdapter(BaseAdapter):
                 session.session_id[:8],
             )
             return None
-
-        # Non-threaded paths should not keep stale threaded footer messages around.
-        await self._cleanup_threaded_footer_if_present(session)
 
         # Strip ANSI codes if configured
         if config.terminal.strip_ansi:
@@ -322,86 +348,31 @@ class UiAdapter(BaseAdapter):
                 status_color, started_time, last_active_time, size_str, is_truncated
             )
 
-        # Build session ID lines for footer
-        session_id_lines = self._build_session_id_lines(session)
-
-        # Format message (base + platform-specific formatting)
-        full_status = f"{session_id_lines}\n{status_line}" if session_id_lines else status_line
+        # Format output (tmux only; status line goes in footer)
         if render_markdown:
             if is_truncated:
                 prefix = f"[...truncated, showing last {self.max_message_size} chars...]"
                 max_body = max(self.max_message_size - len(prefix) - 2, 0)
                 tmux_output = output[-max_body:] if max_body else ""
-                body = f"{prefix}\n\n{tmux_output}" if tmux_output else prefix
+                display_output = f"{prefix}\n\n{tmux_output}" if tmux_output else prefix
             else:
-                body = tmux_output
+                display_output = tmux_output
 
-            if body:
-                display_output = f"{body}\n\n{full_status}"
-            else:
-                display_output = full_status
-
-            if self.ADAPTER_KEY == AdapterType.TELEGRAM.value:
-                display_output = telegramify_markdown(display_output)
+            display_output = self._convert_markdown_for_platform(display_output)
         else:
-            display_output = self._fit_standard_output_to_limit(tmux_output, full_status)
-
-        if len(display_output) > self.max_message_size and self.ADAPTER_KEY == AdapterType.TELEGRAM.value:
-            display_output = truncate_markdown_v2(display_output, self.max_message_size, "\n\n…")
+            display_output = self._fit_output_to_limit(tmux_output)
 
         # Platform-specific metadata (inline keyboards, etc.)
         metadata = self._build_output_metadata(session, is_truncated)
-        if render_markdown and not metadata.parse_mode:
-            metadata.parse_mode = "MarkdownV2" if self.ADAPTER_KEY == AdapterType.TELEGRAM.value else "Markdown"
 
-        # Try to edit existing message
-        display_digest = sha256(display_output.encode("utf-8")).hexdigest()
-        if session.last_output_digest == display_digest:
-            logger.trace(
-                "[UI_SEND_OUTPUT] Skipping update for session %s (content unchanged)",
-                session.session_id[:8],
-            )
-            return await self._get_output_message_id(session)
-
-        edit_result = await self._try_edit_output_message(session, display_output, metadata)
-        logger.debug(
-            "[UI_SEND_OUTPUT] Edit attempt for session %s: result=%s",
-            session.session_id[:8],
-            edit_result,
-        )
-        if edit_result:
-            # Edit succeeded, return existing message_id
-            message_id = await self._get_output_message_id(session)
-            await db.update_session(session.session_id, last_output_digest=display_digest)
-            logger.debug(
-                "[UI_SEND_OUTPUT] Edit succeeded, message_id=%s for session %s",
-                message_id,
-                session.session_id[:8],
-            )
-            return message_id
-
-        # Edit failed or no existing message - send new
-        logger.info(
-            "[UI_SEND_OUTPUT] Sending new message for session %s (edit_failed or no_existing_message)",
-            session.session_id[:8],
-        )
-        new_id = await self.send_message(session, display_output, metadata=metadata)
-        logger.info(
-            "[UI_SEND_OUTPUT] send_message returned %s for session %s",
-            new_id if new_id else "None (FAILED!)",
-            session.session_id[:8],
-        )
-        if new_id:
-            await self._store_output_message_id(session, new_id)
-            await db.update_session(session.session_id, last_output_digest=display_digest)
-        return new_id
+        return await self._deliver_output(session, display_output, metadata, status_line=status_line)
 
     async def send_threaded_output(
         self,
         session: "Session",
         text: str,
-        footer_text: str | None = None,
         multi_message: bool = False,
+        _continuation_state: MarkdownV2State = (False, False, False),
     ) -> Optional[str]:
         """Send or edit threaded output message with smart pagination.
 
@@ -429,14 +400,16 @@ class UiAdapter(BaseAdapter):
             # No new text, nothing to do
             return output_message_id
 
-        # 3. Add continuity markers (escaped for MarkdownV2 if Telegram)
-        is_telegram = self.ADAPTER_KEY == AdapterType.TELEGRAM.value
-        ellipsis = "\\.\\.\\." if is_telegram else "..."
-        display_text = active_text
+        # 3. Add continuity markers (escaped for MarkdownV2 when parse_mode requires it)
+        is_markup_v2 = self._build_metadata_for_thread().parse_mode == "MarkdownV2"
+        ellipsis = "\\.\\.\\." if is_markup_v2 else "..."
+        continuation_prefix = continuation_prefix_for_markdown_v2_state(_continuation_state) if is_markup_v2 else ""
+        body_text = f"{continuation_prefix}{active_text}"
+        display_text = body_text
         prefix = ""
         if char_offset > 0:
             prefix = f"{ellipsis} "
-            display_text = prefix + active_text
+            display_text = f"{prefix}{body_text}"
 
         # 4. Check for overflow
         # Reserve space for suffix " <ellipsis>" if needed
@@ -448,28 +421,55 @@ class UiAdapter(BaseAdapter):
             # Calculate how much actual text fits (subtracting prefix)
             suffix = f" {ellipsis}"
             available_for_content = limit - len(prefix) - len(suffix)
+            if available_for_content <= 0:
+                available_for_content = 1
 
-            # Find split point (smart truncate on space)
-            # Take a safe chunk
-            candidate = active_text[:available_for_content]
-            last_space = candidate.rfind(" ")
-
-            if last_space > (len(candidate) * 0.8):  # Only split on space if it's near the end
-                split_idx = last_space
+            if is_markup_v2:
+                # Threaded mode receives MarkdownV2 text from coordinator.
+                # Use the shared truncation helper to avoid slicing inside escapes/entities.
+                chunk, consumed_display = truncate_markdown_v2_with_consumed(
+                    body_text,
+                    max_chars=available_for_content,
+                    suffix="",
+                )
+                consumed_prefix = min(consumed_display, len(continuation_prefix))
+                split_idx = consumed_display - consumed_prefix
+                if split_idx <= 0 and active_text:
+                    # Ensure forward progress under pathological inputs.
+                    split_idx = min(len(active_text), available_for_content)
+                    chunk, _ = truncate_markdown_v2_with_consumed(
+                        f"{continuation_prefix}{active_text[:split_idx]}",
+                        max_chars=available_for_content,
+                        suffix="",
+                    )
+                consumed_source = active_text[:split_idx]
+                next_state = scan_markdown_v2_state(consumed_source, initial_state=_continuation_state)
             else:
-                split_idx = available_for_content  # Hard split if no good space
-
-            chunk = active_text[:split_idx]
+                # Find split point (smart truncate on space)
+                candidate = active_text[:available_for_content]
+                last_space = candidate.rfind(" ")
+                if last_space > (len(candidate) * 0.8):  # Only split on space if it's near the end
+                    split_idx = last_space
+                else:
+                    split_idx = available_for_content  # Hard split if no good space
+                chunk = active_text[:split_idx]
+                next_state = _continuation_state
             sealed_text = f"{prefix}{chunk}{suffix}"
 
             # Clean up footer before sealing so it doesn't sit between sealed and new message
-            await self._cleanup_threaded_footer_if_present(session)
+            await self._cleanup_footer_if_present(session)
 
             # Commit this chunk
+            seal_metadata = self._build_metadata_for_thread()
             if output_message_id:
-                await self._try_edit_output_message(session, sealed_text, self._build_metadata_for_thread())
+                await self._try_edit_output_message(session, sealed_text, seal_metadata)
             else:
-                await self._send_new_thread_message(session, sealed_text, footer_text, multi_message)
+                new_id = await self.send_message(
+                    session, sealed_text, metadata=seal_metadata, multi_message=multi_message
+                )
+                if new_id:
+                    await self._store_output_message_id(session, new_id)
+                    await self._send_footer(session)
 
             # Update state for next message
             new_offset = char_offset + split_idx
@@ -480,105 +480,65 @@ class UiAdapter(BaseAdapter):
             session.output_message_id = None  # Keep in-memory session consistent
 
             # Recursive call to handle the remainder
-            return await self.send_threaded_output(session, text, footer_text, multi_message)
+            return await self.send_threaded_output(
+                session,
+                text,
+                multi_message,
+                _continuation_state=next_state,
+            )
 
         # --- NORMAL CASE: FIT AND SEND ---
-
-        # Calculate digest to check for changes
-        display_digest = sha256(display_text.encode("utf-8")).hexdigest()
-
-        # Check for no-op edit (skip if content matches last successful output)
-        if output_message_id and session.last_output_digest == display_digest:
-            return output_message_id
-
-        # Build metadata (no truncation flag needed for threaded)
         metadata = self._build_metadata_for_thread()
-
-        # Try to edit
-        if await self._try_edit_output_message(session, display_text, metadata):
-            await db.update_session(session.session_id, last_output_digest=display_digest)
-            # Footer NOT updated on edit - it stays static at bottom
-            return await self._get_output_message_id(session)
-
-        # Edit failed or no ID -> Send new
-        new_id = await self._send_new_thread_message(session, display_text, footer_text, multi_message)
-        if new_id:
-            await db.update_session(session.session_id, last_output_digest=display_digest)
-        return new_id
+        return await self._deliver_output(session, display_text, metadata, multi_message=multi_message)
 
     def _build_metadata_for_thread(self) -> MessageMetadata:
-        """Helper to build metadata for threaded content messages (no download button)."""
-        metadata = MessageMetadata()
-        if self.ADAPTER_KEY == AdapterType.TELEGRAM.value:
-            metadata.parse_mode = "MarkdownV2"
-        return metadata
+        """Build metadata for threaded content messages. Override for platform-specific parse mode."""
+        return MessageMetadata()
 
-    async def _send_new_thread_message(
-        self, session: "Session", text: str, footer_text: str | None, multi_message: bool
-    ) -> Optional[str]:
-        """Helper to send new message and update session state."""
-        # 1. Clean up old footer (atomic group management)
-        await self._cleanup_threaded_footer_if_present(session)
+    async def _send_footer(self, session: "Session", status_line: str = "") -> Optional[str]:
+        """Send or edit footer message below output."""
+        footer_text = self._build_footer_text(session, status_line=status_line)
+        metadata = self._build_footer_metadata(session)
 
-        # 2. Send new output message
-        metadata = self._build_metadata_for_thread()
-        new_id = await self.send_message(
-            session,
-            text,
-            metadata=metadata,
-            multi_message=multi_message,
+        existing_id = await self._get_footer_message_id(session)
+        logger.trace(
+            "[FOOTER] session=%s existing_id=%s footer_len=%d",
+            session.session_id[:8],
+            existing_id,
+            len(footer_text),
         )
+        if existing_id:
+            success = await self.edit_message(session, existing_id, footer_text, metadata=metadata)
+            if success:
+                return existing_id
+            # Edit failed (stale message) — clear and fall through to send new
+            logger.debug("[FOOTER] Edit failed for session=%s, creating new", session.session_id[:8])
+            await self._clear_footer_message_id(session)
 
+        new_id = await self.send_message(session, footer_text, metadata=metadata)
+        logger.debug("[FOOTER] send_message returned %s for session=%s", new_id, session.session_id[:8])
         if new_id:
-            await self._store_output_message_id(session, new_id)
-
-            # 3. Send new footer (only on new message creation)
-            if footer_text:
-                await self.send_threaded_footer(session, footer_text)
-
+            await self._store_footer_message_id(session, new_id)
         return new_id
 
-    async def send_threaded_footer(self, session: "Session", text: str) -> Optional[str]:
-        """Send threaded-output footer message, replacing any previous footer."""
-        # Always clean up old footer before sending new one to prevent accumulation
-        await self._cleanup_threaded_footer_if_present(session)
-        metadata = self._build_output_metadata(session, _is_truncated=False)
-        metadata.parse_mode = None
-        new_id = await self.send_message(session, text, metadata=metadata)
-        if new_id:
-            await self._store_threaded_footer_message_id(session, new_id)
-        return new_id
-
-    def build_threaded_footer_text(self, session: "Session") -> str:
-        """Build footer text for threaded output mode."""
+    def _build_footer_text(self, session: "Session", status_line: str = "") -> str:
+        """Build footer text with status line and session IDs."""
+        parts: list[str] = []
+        if status_line:
+            parts.append(status_line)
         session_lines = self._build_session_id_lines(session)
-        return session_lines or "📋 session metadata unavailable"
+        if session_lines:
+            parts.append(session_lines)
+        return "\n".join(parts) if parts else "📋 session metadata unavailable"
 
-    def format_message(self, tmux_output: str, status_line: str) -> str:
-        """Format message with tmux output and status line.
+    def format_output(self, tmux_output: str) -> str:
+        """Format tmux output for the output message (no status line — that goes in the footer).
 
-        Base implementation wraps output in code block and adds status line.
-        Override in subclasses to apply additional formatting like shortening lines.
-
-        Args:
-            tmux_output: Tmux output text
-            status_line: Status line text
-
-        Returns:
-            Formatted message text
+        Override in subclasses for platform-specific escaping.
         """
-        from teleclaude.utils.markdown import escape_markdown_v2
-
-        message_parts = []
         if tmux_output:
-            # Escape internal ``` markers to prevent nested code blocks breaking markdown
-            # Use zero-width space (\u200b) to break the sequence
-            sanitized = tmux_output.replace("```", "`\u200b``")
-            message_parts.append(f"```\n{sanitized}\n```")
-        # Escape status_line for MarkdownV2 (contains special chars like -, :, etc.)
-        escaped_status = escape_markdown_v2(status_line)
-        message_parts.append(escaped_status)
-        return "\n".join(message_parts)
+            return f"```\n{tmux_output}\n```"
+        return ""
 
     def _build_output_metadata(self, _session: "Session", _is_truncated: bool) -> MessageMetadata:
         """Build platform-specific metadata for output messages.
@@ -593,6 +553,13 @@ class UiAdapter(BaseAdapter):
             Platform-specific MessageMetadata
         """
         return MessageMetadata()  # Default: no extra metadata
+
+    def _build_footer_metadata(self, _session: "Session") -> MessageMetadata:
+        """Build platform-specific metadata for footer messages.
+
+        Override in subclasses to add download buttons, etc.
+        """
+        return MessageMetadata()
 
     def _build_session_id_lines(self, session: "Session") -> str:
         """Build session ID lines for status footer.
@@ -793,19 +760,28 @@ class UiAdapter(BaseAdapter):
             await self.client.update_channel_title(session, display_title)
             logger.info("Synced display title to UiAdapters for session %s: %s", session_id[:8], display_title)
 
-        # Handle feedback output updates (check both raw and summary fields)
+        # Handle feedback output updates (check both raw and summary fields).
+        # Only dispatch feedback to the adapter whose key matches last_input_origin.
+        # This prevents Telegram from receiving feedback when the user is interacting
+        # via TUI/CLI/API/MCP — each adapter instance only sends feedback for sessions
+        # that originated from IT.
         feedback_updated = (
             SessionField.LAST_FEEDBACK_RECEIVED.value in updated_fields or "last_feedback_summary" in updated_fields
         )
-        if feedback_updated and session.lifecycle_status != "headless":
+        if (
+            feedback_updated
+            and session.lifecycle_status != "headless"
+            and session.last_input_origin == self.ADAPTER_KEY
+        ):
             # Use helper to get appropriate feedback based on config
             feedback = get_last_feedback(session) or ""
             if feedback:
                 logger.debug(
-                    "Feedback emit: session=%s len=%d updated_fields=%s",
+                    "Feedback emit: session=%s origin=%s adapter=%s len=%d",
                     session_id[:8],
+                    session.last_input_origin,
+                    self.ADAPTER_KEY,
                     len(feedback),
-                    list(updated_fields.keys()),
                 )
                 await self.client.send_message(
                     session,

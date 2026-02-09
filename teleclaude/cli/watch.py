@@ -28,6 +28,10 @@ logger: InstruktAILogger = get_logger(__name__)
 class SmartWatcher(FileSystemEventHandler):
     """Watch for file changes, respecting .gitignore."""
 
+    _SYNC_EVENT_TYPES = {"created", "modified", "moved", "deleted"}
+    _SYNC_TOP_LEVELS = {"docs", "agents", ".agents"}
+    _SYNC_FILENAMES = {"AGENTS.master.md", "AGENTS.global.md"}
+
     def __init__(self, project_root: Path, debounce_seconds: float = 2.0):
         self.project_root = project_root.resolve()
         self.debounce_seconds = debounce_seconds
@@ -69,12 +73,23 @@ class SmartWatcher(FileSystemEventHandler):
     def on_any_event(self, event: FileSystemEvent) -> None:
         if event.is_directory:
             return
+        if event.event_type not in self._SYNC_EVENT_TYPES:
+            return
 
         # Determine relative path
+        path_str = event.src_path
+        if event.event_type == "moved":
+            moved_dest = getattr(event, "dest_path", None)
+            if isinstance(moved_dest, str) and moved_dest:
+                path_str = moved_dest
         try:
-            rel_path = Path(event.src_path).resolve().relative_to(self.project_root)
+            rel_path = Path(path_str).resolve().relative_to(self.project_root)
         except ValueError:
             return  # Path not in project root
+
+        if not self._is_sync_relevant(rel_path):
+            logger.trace(f"Ignoring non-sync path change: {rel_path}")
+            return
 
         # Check against .gitignore and custom ignores
         if self.spec and self.spec.match_file(str(rel_path)):
@@ -83,6 +98,22 @@ class SmartWatcher(FileSystemEventHandler):
 
         logger.info(f"Change detected: {rel_path}")
         self._trigger_sync()
+
+    @classmethod
+    def _is_sync_relevant(cls, rel_path: Path) -> bool:
+        """Return True when a file change should trigger artifact sync."""
+        name = rel_path.name
+        if name.endswith("~") or name.endswith(".swp") or ".tmp." in name:
+            return False
+
+        if name in cls._SYNC_FILENAMES:
+            return True
+
+        parts = rel_path.parts
+        if not parts:
+            return False
+
+        return parts[0] in cls._SYNC_TOP_LEVELS
 
     def _trigger_sync(self) -> None:
         now = time.time()

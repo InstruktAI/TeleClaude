@@ -320,6 +320,30 @@ class TestUpdateSession:
         assert updated.adapter_metadata.telegram is not None
         assert updated.adapter_metadata.telegram.topic_id == 456
 
+    @pytest.mark.asyncio
+    async def test_digest_only_update_does_not_emit_session_updated(self, test_db):
+        """Digest-only updates should not fan out SESSION_UPDATED events."""
+        session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
+
+        with patch("teleclaude.core.db.event_bus.emit") as mock_emit:
+            await test_db.update_session(session.session_id, last_output_digest="digest-1")
+
+        mock_emit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_digest_update_with_reason_still_emits_session_updated(self, test_db):
+        """Reason-driven updates must still emit for highlight logic."""
+        session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
+
+        with patch("teleclaude.core.db.event_bus.emit") as mock_emit:
+            await test_db.update_session(
+                session.session_id,
+                reason="agent_output",
+                last_output_digest="digest-1",
+            )
+
+        mock_emit.assert_called_once()
+
 
 class TestUpdateLastActivity:
     """Tests for update_last_activity method."""

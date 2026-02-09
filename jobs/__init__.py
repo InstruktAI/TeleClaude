@@ -1,5 +1,9 @@
-"""TeleClaude jobs - scheduled task definitions."""
+"""TeleClaude jobs — scheduled task definitions.
 
-from jobs.base import Job, Schedule
+Job modules define what work to do. Scheduling is configured in teleclaude.yml,
+not in the job code. See docs/project/design/architecture/jobs-runner.md.
+"""
 
-__all__ = ["Job", "Schedule"]
+from jobs.base import Job
+
+__all__ = ["Job"]

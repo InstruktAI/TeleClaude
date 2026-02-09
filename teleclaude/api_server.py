@@ -97,6 +97,10 @@ class APIServer:
         self.task_registry = task_registry
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._setup_routes()
+
+        from teleclaude.memory.api_routes import router as memory_router
+
+        self.app.include_router(memory_router)
         self.socket_path = socket_path or API_SOCKET_PATH
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None

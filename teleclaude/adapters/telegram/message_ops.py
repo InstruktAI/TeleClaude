@@ -21,7 +21,7 @@ from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
 
 from teleclaude.core.models import MessageMetadata
 from teleclaude.utils import command_retry
-from teleclaude.utils.markdown import _required_markdown_closers, truncate_markdown_v2
+from teleclaude.utils.markdown import _required_markdown_closers, truncate_markdown_v2_by_bytes
 
 if TYPE_CHECKING:
     from telegram.ext import ExtBot
@@ -83,18 +83,29 @@ class MessageOperationsMixin:
     # =========================================================================
 
     def _truncate_for_platform(self, text: str, parse_mode: Optional[str], max_chars: int) -> str:
-        """Truncate text to Telegram limits while preserving MarkdownV2 validity."""
+        """Last-mile safety net: enforce Telegram API byte/char limit.
+
+        Upstream code (ui_adapter) fits content within a char budget.
+        This method catches overflow from MarkdownV2 escaping or
+        multi-byte Unicode that inflates byte count beyond the API limit.
+        """
+        if parse_mode == "MarkdownV2":
+            from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
+
+            byte_size = len(text.encode("utf-8"))
+            if byte_size <= TELEGRAM_MAX_MESSAGE_BYTES:
+                return text
+            logger.warning(
+                "Platform truncation fired: %d bytes > %d limit (chars=%d)",
+                byte_size,
+                TELEGRAM_MAX_MESSAGE_BYTES,
+                len(text),
+            )
+            return truncate_markdown_v2_by_bytes(text, max_bytes=TELEGRAM_MAX_MESSAGE_BYTES, suffix="")
+
         if len(text) <= max_chars:
             return text
-
-        if parse_mode == "MarkdownV2":
-            # Keep the leading portion and balance markdown entities.
-            return truncate_markdown_v2(text, max_chars=max_chars, suffix="\n\n…")
-
-        suffix = "\n[...truncated...]"
-        if len(suffix) >= max_chars:
-            return suffix[:max_chars]
-        return f"{text[: max_chars - len(suffix)]}{suffix}"
+        return text[:max_chars]
 
     async def send_message(
         self,

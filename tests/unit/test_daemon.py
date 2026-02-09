@@ -171,15 +171,13 @@ async def test_enrich_with_summary_dedupes_transcript() -> None:
         patch("teleclaude.core.agent_coordinator.extract_last_agent_message", return_value="raw output"),
         patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_sum,
     ):
-        mock_sum.return_value = ("Title 1", "Summary 1")
-        raw, summary = await coordinator._extract_and_summarize("sess-123", payload)
+        raw = await coordinator._extract_agent_output("sess-123", payload)
 
     assert raw == "raw output"
-    assert summary == "Summary 1"
 
 
 @pytest.mark.asyncio
-async def test_enrich_with_summary_dedupes_native_session() -> None:
+async def test_extract_agent_output_falls_back_to_native_session() -> None:
     """AgentCoordinator should fall back to session transcript when payload omits it."""
     coordinator = AgentCoordinator(
         client=MagicMock(),
@@ -195,13 +193,10 @@ async def test_enrich_with_summary_dedupes_native_session() -> None:
     with (
         patch("teleclaude.core.agent_coordinator.db.get_session", new=AsyncMock(return_value=session)),
         patch("teleclaude.core.agent_coordinator.extract_last_agent_message", return_value="raw output"),
-        patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_sum,
     ):
-        mock_sum.return_value = ("Title 2", "Summary 2")
-        raw, summary = await coordinator._extract_and_summarize("sess-123", payload)
+        raw = await coordinator._extract_agent_output("sess-123", payload)
 
     assert raw == "raw output"
-    assert summary == "Summary 2"
 
 
 @pytest.mark.asyncio
@@ -632,11 +627,9 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
         patch("teleclaude.core.agent_coordinator.extract_last_agent_message", return_value="raw output"),
         patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_summarize,
     ):
-        mock_summarize.return_value = ("title", "summary")
-        raw, summary = await coordinator._extract_and_summarize("tele-123", payload)
+        raw = await coordinator._extract_agent_output("tele-123", payload)
 
     assert raw == "raw output"
-    assert summary == "summary"
 
 
 @pytest.mark.asyncio
@@ -710,12 +703,9 @@ async def test_process_agent_stop_sets_active_agent_from_payload(tmp_path):
         ) as mock_extract,
         patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_summarize,
     ):
-        mock_summarize.return_value = ("title", "summary")
-
-        raw, summary = await coordinator._extract_and_summarize("tele-123", payload)
+        raw = await coordinator._extract_agent_output("tele-123", payload)
 
     assert raw == "raw output"
-    assert summary == "summary"
     assert mock_extract.call_args.args[1] == AgentName.CLAUDE
 
 
@@ -739,10 +729,9 @@ async def test_process_agent_stop_skips_without_agent_metadata():
     session_missing_agent.native_log_file = "/tmp/native.json"
 
     with patch("teleclaude.core.agent_coordinator.db.get_session", new=AsyncMock(return_value=session_missing_agent)):
-        raw, summary = await coordinator._extract_and_summarize("tele-123", payload)
+        raw = await coordinator._extract_agent_output("tele-123", payload)
 
     assert raw is None
-    assert summary is None
 
 
 @pytest.mark.asyncio

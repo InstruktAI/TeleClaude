@@ -21,13 +21,12 @@ type: 'design'
 stateDiagram-v2
     [*] --> Starting
     Starting --> WarmingCache: Config loaded
-    WarmingCache --> StartingAdapters: Cache ready
-    StartingAdapters --> Ready: All adapters online
-    StartingAdapters --> DegradedMode: Some adapters failed
-    Ready --> Running: Begin operations
-    DegradedMode --> Running: Continue with available adapters
+    WarmingCache --> StartingInterfaces: Cache ready
+    StartingInterfaces --> Running: Interfaces online
+    StartingInterfaces --> StartupFailed: Required interface failed
     Running --> Stopping: SIGTERM received
     Stopping --> Stopped: Cleanup complete
+    StartupFailed --> [*]
     Stopped --> [*]
 ```
 
@@ -49,15 +48,14 @@ stateDiagram-v2
 - Command execution via CommandService
 - Tmux session orchestration
 - Cache population and updates
-- Background task execution (hook processing, polling, digest updates)
+- Background task execution (hook processing, poller-watch, monitoring, WAL maintenance)
 - Graceful shutdown signals to all subsystems
 
 ## Invariants
 
 - **Single Instance**: Only one daemon process runs per repository root (enforced by SQLite exclusive lock).
-- **Adapter Independence**: Adapter failures are isolated; one adapter crash doesn't terminate daemon.
 - **Cache Before Adapters**: Cache must be fully warmed before adapters start serving requests.
-- **Graceful Degradation**: Daemon runs even if non-critical adapters fail (e.g., Telegram offline, Redis unavailable).
+- **Fail-Fast Startup**: Required interface startup failures abort daemon startup instead of degrading silently.
 - **Outbox Recovery**: On restart, daemon processes undelivered hooks and pending commands from outbox tables.
 - **Clean Shutdown**: SIGTERM triggers graceful adapter shutdown, command completion, and resource cleanup.
 
@@ -85,8 +83,8 @@ sequenceDiagram
     Adapters->>Daemon: Register via AdapterClient
     Daemon->>Workers: Start background tasks
     Workers->>Workers: Hook outbox processing
-    Workers->>Workers: Output polling
-    Workers->>Workers: Redis heartbeat (if enabled)
+    Workers->>Workers: MCP socket watch + poller watch
+    Workers->>Workers: Resource monitor + WAL checkpoint
     Daemon->>SystemD: Ready signal
 ```
 
@@ -113,14 +111,15 @@ sequenceDiagram
 
 ### 3. Background Workers
 
-| Worker             | Interval | Purpose                             |
-| ------------------ | -------- | ----------------------------------- |
-| Hook Outbox        | 1s       | Process agent lifecycle hooks       |
-| Output Poller      | 200ms    | Stream tmux output to adapters      |
-| Redis Heartbeat    | 30s      | Publish computer status and digests |
-| Digest Checker     | 60s      | Check remote project/todo changes   |
-| Session Cleanup    | On start | Detect and recover orphaned tmux    |
-| MCP Socket Watcher | 5s       | Monitor MCP server health           |
+| Worker             | Interval (default) | Purpose                                             |
+| ------------------ | ------------------ | --------------------------------------------------- |
+| Hook Outbox        | 1s                 | Process agent lifecycle hooks                       |
+| MCP Socket Watcher | 2s                 | Monitor MCP socket health and trigger restart       |
+| Poller Watch       | 5s                 | Keep per-session output pollers aligned with tmux   |
+| Resource Monitor   | 60s                | Emit runtime resource snapshots                     |
+| WAL Checkpoint     | 300s               | Prevent unbounded SQLite WAL growth                 |
+| Launchd Watch      | 300s (optional)    | Log launchd state transitions on macOS              |
+| Session Cleanup    | 1h                 | Periodic stale-session cleanup via maintenance loop |
 
 ### 4. MCP Server Auto-Restart
 
@@ -130,7 +129,7 @@ sequenceDiagram
     participant MCPServer
     participant Watcher
 
-    loop Every 5s
+    loop Every 2s
         Watcher->>MCPServer: Check socket health
         alt Socket dead
             Watcher->>MCPServer: Restart server
@@ -166,7 +165,7 @@ sequenceDiagram
 - **Config Parse Error**: Daemon exits immediately with error. Systemd restarts with exponential backoff.
 - **SQLite Lock Failure**: Another daemon instance is running. Refuses to start. Indicates configuration or deployment issue.
 - **Migration Failure**: Database schema incompatible. Manual intervention required. No automatic rollback.
-- **Critical Adapter Failure (API/MCP)**: Daemon continues without that interface. Clients see connection refused.
+- **Interface Startup Failure (API/MCP/Adapter)**: Daemon fails startup (fail-fast) rather than running in partial mode.
 - **Redis Unavailable**: Multi-computer features disabled. Local operations continue. Redis transport retries via a single reconnect loop; tasks wait on readiness.
 - **Cache Warmup Timeout**: Daemon fails to start. Indicates database corruption or resource exhaustion.
 - **Unclean Shutdown (SIGKILL)**: Hooks and commands may be partially processed. Next startup recovers from outbox.

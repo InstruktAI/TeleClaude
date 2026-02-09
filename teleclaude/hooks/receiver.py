@@ -9,7 +9,6 @@ import argparse
 import json
 import os
 import sys
-import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,17 +45,31 @@ _HANDLED_EVENTS: frozenset[AgentHookEventType] = frozenset(
     }
 )
 
-MEM_BASE_URL = os.getenv("MEM_BASE_URL", "http://127.0.0.1:37777")
+
+def _create_sync_engine() -> object:
+    """Create a sync SQLAlchemy engine with SQLite PRAGMAs set at connect time."""
+    from sqlalchemy import create_engine
+    from sqlalchemy import event as sa_event
+
+    engine = create_engine(f"sqlite:///{config.database.path}")
+
+    @sa_event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode = WAL")
+        cursor.execute("PRAGMA busy_timeout = 5000")
+        cursor.close()
+
+    return engine
 
 
-def _fetch_context_inject(project_name: str) -> str:
-    """Fetch pre-formatted memory context from claude-mem inject endpoint."""
-    url = f"{MEM_BASE_URL}/api/context/inject?projects={urllib.request.quote(project_name)}"
+def _get_memory_context(project_name: str) -> str:
+    """Fetch pre-formatted memory context from local database."""
     try:
-        with urllib.request.urlopen(url, timeout=2) as response:
-            if response.status != 200:
-                return ""
-            return response.read().decode().strip()
+        from teleclaude.memory.context import generate_context_sync
+
+        db_path = str(config.database.path)
+        return generate_context_sync(project_name, db_path)
     except Exception:
         return ""
 
@@ -90,7 +103,7 @@ def _print_memory_injection(cwd: str | None, agent: str) -> None:
     if not project_name:
         return
 
-    context = _fetch_context_inject(project_name)
+    context = _get_memory_context(project_name)
     if not context:
         return
 
@@ -154,16 +167,11 @@ def _enqueue_hook_event(
     data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON.
 ) -> None:
     """Persist hook event to local outbox for durable delivery."""
-    db_path = config.database.path
     now = datetime.now(timezone.utc).isoformat()
     payload_json = json.dumps(data)
-    from sqlalchemy import create_engine, text  # noqa: raw-sql - Sync hook context
     from sqlmodel import Session as SqlSession
 
-    engine = create_engine(f"sqlite:///{db_path}")
-    with SqlSession(engine) as session:
-        session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
-        session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
+    with SqlSession(_create_sync_engine()) as session:
         row = db_models.HookOutbox(
             session_id=session_id,
             event_type=event_type,
@@ -185,28 +193,17 @@ def _update_session_native_fields(
     """Update native session fields directly on the session row."""
     if not native_log_file and not native_session_id:
         return
-    db_path = config.database.path
-    from sqlalchemy import create_engine, text  # noqa: raw-sql - Sync hook context
     from sqlmodel import Session as SqlSession
 
-    engine = create_engine(f"sqlite:///{db_path}")
-    update_parts: list[str] = []
-    params: dict[str, str] = {"session_id": session_id}
-    if native_log_file:
-        update_parts.append("native_log_file = :native_log_file")
-        params["native_log_file"] = native_log_file
-    if native_session_id:
-        update_parts.append("native_session_id = :native_session_id")
-        params["native_session_id"] = native_session_id
-    if not update_parts:
-        return
-
-    sql = f"UPDATE sessions SET {', '.join(update_parts)} WHERE session_id = :session_id"  # noqa: raw-sql
-    statement = text(sql).bindparams(**params)  # noqa: raw-sql
-    with SqlSession(engine) as session:
-        session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
-        session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
-        session.exec(statement)  # noqa: raw-sql
+    with SqlSession(_create_sync_engine()) as session:
+        row = session.get(db_models.Session, session_id)
+        if not row:
+            return
+        if native_log_file:
+            row.native_log_file = native_log_file
+        if native_session_id:
+            row.native_session_id = native_session_id
+        session.add(row)
         session.commit()
 
 
@@ -226,6 +223,14 @@ def _extract_native_identity(agent: str, data: dict[str, object]) -> tuple[str |
     raw_log = data.get("transcript_path")
     if isinstance(raw_log, str):
         native_log_file = raw_log
+
+    # Codex payloads lack transcript_path; discover from filesystem.
+    if not native_log_file and agent == AgentName.CODEX.value and native_session_id:
+        from teleclaude.hooks.adapters.codex import _discover_transcript_path
+
+        discovered = _discover_transcript_path(native_session_id)
+        if discovered:
+            native_log_file = discovered
 
     return native_session_id, native_log_file
 
@@ -328,18 +333,11 @@ def _resolve_or_refresh_session_id(
     if not candidate_session_id or not raw_native_session_id:
         return candidate_session_id
 
-    db_path = config.database.path
-    from sqlalchemy import create_engine, text  # noqa: raw-sql - Sync hook context
     from sqlmodel import Session as SqlSession
 
     try:
-        engine = create_engine(f"sqlite:///{db_path}")
-        with SqlSession(engine) as session:
-            row = session.exec(
-                text(  # noqa: raw-sql
-                    "SELECT native_session_id, lifecycle_status, closed_at FROM sessions WHERE session_id = :session_id"
-                ).bindparams(session_id=candidate_session_id)
-            ).first()
+        with SqlSession(_create_sync_engine()) as session:
+            row = session.get(db_models.Session, candidate_session_id)
     except Exception as exc:  # noqa: BLE001 - fail-open to preserve hook delivery on partial DB fixtures
         logger.debug(
             "Session refresh lookup skipped (db unavailable)",
@@ -351,26 +349,14 @@ def _resolve_or_refresh_session_id(
     if not row:
         return candidate_session_id
 
-    native_session_id = None
-    lifecycle_status = None
-    closed_at = None
-    if hasattr(row, "_mapping"):
-        mapping = row._mapping  # type: ignore[attr-defined]
-        native_session_id = mapping.get("native_session_id")
-        lifecycle_status = mapping.get("lifecycle_status")
-        closed_at = mapping.get("closed_at")
-    elif isinstance(row, tuple):
-        native_session_id = row[0] if len(row) > 0 else None
-        lifecycle_status = row[1] if len(row) > 1 else None
-        closed_at = row[2] if len(row) > 2 else None
-    if closed_at:
+    if row.closed_at:
         new_session_id = str(uuid.uuid4())
         _persist_session_map(agent, raw_native_session_id, new_session_id)
         return new_session_id
-    if lifecycle_status != "headless":
+    if row.lifecycle_status != "headless":
         return candidate_session_id
 
-    if native_session_id and native_session_id != raw_native_session_id:
+    if row.native_session_id and row.native_session_id != raw_native_session_id:
         new_session_id = str(uuid.uuid4())
         _persist_session_map(agent, raw_native_session_id, new_session_id)
         return new_session_id
@@ -382,26 +368,20 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
     """Look up the latest non-closed session for a native session id."""
     if not native_session_id:
         return None
-    db_path = config.database.path
-    from sqlalchemy import create_engine, text  # noqa: raw-sql - Sync hook context
-    from sqlmodel import Session as SqlSession
+    from sqlmodel import Session as SqlSession, select
 
-    engine = create_engine(f"sqlite:///{db_path}")
-    with SqlSession(engine) as session:
-        row = session.exec(
-            text(  # noqa: raw-sql
-                "SELECT session_id FROM sessions "
-                "WHERE native_session_id = :native_session_id AND closed_at IS NULL "
-                "ORDER BY created_at DESC LIMIT 1"
-            ).bindparams(native_session_id=native_session_id)
-        ).first()
+    with SqlSession(_create_sync_engine()) as session:
+        statement = (
+            select(db_models.Session)
+            .where(db_models.Session.native_session_id == native_session_id)
+            .where(db_models.Session.closed_at.is_(None))  # type: ignore[union-attr]
+            .order_by(db_models.Session.created_at.desc())  # type: ignore[union-attr]
+            .limit(1)
+        )
+        row = session.exec(statement).first()
     if not row:
         return None
-    if hasattr(row, "_mapping"):
-        return row._mapping.get("session_id")  # type: ignore[attr-defined]
-    if isinstance(row, tuple):
-        return row[0] if len(row) > 0 else None
-    return None
+    return row.session_id
 
 
 def _persist_session_map(agent: str, native_session_id: str | None, session_id: str) -> None:

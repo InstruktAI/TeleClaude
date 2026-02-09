@@ -1,133 +1,209 @@
 ---
-description: 'Comprehensive operations runbook for TeleClaude troubleshooting and observability.'
+description: 'Operational runbooks for diagnosing and recovering TeleClaude incidents.'
 id: 'project/procedure/troubleshooting'
 scope: 'project'
 type: 'procedure'
 ---
 
-# Ops Troubleshooting — Procedure
+# Troubleshooting Runbooks — Procedure
 
-## Goal
+## Purpose
 
-Diagnose and recover TeleClaude when the stack is unstable.
+Give operators short, direct playbooks for common incidents.
 
-## Preconditions
+Use this when something is broken now and you need a safe recovery path.
 
-TeleClaude runs as a daemon managed by launchd, with multiple sockets (API, MCP), watchers, and optional Redis transport. Instability typically manifests as API timeouts, connection refused errors, or MCP unresponsiveness. Diagnosis requires correlating three log sources in order: SIGTERM watcher, API socket watcher, and daemon log.
+## Allowed control commands
 
-Key artifacts:
+Use only:
 
-| Artifact           | Purpose                   | Path                                                           |
-| ------------------ | ------------------------- | -------------------------------------------------------------- |
-| Daemon log         | Main operational log      | `/var/log/instrukt-ai/teleclaude/teleclaude.log`               |
-| API unlink watcher | Socket bind/unlink events | `/var/log/instrukt-ai/teleclaude/monitoring/api-unlink.log`    |
-| SIGTERM watcher    | launchctl snapshots       | `/var/log/instrukt-ai/teleclaude/monitoring/sigterm-watch.log` |
-| API socket         | Local API availability    | `/tmp/teleclaude-api.sock`                                     |
-| MCP socket         | MCP availability          | `/tmp/teleclaude.sock`                                         |
-| Daemon PID         | Stale PID detection       | `teleclaude.pid`                                               |
+- `make status`
+- `make restart`
+- `instrukt-ai-logs teleclaude --since <window> [--grep <text>]`
 
-Launchd services:
+If restart is not enough, use:
 
-- System daemon (socket watcher): `/Library/LaunchDaemons/ai.instrukt.teleclaude.socketwatch.plist`
-- User agent (API watcher): `~/Library/LaunchAgents/ai.instrukt.teleclaude.api-watch.plist`
-- Daemon service: configured via `templates/ai.instrukt.teleclaude.daemon.plist`
+- `make stop`
+- `make start`
 
-## Steps
+## Universal first-response sequence
 
-**Failure signatures**
+1. `make status`
+2. `instrukt-ai-logs teleclaude --since 2m`
+3. Identify symptom in runbooks below.
+4. Follow that runbook exactly.
+5. Verify recovery with `make status` and fresh logs.
 
-**API timeouts in TUI:**
+## Runbook: MCP tools time out or fail
 
-- Symptom: `Failed to refresh data: API request timed out`
-- Likely causes: API socket unavailable or rebind in progress, daemon restart, event loop stall.
+### Symptom
 
-**API connection refused:**
+- MCP tool calls hang, time out, or return backend unavailable errors.
 
-- Symptom: `ConnectError: [Errno 61] Connection refused`
-- Likely causes: `/tmp/teleclaude-api.sock` missing, daemon not running.
+### Likely causes
 
-**Redis errors:**
+- MCP socket unhealthy or restarting repeatedly.
+- Wrapper reconnecting but backend not stabilizing.
 
-- Symptom: `Too many connections`, `Connection closed by server`, SSL close-notify errors.
-- Likely causes: Redis connection pool exhaustion, upstream throttling.
+### Fast checks
 
-**MCP timeouts:**
+1. `make status`
+2. `instrukt-ai-logs teleclaude --since 2m --grep "mcp|socket|restart|health"`
 
-- Symptom: MCP calls time out, `mcp-wrapper` connection refused.
-- Likely causes: `/tmp/teleclaude.sock` missing, daemon restart or MCP server failure.
+### Recover
 
-**Noise to ignore (not incidents):**
+1. `make restart`
+2. Wait for readiness.
+3. Re-check MCP logs for repeated restart loops.
 
-- Telegram edit retries due to rate limits (429 / RetryAfter).
-- ElevenLabs `401 quota_exceeded`.
+### Verify
 
-**Diagnostics flow**
+- MCP calls complete normally.
+- No repeating MCP health-check failures in last 2 minutes.
 
-1. **API timeout observed** — check `/tmp/teleclaude-api.sock`, check `api-unlink.log` for recent UNLINK/BIND, check `sigterm-watch.log` for daemon exits, check `teleclaude.log` for API server start/metrics.
+## Runbook: Session output is frozen/stale
 
-2. **Redis transport errors** — scan `teleclaude.log` for `redis_transport` errors, check for bursts of `Too many connections`, confirm whether errors align with daemon restarts.
+### Symptom
 
-3. **MCP socket issues** — check `/tmp/teleclaude.sock`, scan `teleclaude.log` for MCP socket health probes.
+- Session is running but output in UI stops updating.
 
-**Correlation routine**
+### Likely causes
 
-When incidents occur, correlate these three sources in order:
+- Poller watch loop failed.
+- Poller not aligned with tmux session state.
 
-1. SIGTERM watcher (`/var/log/instrukt-ai/teleclaude/monitoring/sigterm-watch.log`)
-2. API socket watcher (`/var/log/instrukt-ai/teleclaude/monitoring/api-unlink.log`)
-3. Daemon log (`/var/log/instrukt-ai/teleclaude/teleclaude.log`)
+### Fast checks
 
-The root cause usually shows up as a daemon exit + socket unlink/bind + client timeout in a short time window.
+1. `make status`
+2. `instrukt-ai-logs teleclaude --since 2m --grep "poller|output|tmux|watch"`
 
-**Recovery**
+### Recover
 
-Controlled restart:
+1. `make restart`
+2. Re-open affected session and confirm output starts moving.
 
-```bash
-make restart
-make status
-```
+### Verify
 
-Re-bootstrap watcher services:
+- New output events appear.
+- No poller watch errors in recent logs.
 
-```bash
-sudo launchctl bootout system/ai.instrukt.teleclaude.socketwatch 2>/dev/null || true
-sudo launchctl bootstrap system /Library/LaunchDaemons/ai.instrukt.teleclaude.socketwatch.plist
+## Runbook: Agent finished but no notification/summary
 
-launchctl bootout gui/$(id -u)/ai.instrukt.teleclaude.api-watch 2>/dev/null || true
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.instrukt.teleclaude.api-watch.plist
-```
+### Symptom
 
-Stale PID recovery (if `make status` says NOT running but a daemon-already-running error appears):
+- Agent turn ends, but no stop notification, summary, or downstream update appears.
 
-```bash
-rm -f teleclaude.pid
-```
+### Likely causes
 
-**Health checks**
+- Hook outbox backlog.
+- Hook event processing failures.
 
-Confirm watchers are running:
+### Fast checks
 
-```bash
-ps -axww -o pid,ppid,command | rg "teleclaude-unlink-watch"
-ps -axww -o pid,ppid,command | rg "teleclaude-sigterm-watch"
-```
+1. `make status`
+2. `instrukt-ai-logs teleclaude --since 2m --grep "hook|outbox|agent_stop|dispatch|retry"`
 
-Confirm watcher output is updating:
+### Recover
 
-```bash
-tail -n 50 /var/log/instrukt-ai/teleclaude/monitoring/api-unlink.log
-tail -n 50 /var/log/instrukt-ai/teleclaude/monitoring/sigterm-watch.log
-```
+1. `make restart`
+2. Watch logs for outbox processing resuming.
 
-## Outputs
+### Verify
 
-- Incident symptoms captured with correlated logs.
-- Recovery attempted or escalation prepared.
+- Delayed notifications/summaries appear.
+- Hook dispatch errors stop repeating.
 
-## Recovery
+## Runbook: Headless session cannot be recovered
 
-- Restarting without checking logs first — you'll lose the evidence of what went wrong.
-- Deleting `teleclaude.db` outside of worktrees — destroys session history and state.
-- Ignoring watcher drift — if watcher script paths in plists don't match actual locations, monitoring silently stops.
-- Assuming Redis errors are TeleClaude bugs — they're usually upstream throttling or network issues.
+### Symptom
+
+- Headless session exists, but transcript retrieval/resume fails.
+
+### Likely causes
+
+- Missing native transcript path.
+- Native identity not mapped correctly.
+
+### Fast checks
+
+1. `instrukt-ai-logs teleclaude --since 5m --grep "headless|native_session_id|native_log_file|session_map"`
+2. Confirm latest hook events carried native identity fields.
+
+### Recover
+
+1. Restart daemon if mapping updates were not applied.
+2. Re-trigger hook flow from source session.
+
+### Verify
+
+- Session now has native identity fields populated.
+- Session data retrieval works.
+
+## Runbook: Cleanup is not happening (old sessions/artifacts pile up)
+
+### Symptom
+
+- Old sessions remain open forever.
+- Orphan tmux/workspace artifacts accumulate.
+
+### Likely causes
+
+- Periodic cleanup loop failed.
+- Cleanup errors repeating each cycle.
+
+### Fast checks
+
+1. `make status`
+2. `instrukt-ai-logs teleclaude --since 10m --grep "cleanup|inactive_72h|orphan|workspace|voice"`
+
+### Recover
+
+1. `make restart`
+2. Wait one cleanup cycle window for normal behavior.
+
+### Verify
+
+- Cleanup logs show successful pass.
+- Orphan artifacts no longer increase.
+
+## Runbook: API appears unhealthy
+
+### Symptom
+
+- API-backed tools or TUI calls fail unexpectedly.
+
+### Likely causes
+
+- API interface startup/runtime failure.
+- Daemon not healthy overall.
+
+### Fast checks
+
+1. `make status`
+2. `instrukt-ai-logs teleclaude --since 2m --grep "api|socket|bind|watch|error"`
+
+### Recover
+
+1. `make restart`
+2. If restart fails, run `make stop` then `make start`.
+
+### Verify
+
+- `make status` reports healthy.
+- Recent logs show normal API startup without repeated failures.
+
+## Escalate when
+
+Escalate immediately if any of the following persists after one controlled restart:
+
+- MCP restart storm continues.
+- Hook outbox remains blocked.
+- Poller output remains frozen.
+- Daemon repeatedly exits during startup.
+
+When escalating, include:
+
+- Exact symptom
+- Time window
+- Commands run
+- Relevant log excerpts from `instrukt-ai-logs`

@@ -6,10 +6,15 @@ from teleclaude.core.agents import AgentName
 from teleclaude.utils.markdown import (
     _required_markdown_closers,
     collapse_fenced_code_blocks,
+    continuation_prefix_for_markdown_v2_state,
     escape_markdown_v2,
+    escape_markdown_v2_preformatted,
+    scan_markdown_v2_state,
     strip_outer_codeblock,
     telegramify_markdown,
     truncate_markdown_v2,
+    truncate_markdown_v2_by_bytes,
+    truncate_markdown_v2_with_consumed,
     unescape_markdown_v2,
 )
 from teleclaude.utils.transcript import render_agent_output
@@ -132,6 +137,16 @@ class TestEscapeMarkdownV2:
         assert "\\-" in result
 
 
+class TestEscapeMarkdownV2Preformatted:
+    """Tests for escape_markdown_v2_preformatted function."""
+
+    def test_escapes_backticks_and_backslashes(self):
+        """Backticks and backslashes are escaped for pre/code entities."""
+        text = r"path C:\repo\tele`claude\\"
+        result = escape_markdown_v2_preformatted(text)
+        assert r"C:\\repo\\tele\`claude\\\\" in result
+
+
 class TestTelegramifyMarkdown:
     """Tests for telegramify_markdown function."""
 
@@ -187,6 +202,36 @@ class TestMarkdownTruncation:
     def test_collapse_fenced_code_blocks_balances_entities(self):
         collapsed = collapse_fenced_code_blocks("```js\nconsole.log(1)\n```")
         assert _required_markdown_closers(collapsed) == ""
+
+    def test_truncate_markdown_v2_with_consumed_drops_trailing_escape(self):
+        source = "abc\\."
+        truncated, consumed = truncate_markdown_v2_with_consumed(source, max_chars=4, suffix="")
+        assert truncated == "abc"
+        assert consumed == 3
+
+    def test_truncate_markdown_v2_with_consumed_keeps_balanced_entities(self):
+        source = "```python\nprint('x')\nprint('y')\n```"
+        truncated, consumed = truncate_markdown_v2_with_consumed(source, max_chars=24, suffix="...")
+        assert consumed > 0
+        assert _required_markdown_closers(truncated) == ""
+
+    def test_scan_markdown_v2_state_and_continuation_prefix_for_code_block(self):
+        source = "```python\nprint('hello')"
+        state = scan_markdown_v2_state(source)
+        assert state == (True, False, False)
+        assert continuation_prefix_for_markdown_v2_state(state) == "```\n"
+
+    def test_scan_markdown_v2_state_and_continuation_prefix_for_inline(self):
+        source = "`abc"
+        state = scan_markdown_v2_state(source)
+        assert state == (False, True, False)
+        assert continuation_prefix_for_markdown_v2_state(state) == "`"
+
+    def test_truncate_markdown_v2_by_bytes_respects_utf8_budget(self):
+        source = f"```\n{'😀' * 2000}\n```"
+        truncated = truncate_markdown_v2_by_bytes(source, max_bytes=3900, suffix="\n\n…")
+        assert len(truncated.encode("utf-8")) <= 3900
+        assert _required_markdown_closers(truncated) == ""
 
 
 class TestMarkdownFallback:

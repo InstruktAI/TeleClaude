@@ -1,11 +1,29 @@
-"""YouTube subscription sync job."""
+"""Nightly YouTube subscription tagger.
+
+Discovers all people (and global scope) with YouTube subscriptions configured
+in their teleclaude.yml, reads each subscriber's youtube.csv, and uses AI agents
+to classify any channels that don't have tags yet. Already-tagged channels are
+skipped entirely.
+
+The tagging pipeline: enrich untagged channels with About page descriptions,
+send batches to AI agents (Claude/Codex/Gemini via round-robin) with the
+subscriber's allowed tag list, validate responses, and fall back to web research
+for channels the normal pass couldn't classify.
+
+Integration:
+- Called by the cron runner (scripts/cron_runner.py) on a daily schedule.
+- Uses teleclaude/cron/discovery.py to find subscribers.
+- Delegates all tagging logic to teleclaude/tagging/youtube.py.
+- Per-person config: ~/.teleclaude/people/{name}/teleclaude.yml
+- Per-person data: ~/.teleclaude/people/{name}/subscriptions/youtube.csv
+"""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-from jobs.base import Job, JobResult, Schedule
+from jobs.base import Job, JobResult
 
 # Ensure repo root is in path for imports
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -24,9 +42,7 @@ class YouTubeSyncJob(Job):
     and runs tagging for each.
     """
 
-    name = "youtube_sync"
-    schedule = Schedule.DAILY
-    preferred_hour = 6
+    name = "youtube_sync_subscriptions"
 
     def __init__(
         self,

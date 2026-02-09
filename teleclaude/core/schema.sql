@@ -97,3 +97,50 @@ CREATE TABLE IF NOT EXISTS hook_outbox (
 );
 
 CREATE INDEX IF NOT EXISTS idx_hook_outbox_pending ON hook_outbox(delivered_at, next_attempt_at);
+
+-- Memory observations (ported from claude-mem)
+CREATE TABLE IF NOT EXISTS memory_observations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    memory_session_id TEXT NOT NULL,
+    project TEXT NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT,
+    subtitle TEXT,
+    facts TEXT,
+    narrative TEXT,
+    concepts TEXT,
+    files_read TEXT,
+    files_modified TEXT,
+    prompt_number INTEGER,
+    discovery_tokens INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_at_epoch INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_obs_project ON memory_observations(project, created_at_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_obs_session ON memory_observations(memory_session_id);
+CREATE INDEX IF NOT EXISTS idx_memory_obs_type ON memory_observations(type);
+
+-- Memory summaries
+CREATE TABLE IF NOT EXISTS memory_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    memory_session_id TEXT NOT NULL,
+    project TEXT NOT NULL,
+    request TEXT,
+    investigated TEXT,
+    learned TEXT,
+    completed TEXT,
+    next_steps TEXT,
+    created_at TEXT NOT NULL,
+    created_at_epoch INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_sum_project ON memory_summaries(project, created_at_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_sum_session ON memory_summaries(memory_session_id);
+
+-- Manual sessions for API-created memory observations (one per project)
+CREATE TABLE IF NOT EXISTS memory_manual_sessions (
+    memory_session_id TEXT PRIMARY KEY,
+    project TEXT UNIQUE NOT NULL,
+    created_at_epoch INTEGER NOT NULL
+);

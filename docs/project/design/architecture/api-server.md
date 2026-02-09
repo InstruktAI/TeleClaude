@@ -21,6 +21,7 @@ Provide a resource-first API for TUI and CLI clients.
 - WebSocket subscriptions drive cache interest tracking and refresh pushes.
 - API handlers do not fetch remote data directly; cache owns refresh.
 - Session updates are merged from local DB and cached remote summaries.
+- Memory endpoints (`/api/memory/*`) are mounted in the same FastAPI process for observation save/search/injection flows.
 
 ```mermaid
 flowchart LR
@@ -63,6 +64,7 @@ flowchart LR
 - **Immediate Response**: API returns cached data instantly; never blocks on refresh.
 - **Subscription Cleanup**: WebSocket disconnect removes all subscriptions for that client.
 - **No Remote Fetching**: API does not perform remote computer queries; cache owns that responsibility.
+- **Integrated Memory Router**: Memory routes are served by the same API server process and share daemon lifecycle.
 
 ## Primary flows
 
@@ -119,16 +121,21 @@ sequenceDiagram
 
 ### 4. Resource Endpoints
 
-| Method | Endpoint           | Action         | Cache Key           |
-| ------ | ------------------ | -------------- | ------------------- |
-| GET    | /health            | Health check   | N/A                 |
-| GET    | /sessions          | List sessions  | sessions:{computer} |
-| POST   | /sessions          | Create session | Command             |
-| POST   | /sessions/{id}/msg | Send message   | Command             |
-| DELETE | /sessions/{id}     | End session    | Command             |
-| GET    | /computers         | List computers | computers:all       |
-| GET    | /projects          | List projects  | projects:{computer} |
-| GET    | /todos             | List todos     | todos:{project}     |
+| Method | Endpoint             | Action                           | Cache Key           |
+| ------ | -------------------- | -------------------------------- | ------------------- |
+| GET    | /health              | Health check                     | N/A                 |
+| GET    | /sessions            | List sessions                    | sessions:{computer} |
+| POST   | /sessions            | Create session                   | Command             |
+| POST   | /sessions/{id}/msg   | Send message                     | Command             |
+| DELETE | /sessions/{id}       | End session                      | Command             |
+| GET    | /computers           | List computers                   | computers:all       |
+| GET    | /projects            | List projects                    | projects:{computer} |
+| GET    | /todos               | List todos                       | todos:{project}     |
+| POST   | /api/memory/save     | Save observation                 | DB write            |
+| GET    | /api/memory/search   | Search observations              | DB/FTS query        |
+| GET    | /api/memory/timeline | Timeline around anchor           | DB query            |
+| POST   | /api/memory/batch    | Bulk fetch observations          | DB query            |
+| GET    | /api/memory/inject   | Generate memory context markdown | DB query            |
 
 ## Failure modes
 
@@ -137,5 +144,5 @@ sequenceDiagram
 - **WebSocket Connection Drop**: Client reconnects, resubscribes. Misses push updates during downtime.
 - **Stale Cache**: Client receives outdated data until TTL refresh. Acceptable for TUI; critical updates use events.
 - **API Server Crash**: All HTTP/WS clients disconnected. Daemon restart restores service. In-flight commands may be lost.
-- **Port Conflict**: API server fails to bind. Daemon logs error and continues without API. TUI clients cannot connect.
+- **Socket Bind/Startup Failure**: API interface is required; daemon startup fails (fail-fast) instead of continuing in partial mode.
 - **Request Timeout**: No timeout enforced by API; relies on client timeout. Long commands may appear hung.

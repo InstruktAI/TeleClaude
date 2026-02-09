@@ -22,6 +22,10 @@ class MarkdownifyFn(Protocol):
 markdownify: MarkdownifyFn = _markdownify
 
 
+# (in_code_block, in_inline_code, in_spoiler)
+MarkdownV2State = tuple[bool, bool, bool]
+
+
 def strip_outer_codeblock(text: str) -> str:
     """Strip outer triple-backtick wrapper if present.
 
@@ -99,6 +103,15 @@ def unescape_markdown_v2(text: str) -> str:
     return re.sub(r"\\([_*\[\]()~`>#+\-=|{}.!])", r"\1", text)
 
 
+def escape_markdown_v2_preformatted(text: str) -> str:
+    """Escape payload for Telegram MarkdownV2 code/pre entities.
+
+    Telegram requires backslash and backtick to be escaped inside `code` and
+    `pre` entities.
+    """
+    return text.replace("\\", "\\\\").replace(MARKDOWN_INLINE_CODE, f"\\{MARKDOWN_INLINE_CODE}")
+
+
 def telegramify_markdown(
     text: str,
     *,
@@ -143,41 +156,10 @@ def collapse_fenced_code_blocks(text: str) -> str:
     return re.sub(r"```([A-Za-z0-9_-]*)\n(.*?)```", _replace, text, flags=re.DOTALL)
 
 
-def truncate_markdown_v2(text: str, max_chars: int, suffix: str) -> str:
-    """Truncate MarkdownV2 text while keeping delimiters balanced."""
-    if max_chars <= 0:
-        return ""
-    if len(text) <= max_chars:
-        return text
-    if len(suffix) >= max_chars:
-        return suffix[:max_chars]
-
-    budget = max_chars - len(suffix)
-    truncated = _trim_with_balanced_markdown(text[:budget], budget)
-    return f"{truncated}{suffix}"
-
-
-def _trim_with_balanced_markdown(text: str, budget: int) -> str:
-    """Trim text so required closing delimiters fit inside budget."""
-    current = text[:budget]
-    while True:
-        if current.endswith("\\"):
-            current = current[:-1]
-        closers = _required_markdown_closers(current)
-        if len(current) + len(closers) <= budget:
-            return f"{current}{closers}"
-        if not current:
-            return closers[:budget]
-        current = current[:-1]
-
-
-def _required_markdown_closers(text: str) -> str:
-    """Compute closers needed to finish inline/fenced/spoiler entities."""
-    in_code_block = False
-    in_inline_code = False
-    in_spoiler = False
+def scan_markdown_v2_state(text: str, initial_state: MarkdownV2State = (False, False, False)) -> MarkdownV2State:
+    """Scan text and return MarkdownV2 parser state after consuming it."""
+    in_code_block, in_inline_code, in_spoiler = initial_state
     i = 0
-
     while i < len(text):
         if text[i] == "\\":
             i += 2
@@ -199,6 +181,100 @@ def _required_markdown_closers(text: str) -> str:
             continue
 
         i += 1
+
+    return in_code_block, in_inline_code, in_spoiler
+
+
+def continuation_prefix_for_markdown_v2_state(state: MarkdownV2State) -> str:
+    """Build opening markers needed to continue a previously closed chunk."""
+    in_code_block, in_inline_code, in_spoiler = state
+    parts: list[str] = []
+    if in_spoiler:
+        parts.append("||")
+    if in_code_block:
+        # Use newline to force fenced-code body (not language tag parsing).
+        parts.append(f"{MARKDOWN_FENCE}\n")
+    if in_inline_code:
+        parts.append(MARKDOWN_INLINE_CODE)
+    return "".join(parts)
+
+
+def truncate_markdown_v2(text: str, max_chars: int, suffix: str) -> str:
+    """Truncate MarkdownV2 text while keeping delimiters balanced."""
+    truncated, _consumed_chars = truncate_markdown_v2_with_consumed(text, max_chars=max_chars, suffix=suffix)
+    return truncated
+
+
+def truncate_markdown_v2_by_bytes(text: str, max_bytes: int, suffix: str) -> str:
+    """Truncate MarkdownV2 text to a UTF-8 byte budget.
+
+    Uses binary search over character budgets and the balanced-char truncator
+    to preserve MarkdownV2 entity integrity while honoring a byte ceiling.
+    """
+    if max_bytes <= 0:
+        return ""
+    if len(text.encode("utf-8")) <= max_bytes:
+        return text
+
+    low = 0
+    high = len(text)
+    best = ""
+    while low <= high:
+        mid = (low + high) // 2
+        candidate = truncate_markdown_v2(text, max_chars=mid, suffix=suffix)
+        candidate_bytes = len(candidate.encode("utf-8"))
+        if candidate_bytes <= max_bytes:
+            best = candidate
+            low = mid + 1
+        else:
+            high = mid - 1
+
+    if best:
+        return best
+
+    # Fallback for extreme tiny budgets where even balanced truncation cannot fit.
+    raw = suffix if suffix else text
+    clipped = raw
+    while clipped and len(clipped.encode("utf-8")) > max_bytes:
+        clipped = clipped[:-1]
+    return clipped
+
+
+def truncate_markdown_v2_with_consumed(text: str, max_chars: int, suffix: str) -> tuple[str, int]:
+    """Truncate MarkdownV2 text and return rendered text plus consumed source chars.
+
+    The consumed character count only includes characters taken from ``text``.
+    Any balancing closers or ``suffix`` added during truncation are excluded.
+    """
+    if max_chars <= 0:
+        return "", 0
+    if len(text) <= max_chars:
+        return text, len(text)
+    if len(suffix) >= max_chars:
+        return suffix[:max_chars], 0
+
+    budget = max_chars - len(suffix)
+    truncated, consumed_chars = _trim_with_balanced_markdown_with_consumed(text[:budget], budget)
+    return f"{truncated}{suffix}", consumed_chars
+
+
+def _trim_with_balanced_markdown_with_consumed(text: str, budget: int) -> tuple[str, int]:
+    """Trim text and return balanced output plus consumed source chars."""
+    current = text[:budget]
+    while True:
+        if current.endswith("\\"):
+            current = current[:-1]
+        closers = _required_markdown_closers(current)
+        if len(current) + len(closers) <= budget:
+            return f"{current}{closers}", len(current)
+        if not current:
+            return closers[:budget], 0
+        current = current[:-1]
+
+
+def _required_markdown_closers(text: str) -> str:
+    """Compute closers needed to finish inline/fenced/spoiler entities."""
+    in_code_block, in_inline_code, in_spoiler = scan_markdown_v2_state(text)
 
     closers: list[str] = []
     if in_inline_code:

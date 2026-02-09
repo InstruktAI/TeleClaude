@@ -2,152 +2,155 @@
 id: 'project/design/architecture/database'
 type: 'design'
 scope: 'project'
-description: 'SQLite persistence for sessions, hook outbox, UX state, and agent metadata.'
+description: 'SQLite persistence for sessions, hook outbox, memory, UX state, and agent metadata.'
 ---
 
 # Database — Design
 
 ## Purpose
 
-- Persist daemon state for sessions, command durability, and UX continuity.
+- Persist all daemon runtime state in a single SQLite database (`teleclaude.db`).
+- Provide durable command/session behavior across daemon restarts.
+- Back hook delivery, UX cleanup state, agent availability, and memory storage.
 
-- Write sessions and command metadata on creation and updates.
-- Append hook outbox events for durable delivery.
-- Persist UX cleanup state for message deletion.
+## Storage model
 
-- Sessions and their metadata (title, status, agent info, tmux name).
-- Hook outbox rows for agent events.
-- UX state for message cleanup and registry message IDs.
-- Agent assignments and voice mappings.
+- Single DB file per repo root: `teleclaude.db`.
+- Schema bootstraps from `teleclaude/core/schema.sql`.
+- Incremental schema changes run through numbered migrations (`teleclaude/core/migrations/*.py`) tracked in `schema_migrations`.
 
-- The daemon uses a single SQLite file at teleclaude.db in the project root.
-- Schema migrations run on startup to keep tables current.
+## Core tables
 
 ```mermaid
 erDiagram
     SESSIONS {
-        uuid id PK
-        string title
-        string status
-        string agent
-        string computer
-        string tmux_session_name "nullable, NULL for headless"
-        string lifecycle_status "active, headless, closing, closed"
+        text session_id PK
+        text computer_name
+        text tmux_session_name "nullable for headless"
+        text lifecycle_status "active|headless|closing|closed"
+        text native_session_id "nullable"
+        text native_log_file "nullable"
         timestamp created_at
+        timestamp last_activity
         timestamp closed_at
     }
+
     HOOK_OUTBOX {
         int id PK
-        uuid session_id FK
-        string event_type
-        json payload
-        timestamp created_at
-        boolean processed
-    }
-    PENDING_DELETIONS {
-        uuid session_id FK
-        string message_id
-        string deletion_type
-    }
-    CACHE {
-        string key PK
-        json snapshot
-        timestamp updated_at
-    }
-    AGENT_AVAILABILITY {
-        string agent PK
-        string status
-        timestamp unavailable_until
+        text session_id
+        text event_type
+        text payload "JSON"
+        text created_at
+        text next_attempt_at
+        int attempt_count
+        text last_error
+        text delivered_at
+        text locked_at
     }
 
-    SESSIONS ||--o{ HOOK_OUTBOX : "generates"
-    SESSIONS ||--o{ PENDING_DELETIONS : "tracks"
+    PENDING_MESSAGE_DELETIONS {
+        int id PK
+        text session_id
+        text message_id
+        text deletion_type "user_input|feedback"
+        timestamp created_at
+    }
+
+    AGENT_AVAILABILITY {
+        text agent PK
+        int available
+        text unavailable_until
+        text reason
+    }
+
+    VOICE_ASSIGNMENTS {
+        text id PK
+        text service_name
+        text voice
+        timestamp assigned_at
+    }
+
+    MEMORY_OBSERVATIONS {
+        int id PK
+        text memory_session_id
+        text project
+        text type
+        text title
+        text narrative
+        int created_at_epoch
+    }
+
+    MEMORY_SUMMARIES {
+        int id PK
+        text memory_session_id
+        text project
+        text request
+        int created_at_epoch
+    }
+
+    MEMORY_MANUAL_SESSIONS {
+        text memory_session_id PK
+        text project UNIQUE
+        int created_at_epoch
+    }
+
+    SESSIONS ||--o{ HOOK_OUTBOX : "hook events"
+    SESSIONS ||--o{ PENDING_MESSAGE_DELETIONS : "cleanup state"
+    MEMORY_MANUAL_SESSIONS ||--o{ MEMORY_OBSERVATIONS : "project memory"
+    MEMORY_MANUAL_SESSIONS ||--o{ MEMORY_SUMMARIES : "project summaries"
 ```
 
 ## Inputs/Outputs
 
 **Inputs:**
 
-- Session lifecycle events (creation, updates, closure)
-- Command queue entries for durable execution
-- Hook outbox entries from mcp-wrapper
-- UX state changes (message tracking for deletion)
-- Cache snapshots from event-driven updates
-- Agent availability status changes
+- Session lifecycle updates from command handlers and coordinator.
+- Hook receiver outbox inserts.
+- UI cleanup tracking updates.
+- Memory API writes/searches.
+- Agent availability updates from orchestration tools.
 
 **Outputs:**
 
-- Session persistence for recovery after restarts
-- Hook delivery queue for agent coordination
-- Message cleanup registry for UX hygiene
-- Cache reads for API/TUI fast path
-- Agent fallback selection data
+- Durable session and hook state for restart recovery.
+- Queryable snapshots for API/cache layers.
+- Retryable hook delivery queue (`hook_outbox`).
+- Persistent memory observations/summaries for context injection and search.
 
 ## Invariants
 
-- **Single Database File**: Exactly one `teleclaude.db` per repository root; no sharding or replication.
-- **Schema Versioning**: Alembic migrations run on startup; schema always current before operations begin.
-- **Exclusive Lock**: Only one daemon process can hold write lock; prevents concurrent access corruption.
-- **Referential Integrity**: Foreign keys enforced; orphaned records prevented.
-- **Idempotent Writes**: Session updates are upserts; safe to replay without duplication.
+- **Single Database File**: Production daemon state lives in one SQLite file (`teleclaude.db`) per repo root.
+- **Fail Before Serve**: Migrations run before interfaces are considered ready.
+- **Headless Compatibility**: Sessions may have `tmux_session_name = NULL` and still be valid (`lifecycle_status='headless'`).
+- **Durable Hook Queue**: Hook events are persisted before daemon processing.
+- **Best-effort Exactly-once Effects**: Outbox uses lock + idempotent handlers to tolerate retries.
 
 ## Primary flows
 
-### 1. Session Lifecycle Persistence
+### 1. Session lifecycle persistence
 
-```mermaid
-sequenceDiagram
-    participant Launcher
-    participant DB
-    participant Sessions
+1. Create row in `sessions` with ownership + launch metadata.
+2. Update row over time (`last_activity`, output/input summaries, native IDs).
+3. Close row by setting `closed_at` and lifecycle state.
 
-    Launcher->>DB: INSERT session (status=creating)
-    Launcher->>DB: UPDATE session (status=active, tmux_session_name)
-    Note over Sessions: Session running
-    Sessions->>DB: UPDATE session (title, metadata)
-    Note over Sessions: Session closes
-    Sessions->>DB: UPDATE session (status=closed, closed_at)
-```
+### 2. Hook outbox delivery
 
-### 2. Hook Outbox Processing
+1. Receiver inserts `hook_outbox` row (`delivered_at = NULL`).
+2. Daemon claims row by setting `locked_at`.
+3. On success: set `delivered_at`.
+4. On retryable failure: increment `attempt_count`, set `next_attempt_at`, store `last_error`.
+5. On non-retryable/corrupt payload: mark delivered with error.
 
-```mermaid
-sequenceDiagram
-    participant MCPWrapper
-    participant HookOutbox
-    participant Daemon
-    participant AgentCoordinator
+### 3. Memory persistence
 
-    MCPWrapper->>HookOutbox: INSERT (event=stop, session_id)
-    loop Every 1s
-        Daemon->>HookOutbox: SELECT unprocessed
-        HookOutbox->>Daemon: Return rows
-        Daemon->>AgentCoordinator: Process hook
-        Daemon->>HookOutbox: UPDATE processed=true
-    end
-```
-
-### 3. UX Message Cleanup Tracking
-
-1. **Pre-Input Hook**: Query `pending_deletions` where `deletion_type='user_input'`
-2. **Delete Messages**: Adapter deletes tracked message IDs
-3. **Clear Registry**: Delete processed rows
-4. **Post-Input Hook**: Insert new user message_id into `pending_deletions`
-
-### 4. Cache Snapshot Read/Write
-
-- **Write**: Event handlers update `cache` table with JSON snapshot + timestamp
-- **Read**: API queries cache by key (`data_type:scope_id`)
-- **TTL Check**: Compare `updated_at` against policy matrix
-- **Refresh**: Background task updates stale entries
+1. Save API call writes to `memory_observations`.
+2. FTS virtual table/trigger path indexes observation text when available.
+3. Context builder reads `memory_observations` + `memory_summaries` to render startup context.
 
 ## Failure modes
 
-- **Database Corruption**: Daemon fails to start. Requires manual recovery or restore from backup. No automatic repair.
-- **Migration Failure**: Incompatible schema change. Daemon refuses to start. Manual rollback or fix migration.
-- **Lock Contention**: Multiple processes attempt write. Second process waits, then fails with "database is locked". Indicates misconfiguration.
-- **Disk Full**: Writes fail. Daemon may crash or enter degraded mode. Sessions lost until disk space freed.
-- **Orphaned Hooks**: Hook outbox grows without processing. Indicates worker crash. Manual cleanup or daemon restart required.
-- **Pending Deletions Accumulation**: Messages not cleaned up. UX degrades with clutter. Does not affect session functionality.
-- **Cache Inconsistency**: Snapshot out of sync with source data. Resolved by next TTL refresh or digest change. Temporary staleness acceptable.
-- **Foreign Key Violation**: Attempted insert of hook with non-existent session_id. Logged and skipped. Indicates timing issue or race condition.
+- **Lock contention**: SQLite write conflicts delay/deny writes under pressure.
+- **Migration failure**: Daemon startup aborts until schema issue is fixed.
+- **Outbox backlog growth**: If worker path is unhealthy, undelivered rows accumulate.
+- **Disk pressure**: WAL/table growth can degrade performance or fail writes.
+- **Corrupt row payload**: Outbox row is marked delivered-with-error to avoid infinite retry loops.

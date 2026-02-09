@@ -29,7 +29,7 @@ from teleclaude.core.events import (
     UserPromptSubmitPayload,
 )
 from teleclaude.core.feature_flags import is_threaded_output_enabled, is_threaded_output_include_tools_enabled
-from teleclaude.core.models import CleanupTrigger, MessageMetadata
+from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import notify_input_request, notify_stop
 from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input
@@ -238,21 +238,16 @@ class AgentCoordinator:
             "db",
         )
 
-        # 1. Extract and summarize agent output, write to DB with reason="agent_stopped"
+        # 1. Extract agent output, summarize + persist if non-empty
         active_agent = (session.active_agent if session else None) or (
             payload.raw.get("agent_name") if payload.raw else None
         )
-        raw_output, summary = await self._extract_and_summarize(session_id, payload)
+        raw_output = await self._extract_agent_output(session_id, payload)
         if raw_output:
-            # Strip ANSI codes if configured
             if config.terminal.strip_ansi:
                 raw_output = strip_ansi_codes(raw_output)
 
-            # Dedup: skip if this is the same output we already processed
-            # (happens when checkpoint injection triggers agent_stop without new output)
-            prev_feedback = session.last_feedback_received if session else None
-            is_new_output = raw_output != prev_feedback
-
+            summary = await self._summarize_output(session_id, raw_output)
             await db.update_session(
                 session_id,
                 reason="agent_stopped",
@@ -261,27 +256,16 @@ class AgentCoordinator:
                 last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
             )
             logger.debug(
-                "Stored agent output: session=%s raw_len=%d summary_len=%d new=%s",
+                "Stored agent output: session=%s raw_len=%d summary_len=%d",
                 session_id[:8],
                 len(raw_output),
                 len(summary) if summary else 0,
-                is_new_output,
             )
-            # Speak the summary via TTS (only for genuinely new output)
-            if summary and is_new_output:
+            if summary:
                 try:
                     await self.tts_manager.speak(summary)
                 except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
                     logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
-
-                # Send text summary as feedback message (only when threaded output is NOT enabled)
-                # Threaded output updates already trigger notifications, so we skip the summary message to avoid double-notification.
-                if not is_threaded_output_enabled(session.active_agent if session else None):
-                    await self.client.send_message(
-                        session,
-                        f"📝 {summary}",
-                        cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
-                    )
 
         # 2. For Codex: extract last user input from transcript (no hook support)
         await self._extract_user_input_for_codex(session_id, payload)
@@ -438,18 +422,12 @@ class AgentCoordinator:
                 # Keep Telegram MarkdownV2 formatting for both renderers.
                 formatted_message = telegramify_markdown(message)
 
-                # Check for no-op update (skip adapter call if content unchanged)
-                # This prevents "footer spam" where the footer is deleted/resent on every poll cycle
-                # even if the agent is just "thinking" without new output.
+                # Skip if content unchanged since last send.
                 display_digest = sha256(formatted_message.encode("utf-8")).hexdigest()
 
                 # Only update main message if content actually changed
                 if session.last_output_digest != display_digest:
-                    # Pass footer text to adapter so it can send/manage the footer atomically
-                    footer_text = self._build_threaded_footer_text(session)
-                    await self.client.send_threaded_output(
-                        session, formatted_message, footer_text=footer_text, multi_message=is_multi
-                    )
+                    await self.client.send_threaded_output(session, formatted_message, multi_message=is_multi)
 
                 # CRITICAL: Update cursor ONLY if we are NOT tracking this message for future updates.
                 # If we are tracking (is_threaded_active), we want to re-render from the start of the turn
@@ -479,13 +457,6 @@ class AgentCoordinator:
                 logger.warning("Failed to send incremental output: %s", exc, extra={"session_id": session_id[:8]})
 
         return False
-
-    def _build_threaded_footer_text(self, session: "Session") -> str:
-        """Build footer text for threaded output mode."""
-        lines: list[str] = [f"📋 tc: {session.session_id}"]
-        if session.native_session_id:
-            lines.append(f"🤖 {session.active_agent or 'ai'}: {session.native_session_id}")
-        return "\n".join(lines)
 
     async def handle_notification(self, context: AgentEventContext) -> None:
         """Handle notification event - input request."""
@@ -528,17 +499,17 @@ class AgentCoordinator:
         except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
             logger.warning("TTS session_start failed: %s", exc)
 
-    async def _extract_and_summarize(self, session_id: str, payload: AgentStopPayload) -> tuple[str | None, str | None]:
-        """Extract last agent output and summarize it.
+    async def _extract_agent_output(self, session_id: str, payload: AgentStopPayload) -> str | None:
+        """Extract last agent output from transcript.
 
         Returns:
-            Tuple of (raw_output, summary). Both may be None if extraction fails.
+            Raw output text, or None if extraction fails or no output found.
         """
         session = await db.get_session(session_id)
         transcript_path = payload.transcript_path or (session.native_log_file if session else None)
         if not transcript_path:
             logger.debug("Extract skipped (missing transcript path)", session=session_id[:8])
-            return None, None
+            return None
 
         raw_agent_name = payload.raw.get("agent_name")
         agent_name_value = raw_agent_name if isinstance(raw_agent_name, str) and raw_agent_name else None
@@ -546,28 +517,33 @@ class AgentCoordinator:
             agent_name_value = session.active_agent
         if not agent_name_value:
             logger.debug("Extract skipped (missing agent name)", session=session_id[:8])
-            return None, None
+            return None
 
         try:
             agent_name = AgentName.from_str(agent_name_value)
         except ValueError:
             logger.warning("Extract skipped (unknown agent '%s')", agent_name_value)
-            return None, None
+            return None
 
         last_message = extract_last_agent_message(transcript_path, agent_name, 1)
         if not last_message:
             logger.debug("Extract skipped (no agent output)", session=session_id[:8])
-            return None, None
+            return None
 
-        # Summarize the raw output
-        summary: str | None = None
+        return last_message
+
+    async def _summarize_output(self, session_id: str, raw_output: str) -> str | None:
+        """Summarize raw agent output via LLM.
+
+        Returns:
+            Summary text, or None if summarization fails.
+        """
         try:
-            _title, summary = await summarize_agent_output(last_message)
+            _title, summary = await summarize_agent_output(raw_output)
+            return summary
         except Exception as exc:  # noqa: BLE001 - summarizer failures should not break stop handling
             logger.warning("Summarization failed: %s", exc, extra={"session_id": session_id[:8]})
-            # Still return raw output even if summarization fails
-
-        return last_message, summary
+            return None
 
     async def _extract_user_input_for_codex(self, session_id: str, payload: AgentStopPayload) -> None:
         """Extract last user input from transcript for Codex sessions.

@@ -52,7 +52,7 @@ Invariants
 
 - **Read-Only Core State**: UI adapters never mutate session, database, or domain state directly; all writes via commands.
 - **Platform-Agnostic Commands**: User actions normalized to command objects (CreateSessionCommand, SendMessageCommand); platform details in metadata only.
-- **Consistent Cleanup Rules**: pending_deletions enforced uniformly across all UI adapters; trigger conditions identical.
+- **Consistent Cleanup Rules**: pending_message_deletions enforced uniformly across all UI adapters; trigger conditions identical.
 - **Single Output Message**: One persistent output message per session, edited repeatedly; message_id tracked in adapter_metadata namespace.
 - **Session Affinity**: Feedback routed to last_input_origin; user sees responses in the adapter they sent from.
 - **Origin Semantics**: last_input_origin uses InputOrigin values (telegram, redis, api, hook, mcp). Non-UI origins (api/hook/mcp) are treated as originless and broadcast to all UI adapters.
@@ -115,12 +115,12 @@ sequenceDiagram
 flowchart TD
     MessageSent[Message sent to user]
     CheckTrigger{Cleanup trigger?}
-    StoreInDB[Store message_id in pending_deletions]
+    StoreInDB[Store message_id in pending_message_deletions]
     WaitForTrigger[Wait for trigger event]
     TriggerFires[Trigger event fires]
-    FetchPending[Fetch pending_deletions]
+    FetchPending[Fetch pending_message_deletions]
     DeleteAll[Delete all tracked messages]
-    ClearDB[Clear pending_deletions]
+    ClearDB[Clear pending_message_deletions]
     Done[Cleanup complete]
 
     MessageSent --> CheckTrigger
@@ -211,7 +211,7 @@ sequenceDiagram
 - **Rate Limit Exceeded**: Platform rejects edit due to frequency. Adapter skips edit, accumulates diff, retries next cycle.
 - **Session Channel Not Found**: Platform returns 404 on edit. Adapter clears metadata, recreates channel on next event.
 - **Unauthorized User**: Message from non-whitelisted user. Silently ignored; no command execution or feedback.
-- **Cleanup Message Already Deleted**: pending_deletions references deleted message. Delete fails gracefully; row cleared.
+- **Cleanup Message Already Deleted**: pending_message_deletions references deleted message. Delete fails gracefully; row cleared.
 - **Feedback Routing Failure**: last_input_origin adapter offline. Feedback not delivered; logged. User sees nothing.
 - **Voice Transcription Failure**: TTS API down or audio format unsupported. User sees error notice; voice message not deleted.
 - **File Download Failure**: Platform API error during download. User sees error feedback; no file sent to AI.

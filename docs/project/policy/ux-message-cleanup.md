@@ -27,9 +27,9 @@ Track user input and feedback messages for automatic deletion to keep Telegram t
 
 **Implementation**:
 
-- Store message_id in `pending_deletions` table with session_id
+- Store message_id in `pending_message_deletions` table with session_id
 - Query and delete all pending messages before sending new feedback
-- Clear `pending_deletions` after successful deletion
+- Clear `pending_message_deletions` after successful deletion
 
 ## Rationale
 
@@ -66,9 +66,9 @@ Does NOT apply to:
 
 **Testing**:
 
-- Verify `pending_deletions` table populated when sending feedback
+- Verify `pending_message_deletions` table populated when sending feedback
 - Verify deletion occurs before next feedback (no duplicate confirmations visible)
-- Verify output messages never appear in `pending_deletions`
+- Verify output messages never appear in `pending_message_deletions`
 
 ## Exceptions
 

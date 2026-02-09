@@ -1,13 +1,24 @@
-"""Cron runner - discovers and executes due jobs."""
+"""Cron runner — discovers jobs and executes those whose configured schedule is due.
+
+Job modules in jobs/*.py define what work to do. Scheduling configuration
+(frequency, preferred timing) lives in teleclaude.yml under the `jobs:` key.
+The runner reads this config, evaluates whether each job is due based on its
+last run timestamp and the configured schedule, and invokes due jobs.
+
+Jobs that have no entry in teleclaude.yml are skipped unless --force is used.
+Jobs that have never run execute immediately on first discovery.
+"""
 
 from __future__ import annotations
 
 import importlib
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cron.state import CronState
@@ -21,6 +32,71 @@ logger = get_logger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+
+class Schedule(Enum):
+    """Job schedule frequencies."""
+
+    HOURLY = "hourly"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+
+
+def _load_job_schedules(config_path: Path | None = None) -> dict[str, dict[str, str | int]]:
+    """Load job schedule configuration from teleclaude.yml."""
+    if config_path is None:
+        config_path = _REPO_ROOT / "teleclaude.yml"
+
+    if not config_path.exists():
+        logger.warning("teleclaude.yml not found", path=str(config_path))
+        return {}
+
+    with open(config_path) as f:
+        config = yaml.safe_load(f) or {}
+
+    return config.get("jobs", {})
+
+
+def _is_due(
+    schedule_config: dict[str, str | int],
+    last_run: datetime | None,
+    now: datetime | None = None,
+) -> bool:
+    """Check if a job is due based on its teleclaude.yml schedule config."""
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    if last_run is None:
+        return True
+
+    if last_run.tzinfo is None:
+        last_run = last_run.replace(tzinfo=timezone.utc)
+
+    elapsed = now - last_run
+    schedule = Schedule(schedule_config.get("schedule", "daily"))
+    preferred_hour = int(schedule_config.get("preferred_hour", 6))
+    preferred_weekday = int(schedule_config.get("preferred_weekday", 0))
+    preferred_day = int(schedule_config.get("preferred_day", 1))
+
+    match schedule:
+        case Schedule.HOURLY:
+            return elapsed >= timedelta(hours=1)
+
+        case Schedule.DAILY:
+            if elapsed < timedelta(hours=20):
+                return False
+            return now.hour >= preferred_hour
+
+        case Schedule.WEEKLY:
+            if elapsed < timedelta(days=6):
+                return False
+            return now.weekday() == preferred_weekday and now.hour >= preferred_hour
+
+        case Schedule.MONTHLY:
+            if elapsed < timedelta(days=25):
+                return False
+            return now.day == preferred_day and now.hour >= preferred_hour
 
 
 def discover_jobs(jobs_dir: Path | None = None) -> list[Job]:
@@ -63,7 +139,7 @@ def run_due_jobs(
     dry_run: bool = False,
 ) -> dict[str, bool]:
     """
-    Run all jobs that are due based on their schedule.
+    Run all jobs that are due based on their teleclaude.yml schedule.
 
     Args:
         force: Run jobs regardless of schedule
@@ -75,6 +151,7 @@ def run_due_jobs(
     """
     state = CronState.load()
     jobs = discover_jobs()
+    schedules = _load_job_schedules()
     now = datetime.now(timezone.utc)
     results: dict[str, bool] = {}
 
@@ -85,14 +162,27 @@ def run_due_jobs(
         if job_filter and job.name != job_filter:
             continue
 
+        # Check schedule config exists
+        schedule_config = schedules.get(job.name)
+        if not schedule_config and not force:
+            logger.debug("job has no schedule config, skipping", name=job.name)
+            continue
+
         job_state = state.get_job(job.name)
-        is_due = force or job.is_due(job_state.last_run, now)
+
+        if force:
+            is_due = True
+        elif schedule_config:
+            is_due = _is_due(schedule_config, job_state.last_run, now)
+        else:
+            is_due = False
 
         if not is_due:
             logger.debug("job not due", name=job.name, last_run=job_state.last_run)
             continue
 
-        logger.info("job due", name=job.name, schedule=job.schedule.value)
+        schedule_name = schedule_config.get("schedule", "?") if schedule_config else "forced"
+        logger.info("job due", name=job.name, schedule=schedule_name)
 
         if dry_run:
             results[job.name] = True

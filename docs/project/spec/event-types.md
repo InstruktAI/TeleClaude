@@ -38,3 +38,4 @@ description: 'TeleClaude event names used between adapters, daemon, and clients.
 
 - Some adapters emit adapter-specific metadata in payload; consumers must ignore unknown fields.
 - `error` events may omit `session_id` when failure is global.
+- `session_end` is part of the normalized type universe, but the hook receiver currently forwards only handled events (`session_start`, `user_prompt_submit`, `after_model`, `agent_output`, `agent_stop`, `notification`, `error`) into `hook_outbox`.

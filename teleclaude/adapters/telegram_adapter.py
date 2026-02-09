@@ -331,30 +331,60 @@ class TelegramAdapter(
         logger.warning("Message from untrusted bot: %s", bot_username)
         return False
 
-    def format_message(self, tmux_output: str, status_line: str) -> str:
-        """Apply Telegram-specific formatting to shorten long separator lines.
+    def format_output(self, tmux_output: str) -> str:
+        """Format tmux output with Telegram MarkdownV2 escaping and line shortening."""
+        from teleclaude.utils.markdown import escape_markdown_v2_preformatted
 
-        Overrides UiAdapter.format_message().
-        Reduces sequences of 118 repeating chars to 47 chars.
-        """
-        message = super().format_message(tmux_output, status_line)
+        if not tmux_output:
+            return ""
 
+        sanitized = escape_markdown_v2_preformatted(tmux_output)
+        result = f"```\n{sanitized}\n```"
+
+        # Shorten long separator lines (118 repeating chars → 47)
         lines = []
-        for line in message.split("\n"):
-            # Find sequences of exactly 118 repeating characters and reduce to 47
-            # Pattern: captures any character repeated exactly 118 times
+        for line in result.split("\n"):
             modified_line = re.sub(r"(.)\1{117}", lambda m: m.group(1) * 47, line)  # type: ignore[misc]
             lines.append(modified_line)
-
         return "\n".join(lines)
 
-    def _build_output_metadata(self, session: "Session", _is_truncated: bool) -> MessageMetadata:
-        """Build Telegram-specific metadata with inline keyboard for downloads.
+    def _convert_markdown_for_platform(self, text: str) -> str:
+        """Convert markdown to Telegram MarkdownV2 format."""
+        from teleclaude.utils.markdown import telegramify_markdown
 
-        Overrides UiAdapter._build_output_metadata().
-        Shows download button only when there's an Agent session to download.
-        """
-        # Add download button if Agent session available
+        return telegramify_markdown(text)
+
+    def _build_metadata_for_thread(self) -> MessageMetadata:
+        """Build metadata for threaded content with MarkdownV2 parse mode."""
+        return MessageMetadata(parse_mode="MarkdownV2")
+
+    def _fit_output_to_limit(self, tmux_output: str) -> str:
+        """Fit output within Telegram's 4096 byte limit with MarkdownV2 escaping."""
+        from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
+        from teleclaude.utils.markdown import truncate_markdown_v2
+
+        display_output = self.format_output(tmux_output)
+        if self._fits_budget(display_output, TELEGRAM_MAX_MESSAGE_BYTES):
+            return display_output
+
+        trimmed_output = tmux_output
+        while trimmed_output and not self._fits_budget(display_output, TELEGRAM_MAX_MESSAGE_BYTES):
+            overflow = len(display_output) - self.max_message_size
+            drop = max(overflow, 32)
+            trimmed_output = trimmed_output[drop:] if drop < len(trimmed_output) else ""
+            display_output = self.format_output(trimmed_output)
+
+        if not self._fits_budget(display_output, TELEGRAM_MAX_MESSAGE_BYTES):
+            display_output = truncate_markdown_v2(display_output, self.max_message_size, "")
+        return display_output
+
+    def _build_output_metadata(self, _session: "Session", _is_truncated: bool) -> MessageMetadata:
+        """Build Telegram output metadata with MarkdownV2 parse_mode."""
+        return MessageMetadata(parse_mode="MarkdownV2")
+
+    def _build_footer_metadata(self, session: "Session") -> MessageMetadata:
+        """Build Telegram footer metadata with download button when applicable."""
+        metadata = MessageMetadata()
         if session.native_log_file:
             keyboard = [
                 [
@@ -364,10 +394,8 @@ class TelegramAdapter(
                     )
                 ]
             ]
-            return MessageMetadata(reply_markup=InlineKeyboardMarkup(keyboard))
-
-        # No buttons - return empty metadata
-        return MessageMetadata()
+            metadata.reply_markup = InlineKeyboardMarkup(keyboard)
+        return metadata
 
     async def start(self) -> None:  # pylint: disable=too-many-locals
         """Initialize and start Telegram bot."""

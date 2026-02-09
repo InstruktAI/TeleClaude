@@ -79,8 +79,8 @@ async def test_ui_adapter_send_output_update_strips_ansi(monkeypatch):
             last_output_changed_at=1000.0,
         )
 
-        # Verify that the message sent to edit_message has no ANSI codes
-        args, kwargs = adapter.edit_message.call_args
+        # Verify that the output message sent to edit_message has no ANSI codes
+        args, kwargs = adapter.edit_message.call_args_list[0]
         sent_text = args[2]
         assert "Red Text" in sent_text
         assert "\x1b[" not in sent_text
@@ -112,7 +112,7 @@ async def test_ui_adapter_send_output_update_preserves_ansi_when_disabled(monkey
             last_output_changed_at=1000.0,
         )
 
-        args, kwargs = adapter.edit_message.call_args
+        args, kwargs = adapter.edit_message.call_args_list[0]
         sent_text = args[2]
         assert "\x1b[31mRed Text\x1b[0m" in sent_text
 
@@ -137,13 +137,14 @@ async def test_ui_adapter_strips_various_ansi_variants(monkeypatch):
         ]
 
         for raw, expected in variants:
+            adapter.edit_message.reset_mock()
             await adapter.send_output_update(
                 session=MagicMock(session_id="sess_123", last_output_digest=None, adapter_metadata=MagicMock()),
                 output=raw,
                 started_at=1000.0,
                 last_output_changed_at=1000.0,
             )
-            args, _ = adapter.edit_message.call_args
+            args, _ = adapter.edit_message.call_args_list[0]
             assert expected in args[2]
             assert "\x1b" not in args[2]
 
@@ -165,7 +166,8 @@ async def test_agent_coordinator_handle_agent_stop_strips_ansi(monkeypatch):
     raw_ansi_output = "\x1b[32mSuccess!\x1b[0m"
     with (
         patch("teleclaude.core.agent_coordinator.db") as mock_db,
-        patch.object(coordinator, "_extract_and_summarize", return_value=(raw_ansi_output, "Summary")),
+        patch.object(coordinator, "_extract_agent_output", return_value=raw_ansi_output),
+        patch.object(coordinator, "_summarize_output", return_value="Summary"),
     ):
         mock_db.get_session = AsyncMock(
             return_value=MagicMock(

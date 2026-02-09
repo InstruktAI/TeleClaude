@@ -140,7 +140,7 @@ class TelegramAdapterMetadata:
 
     topic_id: Optional[int] = None
     output_message_id: Optional[str] = None
-    threaded_footer_message_id: Optional[str] = None
+    footer_message_id: Optional[str] = None
     output_suppressed: bool = False
     parse_mode: Optional[str] = None
     char_offset: int = 0
@@ -183,21 +183,21 @@ class SessionAdapterMetadata:
             if isinstance(tg_raw, dict):
                 topic_id_val: object = tg_raw.get("topic_id")
                 output_msg_val: object = tg_raw.get("output_message_id")
-                threaded_footer_val: object = tg_raw.get("threaded_footer_message_id")
+                footer_val: object = tg_raw.get("footer_message_id") or tg_raw.get("threaded_footer_message_id")
                 topic_id: int | None = None
                 if isinstance(topic_id_val, int):
                     topic_id = topic_id_val
                 elif isinstance(topic_id_val, str) and topic_id_val.isdigit():
                     topic_id = int(topic_id_val)
                 output_message_id = str(output_msg_val) if output_msg_val is not None else None
-                threaded_footer_message_id = str(threaded_footer_val) if threaded_footer_val is not None else None
+                footer_message_id = str(footer_val) if footer_val is not None else None
                 output_suppressed = bool(tg_raw.get("output_suppressed", False))
                 parse_mode = str(tg_raw.get("parse_mode")) if tg_raw.get("parse_mode") else None
                 char_offset = int(tg_raw.get("char_offset", 0))
                 telegram_metadata = TelegramAdapterMetadata(
                     topic_id=topic_id,
                     output_message_id=output_message_id,
-                    threaded_footer_message_id=threaded_footer_message_id,
+                    footer_message_id=footer_message_id,
                     output_suppressed=output_suppressed,
                     parse_mode=parse_mode,
                     char_offset=char_offset,

@@ -38,7 +38,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from instrukt_ai_logging import configure_logging, get_logger
 
-from teleclaude.cron.runner import discover_jobs, run_due_jobs
+from teleclaude.cron.runner import _load_job_schedules, discover_jobs, run_due_jobs
 from teleclaude.cron.state import CronState
 
 
@@ -76,22 +76,21 @@ def main() -> int:
     if args.list_jobs:
         jobs = discover_jobs()
         state = CronState.load()
+        schedules = _load_job_schedules()
 
         if not jobs:
             print("No jobs found")
             return 0
 
-        print(f"{'Job':<20} {'Schedule':<10} {'Last Run':<25} {'Status':<10}")
-        print("-" * 70)
+        print(f"{'Job':<30} {'Schedule':<10} {'Last Run':<25} {'Status':<10}")
+        print("-" * 80)
 
         for job in jobs:
             job_state = state.get_job(job.name)
-            last_run = (
-                job_state.last_run.strftime("%Y-%m-%d %H:%M:%S")
-                if job_state.last_run
-                else "never"
-            )
-            print(f"{job.name:<20} {job.schedule.value:<10} {last_run:<25} {job_state.last_status:<10}")
+            sched = schedules.get(job.name, {})
+            schedule_str = sched.get("schedule", "none") if sched else "none"
+            last_run = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else "never"
+            print(f"{job.name:<30} {schedule_str:<10} {last_run:<25} {job_state.last_status:<10}")
 
         return 0
 

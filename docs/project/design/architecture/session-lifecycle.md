@@ -42,7 +42,19 @@ description: 'Complete lifecycle of a terminal session from creation to cleanup.
 - **Metadata persistence (best-effort)**: Before enqueue, the receiver may update existing session rows with `native_session_id` and `native_log_file` when available.
 - **Creation (core-owned)**: The daemon creates a minimal session row with `lifecycle_status="headless"`, `tmux_session_name=NULL`, and `last_input_origin=InputOrigin.HOOK.value`.
 - **Project path**: The daemon attempts to derive `project_path` (and `subdir`) from the native transcript file before persisting the headless session.
-- **Session reuse**: The receiver resolves/reuses session IDs via native-session mapping (`~/.teleclaude/session_map.json`) and optional legacy TMPDIR markers when available.
+- **Session ID resolution uses two concrete paths**:
+  - **Managed session path (tmux-backed)**:
+    - TeleClaude writes `teleclaude_session_id` into the managed per-session TMPDIR at session startup.
+    - Hooks from that same managed process reuse this ID directly.
+    - This is the normal path for daemon-launched sessions.
+  - **Headless path (standalone hook process)**:
+    - The receiver does not assume a tmux marker exists.
+    - It extracts native identity from hook payloads (`native_session_id`, transcript path).
+    - It resolves an existing TeleClaude session via native mapping (`~/.teleclaude/session_map.json`) and DB lookup by native ID.
+    - If no reusable session exists, it mints a new TeleClaude session ID and the daemon creates a new headless session row.
+  - **Backward compatibility note**:
+    - Receiver still supports legacy TMPDIR marker reads in TeleClaude-managed temp dirs.
+    - For true headless identity resolution, native-session mapping is authoritative.
 - **Pipeline**: Hook events flow through the normal outbox → daemon → summarization → TTS pipeline. Output polling is skipped (no tmux to poll).
 - **Cleanup**: Headless sessions are cleaned up by the 72h inactivity sweep, same as regular sessions. They are excluded from stale-tmux detection (no tmux to check) but **are visible in UI listings** for observability.
 

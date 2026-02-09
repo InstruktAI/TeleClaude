@@ -33,7 +33,6 @@ Allow AI sessions to wait on other sessions and receive stop notifications.
 - In-memory listener registry (target_session_id → list of listeners)
 - Injected notification messages to caller tmux sessions
 - Listener removal confirmations
-- Health check alerts for stale listeners (>10min old)
 
 ## Invariants
 
@@ -128,10 +127,10 @@ _listeners: dict[str, list[SessionListener]] = {
 
 ### 5. Notification Message Templates
 
-| Event Type    | Message Format                                                                                                                |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Stop          | `Session {id} on {computer} "{title}" finished its turn. Use teleclaude__get_session_data(computer='{c}', session_id='{id}')` |
-| Input Request | `Session {id} on {computer} needs input: {message} Use teleclaude__send_message(computer='{c}', session_id='{id}', ...)`      |
+| Event Type    | Message Format                                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Stop          | `Session {id} [on {computer}] "{title}" finished its turn. Use teleclaude__get_session_data(computer='{c}', session_id='{id}')` |
+| Input Request | `Session {id} on {computer} needs input: {message} Use teleclaude__send_message(computer='{c}', session_id='{id}', ...)`        |
 
 ### 6. Unsubscribe Flow (stop_notifications)
 
@@ -155,35 +154,17 @@ sequenceDiagram
     Note over WorkerAI: Worker continues running, but master no longer notified
 ```
 
-### 7. Stale Listener Health Check
+### 7. Stale Listener Inspection
 
-```mermaid
-flowchart TD
-    Start[Background task: every 60s]
-    GetStale[get_stale_targets max_age=10min]
-    CheckStatus{Any stale?}
-    HealthCheck[For each target: check session status]
-    StillAlive{Session alive?}
-    CleanupDead[Cleanup listeners for dead target]
-    ResetTime[Reset registered_at to now]
-    Done[Continue loop]
-
-    Start --> GetStale
-    GetStale --> CheckStatus
-    CheckStatus -->|Yes| HealthCheck
-    CheckStatus -->|No| Done
-    HealthCheck --> StillAlive
-    StillAlive -->|Yes| ResetTime
-    StillAlive -->|No| CleanupDead
-    ResetTime --> Done
-    CleanupDead --> Done
-```
+The listener module exposes `get_stale_targets(max_age_minutes=10)` as a helper for
+inspection and diagnostics. There is currently no daemon-side automatic stale-listener
+cleanup loop wired to this helper.
 
 ## Failure modes
 
 - **Daemon Restart**: All listeners lost. Callers must re-register. No automatic recovery.
-- **Caller Session Crash**: Cleanup hook may not fire. Listeners remain until stale health check (10min) or daemon restart.
-- **Target Never Stops**: Listener waits indefinitely. Stale check logs warning after 10min but keeps listener active.
+- **Caller Session Crash**: Cleanup hook may not fire. Listeners remain until caller cleanup paths run or daemon restart.
+- **Target Never Stops**: Listener waits indefinitely until target stop/input-request event, unsubscribe, cleanup, or daemon restart.
 - **Notification Injection Fails**: Tmux session not found or unresponsive. Logged but listener removed (one-shot semantics preserved).
 - **Duplicate Registration**: Silently ignored. Caller receives False but no error. Prevents listener leaks.
 - **Concurrent Pop**: Two events fire for same target. First pop succeeds, second returns empty list. No crash.

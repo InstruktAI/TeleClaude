@@ -111,11 +111,11 @@ sequenceDiagram
 
     User->>Adapter: Send message
     Adapter->>AC: _pre_handle_user_input(session)
-    AC->>DB: Get pending_deletions(type=user_input)
+    AC->>DB: Get pending_message_deletions(type=user_input)
     AC->>Adapter: Delete old messages
     AC->>DB: Clear deletions
     Adapter->>AC: _post_handle_user_input(session, message_id)
-    AC->>DB: Add message_id to pending_deletions
+    AC->>DB: Add message_id to pending_message_deletions
 ```
 
 ### 4. Cross-Computer Routing

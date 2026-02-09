@@ -33,4 +33,7 @@ You are working with me: Maurice Faber <maurice@instrukt.ai> aka Morriz aka Mo. 
 ## REMINDERS
 
 - ALWAYS RESPOND IN ENGLISH, ALSO WHEN YOU RECEIVE INPUT IN DUTCH!
-- "USE THE FORCE!" (or rather, use your tools and resources effectively)
+- Use `teleclaude__get_context`! Its our knowledge entrypoint.
+- When we say to use the force, we of course mean that we will work together by using our shared principles, approach and tooling.
+- So, USE THE FORCE!
+- What did I say about using THE FORCE? USE IT TO YOUR ADVANTAGE!

@@ -67,7 +67,8 @@ snippets:
   path: docs/project/design/architecture/daemon.md
   source_project: TeleClaude
 - id: project/design/architecture/database
-  description: SQLite persistence for sessions, hook outbox, UX state, and agent metadata.
+  description: SQLite persistence for sessions, hook outbox, memory, UX state, and
+    agent metadata.
   type: design
   scope: project
   path: docs/project/design/architecture/database.md
@@ -78,11 +79,25 @@ snippets:
   scope: project
   path: docs/project/design/architecture/feature-flags.md
   source_project: TeleClaude
+- id: project/design/architecture/jobs-runner
+  description: 'Scheduled job runner: architecture, job contract, and configuration
+    surface.'
+  type: design
+  scope: project
+  path: docs/project/design/architecture/jobs-runner.md
+  source_project: TeleClaude
 - id: project/design/architecture/mcp-layer
   description: Resilient two-layer MCP architecture for AI-to-AI communication.
   type: design
   scope: global
   path: docs/project/design/architecture/mcp-layer.md
+  source_project: TeleClaude
+- id: project/design/architecture/memory-system
+  description: Persistent memory subsystem for storing, searching, and injecting relationship-centric
+    observations into agent sessions.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/memory-system.md
   source_project: TeleClaude
 - id: project/design/architecture/next-machine
   description: Stateless state machine for orchestrating multi-phase project workflows.
@@ -331,8 +346,7 @@ snippets:
   path: docs/project/procedure/ssh-agent-keychain.md
   source_project: TeleClaude
 - id: project/procedure/troubleshooting
-  description: Comprehensive operations runbook for TeleClaude troubleshooting and
-    observability.
+  description: Operational runbooks for diagnosing and recovering TeleClaude incidents.
   type: procedure
   scope: project
   path: docs/project/procedure/troubleshooting.md
@@ -374,4 +388,32 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/git-docs-filter.md
+  source_project: TeleClaude
+- id: project/spec/hook-normalized-events
+  description: Canonical normalization, forwarding, and operations contract for agent
+    hook events.
+  type: spec
+  scope: project
+  path: docs/project/spec/hook-normalized-events.md
+  source_project: TeleClaude
+- id: project/spec/jobs/youtube-sync-subscriptions
+  description: 'YouTube subscription tagger job: nightly AI classification of untagged
+    channels.'
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/youtube-sync-subscriptions.md
+  source_project: TeleClaude
+- id: project/spec/runtime-operations-truth
+  description: Operational source of truth for daemon background operations, impact,
+    and recovery.
+  type: spec
+  scope: project
+  path: docs/project/spec/runtime-operations-truth.md
+  source_project: TeleClaude
+- id: project/spec/session-identity-truth
+  description: Canonical truth for session identity, mapping, and recovery across
+    managed and headless routes.
+  type: spec
+  scope: project
+  path: docs/project/spec/session-identity-truth.md
   source_project: TeleClaude

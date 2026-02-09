@@ -5,6 +5,10 @@
     "teleclaude/core/db.py",
     "teleclaude/core/db_models.py",
     "teleclaude/hooks/receiver.py",
+    "teleclaude/memory/api_routes.py",
+    "teleclaude/memory/context/builder.py",
+    "teleclaude/memory/search.py",
+    "teleclaude/memory/store.py",
     "teleclaude/tts/backends/qwen3_tts.py"
   ],
   "venvPath": ".",

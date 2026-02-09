@@ -125,8 +125,8 @@ class TestSession:
         assert session.adapter_metadata.telegram is not None
         assert session.adapter_metadata.telegram.topic_id == 123
 
-    def test_session_from_dict_parses_threaded_footer_message_id(self):
-        """Threaded footer message id should hydrate from adapter metadata."""
+    def test_session_from_dict_parses_footer_message_id(self):
+        """Footer message id should hydrate from adapter metadata."""
         data = {
             "session_id": "test-footer",
             "computer_name": "TestPC",
@@ -134,13 +134,28 @@ class TestSession:
             "last_input_origin": "telegram",
             "title": "Test Session",
             "adapter_metadata": json.dumps(
-                {"telegram": {"topic_id": 123, "output_message_id": "42", "threaded_footer_message_id": "84"}}
+                {"telegram": {"topic_id": 123, "output_message_id": "42", "footer_message_id": "84"}}
             ),
         }
 
         session = Session.from_dict(data)
         assert session.adapter_metadata.telegram is not None
-        assert session.adapter_metadata.telegram.threaded_footer_message_id == "84"
+        assert session.adapter_metadata.telegram.footer_message_id == "84"
+
+    def test_session_from_dict_parses_legacy_threaded_footer_message_id(self):
+        """Legacy threaded_footer_message_id should map to footer_message_id."""
+        data = {
+            "session_id": "test-legacy-footer",
+            "computer_name": "TestPC",
+            "tmux_session_name": "test-tmux",
+            "last_input_origin": "telegram",
+            "title": "Test Session",
+            "adapter_metadata": json.dumps({"telegram": {"topic_id": 123, "threaded_footer_message_id": "99"}}),
+        }
+
+        session = Session.from_dict(data)
+        assert session.adapter_metadata.telegram is not None
+        assert session.adapter_metadata.telegram.footer_message_id == "99"
 
 
 class TestRecording:

@@ -30,9 +30,10 @@ type: 'design'
 
 **Inputs:**
 
-- Agent lifecycle events from agent CLI hooks (mapped to internal `event_type` values such as `session_start`, `user_prompt_submit`, `after_model`, `agent_output`, `agent_stop`, `notification`, `error`)
+- Agent lifecycle events emitted by agent CLIs and mapped by the receiver to internal `event_type` values (`session_start`, `user_prompt_submit`, `after_model`, `agent_output`, `agent_stop`, `notification`, `error`)
 - Hook payloads with session metadata and event data
 - Daemon polling loop triggers for batch processing
+- Receiver forwarding is allowlisted: normalized but unhandled events (for example `session_end`) are dropped before outbox insertion.
 
 **Outputs:**
 
@@ -44,7 +45,7 @@ type: 'design'
 ## Invariants
 
 - **At-Least-Once Delivery**: Every hook event is persisted before processing; daemon crash doesn't lose events.
-- **Ordered Processing**: Rows processed in creation order (FIFO by created_at).
+- **Per-Session Ordered Processing**: Rows are fetched FIFO by `created_at`, and rows for the same `session_id` are serialized by a per-session lock.
 - **Exactly-Once Lock**: Each row claimed exclusively by one worker using locked_at + lock_cutoff.
 - **Exponential Backoff**: Retryable failures back off exponentially and cap at the configured max delay.
 - **Idempotent Processing**: Handlers tolerate duplicate delivery if lock expires during processing.

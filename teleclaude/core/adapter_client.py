@@ -395,7 +395,6 @@ class AdapterClient:
         self,
         session: "Session",
         text: str,
-        footer_text: str | None = None,
         multi_message: bool = False,
     ) -> str | None:
         """Send threaded output via UI adapters (edit if exists, else new).
@@ -408,16 +407,8 @@ class AdapterClient:
             "send_threaded_output",
             text,
             broadcast=False,
-            footer_text=footer_text,
             multi_message=multi_message,
         )
-        return str(result) if result else None
-
-    async def send_threaded_footer(self, session: "Session", text: str) -> str | None:
-        """Send threaded footer via UI adapters with adapter-local cleanup semantics."""
-        if not is_threaded_output_enabled(session.active_agent):
-            return None
-        result = await self._route_to_ui(session, "send_threaded_footer", text)
         return str(result) if result else None
 
     async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:

@@ -235,12 +235,18 @@ def test_receiver_updates_native_fields_for_gemini_session_start(monkeypatch, tm
 def test_receiver_persists_native_fields_to_db(monkeypatch, tmp_path):
     """Hook receiver should persist native session fields to sessions table."""
     db_path = tmp_path / "teleclaude.db"
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, native_session_id TEXT, native_log_file TEXT)"
-        )
-        conn.execute("INSERT INTO sessions (session_id) VALUES (?)", ("sess-1",))
-        conn.commit()
+
+    from sqlalchemy import create_engine
+    from sqlmodel import Session as SqlSession
+    from sqlmodel import SQLModel
+
+    from teleclaude.core import db_models as _models  # noqa: F811
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    SQLModel.metadata.create_all(engine)
+    with SqlSession(engine) as session:
+        session.add(_models.Session(session_id="sess-1", computer_name="test"))
+        session.commit()
 
     monkeypatch.setenv("TELECLAUDE_DB_PATH", str(db_path))
     monkeypatch.setattr(receiver, "_enqueue_hook_event", lambda *_args, **_kwargs: None)

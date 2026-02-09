@@ -634,56 +634,6 @@ async def test_send_output_update_non_gemini_not_suppressed_when_experiment_glob
 
 
 @pytest.mark.asyncio
-async def test_send_threaded_footer_routes_to_origin_adapter():
-    client = AdapterClient()
-    telegram = DummyTelegramAdapter(client)
-    telegram.send_threaded_footer = AsyncMock(return_value="footer-1")  # type: ignore[assignment]
-    client.register_adapter("telegram", telegram)
-
-    session = Session(
-        session_id="session-footer",
-        computer_name="test",
-        tmux_session_name="tc_session_footer",
-        last_input_origin=InputOrigin.TELEGRAM.value,
-        title="Test Session",
-        active_agent="gemini",
-    )
-
-    mock_db = AsyncMock()
-    mock_db.get_session = AsyncMock(return_value=session)
-    with (
-        patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=True),
-        patch("teleclaude.core.adapter_client.db", mock_db),
-    ):
-        result = await client.send_threaded_footer(session, "📋 tc: session-footer")
-    assert result == "footer-1"
-    telegram.send_threaded_footer.assert_awaited_once_with(session, "📋 tc: session-footer")
-
-
-@pytest.mark.asyncio
-async def test_send_threaded_footer_non_experiment_is_noop():
-    client = AdapterClient()
-    telegram = DummyTelegramAdapter(client)
-    telegram.send_threaded_footer = AsyncMock(return_value="footer-1")  # type: ignore[assignment]
-    client.register_adapter("telegram", telegram)
-
-    session = Session(
-        session_id="session-footer-noop",
-        computer_name="test",
-        tmux_session_name="tc_session_footer_noop",
-        last_input_origin=InputOrigin.TELEGRAM.value,
-        title="Test Session",
-        active_agent="codex",
-    )
-
-    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=False):
-        result = await client.send_threaded_footer(session, "📋 tc: session-footer-noop")
-
-    assert result is None
-    telegram.send_threaded_footer.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 async def test_send_message_broadcasts_to_ui_adapters():
     """Paranoid test send_message broadcasts to all UI adapters."""
     client = AdapterClient()
@@ -921,12 +871,10 @@ async def test_send_threaded_output_routes_through_route_to_ui():
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=session)
     with patch("teleclaude.core.adapter_client.db", mock_db):
-        result = await client.send_threaded_output(session, "Output text", footer_text="📋 footer", multi_message=True)
+        result = await client.send_threaded_output(session, "Output text", multi_message=True)
 
     assert result == "threaded-msg-1"
-    telegram.send_threaded_output.assert_awaited_once_with(
-        session, "Output text", footer_text="📋 footer", multi_message=True
-    )
+    telegram.send_threaded_output.assert_awaited_once_with(session, "Output text", multi_message=True)
 
 
 @pytest.mark.asyncio

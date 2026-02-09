@@ -601,6 +601,13 @@ class Db:
             logger.trace("Skipping redundant update for session %s", session_id[:8])
             return
 
+        # Digest updates are internal dedupe state for output routing and can occur
+        # very frequently. Emitting SESSION_UPDATED for digest-only writes creates
+        # unnecessary event fan-out and cache churn.
+        if not reason and set(updates) == {"last_output_digest"}:
+            logger.trace("Skipping SESSION_UPDATED emit for digest-only update: %s", session_id[:8])
+            return
+
         # Emit SESSION_UPDATED event — decoupled from DB writes so that
         # reason-only signals (e.g. agent_output with no field change) still
         # reach the TUI for highlight logic.

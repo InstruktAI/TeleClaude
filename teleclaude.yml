@@ -2,5 +2,10 @@ business:
   domains:
     software-development: docs
 
+jobs:
+  youtube_sync_subscriptions:
+    schedule: daily
+    preferred_hour: 6
+
 # git:
 #   checkout_root: ~/Workspace/public-repos

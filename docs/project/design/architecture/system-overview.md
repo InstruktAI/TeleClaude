@@ -97,7 +97,7 @@ flowchart LR
 
 - User commands from UI adapters (Telegram, TUI, MCP)
 - Redis transport messages from remote computers
-- Agent lifecycle hooks via mcp-wrapper
+- Agent lifecycle hooks via hook receiver
 - Tmux output streams
 - File system artifacts (requirements, plans, transcripts)
 
@@ -116,7 +116,7 @@ flowchart LR
 - **Event-Driven Updates**: All cache and adapter updates are triggered by domain events, never by polling state.
 - **Session Ownership**: Each session has exactly one owning adapter that created it; other adapters can observe but not modify.
 - **Decoupled Adapters**: Core logic never imports adapter-specific code; all communication via Protocols.
-- **Durable Execution**: All commands persist to SQLite outbox before execution; restarts recover pending work.
+- **Durable Execution**: Commands and hook events persist to SQLite queue/outbox tables before processing; restarts recover pending work.
 
 ## Primary flows
 
@@ -201,7 +201,7 @@ sequenceDiagram
 
 ## Failure modes
 
-- **Adapter Startup Failure**: If an adapter fails to initialize, the daemon starts without it. Commands to that adapter are rejected. Manual restart required.
+- **Interface Startup Failure**: Required interface startup failures (adapter/API/MCP) fail daemon startup rather than silently running in partial mode.
 - **Tmux Process Death**: If tmux dies unexpectedly, OutputPoller detects exit and marks session as failed. Cleanup may be incomplete.
 - **Redis Unavailable**: Remote execution fails gracefully. Local operations continue. Heartbeat detection resumes when Redis recovers.
 - **SQLite Lock Contention**: Rare under normal load. Commands queue and retry. Long locks indicate resource exhaustion.

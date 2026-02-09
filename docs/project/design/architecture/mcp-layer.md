@@ -99,7 +99,7 @@ sequenceDiagram
     Note over W: Return cached handshake on initialize
 
     loop Reconnection attempts
-        W->>D: Try reconnect (500ms interval)
+        W->>D: Try reconnect (5s interval by default)
     end
 
     D->>W: Socket ready
@@ -112,9 +112,15 @@ sequenceDiagram
 
 ### 3. Slow Backend Response
 
-- Wrapper blocks on socket read until response arrives
-- AI client sees normal latency
-- No timeout imposed by wrapper; daemon is responsible for command timeouts
+- Wrapper tracks pending requests and applies response timeouts.
+- Default timeout is 30s, with longer per-tool timeouts for long-running tools (for example `teleclaude__run_agent_command`).
+- If timeout expires first, wrapper returns an error to the client and drops late backend replies.
+
+### 4. Role Marker for Scoped Workers
+
+- When a `teleclaude__run_agent_command` call uses a `/next-*` command and targets local execution, the wrapper marks that spawned session as role `worker`.
+- The marker is written to the spawned session TMPDIR (`teleclaude_role`) after `session_id` is returned.
+- The wrapper waits for the session TMPDIR/marker path to exist before writing, then enforces role-based tool filtering for that session.
 
 ### Wrapper State Transitions
 

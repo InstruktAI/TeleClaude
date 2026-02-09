@@ -75,6 +75,13 @@ snippets:
   scope: global
   path: docs/general/principle/evolution.md
   source_project: TeleClaude
+- id: general/principle/expansion
+  description: 'Founding principle: intelligence expands toward cooperation, not contraction
+    toward control.'
+  type: principle
+  scope: global
+  path: docs/general/principle/expansion.md
+  source_project: TeleClaude
 - id: general/principle/explicit-inference
   description: The principle of explicit inference for AI agents, emphasizing the
     importance of making assumptions clear before taking action.
@@ -223,8 +230,7 @@ snippets:
   path: docs/software-development/concept/finalizer.md
   source_project: TeleClaude
 - id: software-development/concept/fixer
-  description: Bug-fixing role. Investigate issues, identify root cause, apply minimal
-    fixes, and verify.
+  description: Inline bug-fixing mindset. Fix what you find, where you find it.
   type: concept
   scope: domain
   path: docs/software-development/concept/fixer.md
@@ -375,8 +381,8 @@ snippets:
   path: docs/software-development/procedure/ai-to-ai-troubleshooting.md
   source_project: TeleClaude
 - id: software-development/procedure/bugs-handling
-  description: Triage bugs, decide quick fixes vs new todos, and track resolution
-    in bugs.md.
+  description: 'Two-track bug handling: inline for internal discovery, maintenance
+    for external reports.'
   type: procedure
   scope: domain
   path: docs/software-development/procedure/bugs-handling.md

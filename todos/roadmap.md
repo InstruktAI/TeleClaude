@@ -6,6 +6,12 @@
 
 ---
 
+## Config Schema Validation
+
+- [ ] config-schema-validation
+
+Pydantic-based schema for teleclaude.yml across all three config levels (project, global, per-person). Enforce level constraints (only global can configure `people`), validate before interpreting/merging, fix interests schema mismatch (flat list vs nested dict in discovery.py).
+
 ## Eliminate Raw SQL from DB Layer
 
 - [ ] db-raw-sql-cleanup

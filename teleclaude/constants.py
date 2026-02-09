@@ -25,7 +25,8 @@ API_SOCKET_PATH = "/tmp/teleclaude-api.sock"
 
 # Internal configuration (not user-configurable)
 DIRECTORY_CHECK_INTERVAL = 5  # Seconds between directory change checks
-UI_MESSAGE_MAX_CHARS = 3900  # Telegram limit minus formatting overhead
+UI_MESSAGE_MAX_CHARS = 3900  # Char budget for content selection (format + fit)
+TELEGRAM_MAX_MESSAGE_BYTES = 4096  # Telegram API hard limit for message text
 
 # Common protocol tokens (internal canonical strings)
 MAIN_MODULE = "__main__"

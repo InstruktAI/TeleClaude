@@ -23,7 +23,7 @@ type: 'design'
 
 - Command registration is performed only by the master bot.
 - BotCommand names include trailing spaces when published.
-- Feedback and user input messages are deleted via pending_deletions rules.
+- Feedback and user input messages are deleted via pending_message_deletions rules.
 - Unauthorized users are ignored based on whitelist.
 
 - Missing topic threads trigger recovery and metadata repair before retry.
@@ -56,7 +56,7 @@ type: 'design'
 - **Master Bot Registration**: Only master bot publishes BotCommand list; slave bots skip registration.
 - **Trailing Space in Commands**: Published BotCommand names include trailing space for Telegram client formatting.
 - **Single Output Message**: One persistent output message per session, edited repeatedly; message_id stored in session metadata.
-- **UX Cleanup Rules**: User input and feedback messages deleted per pending_deletions policy; output messages persist until session closes.
+- **UX Cleanup Rules**: User input and feedback messages deleted per pending_message_deletions policy; output messages persist until session closes.
 - **Unauthorized User Blocking**: Messages from users not in whitelist ignored silently; no error response sent.
 
 ## Primary flows
@@ -122,22 +122,22 @@ sequenceDiagram
     User->>TG: Text message in topic
     TG->>Adapter: Update (message)
     Adapter->>Adapter: Extract session from topic
-    Adapter->>DB: Store message_id in pending_deletions
+    Adapter->>DB: Store message_id in pending_message_deletions
     Adapter->>Daemon: SendMessageCommand
     Daemon->>Adapter: MESSAGE_SENT event
     Adapter->>TG: Send feedback "✅ Sent to AI"
     TG->>Adapter: feedback_message_id
-    Adapter->>DB: Store feedback_message_id in pending_deletions
+    Adapter->>DB: Store feedback_message_id in pending_message_deletions
 
     Note over Daemon: AI completes turn
 
     Daemon->>Adapter: TURN_COMPLETE event
-    Adapter->>DB: get_pending_deletions(session_id)
+    Adapter->>DB: get_pending_message_deletions(session_id)
     DB->>Adapter: [user_message_id, feedback_message_id]
     loop For each message_id
         Adapter->>TG: deleteMessage(message_id)
     end
-    Adapter->>DB: clear_pending_deletions(session_id)
+    Adapter->>DB: clear_pending_message_deletions(session_id)
 ```
 
 ### 4. Command Registration (Master Bot Only)
@@ -179,7 +179,7 @@ sequenceDiagram
     Adapter->>TG: Download voice file
     Adapter->>TTS: Transcribe audio
     TTS->>Adapter: Transcribed text
-    Adapter->>DB: Store voice_message_id in pending_deletions
+    Adapter->>DB: Store voice_message_id in pending_message_deletions
     Adapter->>Daemon: SendMessageCommand(transcribed_text)
     Adapter->>TG: Send feedback "🎤 Transcribed: {text}"
 ```
@@ -229,5 +229,5 @@ sequenceDiagram
 - **Voice Transcription Failure**: TTS service down or returns error. User sees error feedback; voice message not deleted.
 - **Master Bot Conflict**: Multiple bots claim master role. Last one wins; command list overwritten. Coordinated config required.
 - **Output Message Deleted**: User manually deletes output message. Next edit fails; adapter creates new output message.
-- **Cleanup Failure**: pending_deletions row exists but message already deleted. Logged; row cleared on next cleanup.
+- **Cleanup Failure**: pending_message_deletions row exists but message already deleted. Logged; row cleared on next cleanup.
 - **Topic Thread Closed**: User closes topic. Bot can still post but user doesn't see. Status tracking unaffected.

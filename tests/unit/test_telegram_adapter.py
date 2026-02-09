@@ -298,10 +298,17 @@ class TestMessaging:
         long_text = telegramify_markdown("Line one.\n" * 2000)
         truncated = telegram_adapter._truncate_for_platform(long_text, "MarkdownV2", 4096)
         assert len(truncated) <= 4096
+        assert len(truncated.encode("utf-8")) <= 4096
         assert not truncated.endswith("\\")
 
-    def test_build_output_metadata_includes_download_button(self, telegram_adapter):
-        """Output metadata should include download button when native transcript exists."""
+    def test_truncate_for_platform_markdownv2_uses_telegram_byte_limit(self, telegram_adapter):
+        """MarkdownV2 truncation enforces the 4096-byte Telegram API limit."""
+        long_text = f"```\n{'😀' * 3000}\n```"
+        truncated = telegram_adapter._truncate_for_platform(long_text, "MarkdownV2", 3900)
+        assert len(truncated.encode("utf-8")) <= 4096
+
+    def test_build_output_metadata_no_download_button(self, telegram_adapter):
+        """Output metadata has MarkdownV2 parse_mode but no download button."""
         session = Session(
             session_id="session-download",
             computer_name="test",
@@ -312,6 +319,21 @@ class TestMessaging:
         )
 
         metadata = telegram_adapter._build_output_metadata(session, _is_truncated=False)
+        assert metadata.parse_mode == "MarkdownV2"
+        assert metadata.reply_markup is None
+
+    def test_build_footer_metadata_includes_download_button(self, telegram_adapter):
+        """Footer metadata includes download button when native transcript exists."""
+        session = Session(
+            session_id="session-download",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            native_log_file="/tmp/native.log",
+        )
+
+        metadata = telegram_adapter._build_footer_metadata(session)
         assert metadata.reply_markup is not None
         keyboard = metadata.reply_markup.inline_keyboard
         assert keyboard[0][0].callback_data == "download_full:session-download"
