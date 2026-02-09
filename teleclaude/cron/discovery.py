@@ -51,6 +51,22 @@ def _as_list(value: object) -> list[object]:
     return []
 
 
+def _extract_interest_tags(config: JsonDict) -> list[str]:
+    """Extract interest tags from either list or mapping format.
+
+    Supported shapes:
+    - interests: ["tag-a", "tag-b"]
+    - interests:
+        tags: ["tag-a", "tag-b"]
+    """
+    interests_raw = config.get("interests")
+    if isinstance(interests_raw, list):
+        return [str(tag) for tag in interests_raw]
+    interests = _as_mapping(interests_raw)
+    tags = _as_list(interests.get("tags"))
+    return [str(tag) for tag in tags]
+
+
 def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
     """
     Find all scopes (global + people) with youtube subscription configured.
@@ -73,14 +89,12 @@ def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
         subscriptions = _as_mapping(global_cfg.get("subscriptions"))
         youtube_file = subscriptions.get("youtube")
         if youtube_file:
-            interests = _as_mapping(global_cfg.get("interests"))
-            tags = _as_list(interests.get("tags"))
             subscribers.append(
                 Subscriber(
                     scope="global",
                     name=None,
                     config_path=global_cfg_path,
-                    tags=[str(t) for t in tags],
+                    tags=_extract_interest_tags(global_cfg),
                 )
             )
 
@@ -97,14 +111,12 @@ def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
             subscriptions = _as_mapping(person_cfg.get("subscriptions"))
             youtube_file = subscriptions.get("youtube")
             if youtube_file:
-                interests = _as_mapping(person_cfg.get("interests"))
-                tags = _as_list(interests.get("tags"))
                 subscribers.append(
                     Subscriber(
                         scope="person",
                         name=person_dir.name,
                         config_path=person_cfg_path,
-                        tags=[str(t) for t in tags],
+                        tags=_extract_interest_tags(person_cfg),
                     )
                 )
 

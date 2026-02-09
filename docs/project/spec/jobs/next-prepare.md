@@ -36,11 +36,9 @@ jobs:
     preferred_weekday: 0
     preferred_hour: 7
     type: agent
+    job: next-prepare
     agent: claude
     thinking_mode: med
-    message: >-
-      You are running the next-prepare maintenance job. Read
-      @docs/project/spec/jobs/next-prepare.md for your full instructions.
 ```
 
 ### Scope
@@ -166,7 +164,6 @@ If uncertainty crosses safe bounds, it must stop and mark
 
 ## Known caveats
 
-- Current cron runner executes agent jobs from `message`; the `job` key contract is tracked separately under `job-contract-refinements`.
 - This job improves preparation artifacts, not implementation correctness.
 - Highly ambiguous todos may remain below threshold by design and require human decisions.
 - Score consistency depends on a stable scoring rubric; bump `schema_version` when rubric changes.

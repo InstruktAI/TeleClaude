@@ -25,7 +25,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from http.client import HTTPConnection
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 import yaml
 from instrukt_ai_logging import get_logger
@@ -52,7 +52,20 @@ class Schedule(Enum):
     MONTHLY = "monthly"
 
 
-def _load_job_schedules(config_path: Path | None = None) -> dict[str, dict[str, str | int]]:
+class JobConfig(TypedDict, total=False):
+    schedule: str
+    preferred_hour: int
+    preferred_weekday: int
+    preferred_day: int
+    type: str
+    script: str
+    job: str
+    agent: str
+    thinking_mode: str
+    message: str
+
+
+def _load_job_schedules(config_path: Path | None = None) -> dict[str, JobConfig]:
     """Load job schedule configuration from teleclaude.yml."""
     if config_path is None:
         config_path = _REPO_ROOT / "teleclaude.yml"
@@ -64,11 +77,14 @@ def _load_job_schedules(config_path: Path | None = None) -> dict[str, dict[str, 
     with open(config_path) as f:
         config = yaml.safe_load(f) or {}
 
-    return config.get("jobs", {})
+    jobs = config.get("jobs", {})
+    if isinstance(jobs, dict):
+        return jobs  # type: ignore[return-value]
+    return {}
 
 
 def _is_due(
-    schedule_config: dict[str, str | int],
+    schedule_config: JobConfig,
     last_run: datetime | None,
     now: datetime | None = None,
 ) -> bool:
@@ -123,15 +139,34 @@ class _UnixSocketConnection(HTTPConnection):
         self.sock.connect(self._socket_path)
 
 
-def _run_agent_job(job_name: str, config: dict[str, str | int]) -> bool:
+def _job_slug_to_spec_filename(job_slug: str) -> str:
+    """Convert job slug to expected spec filename."""
+    return f"{job_slug.replace('_', '-')}.md"
+
+
+def _build_agent_job_message(job_name: str, config: JobConfig) -> str | None:
+    """Build canonical job prompt from structured ``job`` config."""
+    if "message" in config:
+        logger.error("agent job uses deprecated message field", name=job_name)
+        return None
+
+    job_ref = str(config.get("job", "")).strip()
+    if not job_ref:
+        logger.error("agent job has no job field", name=job_name)
+        return None
+
+    spec_name = _job_slug_to_spec_filename(job_ref)
+    return f"You are running the {job_name} job. Read @docs/project/spec/jobs/{spec_name} for your full instructions."
+
+
+def _run_agent_job(job_name: str, config: JobConfig) -> bool:
     """Spawn a headless agent session for an agent-type job.
 
     Calls the daemon's POST /sessions endpoint via the unix socket.
     Fire-and-forget: the agent session runs to completion independently.
     """
-    message = str(config.get("message", ""))
+    message = _build_agent_job_message(job_name, config)
     if not message:
-        logger.error("agent job has no message", name=job_name)
         return False
 
     agent = str(config.get("agent", "claude"))

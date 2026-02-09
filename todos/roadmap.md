@@ -18,7 +18,7 @@ Pydantic-based schema for teleclaude.yml across all three config levels (project
 
 ## Job Contract Refinements
 
-- [ ] job-contract-refinements (after: config-schema-validation)
+- [x] job-contract-refinements (after: config-schema-validation)
 
 Agent jobs use `job` field (spec doc reference) instead of inline `message`. Add job validation to `telec sync` pipeline. Fix discovery.py interests handling. Lightweight input declarations for jobs that need per-person data.
 

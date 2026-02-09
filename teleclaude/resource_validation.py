@@ -856,6 +856,80 @@ def validate_all_artifacts(project_root: Path) -> list[str]:
     return errors
 
 
+def _job_slug_to_spec_filename(job_slug: str) -> str:
+    return f"{job_slug.replace('_', '-')}.md"
+
+
+def validate_jobs_config(project_root: Path) -> list[str]:
+    """Validate project job config in teleclaude.yml.
+
+    Checks schedule shape, execution mode contract, and job/spec/module references.
+    """
+    config_path = project_root / "teleclaude.yml"
+    if not config_path.exists():
+        return []
+
+    try:
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:
+        return [f"{config_path}: invalid YAML ({exc})"]
+
+    if not isinstance(config, dict):
+        return [f"{config_path}: expected top-level mapping"]
+
+    jobs = config.get("jobs", {})
+    if not isinstance(jobs, dict):
+        return [f"{config_path}: jobs must be a mapping"]
+
+    allowed_schedules = {"hourly", "daily", "weekly", "monthly"}
+    errors: list[str] = []
+
+    for name, raw in jobs.items():
+        if not isinstance(raw, dict):
+            errors.append(f"{config_path}: jobs.{name} must be a mapping")
+            continue
+        job_cfg = raw
+
+        schedule = job_cfg.get("schedule")
+        if not isinstance(schedule, str) or schedule not in allowed_schedules:
+            errors.append(f"{config_path}: jobs.{name}.schedule must be one of {sorted(allowed_schedules)}")
+
+        preferred_hour = job_cfg.get("preferred_hour", 6)
+        if not isinstance(preferred_hour, int) or not (0 <= preferred_hour <= 23):
+            errors.append(f"{config_path}: jobs.{name}.preferred_hour must be int 0..23")
+
+        preferred_weekday = job_cfg.get("preferred_weekday", 0)
+        if not isinstance(preferred_weekday, int) or not (0 <= preferred_weekday <= 6):
+            errors.append(f"{config_path}: jobs.{name}.preferred_weekday must be int 0..6")
+
+        preferred_day = job_cfg.get("preferred_day", 1)
+        if not isinstance(preferred_day, int) or not (1 <= preferred_day <= 31):
+            errors.append(f"{config_path}: jobs.{name}.preferred_day must be int 1..31")
+
+        is_agent = str(job_cfg.get("type", "")) == "agent"
+        if is_agent:
+            if "message" in job_cfg:
+                errors.append(f"{config_path}: jobs.{name}.message is not allowed for agent jobs")
+            job_ref = job_cfg.get("job")
+            if not isinstance(job_ref, str) or not job_ref.strip():
+                errors.append(f"{config_path}: jobs.{name}.job is required for agent jobs")
+            else:
+                spec_file = project_root / "docs" / "project" / "spec" / "jobs" / _job_slug_to_spec_filename(job_ref)
+                if not spec_file.exists():
+                    errors.append(f"{config_path}: jobs.{name}.job references missing spec {spec_file}")
+        else:
+            script_ref = job_cfg.get("script")
+            if not isinstance(script_ref, str) or not script_ref.strip():
+                # Default python-job contract: module should exist at jobs/{name}.py
+                python_module_path = project_root / "jobs" / f"{name}.py"
+                if not python_module_path.exists():
+                    errors.append(
+                        f"{config_path}: jobs.{name} has no script and missing python module {python_module_path}"
+                    )
+
+    return errors
+
+
 def _iter_snippet_roots(project_root: Path) -> list[Path]:
     """Find all snippet root directories under the project."""
     roots: list[Path] = []

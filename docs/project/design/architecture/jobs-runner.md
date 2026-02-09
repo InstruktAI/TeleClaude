@@ -161,10 +161,9 @@ Person-scoped configuration for jobs that operate per-subscriber:
 subscriptions:
   youtube: youtube.csv # Relative to subscriptions/ dir
 interests:
-  tags:
-    - ai
-    - devtools
-    - geopolitics
+  - ai
+  - devtools
+  - geopolitics
 ```
 
 Discovery (`teleclaude/cron/discovery.py`) scans `~/.teleclaude/people/*/teleclaude.yml`

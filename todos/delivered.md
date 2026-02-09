@@ -34,3 +34,4 @@
 | 2026-02-09 | codebase-audit               | TeleClaude Comprehensive Codebase Audit                                                   | DELIVERED | -                                        |
 | 2026-02-09 | refactor-again               | Hook/Core Ownership Refactor Follow-up                                                    | DELIVERED | -                                        |
 | 2026-02-09 | next-prepare-maintenance     | Next Prepare maintenance runner docs + scheduled agent job wiring                         | DELIVERED | -                                        |
+| 2026-02-09 | job-contract-refinements     | Enforced agent job contract (`job`), sync-time job validation, interests parsing fix      | DELIVERED | -                                        |

@@ -35,3 +35,11 @@ class Job(ABC):
     def run(self) -> JobResult:
         """Execute the job. Returns result with success/failure info."""
         ...
+
+    def required_subscriber_fields(self) -> list[str]:
+        """Return required subscriber-level config fields for this job.
+
+        Optional contract for jobs that depend on per-subscriber config data.
+        Field syntax is dot-path style (for example: ``subscriptions.youtube``).
+        """
+        return []

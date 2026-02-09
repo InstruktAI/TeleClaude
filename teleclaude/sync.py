@@ -18,6 +18,7 @@ from teleclaude.resource_validation import (
     get_warnings,
     validate_all_artifacts,
     validate_all_snippets,
+    validate_jobs_config,
     validate_third_party_docs,
 )
 
@@ -40,6 +41,7 @@ def sync(
     validate_third_party_docs(project_root)
     artifact_errors = validate_all_artifacts(project_root)
     errors.extend(artifact_errors)
+    errors.extend(validate_jobs_config(project_root))
 
     warnings = get_warnings()
     if warnings:

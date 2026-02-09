@@ -32,6 +32,7 @@ jobs:
   merge_runner:
     schedule: hourly
     type: agent
+    job: merge-runner
     agent: claude
     thinking_mode: med
 ```

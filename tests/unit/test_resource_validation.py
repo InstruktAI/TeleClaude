@@ -11,6 +11,7 @@ from teleclaude.resource_validation import (
     resolve_ref_path,
     validate_all_snippets,
     validate_artifact,
+    validate_jobs_config,
     validate_snippet,
     validate_third_party_docs,
 )
@@ -217,6 +218,32 @@ class TestValidateArtifact:
         )
         with pytest.raises(ValueError, match="must match folder"):
             validate_artifact(post, "skills/my-skill/SKILL.md", kind="skill", project_root=tmp_path)
+
+
+@pytest.mark.unit
+class TestValidateJobsConfig:
+    def test_agent_job_requires_job_field_and_forbids_message(self, tmp_path: Path) -> None:
+        config = tmp_path / "teleclaude.yml"
+        config.write_text("jobs:\n  sample:\n    schedule: weekly\n    type: agent\n    message: test\n")
+        errors = validate_jobs_config(tmp_path)
+        assert any("jobs.sample.message is not allowed" in e for e in errors)
+        assert any("jobs.sample.job is required" in e for e in errors)
+
+    def test_agent_job_requires_existing_spec(self, tmp_path: Path) -> None:
+        (tmp_path / "docs" / "project" / "spec" / "jobs").mkdir(parents=True)
+        config = tmp_path / "teleclaude.yml"
+        config.write_text("jobs:\n  sample:\n    schedule: weekly\n    type: agent\n    job: sample-job\n")
+        errors = validate_jobs_config(tmp_path)
+        assert any("references missing spec" in e for e in errors)
+
+    def test_agent_job_with_existing_spec_passes(self, tmp_path: Path) -> None:
+        jobs_dir = tmp_path / "docs" / "project" / "spec" / "jobs"
+        jobs_dir.mkdir(parents=True)
+        (jobs_dir / "sample-job.md").write_text("# Sample\n")
+        config = tmp_path / "teleclaude.yml"
+        config.write_text("jobs:\n  sample:\n    schedule: weekly\n    type: agent\n    job: sample-job\n")
+        errors = validate_jobs_config(tmp_path)
+        assert errors == []
 
     def test_nonexistent_ref_raises(self, tmp_path: Path) -> None:
         import frontmatter as fm
