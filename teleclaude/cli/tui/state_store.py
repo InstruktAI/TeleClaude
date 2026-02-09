@@ -7,7 +7,8 @@ import os
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.tui.state import DocStickyInfo, PreviewState, StickySessionInfo, TuiState
+from teleclaude.cli.tui.state import DocStickyInfo, PreviewState, TuiState
+from teleclaude.cli.tui.types import StickySessionInfo
 from teleclaude.paths import TUI_STATE_PATH
 
 logger = get_logger(__name__)
@@ -24,10 +25,7 @@ def load_sticky_state(state: TuiState) -> None:
             data = json.load(f)
 
         sticky_data = data.get("sticky_sessions", [])
-        state.sessions.sticky_sessions = [
-            StickySessionInfo(session_id=item["session_id"], show_child=item.get("show_child", True))
-            for item in sticky_data
-        ]
+        state.sessions.sticky_sessions = [StickySessionInfo(session_id=item["session_id"]) for item in sticky_data]
 
         sticky_docs = data.get("sticky_docs", [])
         state.preparation.sticky_previews = [
@@ -56,10 +54,7 @@ def load_sticky_state(state: TuiState) -> None:
 
         preview_data = data.get("preview")
         if isinstance(preview_data, dict) and preview_data.get("session_id"):
-            state.sessions.preview = PreviewState(
-                session_id=preview_data["session_id"],
-                show_child=preview_data.get("show_child", True),
-            )
+            state.sessions.preview = PreviewState(session_id=preview_data["session_id"])
 
         logger.info(
             "Loaded TUI state: %d sticky, %d docs, %d in_hl, %d out_hl, %d collapsed, preview=%s",
@@ -86,9 +81,7 @@ def save_sticky_state(state: TuiState) -> None:
 
         preview = state.sessions.preview
         state_data = {
-            "sticky_sessions": [
-                {"session_id": s.session_id, "show_child": s.show_child} for s in state.sessions.sticky_sessions
-            ],
+            "sticky_sessions": [{"session_id": s.session_id} for s in state.sessions.sticky_sessions],
             "sticky_docs": [
                 {"doc_id": d.doc_id, "command": d.command, "title": d.title} for d in state.preparation.sticky_previews
             ],
@@ -96,7 +89,7 @@ def save_sticky_state(state: TuiState) -> None:
             "input_highlights": sorted(state.sessions.input_highlights),
             "output_highlights": sorted(state.sessions.output_highlights),
             "collapsed_sessions": sorted(state.sessions.collapsed_sessions),
-            "preview": {"session_id": preview.session_id, "show_child": preview.show_child} if preview else None,
+            "preview": {"session_id": preview.session_id} if preview else None,
         }
 
         # Atomic write with lock to prevent race conditions

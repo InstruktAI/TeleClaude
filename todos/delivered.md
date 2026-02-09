@@ -31,3 +31,5 @@
 | 2026-01-23 | banner-animations            | Banner Animation System                                                                   | DELIVERED | fb7e5e8                                  |
 | 2026-02-06 | role-tools-injection         | MCP Role-Based Tool Filtering                                                             | DELIVERED | -                                        |
 | 2026-02-06 | threaded-output-experiment   | Threaded Incremental Output Experiment                                                    | DELIVERED | 8db1bd5                                  |
+| 2026-02-09 | codebase-audit               | TeleClaude Comprehensive Codebase Audit                                                   | DELIVERED | -                                        |
+| 2026-02-09 | refactor-again               | Hook/Core Ownership Refactor Follow-up                                                    | DELIVERED | -                                        |

@@ -23,5 +23,14 @@ jobs:
       3. For each actionable finding, create an ideas/ file (YYMMDD-slug.md format).
       4. Summarize what you found and what you promoted.
 
+  merge_runner:
+    schedule: hourly
+    type: agent
+    agent: claude
+    thinking_mode: med
+    message: >-
+      You are running the merge runner job. Read @docs/project/spec/jobs/merge-runner.md
+      for your full instructions.
+
 # git:
 #   checkout_root: ~/Workspace/public-repos

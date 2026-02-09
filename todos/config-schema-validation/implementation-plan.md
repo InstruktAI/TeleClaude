@@ -25,7 +25,9 @@ class GitConfig(BaseModel):
 
 class PersonEntry(BaseModel):
     name: str
-    username: str
+    email: str
+    username: str | None = None
+    role: Literal["admin", "member", "contributor", "newcomer"] = "member"
 
 class OpsEntry(BaseModel):
     username: str

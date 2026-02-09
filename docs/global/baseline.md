@@ -9,9 +9,13 @@
 @~/.teleclaude/docs/general/policy/conflict-resolution.md
 @~/.teleclaude/docs/general/policy/context-retrieval.md
 @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
+@~/.teleclaude/docs/general/procedure/agent-artifact-authoring.md
 @~/.teleclaude/docs/general/procedure/checkpoint.md
+@~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
 @~/.teleclaude/docs/general/procedure/idea-box.md
 @~/.teleclaude/docs/general/procedure/memory-management.md
+@~/.teleclaude/docs/general/spec/agent-artifacts.md
+@~/.teleclaude/docs/general/spec/snippet-authoring-schema.md
 @~/.teleclaude/docs/general/spec/third-party-docs.md
 @~/.teleclaude/docs/general/spec/tools/baseline.md
 @~/.teleclaude/docs/software-development/policy/version-control-safety.md

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import LOCAL_COMPUTER
+from teleclaude.constants import CHECKPOINT_MESSAGE, CHECKPOINT_REACTIVATION_THRESHOLD_S, LOCAL_COMPUTER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.events import (
@@ -53,9 +53,6 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
-
-CHECKPOINT_MESSAGE = "Checkpoint \u2014 Continue or validate your work if needed. Otherwise, capture anything worth keeping (memories, bugs, ideas). If everything is clean, do not respond."
-CHECKPOINT_REACTIVATION_THRESHOLD_S = 30
 
 SESSION_START_MESSAGES = [
     "Standing by with grep patterns locked and loaded. What can I find?",
@@ -194,7 +191,7 @@ class AgentCoordinator:
                 logger.warning("Title summarization failed: %s", exc)
 
         # Single DB update for all fields
-        await db.update_session(session_id, reason="user_input", **update_kwargs)
+        await db.update_session(session_id, **update_kwargs)
         logger.debug(
             "Recorded user input via hook for session %s: %s...",
             session_id[:8],
@@ -238,22 +235,35 @@ class AgentCoordinator:
             "db",
         )
 
-        # 1. Extract agent output, summarize + persist if non-empty
+        # 1. Extract turn artifacts and persist with a single ordered activity update.
         active_agent = (session.active_agent if session else None) or (
             payload.raw.get("agent_name") if payload.raw else None
         )
+        update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
+
+        # For Codex: recover last user input from transcript (no native prompt hook).
+        codex_input = await self._extract_user_input_for_codex(session_id, payload)
+        if codex_input:
+            update_kwargs.update(
+                {
+                    "last_message_sent": codex_input[:200],
+                    "last_message_sent_at": datetime.now(timezone.utc).isoformat(),
+                    "last_input_origin": InputOrigin.HOOK.value,
+                }
+            )
+
         raw_output = await self._extract_agent_output(session_id, payload)
         if raw_output:
             if config.terminal.strip_ansi:
                 raw_output = strip_ansi_codes(raw_output)
 
             summary = await self._summarize_output(session_id, raw_output)
-            await db.update_session(
-                session_id,
-                reason="agent_stopped",
-                last_feedback_received=raw_output,
-                last_feedback_summary=summary,
-                last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
+            update_kwargs.update(
+                {
+                    "last_feedback_received": raw_output,
+                    "last_feedback_summary": summary,
+                    "last_feedback_received_at": datetime.now(timezone.utc).isoformat(),
+                }
             )
             logger.debug(
                 "Stored agent output: session=%s raw_len=%d summary_len=%d",
@@ -267,10 +277,14 @@ class AgentCoordinator:
                 except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
                     logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
 
-        # 2. For Codex: extract last user input from transcript (no hook support)
-        await self._extract_user_input_for_codex(session_id, payload)
+        # Emit a single consolidated update for this stop turn.
+        # If no fields changed, still emit agent_stopped so UI transitions correctly.
+        if update_kwargs:
+            await db.update_session(session_id, **update_kwargs)
+        else:
+            await db.update_session(session_id, reasons=("agent_stopped",))
 
-        # 3. Incremental threaded output (final turn portion)
+        # 2. Incremental threaded output (final turn portion)
         await self._maybe_send_incremental_output(session_id, payload)
 
         # Clear threaded output state for this turn (only for threaded sessions).
@@ -291,14 +305,14 @@ class AgentCoordinator:
         # Clear turn-specific cursor at turn completion
         await db.update_session(session_id, last_agent_output_at=None)
 
-        # 4. Notify local listeners (AI-to-AI on same computer)
+        # 3. Notify local listeners (AI-to-AI on same computer)
         await self._notify_session_listener(session_id, source_computer=source_computer)
 
-        # 5. Forward to remote initiator (AI-to-AI across computers)
+        # 4. Forward to remote initiator (AI-to-AI across computers)
         if not (source_computer and source_computer != config.computer.name):
             await self._forward_stop_to_initiator(session_id)
 
-        # 6. Inject checkpoint into the stopped agent's tmux pane
+        # 5. Inject checkpoint into the stopped agent's tmux pane
         await self._maybe_inject_checkpoint(session_id, session)
 
     async def handle_after_model(self, context: AgentEventContext) -> None:
@@ -446,11 +460,10 @@ class AgentCoordinator:
                     update_kwargs[SessionField.LAST_AGENT_OUTPUT_AT.value] = last_ts.isoformat()
                     logger.debug("Updating cursor for session %s to %s", session_id[:8], last_ts.isoformat())
 
-                await db.update_session(
-                    session_id,
-                    reason="agent_output",
-                    **update_kwargs,
-                )
+                if update_kwargs:
+                    await db.update_session(session_id, **update_kwargs)
+                else:
+                    await db.update_session(session_id, reasons=("agent_output",))
 
                 return True
             except Exception as exc:  # noqa: BLE001 - Message send should never crash event handling
@@ -545,7 +558,7 @@ class AgentCoordinator:
             logger.warning("Summarization failed: %s", exc, extra={"session_id": session_id[:8]})
             return None
 
-    async def _extract_user_input_for_codex(self, session_id: str, payload: AgentStopPayload) -> None:
+    async def _extract_user_input_for_codex(self, session_id: str, payload: AgentStopPayload) -> str | None:
         """Extract last user input from transcript for Codex sessions.
 
         Codex doesn't have user_prompt_submit hook, so we extract user input
@@ -553,45 +566,39 @@ class AgentCoordinator:
         """
         session = await db.get_session(session_id)
         if not session:
-            return
+            return None
 
         # Only for Codex sessions
         agent_name_value = session.active_agent
         if agent_name_value != AgentName.CODEX.value:
-            return
+            return None
 
         transcript_path = payload.transcript_path or session.native_log_file
         if not transcript_path:
             logger.debug("Codex user input extraction skipped (no transcript)", session=session_id[:8])
-            return
+            return None
 
         try:
             agent_name = AgentName.from_str(agent_name_value)
         except ValueError:
-            return
+            return None
 
         last_user_input = extract_last_user_message(transcript_path, agent_name)
         if not last_user_input:
             logger.debug("Codex user input extraction skipped (no user message)", session=session_id[:8])
-            return
+            return None
 
         # Don't persist our own checkpoint message as user input
         if CHECKPOINT_MESSAGE[:50] in last_user_input:
             logger.debug("Codex user input skipped (checkpoint message) for session %s", session_id[:8])
-            return
+            return None
 
-        await db.update_session(
-            session_id,
-            reason="user_input",
-            last_message_sent=last_user_input[:200],
-            last_message_sent_at=datetime.now(timezone.utc).isoformat(),
-            last_input_origin=InputOrigin.HOOK.value,
-        )
         logger.debug(
             "Extracted Codex user input: session=%s input=%s...",
             session_id[:8],
             last_user_input[:50],
         )
+        return last_user_input
 
     async def _notify_session_listener(
         self,
@@ -666,7 +673,10 @@ class AgentCoordinator:
     async def _maybe_inject_checkpoint(self, session_id: str, session: "Session | None") -> None:
         """Conditionally inject a checkpoint message into the agent's tmux pane.
 
-        Unified logic for all agents:
+        Claude/Gemini: handled by hook output in receiver.py (invisible checkpoint).
+        Codex: falls through to tmux injection below.
+
+        Tmux injection logic:
         1. Determine turn start: max(last_message_sent_at, last_checkpoint_at)
            — the most recent input event marks when the current work period began.
         2. If elapsed < threshold → skip (short/interactive response).
@@ -676,6 +686,13 @@ class AgentCoordinator:
         """
         if not session:
             return
+
+        # Claude and Gemini use hook-based invisible checkpoints (receiver.py).
+        # Only Codex needs tmux injection.
+        agent_name = str(session.active_agent or "")
+        if agent_name in (AgentName.CLAUDE.value, AgentName.GEMINI.value):
+            return
+
         tmux_name = session.tmux_session_name
         if not tmux_name:
             return

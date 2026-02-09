@@ -232,11 +232,9 @@ class TestPreparationViewLogic:
                 self.called = False
                 self.args = None
 
-            def show_session(
-                self, tmux_session_name, active_agent, child_tmux_session_name, computer_info, session_id=None
-            ):
+            def show_session(self, tmux_session_name, active_agent, computer_info=None, session_id=None):
                 self.called = True
-                self.args = (tmux_session_name, active_agent, child_tmux_session_name, computer_info, session_id)
+                self.args = (tmux_session_name, active_agent, computer_info, session_id)
 
         pane_manager = MockPaneManager()
         state = TuiState()

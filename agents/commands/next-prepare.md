@@ -11,6 +11,7 @@ You are now the Architect.
 
 - @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare.md
+- @~/.teleclaude/docs/general/procedure/maintenance/next-prepare.md
 
 ## Purpose
 

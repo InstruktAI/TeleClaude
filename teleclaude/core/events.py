@@ -443,7 +443,7 @@ class SessionUpdatedContext:
 
     session_id: str
     updated_fields: Mapping[str, object]
-    reason: "SessionUpdateReason | None" = None  # For highlight logic
+    reasons: tuple["SessionUpdateReason", ...] = ()  # Ordered UI activity reasons
 
 
 @dataclass(frozen=True)

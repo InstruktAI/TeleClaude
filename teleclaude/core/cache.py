@@ -310,28 +310,28 @@ class DaemonCache:
         self,
         session: SessionSummary,
         *,
-        reason: SessionUpdateReason | None = None,
+        reasons: tuple[SessionUpdateReason, ...] = (),
     ) -> None:
         """Update session info in cache.
 
         Args:
             session: Session summary object
-            reason: Why the session was updated (for highlight logic)
+            reasons: Ordered activity reasons (for highlight logic)
         """
         session_id = session.session_id
         is_new = session_id not in self._sessions
         self._sessions[session_id] = CachedItem(session)
         logger.debug(
-            "Updated session cache: %s (computer=%s, new=%s, title=%s, reason=%s)",
+            "Updated session cache: %s (computer=%s, new=%s, title=%s, reasons=%s)",
             session_id[:8],
             session.computer,
             is_new,
             session.title,
-            reason,
+            reasons,
         )
-        # Include reason in the notification payload
+        # Include reasons in the notification payload
         event = "session_started" if is_new else "session_updated"
-        self._notify(event, {"session": session, "reason": reason})
+        self._notify(event, {"session": session, "reasons": list(reasons)})
 
     def remove_session(self, session_id: str) -> None:
         """Remove session from cache.

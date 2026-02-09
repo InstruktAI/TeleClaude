@@ -130,7 +130,7 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         # 2. Should call update_session (heartbeat) but NOT update cursor
         mock_update_session.assert_called_once()
         args, kwargs = mock_update_session.call_args
-        assert kwargs["reason"] == "agent_output"
+        assert kwargs["reasons"] == ("agent_output",)
         assert "last_agent_output_at" not in kwargs, "Cursor should NOT be updated during accumulation"
 
 

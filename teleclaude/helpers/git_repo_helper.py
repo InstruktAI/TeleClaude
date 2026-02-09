@@ -41,12 +41,39 @@ def _dirty_worktree(repo_path: Path) -> list[str]:
     return [line for line in status.splitlines() if line]
 
 
+def _default_branch(repo_path: Path) -> str:
+    """Return the default branch name (main, master, etc.)."""
+    for ref in ("refs/remotes/origin/main", "refs/remotes/origin/master"):
+        try:
+            _git_output(["git", "rev-parse", "--verify", ref], cwd=repo_path)
+            return ref.rsplit("/", 1)[1]
+        except subprocess.CalledProcessError:
+            continue
+    try:
+        out = _git_output(["git", "remote", "show", "origin"], cwd=repo_path)
+        for line in out.splitlines():
+            if "HEAD branch" in line:
+                return line.split(":")[-1].strip()
+    except subprocess.CalledProcessError:
+        pass
+    return "main"
+
+
+def _ensure_on_branch(repo_path: Path) -> None:
+    """If HEAD is detached or missing, checkout the default branch."""
+    try:
+        _git_output(["git", "symbolic-ref", "HEAD"], cwd=repo_path)
+    except subprocess.CalledProcessError:
+        branch = _default_branch(repo_path)
+        _run(["git", "checkout", branch], cwd=repo_path)
+
+
 def _ensure_repo(repo_url: str, repo_path: Path) -> tuple[list[str], list[str]]:
     """Ensure repo exists; return (changes, dirty_changes)."""
     if repo_path.exists() and (repo_path / ".git").exists():
+        _ensure_on_branch(repo_path)
         dirty = _dirty_worktree(repo_path)
         if dirty:
-            # Do not pull if the working tree is dirty; report the changes instead.
             return [], dirty
         before = _current_head(repo_path)
         _run(["git", "fetch", "--all", "--prune"], cwd=repo_path)

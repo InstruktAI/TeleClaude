@@ -59,10 +59,15 @@ Everything in project-level, plus:
 ```yaml
 people:
   - name: str
-    username: str
+    email: str
+    username: str (optional)
+    role: str (optional, default "member", allowed: admin|member|contributor|newcomer)
 ops:
   - username: str
 ```
+
+**Note:** `email` and `role` fields on PersonEntry are required by the downstream
+`person-identity-auth` todo for identity resolution and role-based access control.
 
 ### Per-person schema
 

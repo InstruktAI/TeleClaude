@@ -22,7 +22,6 @@ class PreviewState:
     """Active preview state for the side pane."""
 
     session_id: str
-    show_child: bool = True
 
 
 @dataclass(frozen=True)
@@ -120,7 +119,6 @@ class Intent:
 
 class IntentPayload(TypedDict, total=False):
     session_id: str
-    show_child: bool
     session_ids: list[str]
     todo_id: str
     todo_ids: list[str]
@@ -150,11 +148,10 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
 
     if t is IntentType.SET_PREVIEW:
         session_id = p.get("session_id")
-        show_child = bool(p.get("show_child", True))
         if session_id:
             if _sticky_count(state) >= MAX_STICKY_PANES:
                 return
-            state.sessions.preview = PreviewState(session_id=session_id, show_child=show_child)
+            state.sessions.preview = PreviewState(session_id=session_id)
             state.preparation.preview = None
             # User viewed session: clear output highlight
             state.sessions.output_highlights.discard(session_id)
@@ -166,7 +163,6 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
 
     if t is IntentType.TOGGLE_STICKY:
         session_id = p.get("session_id")
-        show_child = bool(p.get("show_child", True))
         if not session_id:
             return
         existing_idx = None
@@ -179,7 +175,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         else:
             if _sticky_count(state) >= MAX_STICKY_PANES:
                 return
-            state.sessions.sticky_sessions.append(StickySessionInfo(session_id, show_child))
+            state.sessions.sticky_sessions.append(StickySessionInfo(session_id))
             if state.sessions.preview and state.sessions.preview.session_id == session_id:
                 state.sessions.preview = None
             # User viewed session: clear output highlight

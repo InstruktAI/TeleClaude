@@ -586,7 +586,7 @@ def get_tool_definitions() -> list[Tool]:
             title="TeleClaude: Mark Phase",
             description=(
                 "Mark a work phase as complete/approved in state.json. "
-                "Updates trees/{slug}/todos/{slug}/state.json and commits the change. "
+                "Updates trees/{slug}/todos/{slug}/state.json and syncs it back to main todos/{slug}/state.json. "
                 "Call this after a worker completes build or review phases. "
                 "Use after a phase completes to keep state in sync."
             ),

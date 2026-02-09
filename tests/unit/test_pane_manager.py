@@ -19,8 +19,8 @@ def test_toggle_session_returns_false_when_not_in_tmux():
     assert manager.active_session is None
 
 
-def test_show_session_tracks_parent_and_child_panes():
-    """Test that show_session sets pane and session state when panes are created."""
+def test_show_session_tracks_parent_pane():
+    """Test that show_session sets pane and session state when pane is created."""
     with patch.dict(os.environ, {"TMUX": "1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
@@ -30,14 +30,11 @@ def test_show_session_tracks_parent_and_child_panes():
         manager.show_session(
             "parent-session",
             "claude",
-            "child-session",
-            ComputerInfo(name="local", is_local=True),
+            computer_info=ComputerInfo(name="local", is_local=True),
         )
 
     assert manager.state.parent_pane_id is not None
-    assert manager.state.child_pane_id is not None
     assert manager.state.parent_session == "parent-session"
-    assert manager.state.child_session == "child-session"
     # Verify at least one split-window command issued
     assert any(call.args[0] == "split-window" for call in mock_run.call_args_list)
 
@@ -63,18 +60,13 @@ def test_hide_sessions_kills_existing_panes_and_clears_state():
             manager = TmuxPaneManager()
 
     manager.state.parent_pane_id = "%10"
-    manager.state.child_pane_id = "%11"
     manager.state.parent_session = "session-1"
-    manager.state.child_session = "session-2"
 
     mock_run = Mock(return_value="")
     with patch.object(manager, "_run_tmux", mock_run), patch.object(manager, "_get_pane_exists", return_value=True):
         manager.hide_sessions()
 
     assert manager.state.parent_pane_id is None
-    assert manager.state.child_pane_id is None
     assert manager.state.parent_session is None
-    assert manager.state.child_session is None
-    # Verify specific calls by index
-    assert mock_run.call_args_list[0].args == ("kill-pane", "-t", "%11")
-    assert mock_run.call_args_list[1].args == ("kill-pane", "-t", "%10")
+    # Verify kill-pane command issued for parent pane
+    assert mock_run.call_args_list[0].args == ("kill-pane", "-t", "%10")

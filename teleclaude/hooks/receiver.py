@@ -25,7 +25,12 @@ from teleclaude.config import config  # noqa: E402
 from teleclaude.core.agents import AgentName  # noqa: E402
 from teleclaude.core import db_models  # noqa: E402
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType  # noqa: E402
-from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS  # noqa: E402
+from teleclaude.constants import (  # noqa: E402
+    CHECKPOINT_MESSAGE,
+    CHECKPOINT_REACTIVATION_THRESHOLD_S,
+    MAIN_MODULE,
+    UI_MESSAGE_MAX_CHARS,
+)
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -95,6 +100,79 @@ def _format_injection_payload(agent: str, context: str) -> str:
         )
     # Codex has no SessionStart hook mechanism
     return ""
+
+
+def _maybe_checkpoint_output(
+    session_id: str,
+    agent: str,
+    raw_data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
+) -> str | None:
+    """Evaluate whether to block an agent_stop with a checkpoint instruction.
+
+    Returns agent-specific JSON to print to stdout (blocking the stop), or None
+    to let the stop pass through to the normal enqueue path.
+    """
+    # Claude escape hatch: stop_hook_active means the agent already blocked once
+    # this turn (the CLI sets this on re-entry). Let the real stop through.
+    if raw_data.get("stop_hook_active"):
+        logger.debug("Checkpoint skipped (stop_hook_active escape hatch)")
+        return None
+
+    from sqlmodel import Session as SqlSession
+
+    try:
+        with SqlSession(_create_sync_engine()) as db_session:
+            row = db_session.get(db_models.Session, session_id)
+    except Exception as exc:  # noqa: BLE001 - fail-open: let stop through on DB errors
+        logger.debug("Checkpoint eval skipped (db error)", error=str(exc))
+        return None
+
+    if not row:
+        return None
+
+    checkpoint_at = row.last_checkpoint_at
+    message_at = row.last_message_sent_at
+    now = datetime.now(timezone.utc)
+
+    # Turn start = most recent input event (real user message or previous checkpoint)
+    turn_start = max(filter(None, [message_at, checkpoint_at]), default=None)
+    if not turn_start:
+        logger.debug("Checkpoint skipped (no turn start) for session %s", session_id[:8])
+        return None
+
+    # SQLite returns naive datetimes (UTC assumed); strip tzinfo for comparison
+    now_naive = now.replace(tzinfo=None)
+    turn_start_naive = turn_start.replace(tzinfo=None) if turn_start.tzinfo else turn_start
+    elapsed = (now_naive - turn_start_naive).total_seconds()
+    if elapsed < CHECKPOINT_REACTIVATION_THRESHOLD_S:
+        logger.debug(
+            "Checkpoint skipped (%.1fs < %ds threshold) for session %s",
+            elapsed,
+            CHECKPOINT_REACTIVATION_THRESHOLD_S,
+            session_id[:8],
+        )
+        return None
+
+    # Checkpoint warranted — update DB and return agent-specific blocking JSON
+    try:
+        with SqlSession(_create_sync_engine()) as db_session:
+            row = db_session.get(db_models.Session, session_id)
+            if row:
+                row.last_checkpoint_at = now
+                db_session.add(row)
+                db_session.commit()
+    except Exception as exc:  # noqa: BLE001 - best-effort DB update
+        logger.warning("Checkpoint DB update failed: %s", exc)
+
+    logger.debug("Checkpoint blocking stop for session %s (%.1fs elapsed)", session_id[:8], elapsed)
+
+    if agent == AgentName.CLAUDE.value:
+        return json.dumps({"decision": "block", "reason": CHECKPOINT_MESSAGE})
+    if agent == AgentName.GEMINI.value:
+        return json.dumps({"decision": "deny", "reason": CHECKPOINT_MESSAGE})
+
+    # Codex has no hook-based checkpoint mechanism
+    return None
 
 
 def _print_memory_injection(cwd: str | None, agent: str) -> None:
@@ -660,6 +738,15 @@ def main() -> None:
             _print_memory_injection(cwd, args.agent)
         else:
             logger.error("Skipping memory injection: no CWD provided (contract violation)")
+
+    # Hook-based invisible checkpoint for Claude/Gemini.
+    # If checkpoint fires: print blocking JSON, exit 0, skip enqueue (agent continues).
+    # If no checkpoint: fall through to enqueue (real stop enters the system).
+    if event_type == AgentHookEvents.AGENT_STOP:
+        checkpoint_json = _maybe_checkpoint_output(teleclaude_session_id, args.agent, raw_data)
+        if checkpoint_json:
+            print(checkpoint_json)
+            sys.exit(0)
 
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(timezone.utc).isoformat()

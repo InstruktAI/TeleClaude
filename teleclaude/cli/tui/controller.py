@@ -24,7 +24,6 @@ class LayoutState:
     """Derived pane layout inputs."""
 
     active_session_id: str | None
-    child_session_id: str | None
     sticky_session_ids: list[str]
     active_doc_preview: DocPreviewState | None
     sticky_doc_previews: list[DocStickyInfo]
@@ -52,15 +51,15 @@ class TuiController:
 
     def _layout_inputs(self) -> tuple[object, ...]:
         preview = self.state.sessions.preview
-        preview_key = (preview.session_id, preview.show_child) if preview else None
-        sticky_key = tuple((s.session_id, s.show_child) for s in self.state.sessions.sticky_sessions)
+        preview_key = preview.session_id if preview else None
+        sticky_key = tuple(s.session_id for s in self.state.sessions.sticky_sessions)
         prep_preview = self.state.preparation.preview
         prep_preview_key = (prep_preview.doc_id, prep_preview.command, prep_preview.title) if prep_preview else None
         prep_sticky_key = tuple((d.doc_id, d.command, d.title) for d in self.state.preparation.sticky_previews)
         return (preview_key, sticky_key, prep_preview_key, prep_sticky_key)
 
     def _sticky_inputs(self) -> tuple[object, ...]:
-        sticky_key = tuple((s.session_id, s.show_child) for s in self.state.sessions.sticky_sessions)
+        sticky_key = tuple(s.session_id for s in self.state.sessions.sticky_sessions)
         prep_sticky_key = tuple((d.doc_id, d.command, d.title) for d in self.state.preparation.sticky_previews)
         return (sticky_key, prep_sticky_key)
 
@@ -109,7 +108,6 @@ class TuiController:
         self.pane_manager.apply_layout(
             active_session_id=layout.active_session_id,
             sticky_session_ids=layout.sticky_session_ids,
-            child_session_id=layout.child_session_id,
             get_computer_info=self._get_computer_info,
             active_doc_preview=layout.active_doc_preview,
             sticky_doc_previews=layout.sticky_doc_previews,
@@ -127,22 +125,12 @@ class TuiController:
     def _derive_layout(self) -> LayoutState:
         preview = self.state.sessions.preview
         active_session_id = preview.session_id if preview else None
-        child_session_id = None
-        if preview and preview.show_child:
-            child_session_id = self._find_child_session_id(preview.session_id)
         sticky_session_ids = [s.session_id for s in self.state.sessions.sticky_sessions]
         active_doc_preview = self.state.preparation.preview
         sticky_doc_previews = list(self.state.preparation.sticky_previews)
         return LayoutState(
             active_session_id=active_session_id,
-            child_session_id=child_session_id,
             sticky_session_ids=sticky_session_ids,
             active_doc_preview=active_doc_preview,
             sticky_doc_previews=sticky_doc_previews,
         )
-
-    def _find_child_session_id(self, parent_session_id: str) -> str | None:
-        for sess in self._sessions:
-            if sess.initiator_session_id == parent_session_id:
-                return sess.session_id
-        return None

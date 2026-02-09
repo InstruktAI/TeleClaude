@@ -30,9 +30,10 @@ from teleclaude.core.models import MessageMetadata, ThinkingMode
 from teleclaude.core.next_machine import next_maintain, next_prepare, next_work
 from teleclaude.core.next_machine.core import (
     detect_circular_dependency,
-    has_uncommitted_changes,
     mark_phase,
     read_dependencies,
+    sync_main_planning_to_all_worktrees,
+    sync_slug_todo_from_worktree_to_main,
     write_dependencies,
 )
 from teleclaude.core.origins import InputOrigin
@@ -1043,10 +1044,8 @@ class MCPHandlersMixin:
         if not Path(worktree_cwd).exists():
             return f"ERROR: Worktree not found at {worktree_cwd}"
 
-        if has_uncommitted_changes(cwd, slug):
-            return f"ERROR: UNCOMMITTED_CHANGES\nWorktree trees/{slug} has uncommitted changes. Commit them before marking the phase."
-
         updated_state = mark_phase(worktree_cwd, slug, phase, status)
+        sync_slug_todo_from_worktree_to_main(cwd, slug)
         return f"OK: {slug} state updated - {phase}: {status}\nCurrent state: {updated_state}"
 
     async def teleclaude__set_dependencies(self, slug: str, after: list[str], cwd: str | None = None) -> str:
@@ -1092,6 +1091,7 @@ class MCPHandlersMixin:
             del deps[slug]
 
         write_dependencies(cwd, deps)
+        sync_main_planning_to_all_worktrees(cwd)
         return (
             f"OK: Dependencies set for '{slug}': {', '.join(after)}"
             if after

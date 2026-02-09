@@ -318,11 +318,9 @@ class TestSessionsViewLogic:
                 self.called = False
                 self.args = None
 
-            def show_session(
-                self, tmux_session_name, active_agent, child_tmux_session_name, computer_info, session_id=None
-            ):
+            def show_session(self, tmux_session_name, active_agent, computer_info=None, session_id=None):
                 self.called = True
-                self.args = (tmux_session_name, active_agent, child_tmux_session_name, computer_info, session_id)
+                self.args = (tmux_session_name, active_agent, computer_info, session_id)
 
         pane_manager = MockPaneManager()
         state = TuiState()
@@ -462,15 +460,13 @@ class TestSessionsViewLogic:
                 self.sticky_sessions = []
                 self.apply_called = False
 
-            def toggle_session(self, tmux_session_name, active_agent, child_tmux_session_name, computer_info):
+            def toggle_session(self, tmux_session_name, active_agent, computer_info=None, session_id=None):
                 self.toggle_called = True
 
-            def show_session(
-                self, tmux_session_name, active_agent, child_tmux_session_name, computer_info, session_id=None
-            ):
+            def show_session(self, tmux_session_name, active_agent, computer_info=None, session_id=None):
                 self.toggle_called = True
 
-            def show_sticky_sessions(self, sticky_sessions, all_sessions, get_computer_info):
+            def show_sticky_sessions(self, sticky_sessions, get_computer_info):
                 self.show_sticky_called = True
                 self.sticky_sessions = sticky_sessions
 
@@ -518,7 +514,6 @@ class TestSessionsViewLogic:
         view.flat_items = [session]
 
         view._row_to_item[10] = 0
-        view._row_to_id_item[10] = session
         # First click - single click activates (no sticky sessions)
         assert view.handle_click(10, is_double_click=False) is True
         view.apply_pending_activation()
@@ -526,16 +521,15 @@ class TestSessionsViewLogic:
         assert view.selected_index == 0
         assert pane_manager.apply_called is True
 
-        # Second click as double-click on ID line
+        # Second click as double-click
         pane_manager.toggle_called = False
         pane_manager.apply_called = False
         assert view.handle_click(10, is_double_click=True) is True
         controller.apply_pending_layout()
 
-        # Should have toggled sticky with parent-only mode
+        # Should have toggled sticky
         assert len(view.sticky_sessions) == 1
         assert view.sticky_sessions[0].session_id == "sess-1"
-        assert view.sticky_sessions[0].show_child is False  # Parent-only mode
         assert pane_manager.apply_called is True
 
     def test_render_session_clears_line_width(self, sessions_view):

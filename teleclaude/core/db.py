@@ -507,18 +507,46 @@ class Db:
             rows = result.all()
             return [self._to_core_session(row) for row in rows]
 
+    @staticmethod
+    def _infer_update_reasons(
+        updates: dict[str, object],  # guard: loose-dict - Dynamic session field updates
+    ) -> tuple[SessionUpdateReason, ...]:
+        """Infer ordered activity reasons from updated session fields."""
+        if not updates:
+            return ()
+
+        reasons: list[SessionUpdateReason] = []
+
+        if any(key in updates for key in ("last_message_sent", "last_message_sent_at", "last_input_origin")):
+            reasons.append("user_input")
+
+        if any(
+            key in updates for key in ("last_feedback_received", "last_feedback_summary", "last_feedback_received_at")
+        ):
+            reasons.append("agent_stopped")
+
+        # Incremental output updates the turn cursor. Avoid duplicating agent_output
+        # when stop fields are also present.
+        if "last_agent_output_at" in updates and "agent_stopped" not in reasons:
+            reasons.append("agent_output")
+
+        if not reasons:
+            reasons.append("state_change")
+
+        return tuple(reasons)
+
     async def update_session(
         self,
         session_id: str,
         *,
-        reason: SessionUpdateReason | None = None,
+        reasons: tuple[SessionUpdateReason, ...] = (),
         **fields: object,
     ) -> Session | None:
         """Update session fields and handle events.
 
         Args:
             session_id: Session ID
-            reason: Why the session was updated (for highlight logic)
+            reasons: Ordered activity reasons for highlight logic
             **fields: Fields to update (title, status, tmux_size, etc.)
         """
         updates: dict[str, object] = {}  # guard: loose-dict - Dynamic update payload
@@ -597,15 +625,17 @@ class Db:
                     db_session.add(row)
                     await db_session.commit()
 
-        if not updates and not reason:
-            logger.trace("Skipping redundant update for session %s", session_id[:8])
-            return
-
         # Digest updates are internal dedupe state for output routing and can occur
         # very frequently. Emitting SESSION_UPDATED for digest-only writes creates
         # unnecessary event fan-out and cache churn.
-        if not reason and set(updates) == {"last_output_digest"}:
+        if not reasons and set(updates) == {"last_output_digest"}:
             logger.trace("Skipping SESSION_UPDATED emit for digest-only update: %s", session_id[:8])
+            return
+
+        effective_reasons = reasons or self._infer_update_reasons(updates)
+
+        if not updates and not effective_reasons:
+            logger.trace("Skipping redundant update for session %s", session_id[:8])
             return
 
         # Emit SESSION_UPDATED event — decoupled from DB writes so that
@@ -613,7 +643,7 @@ class Db:
         # reach the TUI for highlight logic.
         event_bus.emit(
             TeleClaudeEvents.SESSION_UPDATED,
-            SessionUpdatedContext(session_id=session_id, updated_fields=updates, reason=reason),
+            SessionUpdatedContext(session_id=session_id, updated_fields=updates, reasons=effective_reasons),
         )
 
     async def close_session(self, session_id: str) -> None:

@@ -150,13 +150,13 @@ def test_update_session_notifies_subscribers():
     )
     cache.update_session(session)
 
-    assert events == [("session_started", {"session": session, "reason": None})]
+    assert events == [("session_started", {"session": session, "reasons": []})]
     assert cache.get_sessions() == [session]
 
     # Update same session again should emit session_updated
     events.clear()
     cache.update_session(session)
-    assert events == [("session_updated", {"session": session, "reason": None})]
+    assert events == [("session_updated", {"session": session, "reasons": []})]
     assert cache.get_sessions() == [session]
 
 

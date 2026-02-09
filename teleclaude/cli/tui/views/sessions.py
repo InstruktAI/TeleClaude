@@ -162,9 +162,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._computers: list[ApiComputerInfo] = []
         # Row-to-item mapping for mouse click handling (built during render)
         self._row_to_item: dict[int, int] = {}
-        # Row mapping for session ID line clicks (double-click behavior)
-        self._row_to_id_item: dict[int, SessionNode] = {}
-        self._id_row_clicked: bool = False
         self._missing_last_input_logged: set[str] = set()
         # Signal for app to trigger data refresh
         self.needs_refresh: bool = False
@@ -898,7 +895,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 action="activate",
                 duration_ms=int((time.perf_counter() - enter_start) * 1000),
             )
-            self._id_row_clicked = False
 
     def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
         """Get SSH connection info for a computer.
@@ -920,15 +916,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 )
         return None
 
-    def _toggle_sticky(self, session_id: str, show_child: bool, *, clear_preview: bool = False) -> None:
+    def _toggle_sticky(self, session_id: str, *, clear_preview: bool = False) -> None:
         """Toggle sticky state for a session (max 5 sessions).
 
         Args:
             session_id: Session ID to toggle
-            show_child: Whether to show child session (False for parent-only mode)
             clear_preview: Whether to clear preview before toggling sticky
         """
-        # Find existing sticky entry (check session_id only, ignore show_child)
         existing_idx = None
         for i, sticky in enumerate(self.sticky_sessions):
             if sticky.session_id == session_id:
@@ -936,7 +930,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 break
 
         if existing_idx is None and (len(self.sticky_sessions) + len(self._prep_sticky_previews)) >= 5:
-            # Max 5 reached
             if self.notify:
                 self.notify("Maximum 5 sticky sessions", NotificationLevel.WARNING)
             logger.warning("Cannot add sticky session %s: maximum 5 reached", session_id[:8])
@@ -948,15 +941,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if clear_preview and self._preview:
             self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
         self.controller.dispatch(
-            Intent(IntentType.TOGGLE_STICKY, {"session_id": session_id, "show_child": show_child}),
+            Intent(IntentType.TOGGLE_STICKY, {"session_id": session_id}),
             defer_layout=True,
         )
-        logger.info(
-            "Toggled sticky: %s (show_child=%s, total=%d)",
-            session_id[:8],
-            show_child,
-            len(self.sticky_sessions),
-        )
+        logger.info("Toggled sticky: %s (total=%d)", session_id[:8], len(self.sticky_sessions))
 
     def _activate_session(self, item: SessionNode, *, clear_preview: bool = False) -> None:
         """Activate a single session (single-click or Enter from arrows).
@@ -999,7 +987,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if clear_preview and self._preview:
             self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
         self.controller.dispatch(
-            Intent(IntentType.SET_PREVIEW, {"session_id": session_id, "show_child": True}),
+            Intent(IntentType.SET_PREVIEW, {"session_id": session_id}),
             defer_layout=True,
         )
         logger.debug(
@@ -1093,51 +1081,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             self._revive_headless_session(session)
             return
 
-        # Get computer info for SSH (if remote)
         computer_info = self._get_computer_info(computer_name)
-        logger.debug(
-            "_toggle_session_pane: computer_info=%s (is_remote=%s)",
-            computer_info.name if computer_info else "None",
-            computer_info.is_remote if computer_info else "N/A",
-        )
 
-        # Look for child sessions (sessions where initiator_session_id == this session's id)
-        child_tmux_session: str | None = None
-        for sess in self._sessions:
-            if sess.initiator_session_id == session_id:
-                child_tmux = sess.tmux_session_name
-                if child_tmux:
-                    child_tmux_session = child_tmux
-                    break
-
-        # Toggle pane visibility (handles both local and remote via SSH)
         self.pane_manager.toggle_session(
             tmux_session,
             agent,
-            child_tmux_session,
             computer_info,
             session_id=session_id,
-        )
-
-    def _show_single_session_pane(self, item: SessionNode) -> None:
-        """Show only the selected session in the side pane (no child split)."""
-        session = item.data.session
-        tmux_session = session.tmux_session_name or ""
-        computer_name = session.computer or "local"
-        agent = session.active_agent
-
-        if not tmux_session:
-            logger.warning("_show_single_session_pane: tmux_session_name missing, attempting revive")
-            self._revive_headless_session(session)
-            return
-
-        computer_info = self._get_computer_info(computer_name)
-        self.pane_manager.show_session(
-            tmux_session,
-            agent,
-            None,
-            computer_info,
-            session_id=session.session_id,
         )
 
     def _start_session_for_project(self, stdscr: CursesWindow, project: ProjectInfo) -> None:
@@ -1257,9 +1207,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
             for sticky in sticky_project_sessions:
                 self.controller.dispatch(
-                    Intent(
-                        IntentType.TOGGLE_STICKY, {"session_id": sticky.session_id, "show_child": sticky.show_child}
-                    ),
+                    Intent(IntentType.TOGGLE_STICKY, {"session_id": sticky.session_id}),
                     defer_layout=True,
                 )
             logger.info("_open_project_sessions: closed %d sticky sessions for project", len(sticky_project_sessions))
@@ -1287,7 +1235,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if session.session_id in current_sticky_ids:
                 continue
             self.controller.dispatch(
-                Intent(IntentType.TOGGLE_STICKY, {"session_id": session.session_id, "show_child": True}),
+                Intent(IntentType.TOGGLE_STICKY, {"session_id": session.session_id}),
                 defer_layout=True,
             )
 
@@ -1384,7 +1332,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         click_start = time.perf_counter()
         item_idx = self._row_to_item.get(screen_row)
         if item_idx is None:
-            self._id_row_clicked = False
             logger.trace(
                 "sessions_click_miss",
                 row=screen_row,
@@ -1397,23 +1344,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Handle double-click on session nodes
         if is_double_click and is_session_node(item):
             session_id = item.data.session.session_id
-            clicked_id_line = screen_row in self._row_to_id_item
-
-            # DOUBLE CLICK - toggle sticky
-            if clicked_id_line:
-                # ID line → parent only, no child
-                self._toggle_sticky(session_id, show_child=False, clear_preview=True)
-                logger.debug("Double-click on ID line: toggled sticky (parent-only) for %s", session_id[:8])
-            else:
-                # Title/other line → parent + child
-                self._toggle_sticky(session_id, show_child=True, clear_preview=True)
-                logger.debug("Double-click on title: toggled sticky (parent+child) for %s", session_id[:8])
+            self._toggle_sticky(session_id, clear_preview=True)
+            logger.debug("Double-click: toggled sticky for %s", session_id[:8])
 
             logger.trace(
                 "sessions_double_click",
                 row=screen_row,
                 session_id=session_id[:8],
-                id_line=clicked_id_line,
                 duration_ms=int((time.perf_counter() - click_start) * 1000),
             )
             # Select the item but don't activate (sticky toggle is the action)
@@ -1425,7 +1362,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # SINGLE CLICK - select and activate (preview lane) or highlight sticky (sticky lane)
         self._select_index(item_idx, source="user")
         self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
-        self._id_row_clicked = screen_row in self._row_to_id_item
 
         # Activate session immediately on single click
         if is_session_node(item):
@@ -1443,7 +1379,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             "sessions_click",
             row=screen_row,
             item_type=item.type,
-            id_row=self._id_row_clicked,
             duration_ms=int((time.perf_counter() - click_start) * 1000),
         )
         return True
@@ -1610,7 +1545,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Clear row-to-item mapping (rebuilt each render)
         self._row_to_item.clear()
-        self._row_to_id_item.clear()
 
         if not self.flat_items:
             msg = "(no items)"
@@ -1820,7 +1754,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         native_session_id = session.native_session_id or "-"
         line2 = f"{detail_indent}[{activity_time}] {session_id} / {native_session_id}"
         _safe_addstr(row + lines_used, line2, header_attr)
-        self._row_to_id_item[row + lines_used] = item
         lines_used += 1
         if lines_used >= remaining:
             return lines_used

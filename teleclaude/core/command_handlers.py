@@ -1619,7 +1619,7 @@ async def agent_restart(
     # Inject checkpoint after restart — the agent is resuming with context,
     # so it should debrief immediately without waiting for the 30s threshold.
     async def _inject_checkpoint_after_restart() -> None:
-        from teleclaude.core.agent_coordinator import CHECKPOINT_MESSAGE
+        from teleclaude.constants import CHECKPOINT_MESSAGE
         from teleclaude.core.tmux_bridge import send_keys_existing_tmux
 
         await asyncio.sleep(5)  # Let agent initialize before injecting

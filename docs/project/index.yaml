@@ -20,6 +20,13 @@ snippets:
   scope: project
   path: docs/project/design/architecture/adapter-client.md
   source_project: TeleClaude
+- id: project/design/architecture/agent-activity-streaming-target
+  description: Target architecture for unified agent activity streaming across Telegram,
+    TUI, and Web clients.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/agent-activity-streaming-target.md
+  source_project: TeleClaude
 - id: project/design/architecture/api-server
   description: Local HTTP and WebSocket API that reads from cache and routes writes
     through the command pipeline.
@@ -416,6 +423,20 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/jobs/memory-review.md
+  source_project: TeleClaude
+- id: project/spec/jobs/merge-runner
+  description: Agent job spec for serialized merge promotion of approved todos from
+    worktree branches into main.
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/merge-runner.md
+  source_project: TeleClaude
+- id: project/spec/jobs/next-prepare
+  description: Maintenance job that continuously improves todo readiness by assessing
+    and refining requirements and implementation plans.
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/next-prepare.md
   source_project: TeleClaude
 - id: project/spec/jobs/youtube-sync-subscriptions
   description: 'YouTube subscription tagger job: nightly AI classification of untagged

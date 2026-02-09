@@ -526,12 +526,12 @@ class TelecApp:
                     )
                 self._session_status_cache[updated_session.session_id] = new_status
 
-                # Dispatch SESSION_ACTIVITY with reason for highlight logic
-                if event.reason:
+                # Dispatch SESSION_ACTIVITY intents in-order for highlight logic.
+                for reason in event.reasons:
                     self.controller.dispatch(
                         Intent(
                             IntentType.SESSION_ACTIVITY,
-                            {"session_id": updated_session.session_id, "reason": event.reason},
+                            {"session_id": updated_session.session_id, "reason": reason},
                         )
                     )
 

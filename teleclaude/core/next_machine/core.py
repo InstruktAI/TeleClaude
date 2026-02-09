@@ -17,7 +17,7 @@ import subprocess
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Mapping, cast
+from typing import cast
 
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
@@ -357,14 +357,6 @@ async def _create_input_todo_from_latest_session(db: Db, cwd: str) -> tuple[str 
 
     await asyncio.to_thread(_insert_roadmap_item, cwd, slug)
 
-    try:
-        repo = Repo(cwd)
-        configure_git_env(repo, cwd)
-        repo.index.add([f"todos/{slug}/input.md", "todos/roadmap.md"])
-        repo.index.commit(f"todo({slug}): capture input")
-    except InvalidGitRepositoryError:
-        logger.warning("Cannot commit new input todo: %s is not a git repository", cwd)
-
     return slug, "Created input.md from latest session."
 
 
@@ -403,32 +395,14 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, str | bool | dict[str, bo
 
 
 def write_phase_state(cwd: str, slug: str, state: dict[str, str | bool | dict[str, bool | list[str]]]) -> None:
-    """Write state.json and commit to git."""
+    """Write state.json."""
     state_path = get_state_path(cwd, slug)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     write_text_sync(state_path, json.dumps(state, indent=2) + "\n")
 
-    # Commit the state change
-    try:
-        repo = Repo(cwd)
-        configure_git_env(repo, cwd)
-        relative_path = state_path.relative_to(cwd)
-        repo.index.add([str(relative_path)])
-        # Create descriptive commit message
-        phases_done = [
-            p
-            for p, s in state.items()
-            if isinstance(s, str) and s in (PhaseStatus.COMPLETE.value, PhaseStatus.APPROVED.value)
-        ]
-        msg = f"state({slug}): {', '.join(phases_done) if phases_done else 'init'}"
-        repo.index.commit(msg)
-        logger.info("Committed state update for %s", slug)
-    except InvalidGitRepositoryError:
-        logger.warning("Cannot commit state: %s is not a git repository", cwd)
-
 
 def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str | bool | dict[str, bool | list[str]]]:
-    """Mark a phase with a status and commit.
+    """Mark a phase with a status.
 
     Args:
         cwd: Worktree directory (not main repo)
@@ -664,7 +638,6 @@ def update_roadmap_state(cwd: str, slug: str, new_state: str) -> bool:
 
     Side effects:
         - Modifies todos/roadmap.md in place
-        - Commits the change to git with descriptive message
     """
     roadmap_path = Path(cwd) / "todos" / "roadmap.md"
     if not roadmap_path.exists():
@@ -680,23 +653,6 @@ def update_roadmap_state(cwd: str, slug: str, new_state: str) -> bool:
         return False
 
     write_text_sync(roadmap_path, new_content)
-
-    # Commit the state change
-    try:
-        repo = Repo(cwd)
-        configure_git_env(repo, cwd)
-        repo.index.add(["todos/roadmap.md"])
-        state_names = {
-            RoadmapMarker.PENDING.value: "pending",
-            RoadmapMarker.READY.value: "ready",
-            RoadmapMarker.IN_PROGRESS.value: "in-progress",
-            RoadmapMarker.DONE.value: "done",
-        }
-        msg = f"roadmap({slug}): mark {state_names.get(new_state, new_state)}"
-        repo.index.commit(msg)
-        logger.info("Updated roadmap state for %s to %s", slug, new_state)
-    except InvalidGitRepositoryError:
-        logger.warning("Cannot commit roadmap update: %s is not a git repository", cwd)
 
     return True
 
@@ -723,7 +679,7 @@ def read_dependencies(cwd: str) -> dict[str, list[str]]:
 
 
 def write_dependencies(cwd: str, deps: dict[str, list[str]]) -> None:
-    """Write dependency graph to todos/dependencies.json and commit.
+    """Write dependency graph to todos/dependencies.json.
 
     Args:
         cwd: Project root directory
@@ -738,26 +694,10 @@ def write_dependencies(cwd: str, deps: dict[str, list[str]]) -> None:
         # If no dependencies, remove file if it exists
         if deps_path.exists():
             deps_path.unlink()
-            try:
-                repo = Repo(cwd)
-                configure_git_env(repo, cwd)
-                repo.index.remove(["todos/dependencies.json"])  # type: ignore[misc]
-                repo.index.commit("deps: remove empty dependencies.json")
-            except InvalidGitRepositoryError:
-                pass
         return
 
     deps_path.parent.mkdir(parents=True, exist_ok=True)
     write_text_sync(deps_path, json.dumps(deps, indent=2, sort_keys=True) + "\n")
-
-    try:
-        repo = Repo(cwd)
-        configure_git_env(repo, cwd)
-        repo.index.add(["todos/dependencies.json"])
-        repo.index.commit("deps: update dependencies.json")
-        logger.info("Updated dependencies.json")
-    except InvalidGitRepositoryError:
-        logger.warning("Cannot commit dependencies update: %s is not a git repository", cwd)
 
 
 def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]) -> bool:
@@ -963,31 +903,6 @@ async def get_available_agent(
     return fallback_list[0]
 
 
-# =============================================================================
-# Git Operations
-# =============================================================================
-
-
-def build_git_hook_env(cwd: str, base_env: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Build env vars so git hooks resolve repo-local venv tools."""
-    env = dict(base_env or os.environ)
-    path_raw = env.get("PATH", "")
-    venv_bin = str(Path(cwd) / ".venv" / "bin")
-
-    path_parts = [p for p in path_raw.split(os.pathsep) if p and p != venv_bin]
-    path_parts.insert(0, venv_bin)
-    return {
-        "PATH": os.pathsep.join(path_parts),
-        "VIRTUAL_ENV": str(Path(cwd) / ".venv"),
-    }
-
-
-def configure_git_env(repo: Repo, cwd: str) -> None:
-    """Ensure git commands run with repo-local venv tools available."""
-    env = build_git_hook_env(cwd)
-    repo.git.update_environment(**env)
-
-
 def read_text_sync(path: Path) -> str:
     """Read text from a file in a typed sync wrapper."""
     return path.read_text(encoding="utf-8")
@@ -1006,6 +921,71 @@ async def read_text_async(path: Path) -> str:
 async def write_text_async(path: Path, content: str) -> None:
     """Write text to a file without blocking the event loop."""
     await asyncio.to_thread(write_text_sync, path, content)
+
+
+def _sync_file(src_root: Path, dst_root: Path, relative_path: str) -> bool:
+    """Copy one file from src root to dst root if source exists.
+
+    Returns True when a copy happened, False when source was missing.
+    """
+    src = src_root / relative_path
+    dst = dst_root / relative_path
+    if not src.exists():
+        return False
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    return True
+
+
+def sync_main_to_worktree(cwd: str, slug: str, extra_files: list[str] | None = None) -> None:
+    """Copy orchestrator-owned planning files from main repo into a slug worktree."""
+    main_root = Path(cwd)
+    worktree_root = Path(cwd) / "trees" / slug
+    if not worktree_root.exists():
+        return
+    files = ["todos/roadmap.md", "todos/dependencies.json"]
+    if extra_files:
+        files.extend(extra_files)
+    for rel in files:
+        _sync_file(main_root, worktree_root, rel)
+
+
+def sync_main_planning_to_all_worktrees(cwd: str) -> None:
+    """Propagate main planning files to every existing worktree."""
+    trees_root = Path(cwd) / "trees"
+    if not trees_root.exists():
+        return
+    for entry in trees_root.iterdir():
+        if entry.is_dir():
+            sync_main_to_worktree(cwd, entry.name)
+
+
+def sync_worktree_to_main(cwd: str, slug: str, relative_files: list[str]) -> None:
+    """Copy slug-specific workflow files from worktree back to main repo."""
+    main_root = Path(cwd)
+    worktree_root = Path(cwd) / "trees" / slug
+    if not worktree_root.exists():
+        return
+    for rel in relative_files:
+        _sync_file(worktree_root, main_root, rel)
+
+
+def sync_slug_todo_from_worktree_to_main(cwd: str, slug: str) -> None:
+    """Copy canonical todo artifacts for a slug from worktree back to main."""
+    todo_base = f"todos/{slug}"
+    sync_worktree_to_main(
+        cwd,
+        slug,
+        [
+            f"{todo_base}/requirements.md",
+            f"{todo_base}/implementation-plan.md",
+            f"{todo_base}/state.json",
+            f"{todo_base}/review-findings.md",
+            f"{todo_base}/deferrals.md",
+            f"{todo_base}/breakdown.md",
+            f"{todo_base}/dor-report.md",
+        ],
+    )
 
 
 def has_uncommitted_changes(cwd: str, slug: str) -> bool:
@@ -1086,11 +1066,14 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
     """Prepare a worktree using repo conventions.
 
     Conventions:
+    - If `scripts.worktree:prepare` is defined in teleclaude.yml, run it.
+    - Else if bin/worktree-prepare.sh exists and is executable, run it with the slug.
     - If Makefile has `install`, run `make install`.
     - Else if package.json exists, run `pnpm install` if available, otherwise `npm install`.
     - If neither applies, do nothing.
     """
     worktree_path = Path(cwd) / "trees" / slug
+    worktree_prepare_script = Path(cwd) / "bin" / "worktree-prepare.sh"
     makefile = worktree_path / "Makefile"
     package_json = worktree_path / "package.json"
 
@@ -1100,6 +1083,29 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
         except OSError:
             return False
         return re.search(rf"^{re.escape(target)}\s*:", content, re.MULTILINE) is not None
+
+    if worktree_prepare_script.exists() and os.access(worktree_prepare_script, os.X_OK):
+        cmd = [str(worktree_prepare_script), slug]
+        logger.info("Preparing worktree with: %s", " ".join(cmd))
+        try:
+            subprocess.run(
+                cmd,
+                cwd=str(Path(cwd)),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return
+        except subprocess.CalledProcessError as e:
+            msg = (
+                f"Worktree preparation failed for {slug}:\n"
+                f"Command: {' '.join(cmd)}\n"
+                f"Exit code: {e.returncode}\n"
+                f"stdout: {e.stdout or ''}\n"
+                f"stderr: {e.stderr or ''}"
+            )
+            logger.error(msg)
+            raise RuntimeError(msg) from e
 
     if makefile.exists() and _has_make_target("install"):
         logger.info("Preparing worktree with: make install")
@@ -1343,6 +1349,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
     current_state = await asyncio.to_thread(get_roadmap_state, cwd, resolved_slug)
     if current_state == RoadmapMarker.PENDING.value:  # Only transition pending -> ready
         await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, RoadmapMarker.READY.value)
+        await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
     # else: already [.], [>], or [x] - no state change needed
     return format_prepared(resolved_slug)
 
@@ -1450,6 +1457,10 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
 
     worktree_cwd = str(Path(cwd) / "trees" / resolved_slug)
 
+    # Keep planning/state files aligned across main and worktree.
+    await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
+    await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
+
     # 5. Check uncommitted changes
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)
@@ -1461,6 +1472,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         content = await read_text_async(roadmap_path)
         if f"[.] {resolved_slug}" in content:
             await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, ">")
+            await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
 
     # 7. Check build status (from state.json in worktree)
     if not await asyncio.to_thread(is_build_complete, worktree_cwd, resolved_slug):

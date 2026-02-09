@@ -46,11 +46,8 @@ class ComputerInfo:
 class PaneState:
     """Tracks the state of managed tmux panes."""
 
-    # Legacy single-session panes (for backward compatibility)
     parent_pane_id: str | None = None
-    child_pane_id: str | None = None
     parent_session: str | None = None
-    child_session: str | None = None
     parent_spec_id: str | None = None
 
     def __post_init__(self) -> None:
@@ -118,8 +115,6 @@ class TmuxPaneManager:
         self._in_tmux = bool(os.environ.get("TMUX"))
         self._sticky_specs: list[SessionPaneSpec] = []
         self._active_spec: SessionPaneSpec | None = None
-        self._active_child_tmux: str | None = None
-        self._active_child_computer: ComputerInfo | None = None
         self._layout_signature: tuple[object, ...] | None = None
         self._session_catalog: dict[str, "SessionInfo"] = {}
         # Store our own pane ID for reference
@@ -141,7 +136,6 @@ class TmuxPaneManager:
         *,
         active_session_id: str | None,
         sticky_session_ids: list[str],
-        child_session_id: str | None,
         get_computer_info: Callable[[str], ComputerInfo | None],
         active_doc_preview: "DocPreviewState | None" = None,
         sticky_doc_previews: list["DocStickyInfo"] | None = None,
@@ -202,24 +196,12 @@ class TmuxPaneManager:
                 command=active_doc_preview.command,
             )
 
-        child_tmux: str | None = None
-        child_computer: ComputerInfo | None = None
-        if child_session_id:
-            child_session = self._session_catalog.get(child_session_id)
-            if child_session and child_session.tmux_session_name:
-                child_tmux = child_session.tmux_session_name
-                child_computer = get_computer_info(child_session.computer or "local")
-
         self._sticky_specs = sticky_specs
         self._active_spec = active_spec
-        self._active_child_tmux = child_tmux
-        self._active_child_computer = child_computer
 
         if self._layout_is_unchanged():
             if active_spec and self.state.parent_spec_id != active_spec.session_id:
                 self._update_active_pane(active_spec)
-            if child_tmux != self.state.child_session:
-                self.update_child_session(child_tmux, child_computer)
             if focus and active_spec:
                 self.focus_pane_for_session(active_spec.session_id)
             self._sync_sticky_mappings()
@@ -271,11 +253,6 @@ class TmuxPaneManager:
         if self.state.parent_pane_id and pane_id == self.state.parent_pane_id and self.state.parent_session:
             for session in self._session_catalog.values():
                 if session.tmux_session_name == self.state.parent_session:
-                    return session.session_id
-
-        if self.state.child_pane_id and pane_id == self.state.child_pane_id and self._active_child_tmux:
-            for session in self._session_catalog.values():
-                if session.tmux_session_name == self._active_child_tmux:
                     return session.session_id
 
         return None
@@ -382,19 +359,17 @@ class TmuxPaneManager:
         self,
         tmux_session_name: str,
         active_agent: str,
-        child_tmux_session_name: str | None = None,
         computer_info: ComputerInfo | None = None,
         session_id: str | None = None,
     ) -> None:
-        """Show a session (and optionally its child) in the active/preview pane.
+        """Show a session in the active/preview pane.
 
         This shows the "active" session that changes on single-click.
         Coexists with sticky sessions (double-click).
 
         Args:
-            tmux_session_name: The parent session's tmux session name
+            tmux_session_name: The session's tmux session name
             active_agent: Agent name for color styling
-            child_tmux_session_name: Optional child/worker session name
             computer_info: Computer info for SSH (None = local)
         """
         if not self._in_tmux:
@@ -402,10 +377,9 @@ class TmuxPaneManager:
             return
 
         logger.debug(
-            "show_session: %s (agent=%s, child=%s, remote=%s, sticky_count=%d)",
+            "show_session: %s (agent=%s, remote=%s, sticky_count=%d)",
             tmux_session_name,
             active_agent,
-            child_tmux_session_name,
             computer_info.is_remote if computer_info else False,
             len(self._sticky_specs),
         )
@@ -418,11 +392,7 @@ class TmuxPaneManager:
             is_sticky=False,
             active_agent=active_agent,
         )
-        self._active_child_tmux = child_tmux_session_name
-        self._active_child_computer = computer_info
         if self._layout_is_unchanged():
-            if child_tmux_session_name != self.state.child_session:
-                self.update_child_session(child_tmux_session_name, computer_info)
             self.focus_pane_for_session(spec_session_id)
             return
         self._render_layout()
@@ -430,13 +400,9 @@ class TmuxPaneManager:
     def hide_sessions(self) -> None:
         """Hide active/preview session pane (preserve sticky panes)."""
         self._active_spec = None
-        self._active_child_tmux = None
-        self._active_child_computer = None
         self._render_layout()
         self.state.parent_pane_id = None
-        self.state.child_pane_id = None
         self.state.parent_session = None
-        self.state.child_session = None
         self.state.parent_spec_id = None
         logger.debug("hide_sessions: cleared active pane")
 
@@ -444,14 +410,10 @@ class TmuxPaneManager:
         self,
         tmux_session_name: str,
         active_agent: str,
-        child_tmux_session_name: str | None = None,
         computer_info: ComputerInfo | None = None,
         session_id: str | None = None,
     ) -> bool:
         """Toggle active/preview session pane visibility.
-
-        This manages the "active" preview pane that shows on single-click.
-        Coexists with sticky sessions (double-click).
 
         If already showing this session, hide it.
         If showing different session or none, show this one.
@@ -459,7 +421,6 @@ class TmuxPaneManager:
         Args:
             tmux_session_name: The session's tmux session name
             active_agent: Agent name for color styling
-            child_tmux_session_name: Optional child/worker session name
             computer_info: Computer info for SSH (None = local)
 
         Returns:
@@ -470,10 +431,9 @@ class TmuxPaneManager:
             return False
 
         logger.debug(
-            "toggle_session: %s (agent=%s, child=%s, computer=%s, sticky_count=%d)",
+            "toggle_session: %s (agent=%s, computer=%s, sticky_count=%d)",
             tmux_session_name,
             active_agent,
-            child_tmux_session_name,
             computer_info.name if computer_info else "local",
             len(self.state.sticky_pane_ids),
         )
@@ -489,7 +449,6 @@ class TmuxPaneManager:
         self.show_session(
             tmux_session_name,
             active_agent,
-            child_tmux_session_name,
             computer_info,
             session_id=session_id,
         )
@@ -501,14 +460,10 @@ class TmuxPaneManager:
         return self.state.parent_session
 
     def _cleanup_panes(self) -> None:
-        """Clean up active/preview panes only (legacy path)."""
-        if self.state.child_pane_id and self._get_pane_exists(self.state.child_pane_id):
-            self._run_tmux("kill-pane", "-t", self.state.child_pane_id)
+        """Clean up active/preview panes only."""
         if self.state.parent_pane_id and self._get_pane_exists(self.state.parent_pane_id):
             self._run_tmux("kill-pane", "-t", self.state.parent_pane_id)
-        self.state.child_pane_id = None
         self.state.parent_pane_id = None
-        self.state.child_session = None
         self.state.parent_session = None
         self.state.parent_spec_id = None
 
@@ -517,8 +472,6 @@ class TmuxPaneManager:
         pane_ids: list[str] = []
         pane_ids.extend(self.state.session_pane_ids)
         pane_ids.extend(self.state.sticky_pane_ids)
-        if self.state.child_pane_id:
-            pane_ids.append(self.state.child_pane_id)
         if self.state.parent_pane_id:
             pane_ids.append(self.state.parent_pane_id)
 
@@ -535,9 +488,7 @@ class TmuxPaneManager:
         self.state.sticky_pane_ids.clear()
         self.state.sticky_session_to_pane.clear()
         self.state.parent_pane_id = None
-        self.state.child_pane_id = None
         self.state.parent_session = None
-        self.state.child_session = None
         self.state.parent_spec_id = None
 
     def _build_session_specs(self) -> list[SessionPaneSpec]:
@@ -719,24 +670,6 @@ class TmuxPaneManager:
                 self.state.parent_pane_id = active_pane_id
                 self.state.parent_session = self._active_spec.tmux_session_name
                 self.state.parent_spec_id = self._active_spec.session_id
-                if self._active_child_tmux:
-                    child_attach_cmd = self._build_attach_cmd(
-                        self._active_child_tmux,
-                        self._active_child_computer,
-                    )
-                    child_pane_id = self._run_tmux(
-                        "split-window",
-                        "-t",
-                        active_pane_id,
-                        "-v",
-                        "-P",
-                        "-F",
-                        "#{pane_id}",
-                        child_attach_cmd,
-                    )
-                    if child_pane_id:
-                        self.state.child_pane_id = child_pane_id
-                        self.state.child_session = self._active_child_tmux
 
         self._layout_signature = self._compute_layout_signature()
 
@@ -827,76 +760,25 @@ class TmuxPaneManager:
             return spec.command
         return self._build_attach_cmd(spec.tmux_session_name or "", spec.computer_info)
 
-    def update_child_session(
-        self,
-        child_tmux_session_name: str | None,
-        computer_info: ComputerInfo | None = None,
-    ) -> None:
-        """Update just the child session pane.
-
-        Args:
-            child_tmux_session_name: New child session name, or None to remove
-            computer_info: Computer info for SSH (None = local)
-        """
-        if not self._in_tmux or not self.state.parent_pane_id:
-            return
-
-        # If same child, nothing to do
-        if self.state.child_session == child_tmux_session_name:
-            return
-
-        # Kill existing child pane if any
-        if self.state.child_pane_id and self._get_pane_exists(self.state.child_pane_id):
-            self._run_tmux("kill-pane", "-t", self.state.child_pane_id)
-            self.state.child_pane_id = None
-            self.state.child_session = None
-
-        # Create new child pane if requested
-        if child_tmux_session_name and self.state.parent_pane_id:
-            child_attach_cmd = self._build_attach_cmd(child_tmux_session_name, computer_info)
-            child_pane_id = self._run_tmux(
-                "split-window",
-                "-t",
-                self.state.parent_pane_id,
-                "-v",
-                "-P",
-                "-F",
-                "#{pane_id}",
-                child_attach_cmd,
-            )
-            if child_pane_id:
-                self.state.child_pane_id = child_pane_id
-                self.state.child_session = child_tmux_session_name
-
-        # Focus stays on new pane (don't return to TUI)
-
     def show_sticky_sessions(
         self,
-        sticky_sessions: list[tuple["SessionInfo", bool]],
-        all_sessions: list["SessionInfo"],
+        sticky_sessions: list["SessionInfo"],
         get_computer_info: Callable[[str], ComputerInfo | None],
     ) -> None:
         """Show 1-5 sticky sessions using tmux's fixed layouts.
 
-        Layouts (TUI always on left):
-        - 1 session: TUI | Session (40/60)
-        - 2 sessions: TUI | S1/S2 stacked (40/60, right split horizontal)
-        - 3+ sessions: TUI | Grid of sessions (40/60, right uses tiled layout)
-
         Args:
-            sticky_sessions: List of (SessionInfo, show_child) tuples
-            all_sessions: All sessions (for finding children)
+            sticky_sessions: List of SessionInfo objects
             get_computer_info: Function to get ComputerInfo for a computer name
         """
         if not self._in_tmux:
             logger.debug("show_sticky_sessions: not in tmux, skipping")
             return
 
-        _ = all_sessions
         logger.info("show_sticky_sessions: showing %d sticky sessions", len(sticky_sessions))
 
         sticky_specs: list[SessionPaneSpec] = []
-        for session_info, _ in sticky_sessions:
+        for session_info in sticky_sessions:
             tmux_session = session_info.tmux_session_name or ""
             if not tmux_session:
                 continue
@@ -914,21 +796,6 @@ class TmuxPaneManager:
         if self._layout_is_unchanged():
             return
         self._render_layout()
-
-    def _find_child_session(self, parent_session_id: str, all_sessions: list["SessionInfo"]) -> str | None:
-        """Find child session's tmux name for a parent session.
-
-        Args:
-            parent_session_id: Parent session ID
-            all_sessions: All sessions
-
-        Returns:
-            Child tmux session name, or None
-        """
-        for sess in all_sessions:
-            if sess.initiator_session_id == parent_session_id:
-                return sess.tmux_session_name
-        return None
 
     def _cleanup_sticky_panes(self) -> None:
         """Clean up all sticky panes."""

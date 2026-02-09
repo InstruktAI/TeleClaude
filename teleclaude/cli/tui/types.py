@@ -69,7 +69,6 @@ class StickySessionInfo:
     """Sticky session state for multi-pane view."""
 
     session_id: str
-    show_child: bool  # False when toggled via ID line (parent-only mode)
 
 
 CursesWindow: TypeAlias = curses.window

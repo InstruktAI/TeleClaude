@@ -84,6 +84,10 @@ FIELD_COMPUTER = "computer"
 FIELD_COMMAND = "command"
 
 
+# Checkpoint injection
+CHECKPOINT_MESSAGE = "Checkpoint \u2014 Continue or validate your work if needed. Otherwise, capture anything worth keeping (memories, bugs, ideas). If everything is clean, do not respond."
+CHECKPOINT_REACTIVATION_THRESHOLD_S = 30
+
 # Misc markers / defaults
 RELATIVE_CURRENT = "."
 TC_WORKDIR = "TC WORKDIR"

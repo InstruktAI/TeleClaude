@@ -772,8 +772,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             self.pane_manager.show_session(
                 tmux_session_name,
                 active_agent,
-                None,
-                computer_info,
+                computer_info=computer_info,
                 session_id=result.session_id,
             )
         else:

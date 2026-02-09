@@ -125,8 +125,8 @@ print_success "config.yml generated"
 # Step 3: Create .env symlink
 print_info "Creating .env symlink..."
 
-if [ ! -f "$REPO_ROOT/.env" ]; then
-    print_error "Main .env not found: $REPO_ROOT/.env"
+if [ ! -f "$TARGET_ROOT/.env" ]; then
+    print_error "Main .env not found: $TARGET_ROOT/.env"
     exit 1
 fi
 
