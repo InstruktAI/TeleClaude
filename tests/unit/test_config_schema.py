@@ -128,3 +128,88 @@ def test_empty_config_returns_defaults(tmp_path):
     assert config.project_name is None
     assert config.business.domains == {}
     assert config.jobs == {}
+
+
+def test_job_every_invalid_duration_format(tmp_path):
+    """Test that invalid duration formats are rejected."""
+    config_path = tmp_path / "teleclaude.yml"
+    config_path.write_text(
+        """
+jobs:
+  "bad":
+    when:
+      every: "bad"
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="Invalid duration format"):
+        load_project_config(config_path)
+
+
+def test_job_every_zero_duration(tmp_path):
+    """Test that duration < 1 minute is rejected."""
+    config_path = tmp_path / "teleclaude.yml"
+    config_path.write_text(
+        """
+jobs:
+  "zero":
+    when:
+      every: "0m"
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="Duration must be at least 1 minute"):
+        load_project_config(config_path)
+
+
+def test_timezone_key_rejected_project(tmp_path):
+    """Test that 'timezone' key is rejected at project level."""
+    config_path = tmp_path / "teleclaude.yml"
+    config_path.write_text("timezone: UTC", encoding="utf-8")
+    with pytest.raises(ValueError, match="Keys not allowed at project level.*timezone"):
+        load_project_config(config_path)
+
+
+def test_timezone_key_rejected_global(tmp_path):
+    """Test that 'timezone' key is rejected at global level."""
+    config_path = tmp_path / "teleclaude.yml"
+    config_path.write_text("timezone: UTC", encoding="utf-8")
+    with pytest.raises(ValueError, match="Keys not allowed at global level.*timezone"):
+        load_global_config(config_path)
+
+
+def test_timezone_key_rejected_person(tmp_path):
+    """Test that 'timezone' key is rejected at person level."""
+    config_path = tmp_path / "teleclaude.yml"
+    config_path.write_text("timezone: UTC", encoding="utf-8")
+    with pytest.raises(ValueError, match="Keys not allowed at per-person level.*timezone"):
+        load_person_config(config_path)
+
+
+def test_nested_unknown_keys_warning(tmp_path, caplog):
+    """Test that unknown keys in nested models produce warnings."""
+    import logging
+
+    caplog.set_level(logging.WARNING)
+
+    config_path = tmp_path / "teleclaude.yml"
+    config_path.write_text(
+        """
+business:
+  domains:
+    "dev": "docs/dev"
+  unknown_nested: "value"
+git:
+  checkout_root: "/tmp"
+  unknown_git: "value"
+""",
+        encoding="utf-8",
+    )
+    config = load_project_config(config_path)
+    assert config.business.domains["dev"] == "docs/dev"
+    assert config.git.checkout_root == "/tmp"
+
+    # Check warnings were logged for nested unknown keys
+    warning_messages = [record.message for record in caplog.records if record.levelname == "WARNING"]
+    assert any("unknown_nested" in msg for msg in warning_messages)
+    assert any("unknown_git" in msg for msg in warning_messages)
