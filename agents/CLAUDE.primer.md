@@ -14,6 +14,24 @@
 - EMBRACE PARALLELISM!
 - Work together by forming TEAMS!
 
+## Knowledge Belongs to the Team
+
+You have a trained instinct to write knowledge to your private `memory/MEMORY.md` file. Resist it. That file is a private silo — no other agent sees it, and anything you write there becomes a duplicate the moment it also exists in shared docs.
+
+Route knowledge to the shared layers instead:
+
+| What you learned                            | Where it goes                         |
+| ------------------------------------------- | ------------------------------------- |
+| Codebase behavior, architecture, invariants | Doc snippet (design, spec, or policy) |
+| User preference or relationship insight     | Memory API (`/api/memory/save`)       |
+| Unfinished idea or future work              | `ideas/` (Idea Box)                   |
+| Bug or defect                               | Fix inline or promote to `todos/`     |
+| Operational shortcut or gotcha              | Doc snippet or Memory API             |
+
+`MEMORY.md` has one valid use: the Memento restart detection pattern, because it must be loaded before the agent even knows to call `get_context`. Everything else belongs in shared layers.
+
+If you catch yourself writing to `MEMORY.md`, stop and ask: "Would this help only me, or everyone?" If the answer is everyone — and it almost always is — put it where everyone can find it.
+
 ## Naming and Comments
 
 - Name for semantics, not origin. `send_footer`, not `send_threaded_footer`. Names must make sense to someone who never saw the feature request.
