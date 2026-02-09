@@ -2,6 +2,9 @@
   "cache-startup-warmup": [
     "model-boundary-consolidation"
   ],
+  "code-context-auditor": [
+    "code-context-annotations"
+  ],
   "context-ai": [],
   "repo-cleanup": [],
   "v2-transport-normalization": []

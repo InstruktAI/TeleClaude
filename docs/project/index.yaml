@@ -389,31 +389,10 @@ snippets:
   scope: project
   path: docs/project/spec/git-docs-filter.md
   source_project: TeleClaude
-- id: project/spec/hook-normalized-events
-  description: Canonical normalization, forwarding, and operations contract for agent
-    hook events.
-  type: spec
-  scope: project
-  path: docs/project/spec/hook-normalized-events.md
-  source_project: TeleClaude
 - id: project/spec/jobs/youtube-sync-subscriptions
   description: 'YouTube subscription tagger job: nightly AI classification of untagged
     channels.'
   type: spec
   scope: project
   path: docs/project/spec/jobs/youtube-sync-subscriptions.md
-  source_project: TeleClaude
-- id: project/spec/runtime-operations-truth
-  description: Operational source of truth for daemon background operations, impact,
-    and recovery.
-  type: spec
-  scope: project
-  path: docs/project/spec/runtime-operations-truth.md
-  source_project: TeleClaude
-- id: project/spec/session-identity-truth
-  description: Canonical truth for session identity, mapping, and recovery across
-    managed and headless routes.
-  type: spec
-  scope: project
-  path: docs/project/spec/session-identity-truth.md
   source_project: TeleClaude

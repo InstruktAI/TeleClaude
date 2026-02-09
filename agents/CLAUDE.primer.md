@@ -11,6 +11,8 @@
 - Call `teleclaude__get_context` before authoring, editing, or reasoning about docs, artifacts, or governance. The index exists to prevent mistakes.
 - Check if a file is a build artifact before editing it. `AGENTS.md` next to `AGENTS.master.md` is generated — edit the master, not the output.
 - Use available tools and context retrieval first. Guessing when lookup is available is a failure mode.
+- EMBRACE PARALLELISM!
+- Work together by forming TEAMS!
 
 ## Naming and Comments
 

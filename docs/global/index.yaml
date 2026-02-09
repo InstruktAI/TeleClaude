@@ -478,6 +478,54 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/review.md
   source_project: TeleClaude
+- id: software-development/procedure/maintenance/backlog-hygiene
+  description: Backlog hygiene rules to keep work small, explicit, and decision-ready.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/maintenance/backlog-hygiene.md
+  source_project: TeleClaude
+- id: software-development/procedure/maintenance/bug-intake-and-triage
+  description: 'Fast bug intake and triage method for small teams: classify impact
+    quickly and force clear outcomes.'
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/maintenance/bug-intake-and-triage.md
+  source_project: TeleClaude
+- id: software-development/procedure/maintenance/deprecation-and-transition-plan
+  description: Procedure for retiring legacy paths safely while keeping service behavior
+    stable during transition.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/maintenance/deprecation-and-transition-plan.md
+  source_project: TeleClaude
+- id: software-development/procedure/maintenance/incident-log
+  description: Incident logging procedure focused on root cause quality, prevention
+    actions, and repeat-incident reduction.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/maintenance/incident-log.md
+  source_project: TeleClaude
+- id: software-development/procedure/maintenance/maintenance-cadence
+  description: Weekly and monthly maintenance cadence for small teams that need high
+    stability with low process overhead.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/maintenance/maintenance-cadence.md
+  source_project: TeleClaude
+- id: software-development/procedure/maintenance/overview
+  description: 'Maintenance operating model: practical rules for stability, backlog
+    quality, and continuous operational learning.'
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/maintenance/overview.md
+  source_project: TeleClaude
+- id: software-development/procedure/maintenance/release-and-stabilization-rhythm
+  description: Small-team release rhythm that prioritizes stability with lightweight
+    checks and clear rollback triggers.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/maintenance/release-and-stabilization-rhythm.md
+  source_project: TeleClaude
 - id: software-development/procedure/orchestration
   description: Orchestration loop for the next-work state machine and worker session
     handling.
@@ -522,4 +570,25 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/scaffolding/typescript-platforms/vite.md
+  source_project: TeleClaude
+- id: software-development/spec/hook-event-normalization-contract
+  description: Canonical contract for normalizing external hook events into internal
+    event types and forwarding only handled events.
+  type: spec
+  scope: domain
+  path: docs/software-development/spec/hook-event-normalization-contract.md
+  source_project: TeleClaude
+- id: software-development/spec/runtime-operations-truth
+  description: Canonical format and content requirements for documenting live runtime
+    operations and their failure impact.
+  type: spec
+  scope: domain
+  path: docs/software-development/spec/runtime-operations-truth.md
+  source_project: TeleClaude
+- id: software-development/spec/session-identity-truth
+  description: Canonical identity-mapping spec for systems that mix managed sessions
+    with standalone/headless event sources.
+  type: spec
+  scope: domain
+  path: docs/software-development/spec/session-identity-truth.md
   source_project: TeleClaude
