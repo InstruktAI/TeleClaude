@@ -93,6 +93,18 @@ async def batch_fetch(body: BatchRequest) -> list[dict]:
     return [asdict(r) for r in results]
 
 
+@router.delete("/{observation_id}")
+async def delete_observation(observation_id: int) -> dict:
+    """Delete a memory observation by ID."""
+    store = MemoryStore()
+    deleted = await store.delete_observation(observation_id)
+    if not deleted:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="Observation not found")
+    return {"deleted": observation_id}
+
+
 @router.get("/inject")
 async def inject_context(projects: str) -> str:
     """Generate context for injection (replaces claude-mem /api/context/inject)."""

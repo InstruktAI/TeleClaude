@@ -84,6 +84,17 @@ class MemoryStore:
 
         return ObservationResult(id=obs.id, title=title, project=project)  # type: ignore[arg-type]
 
+    async def delete_observation(self, observation_id: int) -> bool:
+        """Delete an observation by ID. Returns True if deleted, False if not found."""
+        async with db._session() as session:
+            result = await session.exec(
+                text(  # noqa: raw-sql
+                    "DELETE FROM memory_observations WHERE id = :id"
+                ).bindparams(id=observation_id)
+            )
+            await session.commit()
+            return result.rowcount > 0  # type: ignore[union-attr]
+
     async def get_by_ids(self, ids: list[int], project: str | None = None) -> list[db_models.MemoryObservation]:
         """Fetch observations by IDs."""
         if not ids:

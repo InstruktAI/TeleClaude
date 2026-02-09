@@ -58,6 +58,12 @@ curl -s --unix-socket /tmp/teleclaude-api.sock -X POST "http://localhost/api/mem
   -d '{"ids":[123,124],"project":"teleclaude"}'
 ```
 
+- Delete:
+
+```bash
+curl -s --unix-socket /tmp/teleclaude-api.sock -X DELETE "http://localhost/api/memory/123"
+```
+
 ## Observation types
 
 | Type         | When to use                                                    |
@@ -79,6 +85,7 @@ curl -s --unix-socket /tmp/teleclaude-api.sock -X POST "http://localhost/api/mem
 - `ids`: non-empty integer list.
 - `project`: project identifier string.
 - `type`: observation type string (optional filter on search).
+- `observation_id`: integer (path parameter for delete).
 
 ## Known caveats
 
