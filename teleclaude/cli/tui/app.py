@@ -263,7 +263,7 @@ class TelecApp:
         # Start WebSocket connection for push updates
         self.api.start_websocket(
             callback=self._on_ws_event,
-            subscriptions=["sessions", "projects"],
+            subscriptions=["sessions", "projects", "todos"],
         )
 
     async def refresh_data(self, *, include_todos: bool | None = None) -> None:
@@ -544,6 +544,11 @@ class TelecApp:
 
             elif isinstance(event, ErrorEvent):
                 self.notify(event.data.message, NotificationLevel.ERROR)
+
+            elif hasattr(event, "event") and str(event.event).startswith("todo_"):
+                # Granular todo events — refresh with todos included
+                if self._loop:
+                    self._loop.run_until_complete(self.refresh_data(include_todos=True))
 
             else:
                 # For now, trigger a full refresh for computer/project updates

@@ -361,18 +361,39 @@ class DaemonCache:
         logger.debug("Updated projects cache for %s: %d projects", computer, len(projects))
         self._notify("projects_updated", {"computer": computer, "projects": projects})
 
-    def set_todos(self, computer: str, project_path: str, todos: list[TodoInfo]) -> None:
+    def set_todos(
+        self,
+        computer: str,
+        project_path: str,
+        todos: list[TodoInfo],
+        *,
+        event_name: str = "todos_updated",
+    ) -> None:
         """Set todos for a project.
 
         Args:
             computer: Computer name
             project_path: Project path
             todos: List of todo info objects
+            event_name: Cache event to emit (default: todos_updated)
         """
         key = f"{computer}:{project_path}"
         self._todos[key] = CachedItem(todos)
-        logger.debug("Updated todos cache for %s: %d todos", key, len(todos))
-        self._notify("todos_updated", {"computer": computer, "project_path": project_path, "todos": todos})
+        logger.debug("Updated todos cache for %s: %d todos (event=%s)", key, len(todos), event_name)
+        self._notify(event_name, {"computer": computer, "project_path": project_path, "todos": todos})
+
+    async def refresh_local_todos(self, computer: str, project_path: str, event_hint: str) -> None:
+        """Re-read todos from disk for a local project and update cache.
+
+        Args:
+            computer: Computer name
+            project_path: Project path
+            event_hint: Granular event name (todo_created/todo_updated/todo_removed)
+        """
+        from teleclaude.core import command_handlers
+
+        todos = await command_handlers.list_todos(project_path)
+        self.set_todos(computer, project_path, todos, event_name=event_hint)
 
     def apply_projects_snapshot(self, computer: str, projects: list[ProjectInfo]) -> bool:
         """Apply a full projects snapshot for a computer with change detection."""

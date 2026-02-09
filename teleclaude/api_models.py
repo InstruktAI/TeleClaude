@@ -276,7 +276,15 @@ class RefreshEventDTO(BaseModel):  # type: ignore[explicit-any]
 
     model_config = ConfigDict(frozen=True)
 
-    event: Literal["computer_updated", "project_updated", "projects_updated", "todos_updated"]
+    event: Literal[
+        "computer_updated",
+        "project_updated",
+        "projects_updated",
+        "todos_updated",
+        "todo_created",
+        "todo_updated",
+        "todo_removed",
+    ]
     data: RefreshDataDTO
 
 

@@ -114,6 +114,9 @@ class CacheEvent(str, Enum):
     PROJECTS_UPDATED = "projects_updated"
     PROJECT_UPDATED = "project_updated"
     TODOS_UPDATED = "todos_updated"
+    TODO_CREATED = "todo_created"
+    TODO_UPDATED = "todo_updated"
+    TODO_REMOVED = "todo_removed"
 
 
 # Cache key separator

@@ -52,6 +52,7 @@ from teleclaude.core.session_utils import (
     split_project_path_and_subdir,
 )
 from teleclaude.core.task_registry import TaskRegistry
+from teleclaude.core.todo_watcher import TodoWatcher
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
@@ -285,6 +286,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._last_mcp_probe_ok: bool | None = None
         self._last_mcp_restart_at = 0.0
         self.hook_outbox_task: asyncio.Task[object] | None = None
+        self.todo_watcher_task: asyncio.Task[object] | None = None
 
         self.lifecycle = DaemonLifecycle(
             client=self.client,
@@ -1446,6 +1448,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop())
             self._wal_checkpoint_task.add_done_callback(self._log_background_task_exception("wal_checkpoint"))
             logger.info("WAL checkpoint task started (interval=300s)")
+
+            todo_watcher = TodoWatcher(self.cache)
+            self.todo_watcher_task = asyncio.create_task(todo_watcher.run())
+            self.todo_watcher_task.add_done_callback(self._log_background_task_exception("todo_watcher"))
+            logger.info("Todo watcher task started")
+
             self.monitoring_service.log_resource_snapshot("startup")
 
             if LAUNCHD_WATCH_ENABLED:
@@ -1505,6 +1513,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("WAL checkpoint task stopped")
+
+        if self.todo_watcher_task:
+            self.todo_watcher_task.cancel()
+            try:
+                await self.todo_watcher_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Todo watcher task stopped")
 
         if self.launchd_watch_task:
             self.launchd_watch_task.cancel()

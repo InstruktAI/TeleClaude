@@ -51,7 +51,7 @@ from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import ErrorEventContext, SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
-from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSummary
+from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSummary, TodoInfo
 from teleclaude.core.origins import InputOrigin
 from teleclaude.transport.redis_transport import RedisTransport
 
@@ -615,13 +615,20 @@ class APIServer:
             Pure cache reader - returns cached data without triggering pulls.
             """
             try:
-                # Get LOCAL projects from command handler
-                raw_projects = await command_handlers.list_projects()
+                # Get LOCAL projects from command handler (with todos for cache population)
+                raw_projects = await command_handlers.list_projects_with_todos()
                 computer_name = config.computer.name
                 result: list[ProjectDTO] = []
 
                 if self.cache:
                     self.cache.apply_projects_snapshot(computer_name, raw_projects)
+                    # Populate local todo cache so TUI has data immediately
+                    todos_by_project: dict[str, list[TodoInfo]] = {}
+                    for p in raw_projects:
+                        if p.path and p.todos:
+                            todos_by_project[p.path] = p.todos
+                    if todos_by_project:
+                        self.cache.apply_todos_snapshot(computer_name, todos_by_project)
 
                 # Add local projects
                 for p in raw_projects:
@@ -1080,6 +1087,9 @@ class APIServer:
             "project_updated",
             "projects_updated",
             "todos_updated",
+            "todo_created",
+            "todo_updated",
+            "todo_removed",
             "projects_snapshot",
             "todos_snapshot",
         ):
@@ -1106,13 +1116,21 @@ class APIServer:
                     if isinstance(name_val, str):
                         computer = name_val
 
-            normalized_event: Literal["computer_updated", "project_updated", "projects_updated", "todos_updated"]
+            normalized_event: Literal[
+                "computer_updated",
+                "project_updated",
+                "projects_updated",
+                "todos_updated",
+                "todo_created",
+                "todo_updated",
+                "todo_removed",
+            ]
             if event == "projects_snapshot":
                 normalized_event = "projects_updated"
             elif event == "todos_snapshot":
                 normalized_event = "todos_updated"
             else:
-                normalized_event = event
+                normalized_event = event  # type: ignore[assignment]
 
             payload = RefreshEventDTO(
                 event=normalized_event,
