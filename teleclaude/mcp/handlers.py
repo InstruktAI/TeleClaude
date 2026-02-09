@@ -265,14 +265,24 @@ class MCPHandlersMixin:
                 return []
 
         try:
-            # Pass project_path as part of the command
-            command = f"list_todos {project_path}"
-            envelope = await self._send_remote_request(computer, command, timeout=3.0)
+            envelope = await self._send_remote_request(computer, "list_projects_with_todos", timeout=3.0)
             data = envelope.get("data", [])
             if not isinstance(data, list):
                 logger.warning("Unexpected data format from %s: %s", computer, type(data).__name__)
                 return []
-            return list(data)
+
+            for project_obj in data:
+                if not isinstance(project_obj, dict):
+                    continue
+                if str(project_obj.get("path", "")) != project_path:
+                    continue
+                todos_obj = project_obj.get("todos", [])
+                if not isinstance(todos_obj, list):
+                    logger.warning("Unexpected todos format from %s for %s", computer, project_path)
+                    return []
+                return [todo for todo in todos_obj if isinstance(todo, dict)]
+
+            return []
         except RemoteRequestError as e:
             logger.warning("list_todos failed on %s: %s", computer, e.message)
             return []

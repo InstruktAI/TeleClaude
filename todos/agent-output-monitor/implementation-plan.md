@@ -15,7 +15,7 @@ Both paths will inspect `git diff --name-only HEAD`, map changed files to instru
 | ------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | `teleclaude/hooks/receiver.py`                          | Use shared context-aware message builder with single-block-per-turn escape hatch |
 | `teleclaude/core/agent_coordinator.py`                  | Use shared context-aware message builder for codex tmux injection                |
-| `teleclaude/constants.py`                               | Add/adjust constants for file category patterns, gated file extensions           |
+| `teleclaude/constants.py`                               | Add/adjust constants for file category patterns and instruction precedence       |
 | `tests/unit/test_checkpoint_hook.py`                    | Add/adjust tests for hook route behavior                                         |
 | `tests/unit/test_agent_coordinator.py`                  | Add tests for codex route parity and context-aware injection                     |
 | `docs/project/design/architecture/checkpoint-system.md` | Update to document Phase 2 context-aware flow                                    |
@@ -26,9 +26,11 @@ Both paths will inspect `git diff --name-only HEAD`, map changed files to instru
 
 Add to `teleclaude/constants.py`:
 
-- `CHECKPOINT_GATED_EXTENSIONS` — set of file extensions that trigger the uncommitted-changes gate (`.py`, `.yml` for config)
 - File category patterns as a data structure (list of tuples: category name, include patterns, exclude patterns, instruction template)
+- Ensure daemon bucket excludes `teleclaude/hooks/**` and `teleclaude/cli/tui/**`
+- Add explicit hook runtime bucket for `teleclaude/hooks/**` (no restart action)
 - Ensure artifact categories reflect repo reality: `agents/**`, `.agents/**`, and `**/AGENTS.master.md`
+- Add telec-setup category that maps to `telec init` when watchers, hook installers, or git-filter setup files change.
 
 **Verify:** Import succeeds, no syntax errors.
 
@@ -40,11 +42,11 @@ Add helper(s) in a shared module (or existing appropriate module) and wire both 
 - `_categorize_files(files: list[str]) -> list[tuple[str, str]]` — maps file list against category patterns, returns deduplicated list of instructions.
 - `build_checkpoint_message(files: list[str]) -> str` — returns context-aware checkpoint guidance text.
   - Always emit required actions in fixed execution precedence:
-    1. Restart/reload actions
-    2. Log-check action
+    1. Runtime/setup actions in strict sub-order (`telec init` → `make restart`/`make status` → TUI `SIGUSR2` → `agent-restart`, only when applicable)
+    2. Log-check action (`instrukt-ai-logs teleclaude --since 2m`)
     3. Validation actions
     4. Commit only after steps 1-3
-  - Always include baseline non-blocking log-check instruction.
+  - Always include baseline non-blocking log-check instruction with concrete command.
 
 **Verify:** Unit tests for categorization and message composition with various file lists.
 
@@ -84,11 +86,14 @@ Add/adjust tests:
 
 - `test_git_diff_empty_returns_generic_message` — no changes → capture-only
 - `test_message_always_includes_log_check` — all checkpoints include baseline log-check instruction
+- `test_message_log_check_command_is_concrete` — includes `instrukt-ai-logs teleclaude --since 2m`
 - `test_message_action_precedence_is_deterministic` — actions follow fixed execution order regardless of pattern discovery order
 - `test_message_precedence_is_explicit` — message text makes clear what must be done first
+- `test_runtime_setup_suborder_is_fixed` — runtime/setup actions preserve strict sub-order when multiple categories match
 - `test_daemon_code_change_instructs_restart` — `teleclaude/*.py` → "make restart"
 - `test_tui_code_change_instructs_sigusr2` — `teleclaude/cli/tui/*.py` → SIGUSR2
-- `test_hook_code_no_instruction` — `receiver.py` → no follow-up action
+- `test_telec_setup_change_instructs_telec_init` — watcher/hook/filter setup changes → `telec init`
+- `test_hook_runtime_code_no_restart_instruction` — `teleclaude/hooks/**` does not trigger daemon restart
 - `test_agent_artifacts_instructs_restart` — `agents/**`, `.agents/**`, or `**/AGENTS.master.md` → agent-restart
 - `test_config_change_instructs_restart` — `config.yml` → "make restart"
 - `test_codex_injection_uses_context_aware_message` — codex tmux path uses same mapping/message routine

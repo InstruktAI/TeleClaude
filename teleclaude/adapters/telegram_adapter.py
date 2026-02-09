@@ -97,13 +97,15 @@ class TelegramAdapter(
     """Telegram bot adapter using python-telegram-bot."""
 
     ADAPTER_KEY = "telegram"
-    COMMAND_HANDLER_OVERRIDES = {"agent_resume": "_handle_agent_resume_command"}
+    COMMAND_HANDLER_OVERRIDES = {
+        "agent_resume": "_handle_agent_resume_command",
+        "cancel": "_handle_cancel_command",
+    }
 
     # Simple commands that just emit an event with session_id, args, and message_id.
     # These are generated dynamically via _handle_simple_command template.
     # Format: list of command names (string)
     SIMPLE_COMMAND_EVENTS: list[str] = [
-        "cancel",
         "cancel2x",
         "kill",
         "tab",
@@ -213,6 +215,9 @@ class TelegramAdapter(
         for event in self.SIMPLE_COMMAND_EVENTS:
             command_name = event  # Event value IS the command name (e.g., "cancel", "kill")
             handler_name = f"_handle_{command_name}"
+            if hasattr(self, handler_name):
+                logger.debug("Skipping dynamic handler registration for %s (already defined)", handler_name)
+                continue
 
             # Create a closure that captures the event value
             def make_handler(
@@ -224,6 +229,10 @@ class TelegramAdapter(
                 return handler
 
             setattr(self, handler_name, make_handler(event))
+
+    async def _handle_cancel_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /cancel command without colliding with callback cancel handler."""
+        await self._handle_simple_command(update, context, "cancel")
 
     async def delete_message(self, session: "Session | str", message_id: str) -> bool:
         """Delete a message by session or session_id."""

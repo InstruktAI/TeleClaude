@@ -32,7 +32,7 @@ from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.state import DocPreviewState, DocStickyInfo, Intent, IntentType, TuiState
 from teleclaude.cli.tui.state_store import save_sticky_state
-from teleclaude.cli.tui.todos import TodoItem, parse_roadmap
+from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import (
     CursesWindow,
     FocusLevelType,
@@ -267,46 +267,43 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         self._computers = computers
 
         # Extract todos from projects (already fetched by API in one call)
-        local_computer = config.computer.name
-        todos_by_project: dict[str, list[TodoItem]] = {}
+        # Key by (computer, path) to avoid cross-computer collisions
+        todos_by_project: dict[tuple[str, str], list[TodoItem]] = {}
         todo_ids: set[str] = set()
 
         for project in projects:
             path = project.path
+            computer = project.computer or ""
             if not path:
                 continue
 
-            # For local projects, parse from filesystem (has state.json with build/review status)
-            if project.computer == local_computer:
-                todos_by_project[path] = parse_roadmap(path)
-            else:
-                # For remote projects, use todos from API response
-                todos_by_project[path] = [
-                    TodoItem(
-                        slug=todo.slug,
-                        status=todo.status,
-                        description=todo.description,
-                        has_requirements=todo.has_requirements,
-                        has_impl_plan=todo.has_impl_plan,
-                        build_status=todo.build_status,
-                        review_status=todo.review_status,
-                    )
-                    for todo in project.todos
-                ]
-            for todo in todos_by_project[path]:
+            key = (computer, path)
+            todos_by_project[key] = [
+                TodoItem(
+                    slug=todo.slug,
+                    status=todo.status,
+                    description=todo.description,
+                    has_requirements=todo.has_requirements,
+                    has_impl_plan=todo.has_impl_plan,
+                    build_status=todo.build_status,
+                    review_status=todo.review_status,
+                )
+                for todo in project.todos
+            ]
+            for todo in todos_by_project[key]:
                 todo_ids.add(todo.slug)
 
         # Aggregate todo and project counts per computer for badges
-        project_by_path: dict[str, str] = {}
-        for project in projects:
-            if project.computer and project.path:
-                project_by_path[project.path] = project.computer
-
         todo_counts: dict[str, int] = {}
         project_counts: dict[str, int] = {}
-        for path, comp_name in project_by_path.items():
+        for project in projects:
+            comp_name = project.computer or ""
+            if not comp_name or not project.path:
+                continue
             project_counts[comp_name] = project_counts.get(comp_name, 0) + 1
-            todo_counts[comp_name] = todo_counts.get(comp_name, 0) + len(todos_by_project.get(path, []))
+            todo_counts[comp_name] = todo_counts.get(comp_name, 0) + len(
+                todos_by_project.get((comp_name, project.path), [])
+            )
 
         enriched_computers: list[PrepComputerDisplayInfo] = []
         for computer in computers:
@@ -329,14 +326,14 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         self,
         computers: list[PrepComputerDisplayInfo],
         projects: list[ProjectWithTodosInfo],
-        todos_by_project: dict[str, list[TodoItem]],
+        todos_by_project: dict[tuple[str, str], list[TodoItem]],
     ) -> list[PrepTreeNode]:
         """Build tree structure: Computer -> Project -> Todos.
 
         Args:
             computers: List of computers
             projects: List of projects
-            todos_by_project: Pre-fetched todos keyed by project path
+            todos_by_project: Pre-fetched todos keyed by (computer, path)
 
         Returns:
             Tree of PrepTreeNodes
@@ -361,8 +358,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                     depth=1,
                 )
 
-                # Use pre-fetched todos for this project
-                todos = todos_by_project.get(project_path, [])
+                # Use pre-fetched todos for this project (keyed by computer+path)
+                todos = todos_by_project.get((comp_name, project_path), [])
                 for todo in todos:
                     todo_node = PrepTodoNode(
                         type=NodeType.TODO,

@@ -27,15 +27,16 @@ Before building a checkpoint message on either route:
 
 ### R2: File-to-Action Categorization
 
-| Category        | File Patterns                                                       | Agent Instruction                                       |
-| --------------- | ------------------------------------------------------------------- | ------------------------------------------------------- |
-| daemon code     | `teleclaude/**/*.py` excluding `hooks/receiver.py` and `cli/tui/**` | "Run `make restart` then `make status`"                 |
-| hook code       | `teleclaude/hooks/receiver.py`                                      | _(none — auto-reloads)_                                 |
-| TUI code        | `teleclaude/cli/tui/**`                                             | "Run `pkill -SIGUSR2 -f -- '-m teleclaude.cli.telec$'`" |
-| tests only      | `tests/**/*.py` with no source changes                              | "Run targeted tests for changed behavior before commit" |
-| agent artifacts | `agents/**`, `.agents/**`, `**/AGENTS.master.md`                    | "Run agent-restart to reload artifacts"                 |
-| config          | `config.yml`                                                        | "Run `make restart` + `make status`"                    |
-| no code changes | Only docs, todos, ideas, markdown                                   | Capture-only message                                    |
+| Category                             | File Patterns                                                                                                                                                                                                                           | Agent Instruction                                                             |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| daemon code                          | `teleclaude/**/*.py` excluding `teleclaude/hooks/**` and `teleclaude/cli/tui/**`                                                                                                                                                        | "Run `make restart` then `make status`"                                       |
+| hook runtime code                    | `teleclaude/hooks/**`                                                                                                                                                                                                                   | _(none — hook runtime changes auto-apply on next hook invocation)_            |
+| TUI code                             | `teleclaude/cli/tui/**`                                                                                                                                                                                                                 | "Run `pkill -SIGUSR2 -f -- '-m teleclaude.cli.telec$'`"                       |
+| telec setup (watchers/hooks/filters) | `teleclaude/project_setup/**`, `templates/ai.instrukt.teleclaude.docs-watch.plist`, `templates/teleclaude-docs-watch.service`, `templates/teleclaude-docs-watch.path`, `.pre-commit-config.yaml`, `.gitattributes`, `.husky/pre-commit` | "Run `telec init` (setup changed: watchers, hook installers, or git filters)" |
+| tests only                           | `tests/**/*.py` with no source changes                                                                                                                                                                                                  | "Run targeted tests for changed behavior before commit"                       |
+| agent artifacts                      | `agents/**`, `.agents/**`, `**/AGENTS.master.md`                                                                                                                                                                                        | "Run agent-restart to reload artifacts"                                       |
+| config                               | `config.yml`                                                                                                                                                                                                                            | "Run `make restart` + `make status`"                                          |
+| no code changes                      | Only docs, todos, ideas, markdown                                                                                                                                                                                                       | Capture-only message                                                          |
 
 Already-automated triggers (excluded from checkpoint instructions):
 
@@ -58,14 +59,18 @@ Build a structured checkpoint message from matched categories:
 1. Header indicating context-aware checkpoint
 2. Changed files list
 3. "Required actions" list with strict execution precedence (the order is the contract)
-4. Baseline instruction always included: check recent logs for errors
+4. Baseline instruction always included: run `instrukt-ai-logs teleclaude --since 2m` and check for errors
 5. Deduplicated category instructions appended in deterministic order
 6. If nothing code-related changed: capture-only message (still include baseline log check)
 
 Execution precedence (fixed):
 
-1. Runtime reload/restart actions (daemon restart, TUI reload, agent artifact restart)
-2. Observability action (check recent logs for errors)
+1. Runtime/setup actions in strict sub-order:
+   - `telec init` when telec setup files changed
+   - `make restart` then `make status` when daemon/config changed
+   - `pkill -SIGUSR2 -f -- "-m teleclaude.cli.telec$"` when TUI changed
+   - `agent-restart` when agent artifacts changed
+2. Observability action (run `instrukt-ai-logs teleclaude --since 2m`)
 3. Validation actions (targeted tests)
 4. Commit only after steps 1-3 are complete
 5. Capture reminder (memories/bugs/ideas) as closing note, not part of required-action numbering

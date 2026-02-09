@@ -403,9 +403,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         if data_type in ("projects", "preparation"):
             return self.pull_remote_projects_with_todos(computer)
         if data_type == "todos":
-            if not project_path:
-                return None
-            return self.pull_remote_todos(computer, project_path)
+            return self.pull_remote_projects_with_todos(computer)
         if data_type == "sessions":
             return self.pull_interested_sessions()
         return None
@@ -1579,8 +1577,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         logger.debug("Pulling todos from %s:%s", computer, project_path)
 
         try:
-            # Request todos via Redis (calls list_todos handler on remote)
-            message_id = await self.send_request(computer, "list_todos", MessageMetadata(), args=[project_path])
+            # Request projects snapshot with embedded todos, then filter to the target project.
+            message_id = await self.send_request(computer, "list_projects_with_todos", MessageMetadata())
 
             # Wait for response with short timeout
             response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer)
@@ -1597,22 +1595,34 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             if status == "error":
                 error_msg = envelope.get("error", "unknown error")
                 logger.warning("Error from %s: %s", computer, error_msg)
+                if isinstance(error_msg, str) and "list_projects_with_todos" in error_msg:
+                    await self.pull_remote_projects(computer)
                 return
 
-            # Extract todos data
+            # Extract projects-with-todos data
             data = envelope.get("data")
             if not isinstance(data, list):
-                logger.warning("Invalid todos data from %s: %s", computer, type(data))
+                logger.warning("Invalid projects-with-todos data from %s: %s", computer, type(data))
                 return
 
-            # Populate cache with todos
             todos: list[TodoInfo] = []
-            for todo_obj in data:
-                if isinstance(todo_obj, dict):
-                    todos.append(TodoInfo.from_dict(todo_obj))
+            for project_obj in data:
+                if not isinstance(project_obj, dict):
+                    continue
+                path = str(project_obj.get("path", ""))
+                if path != project_path:
+                    continue
+                todos_obj = project_obj.get("todos", [])
+                if not isinstance(todos_obj, list):
+                    logger.warning("Invalid todos payload for %s:%s", computer, project_path)
+                    return
+                for todo_obj in todos_obj:
+                    if isinstance(todo_obj, dict):
+                        todos.append(TodoInfo.from_dict(todo_obj))
+                break
 
             self.cache.set_todos(computer, project_path, todos)
-            logger.info("Pulled %d todos from %s:%s", len(todos), computer, project_path)
+            logger.info("Pulled %d todos from %s:%s via projects-with-todos", len(todos), computer, project_path)
 
         except Exception as e:
             logger.warning("Failed to pull todos from %s:%s: %s", computer, project_path, e)

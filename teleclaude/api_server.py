@@ -741,10 +741,11 @@ class APIServer:
                     project_path=project,
                     include_stale=True,
                 )
+                stale_remote_computers: set[str] = set()
                 result: list[TodoDTO] = []
                 for entry in entries:
-                    if entry.is_stale:
-                        self._refresh_stale_todos(entry.computer, entry.project_path)
+                    if entry.is_stale and entry.computer:
+                        stale_remote_computers.add(entry.computer)
                     for todo in entry.todos:
                         result.append(
                             TodoDTO(
@@ -759,6 +760,7 @@ class APIServer:
                                 review_status=todo.review_status,
                             )
                         )
+                self._refresh_stale_todos(stale_remote_computers)
                 return result
             except Exception as e:
                 logger.error("list_todos: failed to get todos: %s", e, exc_info=True)
@@ -983,17 +985,17 @@ class APIServer:
                 continue
             adapter.request_refresh(computer, "projects", reason="ttl")
 
-    def _refresh_stale_todos(self, computer: str, project_path: str) -> None:
+    def _refresh_stale_todos(self, computers: set[str]) -> None:
         """Trigger background refresh for stale todo cache entries."""
-        if not self.cache or not project_path or computer == "local":
-            return
-        cache_key = f"{computer}:{project_path}"
-        if not self.cache.is_stale(cache_key, 300):
+        if not self.cache or not computers:
             return
         adapter = self.client.adapters.get("redis")
         if not isinstance(adapter, RedisTransport):
             return
-        adapter.request_refresh(computer, "todos", reason="ttl", project_path=project_path)
+        for computer in sorted(computers):
+            if computer == "local":
+                continue
+            adapter.request_refresh(computer, "projects", reason="ttl")
 
     async def _send_initial_state(self, websocket: WebSocket, data_type: str, computer: str) -> None:
         """Send initial state for a subscription.

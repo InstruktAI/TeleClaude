@@ -546,6 +546,52 @@ def test_list_todos_project_filter(test_client, mock_cache):  # type: ignore[exp
     )
 
 
+def test_list_todos_stale_remote_entries_refresh_projects(test_client, api_server, mock_cache):  # type: ignore[explicit-any, unused-ignore]
+    """Stale remote todos should trigger projects refresh once per computer."""
+    from teleclaude.core.cache import TodoCacheEntry
+
+    redis_adapter = RedisTransport(MagicMock())
+    redis_adapter.request_refresh = MagicMock()
+    api_server.client.adapters = {"redis": redis_adapter}
+
+    mock_cache.get_todo_entries.return_value = [
+        TodoCacheEntry(
+            computer="remote-b",
+            project_path="/remote-b/path",
+            todos=[TodoInfo(slug="b-1", status="pending")],
+            is_stale=True,
+        ),
+        TodoCacheEntry(
+            computer="remote-a",
+            project_path="/remote-a/path-1",
+            todos=[TodoInfo(slug="a-1", status="pending")],
+            is_stale=True,
+        ),
+        TodoCacheEntry(
+            computer="remote-a",
+            project_path="/remote-a/path-2",
+            todos=[TodoInfo(slug="a-2", status="pending")],
+            is_stale=True,
+        ),
+        TodoCacheEntry(
+            computer="local",
+            project_path="/local/path",
+            todos=[TodoInfo(slug="l-1", status="pending")],
+            is_stale=True,
+        ),
+    ]
+
+    response = test_client.get("/todos")
+    assert response.status_code == 200
+
+    assert redis_adapter.request_refresh.call_count == 2
+    calls = [(c.args[0], c.args[1], c.kwargs.get("reason")) for c in redis_adapter.request_refresh.call_args_list]
+    assert calls == [
+        ("remote-a", "projects", "ttl"),
+        ("remote-b", "projects", "ttl"),
+    ]
+
+
 def test_list_todos_without_cache_falls_back_to_local(test_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_todos falls back to local handler without cache."""
     adapter = APIServer(client=MagicMock(), cache=None)

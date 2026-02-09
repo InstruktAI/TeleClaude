@@ -11,6 +11,7 @@ import pytest
 
 from teleclaude.core.models import (
     ComputerInfo,
+    MessageMetadata,
     ProjectInfo,
     SessionSummary,
     TodoInfo,
@@ -384,8 +385,14 @@ async def test_pull_remote_todos_happy_path():
             {
                 "status": "success",
                 "data": [
-                    {"slug": "todo-1", "title": "Todo 1", "status": "pending"},
-                    {"slug": "todo-2", "title": "Todo 2", "status": "complete"},
+                    {
+                        "name": "ProjectA",
+                        "path": "/home/user/projectA",
+                        "todos": [
+                            {"slug": "todo-1", "title": "Todo 1", "status": "pending"},
+                            {"slug": "todo-2", "title": "Todo 2", "status": "complete"},
+                        ],
+                    },
                 ],
             }
         )
@@ -399,13 +406,14 @@ async def test_pull_remote_todos_happy_path():
     mock_cache.set_todos = record_todos
 
     # Execute
-    await adapter.pull_remote_todos("RemotePC", "/home/user/project")
+    await adapter.pull_remote_todos("RemotePC", "/home/user/projectA")
 
     # Verify cache was populated
     assert len(captured) == 1
     assert captured[0][0] == "RemotePC"
-    assert captured[0][1] == "/home/user/project"
+    assert captured[0][1] == "/home/user/projectA"
     assert len(captured[0][2]) == 2
+    adapter.send_request.assert_awaited_once_with("RemotePC", "list_projects_with_todos", MessageMetadata())
 
 
 @pytest.mark.unit

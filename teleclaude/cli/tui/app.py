@@ -257,7 +257,7 @@ class TelecApp:
         self.periodic_trigger.interval_sec = config.ui.animations_periodic_interval
         self.periodic_trigger.task = asyncio.create_task(self.periodic_trigger.start())
 
-        # Now refresh to populate views with data
+        # Now refresh to populate views with data (always include todos so prep view has data)
         await self.refresh_data()
 
         # Start WebSocket connection for push updates
@@ -266,20 +266,17 @@ class TelecApp:
             subscriptions=["sessions", "projects", "todos"],
         )
 
-    async def refresh_data(self, *, include_todos: bool | None = None) -> None:
+    async def refresh_data(self) -> None:
         """Refresh all data from API."""
         logger.debug("Refreshing data from API...")
         try:
-            fetch_todos = include_todos if include_todos is not None else self.current_view == 2
-            computers, projects, sessions, availability = await asyncio.gather(
+            computers, projects, sessions, availability, todos = await asyncio.gather(
                 self.api.list_computers(),
                 self.api.list_projects(),
                 self.api.list_sessions(),
                 self.api.get_agent_availability(),
+                self.api.list_todos(),
             )
-            todos: list[TodoInfo] = []
-            if fetch_todos:
-                todos = await self.api.list_todos()
 
             todos_by_project: dict[tuple[str, str], list[TodoInfo]] = {}
             for todo in todos:
@@ -302,11 +299,13 @@ class TelecApp:
                     )
                 )
 
+            total_todos = sum(len(p.todos) for p in projects_with_todos)
             logger.debug(
-                "API returned: %d computers, %d projects, %d sessions",
+                "API returned: %d computers, %d projects, %d sessions, %d todos attached",
                 len(computers),
                 len(projects_with_todos),
                 len(sessions),
+                total_todos,
             )
 
             self._computers = computers
@@ -512,7 +511,7 @@ class TelecApp:
                     if event.data.tmux_session_name:
                         sessions_view.request_select_session(event.data.session_id)
                 if self._loop:
-                    self._loop.run_until_complete(self.refresh_data(include_todos=False))
+                    self._loop.run_until_complete(self.refresh_data())
 
             elif isinstance(event, SessionUpdatedEvent):
                 updated_session = event.data
@@ -536,11 +535,11 @@ class TelecApp:
                     )
 
                 if self._loop:
-                    self._loop.run_until_complete(self.refresh_data(include_todos=False))
+                    self._loop.run_until_complete(self.refresh_data())
 
             elif isinstance(event, SessionClosedEvent):
                 if self._loop:
-                    self._loop.run_until_complete(self.refresh_data(include_todos=False))
+                    self._loop.run_until_complete(self.refresh_data())
 
             elif isinstance(event, ErrorEvent):
                 self.notify(event.data.message, NotificationLevel.ERROR)
@@ -548,7 +547,7 @@ class TelecApp:
             elif hasattr(event, "event") and str(event.event).startswith("todo_"):
                 # Granular todo events — refresh with todos included
                 if self._loop:
-                    self._loop.run_until_complete(self.refresh_data(include_todos=True))
+                    self._loop.run_until_complete(self.refresh_data())
 
             else:
                 # For now, trigger a full refresh for computer/project updates
@@ -1025,7 +1024,7 @@ class TelecApp:
                 )
                 if view_num == 2:
                     if self._loop:
-                        self._loop.run_until_complete(self.refresh_data(include_todos=True))
+                        self._loop.run_until_complete(self.refresh_data())
             # Panes remain unchanged across view switches.
         else:
             logger.warning("Attempted to switch to non-existent view %d", view_num)

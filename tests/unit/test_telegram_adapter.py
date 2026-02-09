@@ -1,6 +1,7 @@
 """Unit tests for telegram_adapter.py."""
 
 import asyncio
+import inspect
 import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -136,6 +137,18 @@ class TestSimpleCommandHandlers:
         assert isinstance(cmd, KeysCommand)
         assert cmd.session_id == "session-123"
         assert cmd.key == "cancel"
+
+    def test_dynamic_handler_registration_does_not_override_callback_cancel(self, telegram_adapter):
+        """Callback cancel handler must remain callback-shaped (query, args)."""
+        params = list(inspect.signature(telegram_adapter._handle_cancel).parameters.keys())
+        assert params == ["query", "args"]
+
+    def test_cancel_command_uses_explicit_override_handler(self, telegram_adapter):
+        """Slash /cancel command should resolve to _handle_cancel_command."""
+        handlers = dict(telegram_adapter._get_command_handlers())
+        cancel_handler = handlers.get("cancel")
+        assert cancel_handler is not None
+        assert getattr(cancel_handler, "__name__", "") == "_handle_cancel_command"
 
 
 class TestMessaging:
