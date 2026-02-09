@@ -7,6 +7,10 @@ type: 'procedure'
 
 # Finalize — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/commits.md
+
 ## Goal
 
 Merge approved work to main, log delivery, and clean up.

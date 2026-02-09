@@ -281,10 +281,10 @@ ASK USER: Do you want to continue with more preparation work, or start the build
 
 
 def format_uncommitted_changes(slug: str) -> str:
-    """Format instruction for orchestrator to commit uncommitted changes directly."""
+    """Format instruction for orchestrator to resolve worktree uncommitted changes."""
     return f"""UNCOMMITTED CHANGES in trees/{slug}
 
-NEXT: Commit these changes intelligently, then call teleclaude__next_work(slug="{slug}") to continue."""
+NEXT: Resolve these changes according to the commit policy, then call teleclaude__next_work(slug="{slug}") to continue."""
 
 
 def format_hitl_guidance(context: str) -> str:
@@ -434,7 +434,7 @@ def read_breakdown_state(cwd: str, slug: str) -> dict[str, bool | list[str]] | N
 
 
 def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str]) -> None:
-    """Write breakdown state and commit.
+    """Write breakdown state.
 
     Args:
         cwd: Project root directory
@@ -1225,7 +1225,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             return format_hitl_guidance(
                 "Read todos/roadmap.md. Discuss with the user to identify or propose a "
                 "work item slug. Once decided, write requirements.md and "
-                "implementation-plan.md yourself and commit."
+                "implementation-plan.md yourself."
             )
 
         # Dispatch next-prepare (no slug) when hitl=False
@@ -1250,10 +1250,10 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             missing_docs.append("requirements.md")
         if not has_impl_plan:
             missing_docs.append("implementation-plan.md")
-        docs_clause = " and commit."
+        docs_clause = "."
         if missing_docs:
             docs_list = " and ".join(missing_docs)
-            docs_clause = f" before writing {docs_list} and commit."
+            docs_clause = f" before writing {docs_list}."
         next_step = (
             "Discuss with the user where it should appear in the list and get approval, "
             f"then add it to the roadmap{docs_clause}"
@@ -1311,7 +1311,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
         if hitl:
             return format_hitl_guidance(
                 f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/requirements.md "
-                f"and todos/{resolved_slug}/implementation-plan.md yourself and commit."
+                f"and todos/{resolved_slug}/implementation-plan.md yourself."
             )
 
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
@@ -1322,7 +1322,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             agent=agent,
             thinking_mode=mode,
             subfolder="",
-            note=f"Discuss until you have enough input. Write todos/{resolved_slug}/requirements.md yourself and commit.",
+            note=f"Discuss until you have enough input. Write todos/{resolved_slug}/requirements.md yourself.",
             next_call="teleclaude__next_prepare",
         )
 
@@ -1330,7 +1330,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
     if not check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md"):
         if hitl:
             return format_hitl_guidance(
-                f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/implementation-plan.md yourself and commit."
+                f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/implementation-plan.md yourself."
             )
 
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
@@ -1341,7 +1341,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             agent=agent,
             thinking_mode=mode,
             subfolder="",
-            note=f"Discuss until you have enough input. Write todos/{resolved_slug}/implementation-plan.md yourself and commit.",
+            note=f"Discuss until you have enough input. Write todos/{resolved_slug}/implementation-plan.md yourself.",
             next_call="teleclaude__next_prepare",
         )
 

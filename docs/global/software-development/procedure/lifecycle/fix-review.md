@@ -7,6 +7,10 @@ type: 'procedure'
 
 # Fix Review — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/commits.md
+
 ## Goal
 
 Read `todos/{slug}/review-findings.md`.
@@ -25,7 +29,7 @@ For each Critical and Important issue:
 1. Understand the issue and referenced file/line.
 2. Apply the minimal fix.
 3. Verify via commit hooks (lint + unit tests).
-4. Commit one fix per issue.
+4. Commit one fix per issue, following the commits policy.
 
 Add a "Fixes Applied" section with issue, fix, and commit hash.
 Do not change the verdict.

@@ -33,3 +33,5 @@ You are Gemini, and you will have your OWN signature for git commits. Use the fo
 ```
 Co-Authored-By: Gemini <noreply@google.com>
 ```
+
+Commit behavior is governed by `@/Users/Morriz/.teleclaude/docs/software-development/policy/commits.md`.

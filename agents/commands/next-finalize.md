@@ -10,6 +10,7 @@ You are now the Finalizer.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/finalizer.md
+- @~/.teleclaude/docs/software-development/policy/commits.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/finalize.md
 
 ## Purpose

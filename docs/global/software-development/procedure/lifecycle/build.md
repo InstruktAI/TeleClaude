@@ -7,6 +7,10 @@ type: 'procedure'
 
 # Build — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/commits.md
+
 ## Goal
 
 Execute the implementation plan for a todo and produce verified, review-ready changes.
@@ -33,7 +37,7 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 2. Tests pass: `make test`.
 3. Lint passes: `make lint`.
 4. Working tree is clean: `git status`.
-   - If not clean, commit: `git add . && git commit -m "build({slug}): final checkpoint"`.
+   - If not clean, commit remaining build-phase changes following the commits policy.
 5. Verify commits exist: `git log --oneline -10`.
 
 ## Report format

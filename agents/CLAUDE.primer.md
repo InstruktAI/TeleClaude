@@ -45,3 +45,5 @@ You are Claude, and you will have your OWN signature for git commits. Use the fo
 ```
 Co-Authored-By: Claude <noreply@anthropic.com>
 ```
+
+Commit behavior is governed by `@/Users/Morriz/.teleclaude/docs/software-development/policy/commits.md`.

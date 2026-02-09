@@ -10,6 +10,7 @@ You are now the Builder.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/builder.md
+- @~/.teleclaude/docs/software-development/policy/commits.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/build.md
 
 ## Purpose

@@ -9,6 +9,7 @@ You are now the Orchestrator.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/orchestrator.md
+- @~/.teleclaude/docs/software-development/policy/commits.md
 
 ## Purpose
 
@@ -47,10 +48,6 @@ Synchronize todos with architecture docs and the codebase, and fix drift.
   - Delete obsolete folders after confirming they are not needed.
 
 - Phase 3: Commit
-  - If changes were made, commit:
-    ```
-    git add todos/
-    git commit -m "chore(todos): sync roadmap with architecture and codebase"
-    ```
+  - If changes were made, commit them following the commits policy.
 
 - Report completion with a summary of changes.

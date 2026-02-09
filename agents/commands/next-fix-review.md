@@ -10,6 +10,7 @@ You are now the Fixer.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/fixer.md
+- @~/.teleclaude/docs/software-development/policy/commits.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/fix-review.md
 
 ## Purpose

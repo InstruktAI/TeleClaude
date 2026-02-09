@@ -13,6 +13,8 @@ type: 'policy'
 
 ## Rules
 
+This is the canonical source of commit behavior. Other docs may reference it, but must not redefine commit policy.
+
 Pre-commit hooks enforce tests, linting, and formatting. Only commit atomic, complete changes with no debug/temp code.
 
 Use commitizen format:
