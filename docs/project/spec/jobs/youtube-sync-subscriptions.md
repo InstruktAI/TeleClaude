@@ -5,13 +5,18 @@ scope: 'project'
 type: 'spec'
 ---
 
-# youtube_sync_subscriptions — Spec
+# Youtube Sync Subscriptions — Spec
+
+## Required reads
+
+@~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
 
 ## What it does
 
-For each person (and global scope) with YouTube subscriptions configured, reads
-their `youtube.csv`, finds channels with empty tags, and classifies them using AI
-agents. Already-tagged channels are skipped. Results are written back to CSV.
+For each person with YouTube subscriptions configured, runs the tagging script
+against their `youtube.csv`. The script finds channels with empty tags and
+classifies them using AI. Already-tagged channels are skipped. Results are
+written back to CSV.
 
 ## Schedule
 
@@ -22,29 +27,37 @@ jobs:
   youtube_sync_subscriptions:
     schedule: daily
     preferred_hour: 6
+    job: youtube-sync-subscriptions
+    agent: claude
+    thinking_mode: fast
 ```
 
 ## How it works
 
+The agent supervises the existing tagging pipeline:
+
 1. `teleclaude/cron/discovery.py` scans `~/.teleclaude/people/*/teleclaude.yml`
    for entries with `subscriptions.youtube` configured.
-2. For each subscriber, calls `sync_youtube_subscriptions()` from
-   `teleclaude/tagging/youtube.py`.
-3. The tagging module reads the CSV, enriches untagged channels with About page
-   descriptions, sends batches to AI agents with the subscriber's allowed tag list,
+2. For each subscriber, the tagging script `teleclaude/tagging/youtube.py` is
+   invoked via `sync_youtube_subscriptions()`.
+3. The tagging script reads the CSV, enriches untagged channels with About page
+   descriptions, sends batches to AI with the subscriber's allowed tag list,
    validates responses, and falls back to web research for channels tagged `n/a`.
 4. Only untagged rows are processed. Tagged rows are never touched unless explicitly
    called with `refresh=True` (not used by the nightly job).
+5. The agent writes a run report and stops.
+
+If the tagging script fails, the agent diagnoses the error and fixes forward if
+the issue is within this job's scope (the files listed below). Out-of-scope issues
+are recorded in the run report.
 
 ## Files
 
-| File                                                   | Role                                                                                                                                                    |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `jobs/youtube_sync_subscriptions.py`                   | Job wrapper — discovery + iteration over subscribers                                                                                                    |
-| `teleclaude/tagging/youtube.py`                        | Canonical library — CSV ops, AI tagging, validation                                                                                                     |
-| `teleclaude/cron/discovery.py`                         | Finds subscribers with YouTube config                                                                                                                   |
-| `teleclaude/entrypoints/youtube_sync_subscriptions.py` | Standalone CLI with extra features (fetch subs from YouTube API, max limits, debug mode). Shares ~600 lines of duplicate logic with the tagging module. |
-| `cron/youtube-sync-subscriptions.py`                   | Legacy wrapper — predates the jobs runner, calls the entrypoint directly. Dead code.                                                                    |
+| File                                 | Role                                              |
+| ------------------------------------ | ------------------------------------------------- |
+| `teleclaude/tagging/youtube.py`      | Tagging library — CSV ops, AI tagging, validation |
+| `teleclaude/cron/discovery.py`       | Finds subscribers with YouTube config             |
+| `jobs/youtube_sync_subscriptions.py` | Job wrapper — discovery + iteration               |
 
 ## Configuration
 
@@ -67,16 +80,14 @@ interests:
 
 ## Known issues
 
-- **Legacy `cron/` directory.** Contains `youtube-sync-subscriptions.py` which routes
-  to the entrypoint directly, bypassing the jobs runner. Should be deleted once the
-  entrypoint is consolidated with the tagging module.
-- **Duplicate tagging code.** `teleclaude/tagging/youtube.py` (modular, used by job)
-  and `teleclaude/entrypoints/youtube_sync_subscriptions.py` (standalone CLI) share
-  ~600 lines of duplicated prompts, validation, and CSV logic. The entrypoint's
-  unique contribution is `_call_youtube_helper()` (fetches subscription list from
-  YouTube API using cookies). Consolidation: port that feature into the tagging
-  module, reduce entrypoint to a thin CLI wrapper.
+- **Duplicate tagging code.** `teleclaude/tagging/youtube.py` and
+  `teleclaude/entrypoints/youtube_sync_subscriptions.py` share ~600 lines of
+  duplicated prompts, validation, and CSV logic. Consolidation: port the
+  entrypoint's unique feature (`_call_youtube_helper()` — YouTube API fetch)
+  into the tagging module, reduce entrypoint to a thin CLI wrapper.
+- **Legacy wrappers.** `cron/youtube-sync-subscriptions.py` and the standalone
+  entrypoint predate the jobs runner. To be cleaned up during consolidation.
 - **No onboarding skill.** No skill exists to orchestrate per-person setup
   (YouTube subscription fetch, tag configuration, digest opt-in). The initial
-  subscription fetch from YouTube currently requires running the entrypoint CLI
-  manually with `--fetch-subscriptions`.
+  subscription fetch currently requires the entrypoint CLI with
+  `--fetch-subscriptions`.

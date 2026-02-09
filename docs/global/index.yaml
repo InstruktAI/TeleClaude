@@ -122,6 +122,13 @@ snippets:
   scope: global
   path: docs/general/procedure/agent-artifact-authoring.md
   source_project: TeleClaude
+- id: general/procedure/agent-job-hygiene
+  description: 'Standard guardrails for agent-type jobs: structured output, fix-forward,
+    clean shutdown, auditability.'
+  type: procedure
+  scope: global
+  path: docs/general/procedure/agent-job-hygiene.md
+  source_project: TeleClaude
 - id: general/procedure/checkpoint
   description: 'Concrete steps for responding to a checkpoint message: validate work,
     then capture artifacts.'

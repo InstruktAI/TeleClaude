@@ -7,6 +7,10 @@ type: 'design'
 
 # Jobs Runner — Design
 
+## Required reads
+
+@~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
+
 ## Purpose
 
 A standalone scheduled process that discovers and executes periodic jobs.
@@ -19,6 +23,20 @@ content digests, GitHub issue triage, and future scheduled tasks.
 One-off operations (e.g., initial YouTube subscription fetch during onboarding)
 live in `scripts/` or `teleclaude/entrypoints/` and are invoked directly — they
 are not jobs.
+
+## Philosophy
+
+**Agents are supervisors, scripts are workers.** The target architecture is for all
+jobs to be agent-supervised. The agent owns the outcome: it runs the existing
+functional scripts, watches what happens, fixes forward within its own scope if
+something breaks, and writes a run report.
+
+Agents do not reimplement script logic. The scripts already work — the agent's
+value is resilience, error recovery, and auditability. An agent can reason about
+why a script failed and attempt a scoped fix (its own job scripts and data only).
+If the issue is outside its scope, it records the failure and moves on.
+
+See the Agent Job Hygiene procedure for the full contract.
 
 ## Architecture
 
@@ -37,26 +55,26 @@ teleclaude/cron/runner.py       Engine: config → discover → schedule check �
   │  └── run_due_jobs()         Main loop: config → is_due() → run/spawn → mark state
   │
   ▼
-teleclaude.yml                  Schedule configuration (frequency, timing, job type)
+teleclaude.yml                  Schedule configuration (frequency, timing, execution mode)
   │
-  ├── type: python (default)    → jobs/*.py modules (each exports a JOB instance)
-  └── type: agent               → POST /sessions via daemon API (headless session)
+  ├── script: jobs/foo.py       → Direct execution (no agent)
+  └── job: foo                  → Agent-supervised (reads spec doc, owns outcome)
   │
   ▼
 ~/.teleclaude/cron_state.json   Persistent state (last_run, status, errors)
 ```
 
-### Job Types
+### Execution Modes
 
-**Python jobs** — Traditional modules in `jobs/*.py` with a `Job` subclass. The runner
-imports the module, calls `job.run()`, and captures the `JobResult`. Use for jobs
-with custom data processing logic (e.g., YouTube subscription tagging).
+The `script` field is the discriminator. Its presence determines the execution mode:
 
-**Agent jobs** — Declared entirely in `teleclaude.yml` with `type: agent`. The runner
-calls the daemon's `POST /sessions` REST API to spawn a headless agent session with a
-message. The agent boots with full context (doc snippets, MCP tools, file system) and
-runs to completion. Use for any job where the work IS "an AI doing things with tools."
-No Python module needed.
+**Script jobs** (`script` present) — The runner executes the script directly. No
+agent is involved. Use for simple, deterministic jobs that need no AI reasoning.
+
+**Agent jobs** (`script` absent, `job` required) — The runner spawns a headless
+agent session. The agent reads its spec doc (`docs/project/spec/jobs/<job>.md`),
+runs whatever scripts and tools the spec describes, fixes forward within scope,
+writes a run report, and stops. The agent is the supervisor.
 
 ### Components
 
@@ -80,6 +98,8 @@ No Python module needed.
 **Outputs:**
 
 - Job execution (side effects defined by each job)
+- `JobResult` with structured success/failure data (script jobs)
+- Run reports at `~/.teleclaude/jobs/{job_name}/runs/{YYMMDD-HHMMSS}.md` (agent jobs)
 - Updated state in `cron_state.json`
 - Structured logs to `/var/log/instrukt-ai/teleclaude/cron.log`
 
@@ -90,6 +110,8 @@ No Python module needed.
 - A job without a `teleclaude.yml` entry is never invoked (except with `--force`).
 - A job that has never run executes immediately on first discovery.
 - State is persisted after every job execution, success or failure.
+- Agent jobs produce a run report every run, even when there is nothing to process.
+- Agent jobs fix forward within scope; they do not chase out-of-scope issues.
 
 ## Configuration Surface
 
@@ -115,17 +137,21 @@ jobs:
 | `preferred_weekday` | int (0–6)  | 0        | Day of week (0=Mon, weekly only)                  |
 | `preferred_day`     | int (1–31) | 1        | Day of month (monthly only)                       |
 
-#### Agent-type fields
+#### Execution mode fields
 
-| Field           | Type   | Default  | Description                                     |
-| --------------- | ------ | -------- | ----------------------------------------------- |
-| `type`          | string | (none)   | Set to `agent` for headless agent jobs          |
-| `agent`         | string | `claude` | AI agent to use (`claude`, `gemini`, `codex`)   |
-| `thinking_mode` | string | `fast`   | Model tier (`fast`, `med`, `slow`)              |
-| `message`       | string | required | Task message sent to the agent at session start |
+| Field           | Type   | Default  | Description                                                  |
+| --------------- | ------ | -------- | ------------------------------------------------------------ |
+| `script`        | string | (none)   | Path to script for direct execution (no agent)               |
+| `job`           | string | (none)   | Spec doc name, resolves to `docs/project/spec/jobs/<job>.md` |
+| `agent`         | string | `claude` | AI agent to use (`claude`, `gemini`, `codex`)                |
+| `thinking_mode` | string | `fast`   | Model tier (`fast`, `med`, `slow`)                           |
 
-To add a Python job, create the module in `jobs/` AND register in `teleclaude.yml`.
-To add an agent job, only a `teleclaude.yml` entry with `type: agent` is needed.
+`script` and `job` are mutually exclusive. `script` is leading: if present, the
+job runs directly without an agent. If absent, `job` is required and the runner
+spawns an agent session.
+
+To add a script job, create the script AND register in `teleclaude.yml` with `script`.
+To add an agent job, create a spec doc AND register in `teleclaude.yml` with `job`.
 
 ### Per-person: `~/.teleclaude/people/{name}/teleclaude.yml`
 
@@ -157,7 +183,7 @@ subscriptions.
 2. Engine loads schedule config from `teleclaude.yml`.
 3. Engine discovers job modules from `jobs/*.py`.
 4. For each job with a config entry: load last run from state, evaluate `_is_due()`.
-5. If due: call `job.run()`, persist result to state.
+5. If due: call `job.run()` or spawn agent session, persist result to state.
 6. Jobs without config entries are silently skipped.
 
 ### Force run (CLI)
@@ -167,40 +193,43 @@ regardless of config or last run time.
 
 ## Job Contract
 
-### Python jobs
+### Script jobs
 
-1. Create `jobs/<name>.py`
-2. Subclass `Job` from `jobs.base`
-3. Set `name` (unique string)
-4. Implement `run() -> JobResult`
-5. Export a module-level `JOB` instance
-6. Register the job in `teleclaude.yml` under `jobs:` with schedule config
+Direct execution, no agent. For simple, deterministic work.
 
-```python
-from jobs.base import Job, JobResult
-
-class MyJob(Job):
-    name = "my_job"
-
-    def run(self) -> JobResult:
-        # do work
-        return JobResult(success=True, message="Done", items_processed=5)
-
-JOB = MyJob()
-```
+1. Create a Python module in `jobs/` that subclasses `Job` and exports a `JOB` instance
+2. Register in `teleclaude.yml` with `script` pointing to the module
 
 ```yaml
-# teleclaude.yml
 jobs:
-  my_job:
-    schedule: daily
-    preferred_hour: 8
+  simple_reminder:
+    schedule: hourly
+    script: jobs/simple_reminder.py
 ```
+
+Script jobs return a `JobResult` — the structured output contract that the runner
+uses for logging and state persistence:
+
+```python
+@dataclass
+class JobResult:
+    success: bool
+    message: str
+    items_processed: int = 0
+    errors: list[str] | None = None
+```
+
+The runner logs `message`, `items_processed`, and `errors` from the result and
+persists `success`/`message` to `cron_state.json`.
 
 ### Agent jobs
 
-For jobs where the work IS "an AI doing things with tools," no Python module
-is needed. Declare the job in `teleclaude.yml` with `type: agent`:
+The agent is a supervisor — it reads its spec doc, runs the tools and scripts
+described in the spec, fixes forward within scope, writes a run report, and stops.
+Follows the Agent Job Hygiene procedure.
+
+1. Create a spec doc at `docs/project/spec/jobs/<name>.md`
+2. Register in `teleclaude.yml` with `job` pointing to the spec name
 
 ```yaml
 jobs:
@@ -208,21 +237,24 @@ jobs:
     schedule: weekly
     preferred_weekday: 0
     preferred_hour: 8
-    type: agent
+    job: memory-review
     agent: claude
     thinking_mode: fast
-    message: >-
-      Your task instructions here. The agent boots with full context
-      (doc snippets, MCP tools, file system) and runs to completion.
+
+  youtube_sync_subscriptions:
+    schedule: daily
+    preferred_hour: 6
+    job: youtube-sync-subscriptions
+    agent: claude
+    thinking_mode: fast
 ```
 
-The runner spawns a headless agent session via `POST /sessions` on the daemon's
-unix socket. The agent receives the message, does its work, and exits.
-Fire-and-forget: the cron runner marks success when the session spawns, not
-when the agent completes.
+The runner constructs the agent prompt from the `job` field:
+`"Read @docs/project/spec/jobs/{job}.md and execute the job instructions."`
 
-Create a spec doc at `docs/project/spec/jobs/<name>.md` for agent jobs —
-the agent can read it via `@docs/...` references in the message.
+The runner spawns a headless agent session via `POST /sessions` on the daemon's
+unix socket. The agent loads its spec (its complete mandate), does its work,
+writes a run report, and exits.
 
 ### Schedule Semantics
 
@@ -235,17 +267,6 @@ the agent can read it via `@docs/...` references in the message.
 
 A job only runs when both conditions are met: minimum interval elapsed AND preferred
 timing reached. Jobs that have never run execute immediately.
-
-### JobResult
-
-```python
-@dataclass
-class JobResult:
-    success: bool
-    message: str
-    items_processed: int = 0
-    errors: list[str] | None = None
-```
 
 ## State Persistence
 
@@ -275,6 +296,8 @@ File: `~/.teleclaude/cron_state.json`
 - **Job module fails to import**: Logged as error, other jobs still run.
 - **Job raises exception during `run()`**: Caught, marked as failed in state, other jobs still run.
 - **Invalid schedule value in config**: `Schedule(value)` raises `ValueError`, job skipped.
+- **Agent job fails mid-run**: Run report may be missing. The cron runner logs spawn
+  success/failure. A missing report for a spawned session indicates a crash.
 
 ## Service Integration
 
@@ -307,7 +330,8 @@ cron_runner.py --list       List available jobs and their status
 ## Job Specs
 
 Each job has a spec document in `docs/project/spec/jobs/` describing what it does,
-how it works, its files, configuration, and known issues.
+how it works, its files, configuration, and known issues. The spec doc is the agent's
+complete mandate — the agent reads it, executes it, and stays within its scope.
 
 ## Known Issues
 

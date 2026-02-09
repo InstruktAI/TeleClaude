@@ -404,8 +404,8 @@ snippets:
   path: docs/project/spec/git-docs-filter.md
   source_project: TeleClaude
 - id: project/spec/hook-normalized-events
-  description: Canonical TeleClaude hook normalization and forwarding contract for
-    project runtime behavior.
+  description: Plain-language contract for how TeleClaude maps raw hook events and
+    decides what gets processed.
   type: spec
   scope: project
   path: docs/project/spec/hook-normalized-events.md
@@ -425,15 +425,15 @@ snippets:
   path: docs/project/spec/jobs/youtube-sync-subscriptions.md
   source_project: TeleClaude
 - id: project/spec/runtime-operations-truth
-  description: Operational source of truth for TeleClaude daemon runtime operations,
-    impact, and recovery steps.
+  description: Practical contract for documenting daemon background operations and
+    their real user impact.
   type: spec
   scope: project
   path: docs/project/spec/runtime-operations-truth.md
   source_project: TeleClaude
 - id: project/spec/session-identity-truth
-  description: Canonical TeleClaude session identity mapping rules for managed and
-    headless session routes.
+  description: Practical identity rules for assigning hooks to the correct TeleClaude
+    session.
   type: spec
   scope: project
   path: docs/project/spec/session-identity-truth.md

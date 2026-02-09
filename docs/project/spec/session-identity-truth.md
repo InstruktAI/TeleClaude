@@ -2,39 +2,45 @@
 id: 'project/spec/session-identity-truth'
 type: 'spec'
 scope: 'project'
-description: 'Canonical TeleClaude session identity mapping rules for managed and headless session routes.'
+description: 'Practical identity rules for assigning hooks to the correct TeleClaude session.'
 ---
 
 # Session Identity Truth — Spec
 
 ## What it is
 
-A project-specific identity mapping contract for TeleClaude session attribution.
+This file exists to prevent one expensive class of bug:
 
-It defines:
+"Hook/event got attached to the wrong session."
 
-- managed-route identity behavior,
-- headless-route identity behavior,
-- source-of-truth fields,
-- and conflict/recovery rules.
+It explains, in plain terms, how session identity is resolved for:
+
+- managed TeleClaude sessions,
+- headless/standalone hook sources.
+
+Use it when:
+
+- you debug wrong-session attribution,
+- you touch session mapping logic,
+- headless behavior looks fragmented.
 
 ## Canonical fields
 
-Identity documentation must define:
+This spec must define:
 
-- managed route,
-- headless route,
-- identity source-of-truth per route,
-- native-to-teleclaude mapping source,
-- authority rule when identifiers disagree,
-- recovery behavior after restart.
+- managed route behavior,
+- headless route behavior,
+- which identity source wins per route,
+- where native-to-teleclaude mapping is stored,
+- what happens when identifiers disagree,
+- restart/recovery behavior.
 
-Required identity fields:
+Fields that must be explained:
 
 - TeleClaude session id,
-- native session id,
-- native log/transcript path,
-- mapping record reference.
+- native session id (if present),
+- native transcript/log path (if present),
+- mapping record location/reference.
 
 ## Allowed values
 
@@ -56,5 +62,6 @@ Recovery outcome:
 
 ## Known caveats
 
-- Legacy compatibility paths can introduce identity conflicts if not clearly bounded.
-- This spec must match receiver and session mapping runtime behavior.
+- Legacy compatibility logic can create silent identity conflicts if authority order is unclear.
+- Native fields may be missing in some events; logic must handle that safely.
+- This file is only useful if kept in sync with receiver + mapping code behavior.

@@ -2,34 +2,46 @@
 id: 'project/spec/hook-normalized-events'
 type: 'spec'
 scope: 'project'
-description: 'Canonical TeleClaude hook normalization and forwarding contract for project runtime behavior.'
+description: 'Plain-language contract for how TeleClaude maps raw hook events and decides what gets processed.'
 ---
 
 # Hook Normalized Events — Spec
 
 ## What it is
 
-Project-specific contract for how TeleClaude normalizes raw hook events and forwards only handled event types into durable outbox processing.
+This file explains one thing clearly:
+
+- raw hook events come in from agents,
+- TeleClaude maps them to internal names,
+- only some of those internal names are actually forwarded for processing.
+
+Use it when:
+
+- an event "exists" but seems ignored,
+- hook behavior differs across Claude/Gemini/Codex,
+- you are adding/changing hook mappings.
 
 ## Canonical fields
 
-This spec must define:
+This spec must always document:
 
-- raw event source namespaces,
-- normalized event names,
-- raw-to-normalized mapping,
-- forwarding allowlist,
-- dropped normalized events,
-- payload enrichment fields,
-- failure handling model,
+- raw event sources (per agent/tool),
+- normalized internal event names,
+- raw -> normalized mapping,
+- forwarding allowlist (processed events),
+- dropped normalized events (intentionally ignored),
+- payload fields added by receiver,
+- failure handling class,
 - ordering model.
 
-Required payload enrichment fields:
+Receiver-added payload fields:
 
 - TeleClaude session id,
 - source computer,
 - normalized event type,
-- native identity fields when present.
+- optional native identity fields when available (`native_session_id`, `native_log_file`).
+
+Important: native identity fields are **optional**, not required.
 
 ## Allowed values
 
@@ -44,12 +56,12 @@ Failure class:
 - `non_retryable`
 - `invalid_payload`
 
-Ordering mode:
+Ordering model:
 
 - `per_session_serialized`
 
 ## Known caveats
 
-- A normalized event may still be dropped if not in forwarding allowlist.
-- Mapping changes must stay in sync with receiver and event definition code.
-- Handler logic must remain idempotent because delivery is at-least-once.
+- A normalized event can still be dropped if it is not in forwarding allowlist.
+- Mapping changes in code must be reflected here immediately.
+- Delivery is at-least-once; handlers must stay idempotent.
