@@ -111,11 +111,25 @@ snippets:
   scope: project
   path: docs/project/design/architecture/outbox.md
   source_project: TeleClaude
+- id: project/design/architecture/output-delivery
+  description: Output and footer message separation in UI adapters, with delivery
+    chain and lifecycle.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/output-delivery.md
+  source_project: TeleClaude
 - id: project/design/architecture/output-polling
   description: Mechanism for real-time terminal output capture and streaming.
   type: design
   scope: project
   path: docs/project/design/architecture/output-polling.md
+  source_project: TeleClaude
+- id: project/design/architecture/output-sizing
+  description: 'Two-layer output sizing pipeline: content selection in ui_adapter
+    and platform enforcement in message_ops.'
+  type: design
+  scope: project
+  path: docs/project/design/architecture/output-sizing.md
   source_project: TeleClaude
 - id: project/design/architecture/redis-transport
   description: Redis Streams transport for cross-computer request/response and peer
