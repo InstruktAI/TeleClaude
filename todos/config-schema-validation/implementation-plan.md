@@ -12,10 +12,28 @@ Define Pydantic models for each config level:
 
 ```python
 class JobScheduleConfig(BaseModel):
-    schedule: Literal["hourly", "daily", "weekly", "monthly"] = "daily"
+    # New human-friendly scheduling contract
+    when: JobWhenConfig | None = None
+    # Legacy compatibility during migration
+    schedule: Literal["hourly", "daily", "weekly", "monthly"] | None = None
     preferred_hour: int = Field(default=6, ge=0, le=23)
     preferred_weekday: int = Field(default=0, ge=0, le=6)
     preferred_day: int = Field(default=1, ge=1, le=31)
+
+class JobWhenConfig(BaseModel):
+    every: str | None = None  # e.g. "10m", "2h", "1d"
+    at: str | list[str] | None = None  # "HH:MM" or list of times
+    weekdays: list[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]] = []
+
+    @model_validator(mode="after")
+    def validate_mode(self) -> "JobWhenConfig":
+        # exactly one mode
+        if bool(self.every) == bool(self.at):
+            raise ValueError("Specify exactly one of 'every' or 'at'")
+        # weekdays only with at
+        if self.weekdays and not self.at:
+            raise ValueError("'weekdays' requires 'at'")
+        return self
 
 class BusinessConfig(BaseModel):
     domains: dict[str, str] = {}
@@ -88,6 +106,10 @@ Level enforcement via validators (e.g., `PersonConfig` rejects `people` key).
   - Disallowed keys at wrong level (e.g., `people` in per-person) produce errors.
   - Unknown keys produce warnings, not errors.
   - Empty/missing file returns defaults.
+  - `when.every` accepts valid durations and rejects invalid ones.
+  - `when.at` accepts `HH:MM` and rejects invalid time strings.
+  - `weekdays` requires `at`.
+  - timezone key is rejected (system local time only).
 
 ## Phase 2 — Consumer Migration
 
@@ -95,6 +117,10 @@ Level enforcement via validators (e.g., `PersonConfig` rejects `people` key).
 
 - Replace `_load_job_schedules() -> dict[str, dict[str, str | int]]` with `load_project_config(path).jobs`.
 - `_is_due()` takes `JobScheduleConfig` instead of `dict[str, str | int]`.
+- Implement `when` modes:
+  - `every`: compute due from parsed duration (`m|h|d`).
+  - `at`: evaluate local-time wall clock `HH:MM`, optional weekdays filter.
+- Keep legacy `schedule/preferred_*` branch as fallback during migration.
 - Remove manual `int()` casts — Pydantic handles type coercion.
 
 ### 5. Migrate `cron/discovery.py`
@@ -157,6 +183,7 @@ Level enforcement via validators (e.g., `PersonConfig` rejects `people` key).
 3. **YAML parsing unchanged** — `yaml.safe_load` happens inside the loader; Pydantic validates the parsed dict.
 4. **No breaking changes** — existing configs all conform to the schema; validation just makes it explicit.
 5. **Forward compatibility** — `extra="allow"` lets new keys be added without schema updates (with warning logging).
+6. **No timezone config** — scheduler uses system local time only; per-job timezone is intentionally out of scope.
 
 ## Verification
 

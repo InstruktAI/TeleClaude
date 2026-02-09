@@ -44,6 +44,11 @@ business:
     { domain-name }: { docs-path } # str → str mapping
 jobs:
   { job-name }:
+    when:
+      every: str (optional, examples: "10m", "2h", "1d")
+      at: str | list[str] (optional, "HH:MM" 24h format, system local time)
+      weekdays: list[str] (optional with `at`; allowed: mon..sun)
+    # legacy compatibility (to be supported during migration):
     schedule: hourly | daily | weekly | monthly
     preferred_hour: int (0-23, default 6)
     preferred_weekday: int (0-6, default 0)
@@ -51,6 +56,16 @@ jobs:
 git:
   checkout_root: str (optional)
 ```
+
+### Scheduling semantics
+
+1. New scheduling contract is `jobs.{name}.when`.
+2. Exactly one of `when.every` or `when.at` is allowed.
+3. `when.every` accepts minute/hour/day durations (`m|h|d`), minimum `1m`.
+4. `when.at` accepts one or more `HH:MM` values in system local time.
+5. `when.weekdays` is only valid with `when.at`.
+6. Timezone is not configurable in schema; scheduler uses system local time.
+7. Legacy schedule fields remain readable during migration but are deprecated.
 
 ### Global-level schema
 
@@ -107,6 +122,8 @@ interests: list[str] # flat list of tags
 6. **Redundant path resolved**: Single canonical path per level, or documented justification.
 7. **Unknown key warnings**: Forward-compatible — unknown keys warn, don't error.
 8. **Tests**: Schema validation tests covering valid configs, invalid types, disallowed keys, and the interests mismatch.
+9. **Scheduler compatibility**: `cron/runner.py` supports `when.every` and `when.at` without requiring cron expression strings.
+10. **No timezone field**: Any timezone config key should be rejected as unknown/deprecated.
 
 ## Explicit Non-Goals
 

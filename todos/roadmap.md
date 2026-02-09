@@ -2,7 +2,7 @@
 
 > **Last Updated**: 2026-02-09
 >
-> **Status**: `[ ]` Pending | `[.]` Ready (has requirements) | `[>]` In Progress
+> **Status**: `[ ]` Pending | `[.]` Ready (has requirements) | `[>]` In Progress | `[x]` Done
 >
 > **Other lists**:
 > [delivered.md](./delivered.md) — completed work |
@@ -36,7 +36,7 @@ Introduce dependency health guardrails (API + Redis) with circuit-breaker behavi
 
 ## Next Prepare Maintenance Runner
 
-- [>] next-prepare-maintenance
+- [x] next-prepare-maintenance
 
 Maintenance routine that audits active todos for Definition-of-Ready quality, improves `requirements.md` and `implementation-plan.md` in-place when safe, writes `DOR report.md`, and stores a `state.json` DOR quality score (`1..10`) with escalation status.
 

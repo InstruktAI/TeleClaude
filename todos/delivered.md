@@ -33,3 +33,4 @@
 | 2026-02-06 | threaded-output-experiment   | Threaded Incremental Output Experiment                                                    | DELIVERED | 8db1bd5                                  |
 | 2026-02-09 | codebase-audit               | TeleClaude Comprehensive Codebase Audit                                                   | DELIVERED | -                                        |
 | 2026-02-09 | refactor-again               | Hook/Core Ownership Refactor Follow-up                                                    | DELIVERED | -                                        |
+| 2026-02-09 | next-prepare-maintenance     | Next Prepare maintenance runner docs + scheduled agent job wiring                         | DELIVERED | -                                        |

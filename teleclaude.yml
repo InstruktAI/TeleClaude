@@ -3,6 +3,24 @@ business:
     software-development: docs
 
 jobs:
+  next_prepare:
+    schedule: weekly
+    preferred_weekday: 0
+    preferred_hour: 7
+    type: agent
+    agent: claude
+    thinking_mode: med
+    message: >-
+      You are running the next-prepare maintenance job. Read @docs/project/spec/jobs/next-prepare.md
+      for your full instructions.
+
+      Execute one full idempotent pass over active todos and:
+      1. Assess readiness quality of requirements.md + implementation-plan.md.
+      2. Improve docs in-place when safe and grounded in existing context.
+      3. Write todos/{slug}/dor-report.md for each processed slug.
+      4. Update todos/{slug}/state.json with dor fields and verdict.
+      5. Stop and mark needs_human_review when uncertainty is blocking.
+
   youtube_sync_subscriptions:
     schedule: daily
     preferred_hour: 6
