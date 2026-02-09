@@ -1,5 +1,7 @@
 """Unit tests for daemon startup retry logic."""
 
+import os
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -111,7 +113,7 @@ class TestDaemonStartupRetryIntegration:
     """Integration tests for daemon startup retry with network failures."""
 
     @pytest.mark.asyncio
-    async def test_voice_handler_not_initialized_on_network_failure(self):
+    async def test_voice_handler_not_initialized_on_network_failure(self, monkeypatch, tmp_path):
         """Verify voice handler is not initialized if network connection fails.
 
         This test ensures the fix for the bug where voice handler was initialized
@@ -119,8 +121,15 @@ class TestDaemonStartupRetryIntegration:
         """
         from unittest.mock import AsyncMock, MagicMock, patch
 
+        # Isolate API socket path so this test never touches production daemon socket.
+        from teleclaude import api_server as api_server_module
+        from teleclaude import constants as constants_module
         from teleclaude.core import voice_message_handler
         from teleclaude.daemon import TeleClaudeDaemon
+
+        temp_api_socket = f"/tmp/teleclaude-unit-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
+        monkeypatch.setattr(constants_module, "API_SOCKET_PATH", temp_api_socket)
+        monkeypatch.setattr(api_server_module, "API_SOCKET_PATH", temp_api_socket)
 
         # Reset voice handler state
         voice_message_handler._openai_client = None
@@ -156,12 +165,19 @@ class TestDaemonStartupRetryIntegration:
             voice_message_handler._openai_client = None
 
     @pytest.mark.asyncio
-    async def test_voice_handler_initialized_after_network_success(self):
+    async def test_voice_handler_initialized_after_network_success(self, monkeypatch, tmp_path):
         """Verify voice handler is initialized only after network connection succeeds."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
+        # Isolate API socket path so this test never touches production daemon socket.
+        from teleclaude import api_server as api_server_module
+        from teleclaude import constants as constants_module
         from teleclaude.core import voice_message_handler
         from teleclaude.daemon import TeleClaudeDaemon
+
+        temp_api_socket = f"/tmp/teleclaude-unit-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
+        monkeypatch.setattr(constants_module, "API_SOCKET_PATH", temp_api_socket)
+        monkeypatch.setattr(api_server_module, "API_SOCKET_PATH", temp_api_socket)
 
         # Reset voice handler state
         voice_message_handler._openai_client = None

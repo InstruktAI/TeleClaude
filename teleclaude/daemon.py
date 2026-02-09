@@ -1302,6 +1302,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         Raises:
             DaemonLockError: If another daemon instance is already running
         """
+        if self.pid_file_handle is not None:
+            logger.debug("Daemon lock already held by current process")
+            return
 
         try:
             # Open file for append+read (creates if doesn't exist, preserves inode)
@@ -1415,38 +1418,47 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     async def start(self) -> None:
         """Start the daemon."""
+        # Safety net: enforce single-instance lock even for direct start() callers.
+        # main() already acquires this lock, so _acquire_lock() is idempotent.
+        self._acquire_lock()
         logger.info("Starting TeleClaude daemon...")
-        await self.lifecycle.startup()
+        try:
+            await self.lifecycle.startup()
 
-        # Start periodic cleanup task (runs every hour)
-        self.cleanup_task = asyncio.create_task(self.maintenance_service.periodic_cleanup())
-        self.cleanup_task.add_done_callback(self._log_background_task_exception("periodic_cleanup"))
-        logger.info("Periodic cleanup task started (72h session lifecycle)")
+            # Start periodic cleanup task (runs every hour)
+            self.cleanup_task = asyncio.create_task(self.maintenance_service.periodic_cleanup())
+            self.cleanup_task.add_done_callback(self._log_background_task_exception("periodic_cleanup"))
+            logger.info("Periodic cleanup task started (72h session lifecycle)")
 
-        # Start polling watcher (keeps pollers aligned with tmux foreground state)
-        self.poller_watch_task = asyncio.create_task(self.maintenance_service.poller_watch_loop())
-        self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
-        logger.info("Poller watch task started")
+            # Start polling watcher (keeps pollers aligned with tmux foreground state)
+            self.poller_watch_task = asyncio.create_task(self.maintenance_service.poller_watch_loop())
+            self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
+            logger.info("Poller watch task started")
 
-        self.hook_outbox_task = asyncio.create_task(self._hook_outbox_worker())
-        self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
-        logger.info("Hook outbox worker started")
+            self.hook_outbox_task = asyncio.create_task(self._hook_outbox_worker())
+            self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
+            logger.info("Hook outbox worker started")
 
-        self.resource_monitor_task = asyncio.create_task(self.monitoring_service.resource_monitor_loop())
-        self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
-        logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
+            self.resource_monitor_task = asyncio.create_task(self.monitoring_service.resource_monitor_loop())
+            self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
+            logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
 
-        self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop())
-        self._wal_checkpoint_task.add_done_callback(self._log_background_task_exception("wal_checkpoint"))
-        logger.info("WAL checkpoint task started (interval=300s)")
-        self.monitoring_service.log_resource_snapshot("startup")
+            self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop())
+            self._wal_checkpoint_task.add_done_callback(self._log_background_task_exception("wal_checkpoint"))
+            logger.info("WAL checkpoint task started (interval=300s)")
+            self.monitoring_service.log_resource_snapshot("startup")
 
-        if LAUNCHD_WATCH_ENABLED:
-            self.launchd_watch_task = asyncio.create_task(self.monitoring_service.launchd_watch_loop())
-            self.launchd_watch_task.add_done_callback(self._log_background_task_exception("launchd_watch"))
-            logger.info("Launchd watch task started (interval=%.0fs)", LAUNCHD_WATCH_INTERVAL_S)
+            if LAUNCHD_WATCH_ENABLED:
+                self.launchd_watch_task = asyncio.create_task(self.monitoring_service.launchd_watch_loop())
+                self.launchd_watch_task.add_done_callback(self._log_background_task_exception("launchd_watch"))
+                logger.info("Launchd watch task started (interval=%.0fs)", LAUNCHD_WATCH_INTERVAL_S)
 
-        logger.info("TeleClaude is running. Press Ctrl+C to stop.")
+            logger.info("TeleClaude is running. Press Ctrl+C to stop.")
+        except Exception:
+            # Direct start() callers may not run through main() finally.
+            # Release lock on startup failure to avoid stale lock ownership.
+            self._release_lock()
+            raise
 
     async def stop(self) -> None:
         """Stop the daemon."""
@@ -1509,6 +1521,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         await self.lifecycle.shutdown()
 
+        self._release_lock()
         logger.info("Daemon stopped")
 
     def request_shutdown(self, reason: str) -> None:
