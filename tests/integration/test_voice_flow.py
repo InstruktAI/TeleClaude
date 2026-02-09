@@ -28,7 +28,7 @@ async def session_manager(tmp_path: Path):
 @pytest.mark.integration
 async def test_voice_transcription_executes_command(session_manager: Db) -> None:
     """Voice transcription should forward to process_message and start polling."""
-    from teleclaude.core import command_handlers, tmux_io
+    from teleclaude.core import command_handlers
 
     session = await session_manager.create_session(
         computer_name="TestPC",

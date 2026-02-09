@@ -5,13 +5,11 @@ Verifies fixes for:
 2. AI-to-AI session notification flow.
 """
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from teleclaude.core.models import ThinkingMode
-from teleclaude.mcp_server import TeleClaudeMCPServer
 
 
 @pytest.mark.asyncio

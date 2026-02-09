@@ -26,7 +26,6 @@ from teleclaude.docs_index import write_third_party_index_yaml
 from teleclaude.required_reads import (
     extract_required_reads,
     normalize_required_refs,
-    strip_required_reads_section,
 )
 from teleclaude.resource_validation import (
     resolve_ref_path,

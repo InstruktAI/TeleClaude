@@ -5,13 +5,9 @@ bootstrap, start polling, and execute auto-commands.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-
-from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
-from teleclaude.core.origins import InputOrigin
-from teleclaude.types.commands import CreateSessionCommand
 
 
 @pytest.mark.asyncio

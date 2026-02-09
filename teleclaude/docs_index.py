@@ -16,6 +16,7 @@ import frontmatter
 import yaml
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.loader import load_project_config
 from teleclaude.constants import TYPE_SUFFIX
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.snippet_validation import load_domains  # noqa: F401 — re-exported for callers
@@ -401,9 +402,9 @@ def get_project_name(project_root: Path) -> str:
     config_file = project_root / "teleclaude.yml"
     if config_file.exists():
         try:
-            config = yaml.safe_load(config_file.read_text(encoding="utf-8"))
-            if isinstance(config, dict) and "project_name" in config:
-                return str(config["project_name"])
+            config = load_project_config(config_file)
+            if config.project_name:
+                return config.project_name
         except Exception:
             pass
     return project_root.name

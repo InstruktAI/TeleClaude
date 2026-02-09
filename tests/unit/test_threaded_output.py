@@ -2,17 +2,9 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
-
 from teleclaude.config import (
-    ComputerConfig,
     Config,
-    DatabaseConfig,
     ExperimentConfig,
-    RedisConfig,
-    TelegramConfig,
-    TerminalConfig,
-    UIConfig,
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.utils.markdown import _required_markdown_closers, telegramify_markdown
@@ -236,8 +228,10 @@ def test_is_experiment_enabled():
     config = Config(
         database=None,
         computer=None,
+        polling=None,
         redis=None,
         telegram=None,
+        creds=None,
         agents={},
         ui=None,
         terminal=None,

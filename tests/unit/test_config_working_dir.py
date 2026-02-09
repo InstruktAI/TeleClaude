@@ -22,7 +22,7 @@ def _load_config_module(config_py: Path) -> object:
 def test_working_dir_fallback_used_for_database_path(monkeypatch, tmp_path):
     """Test that config fallbacks set WORKING_DIR for database path expansion."""
     repo_root = Path(__file__).resolve().parents[2]
-    config_py = repo_root / "teleclaude" / "config.py"
+    config_py = repo_root / "teleclaude" / "config" / "__init__.py"
 
     env_path = tmp_path / ".env"
     env_path.write_text("", encoding="utf-8")

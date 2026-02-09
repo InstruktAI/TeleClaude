@@ -1,6 +1,3 @@
-import re
-
-
 def manual_escape_markdown_v2(text: str) -> str:
     escape_chars = r"_*[]()~`>#+-=|{}.!"
     # Escape each character individually

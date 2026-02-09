@@ -960,6 +960,23 @@ def sync_slug_todo_from_worktree_to_main(cwd: str, slug: str) -> None:
     )
 
 
+def build_git_hook_env(project_root: str, base_env: dict[str, str]) -> dict[str, str]:
+    """Build environment variables for git hooks, ensuring venv/bin is in PATH."""
+    env = base_env.copy()
+    venv_bin = str(Path(project_root) / ".venv" / "bin")
+    path = env.get("PATH", "")
+    parts = path.split(os.pathsep)
+    if venv_bin not in parts:
+        parts.insert(0, venv_bin)
+    else:
+        # Move to front if already present
+        parts.remove(venv_bin)
+        parts.insert(0, venv_bin)
+    env["PATH"] = os.pathsep.join(parts)
+    env["VIRTUAL_ENV"] = str(Path(project_root) / ".venv")
+    return env
+
+
 def has_uncommitted_changes(cwd: str, slug: str) -> bool:
     """Check if worktree has uncommitted changes.
 

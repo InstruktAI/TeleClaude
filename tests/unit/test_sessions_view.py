@@ -20,7 +20,7 @@ from teleclaude.cli.tui.app import FocusContext
 from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.state import TuiState
 from teleclaude.cli.tui.tree import ProjectNode, SessionDisplayInfo, SessionNode
-from teleclaude.cli.tui.types import ActivePane, NodeType
+from teleclaude.cli.tui.types import NodeType
 from teleclaude.cli.tui.views.sessions import SessionsView
 
 

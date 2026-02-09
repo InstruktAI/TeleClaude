@@ -19,17 +19,19 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
 import socket
 import sys
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from http.client import HTTPConnection
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING
 
-import yaml
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.loader import load_project_config
+from teleclaude.config.schema import JobScheduleConfig
 from teleclaude.cron.state import CronState
 
 if TYPE_CHECKING:
@@ -52,39 +54,33 @@ class Schedule(Enum):
     MONTHLY = "monthly"
 
 
-class JobConfig(TypedDict, total=False):
-    schedule: str
-    preferred_hour: int
-    preferred_weekday: int
-    preferred_day: int
-    type: str
-    script: str
-    job: str
-    agent: str
-    thinking_mode: str
-    message: str
-
-
-def _load_job_schedules(config_path: Path | None = None) -> dict[str, JobConfig]:
+def _load_job_schedules(config_path: Path | None = None) -> dict[str, JobScheduleConfig]:
     """Load job schedule configuration from teleclaude.yml."""
     if config_path is None:
         config_path = _REPO_ROOT / "teleclaude.yml"
 
-    if not config_path.exists():
-        logger.warning("teleclaude.yml not found", path=str(config_path))
-        return {}
+    config = load_project_config(config_path)
+    return config.jobs
 
-    with open(config_path) as f:
-        config = yaml.safe_load(f) or {}
 
-    jobs = config.get("jobs", {})
-    if isinstance(jobs, dict):
-        return jobs  # type: ignore[return-value]
-    return {}
+def _parse_duration(duration: str) -> timedelta:
+    """Parse duration string (e.g., '10m', '2h', '1d') into timedelta."""
+    match = re.match(r"^(\d+)([mhd])$", duration)
+    if not match:
+        raise ValueError(f"Invalid duration format: {duration}")
+    value, unit = match.groups()
+    value = int(value)
+    if unit == "m":
+        return timedelta(minutes=value)
+    if unit == "h":
+        return timedelta(hours=value)
+    if unit == "d":
+        return timedelta(days=value)
+    return timedelta()
 
 
 def _is_due(
-    schedule_config: JobConfig,
+    schedule_config: JobScheduleConfig,
     last_run: datetime | None,
     now: datetime | None = None,
 ) -> bool:
@@ -99,10 +95,48 @@ def _is_due(
         last_run = last_run.replace(tzinfo=timezone.utc)
 
     elapsed = now - last_run
-    schedule = Schedule(schedule_config.get("schedule", "daily"))
-    preferred_hour = int(schedule_config.get("preferred_hour", 6))
-    preferred_weekday = int(schedule_config.get("preferred_weekday", 0))
-    preferred_day = int(schedule_config.get("preferred_day", 1))
+
+    # New 'when' scheduling contract
+    if schedule_config.when:
+        when = schedule_config.when
+        if when.every:
+            duration = _parse_duration(when.every)
+            return elapsed >= duration
+
+        if when.at:
+            local_now = now.astimezone()  # System local time
+
+            # Weekdays filter
+            if when.weekdays:
+                day_map = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+                if local_now.weekday() not in [day_map[d] for d in when.weekdays]:
+                    return False
+
+            times_str = [when.at] if isinstance(when.at, str) else when.at
+            for at_time_str in times_str:
+                try:
+                    at_hour, at_min = map(int, at_time_str.split(":"))
+                    # Most recent scheduled occurrence of this time
+                    scheduled_today = local_now.replace(hour=at_hour, minute=at_min, second=0, microsecond=0)
+                    if local_now >= scheduled_today:
+                        # Due if hasn't run today after scheduled time
+                        if last_run.astimezone() < scheduled_today:
+                            return True
+                except (ValueError, AttributeError):
+                    logger.error("invalid time format in config", at=at_time_str)
+            return False
+
+    # Legacy compatibility fallback
+    schedule_str = schedule_config.schedule if schedule_config.schedule else "daily"
+    # Ensure it matches Enum if it's a string from pydantic (which it should be)
+    try:
+        schedule = Schedule(schedule_str)
+    except ValueError:
+        schedule = Schedule.DAILY
+
+    preferred_hour = schedule_config.preferred_hour
+    preferred_weekday = schedule_config.preferred_weekday
+    preferred_day = schedule_config.preferred_day
 
     match schedule:
         case Schedule.HOURLY:
@@ -144,13 +178,13 @@ def _job_slug_to_spec_filename(job_slug: str) -> str:
     return f"{job_slug.replace('_', '-')}.md"
 
 
-def _build_agent_job_message(job_name: str, config: JobConfig) -> str | None:
+def _build_agent_job_message(job_name: str, config: JobScheduleConfig) -> str | None:
     """Build canonical job prompt from structured ``job`` config."""
-    if "message" in config:
+    if config.message:
         logger.error("agent job uses deprecated message field", name=job_name)
         return None
 
-    job_ref = str(config.get("job", "")).strip()
+    job_ref = str(config.job or "").strip()
     if not job_ref:
         logger.error("agent job has no job field", name=job_name)
         return None
@@ -159,7 +193,7 @@ def _build_agent_job_message(job_name: str, config: JobConfig) -> str | None:
     return f"You are running the {job_name} job. Read @docs/project/spec/jobs/{spec_name} for your full instructions."
 
 
-def _run_agent_job(job_name: str, config: JobConfig) -> bool:
+def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
     """Spawn a headless agent session for an agent-type job.
 
     Calls the daemon's POST /sessions endpoint via the unix socket.
@@ -169,8 +203,8 @@ def _run_agent_job(job_name: str, config: JobConfig) -> bool:
     if not message:
         return False
 
-    agent = str(config.get("agent", "claude"))
-    thinking_mode = str(config.get("thinking_mode", "fast"))
+    agent = str(config.agent or "claude")
+    thinking_mode = str(config.thinking_mode or "fast")
     project_path = str(_REPO_ROOT)
 
     payload = json.dumps(
@@ -272,7 +306,7 @@ def run_due_jobs(
     # Collect all job names to process (Python + agent-type from config)
     all_job_names: list[str] = [job.name for job in python_jobs]
     for name, config in schedules.items():
-        if str(config.get("type", "")) == "agent" and name not in python_job_names:
+        if config.type == "agent" and name not in python_job_names:
             all_job_names.append(name)
 
     logger.info("checking jobs", count=len(all_job_names), force=force, dry_run=dry_run)
@@ -282,7 +316,7 @@ def run_due_jobs(
             continue
 
         schedule_config = schedules.get(job_name)
-        is_agent_job = schedule_config and str(schedule_config.get("type", "")) == "agent"
+        is_agent_job = schedule_config and schedule_config.type == "agent"
 
         if not schedule_config and not force:
             logger.debug("job has no schedule config, skipping", name=job_name)
@@ -301,7 +335,7 @@ def run_due_jobs(
             logger.debug("job not due", name=job_name, last_run=job_state.last_run)
             continue
 
-        schedule_name = schedule_config.get("schedule", "?") if schedule_config else "forced"
+        schedule_name = (schedule_config.schedule or "?") if schedule_config else "forced"
         logger.info("job due", name=job_name, schedule=schedule_name, type="agent" if is_agent_job else "python")
 
         if dry_run:

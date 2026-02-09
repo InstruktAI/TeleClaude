@@ -9,10 +9,11 @@ from typing import Iterable
 import yaml
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.loader import load_project_config
 from teleclaude.docs_index import extract_required_reads
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import strip_required_reads_section
-from teleclaude.utils import expand_env_vars, resolve_project_config_path
+from teleclaude.utils import resolve_project_config_path
 
 logger = get_logger(__name__)
 
@@ -143,30 +144,21 @@ def _load_project_domains(project_root: Path) -> dict[str, Path]:
     config_path = resolve_project_config_path(project_root)
     if not config_path.exists():
         return {"software-development": project_root / "docs"}
+
     try:
-        payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        config = load_project_config(config_path)
+        domains = config.business.domains
     except Exception:
         return {"software-development": project_root / "docs"}
-    if not isinstance(payload, dict):
+
+    if not domains:
         return {"software-development": project_root / "docs"}
-    expanded = expand_env_vars(payload)
-    if not isinstance(expanded, dict):
-        return {"software-development": project_root / "docs"}
-    payload = expanded
-    business = payload.get("business", {})
-    if not isinstance(business, dict):
-        return {"software-development": project_root / "docs"}
-    domains = business.get("domains", {})
-    if isinstance(domains, list):
-        clean = [d for d in domains if isinstance(d, str) and d.strip()]
-        return {d: project_root / "docs" for d in (clean or ["software-development"])}
-    if not isinstance(domains, dict):
-        return {"software-development": project_root / "docs"}
+
     clean_map: dict[str, Path] = {}
     for key, value in domains.items():
-        if not isinstance(key, str) or not key.strip():
+        if not key.strip():
             continue
-        if isinstance(value, str) and value.strip():
+        if value.strip():
             candidate = (project_root / value).resolve()
         else:
             candidate = (project_root / "docs").resolve()

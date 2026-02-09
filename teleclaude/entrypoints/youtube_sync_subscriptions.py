@@ -13,10 +13,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Iterable
 
-import yaml
 from aiohttp import ClientSession
 from instrukt_ai_logging import configure_logging, get_logger
 
+from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.core.models import JsonDict
 from teleclaude.helpers.agent_cli import run_once
 from teleclaude.helpers.youtube_helper import (
@@ -47,14 +47,19 @@ WEB_RESEARCH_RULES = (
 )
 
 
-def _load_tags(path: Path) -> list[str]:
+def _load_tags(path: Path, scope: str = "person") -> list[str]:
     if not path.exists():
         raise FileNotFoundError(f"Missing config: {path}")
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    tags = data.get("interests", {}).get("tags", [])
+
+    if scope == "global":
+        config = load_global_config(path)
+    else:
+        config = load_person_config(path)
+
+    tags = config.interests
     if not tags:
-        raise ValueError(f"Missing interests.tags in config: {path}")
-    return [str(t) for t in tags]
+        raise ValueError(f"Missing interests in config: {path}")
+    return tags
 
 
 def _cleanup_stale_tags(rows: list[dict[str, str]], allowed_tags: set[str]) -> int:
@@ -352,13 +357,13 @@ def main() -> int:
 
     root = Path.home() / ".teleclaude"
     if args.scope == "global":
-        cfg_path = root / "config" / "teleclaude.yml"
+        cfg_path = root / "teleclaude.yml"
         csv_path = root / "subscriptions" / "youtube.csv"
     else:
         cfg_path = root / "people" / args.person / "teleclaude.yml"
         csv_path = root / "people" / args.person / "subscriptions" / "youtube.csv"
 
-    tags = _load_tags(cfg_path)
+    tags = _load_tags(cfg_path, scope=args.scope)
     allowed_tags = set(tags)
     _ensure_csv(csv_path)
     if args.debug:

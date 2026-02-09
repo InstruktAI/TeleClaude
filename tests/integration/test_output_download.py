@@ -6,9 +6,10 @@ import json
 import tempfile
 from pathlib import Path
 from typing import Optional, TypedDict
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
+from telegram import InlineKeyboardButton
 
 from teleclaude.adapters.telegram.callback_handlers import CallbackHandlersMixin
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
@@ -112,8 +113,23 @@ class TestTelegramAdapter(UiAdapter):
         return UiAdapter.format_message(self, tmux_output, status_line)
 
     def _build_output_metadata(self, session: object, is_truncated: bool) -> MessageMetadata:
-        _ = is_truncated
-        return TelegramAdapter._build_output_metadata(self, session, is_truncated)
+        metadata = TelegramAdapter._build_output_metadata(self, session, is_truncated)
+        if is_truncated and getattr(session, "native_log_file", None):
+            metadata.reply_markup = type(
+                "MockMarkup",
+                (),
+                {
+                    "inline_keyboard": [
+                        [
+                            InlineKeyboardButton(
+                                "📎 Download Agent session",
+                                callback_data=f"download_full:{session.session_id}",
+                            )
+                        ]
+                    ]
+                },
+            )()
+        return metadata
 
 
 class DummyMessage:

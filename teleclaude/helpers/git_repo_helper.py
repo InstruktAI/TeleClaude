@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
-import yaml
+from teleclaude.config.loader import load_global_config
 
 
 def _run(cmd: list[str], cwd: Path | None = None) -> None:
@@ -90,15 +90,8 @@ def _ensure_repo(repo_url: str, repo_path: Path) -> tuple[list[str], list[str]]:
 
 
 def _load_checkout_root() -> Path:
-    config_path = Path.home() / ".teleclaude" / "config" / "teleclaude.yml"
-    if not config_path.exists():
-        return DEFAULT_CHECKOUT_ROOT
-    try:
-        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    except Exception:
-        return DEFAULT_CHECKOUT_ROOT
-    gh = raw.get("git", {}) if isinstance(raw, dict) else {}
-    root = gh.get("checkout_root") if isinstance(gh, dict) else None
+    config = load_global_config()
+    root = config.git.checkout_root
     if not root:
         return DEFAULT_CHECKOUT_ROOT
     return Path(root).expanduser()

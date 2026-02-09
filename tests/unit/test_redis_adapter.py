@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -165,7 +165,7 @@ async def test_discover_peers_handles_invalid_json():
 @pytest.mark.asyncio
 async def test_stop_notification_emits_agent_stop_event():
     """stop_notification should emit agent stop event with minimal payload."""
-    from teleclaude.core.events import AgentHookEvents, TeleClaudeEvents
+    from teleclaude.core.events import AgentHookEvents
     from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()

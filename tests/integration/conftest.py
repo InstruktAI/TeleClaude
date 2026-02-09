@@ -195,6 +195,16 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         is_master = False
         trusted_bots: list[str] = []
 
+    class MockCreds:
+        telegram = type("MockTgCreds", (), {"user_name": "bot", "user_id": 123})()
+
+    class MockTerminal:
+        strip_ansi = True
+
+    class MockSummarizer:
+        enabled = True
+        max_summary_words = 30
+
     test_config = type(
         "Config",
         (),
@@ -204,6 +214,9 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             "polling": MockPolling(),
             "redis": MockRedis(),
             "telegram": MockTelegram(),
+            "creds": MockCreds(),
+            "terminal": MockTerminal(),
+            "summarizer": MockSummarizer(),
             "tts": None,
             "experiments": [],
             "agents": {

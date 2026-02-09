@@ -13,6 +13,7 @@ import yaml
 from dotenv import load_dotenv
 
 from teleclaude.constants import (
+    DIRECTORY_CHECK_INTERVAL,
     REDIS_MAX_CONNECTIONS,
     REDIS_MESSAGE_STREAM_MAXLEN,
     REDIS_OUTPUT_STREAM_MAXLEN,
@@ -22,7 +23,7 @@ from teleclaude.constants import (
 from teleclaude.utils import expand_env_vars
 
 # Project root (relative to this file)
-_project_root = Path(__file__).parent.parent
+_project_root = Path(__file__).parent.parent.parent
 
 # Load .env (allow override for tests)
 _env_path = os.getenv("TELECLAUDE_ENV_PATH")
@@ -57,16 +58,27 @@ class DatabaseConfig:
     @property
     def path(self) -> str:
         """Get database path (lazy-loaded from env var for test compatibility)."""
+
         # Allow tests to override via TELECLAUDE_DB_PATH env var
+
         env_path = os.getenv("TELECLAUDE_DB_PATH")
+
         if env_path:
             return env_path
+
         # Otherwise use configured path
+
         return self._configured_path
 
 
 @dataclass
-class ComputerConfig:  # pylint: disable=too-many-instance-attributes  # Config classes naturally have many fields
+class PollingConfig:
+    directory_check_interval: int
+
+
+@dataclass
+class ComputerConfig:
+    # pylint: disable=too-many-instance-attributes  # Config classes naturally have many fields
     name: str
     user: str
     role: str
@@ -224,11 +236,24 @@ class ExperimentConfig:
 
 
 @dataclass
+class TelegramCredsConfig:
+    user_name: str
+    user_id: int
+
+
+@dataclass
+class CredsConfig:
+    telegram: TelegramCredsConfig | None = None
+
+
+@dataclass
 class Config:
     database: DatabaseConfig
     computer: ComputerConfig
+    polling: PollingConfig
     redis: RedisConfig
     telegram: TelegramConfig
+    creds: CredsConfig
     agents: Dict[str, AgentConfig]
     ui: UIConfig
     terminal: TerminalConfig
@@ -273,6 +298,9 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
         "host": None,
         "tmux_binary": "tmux",
     },
+    "polling": {
+        "directory_check_interval": DIRECTORY_CHECK_INTERVAL,
+    },
     "redis": {
         "enabled": False,
         "url": "redis://localhost:6379",
@@ -285,6 +313,9 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
     },
     "telegram": {
         "trusted_bots": [],
+    },
+    "creds": {
+        "telegram": None,
     },
     "terminal": {
         "strip_ansi": True,
@@ -455,8 +486,10 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
     """Build typed Config from raw dict with proper type conversion."""
     db_raw = raw["database"]
     comp_raw = raw["computer"]
+    polling_raw = raw.get("polling", {"directory_check_interval": DIRECTORY_CHECK_INTERVAL})
     redis_raw = raw["redis"]
     tg_raw = raw["telegram"]
+    creds_raw = raw.get("creds", {})
     ui_raw = raw["ui"]
     terminal_raw = raw.get("terminal", {"strip_ansi": True})
     agents_raw = raw.get("agents", {})
@@ -500,6 +533,15 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
                     )
                 )
 
+    tg_creds = None
+    if isinstance(creds_raw, dict):
+        tg_creds_raw = creds_raw.get("telegram")
+        if isinstance(tg_creds_raw, dict):
+            tg_creds = TelegramCredsConfig(
+                user_name=str(tg_creds_raw["user_name"]),
+                user_id=int(tg_creds_raw["user_id"]),
+            )
+
     return Config(
         database=DatabaseConfig(
             _configured_path=str(db_raw["path"]),  # type: ignore[index,misc]
@@ -515,6 +557,9 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
             host=str(comp_raw["host"]) if comp_raw["host"] else None,  # type: ignore[index,misc]
             tmux_binary=str(comp_raw["tmux_binary"]),  # type: ignore[index,misc]
         ),
+        polling=PollingConfig(
+            directory_check_interval=int(polling_raw["directory_check_interval"]),  # type: ignore[index,misc]
+        ),
         redis=RedisConfig(
             enabled=bool(redis_raw["enabled"]),  # type: ignore[index,misc]
             url=str(redis_raw["url"]),  # type: ignore[index,misc]
@@ -528,6 +573,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
         telegram=TelegramConfig(
             trusted_bots=list(tg_raw["trusted_bots"]),  # type: ignore[index,misc]
         ),
+        creds=CredsConfig(telegram=tg_creds),
         agents=agents_registry,
         ui=UIConfig(
             animations_enabled=bool(ui_raw["animations_enabled"]),  # type: ignore[index,misc]

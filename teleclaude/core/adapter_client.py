@@ -5,7 +5,6 @@ a clean, unified interface for the daemon and MCP server.
 """
 
 import asyncio
-import os
 from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional, cast
 
 from instrukt_ai_logging import get_logger
@@ -158,7 +157,7 @@ class AdapterClient:
             ValueError: If no adapters started
         """
         # Telegram adapter
-        if os.getenv("TELEGRAM_BOT_TOKEN"):
+        if config.creds.telegram:
             telegram = TelegramAdapter(self)
             await telegram.start()  # Raises if fails → daemon crashes
             self.adapters["telegram"] = telegram  # Register ONLY after success

@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from teleclaude.core import polling_coordinator
-from teleclaude.core.db import db
 from teleclaude.core.models import Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, ProcessExited
