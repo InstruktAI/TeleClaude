@@ -237,7 +237,7 @@ def format_tmux_message(tmux_output: str, status_line: str) -> str:
     return "\n".join(message_parts)
 
 
-def apply_code_block_formatting(text: str, metadata: dict[str, object]) -> str:  # noqa: loose-dict - Adapter metadata
+def apply_code_block_formatting(text: str, metadata: dict[str, object]) -> str:  # guard: loose-dict - Adapter metadata
     """Apply code block formatting unless already formatted.
 
     Args:

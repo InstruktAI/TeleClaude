@@ -372,6 +372,23 @@ class TestSendOutputUpdate:
         assert "\n```" in sent_text
         assert "simple tmux output line" in sent_text
 
+    async def test_footer_places_status_line_last(self, test_db):
+        """Footer should place timer/status information at the bottom."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+
+        status_line = "🟡 started 10:00:00 · active 10:00:08 · 1.2KB"
+        footer_text = adapter._build_footer_text(session, status_line=status_line)
+        lines = footer_text.splitlines()
+
+        assert lines[-1] == status_line
+        assert any(line.startswith("📋 tc:") for line in lines[:-1])
+
 
 @pytest.mark.asyncio
 class TestSendMessageNotice:

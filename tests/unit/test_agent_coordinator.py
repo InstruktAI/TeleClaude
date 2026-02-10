@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -216,9 +217,88 @@ async def test_user_prompt_submit_persists_non_checkpoint_codex_synthetic_prompt
         mock_db.get_session = AsyncMock(return_value=session)
         mock_db.set_notification_flag = AsyncMock()
         mock_db.update_session = AsyncMock()
-        with patch("teleclaude.core.agent_coordinator.summarize_user_input", new_callable=AsyncMock) as mock_summarize:
-            mock_summarize.return_value = ("Output regression follow-up", "summary")
+        with patch("teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock) as mock_summarize:
+            mock_summarize.return_value = "Output regression follow-up"
             await coordinator.handle_user_prompt_submit(context)
 
         mock_db.set_notification_flag.assert_called_once_with("sess-1", False)
         assert mock_db.update_session.await_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_stop_codex_uses_transcript_timestamp_for_last_message_sent_at(coordinator):
+    session_id = "sess-1"
+    ts = datetime(2026, 2, 10, 3, 0, 0, tzinfo=timezone.utc)
+    payload = AgentStopPayload(
+        session_id="native-1",
+        transcript_path="/tmp/transcript.jsonl",
+        source_computer="local",
+        raw={"agent_name": "codex"},
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.AGENT_STOP, session_id=session_id, data=payload)
+    session = Session(
+        session_id=session_id,
+        computer_name="local",
+        tmux_session_name="tmux-1",
+        title="Test",
+        active_agent="codex",
+        native_log_file="/tmp/transcript.jsonl",
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch.object(coordinator, "_extract_user_input_for_codex", new=AsyncMock(return_value=("user prompt", ts))),
+        patch.object(coordinator, "_extract_agent_output", new=AsyncMock(return_value=None)),
+        patch.object(coordinator, "_maybe_send_incremental_output", new=AsyncMock()),
+        patch.object(coordinator, "_maybe_send_headless_snapshot", new=AsyncMock()),
+        patch.object(coordinator, "_notify_session_listener", new=AsyncMock()),
+        patch.object(coordinator, "_forward_stop_to_initiator", new=AsyncMock()),
+        patch.object(coordinator, "_maybe_inject_checkpoint", new=AsyncMock()),
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+
+        await coordinator.handle_agent_stop(context)
+
+        first_kwargs = mock_db.update_session.await_args_list[0].kwargs
+        assert first_kwargs["last_message_sent"] == "user prompt"
+        assert first_kwargs["last_message_sent_at"] == ts.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_stop_codex_does_not_clobber_last_message_sent_at_without_timestamp(coordinator):
+    session_id = "sess-1"
+    payload = AgentStopPayload(
+        session_id="native-1",
+        transcript_path="/tmp/transcript.jsonl",
+        source_computer="local",
+        raw={"agent_name": "codex"},
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.AGENT_STOP, session_id=session_id, data=payload)
+    session = Session(
+        session_id=session_id,
+        computer_name="local",
+        tmux_session_name="tmux-1",
+        title="Test",
+        active_agent="codex",
+        native_log_file="/tmp/transcript.jsonl",
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch.object(coordinator, "_extract_user_input_for_codex", new=AsyncMock(return_value=("user prompt", None))),
+        patch.object(coordinator, "_extract_agent_output", new=AsyncMock(return_value=None)),
+        patch.object(coordinator, "_maybe_send_incremental_output", new=AsyncMock()),
+        patch.object(coordinator, "_maybe_send_headless_snapshot", new=AsyncMock()),
+        patch.object(coordinator, "_notify_session_listener", new=AsyncMock()),
+        patch.object(coordinator, "_forward_stop_to_initiator", new=AsyncMock()),
+        patch.object(coordinator, "_maybe_inject_checkpoint", new=AsyncMock()),
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+
+        await coordinator.handle_agent_stop(context)
+
+        first_kwargs = mock_db.update_session.await_args_list[0].kwargs
+        assert first_kwargs["last_message_sent"] == "user prompt"
+        assert "last_message_sent_at" not in first_kwargs

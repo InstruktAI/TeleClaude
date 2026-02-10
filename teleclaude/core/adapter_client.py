@@ -681,7 +681,7 @@ class AdapterClient:
         result = await self._route_to_ui(session, "delete_channel")
         return bool(result)
 
-    async def discover_peers(self, redis_enabled: bool | None = None) -> list[dict[str, object]]:  # noqa: loose-dict - Adapter peer data
+    async def discover_peers(self, redis_enabled: bool | None = None) -> list[dict[str, object]]:  # guard: loose-dict - Adapter peer data
         """Discover peers from all registered adapters.
 
         Aggregates peer lists from all adapters and deduplicates by name.
@@ -711,7 +711,7 @@ class AdapterClient:
             logger.debug("Redis disabled, skipping peer discovery")
             return []
 
-        all_peers: list[dict[str, object]] = []  # noqa: loose-dict - Adapter peer data
+        all_peers: list[dict[str, object]] = []  # guard: loose-dict - Adapter peer data
 
         # Collect peers from all adapters
         for adapter_type, adapter in self.adapters.items():
@@ -720,7 +720,7 @@ class AdapterClient:
                 peers = await adapter.discover_peers()  # Returns list[PeerInfo]
                 # Convert PeerInfo dataclass to dict for transport
                 for peer_info in peers:
-                    peer_dict: dict[str, object] = {  # noqa: loose-dict - Adapter peer data
+                    peer_dict: dict[str, object] = {  # guard: loose-dict - Adapter peer data
                         "name": peer_info.name,
                         "status": peer_info.status,
                         "last_seen": peer_info.last_seen,
@@ -745,7 +745,7 @@ class AdapterClient:
 
         # Deduplicate by name (keep first occurrence = primary adapter wins)
         seen: set[str] = set()
-        unique_peers: list[dict[str, object]] = []  # noqa: loose-dict - Adapter peer data
+        unique_peers: list[dict[str, object]] = []  # guard: loose-dict - Adapter peer data
         for peer in all_peers:
             peer_name = cast(str, peer.get("name"))
             if peer_name and peer_name not in seen:
@@ -807,7 +807,7 @@ class AdapterClient:
         self,
         session: "Session",
         command_name: str,
-        payload: dict[str, object],  # noqa: loose-dict - Command payload for observers
+        payload: dict[str, object],  # guard: loose-dict - Command payload for observers
         source_adapter: str | None = None,
     ) -> None:
         """Broadcast user command actions to UI observer adapters."""
@@ -819,7 +819,7 @@ class AdapterClient:
         self,
         session: "Session",
         event: str,
-        payload: dict[str, object],  # noqa: loose-dict - Event payload from/to adapters
+        payload: dict[str, object],  # guard: loose-dict - Event payload from/to adapters
         source_adapter: str | None = None,
     ) -> None:
         """Broadcast user actions to UI observer adapters.
@@ -849,7 +849,7 @@ class AdapterClient:
             except Exception as e:
                 logger.warning("Failed to broadcast %s to observer %s: %s", event, adapter_type, e)
 
-    def _format_event_for_observers(self, event: str, payload: dict[str, object]) -> Optional[str]:  # noqa: loose-dict - Event payload
+    def _format_event_for_observers(self, event: str, payload: dict[str, object]) -> Optional[str]:  # guard: loose-dict - Event payload
         """Format event as human-readable text for observer adapters.
 
         Args:

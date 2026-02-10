@@ -14,7 +14,7 @@ Create a predictable Python project skeleton with standardized tooling and verif
 - `pyproject.toml` (single source of truth for deps and tool config)
 - `Makefile` with standard targets
 - `uv` for dependency/environment management
-- Optional wrapper scripts (called by Makefile): `bin/format.sh`, `bin/lint.sh`, `bin/test.sh`
+- Optional wrapper scripts (called by Makefile): `tools/format.sh`, `tools/lint.sh`, `tools/test.sh`
 
 1. **Initialize project metadata**
    - Create `pyproject.toml` with name, version, Python requirement, and tool configuration sections.

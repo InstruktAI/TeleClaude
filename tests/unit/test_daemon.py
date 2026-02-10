@@ -745,7 +745,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
     coordinator.client.send_output_update = AsyncMock()
     coordinator._notify_session_listener = AsyncMock()
     coordinator._forward_stop_to_initiator = AsyncMock()
-    coordinator._extract_user_input_for_codex = AsyncMock()
+    coordinator._extract_user_input_for_codex = AsyncMock(return_value=None)
     coordinator.tts_manager.speak = AsyncMock()
 
     transcript_path = tmp_path / "native.json"
@@ -1074,7 +1074,7 @@ class TestTitleUpdate:
 
         with (
             patch("teleclaude.core.agent_coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator.summarize_user_input", new_callable=AsyncMock) as mock_summarize,
+            patch("teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock) as mock_summarize,
         ):
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
@@ -1082,14 +1082,14 @@ class TestTitleUpdate:
 
             await coordinator.handle_user_prompt_submit(context)
 
-            # summarize_user_input should not be called for non-Untitled sessions
+            # summarize_user_input_title should not be called for non-Untitled sessions
             mock_summarize.assert_not_called()
             # update_session is still called but should NOT include title
             call_kwargs = mock_db.update_session.call_args.kwargs
             assert "title" not in call_kwargs
 
     async def test_title_summarization_updates_untitled(self):
-        """Title summarization should update sessions with 'Untitled' description."""
+        """Title summarization should run asynchronously for 'Untitled' sessions."""
         coordinator = AgentCoordinator(
             client=MagicMock(),
             tts_manager=MagicMock(),
@@ -1114,18 +1114,61 @@ class TestTitleUpdate:
 
         with (
             patch("teleclaude.core.agent_coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator.summarize_user_input", new_callable=AsyncMock) as mock_summarize,
+            patch("teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock) as mock_summarize,
         ):
+            mock_db.get_session = AsyncMock(side_effect=[session, session, session])
+            mock_db.update_session = AsyncMock()
+            mock_db.set_notification_flag = AsyncMock()
+            mock_summarize.return_value = "Debug auth flow"
+
+            queued_tasks: list[asyncio.Task[object]] = []
+
+            def _run_now(coro: object, _label: str) -> None:
+                queued_tasks.append(asyncio.create_task(coro))
+
+            coordinator._queue_background_task = _run_now  # type: ignore[assignment]
+            await coordinator.handle_user_prompt_submit(context)
+            await asyncio.gather(*queued_tasks)
+
+            mock_summarize.assert_called_once()
+            update_calls = mock_db.update_session.call_args_list
+            assert "title" not in update_calls[0].kwargs
+            assert "title" not in update_calls[1].kwargs
+            assert update_calls[2].kwargs["title"] == "Debug auth flow"
+
+    async def test_user_prompt_submit_skips_empty_prompt(self):
+        """Empty prompt hook events should not wipe persisted last input."""
+        coordinator = AgentCoordinator(
+            client=MagicMock(),
+            tts_manager=MagicMock(),
+            headless_snapshot_service=MagicMock(),
+        )
+
+        session = Session(
+            session_id="sess-empty",
+            computer_name="TestMac",
+            tmux_session_name="tmux-1",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Existing title",
+            active_agent="gemini",
+            thinking_mode="fast",
+        )
+
+        context = AgentEventContext(
+            session_id="sess-empty",
+            event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+            data=UserPromptSubmitPayload(prompt=""),
+        )
+
+        with patch("teleclaude.core.agent_coordinator.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
             mock_db.set_notification_flag = AsyncMock()
-            mock_summarize.return_value = ("Debug auth flow", "User wants to debug authentication")
 
             await coordinator.handle_user_prompt_submit(context)
 
-            mock_summarize.assert_called_once()
-            call_kwargs = mock_db.update_session.call_args.kwargs
-            assert call_kwargs["title"] == "Debug auth flow"
+            mock_db.set_notification_flag.assert_not_called()
+            mock_db.update_session.assert_not_called()
 
 
 def test_all_events_have_handlers():

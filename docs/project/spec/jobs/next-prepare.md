@@ -31,30 +31,6 @@ Both support two scopes:
 
 Hard rule: draft and gate must never run in the same worker session.
 
-## Configuration surface
-
-Configured in `teleclaude.yml`:
-
-```yaml
-jobs:
-  next_prepare_draft:
-    schedule: weekly
-    preferred_weekday: 0
-    preferred_hour: 7
-    type: agent
-    job: next-prepare-draft
-    agent: claude
-    thinking_mode: med
-  next_prepare_gate:
-    schedule: weekly
-    preferred_weekday: 0
-    preferred_hour: 8
-    type: agent
-    job: next-prepare-gate
-    agent: claude
-    thinking_mode: med
-```
-
 ## Scope contract
 
 - Processes active todo slugs under `todos/`

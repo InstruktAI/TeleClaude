@@ -55,6 +55,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _THINKING_BASE_TEXT = "thinking..."
+_WORKING_BASE_TEXT = "working..."
 
 
 def _format_time(iso_timestamp: str | None) -> str:
@@ -113,6 +114,13 @@ def _thinking_placeholder_text() -> str:
     if getattr(curses, "A_ITALIC", 0):
         return _THINKING_BASE_TEXT
     return f"**{_THINKING_BASE_TEXT}**"
+
+
+def _working_placeholder_text() -> str:
+    """Return placeholder text shown after temp highlight while agent is still working."""
+    if getattr(curses, "A_ITALIC", 0):
+        return _WORKING_BASE_TEXT
+    return f"**{_WORKING_BASE_TEXT}**"
 
 
 class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
@@ -1497,10 +1505,15 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Line 4: Last output (only if content exists)
         last_output = (session.last_output_summary or "").strip()
         last_output_at = session.last_output_summary_at
+        has_input_highlight = session_id in self.state.sessions.input_highlights
         has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
         if has_temp_output_highlight:
             output_time = _format_time(last_output_at or session.last_activity)
             line4 = f"{detail_indent}[{output_time}] out: {_thinking_placeholder_text()}"
+            lines.append(line4[:width])
+        elif has_input_highlight:
+            output_time = _format_time(last_output_at or session.last_activity)
+            line4 = f"{detail_indent}[{output_time}] out: {_working_placeholder_text()}"
             lines.append(line4[:width])
         elif last_output:
             output_text = last_output.replace("\n", " ")[:60]
@@ -1663,6 +1676,27 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             except curses.error as e:
                 logger.warning("curses error rendering session line at row %d: %s", target_row, e)
 
+        def _safe_addstr_with_italic_suffix(
+            target_row: int,
+            prefix_text: str,
+            suffix_text: str,
+            *,
+            prefix_attr: int,
+            suffix_attr: int,
+        ) -> None:
+            """Render one line where only suffix_text is italicized."""
+            combined = f"{prefix_text}{suffix_text}"
+            line = combined[:width].ljust(width)
+            try:
+                stdscr.addstr(target_row, 0, line, prefix_attr)  # type: ignore[attr-defined]
+                prefix_len = min(len(prefix_text), width)
+                available_for_suffix = max(0, width - prefix_len)
+                suffix_visible = suffix_text[:available_for_suffix]
+                if suffix_visible:
+                    stdscr.addstr(target_row, prefix_len, suffix_visible, suffix_attr)  # type: ignore[attr-defined]
+            except curses.error as e:
+                logger.warning("curses error rendering session line at row %d: %s", target_row, e)
+
         session_display = item.data
         session = session_display.session
         session_id = session.session_id
@@ -1778,9 +1812,35 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             logger.trace("missing_last_input", session=session_id[:8])
         if has_temp_output_highlight:
             output_time = _format_time(last_output_at or session.last_activity)
-            line4 = f"{detail_indent}[{output_time}] out: {_thinking_placeholder_text()}"
             italic_attr = getattr(curses, "A_ITALIC", 0)
-            _safe_addstr(row + lines_used, line4, output_attr | italic_attr if italic_attr else output_attr)
+            prefix_text = f"{detail_indent}[{output_time}] out: "
+            placeholder_text = _thinking_placeholder_text()
+            if italic_attr:
+                _safe_addstr_with_italic_suffix(
+                    row + lines_used,
+                    prefix_text,
+                    placeholder_text,
+                    prefix_attr=output_attr,
+                    suffix_attr=output_attr | italic_attr,
+                )
+            else:
+                _safe_addstr(row + lines_used, f"{prefix_text}{placeholder_text}", output_attr)
+            lines_used += 1
+        elif has_input_highlight:
+            output_time = _format_time(last_output_at or session.last_activity)
+            italic_attr = getattr(curses, "A_ITALIC", 0)
+            prefix_text = f"{detail_indent}[{output_time}] out: "
+            placeholder_text = _working_placeholder_text()
+            if italic_attr:
+                _safe_addstr_with_italic_suffix(
+                    row + lines_used,
+                    prefix_text,
+                    placeholder_text,
+                    prefix_attr=output_attr,
+                    suffix_attr=output_attr | italic_attr,
+                )
+            else:
+                _safe_addstr(row + lines_used, f"{prefix_text}{placeholder_text}", output_attr)
             lines_used += 1
         elif last_output:
             output_text = last_output.replace("\n", " ")[:60]

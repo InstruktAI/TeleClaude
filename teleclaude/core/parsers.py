@@ -15,7 +15,7 @@ class LogEvent:
     """Represents a detected event from an agent log."""
 
     event_type: str  # "session_start", "agent_stop", "notification", "title_update"
-    data: dict[str, object]  # noqa: loose-dict - Generic parse result
+    data: dict[str, object]  # guard: loose-dict - Generic parse result
     timestamp: float
 
 

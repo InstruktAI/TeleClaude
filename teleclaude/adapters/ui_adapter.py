@@ -522,13 +522,13 @@ class UiAdapter(BaseAdapter):
         return new_id
 
     def _build_footer_text(self, session: "Session", status_line: str = "") -> str:
-        """Build footer text with status line and session IDs."""
+        """Build footer text with session IDs first and status line last."""
         parts: list[str] = []
-        if status_line:
-            parts.append(status_line)
         session_lines = self._build_session_id_lines(session)
         if session_lines:
             parts.append(session_lines)
+        if status_line:
+            parts.append(status_line)
         return "\n".join(parts) if parts else "📋 session metadata unavailable"
 
     def format_output(self, tmux_output: str) -> str:
@@ -598,7 +598,7 @@ class UiAdapter(BaseAdapter):
         message_id: str | None,
         metadata: MessageMetadata,
         command_name: str,
-        payload: dict[str, object],  # noqa: loose-dict - Command payload for observers
+        payload: dict[str, object],  # guard: loose-dict - Command payload for observers
         handler: Callable[[], Awaitable[object]],
     ) -> object:
         """Run command with UI pre/post handling and observer broadcast."""
@@ -631,7 +631,7 @@ class UiAdapter(BaseAdapter):
         self,
         session_id: str,
         audio_file_path: str,
-        context: dict[str, object],  # noqa: loose-dict - Voice event context
+        context: dict[str, object],  # guard: loose-dict - Voice event context
     ) -> None:
         """Shared voice processing logic for UI adapters.
 

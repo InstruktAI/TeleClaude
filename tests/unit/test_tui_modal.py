@@ -87,7 +87,13 @@ def test_modal_is_agent_available(mock_api):
             unavailable_until=None,
             reason="rate_limited",
         ),
-        # Codex missing from map = treated as unavailable
+        "codex": AgentAvailabilityInfo(
+            agent="codex",
+            available=True,
+            status="degraded",
+            unavailable_until=None,
+            reason="degraded_api",
+        ),
     }
 
     modal = StartSessionModal(
@@ -99,7 +105,8 @@ def test_modal_is_agent_available(mock_api):
 
     assert modal._is_agent_available("claude") is True
     assert modal._is_agent_available("gemini") is False
-    assert modal._is_agent_available("codex") is False
+    assert modal._is_agent_available("codex") is True
+    assert modal._is_agent_degraded("codex") is True
 
 
 def test_modal_get_available_agents(mock_api):
@@ -120,8 +127,9 @@ def test_modal_get_available_agents(mock_api):
         "codex": AgentAvailabilityInfo(
             agent="codex",
             available=True,
+            status="degraded",
             unavailable_until=None,
-            reason=None,
+            reason="degraded_api",
         ),
     }
 
@@ -133,7 +141,7 @@ def test_modal_get_available_agents(mock_api):
     )
 
     available = modal._get_available_agents()
-    assert available == [1, 2]  # gemini and codex
+    assert available == [1, 2]  # gemini and degraded codex
 
 
 def test_modal_skips_unavailable_agents_in_navigation(mock_api):

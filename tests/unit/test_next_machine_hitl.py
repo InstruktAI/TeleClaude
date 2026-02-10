@@ -11,12 +11,15 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import (
     format_tool_call,
+    has_uncommitted_changes,
     is_build_complete,
     is_review_approved,
     is_review_changes_requested,
     mark_phase,
     next_prepare,
     read_phase_state,
+    sync_slug_todo_from_worktree_to_main,
+    sync_slug_todo_from_main_to_worktree,
     write_phase_state,
 )
 
@@ -258,6 +261,116 @@ def test_mark_phase_review_changes_requested_tracks_round_and_findings():
         assert result["review"] == "changes_requested"
         assert result["review_round"] == 1
         assert result["unresolved_findings"] == ["R1-F1", "R1-F2"]
+
+
+def test_has_uncommitted_changes_ignores_orchestrator_control_files():
+    """Dirty roadmap/dependencies alone should not block next_work."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        worktree = Path(tmpdir) / "trees" / "test-slug"
+        worktree.mkdir(parents=True, exist_ok=True)
+
+        repo_mock = MagicMock()
+        repo_mock.git.status.return_value = " M todos/roadmap.md\n M todos/dependencies.json\n"
+
+        with patch("teleclaude.core.next_machine.core.Repo", return_value=repo_mock):
+            assert has_uncommitted_changes(tmpdir, "test-slug") is False
+
+
+def test_has_uncommitted_changes_detects_non_control_file_changes():
+    """Non-control dirty files must still block next_work."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        worktree = Path(tmpdir) / "trees" / "test-slug"
+        worktree.mkdir(parents=True, exist_ok=True)
+
+        repo_mock = MagicMock()
+        repo_mock.git.status.return_value = " M teleclaude/core/next_machine/core.py\n"
+
+        with patch("teleclaude.core.next_machine.core.Repo", return_value=repo_mock):
+            assert has_uncommitted_changes(tmpdir, "test-slug") is True
+
+
+def test_has_uncommitted_changes_ignores_slug_todo_scaffold_paths():
+    """Untracked synced slug todo files should not block next_work dispatch."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        worktree = Path(tmpdir) / "trees" / "test-slug"
+        worktree.mkdir(parents=True, exist_ok=True)
+
+        repo_mock = MagicMock()
+        repo_mock.git.status.return_value = "?? todos/test-slug/\n?? todos/test-slug/requirements.md\n"
+
+        with patch("teleclaude.core.next_machine.core.Repo", return_value=repo_mock):
+            assert has_uncommitted_changes(tmpdir, "test-slug") is False
+
+
+def test_sync_slug_todo_from_main_to_worktree_copies_slug_files():
+    """Slug todo artifacts should be available inside worktree before build dispatch."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        main_todo = Path(tmpdir) / "todos" / slug
+        worktree_root = Path(tmpdir) / "trees" / slug
+        main_todo.mkdir(parents=True, exist_ok=True)
+        worktree_root.mkdir(parents=True, exist_ok=True)
+
+        (main_todo / "requirements.md").write_text("# req\n", encoding="utf-8")
+        (main_todo / "implementation-plan.md").write_text("# plan\n", encoding="utf-8")
+        (main_todo / "state.json").write_text("{}", encoding="utf-8")
+
+        sync_slug_todo_from_main_to_worktree(tmpdir, slug)
+
+        assert (worktree_root / "todos" / slug / "requirements.md").exists()
+        assert (worktree_root / "todos" / slug / "implementation-plan.md").exists()
+        assert (worktree_root / "todos" / slug / "state.json").exists()
+
+
+def test_sync_slug_todo_from_main_to_worktree_includes_review_findings():
+    """Review findings in main should be mirrored into worktree when present."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        main_todo = Path(tmpdir) / "todos" / slug
+        worktree_root = Path(tmpdir) / "trees" / slug
+        main_todo.mkdir(parents=True, exist_ok=True)
+        worktree_root.mkdir(parents=True, exist_ok=True)
+
+        (main_todo / "review-findings.md").write_text("# Findings\n- R1-F1\n", encoding="utf-8")
+        sync_slug_todo_from_main_to_worktree(tmpdir, slug)
+
+        mirrored = worktree_root / "todos" / slug / "review-findings.md"
+        assert mirrored.exists()
+        assert "R1-F1" in mirrored.read_text(encoding="utf-8")
+
+
+def test_sync_slug_todo_from_worktree_to_main_includes_review_findings():
+    """Review findings created in worktree should sync back to main."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        main_root = Path(tmpdir)
+        worktree_todo = main_root / "trees" / slug / "todos" / slug
+        worktree_todo.mkdir(parents=True, exist_ok=True)
+
+        (worktree_todo / "review-findings.md").write_text("# Findings\n- [x] APPROVE\n", encoding="utf-8")
+        sync_slug_todo_from_worktree_to_main(tmpdir, slug)
+
+        main_review = main_root / "todos" / slug / "review-findings.md"
+        assert main_review.exists()
+        assert "APPROVE" in main_review.read_text(encoding="utf-8")
+
+
+def test_sync_slug_todo_from_main_to_worktree_does_not_overwrite_existing_state():
+    """Main bootstrap sync must not clobber worktree state transitions."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        main_todo = Path(tmpdir) / "todos" / slug
+        worktree_todo = Path(tmpdir) / "trees" / slug / "todos" / slug
+        main_todo.mkdir(parents=True, exist_ok=True)
+        worktree_todo.mkdir(parents=True, exist_ok=True)
+
+        (main_todo / "state.json").write_text('{"build":"pending"}', encoding="utf-8")
+        (worktree_todo / "state.json").write_text('{"build":"complete"}', encoding="utf-8")
+
+        sync_slug_todo_from_main_to_worktree(tmpdir, slug)
+
+        final_state = (worktree_todo / "state.json").read_text(encoding="utf-8")
+        assert '"build":"complete"' in final_state
 
 
 def test_mark_phase_review_approved_clears_unresolved_findings():

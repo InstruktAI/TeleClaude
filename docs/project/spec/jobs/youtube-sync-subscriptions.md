@@ -18,20 +18,6 @@ against their `youtube.csv`. The script finds channels with empty tags and
 classifies them using AI. Already-tagged channels are skipped. Results are
 written back to CSV.
 
-## Schedule
-
-Configured in `teleclaude.yml`:
-
-```yaml
-jobs:
-  youtube_sync_subscriptions:
-    schedule: daily
-    preferred_hour: 6
-    job: youtube-sync-subscriptions
-    agent: claude
-    thinking_mode: fast
-```
-
 ## How it works
 
 The agent supervises the existing tagging pipeline:

@@ -113,6 +113,7 @@ HOOK_OUTBOX_BATCH_SIZE: int = int(os.getenv("HOOK_OUTBOX_BATCH_SIZE", "25"))
 HOOK_OUTBOX_LOCK_TTL_S: float = float(os.getenv("HOOK_OUTBOX_LOCK_TTL_S", "30"))
 HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S", "1"))
 HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
+HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S: float = float(os.getenv("HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S", "5"))
 
 
 # Agent auto-command startup detection
@@ -274,7 +275,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task[object]] = set()
-        self._session_locks: dict[str, asyncio.Lock] = {}  # per-session outbox serialization
+        # Per-session outbox processing: one serial worker per session, parallel across sessions.
+        self._session_outbox_queues: dict[str, asyncio.Queue[dict[str, object]]] = {}  # guard: loose-dict
+        self._session_outbox_workers: dict[str, asyncio.Task[None]] = {}
         self.resource_monitor_task: asyncio.Task[object] | None = None
         self.launchd_watch_task: asyncio.Task[object] | None = None
         self._start_time = time.time()
@@ -782,8 +785,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _hook_outbox_worker(self) -> None:
         """Drain hook outbox for durable, restart-safe delivery.
 
-        Items for the same session are serialized via per-session locks.
-        Items for different sessions run in parallel for throughput.
+        Dispatch model:
+        - One logical serial worker per session (strict ordering inside session).
+        - Different sessions are handled in parallel.
         """
         while not self.shutdown_event.is_set():
             now = datetime.now(timezone.utc)
@@ -803,24 +807,58 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     continue
 
                 session_id = str(row["session_id"])
-                self._queue_background_task(
-                    self._process_outbox_item_serialized(session_id, row),
-                    f"outbox:{session_id[:8]}",
-                )
+                self._enqueue_session_outbox_item(session_id, row)
 
-    async def _process_outbox_item_serialized(self, session_id: str, row: dict[str, object]) -> None:  # noqa: loose-dict - DB row mapping
-        """Process an outbox item under the per-session lock for ordered delivery."""
-        lock = self._session_locks.get(session_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._session_locks[session_id] = lock
+    def _enqueue_session_outbox_item(
+        self,
+        session_id: str,
+        row: dict[str, object],  # guard: loose-dict - DB row mapping
+    ) -> None:
+        """Enqueue an outbox row to the session-specific serial worker."""
+        queue = self._session_outbox_queues.get(session_id)
+        if queue is None:
+            queue = asyncio.Queue()
+            self._session_outbox_queues[session_id] = queue
 
-        async with lock:
-            await self._process_outbox_item(row)
+        queue.put_nowait(row)
+
+        worker = self._session_outbox_workers.get(session_id)
+        if worker and not worker.done():
+            return
+
+        task = asyncio.create_task(self._run_session_outbox_worker(session_id))
+        self._session_outbox_workers[session_id] = task
+        self._track_background_task(task, f"outbox-worker:{session_id[:8]}")
+
+    async def _run_session_outbox_worker(self, session_id: str) -> None:
+        """Process claimed outbox rows serially for a single session."""
+        queue = self._session_outbox_queues.get(session_id)
+        if queue is None:
+            return
+
+        try:
+            while not self.shutdown_event.is_set():
+                try:
+                    row = await asyncio.wait_for(queue.get(), timeout=HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S)
+                except asyncio.TimeoutError:
+                    if queue.empty():
+                        break
+                    continue
+
+                try:
+                    await self._process_outbox_item(row)
+                finally:
+                    queue.task_done()
+        finally:
+            current = asyncio.current_task()
+            if self._session_outbox_workers.get(session_id) is current:
+                self._session_outbox_workers.pop(session_id, None)
+            if self._session_outbox_queues.get(session_id) is queue and queue.empty():
+                self._session_outbox_queues.pop(session_id, None)
 
     async def _process_outbox_item(
         self,
-        row: dict[str, object],  # noqa: loose-dict - DB row mapping
+        row: dict[str, object],  # guard: loose-dict - DB row mapping
     ) -> None:
         """Process a single outbox item. Handles its own success/failure lifecycle."""
         row_id = row["id"]
@@ -887,7 +925,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.warning("Session %s not found for termination event", ctx.session_id[:8])
             return
 
-        self._session_locks.pop(ctx.session_id, None)  # cleanup per-session outbox lock
+        self._session_outbox_queues.pop(ctx.session_id, None)
+        worker = self._session_outbox_workers.pop(ctx.session_id, None)
+        if worker and not worker.done():
+            worker.cancel()
+            try:
+                await worker
+            except asyncio.CancelledError:
+                pass
         polling_coordinator._cleanup_codex_input_state(ctx.session_id)
 
         logger.info("Handling session_closed for %s", ctx.session_id[:8])
@@ -1497,6 +1542,19 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Hook outbox worker stopped")
+
+        if self._session_outbox_workers:
+            workers = list(self._session_outbox_workers.values())
+            self._session_outbox_workers.clear()
+            self._session_outbox_queues.clear()
+            for worker in workers:
+                worker.cancel()
+            for worker in workers:
+                try:
+                    await worker
+                except asyncio.CancelledError:
+                    pass
+            logger.info("Session outbox workers stopped (%d)", len(workers))
 
         if self.resource_monitor_task:
             self.resource_monitor_task.cancel()

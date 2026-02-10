@@ -20,6 +20,7 @@ from teleclaude.constants import (
     REDIS_OUTPUT_STREAM_TTL,
     REDIS_SOCKET_TIMEOUT,
 )
+from teleclaude.runtime.binaries import resolve_agent_binary, resolve_tmux_binary
 from teleclaude.utils import expand_env_vars
 
 # Project root (relative to this file)
@@ -87,7 +88,7 @@ class ComputerConfig:
     is_master: bool
     trusted_dirs: list[TrustedDir]
     host: str | None = None  # Optional hostname/IP for SSH remote execution
-    tmux_binary: str = "tmux"  # Path to tmux binary or wrapper
+    tmux_binary: str = "tmux"  # Resolved by runtime policy (not user-configurable)
 
     def get_all_trusted_dirs(self) -> list[TrustedDir]:
         """Get all trusted directories including default_working_dir.
@@ -121,7 +122,8 @@ class ComputerConfig:
 class AgentConfig:
     """Configuration for a specific AI agent."""
 
-    command: str  # The full base command string, including fixed flags
+    binary: str  # Resolved by runtime policy (not user-configurable)
+    flags: str  # System-controlled flags, from AGENT_PROTOCOL
     session_dir: str
     log_pattern: str
     model_flags: dict[str, str]
@@ -130,6 +132,11 @@ class AgentConfig:
     non_interactive_flag: str  # Flag for non-interactive/pipe mode (e.g., "-p")
     resume_template: str
     continue_template: str = ""
+
+    @property
+    def command(self) -> str:
+        """Assembled base command: binary + system flags."""
+        return f"{self.binary} {self.flags}".strip()
 
 
 @dataclass
@@ -174,7 +181,8 @@ class TTSServiceConfig:
 
     enabled: bool
     voices: list[TTSServiceVoiceConfig] | None = None
-    model: str | None = None  # Optional local path or HF repo id (used by qwen3)
+    model: str | None = None  # Optional local path or HF repo id
+    params: dict[str, object] | None = None  # guard: loose-dict - Model-specific kwargs are dynamic.
 
 
 @dataclass
@@ -197,6 +205,23 @@ class TTSConfig:
     service_priority: list[str] | None = None
     events: Dict[str, TTSEventConfig] | None = None
     services: Dict[str, TTSServiceConfig] | None = None
+
+
+@dataclass
+class STTServiceConfig:
+    """Configuration for a single STT service."""
+
+    enabled: bool
+    model: str | None = None  # HF repo id or local path (for parakeet)
+
+
+@dataclass
+class STTConfig:
+    """Speech-to-text configuration."""
+
+    enabled: bool
+    service_priority: list[str] | None = None
+    services: Dict[str, STTServiceConfig] | None = None
 
 
 @dataclass
@@ -258,6 +283,7 @@ class Config:
     ui: UIConfig
     terminal: TerminalConfig
     tts: TTSConfig | None = None
+    stt: STTConfig | None = None
     summarizer: SummarizerConfig = field(default_factory=SummarizerConfig)
     experiments: list[ExperimentConfig] = field(default_factory=list)
 
@@ -282,8 +308,8 @@ class Config:
         return False
 
 
-# Default configuration values (single source of truth)
-DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration structure
+# Default configuration values (single source of truth for user-configurable keys)
+DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration structure
     "database": {
         "path": f"{WORKING_DIR}/teleclaude.db",
     },
@@ -296,7 +322,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
         "is_master": False,
         "trusted_dirs": [],
         "host": None,
-        "tmux_binary": "tmux",
     },
     "polling": {
         "directory_check_interval": DIRECTORY_CHECK_INTERVAL,
@@ -320,17 +345,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
     "terminal": {
         "strip_ansi": True,
     },
-    "agents": {
-        "claude": {
-            "command": 'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\'',
-        },
-        "gemini": {
-            "command": "gemini --yolo",
-        },
-        "codex": {
-            "command": "codex --dangerously-bypass-approvals-and-sandbox --search",
-        },
-    },
     "ui": {
         "animations_enabled": True,
         "animations_periodic_interval": 60,
@@ -340,10 +354,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
         "enabled": False,
         "events": {
             "session_start": {
-                "enabled": False,
-                "message": None,
-            },
-            "agent_stop": {
                 "enabled": False,
                 "message": None,
             },
@@ -375,7 +385,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
 }
 
 
-def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:  # noqa: loose-dict - YAML config merge
+def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:  # guard: loose-dict - YAML config merge
     """Deep merge override dict into base dict.
 
     Args:
@@ -392,6 +402,26 @@ def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[st
         else:
             result[key] = value
     return result
+
+
+def _validate_disallowed_runtime_keys(user_config: dict[str, object]) -> None:  # guard: loose-dict
+    """Reject config keys that must be runtime policy, not user configuration."""
+    disallowed: list[str] = []
+
+    if "agents" in user_config:
+        disallowed.append("agents")
+
+    computer = user_config.get("computer")
+    if isinstance(computer, dict) and "tmux_binary" in computer:
+        disallowed.append("computer.tmux_binary")
+
+    if disallowed:
+        joined = ", ".join(disallowed)
+        raise ValueError(
+            "config.yml contains disallowed runtime keys: "
+            f"{joined}. "
+            "Agent and tmux binaries are now hardcoded runtime policy and cannot be configured."
+        )
 
 
 def _parse_trusted_dirs(raw_dirs: list[object]) -> list[TrustedDir]:
@@ -422,7 +452,7 @@ def _parse_trusted_dirs(raw_dirs: list[object]) -> list[TrustedDir]:
     return trusted_dirs
 
 
-def _parse_tts_config(raw_tts: dict[str, object] | None) -> TTSConfig | None:  # noqa: loose-dict
+def _parse_tts_config(raw_tts: dict[str, object] | None) -> TTSConfig | None:  # guard: loose-dict
     """Parse TTS config from raw dict.
 
     Args:
@@ -473,16 +503,45 @@ def _parse_tts_config(raw_tts: dict[str, object] | None) -> TTSConfig | None:  #
                                 )
                             )
 
+                raw_params = service_data.get("params")
+                params = dict(raw_params) if isinstance(raw_params, dict) else None
+
                 services[service_name] = TTSServiceConfig(
                     enabled=bool(service_data.get("enabled", False)),
                     voices=voices if voices else None,
                     model=str(service_data.get("model")) if service_data.get("model") else None,
+                    params=params,
                 )
 
     return TTSConfig(enabled=tts_enabled, service_priority=service_priority, events=events, services=services)
 
 
-def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML deserialization input
+def _parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  # guard: loose-dict
+    """Parse STT config from raw dict."""
+    if not raw_stt:
+        return None
+
+    stt_enabled = bool(raw_stt.get("enabled", False))
+    service_priority_raw = raw_stt.get("service_priority", [])
+    services_raw = raw_stt.get("services", {})
+
+    service_priority = None
+    if isinstance(service_priority_raw, list):
+        service_priority = [str(s) for s in service_priority_raw]
+
+    services: dict[str, STTServiceConfig] = {}
+    if isinstance(services_raw, dict):
+        for service_name, service_data in services_raw.items():
+            if isinstance(service_data, dict):
+                services[service_name] = STTServiceConfig(
+                    enabled=bool(service_data.get("enabled", False)),
+                    model=str(service_data.get("model")) if service_data.get("model") else None,
+                )
+
+    return STTConfig(enabled=stt_enabled, service_priority=service_priority, services=services)
+
+
+def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML deserialization input
     """Build typed Config from raw dict with proper type conversion."""
     db_raw = raw["database"]
     comp_raw = raw["computer"]
@@ -492,35 +551,28 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
     creds_raw = raw.get("creds", {})
     ui_raw = raw["ui"]
     terminal_raw = raw.get("terminal", {"strip_ansi": True})
-    agents_raw = raw.get("agents", {})
     tts_raw = raw.get("tts", None)
+    stt_raw = raw.get("stt", None)
     summarizer_raw = raw.get("summarizer", {})
     experiments_raw = raw.get("experiments", [])
 
-    # Import AGENT_METADATA from constants
-    from teleclaude.constants import AGENT_METADATA
+    # Import AGENT_PROTOCOL from constants
+    from teleclaude.constants import AGENT_PROTOCOL
 
     agents_registry: Dict[str, AgentConfig] = {}
-    if isinstance(agents_raw, dict):
-        for name, agent_data in agents_raw.items():
-            if isinstance(agent_data, dict):
-                # Get metadata from constants
-                metadata = AGENT_METADATA.get(name, {})
-                if not metadata:
-                    raise ValueError(f"Unknown agent '{name}' - no metadata in constants.AGENT_METADATA")
-
-                # Build AgentConfig from constants + user's command
-                agents_registry[name] = AgentConfig(
-                    command=str(agent_data["command"]),
-                    session_dir=str(metadata["session_dir"]),
-                    log_pattern=str(metadata["log_pattern"]),
-                    model_flags=dict(metadata["model_flags"]),  # type: ignore[arg-type]
-                    exec_subcommand=str(metadata["exec_subcommand"]),
-                    interactive_flag=str(metadata["interactive_flag"]),
-                    non_interactive_flag=str(metadata["non_interactive_flag"]),
-                    resume_template=str(metadata["resume_template"]),
-                    continue_template=str(metadata.get("continue_template", "")),  # Optional field
-                )
+    for name, protocol in AGENT_PROTOCOL.items():
+        agents_registry[name] = AgentConfig(
+            binary=resolve_agent_binary(name),
+            flags=str(protocol["flags"]),
+            session_dir=str(protocol["session_dir"]),
+            log_pattern=str(protocol["log_pattern"]),
+            model_flags=dict(protocol["model_flags"]),  # type: ignore[arg-type]
+            exec_subcommand=str(protocol["exec_subcommand"]),
+            interactive_flag=str(protocol["interactive_flag"]),
+            non_interactive_flag=str(protocol["non_interactive_flag"]),
+            resume_template=str(protocol["resume_template"]),
+            continue_template=str(protocol.get("continue_template", "")),  # Optional field
+        )
 
     experiments = []
     if isinstance(experiments_raw, list):
@@ -555,7 +607,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
             is_master=bool(comp_raw["is_master"]),  # type: ignore[index,misc]
             trusted_dirs=_parse_trusted_dirs(list(comp_raw["trusted_dirs"])),  # type: ignore[index,misc]
             host=str(comp_raw["host"]) if comp_raw["host"] else None,  # type: ignore[index,misc]
-            tmux_binary=str(comp_raw["tmux_binary"]),  # type: ignore[index,misc]
+            tmux_binary=resolve_tmux_binary(),
         ),
         polling=PollingConfig(
             directory_check_interval=int(polling_raw["directory_check_interval"]),  # type: ignore[index,misc]
@@ -584,6 +636,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
             strip_ansi=bool(terminal_raw.get("strip_ansi", True))  # type: ignore[attr-defined]
         ),
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
+        stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]
         summarizer=SummarizerConfig(
             enabled=bool(summarizer_raw.get("enabled", True)) if isinstance(summarizer_raw, dict) else True,
             max_summary_words=int(summarizer_raw.get("max_summary_words", 30))
@@ -611,6 +664,8 @@ with open(_config_path, encoding="utf-8") as f:
 
 # Expand environment variables
 _user_config: Any = expand_env_vars(_raw_user_config) if isinstance(_raw_user_config, dict) else {}
+if isinstance(_user_config, dict):
+    _validate_disallowed_runtime_keys(_user_config)
 
 # Load optional experiments.yml from same directory as config.yml
 _experiments_path = _config_path.parent / "experiments.yml"
@@ -630,6 +685,9 @@ if _experiments_path.exists():
                 # Standard logger not yet available here, but we can add a log entry to DEFAULT_CONFIG or similar
                 # Actually, config.py defines 'config' at the end.
                 _user_config["experiments"].extend(exp_list)
+
+if isinstance(_user_config, dict):
+    _validate_disallowed_runtime_keys(_user_config)
 
 # Merge with defaults and build typed config
 _merged = _deep_merge(DEFAULT_CONFIG, _user_config)  # type: ignore[arg-type]

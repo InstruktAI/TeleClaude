@@ -6,11 +6,12 @@ Handles agent lifecycle events (start, stop, notification) and routes them to:
 3. Human UI (via AdapterClient feedback)
 """
 
+import asyncio
 import base64
 import random
 from datetime import datetime, timezone
 from hashlib import sha256
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Coroutine, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -32,7 +33,7 @@ from teleclaude.core.feature_flags import is_threaded_output_enabled, is_threade
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import notify_input_request, notify_stop
-from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input
+from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input_title
 from teleclaude.core.tmux_bridge import send_keys_existing_tmux
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
@@ -43,6 +44,7 @@ from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
     extract_last_agent_message,
     extract_last_user_message,
+    extract_last_user_message_with_timestamp,
     get_assistant_messages_since,
     render_agent_output,
     render_clean_agent_output,
@@ -125,6 +127,27 @@ class AgentCoordinator:
         self.client = client
         self.tts_manager = tts_manager
         self.headless_snapshot_service = headless_snapshot_service
+        self._background_tasks: set[asyncio.Task[object]] = set()
+
+    def _queue_background_task(
+        self,
+        coro: Coroutine[object, object, object],
+        label: str,
+    ) -> None:
+        """Run non-critical work without blocking hook event handling."""
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+
+        def _on_done(done: asyncio.Task[object]) -> None:
+            self._background_tasks.discard(done)
+            try:
+                done.result()
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:  # noqa: BLE001 - background task errors are logged and dropped
+                logger.warning("Background task '%s' failed: %s", label, exc)
+
+        task.add_done_callback(_on_done)
 
     async def handle_event(self, context: AgentEventContext) -> None:
         """Handle any agent lifecycle event."""
@@ -197,8 +220,13 @@ class AgentCoordinator:
             logger.warning("Session %s not found for user_prompt_submit", session_id[:8])
             return
 
+        prompt_text = payload.prompt or ""
+        if not prompt_text.strip():
+            logger.debug("Empty prompt detected, skipping user input persistence for session %s", session_id[:8])
+            return
+
         # System-injected checkpoint — not real user input, skip entirely
-        if _is_checkpoint_prompt(payload.prompt, raw_payload=payload.raw):
+        if _is_checkpoint_prompt(prompt_text, raw_payload=payload.raw):
             logger.debug("Checkpoint prompt detected, skipping user input persistence for session %s", session_id[:8])
             return
 
@@ -210,27 +238,24 @@ class AgentCoordinator:
 
         # Prepare batched update
         update_kwargs: dict[str, object] = {  # guard: loose-dict - Dynamic session updates
-            "last_message_sent": payload.prompt[:200],
+            "last_message_sent": prompt_text[:200],
             "last_message_sent_at": datetime.now(timezone.utc).isoformat(),
             "last_input_origin": InputOrigin.HOOK.value,
         }
 
-        # Update title if still "Untitled" (pure description stored in DB)
+        # Title update is non-critical and must not block hook ordering.
         if session.title == "Untitled":
-            try:
-                new_title, _summary = await summarize_user_input(payload.prompt)
-                if new_title:
-                    update_kwargs["title"] = new_title
-                    logger.info("Updated session title from user input: %s", new_title)
-            except Exception as exc:  # noqa: BLE001 - title update is best-effort
-                logger.warning("Title summarization failed: %s", exc)
+            self._queue_background_task(
+                self._update_session_title_async(session_id, prompt_text),
+                f"title-summary:{session_id[:8]}",
+            )
 
         # Single DB update for all fields
         await db.update_session(session_id, **update_kwargs)
         logger.debug(
             "Recorded user input via hook for session %s: %s...",
             session_id[:8],
-            payload.prompt[:50],
+            prompt_text[:50],
         )
 
         # Non-headless: DB write done above, no further routing needed
@@ -244,7 +269,7 @@ class AgentCoordinator:
 
         cmd = ProcessMessageCommand(
             session_id=session_id,
-            text=payload.prompt,
+            text=prompt_text,
             origin=InputOrigin.HOOK.value,
         )
 
@@ -254,6 +279,31 @@ class AgentCoordinator:
         )
 
         await get_command_service().process_message(cmd)
+
+    async def _update_session_title_async(self, session_id: str, prompt: str) -> None:
+        """Best-effort asynchronous title update for untitled sessions."""
+        if not prompt:
+            return
+
+        current = await db.get_session(session_id)
+        if not current or current.title != "Untitled":
+            return
+
+        try:
+            new_title = await summarize_user_input_title(prompt)
+        except Exception as exc:  # noqa: BLE001 - title update should not break flow
+            logger.warning("Title summarization failed: %s", exc)
+            return
+
+        if not new_title:
+            return
+
+        latest = await db.get_session(session_id)
+        if not latest or latest.title != "Untitled":
+            return
+
+        await db.update_session(session_id, title=new_title)
+        logger.info("Updated session title from user input: %s", new_title)
 
     async def handle_agent_stop(self, context: AgentEventContext) -> None:
         """Handle stop event - Agent session stopped."""
@@ -279,13 +329,15 @@ class AgentCoordinator:
         # For Codex: recover last user input from transcript (no native prompt hook).
         codex_input = await self._extract_user_input_for_codex(session_id, payload)
         if codex_input:
+            input_text, input_timestamp = codex_input
             update_kwargs.update(
                 {
-                    "last_message_sent": codex_input[:200],
-                    "last_message_sent_at": datetime.now(timezone.utc).isoformat(),
+                    "last_message_sent": input_text[:200],
                     "last_input_origin": InputOrigin.HOOK.value,
                 }
             )
+            if input_timestamp:
+                update_kwargs["last_message_sent_at"] = input_timestamp.isoformat()
 
         raw_output = await self._extract_agent_output(session_id, payload)
         if raw_output:
@@ -593,7 +645,9 @@ class AgentCoordinator:
             logger.warning("Summarization failed: %s", exc, extra={"session_id": session_id[:8]})
             return None
 
-    async def _extract_user_input_for_codex(self, session_id: str, payload: AgentStopPayload) -> str | None:
+    async def _extract_user_input_for_codex(
+        self, session_id: str, payload: AgentStopPayload
+    ) -> tuple[str, datetime | None] | None:
         """Extract last user input from transcript for Codex sessions.
 
         Codex doesn't have user_prompt_submit hook, so we extract user input
@@ -618,10 +672,11 @@ class AgentCoordinator:
         except ValueError:
             return None
 
-        last_user_input = extract_last_user_message(transcript_path, agent_name)
-        if not last_user_input:
+        extracted = extract_last_user_message_with_timestamp(transcript_path, agent_name)
+        if not extracted:
             logger.debug("Codex user input extraction skipped (no user message)", session=session_id[:8])
             return None
+        last_user_input, input_timestamp = extracted
 
         # Don't persist our own checkpoint message as user input
         if _is_checkpoint_prompt(last_user_input):
@@ -633,7 +688,7 @@ class AgentCoordinator:
             session_id[:8],
             last_user_input[:50],
         )
-        return last_user_input
+        return last_user_input, input_timestamp
 
     async def _notify_session_listener(
         self,

@@ -2,8 +2,6 @@ import importlib
 
 import yaml
 
-import teleclaude.config
-
 
 def test_experiments_yml_overlay_loading(tmp_path, monkeypatch):
     """Verify that experiments.yml is correctly merged into the global config."""
@@ -21,7 +19,6 @@ def test_experiments_yml_overlay_loading(tmp_path, monkeypatch):
         "database": {"path": "/tmp/test.db"},
         "redis": {"enabled": False},
         "telegram": {"trusted_bots": []},
-        "agents": {"claude": {"command": "claude"}},
         "ui": {"animations_enabled": True, "animations_periodic_interval": 60, "animations_subset": []},
     }
 
@@ -33,6 +30,8 @@ def test_experiments_yml_overlay_loading(tmp_path, monkeypatch):
 
     # Monkeypatch the environment variable to point to our temp config
     monkeypatch.setenv("TELECLAUDE_CONFIG_PATH", str(config_file))
+
+    import teleclaude.config
 
     # Force reload of the config module to trigger the loading logic
     importlib.reload(teleclaude.config)

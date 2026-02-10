@@ -52,12 +52,12 @@ link:
 
 format:
 	@echo "Formatting code..."
-	@./bin/format.sh
+	@./tools/format.sh
 	@echo "✓ Code formatted"
 
 lint:
 	@echo "Running lint checks..."
-	@./bin/lint.sh
+	@./tools/lint.sh
 	@echo "✓ Lint checks passed"
 
 test-unit:
@@ -72,7 +72,7 @@ test-e2e:
 
 test-all:
 	@echo "Running all tests..."
-	@./bin/test.sh
+	@./tools/test.sh
 	@echo "✓ All tests passed"
 
 test: test-all

@@ -6,7 +6,7 @@
 #   2. Generating config.yml (isolated worktree database)
 #   3. Symlinking .env from main repo
 #
-# Usage: bin/worktree-prepare.sh <slug>
+# Usage: tools/worktree-prepare.sh <slug>
 #
 
 set -e
@@ -24,6 +24,10 @@ print_success() {
 
 print_error() {
     echo -e "${RED}✗${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
 }
 
 print_info() {

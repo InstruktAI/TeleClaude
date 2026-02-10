@@ -28,6 +28,7 @@ type: 'policy'
 - Use generators for streaming or large data.
 - Use context managers for resource handling.
 - Avoid star imports or classes used for namespacing.
+- Keep package `__init__.py` files as import/export surfaces; move implementation into dedicated modules.
 - Follow project formatter and linter rules exactly.
 - Keep all imports at module top level.
 - Conform to existing naming and patterns.

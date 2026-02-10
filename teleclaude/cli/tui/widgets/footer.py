@@ -4,7 +4,7 @@ import curses
 from datetime import datetime
 
 from teleclaude.cli.models import AgentAvailabilityInfo
-from teleclaude.cli.tui.theme import AGENT_COLORS
+from teleclaude.cli.tui.widgets.agent_status import build_agent_render_spec
 
 
 class Footer:
@@ -29,44 +29,30 @@ class Footer:
             row: Row to render at
             width: Screen width
         """
-        # Build agent availability parts with their colors
-        agent_parts: list[tuple[str, int]] = []  # (text, color_pair)
+        # Build agent availability parts with shared status renderer
+        agent_parts: list[tuple[str, int, bool]] = []  # (text, color_pair, bold)
         for agent in ["claude", "gemini", "codex"]:
             info = self.agent_availability.get(agent)
-            available = info.available if info else True
-            degraded = bool(info and (info.status == "degraded" or (info.reason or "").startswith("degraded")))
-
-            # Use normal color for degraded and available; muted for unavailable.
-            agent_colors = AGENT_COLORS.get(agent, {"muted": 0, "normal": 0})
-            if available:
-                color_pair_id = agent_colors["normal"]
-            else:
-                color_pair_id = agent_colors["muted"]
-
-            if degraded:
-                agent_parts.append((f"{agent} ~", color_pair_id))
-            elif available:
-                agent_parts.append((f"{agent} ✔", color_pair_id))
-            else:
-                until = info.unavailable_until if info else None
-                countdown = self._format_countdown(until) if until else "?"
-                agent_parts.append((f"{agent} ✘ ({countdown})", color_pair_id))
+            until = info.unavailable_until if info else None
+            countdown = self._format_countdown(until) if until else "?"
+            spec = build_agent_render_spec(agent, info, unavailable_detail=countdown, show_unavailable_detail=True)
+            agent_parts.append((spec.text, spec.color_pair_id, spec.bold))
 
         # Calculate total width needed for right alignment
-        total_text_width = sum(len(text) for text, _ in agent_parts) + (len(agent_parts) - 1) * 2  # 2 spaces between
+        total_text_width = sum(len(text) for text, _, _ in agent_parts) + (len(agent_parts) - 1) * 2  # 2 spaces between
         max_width = max(0, width - 1)  # avoid last-column writes
         if max_width == 0:
             return
 
         # If overflow, drop leftmost parts until it fits (keep right aligned)
         if total_text_width > max_width:
-            trimmed: list[tuple[str, int]] = []
+            trimmed: list[tuple[str, int, bool]] = []
             used = 0
-            for text, color in reversed(agent_parts):
+            for text, color, bold in reversed(agent_parts):
                 needed = len(text) if not trimmed else len(text) + 2
                 if used + needed > max_width:
                     break
-                trimmed.append((text, color))
+                trimmed.append((text, color, bold))
                 used += needed
             agent_parts = list(reversed(trimmed))
             total_text_width = used
@@ -76,13 +62,13 @@ class Footer:
         # Render each agent with its color
         col = start_col
         try:
-            for i, (text, color_pair_id) in enumerate(agent_parts):
+            for i, (text, color_pair_id, bold) in enumerate(agent_parts):
                 if i > 0:
                     # Add spacing between agents
                     stdscr.addstr(row, col, "  ")  # type: ignore[attr-defined]
                     col += 2
                 attr = curses.color_pair(color_pair_id)
-                if "✔" in text:
+                if bold:
                     attr |= curses.A_BOLD
                 stdscr.addstr(row, col, text, attr)  # type: ignore[attr-defined]
                 col += len(text)

@@ -386,6 +386,41 @@ def test_receiver_gemini_before_agent_emits_user_prompt_submit(monkeypatch, tmp_
     assert sent[0][1] == "user_prompt_submit"
 
 
+def test_receiver_gemini_before_agent_empty_prompt_is_dropped(monkeypatch, tmp_path):
+    """Gemini BeforeAgent with empty prompt should not enqueue user_prompt_submit."""
+    sent = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(
+        receiver,
+        "_read_stdin",
+        lambda: (
+            '{"session_id":"native-11","transcript_path":"/tmp/g3.json","prompt":""}',
+            {
+                "session_id": "native-11",
+                "transcript_path": "/tmp/g3.json",
+                "prompt": "",
+                "hook_event_name": "BeforeAgent",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="BeforeAgent", cwd=None)
+    )
+    tmpdir = tmp_path / "tmp-gemini-before-agent-empty"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("sess-11")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
+
+    receiver.main()
+
+    assert sent == []
+
+
 def test_receiver_includes_agent_name_in_payload(monkeypatch, tmp_path):
     sent = []
 

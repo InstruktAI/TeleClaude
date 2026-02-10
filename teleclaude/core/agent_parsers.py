@@ -60,11 +60,11 @@ class CodexParser(LogParser):
         guard: allow-string-compare
         """
         entry_raw = json.loads(line)
-        entry = cast(dict[str, object], entry_raw)  # noqa: loose-dict - External JSONL entry
+        entry = cast(dict[str, object], entry_raw)  # guard: loose-dict - External JSONL entry
 
         entry_type = entry["type"]
         if entry_type == "event_msg":
-            payload = cast(dict[str, object], entry["payload"])  # noqa: loose-dict - External JSONL payload
+            payload = cast(dict[str, object], entry["payload"])  # guard: loose-dict - External JSONL payload
             payload_type = payload["type"]
             if payload_type == "agent_message":
                 yield LogEvent(
@@ -76,7 +76,7 @@ class CodexParser(LogParser):
 
         # Handle response_item
         if entry_type == "response_item":
-            payload = cast(dict[str, object], entry["payload"])  # noqa: loose-dict - External JSONL payload
+            payload = cast(dict[str, object], entry["payload"])  # guard: loose-dict - External JSONL payload
             if payload["type"] != "message":
                 return
             role = cast(str, payload["role"])
@@ -85,7 +85,7 @@ class CodexParser(LogParser):
             if role in ("assistant", "model"):
                 # Check for tool use / notifications
                 for block_raw in content:
-                    block = cast(dict[str, object], block_raw)  # noqa: loose-dict - External JSONL block
+                    block = cast(dict[str, object], block_raw)  # guard: loose-dict - External JSONL block
                     if block["type"] == "tool_use":
                         tool_name = str(block["name"])
                         # Generic input request detection
@@ -111,7 +111,7 @@ class CodexParser(LogParser):
                 if entry["type"] != "response_item":
                     continue
 
-                payload = cast(dict[str, object], entry["payload"])  # noqa: loose-dict - External JSONL payload
+                payload = cast(dict[str, object], entry["payload"])  # guard: loose-dict - External JSONL payload
                 if payload["type"] != "message":
                     continue
                 role = cast(str, payload["role"])
@@ -120,7 +120,7 @@ class CodexParser(LogParser):
                 if role in ("assistant", "model"):
                     assistant_texts: list[str] = []
                     for block_raw in content:
-                        block = cast(dict[str, object], block_raw)  # noqa: loose-dict - External JSONL block
+                        block = cast(dict[str, object], block_raw)  # guard: loose-dict - External JSONL block
                         if block["type"] == "output_text":
                             text = cast(str, block["text"])
                             if text:
@@ -141,7 +141,7 @@ class CodexParser(LogParser):
         """
         texts: list[str] = []
         for block_raw in content:
-            block = cast(dict[str, object], block_raw)  # noqa: loose-dict - External JSONL block
+            block = cast(dict[str, object], block_raw)  # guard: loose-dict - External JSONL block
             if block["type"] == "output_text":
                 text = cast(str, block["text"])
                 if text:

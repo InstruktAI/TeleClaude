@@ -1,4 +1,16 @@
 #!/usr/bin/env -S uv run --quiet
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "instruktai-python-logger",
+#     "python-dotenv",
+#     "pydantic",
+#     "pyyaml",
+#     "aiohttp",
+#     "dateparser",
+#     "munch",
+# ]
+# ///
 
 """Search native agent session transcripts (~/.claude, ~/.codex, ~/.gemini)."""
 
@@ -13,7 +25,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from teleclaude.constants import AGENT_METADATA
+from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_local_datetime
 from teleclaude.utils.transcript import collect_transcript_messages, parse_session_transcript
@@ -21,7 +33,7 @@ from teleclaude.utils.transcript import collect_transcript_messages, parse_sessi
 
 def _discover_transcripts(agent: AgentName) -> list[tuple[Path, float]]:
     """Find all transcript files for an agent, return (path, mtime) sorted newest first."""
-    meta = AGENT_METADATA[agent.value]
+    meta = AGENT_PROTOCOL[agent.value]
     session_dirs: list[Path] = [Path(str(meta["session_dir"])).expanduser()]
 
     # Claude stores transcripts in ~/.claude/projects/*/*.jsonl, not sessions/
@@ -246,7 +258,7 @@ def display_combined_history(agents: List[AgentName], search_term: str = "", lim
     # Resume hints
     shown_agents = {entry["agent"] for entry in all_results}
     for agent_str in sorted(shown_agents):
-        meta = AGENT_METADATA.get(agent_str)
+        meta = AGENT_PROTOCOL.get(agent_str)
         if meta:
             resume_tpl = str(meta.get("resume_template", ""))
             if resume_tpl:

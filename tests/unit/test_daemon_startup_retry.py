@@ -2,7 +2,7 @@
 
 import os
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -124,45 +124,37 @@ class TestDaemonStartupRetryIntegration:
         # Isolate API socket path so this test never touches production daemon socket.
         from teleclaude import api_server as api_server_module
         from teleclaude import constants as constants_module
-        from teleclaude.core import voice_message_handler
         from teleclaude.daemon import TeleClaudeDaemon
 
         temp_api_socket = f"/tmp/teleclaude-unit-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
         monkeypatch.setattr(constants_module, "API_SOCKET_PATH", temp_api_socket)
         monkeypatch.setattr(api_server_module, "API_SOCKET_PATH", temp_api_socket)
 
-        # Reset voice handler state
-        voice_message_handler._openai_client = None
+        with (
+            patch("teleclaude.daemon.db") as mock_db,
+            patch("teleclaude.daemon.config") as mock_config,
+            patch("teleclaude.daemon.init_voice_handler") as mock_init_voice,
+            patch.object(TeleClaudeDaemon, "_acquire_lock"),
+        ):
+            # Setup mocks
+            mock_db.initialize = AsyncMock()
+            mock_db.set_client = MagicMock()
+            mock_db.get_active_sessions = AsyncMock(return_value=[])
+            mock_db.get_ux_state = AsyncMock()
+            mock_config.mcp.enabled = False
 
-        try:
-            with (
-                patch("teleclaude.daemon.db") as mock_db,
-                patch("teleclaude.daemon.config") as mock_config,
-                patch("teleclaude.daemon.init_voice_handler") as mock_init_voice,
-                patch.object(TeleClaudeDaemon, "_acquire_lock"),
-            ):
-                # Setup mocks
-                mock_db.initialize = AsyncMock()
-                mock_db.set_client = MagicMock()
-                mock_db.get_active_sessions = AsyncMock(return_value=[])
-                mock_db.get_ux_state = AsyncMock()
-                mock_config.mcp.enabled = False
+            # Create daemon
+            daemon = TeleClaudeDaemon(".env.test")
 
-                # Create daemon
-                daemon = TeleClaudeDaemon(".env.test")
+            # Mock client.start() to fail (network error)
+            daemon.client.start = AsyncMock(side_effect=ConnectionError("Network unreachable"))
 
-                # Mock client.start() to fail (network error)
-                daemon.client.start = AsyncMock(side_effect=ConnectionError("Network unreachable"))
+            # Attempt to start daemon (should fail)
+            with pytest.raises(ConnectionError):
+                await daemon.start()
 
-                # Attempt to start daemon (should fail)
-                with pytest.raises(ConnectionError):
-                    await daemon.start()
-
-                # Verify voice handler was NOT initialized (network failed first)
-                mock_init_voice.assert_not_called()
-
-        finally:
-            voice_message_handler._openai_client = None
+            # Verify voice handler was NOT initialized (network failed first)
+            mock_init_voice.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_voice_handler_initialized_after_network_success(self, monkeypatch, tmp_path):
@@ -172,48 +164,40 @@ class TestDaemonStartupRetryIntegration:
         # Isolate API socket path so this test never touches production daemon socket.
         from teleclaude import api_server as api_server_module
         from teleclaude import constants as constants_module
-        from teleclaude.core import voice_message_handler
         from teleclaude.daemon import TeleClaudeDaemon
 
         temp_api_socket = f"/tmp/teleclaude-unit-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
         monkeypatch.setattr(constants_module, "API_SOCKET_PATH", temp_api_socket)
         monkeypatch.setattr(api_server_module, "API_SOCKET_PATH", temp_api_socket)
 
-        # Reset voice handler state
-        voice_message_handler._openai_client = None
+        with (
+            patch("teleclaude.daemon.db") as mock_db,
+            patch("teleclaude.daemon.config") as mock_config,
+            patch("teleclaude.daemon.init_voice_handler") as mock_init_voice,
+            patch("teleclaude.daemon.polling_coordinator") as mock_polling,
+            patch.object(TeleClaudeDaemon, "_acquire_lock"),
+            patch("teleclaude.daemon.MaintenanceService.periodic_cleanup", new_callable=AsyncMock),
+            patch("teleclaude.daemon.MaintenanceService.poller_watch_loop", new_callable=AsyncMock),
+        ):
+            # Setup mocks
+            mock_db.initialize = AsyncMock()
+            mock_db.set_client = MagicMock()
+            mock_db.get_active_sessions = AsyncMock(return_value=[])
+            mock_db.get_ux_state = AsyncMock()
+            mock_config.mcp.enabled = False
+            mock_polling.restore_active_pollers = AsyncMock()
 
-        try:
-            with (
-                patch("teleclaude.daemon.db") as mock_db,
-                patch("teleclaude.daemon.config") as mock_config,
-                patch("teleclaude.daemon.init_voice_handler") as mock_init_voice,
-                patch("teleclaude.daemon.polling_coordinator") as mock_polling,
-                patch.object(TeleClaudeDaemon, "_acquire_lock"),
-                patch("teleclaude.daemon.MaintenanceService.periodic_cleanup", new_callable=AsyncMock),
-                patch("teleclaude.daemon.MaintenanceService.poller_watch_loop", new_callable=AsyncMock),
-            ):
-                # Setup mocks
-                mock_db.initialize = AsyncMock()
-                mock_db.set_client = MagicMock()
-                mock_db.get_active_sessions = AsyncMock(return_value=[])
-                mock_db.get_ux_state = AsyncMock()
-                mock_config.mcp.enabled = False
-                mock_polling.restore_active_pollers = AsyncMock()
+            # Create daemon
+            daemon = TeleClaudeDaemon(".env.test")
 
-                # Create daemon
-                daemon = TeleClaudeDaemon(".env.test")
+            # Mock successful network connection
+            daemon.client.start = AsyncMock()
 
-                # Mock successful network connection
-                daemon.client.start = AsyncMock()
+            # Start daemon (should succeed)
+            await daemon.start()
 
-                # Start daemon (should succeed)
-                await daemon.start()
-
-                # Verify voice handler WAS initialized (after network succeeded)
-                assert mock_init_voice.call_count == 1
-
-        finally:
-            voice_message_handler._openai_client = None
+            # Verify voice handler WAS initialized (after network succeeded)
+            assert mock_init_voice.call_count == 1
 
     @pytest.mark.asyncio
     async def test_voice_handler_idempotent_on_retry(self):
@@ -224,24 +208,11 @@ class TestDaemonStartupRetryIntegration:
         """
         from teleclaude.core import voice_message_handler
 
-        # Reset voice handler state
-        voice_message_handler._openai_client = None
+        with patch.dict("os.environ", {}, clear=True):
+            # First initialization sets the env var
+            voice_message_handler.init_voice_handler(api_key="test-key")
+            assert os.environ.get("OPENAI_API_KEY") == "test-key"
 
-        try:
-            calls = []
-
-            def record_openai(*args, **kwargs):
-                calls.append((args, kwargs))
-                return MagicMock()
-
-            with patch("teleclaude.core.voice_message_handler.AsyncOpenAI", new=record_openai):
-                # First initialization
-                voice_message_handler.init_voice_handler(api_key="test-key")
-                assert len(calls) == 1
-
-                # Second initialization (simulating retry) - should be no-op
-                voice_message_handler.init_voice_handler(api_key="test-key")
-                assert len(calls) == 1  # Still only called once
-
-        finally:
-            voice_message_handler._openai_client = None
+            # Second initialization (simulating retry) - should not overwrite
+            voice_message_handler.init_voice_handler(api_key="different-key")
+            assert os.environ.get("OPENAI_API_KEY") == "test-key"  # Still original

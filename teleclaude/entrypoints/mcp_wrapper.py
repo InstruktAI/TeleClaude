@@ -86,7 +86,7 @@ _STARTUP_COMPLETE = threading.Event()
 
 class ToolInputSchema(TypedDict):
     type: str
-    properties: dict[str, object]  # type: boundary - JSON schema is dynamic
+    properties: dict[str, object]  # guard: loose-dict - JSON schema is dynamic.
 
 
 class ToolSpec(TypedDict):

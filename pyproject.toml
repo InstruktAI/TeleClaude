@@ -54,7 +54,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-tts = [
+mlx = [
+    "mlx-audio @ git+https://github.com/Blaizzy/mlx-audio.git@main",
+    "misaki[en]",
+    "phonemizer",
+    "num2words",
 ]
 test = [
     "pytest>=8.0.0",
@@ -68,6 +72,9 @@ test = [
     "pyright>=1.1.0",
     "pre-commit>=3.6.0",
     "mypy>=1.8.0",
+]
+dev = [
+    "TeleClaude[test,mlx]",
 ]
 
 [tool.setuptools.packages.find]

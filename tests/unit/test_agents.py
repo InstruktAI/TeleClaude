@@ -11,7 +11,8 @@ from teleclaude.core import agents
 def _fake_config() -> dict[str, AgentConfig]:
     return {
         "claude": AgentConfig(
-            command='claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\'',
+            binary="claude",
+            flags='--dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\'',
             session_dir="~/.claude/sessions",
             log_pattern="*.jsonl",
             model_flags={"fast": "-m haiku", "med": "-m sonnet", "slow": "-m opus"},
@@ -22,7 +23,8 @@ def _fake_config() -> dict[str, AgentConfig]:
             continue_template="{base_cmd} --continue",
         ),
         "gemini": AgentConfig(
-            command="gemini --yolo",
+            binary="gemini",
+            flags="--yolo",
             session_dir="~/.gemini/sessions",
             log_pattern="*.jsonl",
             model_flags={
@@ -37,7 +39,8 @@ def _fake_config() -> dict[str, AgentConfig]:
             continue_template="",
         ),
         "codex": AgentConfig(
-            command="codex --dangerously-bypass-approvals-and-sandbox --search",
+            binary="codex",
+            flags="--dangerously-bypass-approvals-and-sandbox --search",
             session_dir="~/.codex/sessions",
             log_pattern="*.jsonl",
             model_flags={

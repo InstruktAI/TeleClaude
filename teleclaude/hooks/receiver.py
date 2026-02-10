@@ -130,20 +130,25 @@ def _maybe_checkpoint_output(
     if not row:
         return None
 
-    checkpoint_at = row.last_checkpoint_at
-    message_at = row.last_message_sent_at
+    def _as_utc(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    checkpoint_at = _as_utc(row.last_checkpoint_at)
+    message_at = _as_utc(row.last_message_sent_at)
     now = datetime.now(timezone.utc)
 
     # Turn start = most recent input event (real user message or previous checkpoint)
-    turn_start = max(filter(None, [message_at, checkpoint_at]), default=None)
+    turn_candidates = [dt for dt in (message_at, checkpoint_at) if dt is not None]
+    turn_start = max(turn_candidates, default=None)
     if not turn_start:
         logger.debug("Checkpoint skipped (no turn start) for session %s", session_id[:8])
         return None
 
-    # SQLite returns naive datetimes (UTC assumed); strip tzinfo for comparison
-    now_naive = now.replace(tzinfo=None)
-    turn_start_naive = turn_start.replace(tzinfo=None) if turn_start.tzinfo else turn_start
-    elapsed = (now_naive - turn_start_naive).total_seconds()
+    elapsed = (now - turn_start).total_seconds()
     if elapsed < CHECKPOINT_REACTIVATION_THRESHOLD_S:
         logger.debug(
             "Checkpoint skipped (%.1fs < %ds threshold) for session %s",
@@ -728,6 +733,22 @@ def main() -> None:
     cwd = getattr(args, "cwd", None)
     if isinstance(cwd, str) and cwd:
         data["cwd"] = cwd
+
+    # Guard: Some Gemini BeforeAgent hooks arrive with an empty prompt.
+    # These are not real user turns and must not overwrite last_message_sent.
+    if event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
+        prompt_value = data.get("prompt")
+        prompt_text = prompt_value if isinstance(prompt_value, str) else ""
+        if not prompt_text.strip():
+            logger.warning(
+                "Dropped empty user_prompt_submit hook event",
+                agent=args.agent,
+                session_id=teleclaude_session_id[:8],
+                native_session_id=(raw_native_session_id or "")[:8],
+                hook_event_name=str(data.get("hook_event_name") or ""),
+                raw_event_type=str(raw_event_type or ""),
+            )
+            return
 
     # Inject memory index into STDOUT for SessionStart (Agent Context)
     if event_type == AgentHookEvents.AGENT_SESSION_START:

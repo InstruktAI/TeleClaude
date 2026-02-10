@@ -1,8 +1,16 @@
 # Scripts
 
+## Required reads
+
+- @docs/project/policy/scripts-standalone-execution.md
+
 ## Purpose
 
 This directory contains standalone scripts and helpers that are invoked by AI agent skills, cron jobs, and CLI tools. The directory is symlinked into `~/.teleclaude/scripts` at install time (`make init`), so every file here IS the deployed version.
+
+## Public Surface Rule
+
+This folder is a public runtime command surface. Do not add one-shot migrations, temporary debugging scripts, or personal/AI scratch tooling here. If it is not a stable operator-facing command, place it outside `scripts/` (for example `tools/`).
 
 ## Portability Requirement
 
@@ -60,7 +68,7 @@ scripts/
   cron_runner.py     # Cron job executor (daemon-only)
   distribute.py      # Artifact transpiler and deployer (repo-only)
   history.py         # Transcript search tool (repo-only)
-  *.sh               # Shell utilities (monitoring, migration)
+  *.sh               # Shell utilities (stable runtime utilities only)
 ```
 
 ## Deployment

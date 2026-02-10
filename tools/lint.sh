@@ -1,18 +1,20 @@
 #!/usr/bin/env sh
 set -e  # Exit on first error
 
-dirs="teleclaude bin"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+REPO_ROOT="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
+dirs="teleclaude tools bin"
 
 echo "Running lint checks"
 
 echo "Running guardrails"
-uv run --quiet python bin/lint/guardrails.py "$@"
+uv run --quiet python "${REPO_ROOT}/tools/lint/guardrails.py" "$@"
 
 echo "Running markdown validation"
-uv run --quiet bin/lint/markdown.py
+uv run --quiet "${REPO_ROOT}/tools/lint/markdown.py"
 
 echo "Running resource validation"
-uv run --quiet -m teleclaude.cli.telec sync --validate-only --project-root "$(pwd)"
+uv run --quiet -m teleclaude.cli.telec sync --validate-only --project-root "${REPO_ROOT}"
 
 echo "Running ruff format (check)"
 uv run --quiet ruff format --check $dirs

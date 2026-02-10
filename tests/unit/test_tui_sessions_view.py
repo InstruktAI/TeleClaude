@@ -449,6 +449,24 @@ class TestSessionsViewLogic:
         assert "[17:43:21] out: **thinking" in output
         assert "final answer text" not in output
 
+    def test_input_highlight_shows_working_placeholder_after_temp_window(self, sessions_view, monkeypatch):
+        """After temp highlight clears, input highlight shows working placeholder."""
+        monkeypatch.setattr("teleclaude.cli.tui.views.sessions._format_time", lambda _ts: "17:43:21")
+        monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
+
+        session = self._make_session_node(
+            session_id="s-working",
+            last_output_summary="final answer text",
+            last_output_summary_at="2024-01-01T00:01:00Z",
+        )
+        sessions_view.state.sessions.input_highlights.add("s-working")
+        sessions_view.flat_items = [session]
+
+        output = "\n".join(sessions_view.get_render_lines(120, 10))
+
+        assert "[17:43:21] out: **working" in output
+        assert "final answer text" not in output
+
     def test_double_clicking_session_id_row_toggles_sticky_parent_only(self, mock_focus):
         """Double-clicking the ID row toggles sticky with parent-only mode (no child)."""
 
@@ -667,7 +685,7 @@ class TestSessionsViewLogic:
         assert row0_calls[1][3] == 1  # claude muted pair
 
     def test_temp_output_highlight_uses_italic_attr_when_available(self, sessions_view, monkeypatch):
-        """When italics are supported, temp output uses italic style without markdown asterisks."""
+        """When italics are supported, only placeholder text is italicized."""
 
         class FakeScreen:
             def __init__(self):
@@ -690,7 +708,62 @@ class TestSessionsViewLogic:
 
         assert lines_used == 3
         output_row_calls = [call for call in screen.calls if call[0] == 2]
-        assert len(output_row_calls) == 1
-        assert "thinking" in output_row_calls[0][2]
-        assert "**thinking" not in output_row_calls[0][2]
-        assert output_row_calls[0][3] == (curses.A_BOLD | curses.A_ITALIC)
+        assert len(output_row_calls) == 2
+        # Prefix line is non-italic
+        assert "out:" in output_row_calls[0][2]
+        assert output_row_calls[0][3] == curses.A_BOLD
+        # Placeholder overlay is italicized
+        assert "thinking" in output_row_calls[1][2]
+        assert "**thinking" not in output_row_calls[1][2]
+        assert output_row_calls[1][3] == (curses.A_BOLD | curses.A_ITALIC)
+
+    def test_working_placeholder_uses_agent_color_with_italics(self, sessions_view, monkeypatch):
+        """Working placeholder should keep agent color and italicize only the placeholder."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text, attr))
+
+        monkeypatch.setattr(curses, "A_ITALIC", 2048, raising=False)
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
+        session = self._make_session_node(
+            session_id="working-italic",
+            active_agent="claude",
+            last_output_summary="old output",
+            last_output_summary_at="2024-01-01T00:01:00Z",
+        )
+        sessions_view.state.sessions.input_highlights.add("working-italic")
+
+        screen = FakeScreen()
+        lines_used = sessions_view._render_session(screen, 0, session, 120, False, 4)
+
+        assert lines_used == 3
+        output_row_calls = [call for call in screen.calls if call[0] == 2]
+        assert len(output_row_calls) == 2
+        # Prefix line is agent color, non-italic
+        assert "out:" in output_row_calls[0][2]
+        assert output_row_calls[0][3] == 2  # claude normal pair
+        # Placeholder overlay keeps agent color + italic
+        assert "working" in output_row_calls[1][2]
+        assert output_row_calls[1][3] == (2 | curses.A_ITALIC)
+
+    def test_real_output_wins_when_no_highlights(self, sessions_view, monkeypatch):
+        """Real output must be shown immediately when highlight states are cleared."""
+        monkeypatch.setattr("teleclaude.cli.tui.views.sessions._format_time", lambda _ts: "17:43:21")
+        monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
+
+        session = self._make_session_node(
+            session_id="s-final",
+            last_output_summary="real output now",
+            last_output_summary_at="2024-01-01T00:01:00Z",
+        )
+        sessions_view.flat_items = [session]
+
+        output = "\n".join(sessions_view.get_render_lines(120, 10))
+
+        assert "[17:43:21] out: real output now" in output
+        assert "thinking" not in output
+        assert "working" not in output

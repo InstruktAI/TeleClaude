@@ -83,17 +83,26 @@ class TTSManager:
         # Try services in priority order until we find one with available voices
         for service_name in priority:
             service_cfg = self.tts_config.services.get(service_name)
-            if service_cfg and service_cfg.enabled and service_cfg.voices:
-                # Filter out voices already assigned to active sessions
-                available = [v for v in service_cfg.voices if (service_name, v.voice_id or v.name) not in voices_in_use]
-                if not available:
-                    logger.debug("All %s voices in use, trying next service", service_name)
-                    continue
-                voice = random.choice(available)
-                logger.info(
-                    f"Assigned voice: {voice.name} from service {service_name}",
-                )
-                return (service_name, voice.voice_id or voice.name)
+            if not service_cfg or not service_cfg.enabled:
+                continue
+
+            # Services with no voice list use the provider name as the voice identifier
+            if not service_cfg.voices:
+                if (service_name, service_name) not in voices_in_use:
+                    logger.info("Assigned voice: %s (provider default)", service_name)
+                    return (service_name, service_name)
+                continue
+
+            # Filter out voices already assigned to active sessions
+            available = [v for v in service_cfg.voices if (service_name, v.voice_id or v.name) not in voices_in_use]
+            if not available:
+                logger.debug("All %s voices in use, trying next service", service_name)
+                continue
+            voice = random.choice(available)
+            logger.info(
+                f"Assigned voice: {voice.name} from service {service_name}",
+            )
+            return (service_name, voice.voice_id or voice.name)
 
         logger.debug("No TTS services with available voices")
         return None
@@ -140,7 +149,7 @@ class TTSManager:
         Trigger TTS for an event.
 
         Args:
-            event_name: "session_start" or "agent_stop"
+            event_name: "session_start"
             session_id: TeleClaude session ID
             text: Custom text to speak (overrides config message)
 
@@ -268,10 +277,6 @@ class TTSManager:
         """Map agent hook events to TTS event config keys."""
         if event_name == AgentHookEvents.AGENT_SESSION_START:
             return "session_start"
-        if event_name == "stop":
-            return "agent_stop"
-        if event_name == AgentHookEvents.AGENT_STOP:
-            return "agent_stop"
         return None
 
     async def _handle_tts_result(

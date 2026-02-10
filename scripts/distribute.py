@@ -1,4 +1,17 @@
 #!/usr/bin/env -S uv run --quiet
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "python-frontmatter",
+#     "pyyaml",
+#     "pydantic",
+#     "aiohttp",
+#     "dateparser",
+#     "munch",
+#     "instruktai-python-logger",
+#     "python-dotenv",
+# ]
+# ///
 from __future__ import annotations
 
 import argparse

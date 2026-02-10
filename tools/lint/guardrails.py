@@ -32,7 +32,46 @@ def main() -> None:
     if "[tool.ruff]" not in pyproject:
         _fail("pyproject.toml must define [tool.ruff]")
 
+    _warn_for_debug_probes(repo_root)
     _warn_for_loose_dicts(repo_root)
+
+
+def _warn_for_debug_probes(repo_root: Path) -> None:
+    """Fail on leftover ad-hoc debug probes in non-test Python code."""
+    scan_roots = [
+        repo_root / "teleclaude",
+        repo_root / "scripts",
+        repo_root / "tools",
+        repo_root / "bin",
+    ]
+    matches: list[str] = []
+    for root in scan_roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*.py"):
+            rel = path.relative_to(repo_root).as_posix()
+            if rel.startswith("tools/lint/"):
+                continue
+            if rel.startswith("scripts/fixtures/"):
+                continue
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                continue
+            for lineno, line in enumerate(lines, start=1):
+                stripped = line.strip()
+                if "print(" in stripped and "DEBUG:" in stripped:
+                    matches.append(f"{rel}:{lineno}: {stripped}")
+
+    if not matches:
+        return
+
+    formatted = "\n".join(f"- {match}" for match in matches)
+    _fail(
+        "leftover debug probe prints detected.\n"
+        "Use structured logger calls and remove temporary probes before commit.\n"
+        f"{formatted}\n"
+    )
 
 
 def _warn_for_loose_dicts(repo_root: Path) -> None:

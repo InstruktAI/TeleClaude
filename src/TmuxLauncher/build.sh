@@ -1,8 +1,8 @@
 #!/bin/bash
 # Build TmuxLauncher.app
 #
-# This creates a macOS app bundle that wraps tmux, allowing it to inherit
-# permissions granted to the app (like Full Disk Access).
+# This creates a macOS app bundle that wraps tmux. To keep macOS privacy
+# permissions stable, prefer signing with a persistent identity.
 
 set -e
 
@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 APP_DIR="$REPO_ROOT/bin/TmuxLauncher.app"
 MACOS_DIR="$APP_DIR/Contents/MacOS"
+SIGN_IDENTITY="${TMUX_LAUNCHER_SIGN_IDENTITY:--}"
 
 echo "Building TmuxLauncher..."
 
@@ -31,8 +32,8 @@ cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
 <dict>
   <key>CFBundleName</key><string>TmuxLauncher</string>
   <key>CFBundleIdentifier</key><string>ai.instrukt.tmuxlauncher</string>
-  <key>CFBundleVersion</key><string>1.1</string>
-  <key>CFBundleShortVersionString</key><string>1.1</string>
+  <key>CFBundleVersion</key><string>1.2</string>
+  <key>CFBundleShortVersionString</key><string>1.2</string>
   <key>CFBundleExecutable</key><string>tmux-launcher</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSUIElement</key><true/>
@@ -40,8 +41,8 @@ cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
 </plist>
 EOF
 
-# Sign the app (ad-hoc signing for local use)
-codesign --force --sign - "$APP_DIR"
+# Sign the app. Use TMUX_LAUNCHER_SIGN_IDENTITY to provide a persistent cert.
+codesign --force --sign "$SIGN_IDENTITY" "$APP_DIR"
 
 # Clean up intermediate file
 rm -f "$SCRIPT_DIR/tmux-launcher"
@@ -51,4 +52,8 @@ echo ""
 echo "To install to ~/Applications:"
 echo "  cp -r '$APP_DIR' ~/Applications/"
 echo ""
-echo "Remember to grant Full Disk Access to TmuxLauncher.app in System Preferences"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+  echo "WARNING: built with ad-hoc signature (-)."
+  echo "For stable TCC/FDA behavior, rebuild with TMUX_LAUNCHER_SIGN_IDENTITY set."
+fi
+echo "Remember to grant Full Disk Access to TmuxLauncher.app in System Settings"

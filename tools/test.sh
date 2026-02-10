@@ -1,7 +1,18 @@
 #!/usr/bin/env sh
 set -eu
 
-. .venv/bin/activate
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+REPO_ROOT="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
+VENV_ACTIVATE="${REPO_ROOT}/.venv/bin/activate"
+
+if [ ! -f "${VENV_ACTIVATE}" ]; then
+  echo "ERROR: missing virtualenv activation script: ${VENV_ACTIVATE}" >&2
+  echo "Run 'uv sync --extra test' from ${REPO_ROOT} first." >&2
+  exit 2
+fi
+
+cd "${REPO_ROOT}"
+. "${VENV_ACTIVATE}"
 
 # Force tests to use sandboxed config and env files
 export TELECLAUDE_CONFIG_PATH="${TELECLAUDE_CONFIG_PATH:-tests/integration/config.yml}"

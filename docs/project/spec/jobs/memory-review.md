@@ -16,21 +16,6 @@ type: 'spec'
 Reviews all recent memories from the Memory API, analyzes them for patterns and
 staleness, and writes actionable findings to `ideas/` as new idea files.
 
-## Schedule
-
-Configured in `teleclaude.yml`:
-
-```yaml
-jobs:
-  memory_review:
-    schedule: weekly
-    preferred_weekday: 0
-    preferred_hour: 8
-    job: memory-review
-    agent: claude
-    thinking_mode: fast
-```
-
 ## How it works
 
 1. The cron runner spawns a headless agent session.

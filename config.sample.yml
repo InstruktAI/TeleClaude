@@ -7,8 +7,8 @@ computer:
   default_working_dir: ${WORKING_DIR}
   timezone: Europe/Amsterdam # Timezone for timestamps (default: Europe/Amsterdam)
   host: null # Optional hostname/IP for SSH remote execution (null = local computer)
-  # Path to tmux binary or wrapper (default: "tmux"). Use custom wrapper for macOS full disk access:
-  tmux_binary: ${WORKING_DIR}/bin/TmuxLauncher.app/Contents/MacOS/tmux-launcher
+  # tmux binary is resolved internally by platform policy:
+  # macOS: ~/Applications/TmuxLauncher.app/... ; other Unix: tmux
   # Trusted directories with metadata for AI understanding
   # Format: { name: "identifier", desc: "purpose description", path: "/absolute/path" }
   # Note: default_working_dir is automatically included with desc "TeleClaude folder"
@@ -31,16 +31,9 @@ telegram:
     - teleclaude_server_bot
     # Add other computer bot usernames here
 
-agents:
-  claude:
-    # Special claude code wrapper to allow full disk access on MacOS. Defaults to "claude --dangerously-skip-permissions --settings ''{"forceLoginMethod": "claudeai"}''".
-    command: '${WORKING_DIR}/bin/ClaudeLauncher.app/Contents/MacOS/claude-launcher --dangerously-skip-permissions --settings ''{"forceLoginMethod": "claudeai"}'''
-  gemini:
-    # Special gemini build to allow full disk access on MacOS. Defaults to "gemini --yolo".
-    command: '${WORKING_DIR}/bin/GeminiLauncher.app/Contents/MacOS/gemini-launcher --yolo'
-  codex:
-    # Special codex build to allow full disk access on MacOS. Defaults to "codex --dangerously-bypass-approvals-and-sandbox --search".
-    command: '${WORKING_DIR}/bin/CodexLauncher.app/Contents/MacOS/codex-launcher --dangerously-bypass-approvals-and-sandbox --search'
+# Agent binaries are resolved internally by platform policy:
+# macOS: ~/Applications/{Claude,Gemini,Codex}Launcher.app/...
+# other Unix: claude, gemini, codex
 
 # Redis Configuration (for AI-to-AI communication)
 redis:
@@ -60,21 +53,35 @@ summarizer:
   enabled: true # If true, use LLM to summarize agent output. If false, use raw agent text.
   max_summary_words: 30 # Target max words for the summary (~1-2 sentences)
 
+# Speech-to-Text Configuration
+stt:
+  enabled: true
+  service_priority:
+    - parakeet # Local MLX (free, private, fast on Apple Silicon)
+    - openai # Cloud Whisper API (fallback)
+  services:
+    parakeet:
+      enabled: true
+      # HuggingFace repo id or absolute path to a compatible MLX model directory.
+      # Example local path:
+      # ${HOME}/.cache/lm-studio/models/mlx-community/parakeet-tdt-0.6b-v3
+      model: mlx-community/parakeet-tdt-0.6b-v3
+    openai:
+      enabled: true
+
 # Text-to-Speech Configuration
 tts:
   enabled: true
   service_priority:
-    - qwen3
+    - voxcpm # Local MLX, greate voice quality. Size in mem: 
+    - qwen3 # Local MLX, fun to test as has weird voices
+    - openai
     - elevenlabs
     - macos
-    - openai
     - pyttsx3
   events:
     session_start:
       enabled: true
-    agent_stop:
-      enabled: true
-      # No message needed - uses summary from agent
   services:
     elevenlabs:
       enabled: true
@@ -115,18 +122,18 @@ tts:
     macos:
       enabled: true
       voices:
-        - name: "Samantha (Enhanced)"
-        - name: "Daniel (Enhanced)"
-        - name: "Ava (Premium)"
-        - name: "Nathan (Enhanced)"
-        - name: "Serena (Premium)"
-        - name: "Tom (Enhanced)"
-        - name: "Moira (Enhanced)"
-        - name: "Karen (Premium)"
-        - name: "Oliver (Enhanced)"
-        - name: "Jamie (Premium)"
-        - name: "Rishi (Enhanced)"
-        - name: "Zoe (Premium)"
+        - name: 'Samantha (Enhanced)'
+        - name: 'Daniel (Enhanced)'
+        - name: 'Ava (Premium)'
+        - name: 'Nathan (Enhanced)'
+        - name: 'Serena (Premium)'
+        - name: 'Tom (Enhanced)'
+        - name: 'Moira (Enhanced)'
+        - name: 'Karen (Premium)'
+        - name: 'Oliver (Enhanced)'
+        - name: 'Jamie (Premium)'
+        - name: 'Rishi (Enhanced)'
+        - name: 'Zoe (Premium)'
     qwen3:
       enabled: true
       # Optional: local model path or HF repo id.

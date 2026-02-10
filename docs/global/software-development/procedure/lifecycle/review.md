@@ -55,12 +55,18 @@ Verify the implementation against requirements and standards, and deliver a bina
    | errors   | Error handling changed   | next-silent-failure-hunter | Find silent failures              |
    | types    | Types added/modified     | next-type-design-analyzer  | Validate type design              |
    | comments | Comments/docs added      | next-comment-analyzer      | Check accuracy                    |
+   | logging  | Logging changed or noisy | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes |
    | simplify | After other reviews pass | next-code-simplifier       | Simplify without behavior changes |
 
-9. Write findings to `todos/{slug}/review-findings.md`.
-10. Set `todos/{slug}/state.json` field `review` to `approved` or `changes_requested`.
-11. Commit the review findings.
-12. Report summary and verdict to the caller.
+9. Logging hygiene check (required):
+   - Reject temporary debug probes (e.g., `print("DEBUG: ...")`, one-off file/line probes).
+   - Require structured logger usage per logging policy.
+   - Escalate violations as at least Important findings.
+
+10. Write findings to `todos/{slug}/review-findings.md`.
+11. Set `todos/{slug}/state.json` field `review` to `approved` or `changes_requested`.
+12. Commit the review findings.
+13. Report summary and verdict to the caller.
 
 ## Report format
 

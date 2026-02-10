@@ -3,9 +3,13 @@
 import sys
 from typing import Protocol
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.tts.backends.elevenlabs import ElevenLabsBackend
 from teleclaude.tts.backends.openai_tts import OpenAITTSBackend
 from teleclaude.tts.backends.pyttsx3_tts import Pyttsx3Backend
+
+logger = get_logger(__name__)
 
 
 class TTSBackend(Protocol):
@@ -25,13 +29,23 @@ if sys.platform == "darwin":
 
     BACKENDS["macos"] = MacOSSayBackend()
 
-    # Qwen3 requires mlx_audio which may not be installed
+    # Register MLX TTS backends for any config service that has a model field set
     try:
-        from teleclaude.tts.backends.qwen3_tts import Qwen3TTSBackend
+        from teleclaude.config import config
+        from teleclaude.tts.backends.mlx_tts import MLXTTSBackend
 
-        BACKENDS["qwen3"] = Qwen3TTSBackend()
-    except ImportError:
-        pass  # mlx_audio not available, skip qwen3 backend
+        if config.tts and config.tts.services:
+            for service_name, service_cfg in config.tts.services.items():
+                if service_name in BACKENDS:
+                    continue
+                if service_cfg.model:
+                    try:
+                        BACKENDS[service_name] = MLXTTSBackend(service_name, service_cfg.model, service_cfg.params)
+                        logger.info("Registered MLX TTS backend: %s (model=%s)", service_name, service_cfg.model)
+                    except Exception:  # noqa: BLE001 - config or model validation failure; skip gracefully
+                        logger.warning("MLX TTS backend '%s' failed to initialize", service_name, exc_info=True)
+    except Exception:  # noqa: BLE001 - mlx_audio or config not available
+        logger.warning("MLX TTS backends unavailable", exc_info=True)
 
 
 def get_backend(service_name: str):

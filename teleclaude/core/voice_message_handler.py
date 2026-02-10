@@ -1,7 +1,7 @@
 """Voice message handling for tmux sessions.
 
 Provides complete voice message functionality:
-- OpenAI Whisper API integration (low-level transcription)
+- STT backend chain (local Parakeet → cloud Whisper) with configurable priority
 - Session business logic (validation, feedback, input forwarding)
 
 Extracted from daemon.py to reduce file size and improve organization.
@@ -13,12 +13,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
 from instrukt_ai_logging import get_logger
-from openai import AsyncOpenAI
 
+from teleclaude.config import config
 from teleclaude.core import tmux_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.models import MessageMetadata
+from teleclaude.stt.backends import BACKENDS, STTBackend
 from teleclaude.utils.markdown import escape_markdown_v2
 
 if TYPE_CHECKING:
@@ -28,134 +29,109 @@ logger = get_logger(__name__)
 DEFAULT_TRANSCRIBE_LANGUAGE = "en"
 
 # ============================================================================
-# LOW-LEVEL: OpenAI Whisper API Integration
+# LOW-LEVEL: STT Backend Chain
 # ============================================================================
 
-# Module-level state
-_openai_client: Optional[AsyncOpenAI] = None
+
+def _get_service_chain() -> list[tuple[str, STTBackend]]:
+    """Build ordered list of STT backends from config priority."""
+    stt_cfg = config.stt
+    if stt_cfg and stt_cfg.enabled and stt_cfg.service_priority:
+        chain = []
+        for name in stt_cfg.service_priority:
+            # Check if service is enabled in config
+            if stt_cfg.services:
+                service_cfg = stt_cfg.services.get(name)
+                if service_cfg and not service_cfg.enabled:
+                    continue
+            backend = BACKENDS.get(name)
+            if backend:
+                chain.append((name, backend))
+        return chain
+
+    # Default fallback: all registered backends
+    return list(BACKENDS.items())
 
 
 def init_voice_handler(api_key: Optional[str] = None) -> None:
-    """Initialize OpenAI client for voice transcription.
+    """Initialize voice handler.
 
-    Idempotent: safe to call multiple times (no-op if already initialized).
+    Kept for backward compatibility with daemon lifecycle.
+    The OpenAI backend now lazy-inits from OPENAI_API_KEY env var,
+    so this is effectively a no-op unless you need to set the key explicitly.
 
     Args:
-        api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
-
-    Raises:
-        ValueError: If API key is not provided or found in environment
+        api_key: OpenAI API key (sets env var for the Whisper backend)
     """
-    global _openai_client
-
-    if _openai_client is not None:
-        logger.debug("Voice handler already initialized, skipping")
-        return
-
-    resolved_api_key = api_key or os.getenv("OPENAI_API_KEY")
-    if not resolved_api_key:
-        raise ValueError("OPENAI_API_KEY not found in environment or provided")
-
-    _openai_client = AsyncOpenAI(api_key=resolved_api_key)
-    logger.info("Voice handler initialized")
+    if api_key:
+        os.environ.setdefault("OPENAI_API_KEY", api_key)
+    logger.info("Voice handler initialized (STT backends: %s)", list(BACKENDS.keys()))
 
 
 async def transcribe_voice(
     audio_file_path: str,
     language: Optional[str] = None,
-    client: Optional[AsyncOpenAI] = None,
 ) -> str:
-    """Transcribe audio file using Whisper API.
+    """Transcribe audio file using STT backend chain.
+
+    Tries each backend in priority order until one succeeds.
 
     Args:
         audio_file_path: Path to audio file
-        language: Optional language code (e.g., 'en', 'es'). If None, auto-detect.
-        client: Optional OpenAI client (for testing - uses global if not provided)
+        language: Optional language code (e.g., 'en'). Some backends ignore this.
 
     Returns:
         Transcribed text
 
     Raises:
-        RuntimeError: If voice handler is not initialized
-        FileNotFoundError: If audio file does not exist
-        Exception: If transcription fails
+        RuntimeError: If all backends fail
     """
-    # Use injected client OR fallback to global
-    resolved_client = client if client is not None else _openai_client
+    chain = _get_service_chain()
+    if not chain:
+        raise RuntimeError("No STT backends available")
 
-    if resolved_client is None:
-        raise RuntimeError("Voice handler not initialized. Call init_voice_handler() first.")
+    errors: list[str] = []
+    for name, backend in chain:
+        try:
+            text = await backend.transcribe(audio_file_path, language)
+            if text:
+                logger.info("STT transcribed via %s: %d chars", name, len(text))
+                return text
+        except Exception as e:
+            errors.append(f"{name}: {e}")
+            logger.warning("STT backend %s failed: %s", name, e)
 
-    logger.info("=== TRANSCRIBE CALLED ===")
-    logger.info("Audio file path: %s", audio_file_path)
-    logger.info("Language: %s", language or "auto-detect")
-
-    audio_path = Path(audio_file_path)
-    if not audio_path.exists():
-        logger.error("✘ Audio file not found: %s", audio_file_path)
-        raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
-
-    file_size = audio_path.stat().st_size
-    logger.info("Audio file exists: size=%s bytes", file_size)
-
-    try:
-        logger.info("Opening audio file for transcription...")
-        with open(audio_file_path, "rb") as audio_file:
-            # Call Whisper API
-            params = {
-                "model": "whisper-1",
-                "file": audio_file,
-            }
-            if language:
-                params["language"] = language
-
-            logger.info(
-                "Calling OpenAI Whisper API with model=%s, language=%s...",
-                params["model"],
-                params.get("language", "auto"),
-            )
-            transcript = await resolved_client.audio.transcriptions.create(**params)  # type: ignore[misc, call-overload]
-            logger.info("✔ Whisper API call successful")
-
-        transcribed_text: str = str(transcript.text).strip()  # type: ignore[misc]
-        logger.info(
-            "✔ Transcription successful: '%s' (length: %s chars)",
-            transcribed_text[:100],
-            len(transcribed_text),
-        )
-        return transcribed_text
-
-    except Exception as e:
-        logger.error("✘ Transcription failed: %s", e, exc_info=True)
-        raise
+    raise RuntimeError(f"All STT backends failed: {'; '.join(errors)}")
 
 
 async def transcribe_voice_with_retry(
     audio_file_path: str,
     language: Optional[str] = None,
     max_retries: int = 1,
-    client: Optional[AsyncOpenAI] = None,
-) -> Optional[str]:
+) -> tuple[Optional[str], Optional[str]]:
     """Transcribe audio with retry logic.
 
     Args:
         audio_file_path: Path to audio file
         language: Optional language code
         max_retries: Maximum number of retry attempts (default: 1, total 2 attempts)
-        client: Optional OpenAI client (for testing - uses global if not provided)
 
     Returns:
-        Transcribed text or None if all attempts fail
+        Tuple of (transcribed text, error reason). On success: (text, None).
+        On failure: (None, reason).
     """
+    last_error: Optional[str] = None
     for attempt in range(max_retries + 1):
         try:
-            return await transcribe_voice(audio_file_path, language, client=client)
+            text = await transcribe_voice(audio_file_path, language)
+            return text, None
         except Exception as e:
+            last_error = str(e).strip() or e.__class__.__name__
             if attempt < max_retries:
                 logger.warning("Transcription attempt %d failed, retrying: %s", attempt + 1, e)
             else:
                 logger.error("Transcription failed after %d attempts: %s", max_retries + 1, e)
-    return None  # All attempts failed
+    return None, last_error  # All attempts failed
 
 
 # ============================================================================
@@ -222,8 +198,8 @@ async def handle_voice(
             session_id[:8],
         )
 
-    # Transcribe audio using Whisper
-    text = await transcribe_voice_with_retry(audio_path, language=DEFAULT_TRANSCRIBE_LANGUAGE)
+    # Transcribe audio using STT backend chain
+    text, error_reason = await transcribe_voice_with_retry(audio_path, language=DEFAULT_TRANSCRIBE_LANGUAGE)
 
     # Clean up temp file
     try:
@@ -233,10 +209,13 @@ async def handle_voice(
         logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
 
     if not text:
+        failure_message = "❌ Transcription failed. Please try again."
+        if error_reason:
+            failure_message = f"❌ Transcription failed: {error_reason}"
         # Append error to existing message
         await send_message(
             session_id,
-            "❌ Transcription failed. Please try again.",
+            failure_message,
             MessageMetadata(parse_mode=None),
         )
         return None

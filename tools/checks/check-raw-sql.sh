@@ -2,12 +2,42 @@
 # Check for raw SQL usage without noqa markers in db.py and hooks/receiver.py
 # Usage: scripts/check-raw-sql.sh
 
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_ROOT="${DEFAULT_PROJECT_ROOT}"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --project-root)
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: --project-root requires a path argument" >&2
+                exit 2
+            fi
+            PROJECT_ROOT="$2"
+            shift 2
+            ;;
+        -h|--help)
+            cat <<'USAGE'
+Usage: check-raw-sql.sh [--project-root <path>]
+Checks raw SQL usage markers in TeleClaude code.
+USAGE
+            exit 0
+            ;;
+        *)
+            echo "ERROR: Unknown argument: $1" >&2
+            exit 2
+            ;;
+    esac
+done
+
+PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 
 # Files to check for raw SQL
 FILES=(
-    "teleclaude/core/db.py"
-    "teleclaude/hooks/receiver.py"
+    "${PROJECT_ROOT}/teleclaude/core/db.py"
+    "${PROJECT_ROOT}/teleclaude/hooks/receiver.py"
 )
 
 found_violations=0

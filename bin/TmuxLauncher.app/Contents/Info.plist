@@ -4,8 +4,8 @@
 <dict>
   <key>CFBundleName</key><string>TmuxLauncher</string>
   <key>CFBundleIdentifier</key><string>ai.instrukt.tmuxlauncher</string>
-  <key>CFBundleVersion</key><string>1.1</string>
-  <key>CFBundleShortVersionString</key><string>1.1</string>
+  <key>CFBundleVersion</key><string>1.2</string>
+  <key>CFBundleShortVersionString</key><string>1.2</string>
   <key>CFBundleExecutable</key><string>tmux-launcher</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSUIElement</key><true/>

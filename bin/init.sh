@@ -289,7 +289,7 @@ EOF
         # Update computer name and user in config.yml
         if command -v sed &> /dev/null; then
             sed -i.bak "s/name: .*/name: $COMPUTER_NAME/" "$INSTALL_DIR/config.yml"
-            sed -i.bak "s/user: {USER}/user: $USER/" "$INSTALL_DIR/config.yml"
+            sed -i.bak -E "s/user:[[:space:]]*\\{[[:space:]]*USER[[:space:]]*\\}/user: $USER/" "$INSTALL_DIR/config.yml"
             rm -f "$INSTALL_DIR/config.yml.bak"
         fi
 
@@ -297,6 +297,39 @@ EOF
     else
         print_info "config.yml already exists"
     fi
+}
+
+# Run shared macOS setup entrypoint actions from init.sh.
+run_macos_setup_action() {
+    local action="$1"
+    if [ "$OS" != "macos" ]; then
+        return 0
+    fi
+
+    local cmd=("$INSTALL_DIR/.venv/bin/python" "-m" "teleclaude.entrypoints.macos_setup" "--project-root" "$INSTALL_DIR")
+    cmd+=("$action")
+
+    "${cmd[@]}"
+}
+
+install_macos_launchers() {
+    if [ "$OS" != "macos" ]; then
+        return 0
+    fi
+    print_header "Installing macOS Launcher Apps"
+    if run_macos_setup_action "install-launchers"; then
+        print_success "Launcher apps installed"
+    else
+        print_error "Failed to install launcher apps"
+        exit 1
+    fi
+}
+
+run_macos_permissions_probe() {
+    if [ "$OS" != "macos" ]; then
+        return 0
+    fi
+    run_macos_setup_action "permissions-probe" || true
 }
 
 # Setup log file
@@ -509,6 +542,7 @@ main() {
     detect_os
     check_prerequisites
 
+    install_macos_launchers
     setup_config
     setup_log_file
     install_service
@@ -534,6 +568,8 @@ main() {
     print_warning "IMPORTANT: Do NOT manually start the daemon!"
     print_warning "The service manages the daemon automatically."
     echo ""
+
+    run_macos_permissions_probe
 
     log "Init completed successfully"
 }

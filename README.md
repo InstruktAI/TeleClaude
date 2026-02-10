@@ -74,7 +74,9 @@ The installation wizard will:
 - Check Python 3.11+ and tmux are installed
 - Create virtual environment and install dependencies
 - Set up `.env` and `config.yml` files
+- On macOS, install launcher apps to `~/Applications` (binary routing is runtime policy, not config)
 - Install and start the system service (launchd/systemd)
+- On macOS, run a final permissions probe (grant any macOS popup permissions you agree with)
 
 ### Configuration
 
@@ -157,6 +159,8 @@ TeleClaude follows the global software-development Definition of Done. See
 Run `telec init` from a project root to build docs indexes, distribute agent artifacts, and
 install an OS watcher that re-runs the sync on changes to `.agents`, `docs`, `docs/global`,
 or `teleclaude.yml`.
+On macOS, `telec init` also refreshes launcher apps in `~/Applications` and runs a final
+permissions probe.
 
 ## Usage
 
@@ -624,7 +628,7 @@ Contributions welcome! Please:
 
 1. Fork the repository
 2. Create a feature branch
-3. Follow code style (run `./bin/format.sh` and `./bin/lint.sh`)
+3. Follow code style (run `./tools/format.sh` and `./tools/lint.sh`)
 4. Write tests for new features
 5. Submit a pull request
 

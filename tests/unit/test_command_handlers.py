@@ -564,7 +564,8 @@ async def test_handle_agent_start_executes_command_with_args(mock_initialized_db
     mock_client = MagicMock()
 
     mock_agent_config = AgentConfig(
-        command="claude",
+        binary="claude",
+        flags="",
         session_dir="~/.claude/sessions",
         log_pattern="*.jsonl",
         model_flags={"fast": "-m haiku", "med": "-m sonnet", "slow": "-m opus"},
@@ -613,7 +614,8 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
     mock_client = MagicMock()
 
     mock_agent_config = AgentConfig(
-        command="codex",
+        binary="codex",
+        flags="--dangerously-bypass-approvals-and-sandbox --search",
         session_dir="~/.codex/sessions",
         log_pattern="*.jsonl",
         model_flags={"fast": "-m gpt-5.1-codex-mini", "med": "-m gpt-5.1-codex", "slow": "-m gpt-5.3"},
@@ -766,7 +768,8 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
     mock_client = MagicMock()
 
     mock_agent_config = AgentConfig(
-        command="gemini --yolo",
+        binary="gemini",
+        flags="--yolo",
         session_dir="~/.gemini/sessions",
         log_pattern="*.jsonl",
         model_flags={
@@ -820,7 +823,8 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
     mock_client = MagicMock()
 
     mock_agent_config = AgentConfig(
-        command="claude --dangerously-skip-permissions",
+        binary="claude",
+        flags="--dangerously-skip-permissions",
         session_dir="~/.claude/sessions",
         log_pattern="*.jsonl",
         model_flags={"fast": "-m haiku", "med": "-m sonnet", "slow": "-m opus"},
@@ -871,7 +875,8 @@ async def test_handle_agent_resume_uses_override_session_id_from_args(mock_initi
     mock_client = MagicMock()
 
     mock_agent_config = AgentConfig(
-        command="codex --yolo",
+        binary="codex",
+        flags="--yolo",
         session_dir="~/.codex/sessions",
         log_pattern="*.jsonl",
         model_flags={},

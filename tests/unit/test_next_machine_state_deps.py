@@ -355,8 +355,8 @@ async def test_next_work_review_includes_merge_base_note():
 
 
 @pytest.mark.asyncio
-async def test_next_work_blocks_review_when_main_ahead():
-    """Verify next_work blocks review dispatch when main is ahead."""
+async def test_next_work_does_not_block_review_when_main_ahead():
+    """Verify next_work stays worktree-local and still dispatches review."""
     db = MagicMock(spec=Db)
     slug = "review-blocked"
 
@@ -382,8 +382,7 @@ async def test_next_work_blocks_review_when_main_ahead():
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
-        assert "ERROR:" in result
-        assert "MAIN_AHEAD" in result
+        assert "next-review" in result
 
 
 @pytest.mark.asyncio

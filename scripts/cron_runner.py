@@ -7,7 +7,9 @@
 #     "dateparser",
 #     "munch",
 #     "pydantic",
+#     "youtube-transcript-api",
 #     "instruktai-python-logger",
+#     "python-dotenv",
 # ]
 # ///
 """
@@ -87,8 +89,8 @@ def main() -> int:
 
         for job in jobs:
             job_state = state.get_job(job.name)
-            sched = schedules.get(job.name, {})
-            schedule_str = sched.get("schedule", "none") if sched else "none"
+            sched = schedules.get(job.name)
+            schedule_str = sched.schedule if sched and sched.schedule else "none"
             last_run = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else "never"
             print(f"{job.name:<30} {schedule_str:<10} {last_run:<25} {job_state.last_status:<10}")
 

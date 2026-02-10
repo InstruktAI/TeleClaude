@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+
 import pytest
 
 
@@ -55,3 +56,16 @@ def test_legacy_noqa_loose_dict_marker_fails(tmp_path: Path) -> None:
     )
     with pytest.raises(SystemExit, match="legacy loose-dict marker detected"):
         module._warn_for_loose_dicts(tmp_path)
+
+
+def test_debug_probe_prints_fail_guardrails(tmp_path: Path) -> None:
+    module = _load_guardrails_module()
+    file_path = tmp_path / "teleclaude" / "example.py"
+    file_path.parent.mkdir(parents=True)
+    debug_prefix = "DEBUG" + ":"
+    file_path.write_text(
+        f'print("{debug_prefix} temporary probe")\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit, match="leftover debug probe prints detected"):
+        module._warn_for_debug_probes(tmp_path)

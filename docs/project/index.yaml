@@ -230,6 +230,13 @@ snippets:
   scope: project
   path: docs/project/policy/agent-service-control.md
   source_project: TeleClaude
+- id: project/policy/bin-bootstrap-boundary
+  description: Defines bin/ as bootstrap-only and clarifies where runtime and internal
+    tooling belongs.
+  type: policy
+  scope: project
+  path: docs/project/policy/bin-bootstrap-boundary.md
+  source_project: TeleClaude
 - id: project/policy/cache-contract
   description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
   type: policy
@@ -273,6 +280,13 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/mcp-tool-filtering.md
+  source_project: TeleClaude
+- id: project/policy/scripts-standalone-execution
+  description: 'Execution contract for scripts/: portable invocation, uv metadata,
+    and robust preflight validation.'
+  type: policy
+  scope: project
+  path: docs/project/policy/scripts-standalone-execution.md
   source_project: TeleClaude
 - id: project/policy/single-database
   description: Guaranteed single database file usage for the daemon to prevent data
@@ -430,13 +444,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/jobs/memory-review.md
-  source_project: TeleClaude
-- id: project/spec/jobs/merge-runner
-  description: Agent job spec for serialized merge promotion of approved todos from
-    worktree branches into main.
-  type: spec
-  scope: project
-  path: docs/project/spec/jobs/merge-runner.md
   source_project: TeleClaude
 - id: project/spec/jobs/next-prepare
   description: Maintenance job that continuously improves todo readiness by assessing

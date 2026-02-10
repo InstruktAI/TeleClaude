@@ -73,7 +73,7 @@ def get_cpu_percent() -> float:
         return 0.0
 
 
-def get_all_stats() -> dict[str, object]:  # noqa: loose-dict - Legacy return type, use SystemStats instead
+def get_all_stats() -> dict[str, object]:  # guard: loose-dict - Legacy return type, use SystemStats instead
     """Get all system statistics.
 
     Returns:

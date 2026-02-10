@@ -40,15 +40,7 @@ jobs:
     schedule: hourly
     type: agent
     job: log-bug-hunter
-    agent: claude
+    agent: codex
     thinking_mode: fast
-
-  merge_runner:
-    schedule: hourly
-    type: agent
-    job: merge-runner
-    agent: claude
-    thinking_mode: med
-
 # git:
 #   checkout_root: ~/Workspace/public-repos

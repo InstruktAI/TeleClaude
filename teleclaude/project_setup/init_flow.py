@@ -1,0 +1,31 @@
+"""Project setup orchestration flow."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from teleclaude.project_setup.git_filters import setup_git_filters
+from teleclaude.project_setup.git_repo import ensure_git_repo
+from teleclaude.project_setup.gitattributes import update_gitattributes
+from teleclaude.project_setup.hooks import install_precommit_hook
+from teleclaude.project_setup.macos_setup import install_launchers, is_macos, run_permissions_probe
+from teleclaude.project_setup.sync import install_docs_watch, sync_project_artifacts
+
+
+def init_project(project_root: Path) -> None:
+    """Initialize a project for TeleClaude.
+
+    Sets up git filters, pre-commit hooks, syncs artifacts, and installs watchers.
+    """
+    ensure_git_repo(project_root)
+    setup_git_filters(project_root)
+    update_gitattributes(project_root)
+    install_precommit_hook(project_root)
+    sync_project_artifacts(project_root)
+    install_docs_watch(project_root)
+
+    if is_macos():
+        install_launchers(project_root)
+        run_permissions_probe(project_root)
+
+    print("telec init complete.")

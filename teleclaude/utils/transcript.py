@@ -1169,6 +1169,49 @@ def extract_last_user_message(
     return _extract_last_message_by_role(transcript_path, agent_name, "user")
 
 
+def extract_last_user_message_with_timestamp(
+    transcript_path: str,
+    agent_name: AgentName,
+) -> tuple[str, datetime | None] | None:
+    """Extract the last user message and its transcript timestamp.
+
+    Returns:
+        Tuple of (message text, parsed timestamp) when found, otherwise None.
+    """
+    try:
+        entries = _get_entries_for_agent(transcript_path, agent_name)
+        if entries is None:
+            return None
+
+        for entry in reversed(entries):
+            message = entry.get("message")
+
+            # Handle Codex "response_item" format where message is in payload
+            if not isinstance(message, dict) and entry.get("type") == "response_item":
+                payload = entry.get("payload")
+                if isinstance(payload, dict):
+                    message = payload
+
+            if not isinstance(message, dict):
+                continue
+            role = message.get("role")
+            if not isinstance(role, str) or role != "user":
+                continue
+
+            content = message.get("content")
+            text = _extract_text_from_content(content, "user")
+            if text is None:
+                continue
+
+            entry_ts = entry.get("timestamp")
+            parsed_ts = _parse_timestamp(entry_ts) if isinstance(entry_ts, str) else None
+            return text, parsed_ts
+    except Exception:
+        return None
+
+    return None
+
+
 def extract_last_agent_message(
     transcript_path: str,
     agent_name: AgentName,
