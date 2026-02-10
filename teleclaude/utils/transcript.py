@@ -4,11 +4,12 @@ import json
 import logging
 import os
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, cast
 
+from teleclaude.constants import CHECKPOINT_RESULT_SNIPPET_MAX_CHARS
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_local_datetime
 
@@ -1437,3 +1438,132 @@ def extract_workdir_from_transcript(transcript_path: str) -> str | None:
 def _escape_triple_backticks(text: str) -> str:
     """Escape triple backticks to avoid nested code block breakage."""
     return text.replace("```", "`\u200b``")
+
+
+# ---------------------------------------------------------------------------
+# Layer 2: Tool-call extraction for checkpoint heuristics
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ToolCallRecord:
+    """A single tool invocation extracted from the current turn."""
+
+    tool_name: str
+    input_data: dict[str, object] = field(  # guard: loose-dict - External tool input
+        default_factory=dict
+    )
+    had_error: bool = False
+    result_snippet: str = ""
+    timestamp: Optional[datetime] = None
+
+
+@dataclass
+class TurnTimeline:
+    """Ordered tool calls from the current turn."""
+
+    tool_calls: list[ToolCallRecord] = field(default_factory=list)
+    has_data: bool = True
+
+
+def extract_tool_calls_current_turn(
+    transcript_path: str,
+    agent_name: AgentName,
+) -> TurnTimeline:
+    """Extract tool calls from the current turn of a transcript.
+
+    guard: allow-string-compare
+
+    Uses _get_entries_for_agent() (Layer 1) to load normalized entries,
+    then walks from the last user message boundary to end of transcript,
+    building ToolCallRecord instances from tool_use/tool_result blocks.
+
+    Fails open: returns TurnTimeline(tool_calls=[], has_data=False) on any error.
+    """
+    try:
+        entries = _get_entries_for_agent(transcript_path, agent_name)
+        if entries is None:
+            return TurnTimeline(tool_calls=[], has_data=False)
+
+        # Find turn boundary: walk backward to last user-role message
+        turn_start_idx = 0
+        for i in range(len(entries) - 1, -1, -1):
+            entry = entries[i]
+            message = entry.get("message")
+            if not isinstance(message, dict) and entry.get("type") == "response_item":
+                payload = entry.get("payload")
+                if isinstance(payload, dict):
+                    message = payload
+            if isinstance(message, dict) and message.get("role") == "user":
+                turn_start_idx = i + 1
+                break
+
+        # Walk forward from turn boundary, extracting tool calls
+        records: list[ToolCallRecord] = []
+        pending_record: ToolCallRecord | None = None
+
+        for entry in entries[turn_start_idx:]:
+            entry_ts_str = entry.get("timestamp")
+            entry_dt = _parse_timestamp(entry_ts_str) if isinstance(entry_ts_str, str) else None
+
+            message = entry.get("message")
+            if not isinstance(message, dict) and entry.get("type") == "response_item":
+                payload = entry.get("payload")
+                if isinstance(payload, dict):
+                    message = payload
+            if not isinstance(message, dict):
+                continue
+
+            content = message.get("content")
+            if not isinstance(content, list):
+                continue
+
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                block_type = block.get("type")
+
+                if block_type == "tool_use":
+                    # Finalize any pending record without a result
+                    if pending_record is not None:
+                        records.append(pending_record)
+                    tool_name = str(block.get("name", "unknown"))
+                    raw_input = block.get("input", {})
+                    input_data: dict[str, object] = {}  # guard: loose-dict - External tool input
+                    if isinstance(raw_input, dict):
+                        input_data = cast(
+                            dict[str, object],  # guard: loose-dict - External tool input
+                            raw_input,
+                        )
+                    pending_record = ToolCallRecord(
+                        tool_name=tool_name,
+                        input_data=input_data,
+                        had_error=False,
+                        result_snippet="",
+                        timestamp=entry_dt,
+                    )
+
+                elif block_type == "tool_result":
+                    if pending_record is not None:
+                        is_error = bool(block.get("is_error", False))
+                        raw_content = block.get("content", "")
+                        snippet = str(raw_content)[:CHECKPOINT_RESULT_SNIPPET_MAX_CHARS]
+                        pending_record = ToolCallRecord(
+                            tool_name=pending_record.tool_name,
+                            input_data=pending_record.input_data,
+                            had_error=is_error,
+                            result_snippet=snippet,
+                            timestamp=pending_record.timestamp,
+                        )
+                        records.append(pending_record)
+                        pending_record = None
+
+        # Finalize any trailing tool_use without a result
+        if pending_record is not None:
+            records.append(pending_record)
+
+        return TurnTimeline(tool_calls=records, has_data=True)
+
+    except Exception:
+        logger.debug("Tool-call extraction failed (fail-open)", exc_info=True)
+        return TurnTimeline(tool_calls=[], has_data=False)

@@ -89,8 +89,6 @@ FIELD_COMMAND = "command"
 CHECKPOINT_MESSAGE = "Checkpoint \u2014 Continue or validate your work if needed. Any truly interesting memories to be created that meet our criteria? (DON'T abuse it as work log!) If everything that is expected of you is done, do not respond."
 CHECKPOINT_REACTIVATION_THRESHOLD_S = 30
 
-# Checkpoint tail-read bound for JSONL transcripts (512KB)
-CHECKPOINT_TRANSCRIPT_TAIL_BYTES = 524288
 # Max chars to capture from tool result content for error enrichment
 CHECKPOINT_RESULT_SNIPPET_MAX_CHARS = 500
 # Threshold for wide blast radius observation

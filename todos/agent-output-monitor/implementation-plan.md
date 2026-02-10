@@ -47,7 +47,7 @@ Add to `teleclaude/constants.py`:
 
 **Verify:** Import succeeds, pattern data structure is well-typed.
 
-#### Task 2: Tool-call extraction layer in transcript.py
+#### Task 2: Tool-call extraction layer in transcript.py [x]
 
 Extend `teleclaude/utils/transcript.py` with a new Layer 2 consumer alongside the existing rendering and extraction functions. All new code lives IN transcript.py, sharing the existing Layer 0 (I/O) and Layer 1 (format normalization) infrastructure.
 
