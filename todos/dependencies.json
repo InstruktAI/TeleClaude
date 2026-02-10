@@ -1,17 +1,13 @@
 {
-  "agent-logbook-observability": [],
   "cache-startup-warmup": [
     "model-boundary-consolidation"
   ],
   "code-context-auditor": [
     "code-context-annotations"
   ],
-  "context-ai": [],
   "job-contract-refinements": [
     "config-schema-validation"
   ],
-  "merge-runner": [],
-  "next-prepare-maintenance": [],
   "person-identity-auth": [
     "config-schema-validation"
   ],
@@ -24,14 +20,11 @@
   "person-identity-auth-3": [
     "person-identity-auth-2"
   ],
-  "output-streaming-unification": [],
   "role-based-notifications": [
     "person-identity-auth"
   ],
   "web-interface": [
     "person-identity-auth",
     "output-streaming-unification"
-  ],
-  "repo-cleanup": [],
-  "v2-transport-normalization": []
+  ]
 }
