@@ -46,8 +46,18 @@ link:
 	@echo "Linking shared scripts/docs..."
 	@mkdir -p "$$HOME/.teleclaude"
 	@ln -sfn "$(PWD)/scripts" "$$HOME/.teleclaude/scripts"
-	@rm -rf "$$HOME/.teleclaude/docs"
-	@ln -s "$(PWD)/docs/global" "$$HOME/.teleclaude/docs"
+	@mkdir -p "$$HOME/.teleclaude/docs"
+	@for src in "$(PWD)"/docs/global/*; do \
+		entry=$$(basename "$$src"); \
+		dst="$$HOME/.teleclaude/docs/$$entry"; \
+		case "$$entry" in .* ) continue ;; esac; \
+		if [ -L "$$dst" ]; then rm -f "$$dst"; \
+		elif [ -d "$$dst" ]; then [ "$$entry" = "third-party" ] && continue; rm -rf "$$dst"; \
+		elif [ -f "$$dst" ]; then rm -f "$$dst"; fi; \
+		if [ -d "$$src" ] || [ "$$entry" = "baseline.md" ] || [ "$$entry" = "index.yaml" ]; then \
+			ln -s "$$src" "$$dst"; \
+		fi; \
+	done
 	@echo "✓ Linked shared scripts/docs"
 
 format:

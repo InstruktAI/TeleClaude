@@ -9,10 +9,32 @@ link_shared_scripts() {
     mkdir -p "$base_dir"
     ln -sfn "$INSTALL_DIR/scripts" "$target_dir"
 
-    # Ensure global docs path points at repo global docs.
-    local docs_link="$HOME/.teleclaude/docs"
-    rm -rf "$docs_link"
-    ln -s "$INSTALL_DIR/docs/global" "$docs_link"
+    # Ensure ~/.teleclaude/docs entries point at repo global docs, without
+    # deleting the docs root (preserve user-maintained third-party docs).
+    local docs_root="$HOME/.teleclaude/docs"
+    local source_docs="$INSTALL_DIR/docs/global"
+    mkdir -p "$docs_root"
+    if [ -d "$source_docs" ]; then
+        local entry src_path dst_path
+        for src_path in "$source_docs"/*; do
+            entry="$(basename "$src_path")"
+            dst_path="$docs_root/$entry"
+            [ "${entry#*.}" != "$entry" ] && continue
+
+            if [ -L "$dst_path" ]; then
+                rm -f "$dst_path"
+            elif [ -d "$dst_path" ]; then
+                [ "$entry" = "third-party" ] && continue
+                rm -rf "$dst_path"
+            elif [ -f "$dst_path" ]; then
+                rm -f "$dst_path"
+            fi
+
+            if [ -d "$src_path" ] || [ "$entry" = "baseline.md" ] || [ "$entry" = "index.yaml" ]; then
+                ln -s "$src_path" "$dst_path"
+            fi
+        done
+    fi
 
     print_success "Shared scripts linked"
 }
