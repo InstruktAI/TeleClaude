@@ -10,12 +10,6 @@
 
 ---
 
-## Dependency Health Guardrails
-
-- [.] dependency-health-guardrails
-
-Introduce dependency health guardrails (API + Redis) with circuit-breaker behavior and destructive-op safety gates so timeouts and outages never trigger unsafe cleanup/termination paths.
-
 ## Person Identity & Authentication
 
 - [.] person-identity-auth (after: config-schema-validation) — **BROKEN DOWN**
