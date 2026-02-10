@@ -9,6 +9,7 @@ import pytest
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import next_prepare, read_breakdown_state, write_breakdown_state
+from teleclaude.core.next_machine.core import WORK_FALLBACK, get_available_agent
 
 
 @pytest.mark.asyncio
@@ -179,3 +180,18 @@ def test_write_breakdown_state_preserves_existing_state():
         assert content["build"] == "complete"
         assert content["review"] == "pending"
         assert content["breakdown"] == {"assessed": True, "todos": []}
+
+
+@pytest.mark.asyncio
+async def test_get_available_agent_skips_degraded() -> None:
+    db = MagicMock(spec=Db)
+    db.clear_expired_agent_availability.return_value = None
+
+    async def _availability(agent: str):
+        if agent == "gemini":
+            return {"available": True, "status": "degraded", "unavailable_until": None, "reason": "degraded:test"}
+        return {"available": True, "status": "available", "unavailable_until": None, "reason": None}
+
+    db.get_agent_availability.side_effect = _availability
+    agent, _mode = await get_available_agent(db, "build", WORK_FALLBACK)
+    assert agent == "claude"

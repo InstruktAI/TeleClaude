@@ -233,7 +233,7 @@ class TestAgentAvailability:
 
         info = await test_db.get_agent_availability("gemini")
 
-        assert info == {"available": True, "unavailable_until": None, "reason": None}
+        assert info == {"available": True, "unavailable_until": None, "reason": None, "status": "available"}
         async with test_db._session() as session:
             result = await session.exec(  # raw-sql
                 text("SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = :a"),
@@ -272,6 +272,17 @@ class TestAgentAvailability:
         assert persisted[0] == 1  # available
         assert persisted[1] is None  # unavailable_until
         assert persisted[2] is None  # reason
+
+    @pytest.mark.asyncio
+    async def test_mark_agent_degraded_sets_status(self, test_db):
+        """Degraded marks remain available but carry degraded status metadata."""
+        await test_db.mark_agent_degraded("claude", "manual-only")
+
+        info = await test_db.get_agent_availability("claude")
+        assert info is not None
+        assert info["available"] is True
+        assert info["status"] == "degraded"
+        assert str(info["reason"]).startswith("degraded:")
 
 
 class TestUpdateSession:

@@ -1089,11 +1089,19 @@ class Db:
                         "available": True,
                         "unavailable_until": None,
                         "reason": None,
+                        "status": "available",
                     }
+            reason = row.reason or None
+            status = "available"
+            if reason and reason.startswith("degraded"):
+                status = "degraded"
+            elif not bool(row.available):
+                status = "unavailable"
             return {
                 "available": bool(row.available) if row.available is not None else False,
                 "unavailable_until": unavailable_until,
-                "reason": row.reason,
+                "reason": reason,
+                "status": status,
             }
 
     @staticmethod
@@ -1146,6 +1154,26 @@ class Db:
             db_session.add(row)
             await db_session.commit()
         logger.info("Marked agent %s available", agent)
+
+    async def mark_agent_degraded(self, agent: str, reason: str) -> None:
+        """Mark an agent as degraded (manual-only, excluded from auto-selection)."""
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.AgentAvailability, agent)
+            degraded_reason = reason if reason.startswith("degraded") else f"degraded:{reason}"
+            if row is None:
+                row = db_models.AgentAvailability(
+                    agent=agent,
+                    available=1,
+                    unavailable_until=None,
+                    reason=degraded_reason,
+                )
+            else:
+                row.available = 1
+                row.unavailable_until = None
+                row.reason = degraded_reason
+            db_session.add(row)
+            await db_session.commit()
+        logger.info("Marked agent %s degraded (%s)", agent, degraded_reason)
 
     async def clear_expired_agent_availability(self) -> int:
         """Reset agents whose unavailable_until time has passed.

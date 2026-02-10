@@ -918,10 +918,17 @@ async def get_available_agent(
 
     fallback_list = fallback_matrix.get(task_type, [(AgentName.CLAUDE.value, ThinkingMode.MED.value)])
     soonest_unavailable: tuple[str, str, str | None] | None = None
+    degraded_count = 0
 
     for agent, thinking_mode in fallback_list:
         availability = await db.get_agent_availability(agent)
-        if availability is None or availability["available"]:
+        if availability is None:
+            return agent, thinking_mode
+        status = availability.get("status")
+        if status == "degraded":
+            degraded_count += 1
+            continue
+        if availability["available"]:
             return agent, thinking_mode
 
         # Track the soonest unavailable_until
@@ -933,6 +940,9 @@ async def get_available_agent(
     # All unavailable - return the one with soonest expiry
     if soonest_unavailable:
         return soonest_unavailable[0], soonest_unavailable[1]
+
+    if degraded_count == len(fallback_list):
+        raise RuntimeError(f"No selectable agents for task '{task_type}': all fallback candidates are degraded")
 
     # Fallback to first in list
     return fallback_list[0]
@@ -966,6 +976,17 @@ def _sync_file(src_root: Path, dst_root: Path, relative_path: str) -> bool:
     src = src_root / relative_path
     dst = dst_root / relative_path
     if not src.exists():
+        return False
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    return True
+
+
+def _sync_file_if_missing(src_root: Path, dst_root: Path, relative_path: str) -> bool:
+    """Copy one file only when destination does not already exist."""
+    src = src_root / relative_path
+    dst = dst_root / relative_path
+    if not src.exists() or dst.exists():
         return False
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
@@ -1023,6 +1044,42 @@ def sync_slug_todo_from_worktree_to_main(cwd: str, slug: str) -> None:
     )
 
 
+def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> None:
+    """Copy canonical todo artifacts for a slug from main into worktree."""
+    todo_base = f"todos/{slug}"
+    main_root = Path(cwd)
+    worktree_root = Path(cwd) / "trees" / slug
+    if not worktree_root.exists():
+        return
+    for rel in [
+        f"{todo_base}/input.md",
+        f"{todo_base}/requirements.md",
+        f"{todo_base}/implementation-plan.md",
+        f"{todo_base}/quality-checklist.md",
+        f"{todo_base}/state.json",
+        f"{todo_base}/review-findings.md",
+        f"{todo_base}/deferrals.md",
+        f"{todo_base}/breakdown.md",
+        f"{todo_base}/dor-report.md",
+    ]:
+        _sync_file_if_missing(main_root, worktree_root, rel)
+
+
+def _dirty_paths(repo: Repo) -> list[str]:
+    """Return dirty paths from porcelain status output."""
+    lines = repo.git.status("--porcelain").splitlines()
+    paths: list[str] = []
+    for line in lines:
+        if len(line) < 4:
+            continue
+        path = line[3:].strip()
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        if path:
+            paths.append(path)
+    return paths
+
+
 def build_git_hook_env(project_root: str, base_env: dict[str, str]) -> dict[str, str]:
     """Build environment variables for git hooks, ensuring venv/bin is in PATH."""
     env = base_env.copy()
@@ -1048,7 +1105,7 @@ def has_uncommitted_changes(cwd: str, slug: str) -> bool:
         slug: Work item slug (worktree is at trees/{slug})
 
     Returns:
-        True if there are uncommitted changes (staged or unstaged)
+        True if there are non-orchestrator uncommitted changes (staged or unstaged)
     """
     worktree_path = Path(cwd) / "trees" / slug
     if not worktree_path.exists():
@@ -1056,7 +1113,26 @@ def has_uncommitted_changes(cwd: str, slug: str) -> bool:
 
     try:
         repo = Repo(worktree_path)
-        return repo.is_dirty(untracked_files=True)
+        dirty_paths = _dirty_paths(repo)
+        if not dirty_paths:
+            return False
+
+        # Orchestrator control files are expected to drift while mirroring main
+        # planning state into worktrees. The slug todo subtree can also appear
+        # as untracked on older worktree branches before the first commit.
+        ignored = {
+            "todos/roadmap.md",
+            "todos/dependencies.json",
+            f"todos/{slug}",
+            f"todos/{slug}/",
+        }
+        for path in dirty_paths:
+            normalized = path.replace("\\", "/")
+            if normalized in ignored or normalized.startswith(f"todos/{slug}/"):
+                continue
+            if normalized not in ignored:
+                return True
+        return False
     except InvalidGitRepositoryError:
         logger.warning("Invalid git repository at %s", worktree_path)
         return False
@@ -1119,13 +1195,13 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
 
     Conventions:
     - If `scripts.worktree:prepare` is defined in teleclaude.yml, run it.
-    - Else if bin/worktree-prepare.sh exists and is executable, run it with the slug.
+    - Else if tools/worktree-prepare.sh exists and is executable, run it with the slug.
     - If Makefile has `install`, run `make install`.
     - Else if package.json exists, run `pnpm install` if available, otherwise `npm install`.
     - If neither applies, do nothing.
     """
     worktree_path = Path(cwd) / "trees" / slug
-    worktree_prepare_script = Path(cwd) / "bin" / "worktree-prepare.sh"
+    worktree_prepare_script = Path(cwd) / "tools" / "worktree-prepare.sh"
     makefile = worktree_path / "Makefile"
     package_json = worktree_path / "package.json"
 
@@ -1439,13 +1515,23 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         Plain text instructions for the orchestrator to execute
     """
     # 1. Resolve slug - only ready items when no explicit slug
-    deps = await asyncio.to_thread(read_dependencies, cwd)
+    # Prefer worktree-local planning state when explicit slug worktree exists.
+    deps_cwd = cwd
+    if slug:
+        maybe_worktree = Path(cwd) / "trees" / slug
+        if (maybe_worktree / "todos" / "dependencies.json").exists():
+            deps_cwd = str(maybe_worktree)
+    deps = await asyncio.to_thread(read_dependencies, deps_cwd)
 
     resolved_slug: str
     if slug:
         # Explicit slug provided - verify it's in ready state and dependencies satisfied
         # Read roadmap to check state
-        roadmap_path = Path(cwd) / "todos" / "roadmap.md"
+        roadmap_root = Path(cwd)
+        maybe_worktree = Path(cwd) / "trees" / slug
+        if (maybe_worktree / "todos" / "roadmap.md").exists():
+            roadmap_root = maybe_worktree
+        roadmap_path = roadmap_root / "todos" / "roadmap.md"
         if not roadmap_path.exists():
             return format_error(
                 "NOT_PREPARED",
@@ -1475,7 +1561,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             )
 
         # Item is [.] or [>] - check dependencies
-        if not await asyncio.to_thread(check_dependencies_satisfied, cwd, slug, deps):
+        if not await asyncio.to_thread(check_dependencies_satisfied, str(roadmap_root), slug, deps):
             return format_error(
                 "DEPS_UNSATISFIED",
                 f"Item '{slug}' has unsatisfied dependencies.",
@@ -1504,8 +1590,16 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         resolved_slug = found_slug
 
     # 2. Validate preconditions
-    has_requirements = check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md")
-    has_impl_plan = check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md")
+    precondition_root = cwd
+    worktree_path = Path(cwd) / "trees" / resolved_slug
+    if (
+        worktree_path.exists()
+        and (worktree_path / "todos" / resolved_slug / "requirements.md").exists()
+        and (worktree_path / "todos" / resolved_slug / "implementation-plan.md").exists()
+    ):
+        precondition_root = str(worktree_path)
+    has_requirements = check_file_exists(precondition_root, f"todos/{resolved_slug}/requirements.md")
+    has_impl_plan = check_file_exists(precondition_root, f"todos/{resolved_slug}/implementation-plan.md")
     if not (has_requirements and has_impl_plan):
         return format_error(
             "NOT_PREPARED",
@@ -1522,27 +1616,27 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         return format_error(
             "WORKTREE_PREP_FAILED",
             str(exc),
-            next_call="Add bin/worktree-prepare.sh or fix its execution, then retry.",
+            next_call="Add tools/worktree-prepare.sh or fix its execution, then retry.",
         )
 
     worktree_cwd = str(Path(cwd) / "trees" / resolved_slug)
 
-    # Keep planning/state files aligned across main and worktree.
-    await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
-    await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
+    # Bootstrap worktree from main only when it is first created.
+    if worktree_created:
+        await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
+        await asyncio.to_thread(sync_slug_todo_from_main_to_worktree, cwd, resolved_slug)
 
     # 5. Check uncommitted changes
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)
 
-    # 6. Mark as in-progress BEFORE dispatching (claim the item)
-    # Only mark if currently [.] (not already [>])
-    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
+    # 6. Mark as in-progress in worktree BEFORE dispatching (claim the item)
+    # Only mark if currently [.] (not already [>]) in worktree roadmap.
+    roadmap_path = Path(worktree_cwd) / "todos" / "roadmap.md"
     if roadmap_path.exists():
         content = await read_text_async(roadmap_path)
         if f"[.] {resolved_slug}" in content:
-            await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, ">")
-            await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
+            await asyncio.to_thread(update_roadmap_state, worktree_cwd, resolved_slug, ">")
 
     # 7. Check build status (from state.json in worktree)
     if not await asyncio.to_thread(is_build_complete, worktree_cwd, resolved_slug):
@@ -1581,14 +1675,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                     f"current={current_round}, max={max_rounds}. Human decision required."
                 ),
                 next_call=f'Resolve findings manually, then call teleclaude__next_work(slug="{resolved_slug}")',
-            )
-        if is_main_ahead(cwd, resolved_slug):
-            return format_error(
-                "MAIN_AHEAD",
-                f"main has commits not in trees/{resolved_slug}. Sync the worktree with main before review.",
-                next_call=(
-                    f'Merge or rebase main into trees/{resolved_slug}, then call teleclaude__next_work(slug="{resolved_slug}") again.'
-                ),
             )
         agent, mode = await get_available_agent(db, PhaseName.REVIEW.value, WORK_FALLBACK)
         return format_tool_call(

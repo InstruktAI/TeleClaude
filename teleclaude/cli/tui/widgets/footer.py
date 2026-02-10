@@ -34,12 +34,15 @@ class Footer:
         for agent in ["claude", "gemini", "codex"]:
             info = self.agent_availability.get(agent)
             available = info.available if info else True
+            degraded = bool(info and (info.status == "degraded" or (info.reason or "").startswith("degraded")))
 
             # Get color pair for this agent (muted if unavailable, normal if available)
             agent_colors = AGENT_COLORS.get(agent, {"muted": 0, "normal": 0})
-            color_pair_id = agent_colors["normal"] if available else agent_colors["muted"]
+            color_pair_id = agent_colors["normal"] if available and not degraded else agent_colors["muted"]
 
-            if available:
+            if degraded:
+                agent_parts.append((f"{agent} ~", color_pair_id))
+            elif available:
                 agent_parts.append((f"{agent} ✔", color_pair_id))
             else:
                 until = info.unavailable_until if info else None

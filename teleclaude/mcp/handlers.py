@@ -1116,12 +1116,23 @@ class MCPHandlersMixin:
         reason: str | None = None,
         unavailable_until: str | None = None,
         clear: bool = False,
+        status: str | None = None,
     ) -> str:
         """Mark an agent as temporarily unavailable for task assignment, or clear unavailability."""
         agent_name = normalize_agent_name(agent)
         if clear:
             await db.mark_agent_available(agent_name)
             return f"OK: {agent_name} marked available"
+        normalized_status = (status or "unavailable").strip().lower()
+        if normalized_status not in {"available", "unavailable", "degraded"}:
+            return "ERROR: status must be one of: available, unavailable, degraded"
+        if normalized_status == "available":
+            await db.mark_agent_available(agent_name)
+            return f"OK: {agent_name} marked available"
+        if normalized_status == "degraded":
+            degrade_reason = reason or "degraded"
+            await db.mark_agent_degraded(agent_name, degrade_reason)
+            return f"OK: {agent_name} marked degraded ({degrade_reason})"
         if not reason:
             return "ERROR: reason is required unless clear is true"
         if not unavailable_until:

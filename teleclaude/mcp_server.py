@@ -70,10 +70,10 @@ class ToolSignature(TypedDict):
     """Schema for tool signature used in change detection."""
 
     name: str
-    inputSchema: dict[str, object]  # noqa: loose-dict - JSON Schema is inherently unstructured
+    inputSchema: dict[str, object]  # guard: loose-dict - JSON Schema is inherently unstructured
 
 
-def _load_state_file() -> dict[str, object]:  # noqa: loose-dict - Extensible state file for future use
+def _load_state_file() -> dict[str, object]:  # guard: loose-dict - Extensible state file for future use
     """Load state from .state.json file."""
     try:
         if _STATE_FILE_PATH.exists():
@@ -83,7 +83,7 @@ def _load_state_file() -> dict[str, object]:  # noqa: loose-dict - Extensible st
     return {}
 
 
-def _save_state_file(state: dict[str, object]) -> None:  # noqa: loose-dict - Extensible state file for future use
+def _save_state_file(state: dict[str, object]) -> None:  # guard: loose-dict - Extensible state file for future use
     """Save state to .state.json file."""
     try:
         _STATE_FILE_PATH.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
@@ -196,7 +196,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
         timeout: float = 3.0,
         session_id: str | None = None,
         metadata: MessageMetadata | None = None,
-    ) -> dict[str, object]:  # noqa: loose-dict - MCP envelope structure varies by response type
+    ) -> dict[str, object]:  # guard: loose-dict - MCP envelope structure varies by response type
         """Send request to remote computer and return parsed response envelope.
 
         Args:
@@ -227,7 +227,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 error_msg = envelope.get("error", "Unknown error")
                 raise RemoteRequestError(f"Remote error: {error_msg}")
 
-            return cast(dict[str, object], envelope)  # noqa: loose-dict - MCP envelope structure
+            return cast(dict[str, object], envelope)  # guard: loose-dict - MCP envelope structure
 
         except TimeoutError as e:
             raise RemoteRequestError(f"Timeout waiting for response from {computer}") from e
@@ -327,7 +327,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
         return True
 
     @staticmethod
-    def _str_arg(args: dict[str, object] | None, key: str, default: str = "") -> str:  # noqa: loose-dict - MCP arguments
+    def _str_arg(args: dict[str, object] | None, key: str, default: str = "") -> str:  # guard: loose-dict - MCP arguments
         """Extract string argument from MCP tool arguments."""
         if not args:
             return default
@@ -359,7 +359,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
         @server.call_tool()  # type: ignore[untyped-decorator]  # MCP decorators use Callable[...] - see issue #1822
         async def call_tool(  # pyright: ignore[reportUnusedFunction]
             name: str,
-            arguments: dict[str, object],  # noqa: loose-dict - MCP protocol boundary, typed per-tool in Group 5
+            arguments: dict[str, object],  # guard: loose-dict - MCP protocol boundary, typed per-tool in Group 5
         ) -> list[TextContent]:
             """Handle tool calls.
 
@@ -551,6 +551,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
             async def _handle_mark_agent_unavailable() -> list[TextContent]:
                 until = self._str_arg(arguments, "unavailable_until") or None
                 clear = bool(arguments.get("clear")) if arguments else False
+                status = self._str_arg(arguments, "status") or None
                 return [
                     TextContent(
                         type="text",
@@ -559,6 +560,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                             self._str_arg(arguments, "reason") or None,
                             until,
                             clear,
+                            status,
                         ),
                     )
                 ]

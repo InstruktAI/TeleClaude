@@ -182,6 +182,7 @@ class AgentAvailabilityDTO(BaseModel):  # type: ignore[explicit-any]
 
     agent: Literal["claude", "gemini", "codex"]
     available: bool | None
+    status: Literal["available", "unavailable", "degraded"] | None = None
     unavailable_until: str | None = None
     reason: str | None = None
     error: str | None = None
@@ -296,7 +297,7 @@ class ErrorEventDataDTO(BaseModel):  # type: ignore[explicit-any]
     session_id: str | None = None
     message: str
     source: str | None = None
-    details: dict[str, object] | None = None  # noqa: loose-dict - error details vary
+    details: dict[str, object] | None = None  # guard: loose-dict - error details vary
     severity: Literal["warning", "error", "critical"] = "error"
     retryable: bool = False
     code: str | None = None

@@ -635,11 +635,11 @@ def get_tool_definitions() -> list[Tool]:
             name="teleclaude__mark_agent_unavailable",
             title="TeleClaude: Mark Agent Unavailable",
             description=(
-                "Mark an agent as temporarily unavailable for task assignment, "
-                "or clear its unavailable state. Used when dispatch fails due to rate limits, "
-                "quota exhaustion, or outages. The agent will be skipped in fallback selection "
-                "until the specified time. If clear is true, the agent becomes available immediately "
-                "and other fields are ignored."
+                "Set agent dispatch status. "
+                "`status='unavailable'` temporarily removes the agent from fallback selection until expiry. "
+                "`status='degraded'` keeps it installed but excludes it from automatic selection. "
+                "`status='available'` clears restrictions. "
+                "If clear=true, status is reset to available immediately."
             ),
             inputSchema={
                 "type": "object",
@@ -648,11 +648,19 @@ def get_tool_definitions() -> list[Tool]:
                         "type": "string",
                         "description": "Agent name (e.g., 'claude', 'gemini', 'codex')",
                     },
+                    "status": {
+                        "type": "string",
+                        "enum": ["available", "unavailable", "degraded"],
+                        "description": (
+                            "Dispatch status to apply. "
+                            "'degraded' excludes the agent from automatic fallback selection."
+                        ),
+                    },
                     "reason": {
                         "type": "string",
                         "description": (
                             "Reason for marking unavailable (e.g., 'rate_limited', 'quota_exhausted'). "
-                            "Required unless clear is true."
+                            "Required for unavailable status; optional for degraded."
                         ),
                     },
                     "unavailable_until": {

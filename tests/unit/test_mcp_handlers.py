@@ -92,3 +92,20 @@ async def test_start_session_handles_missing_tmux_name():
 
     assert result["status"] == "success"
     assert result.get("tmux_session_name") is None
+
+
+@pytest.mark.asyncio
+async def test_mark_agent_unavailable_degraded_status():
+    handler = DummyHandlers()
+    with (
+        patch("teleclaude.mcp.handlers.db.mark_agent_degraded", new_callable=AsyncMock) as mock_degraded,
+        patch("teleclaude.mcp.handlers.db.mark_agent_available", new_callable=AsyncMock) as mock_available,
+    ):
+        result = await handler.teleclaude__mark_agent_unavailable(
+            agent="claude",
+            reason="manual",
+            status="degraded",
+        )
+    mock_degraded.assert_awaited_once()
+    mock_available.assert_not_awaited()
+    assert "marked degraded" in result

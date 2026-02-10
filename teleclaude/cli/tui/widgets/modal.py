@@ -97,7 +97,13 @@ class StartSessionModal:
         info = self.agent_availability.get(agent)
         if not info:
             return False
-        return info.available is True
+        if info.available is not True:
+            return False
+        if info.status == "degraded":
+            return False
+        if isinstance(info.reason, str) and info.reason.startswith("degraded"):
+            return False
+        return True
 
     def _get_available_agents(self) -> list[int]:
         """Get indices of available agents.
