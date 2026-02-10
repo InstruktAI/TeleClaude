@@ -27,6 +27,11 @@ def _warn_unknown_keys(model: BaseModel, path: str, config_path: Path) -> None:
             for key, value in field_value.items():
                 if isinstance(value, BaseModel):
                     _warn_unknown_keys(value, f"{path}.{field_name}.{key}", config_path)
+        elif isinstance(field_value, list):
+            # Check list items for nested BaseModels
+            for idx, item in enumerate(field_value):
+                if isinstance(item, BaseModel):
+                    _warn_unknown_keys(item, f"{path}.{field_name}[{idx}]", config_path)
 
 
 def load_config(path: Path, model_class: Type[T]) -> T:

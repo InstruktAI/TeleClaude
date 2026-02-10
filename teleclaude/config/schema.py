@@ -93,6 +93,7 @@ class GitConfig(BaseModel):
 
 
 class PersonEntry(BaseModel):
+    model_config = ConfigDict(extra="allow")
     name: str
     email: str
     username: Optional[str] = None
@@ -100,23 +101,28 @@ class PersonEntry(BaseModel):
 
 
 class OpsEntry(BaseModel):
+    model_config = ConfigDict(extra="allow")
     username: str
 
 
 class TelegramCreds(BaseModel):
+    model_config = ConfigDict(extra="allow")
     user_name: str
     user_id: int
 
 
 class CredsConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
     telegram: Optional[TelegramCreds] = None
 
 
 class NotificationsConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
     telegram: bool = False
 
 
 class SubscriptionsConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
     youtube: Optional[str] = None
 
 
