@@ -26,11 +26,11 @@ for file in "${FILES[@]}"; do
         fi
     done < <(grep -n -E 'from sqlalchemy.*import.*text' "$file" 2>/dev/null || true)
 
-    # Pattern 2: text( used for SQL (but not read_text, write_text, etc.)
-    # Match lines starting with text( or having = text( or .exec(text(
+    # Pattern 2: text(, execute(...), executescript(...), or cursor.execute(...) used for SQL.
+    # Match common SQL execution primitives while skipping non-SQL text helpers.
     while IFS=: read -r line_num line_content; do
         if [[ -n "$line_num" && ! "$line_content" =~ "noqa: raw-sql" ]]; then
-            # Skip false positives like read_text, write_text, _text, Context
+            # Skip false positives like read_text, write_text, _text, Text\(|Context
             if [[ "$line_content" =~ (read_text|write_text|_text|Text\(|Context) ]]; then
                 continue
             fi
@@ -38,7 +38,7 @@ for file in "${FILES[@]}"; do
             echo "  $line_content"
             found_violations=1
         fi
-    done < <(grep -n -E '(^\s*text\(|\btext\s*\()' "$file" 2>/dev/null || true)
+    done < <(grep -n -E '(^\s*text\(|\btext\s*\(|\bexecute\(\"|\.execute\(\"|\.executescript\(|cursor\.execute\()' "$file" 2>/dev/null || true)
 done
 
 if [[ $found_violations -eq 1 ]]; then

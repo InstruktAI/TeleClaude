@@ -136,15 +136,15 @@ class Db:
         # Ensure schema + migrations via aiosqlite (single-shot bootstrap)
         self.conn = await aiosqlite.connect(db_path, uri=use_uri)
         self.conn.row_factory = aiosqlite.Row
-        await self.conn.execute("PRAGMA journal_mode = WAL")
-        await self.conn.execute("PRAGMA synchronous = NORMAL")
-        await self.conn.execute("PRAGMA busy_timeout = 5000")
+        await self.conn.execute("PRAGMA journal_mode = WAL")  # noqa: raw-sql
+        await self.conn.execute("PRAGMA synchronous = NORMAL")  # noqa: raw-sql
+        await self.conn.execute("PRAGMA busy_timeout = 5000")  # noqa: raw-sql
 
         schema_path = Path(__file__).parent / "schema.sql"
         with open(schema_path, "r", encoding="utf-8") as f:
             schema_sql = f.read()
 
-        await self.conn.executescript(schema_sql)
+        await self.conn.executescript(schema_sql)  # noqa: raw-sql
         await self.conn.commit()
 
         await run_pending_migrations(self.conn)
@@ -236,8 +236,8 @@ class Db:
         async with self._session() as session:
             from sqlalchemy import text  # noqa: raw-sql - PRAGMA requires raw SQL
 
-            result = await session.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))  # noqa: raw-sql
-            row = result.fetchone()
+            result = await session.exec(text("PRAGMA wal_checkpoint(TRUNCATE)"))  # noqa: raw-sql
+            row = result.first()
             if row:
                 logger.debug("WAL checkpoint: busy=%s, log=%s, checkpointed=%s", *row)
 
@@ -1288,53 +1288,58 @@ class Db:
             await db_session.commit()
 
 
-def _field_query(field: str) -> str:  # noqa: raw-sql - Sync helper for standalone scripts
-    """Build query to find session by direct column value."""
-    return (
-        f"SELECT session_id FROM sessions WHERE {field} = :value "
-        "AND closed_at IS NULL ORDER BY last_activity DESC LIMIT 1"
-    )
-
-
-def _fetch_session_id_sync(db_path: str, query: str, value: object) -> str | None:
-    """Sync helper for raw session_id queries.
+def _fetch_session_id_sync(db_path: str, field: str, value: object) -> str | None:
+    """Sync helper for session_id lookups in standalone scripts.
 
     guard: allow-string-compare
-    noqa: raw-sql - Sync context requires raw SQL for lightweight lookups
     """
     from sqlalchemy import create_engine, text  # noqa: raw-sql
+    from sqlalchemy.exc import OperationalError
     from sqlmodel import Session as SqlSession
+    from sqlmodel import select
+
+    # Validate field against Session model attributes to fail fast on typos.
+    model_fields = getattr(db_models.Session, "model_fields", None)
+    if isinstance(model_fields, dict):
+        valid_fields = set(model_fields.keys())
+    else:
+        # Backward-compatible fallback for older Pydantic/SQLModel internals.
+        fields_fallback = getattr(db_models.Session, "__fields__", {})
+        valid_fields = set(fields_fallback.keys()) if isinstance(fields_fallback, dict) else set()
+    if field not in valid_fields:
+        raise ValueError(f"Invalid field '{field}' for Session lookup. Valid fields: {sorted(valid_fields)}")
 
     engine = create_engine(f"sqlite:///{db_path}")
     with SqlSession(engine) as session:
         session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
         session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
+        column = getattr(db_models.Session, field, None)
+        if column is None:
+            raise ValueError(f"Invalid field '{field}' for Session lookup")
+        stmt = (
+            select(db_models.Session.session_id)
+            .where(column == value)
+            .where(db_models.Session.closed_at.is_(None))
+            .order_by(db_models.Session.last_activity.desc())
+            .limit(1)
+        )
         try:
-            result = session.exec(text(query), {"value": value})  # noqa: raw-sql
-        except Exception as exc:  # noqa: BLE001 - Boundary DB operation
+            row = session.exec(stmt).first()
+        except OperationalError as exc:
             if "no such table" in str(exc).lower():
                 return None
             raise
-        row = result.first()
-        if row is None:
-            return None
-        if isinstance(row, tuple):
-            return str(row[0])
-        return str(row)
+        return str(row) if row else None
 
 
 def get_session_id_by_field_sync(db_path: str, field: str, value: object) -> str | None:
     """Sync helper for lookups in standalone scripts (hook receiver, telec)."""
-    return _fetch_session_id_sync(db_path, _field_query(field), value)
+    return _fetch_session_id_sync(db_path, field, value)
 
 
-def get_session_id_by_tmux_name_sync(db_path: str, tmux_name: str) -> str | None:  # noqa: raw-sql
+def get_session_id_by_tmux_name_sync(db_path: str, tmux_name: str) -> str | None:
     """Sync helper to find session_id by tmux session name."""
-    query = (
-        "SELECT session_id FROM sessions WHERE tmux_session_name = :value "
-        "AND closed_at IS NULL ORDER BY last_activity DESC LIMIT 1"
-    )
-    return _fetch_session_id_sync(db_path, query, tmux_name)
+    return _fetch_session_id_sync(db_path, "tmux_session_name", tmux_name)
 
 
 # Module-level singleton instance (initialized on first import)

@@ -61,8 +61,8 @@ def _create_sync_engine() -> object:
     @sa_event.listens_for(engine, "connect")
     def _set_sqlite_pragmas(dbapi_connection, _connection_record):
         cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode = WAL")
-        cursor.execute("PRAGMA busy_timeout = 5000")
+        cursor.execute("PRAGMA journal_mode = WAL")  # noqa: raw-sql
+        cursor.execute("PRAGMA busy_timeout = 5000")  # noqa: raw-sql
         cursor.close()
 
     return engine

@@ -99,11 +99,11 @@ class TestDbSettings:
         from sqlalchemy import text
 
         async with test_db._session() as session:
-            row = (await session.execute(text("PRAGMA journal_mode"))).fetchone()  # raw-sql
+            row = (await session.exec(text("PRAGMA journal_mode"))).first()  # raw-sql
             assert row is not None
             assert str(row[0]).lower() == "wal"
 
-            row = (await session.execute(text("PRAGMA busy_timeout"))).fetchone()  # raw-sql
+            row = (await session.exec(text("PRAGMA busy_timeout"))).first()  # raw-sql
             assert row is not None
             assert int(row[0]) >= 5000
 
@@ -223,11 +223,11 @@ class TestAgentAvailability:
 
         past = (FIXED_NOW - timedelta(minutes=5)).isoformat()
         async with test_db._session() as session:
-            await session.execute(  # raw-sql
+            await session.exec(  # raw-sql
                 text(
                     "INSERT INTO agent_availability (agent, available, unavailable_until, reason) VALUES (:a, 0, :u, :r)"
                 ),
-                {"a": "gemini", "u": past, "r": "rate_limited"},
+                params={"a": "gemini", "u": past, "r": "rate_limited"},
             )
             await session.commit()
 
@@ -235,11 +235,12 @@ class TestAgentAvailability:
 
         assert info == {"available": True, "unavailable_until": None, "reason": None}
         async with test_db._session() as session:
-            result = await session.execute(  # raw-sql
+            result = await session.exec(  # raw-sql
                 text("SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = :a"),
-                {"a": "gemini"},
+                params={"a": "gemini"},
             )
-            persisted = result.fetchone()
+            persisted = result.first()
+        assert persisted is not None
         assert persisted[0] == 1  # available
         assert persisted[1] is None  # unavailable_until
         assert persisted[2] is None  # reason
@@ -251,22 +252,23 @@ class TestAgentAvailability:
 
         future = (FIXED_NOW + timedelta(minutes=10)).isoformat()
         async with test_db._session() as session:
-            await session.execute(  # raw-sql
+            await session.exec(  # raw-sql
                 text(
                     "INSERT INTO agent_availability (agent, available, unavailable_until, reason) VALUES (:a, 0, :u, :r)"
                 ),
-                {"a": "codex", "u": future, "r": "rate_limited"},
+                params={"a": "codex", "u": future, "r": "rate_limited"},
             )
             await session.commit()
 
         await test_db.mark_agent_available("codex")
 
         async with test_db._session() as session:
-            result = await session.execute(  # raw-sql
+            result = await session.exec(  # raw-sql
                 text("SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = :a"),
-                {"a": "codex"},
+                params={"a": "codex"},
             )
-            persisted = result.fetchone()
+            persisted = result.first()
+        assert persisted is not None
         assert persisted[0] == 1  # available
         assert persisted[1] is None  # unavailable_until
         assert persisted[2] is None  # reason
@@ -677,3 +679,82 @@ class TestVoiceAssignments:
         assert assigned is not None
         assert assigned.service_name == "service-b"
         assert assigned.voice == "beta"
+
+
+class TestSyncHelpers:
+    """Tests for standalone sync helpers."""
+
+    @pytest.mark.asyncio
+    async def test_get_session_id_by_field_sync(self, test_db):
+        """Verify sync lookup helper by field."""
+        import uuid
+
+        from teleclaude.core.db import get_session_id_by_field_sync
+
+        # Create a session to look up
+        session_id = str(uuid.uuid4())
+        await test_db.create_session(
+            computer_name="test-comp",
+            tmux_session_name="test-tmux",
+            last_input_origin="terminal",
+            title="test-title",
+            session_id=session_id,
+        )
+
+        # Look up by title (using thread to safely call sync code from async test)
+        import asyncio
+
+        result = await asyncio.to_thread(get_session_id_by_field_sync, test_db.db_path, "title", "test-title")
+        assert result == session_id
+
+        # Look up by non-existent value
+        result = await asyncio.to_thread(get_session_id_by_field_sync, test_db.db_path, "title", "non-existent")
+        assert result is None
+
+        # Invalid field should raise ValueError
+        with pytest.raises(ValueError, match="Invalid field 'tmux_session_nam'"):
+            await asyncio.to_thread(get_session_id_by_field_sync, test_db.db_path, "tmux_session_nam", "x")
+
+    @pytest.mark.asyncio
+    async def test_get_session_id_by_field_sync_accepts_working_slug(self, test_db):
+        """Lookup helper should accept real Session fields like working_slug."""
+        import asyncio
+        import uuid
+
+        from teleclaude.core.db import get_session_id_by_field_sync
+
+        slug = "test-work-item"
+        session_id = str(uuid.uuid4())
+        await test_db.create_session(
+            computer_name="test-comp",
+            tmux_session_name="test-tmux-working-slug",
+            last_input_origin="terminal",
+            title="test-title",
+            session_id=session_id,
+            working_slug=slug,
+        )
+
+        result = await asyncio.to_thread(get_session_id_by_field_sync, test_db.db_path, "working_slug", slug)
+        assert result == session_id
+
+    @pytest.mark.asyncio
+    async def test_get_session_id_by_tmux_name_sync(self, test_db):
+        """Verify sync lookup helper by tmux name."""
+        import uuid
+
+        from teleclaude.core.db import get_session_id_by_tmux_name_sync
+
+        session_id = str(uuid.uuid4())
+        tmux_name = "sync-test-tmux"
+        await test_db.create_session(
+            computer_name="test-comp",
+            tmux_session_name=tmux_name,
+            last_input_origin="terminal",
+            title="test-title",
+            session_id=session_id,
+        )
+
+        import asyncio
+
+        result = await asyncio.to_thread(get_session_id_by_tmux_name_sync, test_db.db_path, tmux_name)
+        assert result == session_id
