@@ -6,28 +6,18 @@
 
 ## Important
 
-- Failed verification commands are currently treated as successful evidence. `_has_evidence()` and `_has_status_evidence()` only match command substrings and ignore `ToolCallRecord.had_error`, so a failed `make restart` suppresses the required restart action and can produce a false all-clear (`teleclaude/hooks/checkpoint.py:130`, `teleclaude/hooks/checkpoint.py:143`, `teleclaude/hooks/checkpoint.py:366`).
-- JSONL checkpoint extraction is still not I/O-bounded. `_iter_jsonl_entries_tail()` reads the entire file into a deque before returning the last entries, which violates the bounded tail-read requirement for large transcripts (`teleclaude/utils/transcript.py:657`).
-- Capture-only (docs-only) checkpoint messages omit the required baseline log-check instruction. The docs-only branch returns immediately without `instrukt-ai-logs teleclaude --since 2m` (`teleclaude/hooks/checkpoint.py:419`).
+- Mixed `tests + docs` diffs are misclassified as all-clear. `_categorize_files()` requires every changed file to match `tests/**/*.py`, so adding any markdown file drops the `tests only` category and can lead to `All expected validations were observed` with no test instruction (`teleclaude/hooks/checkpoint.py:90`, `teleclaude/hooks/checkpoint.py:403`, `teleclaude/hooks/checkpoint.py:432`).
+- Hook-runtime-only changes skip the required log check. `run_heuristics()` gates `instrukt-ai-logs` behind `has_code_changes`, but that flag excludes `"hook runtime"`, so hook code changes can miss observability guidance (`teleclaude/hooks/checkpoint.py:385`).
+- Duplicate restart actions are emitted when both daemon and config files change. The category loop appends identical `Run \`make restart\` then \`make status\`` actions without deduplication (`teleclaude/hooks/checkpoint.py:366`, `teleclaude/hooks/checkpoint.py:376`).
+- Working-slug file extraction mishandles plan rows annotated with `(NEW)`. `_extract_plan_file_paths()` leaves trailing backtick/annotation text in parsed paths, which can create false drift observations for new-file tasks (`teleclaude/hooks/checkpoint.py:340`).
 
 ## Suggestions
 
-- Add regression tests that failed `make restart` and failed `make status` do not count as suppression evidence (`tests/unit/test_checkpoint_builder.py`).
-- Add an explicit assertion for docs-only capture flow requiring the baseline log-check instruction (`tests/unit/test_checkpoint_builder.py`).
-- Add a transcript extraction test that verifies bounded read behavior by byte window rather than by tail entry count (`tests/unit/test_transcript_extraction.py`).
+- Add regression coverage for `tests + docs` diffs so they still produce a tests-required action (`tests/unit/test_checkpoint_builder.py`).
+- Add a hook-runtime-only test asserting `instrukt-ai-logs teleclaude --since 2m` is required when not observed (`tests/unit/test_checkpoint_builder.py`).
+- Deduplicate required actions and assert single restart/status instruction for `daemon + config` diffs (`tests/unit/test_checkpoint_builder.py`).
+- Parse only fenced file paths from the plan table and strip annotations like `(NEW)` before overlap checks (`teleclaude/hooks/checkpoint.py`).
 
 ## Verdict
 
 REQUEST CHANGES
-
-## Fixes Applied
-
-- Issue: Failed verification commands counted as successful evidence in checkpoint suppression.
-  Fix: `_has_evidence()` and `_has_status_evidence()` now ignore failed Bash tool calls (`had_error=True`) and added regression coverage for failed restart/status evidence paths.
-  Commit: `5179e7f1`
-- Issue: JSONL checkpoint extraction was not I/O-bounded and scanned full files.
-  Fix: `_iter_jsonl_entries_tail()` now reads only a bounded byte window from file tail and parses JSON lines from that window, with a regression test validating byte-window behavior.
-  Commit: `3c15ed95`
-- Issue: Docs-only checkpoint messages omitted baseline log-check instruction.
-  Fix: Docs-only checkpoint branch now includes `instrukt-ai-logs teleclaude --since 2m` and tests assert this instruction is present for docs-only/empty-diff flows.
-  Commit: `c13047e9`
