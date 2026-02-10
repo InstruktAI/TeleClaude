@@ -2,46 +2,30 @@
 
 ## Critical
 
-1. **`jobs.when.every` accepts invalid/unsafe values and can break scheduling at runtime**
-   - Evidence: `teleclaude/config/schema.py:7` and `teleclaude/config/schema.py:11` only enforce mode exclusivity, not duration format or minimum (`>= 1m`) from requirements.
-   - Runtime path: `teleclaude/cron/runner.py:103` calls `_parse_duration` and `teleclaude/cron/runner.py:70` raises `ValueError` for bad strings; this exception is not handled in due-check flow (`teleclaude/cron/runner.py:330`).
-   - Reproduced behavior: `every: "0m"` is accepted and immediately due on every run; `every: "bad"` loads but raises at runtime.
-   - Why this matters: violates acceptance criteria for schema validation and allows one bad config value to break cron execution.
+1. **Telegram adapter no longer starts in env-token setups unless `config.creds.telegram` is present**
+   - Evidence: startup gate changed to `if config.creds.telegram` in `teleclaude/core/adapter_client.py:160`, while the adapter itself still authenticates from env (`teleclaude/adapters/telegram_adapter.py:139`).
+   - Compatibility gap: `config.sample.yml:1` through `config.sample.yml:148` contains no `creds` section, so standard/sample config users with only `TELEGRAM_BOT_TOKEN` are now gated off.
+   - Reproduced behavior: with `TELEGRAM_BOT_TOKEN` set, `config.creds.telegram=None`, and Redis disabled, `AdapterClient.start()` raises `ValueError: No adapters started`.
+   - Impact: this is a runtime regression unrelated to schema validation and can prevent Telegram operation entirely.
 
 ## Important
 
-1. **`timezone` key is warned-but-accepted instead of rejected**
-   - Evidence: `ProjectConfig` allows extras (`teleclaude/config/schema.py:77`) and loader only logs unknown keys (`teleclaude/config/loader.py:38`).
-   - Reproduced behavior: config with top-level `timezone: UTC` validates successfully and appears in `model_extra`.
-   - Why this matters: conflicts with acceptance criterion 10 (`timezone` must be rejected as unknown/deprecated).
+1. **`jobs.when.at` values are not schema-validated as `HH:MM`**
+   - Evidence: `JobWhenConfig` validates `every` but has no validator for `at` in `teleclaude/config/schema.py:6` through `teleclaude/config/schema.py:37`.
+   - Runtime behavior: invalid values are accepted by schema and only logged later in scheduler path (`teleclaude/cron/runner.py:125` through `teleclaude/cron/runner.py:127`), e.g. `at: "99:99"` loads successfully.
+   - Impact: violates requirement/plan expectation that invalid `when.at` should be rejected during validation.
 
-2. **Unknown keys are not warned “at any level”; nested extras are silently dropped**
-   - Evidence: warning only inspects root `model_extra` (`teleclaude/config/loader.py:38`), while nested models like `BusinessConfig`/`GitConfig` rely on default extra handling (`teleclaude/config/schema.py:40`, `teleclaude/config/schema.py:44`), which drops unknown fields without warning.
-   - Why this matters: does not satisfy the requirement that unknown keys should warn for forward compatibility and operator visibility.
+2. **Unknown-key warning coverage is incomplete for job-level configs**
+   - Evidence: warnings depend on `model_extra` traversal (`teleclaude/config/loader.py:16` through `teleclaude/config/loader.py:29`), but `JobScheduleConfig`/`JobWhenConfig` do not allow extras (`teleclaude/config/schema.py:40` through `teleclaude/config/schema.py:56`), so unknown keys are dropped silently.
+   - Reproduced behavior: `jobs.bad.unknown_job_key: true` is ignored with no warning, while `business.unknown_*` does warn.
+   - Impact: does not satisfy the requirement to warn on unknown keys at any level.
 
-## Fixes Applied
+## Suggestions
 
-### Critical #1: Job duration validation (27a07199)
-
-- Added field validator `validate_every_format` for `JobWhenConfig.every`
-- Validates duration format matches `^(\d+)([mhd])$` regex pattern
-- Enforces minimum duration of 1 minute
-- Prevents runtime `ValueError` when invalid duration reaches cron runner
-- Test coverage: `test_job_every_invalid_duration_format`, `test_job_every_zero_duration`
-
-### Important #1: Timezone key rejection (27a07199)
-
-- Added "timezone" to disallowed keys in `ProjectConfig`, `GlobalConfig`, and `PersonConfig`
-- Raises `ValueError` with clear message when timezone key is present
-- Test coverage: `test_timezone_key_rejected_project`, `test_timezone_key_rejected_global`, `test_timezone_key_rejected_person`
-
-### Important #2: Nested unknown keys warning (b4f5d4e2)
-
-- Added `_warn_unknown_keys` helper function in loader that recursively traverses nested models
-- Updated `BusinessConfig` and `GitConfig` to use `extra="allow"` for forward compatibility
-- Warnings now emitted for unknown keys at all nesting levels
-- Test coverage: `test_nested_unknown_keys_warning`
+1. Add explicit `at` format validation (`HH:MM`, 00-23/00-59) in `JobWhenConfig`.
+2. Align adapter startup condition with actual auth contract (env token) or document and migrate config schema/sample to require `creds.telegram`.
+3. Ensure unknown-key warning strategy covers job models (either `extra="allow"` + warnings, or explicit pre-validators that warn on unknown fields).
 
 ## Verdict
 
-REQUEST CHANGES → FIXES APPLIED, READY FOR RE-REVIEW
+REQUEST CHANGES
