@@ -7,6 +7,7 @@ from pathlib import Path
 from teleclaude.core.agents import AgentName
 from teleclaude.utils.transcript import (
     TurnTimeline,
+    _get_entries_for_agent,
     extract_tool_calls_current_turn,
     parse_claude_transcript,
 )
@@ -109,6 +110,24 @@ def test_extract_scopes_to_current_turn():
         timeline = extract_tool_calls_current_turn(path, AgentName.CLAUDE)
         assert len(timeline.tool_calls) == 1
         assert timeline.tool_calls[0].input_data.get("command") == "echo new"
+    finally:
+        _cleanup(path)
+
+
+def test_get_entries_for_agent_honors_tail_entries():
+    entries = []
+    for i in range(120):
+        entries.append({"type": "user", "message": {"role": "user", "content": f"prompt-{i}"}})
+        entries.append({"type": "assistant", "message": {"role": "assistant", "content": []}})
+
+    path = _write_jsonl(entries)
+    try:
+        loaded = _get_entries_for_agent(path, AgentName.CLAUDE, tail_entries=25)
+        assert loaded is not None
+        assert len(loaded) == 25
+        contents = [msg.get("content") for entry in loaded for msg in [entry.get("message")] if isinstance(msg, dict)]
+        assert "prompt-119" in contents
+        assert "prompt-80" not in contents
     finally:
         _cleanup(path)
 

@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -14,6 +15,8 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_local_datetime
 
 logger = logging.getLogger(__name__)
+
+CHECKPOINT_JSONL_TAIL_ENTRIES = 2000
 
 
 def parse_claude_transcript(
@@ -651,23 +654,48 @@ def _iter_jsonl_entries(
                 yield cast(dict[str, object], entry_value)  # guard: loose-dict - Parsed JSONL entry
 
 
+def _iter_jsonl_entries_tail(
+    path: Path,
+    max_entries: int,
+) -> Iterable[dict[str, object]]:  # guard: loose-dict - External JSONL unknown structure
+    """Yield only the last N JSONL entries from a transcript file."""
+    if max_entries <= 0:
+        return
+
+    tail = deque(maxlen=max_entries)
+    for entry in _iter_jsonl_entries(path):
+        tail.append(entry)
+
+    for entry in tail:
+        if isinstance(entry, dict):
+            yield cast(dict[str, object], entry)  # guard: loose-dict - Parsed JSONL entry
+
+
 def _iter_claude_entries(
     path: Path,
+    *,
+    tail_entries: int | None = None,
 ) -> Iterable[dict[str, object]]:  # guard: loose-dict - External JSONL unknown structure
     """Yield entries from Claude Code transcripts (raw JSONL)."""
 
+    if tail_entries is not None:
+        yield from _iter_jsonl_entries_tail(path, tail_entries)
+        return
     yield from _iter_jsonl_entries(path)
 
 
 def _iter_codex_entries(
     path: Path,
+    *,
+    tail_entries: int | None = None,
 ) -> Iterable[dict[str, object]]:  # guard: loose-dict - External JSONL unknown structure
     """Yield entries from Codex JSONL transcripts, skipping metadata.
 
     guard: allow-string-compare
     """
 
-    for entry in _iter_jsonl_entries(path):
+    source = _iter_jsonl_entries_tail(path, tail_entries) if tail_entries is not None else _iter_jsonl_entries(path)
+    for entry in source:
         if entry.get("type") == "session_meta":
             continue
         yield entry
@@ -1062,6 +1090,8 @@ def get_transcript_parser_info(agent_name: AgentName) -> TranscriptParserInfo:
 def _get_entries_for_agent(
     transcript_path: str,
     agent_name: AgentName,
+    *,
+    tail_entries: int | None = None,
 ) -> Optional[list[dict[str, object]]]:  # guard: loose-dict - External entries
     """Load and return transcript entries for the given agent type.
 
@@ -1072,11 +1102,11 @@ def _get_entries_for_agent(
         return None
 
     if agent_name == AgentName.CLAUDE:
-        return list(_iter_claude_entries(path))
+        return list(_iter_claude_entries(path, tail_entries=tail_entries))
     if agent_name == AgentName.GEMINI:
         return list(_iter_gemini_entries(path))
     if agent_name == AgentName.CODEX:
-        return list(_iter_codex_entries(path))
+        return list(_iter_codex_entries(path, tail_entries=tail_entries))
     return None  # type: ignore[unreachable]  # Defensive fallback
 
 
@@ -1481,7 +1511,8 @@ def extract_tool_calls_current_turn(
     Fails open: returns TurnTimeline(tool_calls=[], has_data=False) on any error.
     """
     try:
-        entries = _get_entries_for_agent(transcript_path, agent_name)
+        tail_entries = CHECKPOINT_JSONL_TAIL_ENTRIES if agent_name in (AgentName.CLAUDE, AgentName.CODEX) else None
+        entries = _get_entries_for_agent(transcript_path, agent_name, tail_entries=tail_entries)
         if entries is None:
             return TurnTimeline(tool_calls=[], has_data=False)
 
