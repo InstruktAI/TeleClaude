@@ -19,3 +19,15 @@
 ## Verdict
 
 REQUEST CHANGES
+
+## Fixes Applied
+
+- Issue: Failed verification commands counted as successful evidence in checkpoint suppression.
+  Fix: `_has_evidence()` and `_has_status_evidence()` now ignore failed Bash tool calls (`had_error=True`) and added regression coverage for failed restart/status evidence paths.
+  Commit: `5179e7f1`
+- Issue: JSONL checkpoint extraction was not I/O-bounded and scanned full files.
+  Fix: `_iter_jsonl_entries_tail()` now reads only a bounded byte window from file tail and parses JSON lines from that window, with a regression test validating byte-window behavior.
+  Commit: `3c15ed95`
+- Issue: Docs-only checkpoint messages omitted baseline log-check instruction.
+  Fix: Docs-only checkpoint branch now includes `instrukt-ai-logs teleclaude --since 2m` and tests assert this instruction is present for docs-only/empty-diff flows.
+  Commit: `c13047e9`
