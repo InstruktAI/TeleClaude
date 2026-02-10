@@ -87,6 +87,12 @@ stores on demand:
 - **The codebase** — git history, file contents, test results. The most
   durable memory of all: every commit is a decision recorded, every test is
   an expectation preserved.
+- **The Idea Box** — sparks, hunches, and half-formed thoughts captured
+  mid-flow and set aside. These are not memories yet. They are the unmined
+  ore — impressions that arrived at the wrong moment but were too valuable
+  to discard. Each one waits to be revisited, refined, and transmuted into
+  a lesson, a policy, or a feature. The Idea Box is the only tier that
+  holds what the agent _almost_ thought.
 
 ## Why This Matters
 
@@ -108,4 +114,5 @@ tiers is understanding why the pieces fit.
 
 - general/principle/evolution
 - general/policy/heartbeat
+- general/procedure/idea-box
 - general/concept/documentation-snippets
