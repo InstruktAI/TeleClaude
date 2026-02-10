@@ -134,6 +134,8 @@ def _has_evidence(timeline: TurnTimeline, substrings: list[str]) -> bool:
     for record in timeline.tool_calls:
         if record.tool_name != "Bash":
             continue
+        if record.had_error:
+            continue
         command = str(record.input_data.get("command", ""))
         if any(sub in command for sub in substrings):
             return True
@@ -149,6 +151,8 @@ def _has_status_evidence(timeline: TurnTimeline) -> bool:
         if record.tool_name != "Bash":
             continue
         command = str(record.input_data.get("command", ""))
+        if record.had_error:
+            continue
         if "make restart" in command:
             saw_restart = True
         elif saw_restart and any(sub in command for sub in CHECKPOINT_STATUS_EVIDENCE):

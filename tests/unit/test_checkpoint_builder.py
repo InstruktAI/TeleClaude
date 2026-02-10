@@ -142,6 +142,11 @@ def test_has_evidence_empty_timeline():
     assert _has_evidence(_empty_timeline(), ["make restart"]) is False
 
 
+def test_has_evidence_ignores_failed_commands():
+    timeline = _timeline_with(_bash_record("make restart", had_error=True))
+    assert _has_evidence(timeline, ["make restart"]) is False
+
+
 # ---------------------------------------------------------------------------
 # Verification gap detection (R4 integration)
 # ---------------------------------------------------------------------------
@@ -169,6 +174,32 @@ def test_restart_not_suppressed_when_absent():
         _default_context(),
     )
     assert any("restart" in a.lower() for a in result.required_actions)
+
+
+def test_restart_not_suppressed_when_make_restart_failed():
+    timeline = _timeline_with(
+        _bash_record("make restart", had_error=True),
+        _bash_record("make status"),
+    )
+    result = run_heuristics(
+        ["teleclaude/core/foo.py"],
+        timeline,
+        _default_context(),
+    )
+    assert any("restart" in a.lower() for a in result.required_actions)
+
+
+def test_make_status_required_when_status_failed():
+    timeline = _timeline_with(
+        _bash_record("make restart"),
+        _bash_record("make status", had_error=True),
+    )
+    result = run_heuristics(
+        ["teleclaude/core/foo.py"],
+        timeline,
+        _default_context(),
+    )
+    assert any("make status" in a.lower() for a in result.required_actions)
 
 
 def test_sigusr2_suppressed_when_pkill_in_transcript():
