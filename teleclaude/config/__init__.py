@@ -385,7 +385,10 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
 }
 
 
-def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:  # guard: loose-dict - YAML config merge
+def _deep_merge(
+    base: dict[str, object],  # guard: loose-dict - YAML config merge
+    override: dict[str, object],  # guard: loose-dict - YAML config merge
+) -> dict[str, object]:  # guard: loose-dict - YAML config merge
     """Deep merge override dict into base dict.
 
     Args:

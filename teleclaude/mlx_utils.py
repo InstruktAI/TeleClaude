@@ -10,10 +10,7 @@ logger = get_logger(__name__)
 def is_local_path(value: str) -> bool:
     """Check if value is a filesystem path rather than a HuggingFace repo ID."""
     return (
-        value.startswith(".")
-        or value.startswith("/")
-        or value.startswith("~")
-        or (len(value) > 1 and value[1] == ":")
+        value.startswith(".") or value.startswith("/") or value.startswith("~") or (len(value) > 1 and value[1] == ":")
     )
 
 

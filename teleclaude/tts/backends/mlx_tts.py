@@ -156,7 +156,9 @@ class MLXTTSBackend:
 
             result = subprocess.run(cmd, check=False, capture_output=True, text=True)
             if result.returncode != 0:
-                logger.error("MLX TTS [%s] CLI failed: %s", self._service_name, (result.stderr or result.stdout).strip())
+                logger.error(
+                    "MLX TTS [%s] CLI failed: %s", self._service_name, (result.stderr or result.stdout).strip()
+                )
                 return False
 
             audio_file = Path(f"{prefix}.wav")
@@ -183,9 +185,7 @@ class MLXTTSBackend:
             }
 
             if model_type == "voice_design":
-                generate_kwargs["instruct"] = os.getenv(
-                    "TELECLAUDE_MLX_TTS_INSTRUCT", DEFAULT_VOICE_DESIGN_INSTRUCT
-                )
+                generate_kwargs["instruct"] = os.getenv("TELECLAUDE_MLX_TTS_INSTRUCT", DEFAULT_VOICE_DESIGN_INSTRUCT)
 
             # Merge config params (user overrides defaults)
             generate_kwargs.update(self._params)
@@ -209,8 +209,12 @@ class MLXTTSBackend:
                 text=True,
             )
             if result.returncode != 0:
-                logger.error("MLX TTS [%s] playback failed: %s", self._service_name, (result.stderr or result.stdout).strip())
+                logger.error(
+                    "MLX TTS [%s] playback failed: %s", self._service_name, (result.stderr or result.stdout).strip()
+                )
                 return False
 
-        logger.debug("MLX TTS [%s]: spoke %d chars (model_type=%s voice=%s)", self._service_name, len(text), model_type, voice)
+        logger.debug(
+            "MLX TTS [%s]: spoke %d chars (model_type=%s voice=%s)", self._service_name, len(text), model_type, voice
+        )
         return True
