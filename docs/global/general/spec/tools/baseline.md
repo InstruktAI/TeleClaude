@@ -12,6 +12,7 @@ description: 'Progressive-disclosure entrypoint for the global tool cabinet.'
 @~/.teleclaude/docs/general/spec/tools/history-search.md
 @~/.teleclaude/docs/general/spec/tools/agent-restart.md
 @~/.teleclaude/docs/general/spec/tools/memory-management-api.md
+@~/.teleclaude/docs/general/spec/tools/telec-cli.md
 
 ## What it is
 
@@ -24,6 +25,7 @@ Defines the baseline loading surface for tool specs so agents receive a minimal 
   - `general/spec/tools/history-search`
   - `general/spec/tools/agent-restart`
   - `general/spec/tools/memory-management-api`
+  - `general/spec/tools/telec-cli`
 
 ## Allowed values
 

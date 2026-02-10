@@ -16,6 +16,7 @@ from teleclaude.config import config
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE
 from teleclaude.logging_config import setup_logging
 from teleclaude.project_setup import init_project
+from teleclaude.todo_scaffold import create_todo_skeleton
 
 TMUX_ENV_KEY = "TMUX"
 TUI_ENV_KEY = "TELEC_TUI_SESSION"
@@ -33,6 +34,7 @@ class TelecCommand(str, Enum):
     SYNC = "sync"
     WATCH = "watch"
     DOCS = "docs"
+    TODO = "todo"
 
 
 # Completion definitions: (short, long, description)
@@ -46,6 +48,7 @@ _COMMAND_DESCRIPTIONS = {
     "sync": "Validate refs and build doc artifacts",
     "watch": "Auto-sync docs on file changes",
     "docs": "Query doc snippets (index or fetch by ID)",
+    "todo": "Scaffold a todo folder and core files",
 }
 _DOCS_FLAGS = [
     ("-h", "--help", "Show usage information"),
@@ -81,6 +84,13 @@ _TAXONOMY_TYPES = [
 _DOMAINS = [
     ("software-development", "Software dev domain"),
     ("general", "Cross-domain"),
+]
+_TODO_SUBCOMMANDS = [
+    ("create", "Create todo skeleton files for a slug"),
+]
+_TODO_FLAGS = [
+    (None, "--project-root", "Project root directory"),
+    (None, "--after", "Comma-separated dependency slugs"),
 ]
 
 
@@ -125,6 +135,8 @@ def _handle_completion() -> None:
         _complete_flags(_WATCH_FLAGS, rest, current, is_partial)
     elif cmd in ("claude", "gemini", "codex"):
         _complete_agent(rest, current, is_partial)
+    elif cmd == "todo":
+        _complete_todo(rest, current, is_partial)
     # list, init have no further completions
 
 
@@ -202,6 +214,30 @@ def _complete_agent(rest: list[str], current: str, is_partial: bool) -> None:
         for mode_value, mode_desc in _AGENT_MODES:
             if mode_value.startswith(current):
                 _print_completion(mode_value, mode_desc)
+
+
+def _complete_todo(rest: list[str], current: str, is_partial: bool) -> None:
+    """Complete telec todo arguments."""
+    if not rest:
+        for subcommand, desc in _TODO_SUBCOMMANDS:
+            if not is_partial or subcommand.startswith(current):
+                _print_completion(subcommand, desc)
+        return
+
+    subcommand = rest[0]
+    if subcommand != "create":
+        return
+
+    used = set(rest[1:])
+    if is_partial and current.startswith("-"):
+        for flag in _TODO_FLAGS:
+            if _flag_matches(flag, current) and not _flag_used(flag, used):
+                _print_flag(flag)
+        return
+
+    for flag in _TODO_FLAGS:
+        if not _flag_used(flag, used):
+            _print_flag(flag)
 
 
 def main() -> None:
@@ -314,6 +350,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         _handle_watch(args)
     elif cmd_enum is TelecCommand.DOCS:
         _handle_docs(args)
+    elif cmd_enum is TelecCommand.TODO:
+        _handle_todo(args)
     else:
         print(f"Unknown command: /{cmd}")
         print(_usage())
@@ -580,6 +618,86 @@ def _usage() -> str:
         "  telec watch [--project-root PATH]\n"
         "                                 # Watch project for changes and auto-sync\n"
         "  telec docs [OPTIONS] [IDS...]  # Query documentation snippets (use --help for details)\n"
+        "  telec todo create <slug> [--project-root PATH] [--after dep1,dep2]\n"
+        "                                 # Scaffold todo files without modifying roadmap\n"
+    )
+
+
+def _handle_todo(args: list[str]) -> None:
+    """Handle telec todo commands."""
+    if not args or args[0] in ("--help", "-h"):
+        print(_todo_usage())
+        return
+
+    subcommand = args[0]
+    if subcommand != "create":
+        print(f"Unknown todo subcommand: {subcommand}")
+        print(_todo_usage())
+        raise SystemExit(1)
+
+    _handle_todo_create(args[1:])
+
+
+def _handle_todo_create(args: list[str]) -> None:
+    """Handle telec todo create."""
+    if not args or args[0] in ("--help", "-h"):
+        print(_todo_usage())
+        return
+
+    slug: str | None = None
+    project_root = Path.cwd()
+    after: list[str] | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg == "--after" and i + 1 < len(args):
+            after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_todo_usage())
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print(_todo_usage())
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if not slug:
+        print("Missing required slug.")
+        print(_todo_usage())
+        raise SystemExit(1)
+
+    try:
+        todo_dir = create_todo_skeleton(project_root, slug, after=after)
+    except (ValueError, FileExistsError) as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1) from exc
+
+    print(f"Created todo skeleton: {todo_dir}")
+    if after:
+        print(f"Updated dependencies for {slug}: {', '.join(after)}")
+
+
+def _todo_usage() -> str:
+    """Return usage string for telec todo."""
+    return (
+        "Usage:\n"
+        "  telec todo create <slug> [--project-root PATH] [--after dep1,dep2]\n"
+        "\n"
+        "Notes:\n"
+        "  - Creates todos/{slug}/requirements.md\n"
+        "  - Creates todos/{slug}/implementation-plan.md\n"
+        "  - Creates todos/{slug}/quality-checklist.md\n"
+        "  - Creates todos/{slug}/state.json\n"
+        "  - Fails if todos/{slug} already exists\n"
+        "  - Does NOT modify todos/roadmap.md\n"
     )
 
 

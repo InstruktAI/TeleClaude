@@ -242,6 +242,13 @@ snippets:
   scope: global
   path: docs/general/spec/tools/memory-management-api.md
   source_project: TeleClaude
+- id: general/spec/tools/telec-cli
+  description: 'Canonical AI-safe telec commands: project init, docs sync, and todo
+    scaffolding.'
+  type: spec
+  scope: global
+  path: docs/general/spec/tools/telec-cli.md
+  source_project: TeleClaude
 - id: software-development/concept/ai-to-ai-coordination
   description: How AI agents coordinate using sub-sessions, listeners, and terminal
     notifications.
