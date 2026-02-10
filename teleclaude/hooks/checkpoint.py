@@ -87,9 +87,10 @@ def _categorize_files(git_files: list[str]) -> list[FileCategory]:
     matched: list[FileCategory] = []
     seen_names: set[str] = set()
     tests_only_category = next((c for c in CHECKPOINT_FILE_CATEGORIES if c.name == "tests only"), None)
-    tests_only_diff = bool(git_files) and (
+    meaningful_files = [filepath for filepath in git_files if not _is_docs_only([filepath])]
+    tests_only_diff = bool(meaningful_files) and (
         tests_only_category is not None
-        and all(_file_matches_category(filepath, tests_only_category) for filepath in git_files)
+        and all(_file_matches_category(filepath, tests_only_category) for filepath in meaningful_files)
     )
 
     for category in CHECKPOINT_FILE_CATEGORIES:

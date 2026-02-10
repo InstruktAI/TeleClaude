@@ -251,6 +251,15 @@ def test_mixed_source_and_tests_no_duplicate_test_actions():
     assert len(test_actions) == 1
 
 
+def test_tests_plus_docs_still_requires_tests_action():
+    result = run_heuristics(
+        ["tests/unit/test_foo.py", "docs/notes.md"],
+        _empty_timeline(),
+        _default_context(),
+    )
+    assert any("test" in action.lower() for action in result.required_actions)
+
+
 def test_all_suppressed_emits_all_clear():
     timeline = _timeline_with(
         _bash_record("make restart"),
