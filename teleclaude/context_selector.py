@@ -148,8 +148,9 @@ def _load_project_domains(project_root: Path) -> dict[str, Path]:
     try:
         config = load_project_config(config_path)
         domains = config.business.domains
-    except Exception:
-        return {"software-development": project_root / "docs"}
+    except Exception as e:
+        logger.error("project config validation failed", path=str(config_path), error=str(e))
+        raise
 
     if not domains:
         return {"software-development": project_root / "docs"}

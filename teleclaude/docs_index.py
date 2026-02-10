@@ -401,12 +401,9 @@ def get_project_name(project_root: Path) -> str:
     """Get project name from config or directory name."""
     config_file = project_root / "teleclaude.yml"
     if config_file.exists():
-        try:
-            config = load_project_config(config_file)
-            if config.project_name:
-                return config.project_name
-        except Exception:
-            pass
+        config = load_project_config(config_file)
+        if config.project_name:
+            return config.project_name
     return project_root.name
 
 
