@@ -10,29 +10,11 @@
 
 ---
 
-## Config Schema Validation
-
-- [x] config-schema-validation
-
-Pydantic-based schema for teleclaude.yml across all three config levels (project, global, per-person). Enforce level constraints (only global can configure `people`), validate before interpreting/merging, fix interests schema mismatch (flat list vs nested dict in discovery.py).
-
-## Eliminate Raw SQL from DB Layer
-
-- [x] db-raw-sql-cleanup
-
-Convert inline SQL in db.py to SQLModel/SQLAlchemy ORM and enforce via pre-commit hook.
-
 ## Dependency Health Guardrails
 
 - [.] dependency-health-guardrails
 
 Introduce dependency health guardrails (API + Redis) with circuit-breaker behavior and destructive-op safety gates so timeouts and outages never trigger unsafe cleanup/termination paths.
-
-## Merge Runner
-
-- [.] merge-runner
-
-Serialized merge-only integration runner. It promotes approved worktree branches into `main` one at a time from an isolated merge workspace, updates roadmap/delivered on success, and stops on first conflict with a clear report.
 
 ## Person Identity & Authentication
 
