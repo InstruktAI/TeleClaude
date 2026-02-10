@@ -3,6 +3,7 @@
 This module defines shared constants to ensure consistency.
 """
 
+from dataclasses import dataclass, field
 from enum import Enum
 
 # Taxonomy Types (single source of truth)
@@ -87,6 +88,122 @@ FIELD_COMMAND = "command"
 # Checkpoint injection
 CHECKPOINT_MESSAGE = "Checkpoint \u2014 Continue or validate your work if needed. Any truly interesting memories to be created that meet our criteria? (DON'T abuse it as work log!) If everything that is expected of you is done, do not respond."
 CHECKPOINT_REACTIVATION_THRESHOLD_S = 30
+
+# Checkpoint tail-read bound for JSONL transcripts (512KB)
+CHECKPOINT_TRANSCRIPT_TAIL_BYTES = 524288
+# Max chars to capture from tool result content for error enrichment
+CHECKPOINT_RESULT_SNIPPET_MAX_CHARS = 500
+# Threshold for wide blast radius observation
+CHECKPOINT_BLAST_RADIUS_THRESHOLD = 3
+
+
+@dataclass(frozen=True)
+class FileCategory:
+    """Maps file patterns to checkpoint action instructions."""
+
+    name: str
+    include_patterns: list[str] = field(default_factory=list)
+    exclude_patterns: list[str] = field(default_factory=list)
+    instruction: str = ""
+    evidence_substrings: list[str] = field(default_factory=list)
+    precedence: int = 0  # Lower = earlier in required actions
+
+
+# File categories ordered by action precedence (R2, R9).
+# Evidence substrings are matched against Bash tool call commands (R4).
+CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
+    FileCategory(
+        name="telec setup",
+        include_patterns=[
+            "teleclaude/project_setup/**",
+            "templates/ai.instrukt.teleclaude.docs-watch.plist",
+            "templates/teleclaude-docs-watch.service",
+            "templates/teleclaude-docs-watch.path",
+            ".pre-commit-config.yaml",
+            ".gitattributes",
+            ".husky/pre-commit",
+        ],
+        instruction="Run `telec init` (setup changed: watchers, hook installers, or git filters)",
+        evidence_substrings=["telec init"],
+        precedence=10,
+    ),
+    FileCategory(
+        name="dependencies",
+        include_patterns=["pyproject.toml", "requirements*.txt"],
+        instruction="Install updated dependencies: `pip install -e .`",
+        evidence_substrings=["pip install"],
+        precedence=20,
+    ),
+    FileCategory(
+        name="daemon code",
+        include_patterns=["teleclaude/**/*.py"],
+        exclude_patterns=["teleclaude/hooks/**", "teleclaude/cli/tui/**"],
+        instruction="Run `make restart` then `make status`",
+        evidence_substrings=["make restart"],
+        precedence=30,
+    ),
+    FileCategory(
+        name="config",
+        include_patterns=["config.yml"],
+        instruction="Run `make restart` then `make status`",
+        evidence_substrings=["make restart"],
+        precedence=30,
+    ),
+    FileCategory(
+        name="TUI code",
+        include_patterns=["teleclaude/cli/tui/**"],
+        instruction="Run `pkill -SIGUSR2 -f -- '-m teleclaude.cli.telec$'`",
+        evidence_substrings=["pkill -SIGUSR2", "kill -USR2"],
+        precedence=40,
+    ),
+    FileCategory(
+        name="agent artifacts",
+        include_patterns=["agents/**", ".agents/**", "**/AGENTS.master.md"],
+        instruction="Run agent-restart to reload artifacts",
+        evidence_substrings=["agent-restart"],
+        precedence=50,
+    ),
+    FileCategory(
+        name="hook runtime",
+        include_patterns=["teleclaude/hooks/**"],
+        instruction="",  # Auto-applies on next hook invocation
+        evidence_substrings=[],
+        precedence=100,
+    ),
+    FileCategory(
+        name="tests only",
+        include_patterns=["tests/**/*.py"],
+        instruction="Run targeted tests for changed test files",
+        evidence_substrings=["pytest", "make test"],
+        precedence=60,
+    ),
+]
+
+# Patterns for docs/non-code files (capture-only, no action required)
+CHECKPOINT_NO_ACTION_PATTERNS: list[str] = [
+    "docs/**",
+    "todos/**",
+    "ideas/**",
+    "*.md",
+    "*.txt",
+    "*.rst",
+]
+
+# Evidence patterns for general verification actions (R4)
+CHECKPOINT_STATUS_EVIDENCE = ["make status"]
+CHECKPOINT_TEST_EVIDENCE = ["pytest", "make test"]
+CHECKPOINT_LOG_CHECK_EVIDENCE = ["instrukt-ai-logs"]
+
+# Error enrichment patterns (R5 Layer 2)
+CHECKPOINT_ERROR_ENRICHMENT: list[tuple[str, str]] = [
+    ("Traceback (most recent call last)", "Python errors remain unresolved — verify they are fixed"),
+    ("SyntaxError", "Syntax errors remain — verify the code is valid"),
+    ("ImportError", "Import errors remain — check dependencies or module paths"),
+    ("ModuleNotFoundError", "Import errors remain — check dependencies or module paths"),
+]
+CHECKPOINT_TEST_ERROR_COMMANDS = ["pytest", "make test"]
+CHECKPOINT_TEST_ERROR_MESSAGE = "Test failures remain — re-run tests after fixes"
+CHECKPOINT_GENERIC_ERROR_MESSAGE = "A command returned errors — verify the issue is resolved"
 
 # Misc markers / defaults
 RELATIVE_CURRENT = "."

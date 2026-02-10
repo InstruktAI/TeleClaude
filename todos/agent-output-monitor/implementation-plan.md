@@ -28,7 +28,7 @@ Both axes merge in a shared builder used by both delivery paths (hook for Claude
 
 ### Phase A: Infrastructure
 
-#### Task 1: File category patterns and evidence configuration
+#### Task 1: File category patterns and evidence configuration [x]
 
 Add to `teleclaude/constants.py`:
 
