@@ -25,20 +25,20 @@ class Subscriber:
 
 def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
     """
-    Find all scopes (global + people) with youtube subscription configured.
+    Find scopes (global + people) with ``subscriptions.youtube`` configured.
 
     Checks:
-    - ~/.teleclaude/teleclaude.yml for global/business subscriptions
+    - ~/.teleclaude/teleclaude.yml for global subscriptions
     - ~/.teleclaude/people/*/teleclaude.yml for person subscriptions
 
-    Returns list of Subscribers that have subscriptions.youtube configured.
+    Returns subscribers for each config that declares ``subscriptions.youtube``.
     """
     if root is None:
         root = Path.home() / ".teleclaude"
 
     subscribers: list[Subscriber] = []
 
-    # Check global/business config
+    # Check global config
     global_cfg_path = root / "teleclaude.yml"
     if global_cfg_path.exists():
         global_cfg = load_global_config(global_cfg_path)

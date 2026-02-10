@@ -54,10 +54,10 @@ class JobWhenConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_mode(self) -> "JobWhenConfig":
-        # exactly one mode
+        # Exactly one scheduling mode is allowed.
         if bool(self.every) == bool(self.at):
             raise ValueError("Specify exactly one of 'every' or 'at'")
-        # weekdays only with at
+        # Weekday filtering is only valid for explicit wall-clock schedules.
         if self.weekdays and not self.at:
             raise ValueError("'weekdays' requires 'at'")
         return self
@@ -65,9 +65,9 @@ class JobWhenConfig(BaseModel):
 
 class JobScheduleConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    # New human-friendly scheduling contract
+    # Preferred scheduling contract.
     when: Optional[JobWhenConfig] = None
-    # Legacy compatibility during migration
+    # Legacy schedule fields remain supported as a fallback.
     schedule: Optional[Literal["hourly", "daily", "weekly", "monthly"]] = None
     preferred_hour: int = Field(default=6, ge=0, le=23)
     preferred_weekday: int = Field(default=0, ge=0, le=6)
@@ -161,10 +161,7 @@ class GlobalConfig(ProjectConfig):
     @model_validator(mode="before")
     @classmethod
     def reject_disallowed_keys(cls, data: Any) -> Any:
-        # Global level allows more, but we might want to override the ProjectConfig one
-        # to NOT reject people/ops if we ever decide to use them differently.
-        # But GlobalConfig INHERITS ProjectConfig, so it will inherit its validator.
-        # We need to ensure GlobalConfig allows people/ops.
+        # Override project-level restrictions to allow global-only keys.
         if not isinstance(data, dict):
             return data
         disallowed = {"creds", "notifications", "timezone"}

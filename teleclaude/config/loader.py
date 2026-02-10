@@ -35,10 +35,10 @@ def _warn_unknown_keys(model: BaseModel, path: str, config_path: Path) -> None:
 
 
 def load_config(path: Path, model_class: Type[T]) -> T:
-    """Load and validate configuration from a YAML file.
+    """Load YAML config from ``path`` and validate it with ``model_class``.
 
     Args:
-        path: Path to the teleclaude.yml file.
+        path: Path to a configuration YAML file.
         model_class: The Pydantic model class to use for validation.
 
     Returns:
