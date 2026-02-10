@@ -104,6 +104,13 @@ def test_tests_only_maps_to_tests():
     assert "tests only" in names
 
 
+def test_mixed_source_and_tests_excludes_tests_only():
+    cats = _categorize_files(["teleclaude/core/foo.py", "tests/unit/test_foo.py"])
+    names = [c.name for c in cats]
+    assert "daemon code" in names
+    assert "tests only" not in names
+
+
 def test_docs_only_returns_true():
     assert _is_docs_only(["docs/foo.md", "todos/bar.md", "README.md"]) is True
 
@@ -201,6 +208,16 @@ def test_test_instruction_suppressed_when_pytest_in_transcript():
         _default_context(),
     )
     assert not any("test" in a.lower() and "run" in a.lower() for a in result.required_actions)
+
+
+def test_mixed_source_and_tests_no_duplicate_test_actions():
+    result = run_heuristics(
+        ["teleclaude/core/foo.py", "tests/unit/test_foo.py"],
+        _empty_timeline(),
+        _default_context(),
+    )
+    test_actions = [a for a in result.required_actions if "test" in a.lower()]
+    assert len(test_actions) == 1
 
 
 def test_all_suppressed_emits_all_clear():
