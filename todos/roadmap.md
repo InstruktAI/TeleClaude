@@ -43,12 +43,6 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 
 Context-aware checkpoint messages at agent stop boundaries. Inspects git diff to categorize changed files and produces specific validation instructions (restart daemon, SIGUSR2 TUI, run tests) instead of generic checkpoint text. Shared builder used by both hook (Claude/Gemini) and tmux (Codex) delivery paths.
 
-## CLI Config Ergonomics
-
-- [x] telec-config-cli
-
-Add `telec config` read/mutate/validate commands for `config.yml` with root-anchored subtree reads, YAML patch workflow, and mandatory validate-before-write behavior for AI-safe automation.
-
 ## Role-Based Notifications
 
 - [.] role-based-notifications (after: config-schema-validation)

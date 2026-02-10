@@ -38,3 +38,4 @@
 | 2026-02-10 | config-schema-validation     | Pydantic-based schema validation for teleclaude.yml with level enforcement                | DELIVERED | bc999a3                                  |
 | 2026-02-10 | db-raw-sql-cleanup           | Eliminate raw SQL from DB helpers and enforce raw-sql markers in hooks/check script       | DELIVERED | ae55a25                                  |
 | 2026-02-10 | telec-todo-scaffold          | Add `telec todo create` scaffolding and AI-safe Telec CLI tool spec                       | DELIVERED | 29937f18                                 |
+| 2026-02-10 | telec-config-cli             | Add `telec config` get/patch/validate workflow for AI-safe config mutation                 | DELIVERED | de0c0d2f                                 |
