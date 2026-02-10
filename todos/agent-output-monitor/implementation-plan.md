@@ -150,7 +150,7 @@ Add to `teleclaude/hooks/checkpoint.py`:
 
 **Verify:** Integration tests with mock git output and fixture transcripts producing expected messages.
 
-#### Task 5: Hook route integration (Claude/Gemini)
+#### Task 5: Hook route integration (Claude/Gemini) [x]
 
 Modify `_maybe_checkpoint_output()` in `receiver.py`:
 
@@ -164,7 +164,7 @@ The receiver already has DB access via `_get_session_from_db()`. Extract `native
 
 **Verify:** Hook tests assert JSON shape with context-aware message content. Test suppression by providing fixture transcripts where actions were already performed.
 
-#### Task 6: Codex route integration (tmux injection)
+#### Task 6: Codex route integration (tmux injection) [x]
 
 Modify `_maybe_inject_checkpoint()` in `agent_coordinator.py`:
 
@@ -174,7 +174,7 @@ Modify `_maybe_inject_checkpoint()` in `agent_coordinator.py`:
 
 **Verify:** Coordinator tests assert codex receives context-aware content. Verify parity with hook route for same inputs.
 
-#### Task 7: Escape hatch behavior (single block per turn)
+#### Task 7: Escape hatch behavior (single block per turn) [x]
 
 Ensure the `stop_hook_active` escape hatch in `_maybe_checkpoint_output()`:
 
@@ -186,7 +186,7 @@ Ensure the `stop_hook_active` escape hatch in `_maybe_checkpoint_output()`:
 
 ### Phase C: Verification
 
-#### Task 8: Comprehensive tests
+#### Task 8: Comprehensive tests [x]
 
 Add/adjust tests across test files:
 
@@ -281,7 +281,7 @@ Add/adjust tests across test files:
 
 **Verify:** `pytest tests/unit/test_transcript_extraction.py tests/unit/test_checkpoint_builder.py tests/unit/test_checkpoint_hook.py tests/unit/test_agent_coordinator.py -q` all green.
 
-#### Task 9: Update design doc
+#### Task 9: Update design doc [x]
 
 Update `docs/project/design/architecture/checkpoint-system.md`:
 
