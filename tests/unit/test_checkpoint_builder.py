@@ -356,6 +356,17 @@ def test_partial_fix_still_fires():
     assert len(observations) == 1
 
 
+def test_duplicate_failed_commands_keep_later_unresolved_error():
+    """Duplicate failed command values should not alias to the first record."""
+    timeline = _timeline_with(
+        _bash_record("pytest tests/unit/test_alpha.py", had_error=True, result_snippet="FAILED"),
+        _bash_record("pytest tests/unit/test_alpha.py", had_error=True, result_snippet="FAILED"),
+        _edit_record("/tmp/alpha.py"),
+    )
+    observations = _check_error_state(timeline)
+    assert len(observations) == 1
+
+
 # ---------------------------------------------------------------------------
 # Edit hygiene (R6)
 # ---------------------------------------------------------------------------

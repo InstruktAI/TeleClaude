@@ -160,11 +160,10 @@ def _check_error_state(timeline: TurnTimeline) -> list[str]:
     if not timeline.has_data:
         return observations
 
-    error_records = [r for r in timeline.tool_calls if r.had_error]
-
-    for error_record in error_records:
+    for error_pos, error_record in enumerate(timeline.tool_calls):
+        if not error_record.had_error:
+            continue
         # Layer 1: check for resolution evidence after this error
-        error_pos = timeline.tool_calls.index(error_record)
         subsequent = timeline.tool_calls[error_pos + 1 :]
 
         if _is_error_resolved(error_record, subsequent):
