@@ -88,7 +88,7 @@ def test_configure_gemini_writes_only_required_hook_events(tmp_path, monkeypatch
         "Notification",
         "SessionEnd",
     }
-    assert hooks["enabled"] is True
+    assert hooks["enabled"] == ["*"]
 
     prompt_hook = hooks["BeforeAgent"][0]["hooks"][0]
     command = prompt_hook["command"]

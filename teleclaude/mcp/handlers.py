@@ -1110,7 +1110,7 @@ class MCPHandlersMixin:
             else f"OK: Dependencies cleared for '{slug}'"
         )
 
-    async def teleclaude__mark_agent_unavailable(
+    async def teleclaude__mark_agent_status(
         self,
         agent: str,
         reason: str | None = None,
@@ -1118,7 +1118,7 @@ class MCPHandlersMixin:
         clear: bool = False,
         status: str | None = None,
     ) -> str:
-        """Mark an agent as temporarily unavailable for task assignment, or clear unavailability."""
+        """Set agent dispatch status (available/unavailable/degraded)."""
         agent_name = normalize_agent_name(agent)
         if clear:
             await db.mark_agent_available(agent_name)
@@ -1139,6 +1139,17 @@ class MCPHandlersMixin:
             unavailable_until = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
         await db.mark_agent_unavailable(agent_name, unavailable_until, reason)
         return f"OK: {agent_name} marked unavailable until {unavailable_until} ({reason})"
+
+    async def teleclaude__mark_agent_unavailable(
+        self,
+        agent: str,
+        reason: str | None = None,
+        unavailable_until: str | None = None,
+        clear: bool = False,
+        status: str | None = None,
+    ) -> str:
+        """Backward-compatible alias; use teleclaude__mark_agent_status."""
+        return await self.teleclaude__mark_agent_status(agent, reason, unavailable_until, clear, status)
 
     # =========================================================================
     # Helper Methods

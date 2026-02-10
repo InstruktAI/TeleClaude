@@ -632,8 +632,8 @@ def get_tool_definitions() -> list[Tool]:
             },
         ),
         Tool(
-            name="teleclaude__mark_agent_unavailable",
-            title="TeleClaude: Mark Agent Unavailable",
+            name="teleclaude__mark_agent_status",
+            title="TeleClaude: Mark Agent Status",
             description=(
                 "Set agent dispatch status. "
                 "`status='unavailable'` temporarily removes the agent from fallback selection until expiry. "

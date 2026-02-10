@@ -8,6 +8,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.models import AgentAvailabilityInfo, CreateSessionResult
 from teleclaude.cli.tui.theme import (
+    AGENT_COLORS,
     get_input_border_attr,
     get_layer_attr,
     get_modal_border_attr,
@@ -104,6 +105,15 @@ class StartSessionModal:
         if isinstance(info.reason, str) and info.reason.startswith("degraded"):
             return False
         return True
+
+    def _is_agent_degraded(self, agent: str) -> bool:
+        """Check if agent is degraded (manual-only, not selectable)."""
+        info = self.agent_availability.get(agent)
+        if not info:
+            return False
+        if info.status == "degraded":
+            return True
+        return isinstance(info.reason, str) and info.reason.startswith("degraded")
 
     def _get_available_agents(self) -> list[int]:
         """Get indices of available agents.
@@ -342,17 +352,24 @@ class StartSessionModal:
         for i, agent in enumerate(self.AGENTS):
             x = content_x + 2 + i * 15
             available = self._is_agent_available(agent)
+            degraded = self._is_agent_degraded(agent)
+            agent_colors = AGENT_COLORS.get(agent, {"muted": 0, "normal": 0})
+            normal_attr = curses.color_pair(agent_colors["normal"]) if agent_colors["normal"] else modal_bg
+            muted_attr = curses.color_pair(agent_colors["muted"]) if agent_colors["muted"] else (modal_bg | curses.A_DIM)
 
             if i == self.selected_agent and available:
                 marker = "●"
                 attr = selection_bg | curses.A_BOLD if self.current_field == 0 else modal_bg
             elif available:
                 marker = "○"
-                attr = modal_bg
+                attr = normal_attr
+            elif degraded:
+                marker = "~"
+                attr = normal_attr
             else:
                 # Unavailable - show grayed, non-selectable
                 marker = "░"
-                attr = modal_bg | curses.A_DIM
+                attr = muted_attr | curses.A_DIM
                 stdscr.addstr(agent_y, x, f"{marker} {agent}", attr)
                 continue
 

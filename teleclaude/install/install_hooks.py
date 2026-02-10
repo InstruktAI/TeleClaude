@@ -303,7 +303,9 @@ def _configure_json_agent_hooks(
         hooks_cfg = settings.get("hooks")
         if not isinstance(hooks_cfg, dict):
             hooks_cfg = {}
-        hooks_cfg["enabled"] = True
+        # Gemini expects hooks.enabled to be an array of enabled matcher names.
+        # Normalize to wildcard to enable all configured hook matchers.
+        hooks_cfg["enabled"] = [MATCHER_ALL]
         settings["hooks"] = hooks_cfg
 
     # Apply static settings overrides from settings/{agent}.json

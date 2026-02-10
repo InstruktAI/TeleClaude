@@ -58,6 +58,7 @@ class ToolName(str, Enum):
     NEXT_MAINTAIN = "teleclaude__next_maintain"
     MARK_PHASE = "teleclaude__mark_phase"
     SET_DEPENDENCIES = "teleclaude__set_dependencies"
+    MARK_AGENT_STATUS = "teleclaude__mark_agent_status"
     MARK_AGENT_UNAVAILABLE = "teleclaude__mark_agent_unavailable"
 
 
@@ -548,14 +549,14 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     )
                 ]
 
-            async def _handle_mark_agent_unavailable() -> list[TextContent]:
+            async def _handle_mark_agent_status() -> list[TextContent]:
                 until = self._str_arg(arguments, "unavailable_until") or None
                 clear = bool(arguments.get("clear")) if arguments else False
                 status = self._str_arg(arguments, "status") or None
                 return [
                     TextContent(
                         type="text",
-                        text=await self.teleclaude__mark_agent_unavailable(
+                        text=await self.teleclaude__mark_agent_status(
                             self._str_arg(arguments, "agent"),
                             self._str_arg(arguments, "reason") or None,
                             until,
@@ -585,7 +586,8 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 ToolName.NEXT_MAINTAIN: _handle_next_maintain,
                 ToolName.MARK_PHASE: _handle_mark_phase,
                 ToolName.SET_DEPENDENCIES: _handle_set_dependencies,
-                ToolName.MARK_AGENT_UNAVAILABLE: _handle_mark_agent_unavailable,
+                ToolName.MARK_AGENT_STATUS: _handle_mark_agent_status,
+                ToolName.MARK_AGENT_UNAVAILABLE: _handle_mark_agent_status,
             }
 
             try:
