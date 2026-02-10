@@ -364,6 +364,32 @@ def rewrite_global_index(index_path: str, deploy_root: str) -> None:
     index_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
+def _resolve_git_common_root(project_root: Path) -> Path:
+    """Resolve canonical repo root from git common dir when available.
+
+    In git worktrees, this returns the main repository root (parent of `.git`),
+    preventing shared runtime artifacts from being bound to ephemeral worktree paths.
+    """
+    result = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return project_root
+
+    common_dir = result.stdout.strip()
+    if not common_dir:
+        return project_root
+
+    common_path = Path(common_dir).resolve()
+    if common_path.name != ".git":
+        return project_root
+    return common_path.parent
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Transpile and distribute agent markdown files.")
     parser.add_argument("--deploy", action="store_true", help="Sync generated files to their locations.")
@@ -408,7 +434,10 @@ def main() -> None:
     dot_master_agents_dir = os.path.join(dot_agents_root, "agents")
     dot_master_commands_dir = os.path.join(dot_agents_root, "commands")
     dot_master_skills_dir = os.path.join(dot_agents_root, "skills")
+    canonical_root = _resolve_git_common_root(project_root_path)
     master_docs_dir = os.path.join(project_root, "docs", "global")
+    canonical_docs_dir = os.path.join(canonical_root, "docs", "global")
+    docs_source_dir = canonical_docs_dir if os.path.isdir(canonical_docs_dir) else master_docs_dir
 
     agents_config: dict[str, AgentConfig] = {
         "claude": {
@@ -743,11 +772,11 @@ def main() -> None:
 
             built_agents.append(agent_name)
 
-        if include_docs and os.path.isdir(master_docs_dir):
+        if include_docs and os.path.isdir(docs_source_dir):
             docs_dist = os.path.join(dist_dir, "teleclaude", "docs")
             if os.path.exists(docs_dist):
                 shutil.rmtree(docs_dist)
-            shutil.copytree(master_docs_dir, docs_dist)
+            shutil.copytree(docs_source_dir, docs_dist)
             rewrite_global_index(
                 os.path.join(docs_dist, "index.yaml"),
                 os.path.join(dist_dir, "teleclaude"),
@@ -770,9 +799,9 @@ def main() -> None:
                 dist_agent_root = os.path.join(dist_dir, agent_name)
                 shutil.copytree(dist_agent_root, target_root, dirs_exist_ok=True)
 
-            if include_docs and os.path.isdir(master_docs_dir):
+            if include_docs and os.path.isdir(docs_source_dir):
                 deploy_docs_root = os.path.join(os.path.expanduser("~/.teleclaude"), "docs")
-                master_docs_real = os.path.realpath(master_docs_dir)
+                master_docs_real = os.path.realpath(docs_source_dir)
                 deploy_docs_real = os.path.realpath(deploy_docs_root)
                 if master_docs_real == deploy_docs_real:
                     print(
@@ -783,8 +812,8 @@ def main() -> None:
                     os.makedirs(deploy_docs_root, exist_ok=True)
 
                     # Symlink each entry from docs/global/ to ~/.teleclaude/docs/
-                    for entry in os.listdir(master_docs_dir):
-                        src_path = os.path.join(master_docs_dir, entry)
+                    for entry in os.listdir(docs_source_dir):
+                        src_path = os.path.join(docs_source_dir, entry)
                         dst_path = os.path.join(deploy_docs_root, entry)
 
                         # Skip hidden files

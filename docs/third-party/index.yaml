@@ -1,0 +1,62 @@
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/third-party
+snippets:
+- id: third-party/claude-code/commands
+  description: Claude Code Commands
+  scope: project
+  path: claude-code/commands.md
+- id: third-party/claude-code/hooks
+  description: Claude Code Hooks
+  scope: project
+  path: claude-code/hooks.md
+- id: third-party/claude-code/permissions
+  description: Claude Code Permissions
+  scope: project
+  path: claude-code/permissions.md
+- id: third-party/claude-code/skills
+  description: Claude Code Skills
+  scope: project
+  path: claude-code/skills.md
+- id: third-party/claude-code/sub-agents
+  description: Claude Code Sub-Agents
+  scope: project
+  path: claude-code/sub-agents.md
+- id: third-party/codex-cli/commands
+  description: Codex CLI Commands
+  scope: project
+  path: codex-cli/commands.md
+- id: third-party/codex-cli/hooks
+  description: Codex CLI Hooks
+  scope: project
+  path: codex-cli/hooks.md
+- id: third-party/codex-cli/permissions
+  description: Codex CLI Permissions
+  scope: project
+  path: codex-cli/permissions.md
+- id: third-party/codex-cli/skills
+  description: Codex CLI Skills
+  scope: project
+  path: codex-cli/skills.md
+- id: third-party/codex-cli/sub-agents
+  description: Codex CLI Sub-Agents
+  scope: project
+  path: codex-cli/sub-agents.md
+- id: third-party/gemini-cli/commands
+  description: Gemini CLI Commands
+  scope: project
+  path: gemini-cli/commands.md
+- id: third-party/gemini-cli/hooks
+  description: Gemini CLI Hooks
+  scope: project
+  path: gemini-cli/hooks.md
+- id: third-party/gemini-cli/permissions
+  description: Gemini CLI Permissions
+  scope: project
+  path: gemini-cli/permissions.md
+- id: third-party/gemini-cli/skills
+  description: Gemini CLI Skills
+  scope: project
+  path: gemini-cli/skills.md
+- id: third-party/gemini-cli/sub-agents
+  description: Gemini CLI Sub-Agents
+  scope: project
+  path: gemini-cli/sub-agents.md
