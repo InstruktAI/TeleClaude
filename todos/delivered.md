@@ -37,3 +37,4 @@
 | 2026-02-09 | job-contract-refinements     | Enforced agent job contract (`job`), sync-time job validation, interests parsing fix      | DELIVERED | -                                        |
 | 2026-02-10 | config-schema-validation     | Pydantic-based schema validation for teleclaude.yml with level enforcement                | DELIVERED | bc999a3                                  |
 | 2026-02-10 | db-raw-sql-cleanup           | Eliminate raw SQL from DB helpers and enforce raw-sql markers in hooks/check script       | DELIVERED | ae55a25                                  |
+| 2026-02-10 | telec-todo-scaffold          | Add `telec todo create` scaffolding and AI-safe Telec CLI tool spec                       | DELIVERED | 29937f18                                 |
