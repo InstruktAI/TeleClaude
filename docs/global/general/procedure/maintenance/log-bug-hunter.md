@@ -39,6 +39,7 @@ the maintenance cadence — run continuously so weekly passes find fewer surpris
    - Identify lines containing errors, exceptions, tracebacks, and repeated warnings.
    - Group related log lines into distinct error instances.
    - Ignore informational and debug-level output.
+   - If no error signals are found, write a "clean run" report and stop.
 
 3. Deduplicate against previous runs:
    - Read the most recent run reports (up to 3).
@@ -53,7 +54,7 @@ the maintenance cadence — run continuously so weekly passes find fewer surpris
    - **P2**: annoying but service remains usable.
    - **P3**: low-impact, cosmetic, or edge-case only.
 
-5. For each error, decide fix or promote:
+5. Process every error. For each error, decide fix or promote:
    - **Fix inline** when all are true:
      - Root cause is identifiable from the traceback and surrounding code.
      - Fix is within daemon codebase scope (Python files under `teleclaude/`).
@@ -84,7 +85,11 @@ the maintenance cadence — run continuously so weekly passes find fewer surpris
      - attempted diagnosis.
    - Add the slug to `todos/roadmap.md` as `[ ]` Pending.
 
-8. Write run report to `~/.teleclaude/jobs/log-bug-hunter/runs/{YYMMDD-HHMMSS}.md`.
+8. Repeat steps 5–7 until every error from step 3 has been handled (fixed,
+   promoted, or recorded). Do not stop while unprocessed errors remain.
+
+9. When all errors are processed, write the run report to
+   `~/.teleclaude/jobs/log-bug-hunter/runs/{YYMMDD-HHMMSS}.md` and stop.
 
 ## Outputs
 

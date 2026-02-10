@@ -36,6 +36,13 @@ jobs:
     agent: claude
     thinking_mode: fast
 
+  log_bug_hunter:
+    schedule: hourly
+    type: agent
+    job: log-bug-hunter
+    agent: claude
+    thinking_mode: fast
+
   merge_runner:
     schedule: hourly
     type: agent

@@ -1421,11 +1421,28 @@ class MCPProxy:
             _STARTUP_COMPLETE.set()
             if self.writer:
                 self.writer.close()
+            # Cancel all remaining tasks
             for task in (stdin_task, stdout_task, self._sender_task, response_task, watchdog_task, startup_resync_task):
                 if task and not task.done():
                     task.cancel()
             if self._reconnect_task and not self._reconnect_task.done():
                 self._reconnect_task.cancel()
+            # Wait for all tasks to finish cleanup after cancellation
+            pending = [
+                t
+                for t in (
+                    stdin_task,
+                    stdout_task,
+                    self._sender_task,
+                    response_task,
+                    watchdog_task,
+                    startup_resync_task,
+                    self._reconnect_task,
+                )
+                if t and not t.done()
+            ]
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
 
 
 _PARENT_PID = os.getppid()

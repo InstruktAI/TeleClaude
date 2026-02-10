@@ -42,4 +42,13 @@ Execute the build phase for the slug and verify completion.
 
 - Execute the build phase for the slug.
 - Run verification steps required by the build procedure.
+- Do not stop with uncommitted build changes.
+- Before reporting completion, commit all build work for this slug (including `implementation-plan.md` checkbox updates).
+- Do not claim completion while any planned task is still unchecked.
+- Final state before reporting must be:
+  - all implementation-plan tasks done (`[x]`)
+  - tests passing
+  - lint passing
+  - clean working tree
+- End with: `Ready for review.`
 - Summarize results in the completion report.

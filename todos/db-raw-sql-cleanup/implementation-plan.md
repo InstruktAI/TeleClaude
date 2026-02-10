@@ -10,27 +10,9 @@ Convert remaining sync helper raw SQL to SQLModel and add pre-commit enforcement
 
 Replace `_field_query()` f-string SQL and `_fetch_session_id_sync()` raw text() execution with SQLModel `select()`:
 
-```python
-def _fetch_session_id_sync(db_path: str, field: str, value: object) -> str | None:
-    from sqlalchemy import create_engine, text
-    from sqlmodel import Session as SqlSession, select
-
-    engine = create_engine(f"sqlite:///{db_path}")
-    with SqlSession(engine) as session:
-        session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
-        session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
-        stmt = (
-            select(db_models.Session.session_id)
-            .where(getattr(db_models.Session, field) == value)
-            .where(db_models.Session.closed_at.is_(None))
-            .order_by(db_models.Session.last_activity.desc())
-            .limit(1)
-        )
-        row = session.exec(stmt).first()
-        return str(row) if row else None
-```
-
-Consolidate `_field_query` + `_fetch_session_id_sync` into one function. Update `get_session_id_by_field_sync` and `get_session_id_by_tmux_name_sync` callers.
+[x] Convert `_fetch_session_id_sync` to SQLModel.
+[x] Consolidate `_field_query` into `_fetch_session_id_sync`.
+[x] Update `get_session_id_by_field_sync` and `get_session_id_by_tmux_name_sync`.
 
 **Verification:** Existing tests pass. Sync lookups return correct session IDs.
 
@@ -39,6 +21,10 @@ Consolidate `_field_query` + `_fetch_session_id_sync` into one function. Update 
 **File:** New script or hook entry in `.pre-commit-config.yaml`
 
 Add hook that greps for `text(` or `from sqlalchemy import text` in `teleclaude/core/db.py` and fails if any match lacks `# noqa: raw-sql` on the same line.
+
+[x] Verify `scripts/check-raw-sql.sh` existence and functionality.
+[x] Verify hook entry in `.pre-commit-config.yaml`.
+[x] Test hook with unmarked raw SQL (confirmed failure).
 
 **Verification:** Commit with unmarked raw SQL fails. Commit with marked PRAGMAs passes.
 
