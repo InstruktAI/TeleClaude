@@ -16,12 +16,6 @@
 
 Pydantic-based schema for teleclaude.yml across all three config levels (project, global, per-person). Enforce level constraints (only global can configure `people`), validate before interpreting/merging, fix interests schema mismatch (flat list vs nested dict in discovery.py).
 
-## Job Contract Refinements
-
-- [x] job-contract-refinements (after: config-schema-validation)
-
-Agent jobs use `job` field (spec doc reference) instead of inline `message`. Add job validation to `telec sync` pipeline. Fix discovery.py interests handling. Lightweight input declarations for jobs that need per-person data.
-
 ## Eliminate Raw SQL from DB Layer
 
 - [.] db-raw-sql-cleanup
@@ -33,12 +27,6 @@ Convert inline SQL in db.py to SQLModel/SQLAlchemy ORM and enforce via pre-commi
 - [.] dependency-health-guardrails
 
 Introduce dependency health guardrails (API + Redis) with circuit-breaker behavior and destructive-op safety gates so timeouts and outages never trigger unsafe cleanup/termination paths.
-
-## Next Prepare Maintenance Runner
-
-- [x] next-prepare-maintenance
-
-Maintenance routine that audits active todos for Definition-of-Ready quality, improves `requirements.md` and `implementation-plan.md` in-place when safe, writes `DOR report.md`, and stores a `state.json` DOR quality score (`1..10`) with escalation status.
 
 ## Merge Runner
 
@@ -78,6 +66,12 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 - [ ] web-interface-2 (after: web-interface-1) — Next.js Scaffold & Auth
 - [ ] web-interface-3 (after: web-interface-2) — Chat Interface & Part Rendering
 - [ ] web-interface-4 (after: web-interface-3) — Session Management & Role-Based Access
+
+## Context-Aware Checkpoint (Phase 2)
+
+- [.] agent-output-monitor
+
+Context-aware checkpoint messages at agent stop boundaries. Inspects git diff to categorize changed files and produces specific validation instructions (restart daemon, SIGUSR2 TUI, run tests) instead of generic checkpoint text. Shared builder used by both hook (Claude/Gemini) and tmux (Codex) delivery paths.
 
 ## Role-Based Notifications
 
