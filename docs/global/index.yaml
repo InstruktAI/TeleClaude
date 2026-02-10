@@ -135,6 +135,19 @@ snippets:
   scope: global
   path: docs/general/procedure/idea-box.md
   source_project: TeleClaude
+- id: general/procedure/job-authoring
+  description: 'How to create a new agent or script job: artifacts, placement, validation.'
+  type: procedure
+  scope: global
+  path: docs/general/procedure/job-authoring.md
+  source_project: TeleClaude
+- id: general/procedure/maintenance/log-bug-hunter
+  description: Proactive log scanning procedure that discovers errors, fixes inline
+    or promotes to todos, and writes run reports.
+  type: procedure
+  scope: project
+  path: docs/general/procedure/maintenance/log-bug-hunter.md
+  source_project: TeleClaude
 - id: general/procedure/maintenance/merge-runner
   description: Serialized merge procedure that promotes approved worktree branches
     into main through an isolated merge workspace.

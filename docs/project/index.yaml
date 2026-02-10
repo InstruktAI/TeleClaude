@@ -1,5 +1,5 @@
-project_root: ~/Workspace/InstruktAI/TeleClaude/trees/config-schema-validation
-snippets_root: ~/Workspace/InstruktAI/TeleClaude/trees/config-schema-validation/docs/project
+project_root: ~/Workspace/InstruktAI/TeleClaude
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
 snippets:
 - id: project/concept/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
@@ -416,6 +416,13 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/hook-normalized-events.md
+  source_project: TeleClaude
+- id: project/spec/jobs/log-bug-hunter
+  description: Hourly agent job that scans daemon logs for errors, fixes inline or
+    promotes to todos.
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/log-bug-hunter.md
   source_project: TeleClaude
 - id: project/spec/jobs/memory-review
   description: 'Memory review job: periodic AI analysis of accumulated memories for
