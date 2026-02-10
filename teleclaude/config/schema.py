@@ -26,6 +26,31 @@ class JobWhenConfig(BaseModel):
             raise ValueError(f"Duration must be at least 1 minute, got: {v}")
         return v
 
+    @field_validator("at")
+    @classmethod
+    def validate_at_format(cls, v: Optional[Union[str, List[str]]]) -> Optional[Union[str, List[str]]]:
+        """Validate HH:MM time format for 'at' values."""
+        if v is None:
+            return v
+        import re
+
+        def validate_time(time_str: str) -> None:
+            match = re.match(r"^(\d{2}):(\d{2})$", time_str)
+            if not match:
+                raise ValueError(f"Invalid time format: {time_str}. Expected format: HH:MM (e.g., '09:00', '14:30')")
+            hour, minute = int(match.group(1)), int(match.group(2))
+            if not (0 <= hour <= 23):
+                raise ValueError(f"Invalid hour in {time_str}: must be 00-23")
+            if not (0 <= minute <= 59):
+                raise ValueError(f"Invalid minute in {time_str}: must be 00-59")
+
+        if isinstance(v, str):
+            validate_time(v)
+        else:  # List[str]
+            for time_str in v:
+                validate_time(time_str)
+        return v
+
     @model_validator(mode="after")
     def validate_mode(self) -> "JobWhenConfig":
         # exactly one mode
