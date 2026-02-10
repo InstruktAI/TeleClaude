@@ -383,7 +383,7 @@ def run_heuristics(
             )
 
     # Add log check if code changed and not already done
-    has_code_changes = any(c.name not in ("tests only", "hook runtime") for c in categories)
+    has_code_changes = any(c.name != "tests only" for c in categories)
     if has_code_changes and not _has_evidence(timeline, CHECKPOINT_LOG_CHECK_EVIDENCE):
         result.required_actions.append("Check logs: `instrukt-ai-logs teleclaude --since 2m`")
 

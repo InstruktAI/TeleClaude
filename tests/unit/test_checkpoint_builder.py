@@ -227,6 +227,15 @@ def test_log_check_suppressed_when_instrukt_ai_logs_in_transcript():
     assert not any("instrukt-ai-logs" in a for a in result.required_actions)
 
 
+def test_hook_runtime_only_requires_log_check_when_missing():
+    result = run_heuristics(
+        ["teleclaude/hooks/receiver.py"],
+        _empty_timeline(),
+        _default_context(),
+    )
+    assert any("instrukt-ai-logs" in action for action in result.required_actions)
+
+
 def test_test_instruction_suppressed_when_pytest_in_transcript():
     timeline = _timeline_with(
         _bash_record("make restart"),
