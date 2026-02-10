@@ -217,7 +217,9 @@ async def test_user_prompt_submit_persists_non_checkpoint_codex_synthetic_prompt
         mock_db.get_session = AsyncMock(return_value=session)
         mock_db.set_notification_flag = AsyncMock()
         mock_db.update_session = AsyncMock()
-        with patch("teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock) as mock_summarize:
+        with patch(
+            "teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock
+        ) as mock_summarize:
             mock_summarize.return_value = "Output regression follow-up"
             await coordinator.handle_user_prompt_submit(context)
 
@@ -302,3 +304,45 @@ async def test_handle_agent_stop_codex_does_not_clobber_last_message_sent_at_wit
         first_kwargs = mock_db.update_session.await_args_list[0].kwargs
         assert first_kwargs["last_message_sent"] == "user prompt"
         assert "last_message_sent_at" not in first_kwargs
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_stop_skips_whitespace_only_agent_output(coordinator):
+    session_id = "sess-empty-output"
+    payload = AgentStopPayload(
+        session_id="native-1",
+        transcript_path="/tmp/transcript.jsonl",
+        source_computer="local",
+        raw={"agent_name": "codex"},
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.AGENT_STOP, session_id=session_id, data=payload)
+    session = Session(
+        session_id=session_id,
+        computer_name="local",
+        tmux_session_name="tmux-1",
+        title="Test",
+        active_agent="codex",
+        native_log_file="/tmp/transcript.jsonl",
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch.object(coordinator, "_extract_user_input_for_codex", new=AsyncMock(return_value=None)),
+        patch.object(coordinator, "_extract_agent_output", new=AsyncMock(return_value=" \n\t ")),
+        patch.object(coordinator, "_summarize_output", new=AsyncMock(return_value="should-not-run")) as mock_sum,
+        patch.object(coordinator, "_maybe_send_incremental_output", new=AsyncMock()),
+        patch.object(coordinator, "_notify_session_listener", new=AsyncMock()),
+        patch.object(coordinator, "_forward_stop_to_initiator", new=AsyncMock()),
+        patch.object(coordinator, "_maybe_inject_checkpoint", new=AsyncMock()),
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+
+        await coordinator.handle_agent_stop(context)
+
+        mock_sum.assert_not_awaited()
+        coordinator.tts_manager.speak.assert_not_awaited()
+
+        reasons_calls = [c for c in mock_db.update_session.await_args_list if c.kwargs.get("reasons")]
+        assert any(c.kwargs.get("reasons") == ("agent_stopped",) for c in reasons_calls)
+        assert not any("last_feedback_received" in c.kwargs for c in mock_db.update_session.await_args_list)

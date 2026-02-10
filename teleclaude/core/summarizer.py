@@ -64,7 +64,7 @@ async def summarize_user_input_title(user_input: str) -> str | None:
 
 async def summarize_agent_output(agent_output: str) -> tuple[str | None, str]:
     """Summarize agent output. Returns (None, summary)."""
-    if not agent_output:
+    if not agent_output or not agent_output.strip():
         raise ValueError("Empty agent output")
     max_summary_words = config.summarizer.max_summary_words
     prompt = _build_agent_output_summary_prompt(agent_output, max_summary_words)

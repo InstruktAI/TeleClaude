@@ -6,8 +6,8 @@ repos:
 - repo: local
   hooks:
   - id: format
-    name: Format (bin/format.sh)
-    entry: ./bin/format.sh
+    name: Format (tools/format.sh)
+    entry: ./tools/format.sh
     language: system
     pass_filenames: true
     require_serial: true

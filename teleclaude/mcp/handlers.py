@@ -562,9 +562,6 @@ class MCPHandlersMixin:
         if not command.startswith("/"):
             return {"status": "error", "message": "command must start with '/'"}
         normalized_cmd = command.lstrip("/")
-        agent_key = agent.strip().lower()
-        if agent_key.startswith("codex") and not normalized_cmd.startswith("prompts:"):
-            normalized_cmd = f"prompts:{normalized_cmd}"
         normalized_args = args.strip()
         full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
 

@@ -200,6 +200,29 @@ async def test_extract_agent_output_falls_back_to_native_session() -> None:
 
 
 @pytest.mark.asyncio
+async def test_extract_agent_output_returns_none_for_whitespace_only_message() -> None:
+    """AgentCoordinator should reject whitespace-only extracted assistant output."""
+    coordinator = AgentCoordinator(
+        client=MagicMock(),
+        tts_manager=MagicMock(),
+        headless_snapshot_service=MagicMock(),
+    )
+    session = MagicMock()
+    session.native_log_file = "/tmp/transcript.jsonl"
+    session.active_agent = "codex"
+
+    payload = AgentStopPayload(transcript_path=None, raw={"agent_name": "codex"})
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new=AsyncMock(return_value=session)),
+        patch("teleclaude.core.agent_coordinator.extract_last_agent_message", return_value=" \n\t "),
+    ):
+        raw = await coordinator._extract_agent_output("sess-123", payload)
+
+    assert raw is None
+
+
+@pytest.mark.asyncio
 async def test_new_session_auto_command_agent_then_message():
     """Auto-command agent_then_message starts agent then injects message."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
@@ -227,7 +250,7 @@ async def test_new_session_auto_command_agent_then_message():
         create_cmd = CreateSessionCommand(
             project_path="/tmp",
             origin=InputOrigin.API.value,
-            auto_command="agent_then_message codex slow /prompts:next-review next-machine",
+            auto_command="agent_then_message codex slow /next-review next-machine",
         )
 
         result = await daemon.command_service.create_session(create_cmd)
@@ -1074,7 +1097,9 @@ class TestTitleUpdate:
 
         with (
             patch("teleclaude.core.agent_coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock) as mock_summarize,
+            patch(
+                "teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock
+            ) as mock_summarize,
         ):
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
@@ -1114,7 +1139,9 @@ class TestTitleUpdate:
 
         with (
             patch("teleclaude.core.agent_coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock) as mock_summarize,
+            patch(
+                "teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock
+            ) as mock_summarize,
         ):
             mock_db.get_session = AsyncMock(side_effect=[session, session, session])
             mock_db.update_session = AsyncMock()

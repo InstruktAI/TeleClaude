@@ -18,8 +18,8 @@ from teleclaude.core.next_machine import (
     mark_phase,
     next_prepare,
     read_phase_state,
-    sync_slug_todo_from_worktree_to_main,
     sync_slug_todo_from_main_to_worktree,
+    sync_slug_todo_from_worktree_to_main,
     write_phase_state,
 )
 
@@ -443,8 +443,8 @@ def test_is_review_changes_requested_true():
 # =============================================================================
 
 
-def test_format_tool_call_codex_adds_prompts_prefix():
-    """format_tool_call adds /prompts: prefix for codex agent."""
+def test_format_tool_call_codex_uses_normalized_command():
+    """format_tool_call emits normalized /next-* command for codex."""
     result = format_tool_call(
         command="next-build",
         args="test-slug",
@@ -454,7 +454,8 @@ def test_format_tool_call_codex_adds_prompts_prefix():
         subfolder="trees/test-slug",
         next_call="teleclaude__next_work",
     )
-    assert 'command="/prompts:next-build"' in result
+    assert 'command="/next-build"' in result
+    assert "/prompts:" not in result
     assert "execution script" in result
     assert "do not re-read" in result
 

@@ -1,8 +1,12 @@
 """Test transcript extraction functions used by the summarizer pipeline."""
 
 import json
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from teleclaude.core.agents import AgentName
+from teleclaude.core.summarizer import summarize_agent_output
 from teleclaude.utils.transcript import collect_transcript_messages, extract_last_agent_message
 
 
@@ -62,6 +66,24 @@ def test_extract_last_agent_message_no_assistant(tmp_path):
 
     result = extract_last_agent_message(str(f), AgentName.CLAUDE)
     assert result is None
+
+
+def test_extract_last_agent_message_whitespace_only_returns_none(tmp_path):
+    """Whitespace-only assistant output should not be treated as a real message."""
+    jsonl_content = """{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"\\n  \\t"}]}}
+"""
+    f = tmp_path / "claude_whitespace.jsonl"
+    f.write_text(jsonl_content)
+
+    result = extract_last_agent_message(str(f), AgentName.CLAUDE)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_summarize_agent_output_rejects_whitespace_only_input():
+    with patch("teleclaude.core.summarizer._call_summary_summarizer", new=AsyncMock(return_value="summary")):
+        with pytest.raises(ValueError, match="Empty agent output"):
+            await summarize_agent_output(" \n\t ")
 
 
 def test_collect_transcript_messages_claude(tmp_path):

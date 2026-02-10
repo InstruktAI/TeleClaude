@@ -636,8 +636,8 @@ async def test_run_agent_command_with_agent_type(mock_mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_run_agent_command_adds_prompts_prefix_for_codex(mock_mcp_server):
-    """Test that codex commands are prefixed with /prompts: in auto_command."""
+async def test_run_agent_command_codex_uses_normalized_command(mock_mcp_server):
+    """Test that codex commands use normalized /next-* command names."""
     server = mock_mcp_server
     server.command_service.create_session = AsyncMock(return_value={"session_id": "sess-codex"})
 
@@ -652,7 +652,8 @@ async def test_run_agent_command_adds_prompts_prefix_for_codex(mock_mcp_server):
     assert result["status"] == "success"
     call_args = server.command_service.create_session.call_args
     cmd = call_args.args[0]
-    assert "prompts:next-work" in cmd.auto_command
+    assert "/next-work" in cmd.auto_command
+    assert "prompts:next-work" not in cmd.auto_command
 
 
 @pytest.mark.asyncio

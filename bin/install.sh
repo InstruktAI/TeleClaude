@@ -322,8 +322,42 @@ install_python_deps() {
 
     install_uv
 
+    has_optional_extra() {
+        local extra="$1"
+        "$PYTHON_CMD" - "$INSTALL_DIR/pyproject.toml" "$extra" <<'PY'
+import sys
+import tomllib
+from pathlib import Path
+
+pyproject_path = Path(sys.argv[1])
+extra = sys.argv[2]
+data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+optional = data.get("project", {}).get("optional-dependencies", {})
+sys.exit(0 if isinstance(optional, dict) and extra in optional else 1)
+PY
+    }
+
+    sync_args=()
+    for extra in test; do
+        if has_optional_extra "$extra"; then
+            sync_args+=(--extra "$extra")
+        else
+            print_warning "Optional dependency extra '$extra' not defined in pyproject.toml; skipping"
+        fi
+    done
+
+    # On Apple Silicon macOS, install local MLX dependencies so Parakeet STT
+    # and MLX TTS run in-process (no CLI fallback required).
+    if [ "$OS" = "macos" ] && [ "$(uname -m)" = "arm64" ]; then
+        if has_optional_extra "mlx"; then
+            sync_args+=(--extra "mlx")
+        else
+            print_warning "Optional dependency extra 'mlx' not defined in pyproject.toml; skipping"
+        fi
+    fi
+
     print_info "Syncing Python environment with uv..."
-    uv sync --extra test --extra tts
+    (cd "$INSTALL_DIR" && uv sync "${sync_args[@]}")
 
     if [ ! -d "$INSTALL_DIR/.venv" ]; then
         print_error "uv sync did not create .venv"

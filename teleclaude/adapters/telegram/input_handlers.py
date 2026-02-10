@@ -227,9 +227,12 @@ Usage:
         logger.info("Thread ID: %s", message.message_thread_id)
 
         # Check if we've already processed this message
-        # For edited messages, use a different key to allow reprocessing
+        # For edited messages, include edit_date so each edit is unique
         is_edited = update.edited_message is not None
-        dedup_key_str = f"{message.message_id}:{'edited' if is_edited else 'new'}"
+        edit_suffix = (
+            f"edited:{message.edit_date}" if is_edited and message.edit_date else ("edited" if is_edited else "new")
+        )
+        dedup_key_str = f"{message.message_id}:{edit_suffix}"
         if dedup_key_str in self._processed_voice_messages:
             logger.debug("Skipping duplicate voice message: %s", dedup_key_str)
             return
@@ -270,6 +273,7 @@ Usage:
                 HandleVoiceCommand(
                     session_id=session.session_id,
                     file_path=str(temp_file_path),
+                    duration=float(voice.duration) if voice.duration is not None else None,
                     message_id=str(message.message_id),
                     message_thread_id=message.message_thread_id,
                     origin=self._metadata().origin,

@@ -83,15 +83,16 @@ def run_permissions_probe(project_root: Path) -> bool:
     print("telec init: This is essential, otherwise TeleClaude agents cannot access required local files.")
 
     probe_script = """import os
+home = os.path.expanduser('~')
 paths = [
-    os.path.expanduser('~/Library/Messages/chat.db'),
-    os.path.expanduser('~/Library/Safari/History.db'),
-    os.path.expanduser('~/Library/Mail'),
-    os.path.expanduser('~/Library/CloudStorage'),
+    ('~/Library/Messages/chat.db', os.path.expanduser('~/Library/Messages/chat.db')),
+    ('~/Library/Safari/History.db', os.path.expanduser('~/Library/Safari/History.db')),
+    ('~/Library/Mail', os.path.expanduser('~/Library/Mail')),
+    ('~/Library/CloudStorage', os.path.expanduser('~/Library/CloudStorage')),
 ]
 print('PERMISSIONS_PROBE_START')
-for p in paths:
-    print(f'PATH: {p}')
+for label, p in paths:
+    print(f'PATH: {label}')
     try:
         st = os.stat(p)
         print(f'  stat: ok mode={oct(st.st_mode & 0o777)} size={st.st_size}')

@@ -1085,7 +1085,8 @@ def _extract_text_from_content(content: object, role: str) -> Optional[str]:
     guard: allow-string-compare
     """
     if isinstance(content, str):
-        return content
+        normalized = content.strip()
+        return content if normalized else None
 
     if isinstance(content, list):
         # User messages use "input_text" or "text", assistant uses "text" or "output_text"
@@ -1093,7 +1094,9 @@ def _extract_text_from_content(content: object, role: str) -> Optional[str]:
 
         for block in content:
             if isinstance(block, dict) and block.get("type") in valid_types:
-                return str(block.get("text", ""))
+                text = str(block.get("text", ""))
+                normalized = text.strip()
+                return text if normalized else None
 
     return None
 

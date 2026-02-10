@@ -343,7 +343,11 @@ class AgentCoordinator:
         if raw_output:
             if config.terminal.strip_ansi:
                 raw_output = strip_ansi_codes(raw_output)
+            if not raw_output.strip():
+                logger.debug("Skip stop summary/TTS (agent output empty after normalization)", session=session_id[:8])
+                raw_output = None
 
+        if raw_output:
             summary = await self._summarize_output(session_id, raw_output)
             update_kwargs.update(
                 {
@@ -626,7 +630,7 @@ class AgentCoordinator:
             return None
 
         last_message = extract_last_agent_message(transcript_path, agent_name, 1)
-        if not last_message:
+        if not last_message or not last_message.strip():
             logger.debug("Extract skipped (no agent output)", session=session_id[:8])
             return None
 
@@ -638,6 +642,9 @@ class AgentCoordinator:
         Returns:
             Summary text, or None if summarization fails.
         """
+        if not raw_output.strip():
+            logger.debug("Summarization skipped (empty normalized output)", session=session_id[:8])
+            return None
         try:
             _title, summary = await summarize_agent_output(raw_output)
             return summary

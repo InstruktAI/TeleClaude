@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import tempfile
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -38,13 +39,9 @@ class MLXParakeetBackend:
         if is_local_path(self._model_ref):
             path = Path(self._model_ref)
             if not path.exists():
-                raise FileNotFoundError(
-                    f"Parakeet STT model path does not exist: {self._model_ref}"
-                )
+                raise FileNotFoundError(f"Parakeet STT model path does not exist: {self._model_ref}")
             if not path.is_dir():
-                raise NotADirectoryError(
-                    f"Parakeet STT model path is not a directory: {self._model_ref}"
-                )
+                raise NotADirectoryError(f"Parakeet STT model path is not a directory: {self._model_ref}")
             logger.info("Parakeet STT: validated local model at %s", self._model_ref)
         else:
             logger.info("Parakeet STT: using HuggingFace model %s (downloaded on first use)", self._model_ref)
@@ -107,7 +104,7 @@ class MLXParakeetBackend:
 
         Args:
             audio_file_path: Path to audio file (any format mlx_audio supports)
-            language: Ignored (Parakeet auto-detects). Kept for protocol compatibility.
+            language: Optional language hint for CLI fallback (Parakeet can auto-detect).
 
         Returns:
             Transcribed text
@@ -126,7 +123,7 @@ class MLXParakeetBackend:
         import asyncio
 
         if self._model is None and self._cli_bin:
-            return await asyncio.to_thread(self._transcribe_cli, audio_file_path)
+            return await asyncio.to_thread(self._transcribe_cli, audio_file_path, language)
 
         return await asyncio.to_thread(self._transcribe_local, audio_file_path)
 
@@ -136,9 +133,12 @@ class MLXParakeetBackend:
         logger.debug("Parakeet STT: transcribed %d chars (local)", len(text))
         return text
 
-    def _transcribe_cli(self, audio_file_path: str) -> str:
+    def _transcribe_cli(self, audio_file_path: str, language: str | None = None) -> str:
         import json
         import subprocess
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as output_file:
+            output_path = output_file.name
 
         cmd = [
             self._cli_bin,  # type: ignore[list-item]
@@ -146,13 +146,31 @@ class MLXParakeetBackend:
             self._model_ref,
             "--audio",
             audio_file_path,
+            "--output-path",
+            output_path,
             "--format",
             "json",
         ]
-        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"Parakeet CLI failed: {(result.stderr or result.stdout).strip()}")
-        data = json.loads(result.stdout)
-        text = str(data.get("text", "")).strip()
-        logger.debug("Parakeet STT: transcribed %d chars (CLI fallback)", len(text))
-        return text
+        if language:
+            cmd.extend(["--language", language])
+
+        try:
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"Parakeet CLI failed: {(result.stderr or result.stdout).strip()}")
+
+            output_json = Path(output_path)
+            payload = output_json.read_text(encoding="utf-8").strip() if output_json.exists() else ""
+            if not payload:
+                payload = result.stdout.strip()
+            if not payload:
+                raise RuntimeError("Parakeet CLI returned empty output")
+
+            data = json.loads(payload)
+            text = str(data.get("text", "")).strip() if isinstance(data, dict) else ""
+            if not text:
+                raise RuntimeError("Parakeet CLI output did not contain transcription text")
+            logger.debug("Parakeet STT: transcribed %d chars (CLI fallback)", len(text))
+            return text
+        finally:
+            Path(output_path).unlink(missing_ok=True)

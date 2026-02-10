@@ -85,7 +85,7 @@ FIELD_COMMAND = "command"
 
 
 # Checkpoint injection
-CHECKPOINT_MESSAGE = "Checkpoint \u2014 Continue or validate your work if needed. Otherwise, capture anything worth keeping (memories, bugs, ideas). If everything is clean, do not respond."
+CHECKPOINT_MESSAGE = "Checkpoint \u2014 Continue or validate your work if needed. Any truly interesting memories to be created that meet our criteria? (DON'T abuse it as work log!) If everything that is expected of you is done, do not respond."
 CHECKPOINT_REACTIVATION_THRESHOLD_S = 30
 
 # Misc markers / defaults

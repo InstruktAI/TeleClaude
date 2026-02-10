@@ -182,13 +182,8 @@ def format_tool_call(
     completion_args: str | None = None,
 ) -> str:
     """Format a literal tool call for the orchestrator to execute."""
-    # Codex requires /prompts: prefix for custom commands
-    agent_key = agent.strip().lower()
     raw_command = command.lstrip("/")
-    if agent_key.startswith(AgentName.CODEX.value):
-        formatted_command = f"/prompts:{raw_command}"
-    else:
-        formatted_command = f"/{raw_command}"
+    formatted_command = f"/{raw_command}"
 
     # Get post-completion instructions for this command
     post_completion = POST_COMPLETION.get(command, "")
@@ -269,12 +264,9 @@ def _extract_no_selectable_task_type(message: str) -> str | None:
 def format_agent_selection_error(task_type: str, retry_call: str) -> str:
     return format_error(
         "NO_SELECTABLE_AGENTS",
-        (
-            f"No selectable agents for task '{task_type}'. "
-            "Fallback candidates are currently degraded or unavailable."
-        ),
+        (f"No selectable agents for task '{task_type}'. Fallback candidates are currently degraded or unavailable."),
         next_call=(
-            'As orchestrator, set provider state with teleclaude__mark_agent_status('
+            "As orchestrator, set provider state with teleclaude__mark_agent_status("
             'agent="<claude|gemini|codex>", status="<degraded|unavailable|available>", reason="<why>"), '
             f"then call {retry_call}"
         ),
