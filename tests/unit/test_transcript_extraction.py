@@ -8,6 +8,7 @@ from teleclaude.core.agents import AgentName
 from teleclaude.utils.transcript import (
     TurnTimeline,
     _get_entries_for_agent,
+    _iter_jsonl_entries_tail,
     extract_tool_calls_current_turn,
     parse_claude_transcript,
 )
@@ -128,6 +129,27 @@ def test_get_entries_for_agent_honors_tail_entries():
         contents = [msg.get("content") for entry in loaded for msg in [entry.get("message")] if isinstance(msg, dict)]
         assert "prompt-119" in contents
         assert "prompt-80" not in contents
+    finally:
+        _cleanup(path)
+
+
+def test_jsonl_tail_reader_is_byte_bounded():
+    entries = [{"type": "user", "message": {"role": "user", "content": f"old-{i}"}} for i in range(64)]
+    entries.extend(
+        [
+            {"type": "user", "message": {"role": "user", "content": "recent-1"}},
+            {"type": "user", "message": {"role": "user", "content": "recent-2"}},
+        ]
+    )
+    path = _write_jsonl(entries)
+    try:
+        tail_entries = list(_iter_jsonl_entries_tail(Path(path), max_entries=10, max_bytes=200))
+        contents = [
+            entry.get("message", {}).get("content") for entry in tail_entries if isinstance(entry.get("message"), dict)
+        ]
+        assert "recent-1" in contents
+        assert "recent-2" in contents
+        assert "old-0" not in contents
     finally:
         _cleanup(path)
 
