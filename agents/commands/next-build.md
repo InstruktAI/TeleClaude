@@ -45,8 +45,10 @@ Execute the build phase for the slug and verify completion.
 - Do not stop with uncommitted build changes.
 - Before reporting completion, commit all build work for this slug (including `implementation-plan.md` checkbox updates).
 - Do not claim completion while any planned task is still unchecked.
+- Update only `## Build Gates (Builder)` in `todos/{slug}/quality-checklist.md`.
 - Final state before reporting must be:
   - all implementation-plan tasks done (`[x]`)
+  - Build Gates section fully checked in `quality-checklist.md`
   - tests passing
   - lint passing
   - clean working tree

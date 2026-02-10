@@ -19,6 +19,7 @@ Merge approved work to main, log delivery, and clean up.
 
 - `todos/{slug}/review-findings.md` exists with verdict APPROVE.
 - No unchecked tasks in `implementation-plan.md`.
+- `todos/{slug}/quality-checklist.md` exists.
 - No unresolved deferrals.
 
 ## Steps
@@ -27,9 +28,12 @@ Merge approved work to main, log delivery, and clean up.
 2. Verify:
    - `implementation-plan.md` tasks all `[x]`.
    - `requirements.md` success criteria checked.
+   - Build and Review sections in `quality-checklist.md` are fully checked.
    - No unresolved deferrals.
-3. Use commit hooks for verification (lint + unit tests).
-4. Merge to main:
+3. Update only the Finalize section in `quality-checklist.md`.
+   - Do not edit Build or Review sections.
+4. Use commit hooks for verification (lint + unit tests).
+5. Merge to main:
 
    ```bash
    git fetch origin main
@@ -38,22 +42,22 @@ Merge approved work to main, log delivery, and clean up.
    git merge {slug} --no-edit
    ```
 
-5. Resolve conflicts if needed, then re-run verification.
-6. Push main:
+6. Resolve conflicts if needed, then re-run verification.
+7. Push main:
 
    ```bash
    git push origin main
    ```
 
-7. Append to `todos/delivered.md`:
+8. Append to `todos/delivered.md`:
 
    ```
    | {date} | {slug} | {title} | DELIVERED | {commit-hash} |
    ```
 
-8. Remove the item for `{slug}` from `todos/roadmap.md`.
-9. Delete `todos/{slug}/` after logging delivery and updating the roadmap.
-10. Remove the worktree for `{slug}` if it exists.
+9. Remove the item for `{slug}` from `todos/roadmap.md`.
+10. Delete `todos/{slug}/` after logging delivery and updating the roadmap.
+11. Remove the worktree for `{slug}` if it exists.
 
 ## Report format
 

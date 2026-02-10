@@ -19,6 +19,7 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 
 - `todos/{slug}/requirements.md` exists and is readable.
 - `todos/{slug}/implementation-plan.md` exists and is readable.
+- `todos/{slug}/quality-checklist.md` exists and includes `## Build Gates (Builder)`.
 - The todo scope is implementable in one build phase.
 
 ## Steps
@@ -30,6 +31,8 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
    - Commit changes for the task (one commit per task).
    - Update the task checkbox to `[x]` and include that change in the same commit.
 4. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
+5. Update only the Build section in `quality-checklist.md`.
+   - Do not edit Review or Finalize sections.
 
 ## Pre-completion checklist
 
@@ -39,6 +42,7 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 4. Working tree is clean: `git status`.
    - If not clean, commit remaining build-phase changes following the commits policy.
 5. Verify commits exist: `git log --oneline -10`.
+6. Build section in `quality-checklist.md` is fully checked.
 
 ## Report format
 

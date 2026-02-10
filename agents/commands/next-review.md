@@ -41,5 +41,7 @@ Review code changes against requirements and architecture and produce a verdict.
 
 ## Steps
 
+- Confirm `todos/{slug}/quality-checklist.md` exists and Build Gates are fully checked.
+- Update only `## Review Gates (Reviewer)` in `todos/{slug}/quality-checklist.md`.
 - Review code changes in the worktree against requirements and architecture.
 - Write findings to `todos/{slug}/review-findings.md` with verdict: APPROVE or REQUEST CHANGES.

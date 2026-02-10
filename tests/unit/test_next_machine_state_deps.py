@@ -387,6 +387,40 @@ async def test_next_work_blocks_review_when_main_ahead():
 
 
 @pytest.mark.asyncio
+async def test_next_work_blocks_when_review_round_limit_reached():
+    """Verify next_work stops when next review would exceed max rounds."""
+    db = MagicMock(spec=Db)
+    slug = "review-round-limit"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
+        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_path.write_text(f"# Roadmap\n\n- [.] {slug}\n")
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.json").write_text(
+            '{"build":"complete","review":"pending","review_round":2,"max_review_rounds":2}'
+        )
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.is_main_ahead", return_value=False),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        assert "ERROR:" in result
+        assert "REVIEW_ROUND_LIMIT" in result
+
+
+@pytest.mark.asyncio
 async def test_next_work_finalize_next_call_without_slug():
     """Finalize dispatch should call next_work without slug."""
     db = MagicMock(spec=Db)
@@ -410,8 +444,6 @@ async def test_next_work_finalize_next_call_without_slug():
             patch("teleclaude.core.next_machine.core.Repo"),
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
-            patch("teleclaude.core.next_machine.core.is_docstrings_complete", return_value=True),
-            patch("teleclaude.core.next_machine.core.is_snippets_complete", return_value=True),
             patch(
                 "teleclaude.core.next_machine.core.get_available_agent",
                 new=AsyncMock(return_value=("claude", "med")),

@@ -28,12 +28,12 @@ from teleclaude.core.models import ThinkingMode
 
 logger = get_logger(__name__)
 
+StateValue = str | bool | int | list[str] | dict[str, bool | list[str]]
+
 
 class PhaseName(str, Enum):
     BUILD = "build"
     REVIEW = "review"
-    DOCSTRINGS = "docstrings"
-    SNIPPETS = "snippets"
 
 
 class PhaseStatus(str, Enum):
@@ -65,6 +65,8 @@ SCRIPTS_KEY = "scripts"
 UNCHECKED_TASK_MARKER = "- [ ]"
 REVIEW_APPROVE_MARKER = "[x] APPROVE"
 PAREN_OPEN = "("
+DEFAULT_MAX_REVIEW_ROUNDS = 3
+FINDING_ID_PATTERN = re.compile(r"\bR\d+-F\d+\b")
 
 # Fallback matrices: task_type -> [(agent, thinking_mode), ...]
 PREPARE_FALLBACK: dict[str, list[tuple[str, str]]] = {
@@ -154,18 +156,6 @@ POST_COMPLETION: dict[str, str] = {
    - Call {next_call}
 3. If failed:
    - Keep session alive and help resolve""",
-    "sync-docstrings": """WHEN WORKER COMPLETES:
-1. Verify docstrings updated and accurate
-2. teleclaude__mark_phase(slug="{args}", phase="docstrings", status="complete")
-3. teleclaude__end_session(computer="local", session_id="<session_id>")
-4. Call {next_call}
-""",
-    "sync-snippets": """WHEN WORKER COMPLETES:
-1. Verify snippets and docs/index.yaml updated correctly
-2. teleclaude__mark_phase(slug="{args}", phase="snippets", status="complete")
-3. teleclaude__end_session(computer="local", session_id="<session_id>")
-4. Call {next_call}
-""",
 }
 
 REVIEW_DIFF_NOTE = (
@@ -338,11 +328,16 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
 
 
 # Valid phases and statuses for state.json
-DEFAULT_STATE: dict[str, str | bool | dict[str, bool | list[str]]] = {
+DEFAULT_STATE: dict[str, StateValue] = {
     PhaseName.BUILD.value: PhaseStatus.PENDING.value,
     PhaseName.REVIEW.value: PhaseStatus.PENDING.value,
     "deferrals_processed": False,
     "breakdown": {"assessed": False, "todos": []},
+    "review_round": 0,
+    "max_review_rounds": DEFAULT_MAX_REVIEW_ROUNDS,
+    "review_baseline_commit": "",
+    "unresolved_findings": [],
+    "resolved_findings": [],
 }
 
 
@@ -351,7 +346,7 @@ def get_state_path(cwd: str, slug: str) -> Path:
     return Path(cwd) / "todos" / slug / "state.json"
 
 
-def read_phase_state(cwd: str, slug: str) -> dict[str, str | bool | dict[str, bool | list[str]]]:
+def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Read state.json from worktree.
 
     Returns default state if file doesn't exist.
@@ -361,25 +356,25 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, str | bool | dict[str, bo
         return DEFAULT_STATE.copy()
 
     content = read_text_sync(state_path)
-    state: dict[str, str | bool | dict[str, bool | list[str]]] = json.loads(content)
+    state: dict[str, StateValue] = json.loads(content)
     # Merge with defaults for any missing keys
     return {**DEFAULT_STATE, **state}
 
 
-def write_phase_state(cwd: str, slug: str, state: dict[str, str | bool | dict[str, bool | list[str]]]) -> None:
+def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
     """Write state.json."""
     state_path = get_state_path(cwd, slug)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     write_text_sync(state_path, json.dumps(state, indent=2) + "\n")
 
 
-def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str | bool | dict[str, bool | list[str]]]:
+def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateValue]:
     """Mark a phase with a status.
 
     Args:
         cwd: Worktree directory (not main repo)
         slug: Work item slug
-        phase: Phase to update (build, review, docstrings, snippets)
+        phase: Phase to update (build, review)
         status: New status (pending, complete, approved, changes_requested)
 
     Returns:
@@ -387,8 +382,90 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str | 
     """
     state = read_phase_state(cwd, slug)
     state[phase] = status
+    if phase == PhaseName.REVIEW.value:
+        review_round = state.get("review_round")
+        current_round = review_round if isinstance(review_round, int) else 0
+        unresolved = state.get("unresolved_findings")
+        unresolved_ids = list(unresolved) if isinstance(unresolved, list) else []
+        resolved = state.get("resolved_findings")
+        resolved_ids = list(resolved) if isinstance(resolved, list) else []
+
+        if status in (PhaseStatus.CHANGES_REQUESTED.value, PhaseStatus.APPROVED.value):
+            state["review_round"] = current_round + 1
+            head_sha = _get_head_commit(cwd)
+            if head_sha:
+                state["review_baseline_commit"] = head_sha
+
+        if status == PhaseStatus.CHANGES_REQUESTED.value:
+            findings_ids = _extract_finding_ids(cwd, slug)
+            state["unresolved_findings"] = findings_ids
+            # Keep resolved IDs stable and de-duplicated
+            state["resolved_findings"] = list(dict.fromkeys(str(i) for i in resolved_ids))
+        elif status == PhaseStatus.APPROVED.value:
+            merged = list(dict.fromkeys([*(str(i) for i in resolved_ids), *(str(i) for i in unresolved_ids)]))
+            state["resolved_findings"] = merged
+            state["unresolved_findings"] = []
     write_phase_state(cwd, slug, state)
     return state
+
+
+def _extract_finding_ids(cwd: str, slug: str) -> list[str]:
+    """Extract stable finding IDs (e.g. R1-F1) from review-findings.md."""
+    review_path = Path(cwd) / "todos" / slug / "review-findings.md"
+    if not review_path.exists():
+        return []
+    content = read_text_sync(review_path)
+    seen: list[str] = []
+    for match in FINDING_ID_PATTERN.findall(content):
+        if match not in seen:
+            seen.append(match)
+    return seen
+
+
+def _get_head_commit(cwd: str) -> str:
+    """Return HEAD commit hash for cwd, or empty string when unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return ""
+    return result.stdout.strip()
+
+
+def _review_scope_note(cwd: str, slug: str) -> str:
+    """Build an iterative review scope note from state.json metadata."""
+    state = read_phase_state(cwd, slug)
+    review_round_raw = state.get("review_round")
+    max_rounds_raw = state.get("max_review_rounds")
+    review_round = review_round_raw if isinstance(review_round_raw, int) else 0
+    max_rounds = max_rounds_raw if isinstance(max_rounds_raw, int) else DEFAULT_MAX_REVIEW_ROUNDS
+    next_round = review_round + 1
+    baseline = state.get("review_baseline_commit")
+    baseline_sha = baseline if isinstance(baseline, str) else ""
+    unresolved = state.get("unresolved_findings")
+    unresolved_ids = unresolved if isinstance(unresolved, list) else []
+
+    unresolved_text = ", ".join(str(x) for x in unresolved_ids) if unresolved_ids else "none"
+    baseline_text = baseline_sha if baseline_sha else "unset (initial full review)"
+    return (
+        f"Review iteration: round {next_round}/{max_rounds}. "
+        "Round 1 is full-scope. Round 2+ must be incremental: review only commits since "
+        f"{baseline_text} plus unresolved IDs [{unresolved_text}]."
+    )
+
+
+def _is_review_round_limit_reached(cwd: str, slug: str) -> tuple[bool, int, int]:
+    """Return whether next review round would exceed configured max."""
+    state = read_phase_state(cwd, slug)
+    review_round_raw = state.get("review_round")
+    max_rounds_raw = state.get("max_review_rounds")
+    review_round = review_round_raw if isinstance(review_round_raw, int) else 0
+    max_rounds = max_rounds_raw if isinstance(max_rounds_raw, int) else DEFAULT_MAX_REVIEW_ROUNDS
+    return (review_round + 1) > max_rounds, review_round, max_rounds
 
 
 def read_breakdown_state(cwd: str, slug: str) -> dict[str, bool | list[str]] | None:
@@ -438,20 +515,6 @@ def is_review_changes_requested(cwd: str, slug: str) -> bool:
     state = read_phase_state(cwd, slug)
     review = state.get(PhaseName.REVIEW.value)
     return isinstance(review, str) and review == PhaseStatus.CHANGES_REQUESTED.value
-
-
-def is_docstrings_complete(cwd: str, slug: str) -> bool:
-    """Check if docstrings phase is complete."""
-    state = read_phase_state(cwd, slug)
-    value = state.get(PhaseName.DOCSTRINGS.value)
-    return isinstance(value, str) and value == PhaseStatus.COMPLETE.value
-
-
-def is_snippets_complete(cwd: str, slug: str) -> bool:
-    """Check if snippets phase is complete."""
-    state = read_phase_state(cwd, slug)
-    value = state.get(PhaseName.SNIPPETS.value)
-    return isinstance(value, str) and value == PhaseStatus.COMPLETE.value
 
 
 def has_pending_deferrals(cwd: str, slug: str) -> bool:
@@ -1509,6 +1572,16 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
             )
         # Review not started or still pending
+        limit_reached, current_round, max_rounds = _is_review_round_limit_reached(worktree_cwd, resolved_slug)
+        if limit_reached:
+            return format_error(
+                "REVIEW_ROUND_LIMIT",
+                (
+                    f"Review rounds exceeded for {resolved_slug}: "
+                    f"current={current_round}, max={max_rounds}. Human decision required."
+                ),
+                next_call=f'Resolve findings manually, then call teleclaude__next_work(slug="{resolved_slug}")',
+            )
         if is_main_ahead(cwd, resolved_slug):
             return format_error(
                 "MAIN_AHEAD",
@@ -1526,7 +1599,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             thinking_mode=mode,
             subfolder=f"trees/{resolved_slug}",
             next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
-            note=REVIEW_DIFF_NOTE,
+            note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(worktree_cwd, resolved_slug)}",
         )
 
     # 8.5 Check pending deferrals (R7)
@@ -1542,31 +1615,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
         )
 
-    if not await asyncio.to_thread(is_docstrings_complete, worktree_cwd, resolved_slug):
-        agent, mode = await get_available_agent(db, "docs", WORK_FALLBACK)
-        return format_tool_call(
-            command="sync-docstrings",
-            args="",
-            completion_args=resolved_slug,
-            project=cwd,
-            agent=agent,
-            thinking_mode=mode,
-            subfolder=f"trees/{resolved_slug}",
-            next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
-        )
-
-    if not await asyncio.to_thread(is_snippets_complete, worktree_cwd, resolved_slug):
-        agent, mode = await get_available_agent(db, "docs", WORK_FALLBACK)
-        return format_tool_call(
-            command="sync-snippets",
-            args="",
-            completion_args=resolved_slug,
-            project=cwd,
-            agent=agent,
-            thinking_mode=mode,
-            subfolder=f"trees/{resolved_slug}",
-            next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
-        )
     # 9. Review approved - dispatch finalize
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)

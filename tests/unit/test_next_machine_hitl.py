@@ -180,12 +180,15 @@ def test_read_phase_state_returns_default_when_no_file():
     """read_phase_state returns default state when state.json doesn't exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
         state = read_phase_state(tmpdir, "test-slug")
-        assert state == {
-            "build": "pending",
-            "review": "pending",
-            "deferrals_processed": False,
-            "breakdown": {"assessed": False, "todos": []},
-        }
+        assert state["build"] == "pending"
+        assert state["review"] == "pending"
+        assert state["deferrals_processed"] is False
+        assert state["breakdown"] == {"assessed": False, "todos": []}
+        assert state["review_round"] == 0
+        assert state["max_review_rounds"] == 3
+        assert state["review_baseline_commit"] == ""
+        assert state["unresolved_findings"] == []
+        assert state["resolved_findings"] == []
 
 
 def test_read_phase_state_reads_existing_file():
@@ -199,12 +202,15 @@ def test_read_phase_state_reads_existing_file():
 
         state = read_phase_state(tmpdir, slug)
         # Should merge with defaults for missing keys
-        assert state == {
-            "build": "complete",
-            "review": "pending",
-            "deferrals_processed": False,
-            "breakdown": {"assessed": False, "todos": []},
-        }
+        assert state["build"] == "complete"
+        assert state["review"] == "pending"
+        assert state["deferrals_processed"] is False
+        assert state["breakdown"] == {"assessed": False, "todos": []}
+        assert state["review_round"] == 0
+        assert state["max_review_rounds"] == 3
+        assert state["review_baseline_commit"] == ""
+        assert state["unresolved_findings"] == []
+        assert state["resolved_findings"] == []
 
 
 def test_write_phase_state_creates_file():
@@ -237,6 +243,47 @@ def test_mark_phase_updates_state():
         state_file = Path(tmpdir) / "todos" / slug / "state.json"
         content = json.loads(state_file.read_text())
         assert content["build"] == "complete"
+
+
+def test_mark_phase_review_changes_requested_tracks_round_and_findings():
+    """Review changes_requested increments round and captures finding IDs."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "review-findings.md").write_text("# Findings\n- R1-F1\n- R1-F2\n")
+
+        result = mark_phase(tmpdir, slug, "review", "changes_requested")
+
+        assert result["review"] == "changes_requested"
+        assert result["review_round"] == 1
+        assert result["unresolved_findings"] == ["R1-F1", "R1-F2"]
+
+
+def test_mark_phase_review_approved_clears_unresolved_findings():
+    """Review approved should clear unresolved findings and carry to resolved."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        state_dir = Path(tmpdir) / "todos" / slug
+        state_dir.mkdir(parents=True)
+        (state_dir / "state.json").write_text(
+            json.dumps(
+                {
+                    "build": "complete",
+                    "review": "pending",
+                    "unresolved_findings": ["R1-F1"],
+                    "resolved_findings": [],
+                    "review_round": 1,
+                }
+            )
+        )
+
+        result = mark_phase(tmpdir, slug, "review", "approved")
+
+        assert result["review"] == "approved"
+        assert result["review_round"] == 2
+        assert result["unresolved_findings"] == []
+        assert "R1-F1" in result["resolved_findings"]
 
 
 def test_is_build_complete_true():

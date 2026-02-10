@@ -21,6 +21,7 @@ Verify the implementation against requirements and standards, and deliver a bina
 
 - `todos/{slug}/requirements.md` exists.
 - `todos/{slug}/implementation-plan.md` exists.
+- `todos/{slug}/quality-checklist.md` exists and includes Build/Review sections.
 - Build phase completed for the slug.
 
 ## Steps
@@ -41,7 +42,11 @@ Verify the implementation against requirements and standards, and deliver a bina
    - If `deferrals.md` exists, confirm each deferral is justified.
    - If unjustified, add a finding and set verdict to REQUEST CHANGES.
 5. Ensure all implementation-plan tasks are checked; otherwise, add a finding and set verdict to REQUEST CHANGES.
-6. Run review lanes in parallel where possible:
+6. Validate Build section in `quality-checklist.md` is fully checked.
+   - If not, add a finding and set verdict to REQUEST CHANGES.
+7. Update only the Review section in `quality-checklist.md`.
+   - Do not edit Build or Finalize sections.
+8. Run review lanes in parallel where possible:
 
    | Aspect   | When to use              | Skill                      | Task                              |
    | -------- | ------------------------ | -------------------------- | --------------------------------- |
@@ -52,10 +57,10 @@ Verify the implementation against requirements and standards, and deliver a bina
    | comments | Comments/docs added      | next-comment-analyzer      | Check accuracy                    |
    | simplify | After other reviews pass | next-code-simplifier       | Simplify without behavior changes |
 
-7. Write findings to `todos/{slug}/review-findings.md`.
-8. Set `todos/{slug}/state.json` field `review` to `approved` or `changes_requested`.
-9. Commit the review findings.
-10. Report summary and verdict to the caller.
+9. Write findings to `todos/{slug}/review-findings.md`.
+10. Set `todos/{slug}/state.json` field `review` to `approved` or `changes_requested`.
+11. Commit the review findings.
+12. Report summary and verdict to the caller.
 
 ## Report format
 
