@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 class JobWhenConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
     every: Optional[str] = None  # e.g. "10m", "2h", "1d"
     at: Optional[Union[str, List[str]]] = None  # "HH:MM" or list of times
     weekdays: List[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]] = []
@@ -63,6 +64,7 @@ class JobWhenConfig(BaseModel):
 
 
 class JobScheduleConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
     # New human-friendly scheduling contract
     when: Optional[JobWhenConfig] = None
     # Legacy compatibility during migration
