@@ -21,6 +21,21 @@
 1. Make loader read/parse failures explicit errors (or return a structured error object) so invalid files cannot silently degrade to defaults.
 2. Extend unknown-key detection to list elements and align nested models with the warning strategy (`extra="allow"` + recursive warning walk, or explicit pre-validation warnings).
 
+## Fixes Applied
+
+### Critical Issue 1: Config loader fail-open behavior
+
+- **Fix**: Changed loader to raise `ValueError` with clear message on YAML parse errors and file read failures
+- **Commit**: 8de05f3d
+- **Verification**: Hooks passed (lint + tests)
+
+### Important Issue 1: Incomplete unknown-key warnings
+
+- **Fix 1**: Added `extra="allow"` to all nested models (PersonEntry, OpsEntry, TelegramCreds, CredsConfig, NotificationsConfig, SubscriptionsConfig)
+- **Fix 2**: Extended `_warn_unknown_keys` recursion to handle list elements
+- **Commit**: 8ce93030
+- **Verification**: Hooks passed (lint + tests)
+
 ## Verdict
 
 REQUEST CHANGES
