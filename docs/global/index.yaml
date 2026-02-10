@@ -128,13 +128,6 @@ snippets:
   scope: global
   path: docs/general/procedure/doc-snippet-authoring.md
   source_project: TeleClaude
-- id: general/procedure/idea-box
-  description: Offload creative sparks, side-thoughts, or grievances without derailing
-    the current task.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/idea-box.md
-  source_project: TeleClaude
 - id: general/procedure/job-authoring
   description: 'How to create a new agent or script job: artifacts, placement, validation.'
   type: procedure
@@ -178,7 +171,7 @@ snippets:
   source_project: TeleClaude
 - id: general/procedure/memory-management
   description: Guidelines for saving high-signal memories to the long-term database,
-    distinguishing them from documentation, bugs, and ideas.
+    distinguishing them from documentation and bugs.
   type: procedure
   scope: global
   path: docs/general/procedure/memory-management.md

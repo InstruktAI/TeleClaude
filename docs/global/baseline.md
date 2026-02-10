@@ -10,7 +10,6 @@
 @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
 @~/.teleclaude/docs/general/procedure/agent-artifact-authoring.md
 @~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
-@~/.teleclaude/docs/general/procedure/idea-box.md
 @~/.teleclaude/docs/general/procedure/memory-management.md
 @~/.teleclaude/docs/general/spec/agent-artifacts.md
 @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md
