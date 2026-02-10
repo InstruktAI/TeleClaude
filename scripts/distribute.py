@@ -772,40 +772,48 @@ def main() -> None:
 
             if include_docs and os.path.isdir(master_docs_dir):
                 deploy_docs_root = os.path.join(os.path.expanduser("~/.teleclaude"), "docs")
-                os.makedirs(deploy_docs_root, exist_ok=True)
+                master_docs_real = os.path.realpath(master_docs_dir)
+                deploy_docs_real = os.path.realpath(deploy_docs_root)
+                if master_docs_real == deploy_docs_real:
+                    print(
+                        "Error: deploy docs target resolves to source docs/global. "
+                        "Refusing docs deploy to prevent self-deletion."
+                    )
+                else:
+                    os.makedirs(deploy_docs_root, exist_ok=True)
 
-                # Symlink each entry from docs/global/ to ~/.teleclaude/docs/
-                for entry in os.listdir(master_docs_dir):
-                    src_path = os.path.join(master_docs_dir, entry)
-                    dst_path = os.path.join(deploy_docs_root, entry)
+                    # Symlink each entry from docs/global/ to ~/.teleclaude/docs/
+                    for entry in os.listdir(master_docs_dir):
+                        src_path = os.path.join(master_docs_dir, entry)
+                        dst_path = os.path.join(deploy_docs_root, entry)
 
-                    # Skip hidden files
-                    if entry.startswith("."):
-                        continue
-
-                    # Remove existing symlink at destination
-                    if os.path.islink(dst_path):
-                        os.unlink(dst_path)
-                    elif os.path.isdir(dst_path):
-                        # Only preserve third-party (for global research output)
-                        # All other directories get replaced with symlinks
-                        if entry == "third-party":
+                        # Skip hidden files
+                        if entry.startswith("."):
                             continue
-                        shutil.rmtree(dst_path)
-                    elif os.path.isfile(dst_path):
-                        os.unlink(dst_path)
 
-                    # Create symlink for directories and selected root files
-                    if os.path.isdir(src_path) or entry in {"index.yaml", "baseline.md"}:
-                        os.symlink(src_path, dst_path)
-                        print(f"  Symlinked: {dst_path} -> {src_path}")
+                        # Remove existing symlink at destination
+                        if os.path.islink(dst_path):
+                            os.unlink(dst_path)
+                        elif os.path.isdir(dst_path):
+                            # Only preserve third-party (for global research output)
+                            # All other directories get replaced with symlinks
+                            if entry == "third-party":
+                                continue
+                            shutil.rmtree(dst_path)
+                        elif os.path.isfile(dst_path):
+                            os.unlink(dst_path)
 
-                # Generate index.yaml for global third-party docs
-                global_third_party = Path(deploy_docs_root) / "third-party"
-                if global_third_party.exists():
-                    third_party_index = write_third_party_index_yaml(global_third_party, scope="global")
-                    if third_party_index:
-                        print(f"  Generated: {third_party_index}")
+                        # Create symlink for directories and selected root files
+                        if os.path.isdir(src_path) or entry in {"index.yaml", "baseline.md"}:
+                            os.symlink(src_path, dst_path)
+                            print(f"  Symlinked: {dst_path} -> {src_path}")
+
+                    # Generate index.yaml for global third-party docs
+                    global_third_party = Path(deploy_docs_root) / "third-party"
+                    if global_third_party.exists():
+                        third_party_index = write_third_party_index_yaml(global_third_party, scope="global")
+                        if third_party_index:
+                            print(f"  Generated: {third_party_index}")
 
             print("Deployment complete.")
 
