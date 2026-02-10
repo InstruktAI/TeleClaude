@@ -418,10 +418,7 @@ def test_slug_drift_emits_observation(tmp_path):
     slug_dir.mkdir(parents=True)
     plan = slug_dir / "implementation-plan.md"
     plan.write_text(
-        "## Files to Change\n\n"
-        "| File | Change |\n"
-        "| --- | --- |\n"
-        "| `teleclaude/other/module.py` | Modify |\n",
+        "## Files to Change\n\n| File | Change |\n| --- | --- |\n| `teleclaude/other/module.py` | Modify |\n",
         encoding="utf-8",
     )
     ctx = _default_context(project_path=str(tmp_path), working_slug="my-slug")
@@ -434,10 +431,7 @@ def test_slug_partial_overlap_suppressed(tmp_path):
     slug_dir.mkdir(parents=True)
     plan = slug_dir / "implementation-plan.md"
     plan.write_text(
-        "## Files to Change\n\n"
-        "| File | Change |\n"
-        "| --- | --- |\n"
-        "| `teleclaude/core/foo.py` | Modify |\n",
+        "## Files to Change\n\n| File | Change |\n| --- | --- |\n| `teleclaude/core/foo.py` | Modify |\n",
         encoding="utf-8",
     )
     ctx = _default_context(project_path=str(tmp_path), working_slug="my-slug")
@@ -494,10 +488,10 @@ def test_message_action_precedence_is_deterministic():
         _default_context(),
     )
     lines = msg.splitlines()
-    action_lines = [l for l in lines if l.strip().startswith(("1.", "2.", "3.", "4.", "5."))]
+    action_lines = [line for line in lines if line.strip().startswith(("1.", "2.", "3.", "4.", "5."))]
     # Dependencies (precedence 20) before daemon code (precedence 30)
-    dep_idx = next((i for i, l in enumerate(action_lines) if "pip install" in l.lower()), None)
-    restart_idx = next((i for i, l in enumerate(action_lines) if "restart" in l.lower()), None)
+    dep_idx = next((i for i, line in enumerate(action_lines) if "pip install" in line.lower()), None)
+    restart_idx = next((i for i, line in enumerate(action_lines) if "restart" in line.lower()), None)
     if dep_idx is not None and restart_idx is not None:
         assert dep_idx < restart_idx
 

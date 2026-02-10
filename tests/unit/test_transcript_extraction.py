@@ -234,13 +234,7 @@ def test_extract_gemini_tool_calls():
                         "name": "run_terminal_command",
                         "displayName": "Terminal",
                         "args": {"command": "pytest"},
-                        "result": [
-                            {
-                                "functionResponse": {
-                                    "response": {"output": "3 passed"}
-                                }
-                            }
-                        ],
+                        "result": [{"functionResponse": {"response": {"output": "3 passed"}}}],
                     }
                 ],
             },
