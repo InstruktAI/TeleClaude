@@ -26,6 +26,28 @@
 2. Align adapter startup condition with actual auth contract (env token) or document and migrate config schema/sample to require `creds.telegram`.
 3. Ensure unknown-key warning strategy covers job models (either `extra="allow"` + warnings, or explicit pre-validators that warn on unknown fields).
 
+## Fixes Applied
+
+### Critical #1: Telegram adapter startup gate
+
+- **Fix**: Changed startup condition from `config.creds.telegram` to `os.getenv("TELEGRAM_BOT_TOKEN")` in `teleclaude/core/adapter_client.py:161`
+- **Commit**: 65af3957 - "fix(adapter): check env token instead of config for telegram startup"
+- **Verification**: Lint and format hooks passed
+
+### Important #1: `jobs.when.at` format validation
+
+- **Fix**: Added `@field_validator("at")` in `JobWhenConfig` to enforce HH:MM format with hour 00-23 and minute 00-59
+- **Location**: `teleclaude/config/schema.py:30-52`
+- **Commit**: e2557957 - "feat(config): add HH:MM format validation for jobs.when.at"
+- **Verification**: Lint and format hooks passed
+
+### Important #2: Unknown-key warnings for job configs
+
+- **Fix**: Added `model_config = ConfigDict(extra="allow")` to both `JobWhenConfig` and `JobScheduleConfig`
+- **Location**: `teleclaude/config/schema.py:7` and `teleclaude/config/schema.py:66`
+- **Commit**: 4d5fdcd7 - "fix(config): enable unknown-key warnings for job configs"
+- **Verification**: Lint and format hooks passed
+
 ## Verdict
 
 REQUEST CHANGES
