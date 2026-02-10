@@ -33,6 +33,7 @@ def sync(
 
     Returns True if successful, False if validation errors occurred.
     """
+    _repair_broken_docs_links(project_root)
     clear_warnings()
     errors: list[str] = []
 
@@ -61,9 +62,11 @@ def sync(
     for path in written:
         if path.exists():
             print(f"Index: {path}")
+    _repair_broken_docs_links(project_root)
 
     # Phase 3: Build and deploy artifacts
     _run_distribute(project_root, warn_only=warn_only)
+    _repair_broken_docs_links(project_root)
 
     return True
 
@@ -86,6 +89,52 @@ def _run_distribute(project_root: Path, *, warn_only: bool) -> None:
 
     env = os.environ.copy()
     subprocess.run(cmd, cwd=project_root, check=not warn_only, env=env)
+
+
+def _repair_broken_docs_links(project_root: Path) -> None:
+    """Repair known self-referential docs symlink corruption in-place.
+
+    Some local watcher/filter failure modes can turn tracked files like
+    ``docs/global/baseline.md`` into self-pointing symlinks
+    (``baseline.md -> .../baseline.md``), which then breaks sync with
+    ``Too many levels of symbolic links``.
+    """
+    tracked_docs_files = (
+        "docs/global/baseline.md",
+        "docs/global/index.yaml",
+    )
+    for rel_path in tracked_docs_files:
+        file_path = project_root / rel_path
+        needs_repair = False
+        if not file_path.exists():
+            needs_repair = True
+        elif file_path.is_symlink():
+            try:
+                raw_target = os.readlink(file_path)
+            except OSError:
+                raw_target = ""
+            target_path = Path(raw_target)
+            if not target_path.is_absolute():
+                target_path = (file_path.parent / target_path).resolve(strict=False)
+            # Repair if link is broken or points to itself.
+            needs_repair = (not file_path.exists()) or (target_path == file_path)
+
+        if not needs_repair:
+            continue
+
+        blob = subprocess.run(
+            ["git", "show", f"HEAD:{rel_path}"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if blob.returncode != 0:
+            continue
+
+        file_path.unlink(missing_ok=True)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(blob.stdout, encoding="utf-8")
 
 
 def _print_warnings(warnings: list[dict[str, str]], *, quiet: bool) -> None:

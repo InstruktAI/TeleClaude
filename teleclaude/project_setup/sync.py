@@ -67,7 +67,11 @@ def _install_launchd_watch(project_root: Path) -> None:
         )
         # Inject KeepAlive if missing
         if "<key>KeepAlive</key>" not in plist_content:
-            plist_content = plist_content.replace("<dict>", "<dict>\n    <key>KeepAlive</key>\n    <true/>")
+            plist_content = plist_content.replace(
+                "<dict>",
+                "<dict>\n    <key>KeepAlive</key>\n    <true/>",
+                1,
+            )
     else:
         plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

@@ -1,5 +1,6 @@
 """File watcher for TeleClaude artifacts."""
 
+import fnmatch
 import subprocess
 import sys
 import time
@@ -31,6 +32,8 @@ class SmartWatcher(FileSystemEventHandler):
     _SYNC_EVENT_TYPES = {"created", "modified", "moved", "deleted"}
     _SYNC_TOP_LEVELS = {"docs", "agents", ".agents"}
     _SYNC_FILENAMES = {"AGENTS.master.md", "AGENTS.global.md"}
+    # Generated artifacts written by `telec sync`; watching them creates self-trigger loops.
+    _GENERATED_SYNC_OUTPUT_GLOBS = ("docs/**/index.yaml",)
 
     def __init__(self, project_root: Path, debounce_seconds: float = 2.0):
         self.project_root = project_root.resolve()
@@ -103,7 +106,10 @@ class SmartWatcher(FileSystemEventHandler):
     def _is_sync_relevant(cls, rel_path: Path) -> bool:
         """Return True when a file change should trigger artifact sync."""
         name = rel_path.name
+        rel_path_str = rel_path.as_posix()
         if name.endswith("~") or name.endswith(".swp") or ".tmp." in name:
+            return False
+        if any(fnmatch.fnmatchcase(rel_path_str, pattern) for pattern in cls._GENERATED_SYNC_OUTPUT_GLOBS):
             return False
 
         if name in cls._SYNC_FILENAMES:

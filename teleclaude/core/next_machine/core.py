@@ -1572,7 +1572,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
 
         content = await read_text_async(roadmap_path)
         # Match the slug and extract its state
-        pattern = re.compile(rf"^-\s+\[([ .>])\]\s+{re.escape(slug)}\b", re.MULTILINE)
+        pattern = re.compile(rf"^-\s+\[([ .>x])\]\s+{re.escape(slug)}\b", re.MULTILINE)
         match = pattern.search(content)
 
         if not match:
@@ -1590,6 +1590,8 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 f"Item '{slug}' is [ ] (pending). Must be [.] (ready) to start work.",
                 next_call=f"Call teleclaude__next_prepare(slug='{slug}') to prepare it first.",
             )
+        if state == RoadmapMarker.DONE.value:
+            return f"COMPLETE: Item '{slug}' is already marked [x] in {roadmap_path.relative_to(roadmap_root)}."
 
         # Item is [.] or [>] - check dependencies
         if not await asyncio.to_thread(check_dependencies_satisfied, str(roadmap_root), slug, deps):

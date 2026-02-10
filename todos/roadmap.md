@@ -45,7 +45,7 @@ Context-aware checkpoint messages at agent stop boundaries. Inspects git diff to
 
 ## CLI Config Ergonomics
 
-- [>] telec-config-cli
+- [x] telec-config-cli
 
 Add `telec config` read/mutate/validate commands for `config.yml` with root-anchored subtree reads, YAML patch workflow, and mandatory validate-before-write behavior for AI-safe automation.
 
