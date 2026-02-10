@@ -249,23 +249,24 @@ def _enrich_error(record: ToolCallRecord) -> str:
 def _check_edit_hygiene(timeline: TurnTimeline, git_files: list[str]) -> list[str]:
     """Check for editing practices that indicate potential issues."""
     observations: list[str] = []
-    if not timeline.has_data:
-        return observations
 
     # Edit without read: file_path in Edit but not in any preceding Read
-    read_files: set[str] = set()
-    for record in timeline.tool_calls:
-        if record.tool_name == "Read":
-            path = str(record.input_data.get("file_path", ""))
-            if path:
-                read_files.add(path)
-        elif record.tool_name == "Edit":
-            path = str(record.input_data.get("file_path", ""))
-            if path and path not in read_files:
-                observations.append("Files were edited without being read first this turn — verify changes are correct")
-                break  # One observation is enough
+    if timeline.has_data:
+        read_files: set[str] = set()
+        for record in timeline.tool_calls:
+            if record.tool_name == "Read":
+                path = str(record.input_data.get("file_path", ""))
+                if path:
+                    read_files.add(path)
+            elif record.tool_name == "Edit":
+                path = str(record.input_data.get("file_path", ""))
+                if path and path not in read_files:
+                    observations.append(
+                        "Files were edited without being read first this turn — verify changes are correct"
+                    )
+                    break  # One observation is enough
 
-    # Wide blast radius: changes span many top-level directories
+    # Wide blast radius: changes span many top-level directories (git-only, no transcript needed)
     if git_files:
         top_dirs = {f.split("/")[0] for f in git_files if "/" in f}
         if len(top_dirs) > CHECKPOINT_BLAST_RADIUS_THRESHOLD:
