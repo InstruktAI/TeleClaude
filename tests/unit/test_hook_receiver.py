@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -274,6 +275,66 @@ def test_receiver_persists_native_fields_to_db(monkeypatch, tmp_path):
             "SELECT native_session_id, native_log_file FROM sessions WHERE session_id = ?", ("sess-1",)
         ).fetchone()
     assert row == ("native-1", "/tmp/native.jsonl")
+
+
+def test_checkpoint_output_handles_mixed_timezone_timestamps(monkeypatch, tmp_path):
+    """Checkpoint evaluation must not crash on mixed aware/naive DB timestamps."""
+    from sqlalchemy import create_engine
+    from sqlmodel import SQLModel
+
+    db_path = tmp_path / "teleclaude.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    SQLModel.metadata.create_all(engine)
+
+    now = datetime.now(timezone.utc)
+    message_at = (now - timedelta(seconds=120)).isoformat()
+    checkpoint_at = (now - timedelta(seconds=5)).replace(tzinfo=None).isoformat(sep=" ")
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO sessions (session_id, computer_name, last_input_origin, last_message_sent_at, last_checkpoint_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            ("sess-mixed-tz", "test", "telegram", message_at, checkpoint_at),
+        )
+        conn.commit()
+
+    monkeypatch.setattr(receiver, "_create_sync_engine", lambda: engine)
+
+    # Recent checkpoint_at should win over old message_at and skip re-checkpoint.
+    assert receiver._maybe_checkpoint_output("sess-mixed-tz", "gemini", {}) is None
+
+
+def test_receiver_agent_stop_checkpoint_failure_fails_open(monkeypatch, tmp_path):
+    """Checkpoint failures should never crash hook receiver or block enqueue."""
+    sent = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_maybe_checkpoint_output", lambda *_args, **_kwargs: (_ for _ in ()).throw(TypeError("boom")))
+    monkeypatch.setattr(
+        receiver,
+        "_read_stdin",
+        lambda: (
+            '{"session_id":"native-12","transcript_path":"/tmp/g4.json"}',
+            {"session_id": "native-12", "transcript_path": "/tmp/g4.json"},
+        ),
+    )
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="AfterAgent", cwd=None)
+    )
+    tmpdir = tmp_path / "tmp-gemini-checkpoint-fail-open"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("sess-12")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
+
+    receiver.main()
+
+    assert len(sent) == 1
+    assert sent[0][0] == "sess-12"
+    assert sent[0][1] == "agent_stop"
 
 
 def test_receiver_forwards_gemini_prompt_event(monkeypatch, tmp_path):

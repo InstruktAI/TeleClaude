@@ -764,7 +764,17 @@ def main() -> None:
     # If checkpoint fires: print blocking JSON, exit 0, skip enqueue (agent continues).
     # If no checkpoint: fall through to enqueue (real stop enters the system).
     if event_type == AgentHookEvents.AGENT_STOP:
-        checkpoint_json = _maybe_checkpoint_output(teleclaude_session_id, args.agent, raw_data)
+        checkpoint_json: str | None = None
+        try:
+            checkpoint_json = _maybe_checkpoint_output(teleclaude_session_id, args.agent, raw_data)
+        except Exception as exc:  # noqa: BLE001 - fail-open: never break hooks on checkpoint logic
+            logger.warning(
+                "Checkpoint eval crashed (ignored)",
+                event_type=event_type,
+                session_id=teleclaude_session_id[:8],
+                agent=args.agent,
+                error=str(exc),
+            )
         if checkpoint_json:
             print(checkpoint_json)
             sys.exit(0)
