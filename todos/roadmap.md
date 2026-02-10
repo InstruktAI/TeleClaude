@@ -18,7 +18,7 @@ Pydantic-based schema for teleclaude.yml across all three config levels (project
 
 ## Eliminate Raw SQL from DB Layer
 
-- [>] db-raw-sql-cleanup
+- [x] db-raw-sql-cleanup
 
 Convert inline SQL in db.py to SQLModel/SQLAlchemy ORM and enforce via pre-commit hook.
 

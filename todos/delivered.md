@@ -36,3 +36,4 @@
 | 2026-02-09 | next-prepare-maintenance     | Next Prepare maintenance runner docs + scheduled agent job wiring                         | DELIVERED | -                                        |
 | 2026-02-09 | job-contract-refinements     | Enforced agent job contract (`job`), sync-time job validation, interests parsing fix      | DELIVERED | -                                        |
 | 2026-02-10 | config-schema-validation     | Pydantic-based schema validation for teleclaude.yml with level enforcement                | DELIVERED | bc999a3                                  |
+| 2026-02-10 | db-raw-sql-cleanup           | Eliminate raw SQL from DB helpers and enforce raw-sql markers in hooks/check script       | DELIVERED | ae55a25                                  |
