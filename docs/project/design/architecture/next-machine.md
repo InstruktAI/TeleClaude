@@ -135,6 +135,7 @@ sequenceDiagram
 - **Missing Roadmap**: Cannot discover work items. Returns error instructing user to create roadmap.
 - **Malformed State JSON**: Cannot read phase status. Treats as pending and restarts build phase.
 - **Dependency Cycle**: Circular dependencies detected. Logs error, refuses to dispatch.
+- **No Selectable Agents**: Fallback candidates are degraded/unavailable. Next Machine returns orchestrator guidance to call `teleclaude__mark_agent_status(...)` and retry.
 - **Git Not Available**: Worktree commands fail. Machine returns error; manual git setup required.
 - **Stale Artifacts**: Requirements updated but plan not regenerated. Reviewer catches mismatch; fix manually.
 - **Worker Crash**: Dispatched AI never completes. Orchestrator must timeout and retry or escalate.

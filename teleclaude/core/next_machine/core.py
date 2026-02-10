@@ -67,6 +67,7 @@ REVIEW_APPROVE_MARKER = "[x] APPROVE"
 PAREN_OPEN = "("
 DEFAULT_MAX_REVIEW_ROUNDS = 3
 FINDING_ID_PATTERN = re.compile(r"\bR\d+-F\d+\b")
+NO_SELECTABLE_AGENTS_PATTERN = re.compile(r"No selectable agents for task '([^']+)'")
 
 # Fallback matrices: task_type -> [(agent, thinking_mode), ...]
 PREPARE_FALLBACK: dict[str, list[tuple[str, str]]] = {
@@ -258,6 +259,26 @@ def format_error(code: str, message: str, next_call: str = "") -> str:
     if next_call:
         result += f"\n\nNEXT: {next_call}"
     return result
+
+
+def _extract_no_selectable_task_type(message: str) -> str | None:
+    match = NO_SELECTABLE_AGENTS_PATTERN.search(message)
+    return match.group(1) if match else None
+
+
+def format_agent_selection_error(task_type: str, retry_call: str) -> str:
+    return format_error(
+        "NO_SELECTABLE_AGENTS",
+        (
+            f"No selectable agents for task '{task_type}'. "
+            "Fallback candidates are currently degraded or unavailable."
+        ),
+        next_call=(
+            'As orchestrator, set provider state with teleclaude__mark_agent_status('
+            'agent="<claude|gemini|codex>", status="<degraded|unavailable|available>", reason="<why>"), '
+            f"then call {retry_call}"
+        ),
+    )
 
 
 def format_prepared(slug: str) -> str:
@@ -1333,171 +1354,178 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
     Returns:
         Plain text instructions for the orchestrator to execute
     """
-    # 1. Resolve slug
-    resolved_slug = slug
-    if not resolved_slug:
-        resolved_slug = await asyncio.to_thread(_find_next_prepare_slug, cwd)
+    retry_call = f'teleclaude__next_prepare(slug="{slug}")' if slug else "teleclaude__next_prepare()"
+    try:
+        # 1. Resolve slug
+        resolved_slug = slug
+        if not resolved_slug:
+            resolved_slug = await asyncio.to_thread(_find_next_prepare_slug, cwd)
 
-    if not resolved_slug:
-        if hitl:
-            return format_hitl_guidance(
-                "No active preparation work found. "
-                "All active slugs already have requirements.md and implementation-plan.md "
-                "with breakdown assessed where needed."
-            )
-
-        # Dispatch next-prepare-draft (no slug) when hitl=False
-        agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
-        return format_tool_call(
-            command="next-prepare-draft",
-            args="",
-            project=cwd,
-            agent=agent,
-            thinking_mode=mode,
-            subfolder="",
-            note="No active preparation work found.",
-            next_call="teleclaude__next_prepare",
-        )
-
-    # 1.5. Ensure slug exists in roadmap before preparing
-    if not await asyncio.to_thread(slug_in_roadmap, cwd, resolved_slug):
-        has_requirements = check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md")
-        has_impl_plan = check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md")
-        missing_docs: list[str] = []
-        if not has_requirements:
-            missing_docs.append("requirements.md")
-        if not has_impl_plan:
-            missing_docs.append("implementation-plan.md")
-        docs_clause = "."
-        if missing_docs:
-            docs_list = " and ".join(missing_docs)
-            docs_clause = f" before writing {docs_list}."
-        next_step = (
-            "Discuss with the user where it should appear in the list and get approval, "
-            f"then add it to the roadmap{docs_clause}"
-        )
-        note = f"Preparing: {resolved_slug}. This slug is not in todos/roadmap.md. {next_step}"
-        if hitl:
-            return format_hitl_guidance(note)
-
-        agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
-        return format_tool_call(
-            command="next-prepare-draft",
-            args=resolved_slug,
-            project=cwd,
-            agent=agent,
-            thinking_mode=mode,
-            subfolder="",
-            note=note,
-            next_call="teleclaude__next_prepare",
-        )
-
-    # 1.6. Check for breakdown assessment
-    has_input = check_file_exists(cwd, f"todos/{resolved_slug}/input.md")
-    breakdown_state = await asyncio.to_thread(read_breakdown_state, cwd, resolved_slug)
-
-    if has_input and (breakdown_state is None or not breakdown_state.get("assessed")):
-        # Breakdown assessment needed
-        if hitl:
-            return format_hitl_guidance(
-                f"Preparing: {resolved_slug}. Read todos/{resolved_slug}/input.md and assess "
-                "Definition of Ready. If complex, split into smaller todos. Then update state.json "
-                "and create breakdown.md."
-            )
-        # Non-HITL: dispatch architect to assess
-        agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
-        return format_tool_call(
-            command="next-prepare-draft",
-            args=resolved_slug,
-            project=cwd,
-            agent=agent,
-            thinking_mode=mode,
-            subfolder="",
-            note=f"Assess todos/{resolved_slug}/input.md for complexity. Split if needed.",
-            next_call="teleclaude__next_prepare",
-        )
-
-    # If breakdown assessed and has dependent todos, this one is a container
-    if breakdown_state and breakdown_state.get("todos"):
-        dep_todos = breakdown_state["todos"]
-        if isinstance(dep_todos, list):
-            return f"CONTAINER: {resolved_slug} was split into: {', '.join(dep_todos)}. Work on those first."
-        return f"CONTAINER: {resolved_slug} was split. Check state.json for dependent todos."
-
-    # 2. Check requirements
-    if not check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md"):
-        if hitl:
-            return format_hitl_guidance(
-                f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/requirements.md "
-                f"and todos/{resolved_slug}/implementation-plan.md yourself."
-            )
-
-        agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
-        return format_tool_call(
-            command="next-prepare-draft",
-            args=resolved_slug,
-            project=cwd,
-            agent=agent,
-            thinking_mode=mode,
-            subfolder="",
-            note=f"Discuss until you have enough input. Write todos/{resolved_slug}/requirements.md yourself.",
-            next_call="teleclaude__next_prepare",
-        )
-
-    # 3. Check implementation plan
-    if not check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md"):
-        if hitl:
-            return format_hitl_guidance(
-                f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/implementation-plan.md yourself."
-            )
-
-        agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
-        return format_tool_call(
-            command="next-prepare-draft",
-            args=resolved_slug,
-            project=cwd,
-            agent=agent,
-            thinking_mode=mode,
-            subfolder="",
-            note=f"Discuss until you have enough input. Write todos/{resolved_slug}/implementation-plan.md yourself.",
-            next_call="teleclaude__next_prepare",
-        )
-
-    # 4. Both exist - mark as ready only after DOR pass (avoid downgrading [>] or [x])
-    current_state = await asyncio.to_thread(get_roadmap_state, cwd, resolved_slug)
-    if current_state == RoadmapMarker.PENDING.value:  # Only transition pending -> ready
-        phase_state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
-        dor = phase_state.get("dor")
-        dor_status = dor.get("status") if isinstance(dor, dict) else None
-        dor_status_str = dor_status if isinstance(dor_status, str) else None
-        if dor_status_str == "pass":
-            await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, RoadmapMarker.READY.value)
-            await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
-        else:
+        if not resolved_slug:
             if hitl:
                 return format_hitl_guidance(
-                    f"Preparing: {resolved_slug}. Requirements and implementation plan exist, "
-                    "but DOR is not pass yet. Complete DOR assessment, update "
-                    f"todos/{resolved_slug}/dor-report.md and todos/{resolved_slug}/state.json.dor "
-                    'with status "pass". Then run /next-prepare-gate (separate worker) and call teleclaude__next_prepare again.'
+                    "No active preparation work found. "
+                    "All active slugs already have requirements.md and implementation-plan.md "
+                    "with breakdown assessed where needed."
                 )
+
+            # Dispatch next-prepare-draft (no slug) when hitl=False
+            agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+            return format_tool_call(
+                command="next-prepare-draft",
+                args="",
+                project=cwd,
+                agent=agent,
+                thinking_mode=mode,
+                subfolder="",
+                note="No active preparation work found.",
+                next_call="teleclaude__next_prepare",
+            )
+
+        # 1.5. Ensure slug exists in roadmap before preparing
+        if not await asyncio.to_thread(slug_in_roadmap, cwd, resolved_slug):
+            has_requirements = check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md")
+            has_impl_plan = check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md")
+            missing_docs: list[str] = []
+            if not has_requirements:
+                missing_docs.append("requirements.md")
+            if not has_impl_plan:
+                missing_docs.append("implementation-plan.md")
+            docs_clause = "."
+            if missing_docs:
+                docs_list = " and ".join(missing_docs)
+                docs_clause = f" before writing {docs_list}."
+            next_step = (
+                "Discuss with the user where it should appear in the list and get approval, "
+                f"then add it to the roadmap{docs_clause}"
+            )
+            note = f"Preparing: {resolved_slug}. This slug is not in todos/roadmap.md. {next_step}"
+            if hitl:
+                return format_hitl_guidance(note)
 
             agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
             return format_tool_call(
-                command="next-prepare-gate",
+                command="next-prepare-draft",
                 args=resolved_slug,
                 project=cwd,
                 agent=agent,
                 thinking_mode=mode,
                 subfolder="",
-                note=(
-                    f"Requirements/plan exist for {resolved_slug}, but DOR status is not pass. "
-                    "Complete DOR assessment and set state.json.dor.status to pass."
-                ),
+                note=note,
                 next_call="teleclaude__next_prepare",
             )
-    # else: already [.], [>], or [x] - no state change needed
-    return format_prepared(resolved_slug)
+
+        # 1.6. Check for breakdown assessment
+        has_input = check_file_exists(cwd, f"todos/{resolved_slug}/input.md")
+        breakdown_state = await asyncio.to_thread(read_breakdown_state, cwd, resolved_slug)
+
+        if has_input and (breakdown_state is None or not breakdown_state.get("assessed")):
+            # Breakdown assessment needed
+            if hitl:
+                return format_hitl_guidance(
+                    f"Preparing: {resolved_slug}. Read todos/{resolved_slug}/input.md and assess "
+                    "Definition of Ready. If complex, split into smaller todos. Then update state.json "
+                    "and create breakdown.md."
+                )
+            # Non-HITL: dispatch architect to assess
+            agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+            return format_tool_call(
+                command="next-prepare-draft",
+                args=resolved_slug,
+                project=cwd,
+                agent=agent,
+                thinking_mode=mode,
+                subfolder="",
+                note=f"Assess todos/{resolved_slug}/input.md for complexity. Split if needed.",
+                next_call="teleclaude__next_prepare",
+            )
+
+        # If breakdown assessed and has dependent todos, this one is a container
+        if breakdown_state and breakdown_state.get("todos"):
+            dep_todos = breakdown_state["todos"]
+            if isinstance(dep_todos, list):
+                return f"CONTAINER: {resolved_slug} was split into: {', '.join(dep_todos)}. Work on those first."
+            return f"CONTAINER: {resolved_slug} was split. Check state.json for dependent todos."
+
+        # 2. Check requirements
+        if not check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md"):
+            if hitl:
+                return format_hitl_guidance(
+                    f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/requirements.md "
+                    f"and todos/{resolved_slug}/implementation-plan.md yourself."
+                )
+
+            agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+            return format_tool_call(
+                command="next-prepare-draft",
+                args=resolved_slug,
+                project=cwd,
+                agent=agent,
+                thinking_mode=mode,
+                subfolder="",
+                note=f"Discuss until you have enough input. Write todos/{resolved_slug}/requirements.md yourself.",
+                next_call="teleclaude__next_prepare",
+            )
+
+        # 3. Check implementation plan
+        if not check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md"):
+            if hitl:
+                return format_hitl_guidance(
+                    f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/implementation-plan.md yourself."
+                )
+
+            agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+            return format_tool_call(
+                command="next-prepare-draft",
+                args=resolved_slug,
+                project=cwd,
+                agent=agent,
+                thinking_mode=mode,
+                subfolder="",
+                note=f"Discuss until you have enough input. Write todos/{resolved_slug}/implementation-plan.md yourself.",
+                next_call="teleclaude__next_prepare",
+            )
+
+        # 4. Both exist - mark as ready only after DOR pass (avoid downgrading [>] or [x])
+        current_state = await asyncio.to_thread(get_roadmap_state, cwd, resolved_slug)
+        if current_state == RoadmapMarker.PENDING.value:  # Only transition pending -> ready
+            phase_state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
+            dor = phase_state.get("dor")
+            dor_status = dor.get("status") if isinstance(dor, dict) else None
+            dor_status_str = dor_status if isinstance(dor_status, str) else None
+            if dor_status_str == "pass":
+                await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, RoadmapMarker.READY.value)
+                await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
+            else:
+                if hitl:
+                    return format_hitl_guidance(
+                        f"Preparing: {resolved_slug}. Requirements and implementation plan exist, "
+                        "but DOR is not pass yet. Complete DOR assessment, update "
+                        f"todos/{resolved_slug}/dor-report.md and todos/{resolved_slug}/state.json.dor "
+                        'with status "pass". Then run /next-prepare-gate (separate worker) and call teleclaude__next_prepare again.'
+                    )
+
+                agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+                return format_tool_call(
+                    command="next-prepare-gate",
+                    args=resolved_slug,
+                    project=cwd,
+                    agent=agent,
+                    thinking_mode=mode,
+                    subfolder="",
+                    note=(
+                        f"Requirements/plan exist for {resolved_slug}, but DOR status is not pass. "
+                        "Complete DOR assessment and set state.json.dor.status to pass."
+                    ),
+                    next_call="teleclaude__next_prepare",
+                )
+        # else: already [.], [>], or [x] - no state change needed
+        return format_prepared(resolved_slug)
+    except RuntimeError as exc:
+        task_type = _extract_no_selectable_task_type(str(exc))
+        if task_type:
+            return format_agent_selection_error(task_type, retry_call)
+        raise
 
 
 async def next_work(db: Db, slug: str | None, cwd: str) -> str:
@@ -1514,6 +1542,17 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     Returns:
         Plain text instructions for the orchestrator to execute
     """
+    retry_call = f'teleclaude__next_work(slug="{slug}")' if slug else "teleclaude__next_work()"
+
+    async def _pick_agent(task_type: str) -> tuple[str, str] | str:
+        try:
+            return await get_available_agent(db, task_type, WORK_FALLBACK)
+        except RuntimeError as exc:
+            task = _extract_no_selectable_task_type(str(exc))
+            if task:
+                return format_agent_selection_error(task, retry_call)
+            raise
+
     # 1. Resolve slug - only ready items when no explicit slug
     # Prefer worktree-local planning state when explicit slug worktree exists.
     deps_cwd = cwd
@@ -1640,7 +1679,10 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
 
     # 7. Check build status (from state.json in worktree)
     if not await asyncio.to_thread(is_build_complete, worktree_cwd, resolved_slug):
-        agent, mode = await get_available_agent(db, PhaseName.BUILD.value, WORK_FALLBACK)
+        selection = await _pick_agent(PhaseName.BUILD.value)
+        if isinstance(selection, str):
+            return selection
+        agent, mode = selection
         return format_tool_call(
             command="next-build",
             args=resolved_slug,
@@ -1655,7 +1697,10 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     if not await asyncio.to_thread(is_review_approved, worktree_cwd, resolved_slug):
         # Check if review hasn't started yet or needs fixes
         if await asyncio.to_thread(is_review_changes_requested, worktree_cwd, resolved_slug):
-            agent, mode = await get_available_agent(db, "fix", WORK_FALLBACK)
+            selection = await _pick_agent("fix")
+            if isinstance(selection, str):
+                return selection
+            agent, mode = selection
             return format_tool_call(
                 command="next-fix-review",
                 args=resolved_slug,
@@ -1676,7 +1721,10 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 ),
                 next_call=f'Resolve findings manually, then call teleclaude__next_work(slug="{resolved_slug}")',
             )
-        agent, mode = await get_available_agent(db, PhaseName.REVIEW.value, WORK_FALLBACK)
+        selection = await _pick_agent(PhaseName.REVIEW.value)
+        if isinstance(selection, str):
+            return selection
+        agent, mode = selection
         return format_tool_call(
             command="next-review",
             args=resolved_slug,
@@ -1690,7 +1738,10 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
 
     # 8.5 Check pending deferrals (R7)
     if await asyncio.to_thread(has_pending_deferrals, worktree_cwd, resolved_slug):
-        agent, mode = await get_available_agent(db, "defer", WORK_FALLBACK)
+        selection = await _pick_agent("defer")
+        if isinstance(selection, str):
+            return selection
+        agent, mode = selection
         return format_tool_call(
             command="next-defer",
             args=resolved_slug,
@@ -1704,7 +1755,10 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     # 9. Review approved - dispatch finalize
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)
-    agent, mode = await get_available_agent(db, "finalize", WORK_FALLBACK)
+    selection = await _pick_agent("finalize")
+    if isinstance(selection, str):
+        return selection
+    agent, mode = selection
     return format_tool_call(
         command="next-finalize",
         args=resolved_slug,

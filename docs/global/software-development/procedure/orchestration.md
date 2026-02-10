@@ -47,6 +47,16 @@ Discussion results go in `todos/{slug}/input.md`. Use the preparation state mach
 2. Send guidance pointing to docs, not implementation details.
 3. Start new timer and continue waiting.
 
+### Agent Degradation Handling (Orchestrator-Owned)
+
+1. If dispatch fails due to quota/rate-limit/provider instability, mark provider status immediately.
+2. Use `teleclaude__mark_agent_status(agent, status, reason, unavailable_until?)`:
+   - `status="degraded"` when the agent should be excluded from automatic fallback selection.
+   - `status="unavailable"` for time-bounded outages/rate limits.
+   - `status="available"` when recovered.
+3. Re-run `teleclaude__next_work(...)` after status update.
+4. Do not delegate this decision to workers; only orchestrator should mutate provider status.
+
 - Point workers to `todos/{slug}/requirements.md` or `implementation-plan.md`.
 - Reference project docs or standards.
 - Never dictate specific commands or code.
