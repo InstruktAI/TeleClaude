@@ -339,8 +339,9 @@ class StartSessionModal:
         stdscr.addstr(agent_y + 1, content_x, "└" + "─" * (agent_box_w - 2) + "┘", input_border)
         # Agent label
         stdscr.addstr(agent_y - 1, content_x + 2, " Agent ", modal_bg | curses.A_BOLD)
+        agent_cell_w = 15
         for i, agent in enumerate(self.AGENTS):
-            x = content_x + 2 + i * 15
+            x = content_x + 2 + i * agent_cell_w
             spec = build_agent_render_spec(
                 agent,
                 self.agent_availability.get(agent),
@@ -360,7 +361,9 @@ class StartSessionModal:
                 marker = "░"
                 attr = base_attr
 
-            stdscr.addstr(agent_y, x, f"{marker} {spec.text}", attr)
+            label = f" {marker} {spec.text} "
+            rendered = label[:agent_cell_w].ljust(agent_cell_w)
+            stdscr.addstr(agent_y, x, rendered, attr)
 
         # Mode selection (with border box)
         mode_y = agent_y + 3
@@ -371,15 +374,18 @@ class StartSessionModal:
         stdscr.addstr(mode_y + 1, content_x, "└" + "─" * (mode_box_w - 2) + "┘", input_border)
         # Mode label
         stdscr.addstr(mode_y - 1, content_x + 2, " Mode ", modal_bg | curses.A_BOLD)
+        mode_cell_w = 12
         for i, mode in enumerate(self.MODES):
-            x = content_x + 2 + i * 12
+            x = content_x + 2 + i * mode_cell_w
             if i == self.selected_mode:
                 marker = "●"
                 attr = selection_bg | curses.A_BOLD if self.current_field == 1 else modal_bg
             else:
                 marker = "○"
                 attr = modal_bg
-            stdscr.addstr(mode_y, x, f"{marker} {mode}", attr)
+            label = f" {marker} {mode} "
+            rendered = label[:mode_cell_w].ljust(mode_cell_w)
+            stdscr.addstr(mode_y, x, rendered, attr)
 
         # Prompt input (with border box)
         prompt_y = mode_y + 3
@@ -418,15 +424,15 @@ class StartSessionModal:
         is_actions_focused = self.current_field == 4
 
         # Start button
+        start_label = " [Enter] Start "
         start_attr = selection_bg | curses.A_BOLD if is_actions_focused and self.selected_action == 0 else modal_bg
-        stdscr.addstr(actions_y, content_x, "[Enter] Start", start_attr)
-
-        # Spacing
-        stdscr.addstr(actions_y, content_x + 14, "    ", modal_bg)
+        stdscr.addstr(actions_y, content_x, start_label, start_attr)
 
         # Cancel button
+        cancel_label = " [Esc] Cancel "
+        cancel_x = content_x + len(start_label) + 2
         cancel_attr = selection_bg | curses.A_BOLD if is_actions_focused and self.selected_action == 1 else modal_bg
-        stdscr.addstr(actions_y, content_x + 18, "[Esc] Cancel", cancel_attr)
+        stdscr.addstr(actions_y, cancel_x, cancel_label, cancel_attr)
 
 
 class ConfirmModal:
@@ -561,27 +567,25 @@ class ConfirmModal:
         selection_bg = get_selection_attr(2)
 
         # Yes button (default selected)
+        yes_label = " [Enter] Yes "
         yes_attr = selection_bg | curses.A_BOLD if self.selected_action == 0 else modal_bg
         try:
-            stdscr.addstr(actions_y, content_x, "[Enter] Yes", yes_attr)
-        except curses.error:
-            pass
-
-        # Spacing
-        try:
-            stdscr.addstr(actions_y, content_x + 12, "    ", modal_bg)
+            stdscr.addstr(actions_y, content_x, yes_label, yes_attr)
         except curses.error:
             pass
 
         # No button
+        no_label = " [N] No "
+        no_x = content_x + len(yes_label) + 2
         no_attr = selection_bg | curses.A_BOLD if self.selected_action == 1 else modal_bg
         try:
-            stdscr.addstr(actions_y, content_x + 16, "[N] No", no_attr)
+            stdscr.addstr(actions_y, no_x, no_label, no_attr)
         except curses.error:
             pass
 
         # Cancel hint (not selectable, just escape)
+        cancel_x = no_x + len(no_label) + 2
         try:
-            stdscr.addstr(actions_y, content_x + 26, "[Esc] Cancel", modal_bg | curses.A_DIM)
+            stdscr.addstr(actions_y, cancel_x, "[Esc] Cancel", modal_bg | curses.A_DIM)
         except curses.error:
             pass
