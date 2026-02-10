@@ -68,7 +68,7 @@ def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch)
     project_root.mkdir(parents=True, exist_ok=True)
     config_path = project_root / "teleclaude.yml"
     if not config_path.exists():
-        config_path.write_text("business:\n  domains:\n    - software-development\n", encoding="utf-8")
+        config_path.write_text("business:\n  domains:\n    software-development: docs\n", encoding="utf-8")
 
     # Force teleclaude.yml lookups to use the test config.
     monkeypatch.setenv("TELECLAUDE_PROJECT_CONFIG_PATH", str(config_path))
