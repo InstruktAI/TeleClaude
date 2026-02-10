@@ -423,8 +423,9 @@ def build_checkpoint_message(
     if not git_files or _is_docs_only(git_files):
         return (
             "Context-aware checkpoint\n\n"
-            "No code changes detected. Capture memories/bugs/ideas if needed. "
-            "Commit if ready."
+            "No code changes detected. "
+            "Check logs: `instrukt-ai-logs teleclaude --since 2m`.\n"
+            "Capture memories/bugs/ideas if needed. Commit if ready."
         )
 
     # Special case: all clear

@@ -506,11 +506,13 @@ def test_slug_partial_overlap_suppressed(tmp_path):
 def test_docs_only_message():
     msg = build_checkpoint_message(["docs/foo.md"], _empty_timeline(), _default_context())
     assert "No code changes" in msg
+    assert "instrukt-ai-logs teleclaude --since 2m" in msg
 
 
 def test_empty_diff_message():
     msg = build_checkpoint_message([], _empty_timeline(), _default_context())
     assert "No code changes" in msg
+    assert "instrukt-ai-logs teleclaude --since 2m" in msg
 
 
 def test_all_clear_message_is_minimal():
