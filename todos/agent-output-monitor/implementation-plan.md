@@ -96,7 +96,7 @@ Tool-use/tool-result pairing: walk content blocks sequentially. When a `tool_use
 - Graceful failure on missing/corrupt transcripts
 - Tool-use/tool-result pairing produces correct `had_error` and `result_snippet`
 
-#### Task 3: Heuristic engine
+#### Task 3: Heuristic engine [x]
 
 Add to `teleclaude/hooks/checkpoint.py` — this module is a thin consumer of `transcript.py`. It imports `TurnTimeline` and `ToolCallRecord` from transcript.py and never reads or parses transcript files directly.
 
@@ -131,7 +131,7 @@ Resolution evidence for error state detection accepts three signal types:
 
 ### Phase B: Integration
 
-#### Task 4: Shared checkpoint message builder
+#### Task 4: Shared checkpoint message builder [x]
 
 Add to `teleclaude/hooks/checkpoint.py`:
 
