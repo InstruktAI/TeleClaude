@@ -20,12 +20,6 @@ Daemon-side identity infrastructure for multi-person deployments. PersonEntry co
 - [.] person-identity-auth-2 (after: person-identity-auth-1) — Session Binding & Auth Middleware
 - [.] person-identity-auth-3 (after: person-identity-auth-2) — Role Gating & Adapter Integration
 
-## Agent Logbook — Per-Agent Observability
-
-- [.] agent-logbook-observability
-
-Per-session structured logging via SQLite `agent_logs` table. Write API (`POST /api/logbook`), read API with filtering, and MCP tool (`teleclaude__write_log`). Agents write security events, decision trails, job results, performance data. Foundation for web interface security dashboards and job runner observability.
-
 ## Output Streaming Unification
 
 - [.] output-streaming-unification

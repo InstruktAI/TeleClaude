@@ -52,3 +52,9 @@ Periodic idea processing pipeline. Nice-to-have automation, postponed for focus.
 - github-maintenance-runner
 
 Periodic GitHub bug triage and automated bugfix PR flow in a dedicated maintenance worktree. Useful operational automation, but postponed behind current core product delivery priorities.
+
+## Agent Logbook Observability
+
+- agent-logbook-observability
+
+Per-session structured logging (`agent_logs`, `/api/logbook`, `teleclaude__write_log`) that depends on explicit agent write behavior. Parked for now because the current direction is to reduce agent-side operational burden rather than add manual logging responsibilities.
