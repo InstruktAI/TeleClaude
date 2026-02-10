@@ -26,7 +26,6 @@ from teleclaude.core.agents import AgentName  # noqa: E402
 from teleclaude.core import db_models  # noqa: E402
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType  # noqa: E402
 from teleclaude.constants import (  # noqa: E402
-    CHECKPOINT_MESSAGE,
     CHECKPOINT_REACTIVATION_THRESHOLD_S,
     MAIN_MODULE,
     UI_MESSAGE_MAX_CHARS,
@@ -158,23 +157,46 @@ def _maybe_checkpoint_output(
         )
         return None
 
+    # Capture session fields before the DB update re-fetches row
+    transcript_path = getattr(row, "native_log_file", None)
+    working_slug = getattr(row, "working_slug", None)
+
     # Checkpoint warranted — update DB and return agent-specific blocking JSON
     try:
         with SqlSession(_create_sync_engine()) as db_session:
-            row = db_session.get(db_models.Session, session_id)
-            if row:
-                row.last_checkpoint_at = now
-                db_session.add(row)
+            update_row = db_session.get(db_models.Session, session_id)
+            if update_row:
+                update_row.last_checkpoint_at = now
+                db_session.add(update_row)
                 db_session.commit()
     except Exception as exc:  # noqa: BLE001 - best-effort DB update
         logger.warning("Checkpoint DB update failed: %s", exc)
 
     logger.debug("Checkpoint blocking stop for session %s (%.1fs elapsed)", session_id[:8], elapsed)
 
+    # Build context-aware checkpoint message from git diff + transcript
+    from teleclaude.hooks.checkpoint import get_checkpoint_content
+
+    project_path = ""
+    if transcript_path:
+        from teleclaude.utils.transcript import extract_workdir_from_transcript
+
+        project_path = extract_workdir_from_transcript(transcript_path) or ""
+    try:
+        agent_enum = AgentName.from_str(agent)
+    except ValueError:
+        agent_enum = AgentName.CLAUDE
+    checkpoint_reason = get_checkpoint_content(
+        transcript_path=transcript_path,
+        agent_name=agent_enum,
+        project_path=project_path,
+        working_slug=working_slug,
+    )
+
     if agent == AgentName.CLAUDE.value:
-        return json.dumps({"decision": "block", "reason": CHECKPOINT_MESSAGE})
+        return json.dumps({"decision": "block", "reason": checkpoint_reason})
     if agent == AgentName.GEMINI.value:
-        return json.dumps({"decision": "deny", "reason": CHECKPOINT_MESSAGE})
+        return json.dumps({"decision": "deny", "reason": checkpoint_reason})
 
     # Codex has no hook-based checkpoint mechanism
     return None
