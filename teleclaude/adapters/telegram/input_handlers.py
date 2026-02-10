@@ -10,7 +10,7 @@ import asyncio
 import tempfile
 import traceback
 from collections.abc import Awaitable, Callable, Mapping
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -273,7 +273,11 @@ Usage:
                 HandleVoiceCommand(
                     session_id=session.session_id,
                     file_path=str(temp_file_path),
-                    duration=float(voice.duration) if voice.duration is not None else None,
+                    duration=(
+                        voice.duration.total_seconds()
+                        if isinstance(voice.duration, timedelta)
+                        else float(voice.duration)
+                    ),
                     message_id=str(message.message_id),
                     message_thread_id=message.message_thread_id,
                     origin=self._metadata().origin,

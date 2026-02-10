@@ -4,21 +4,26 @@ import os
 import shutil
 import subprocess
 import tempfile
+from importlib import import_module
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-try:
-    from mlx_audio.tts.generate import generate_audio
-    from mlx_audio.tts.utils import load_model
-except Exception as import_error:  # noqa: BLE001 - keep backend available via CLI fallback
-    generate_audio = None  # type: ignore[assignment]
-    load_model = None  # type: ignore[assignment]
-    MLX_AUDIO_IMPORT_ERROR = import_error
-else:
-    MLX_AUDIO_IMPORT_ERROR = None
-
 from teleclaude.mlx_utils import resolve_model_ref
+
+generate_audio = None
+load_model = None
+mlx_audio_import_error: Exception | None = None
+try:
+    tts_generate_module = import_module("mlx_audio.tts.generate")
+    tts_utils_module = import_module("mlx_audio.tts.utils")
+    generate_candidate = getattr(tts_generate_module, "generate_audio", None)
+    load_candidate = getattr(tts_utils_module, "load_model", None)
+    if callable(generate_candidate) and callable(load_candidate):
+        generate_audio = generate_candidate
+        load_model = load_candidate
+except Exception as import_error:  # noqa: BLE001 - keep backend available via CLI fallback
+    mlx_audio_import_error = import_error
 
 logger = get_logger(__name__)
 
@@ -89,7 +94,7 @@ class MLXTTSBackend:
                     "MLX TTS [%s] using CLI fallback (%s); mlx_audio import failed: %s",
                     self._service_name,
                     self._cli_bin,
-                    MLX_AUDIO_IMPORT_ERROR,
+                    mlx_audio_import_error,
                 )
                 return True
             logger.error("MLX TTS [%s] unavailable: mlx_audio not installed and no CLI fallback", self._service_name)
@@ -132,10 +137,13 @@ class MLXTTSBackend:
 
     def _speak_cli(self, text: str, voice: str) -> bool:
         """Speak via CLI subprocess fallback."""
+        if not self._cli_bin:
+            return False
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             prefix = f"{tmp_dir}/tts_output"
             cmd = [
-                self._cli_bin,  # type: ignore[list-item]
+                self._cli_bin,
                 "--model",
                 self._model_ref,
                 "--text",
