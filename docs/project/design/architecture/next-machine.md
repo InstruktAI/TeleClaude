@@ -124,7 +124,7 @@ sequenceDiagram
 
 | Phase    | Worker Role | Command Example                                |
 | -------- | ----------- | ---------------------------------------------- |
-| Prepare  | Architect   | `/prime-architect` then collaborate with user  |
+| Prepare  | Orchestrator | `/prime-orchestrator` then route with `teleclaude__next_prepare`/`teleclaude__next_work` |
 | Build    | Builder     | `/next-build` in worktree                      |
 | Review   | Reviewer    | `/next-review` - evaluate against requirements |
 | Fix      | Fixer       | `/next-fix-review` - address findings          |

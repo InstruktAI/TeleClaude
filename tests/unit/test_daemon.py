@@ -310,14 +310,14 @@ async def test_agent_then_message_waits_for_stabilization():
 
         result = await daemon._handle_agent_then_message(
             "sess-123",
-            ["gemini", "slow", "/prime-architect"],
+            ["gemini", "slow", "/prime-orchestrator"],
         )
 
         assert result["status"] == "success"
         # Verify order: stabilize -> inject -> confirm
         assert call_order == ["wait_for_stable", "inject_message", "confirm_acceptance"]
         assert any(
-            session_id == "sess-123" and kwargs.get("last_message_sent") == "/prime-architect"
+            session_id == "sess-123" and kwargs.get("last_message_sent") == "/prime-orchestrator"
             for session_id, kwargs in updates
         )
 
@@ -358,7 +358,7 @@ async def test_agent_then_message_applies_gemini_delay():
 
         result = await daemon._handle_agent_then_message(
             "sess-123",
-            ["gemini", "slow", "/prime-architect"],
+            ["gemini", "slow", "/prime-orchestrator"],
         )
 
         assert result["status"] == "success"

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Wire human role filtering into tool gating, integrate identity resolution into web/TUI/MCP boundaries, and add TUI login command with token issuance endpoint.
+Wire human role filtering into tool gating, integrate identity resolution into web/TUI/MCP boundaries, and add client auth command support with token issuance endpoint.
 
 ## Scope
 
@@ -11,7 +11,7 @@ Wire human role filtering into tool gating, integrate identity resolution into w
 1. **Human role tool gating** — `HUMAN_ROLE_EXCLUDED_TOOLS` dict and filtering functions in role_tools.py.
 2. **MCP wrapper human identity marker** — read/write `teleclaude_human_identity` marker file alongside existing `teleclaude_role`.
 3. **Web boundary identity normalization** — headers to internal metadata mapping.
-4. **TUI login command** — `telec login <email>` with token storage.
+4. **Client auth command** — obtain bearer token for API calls; storage remains client-managed.
 5. **Token issuance endpoint** — `POST /auth/token` on daemon API (Unix socket only).
 6. **Integration tests** covering full identity + binding + gating flows.
 
@@ -40,12 +40,11 @@ Wire human role filtering into tool gating, integrate identity resolution into w
 
 - Headers `X-TeleClaude-Person-Email`, `X-TeleClaude-Person-Role`, optional `X-TeleClaude-Person-Username` normalized to internal metadata before session binding.
 
-### FR4: TUI login command
+### FR4: Client auth command
 
-- `telec login <email>` validates email against people config via identity resolver.
-- Calls `POST /auth/token` on daemon to get signed token.
-- Stores token at `~/.teleclaude/auth_token`.
+- Client validates identity input and calls `POST /auth/token` on daemon to get signed token.
 - Subsequent API calls include `Authorization: Bearer <token>`.
+- Token persistence is client-managed; daemon host token files are forbidden.
 
 ### FR5: Token issuance endpoint
 
@@ -57,7 +56,7 @@ Wire human role filtering into tool gating, integrate identity resolution into w
 
 1. Human role tools filtered correctly per role level.
 2. MCP wrapper reads human identity marker and applies role filter.
-3. TUI `telec login` stores token; API calls authenticated.
+3. Client bearer token flow works; API calls authenticated.
 4. Newcomer can't start sessions; admin unrestricted.
 5. Web boundary headers map to internal session metadata.
 6. Integration tests cover full flow: config → resolver → binding → gating.

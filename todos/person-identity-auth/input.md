@@ -11,7 +11,7 @@ The daemon does NOT implement login flows. Login is the responsibility of each
 adapter's boundary:
 
 - **Web**: NextAuth v5 with email OTP in the Next.js app (web-interface todo).
-- **TUI**: `telec login <email>` issues a daemon-signed token stored locally.
+- **Client auth**: obtains daemon-signed bearer token; persistence is client-managed and never daemon-host coupled.
 - **MCP**: child sessions inherit parent's human identity.
 
 The daemon's job is to: resolve identity from adapter signals, bind it to sessions,
@@ -32,7 +32,7 @@ validate it on API requests, and enforce role-based access.
 | Entry point        | Identity signal                    | Resolution                                                     |
 | ------------------ | ---------------------------------- | -------------------------------------------------------------- |
 | Web                | `X-TeleClaude-Person-Email` header | Middleware validates trusted header from Next.js proxy         |
-| TUI                | `Authorization: Bearer <token>`    | Middleware verifies daemon-signed JWT                          |
+| Client boundary    | `Authorization: Bearer <token>`    | Middleware verifies daemon-signed JWT                          |
 | MCP child sessions | Parent session inheritance         | Lookup parent's human_email/human_role (and optional username) |
 
 ## Config extension (source of truth)

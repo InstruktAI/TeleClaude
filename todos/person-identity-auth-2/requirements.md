@@ -48,6 +48,7 @@ Add human identity columns to sessions DB, bind identity during session creation
 - Claims: `sub` (email), `role`, optional `username`, `iat`, `exp`, `iss` ("teleclaude-daemon").
 - Secret from `TELECLAUDE_AUTH_SECRET` env var.
 - PyJWT with HS256.
+- Daemon must not persist per-user tokens on host filesystem.
 
 ### FR5: Auth middleware
 

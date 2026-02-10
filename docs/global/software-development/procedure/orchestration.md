@@ -13,8 +13,6 @@ type: 'procedure'
 
 ## Goal
 
-Discussion results go in `todos/{slug}/input.md`. Use the preparation state machine to assess and structure.
-
 1. Invoke the work state machine with an optional slug.
 2. Receive instruction block.
 3. Follow instructions verbatim:

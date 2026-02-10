@@ -27,7 +27,7 @@ def test_wrap_bracketed_paste_empty() -> None:
 
 def test_wrap_bracketed_paste_skips_slash_commands() -> None:
     """Test that slash commands remain unwrapped."""
-    text = "/prime-architect"
+    text = "/prime-orchestrator"
     assert tmux_io.wrap_bracketed_paste(text) == text
 
 

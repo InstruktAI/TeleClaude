@@ -23,9 +23,9 @@ TeleClaude currently has zero human identity awareness:
 2. **Identity resolver service** — lookup by email (primary) and username (secondary).
 3. **Session-to-person binding** — DB migration adding `human_email`, `human_role`, and optional `human_username` to sessions table; stamp during creation; propagate to child sessions.
 4. **Auth middleware on daemon API** — validate identity from request headers (trusted adapter headers) or signed tokens (TUI auth); attach identity context to request.
-5. **Token signing utility** — daemon-issued signed tokens for TUI `telec login` and inter-process auth. Symmetric-key HMAC (HS256).
+5. **Token signing utility** — daemon-issued signed tokens for bearer auth. Symmetric-key HMAC (HS256).
 6. **Human role-based tool gating** — extend `role_tools.py` with human role filtering parallel to existing AI role filtering.
-7. **Adapter identity integration** — web boundary trusted headers, MCP human identity marker, and TUI signed-token flow.
+7. **Adapter identity integration** — web boundary trusted headers, MCP human identity marker, and bearer-token auth flow.
 
 ### Out of scope
 
@@ -104,23 +104,23 @@ TeleClaude currently has zero human identity awareness:
 ### FR7: Adapter identity integration
 
 - **MCP wrapper**: Write `teleclaude_human_identity` marker file to session TMPDIR with email, role, and optional username. Read during tool filtering.
-- **TUI**: `telec login <email>` command validates email in config, stores signed token locally. Subsequent API calls include token in Authorization header.
+- **Client auth**: a client command can validate identity input, obtain a signed bearer token, and use it for API calls. Token persistence is client-managed and never daemon-host coupled.
 - **API (direct)**: Middleware handles auth as described in FR4.
 
 ## Non-functional Requirements
 
 1. Auth secret must not be committed to git. Use env var or `.env` file.
-2. Token signing uses PyJWT with HS256 (symmetric, daemon signs and verifies its own tokens).
+2. Token signing uses PyJWT with HS256 (symmetric, daemon signs and verifies its own tokens). Daemon must never persist per-user auth tokens on host filesystem.
 3. Audit logging for auth failures and role-gate denials (daemon logger, not a new table).
 4. Identity resolver must be fast (config lookup, no DB queries).
 5. Greenfield stance: no legacy fallback path is implemented in this todo.
 
 ## Security Constraints
 
-1. Daemon-signed tokens are trusted for localhost/LAN only. Public exposure requires TLS + web boundary auth.
+1. Daemon-signed tokens are trusted for localhost/LAN only. Public exposure requires TLS + web boundary auth. Tokens are bearer credentials and remain client-side; daemon host storage is prohibited.
 2. Admin role should be required for session management on other people's sessions.
 3. Role changes in config take effect on next session creation (existing sessions retain the role at creation time).
-4. Auth secret rotation invalidates all outstanding TUI tokens (forced re-login).
+4. Auth secret rotation invalidates all outstanding bearer tokens.
 
 ## Acceptance Criteria
 
@@ -130,7 +130,7 @@ TeleClaude currently has zero human identity awareness:
 4. New sessions created with identity context have person bound.
 5. Child sessions inherit parent's human identity.
 6. Daemon API middleware validates identity on protected routes.
-7. `telec login <email>` issues a token; subsequent API calls are authenticated.
+7. Bearer token issuance works; subsequent API calls are authenticated without daemon-host token files.
 8. JWT claims map to internal metadata (`human_email`, `human_role`, optional `human_username`) consistently.
 9. Human role filtering blocks restricted tools for non-admin roles.
 10. Auth failures are logged with context.

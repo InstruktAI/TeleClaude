@@ -30,4 +30,4 @@ type: 'policy'
 
 ## Exceptions
 
-- None; any exception requires explicit human approval.
+- None; any exception that cannot be safely handled requires explicit human approval.

@@ -2,7 +2,7 @@
 
 ## Objective
 
-Wire human role gating and adapter identity integration to complete the auth infrastructure.
+Wire human role gating and adapter identity integration to complete the auth infrastructure without daemon-host token persistence.
 
 ## Task 1: Human role tool gating
 
@@ -35,18 +35,18 @@ Add `POST /auth/token` endpoint:
 
 **Verification:** Endpoint returns valid token for known email; rejects unknown.
 
-## Task 4: TUI login command
+## Task 4: Client auth command
 
-**File:** New command or extension in TUI CLI.
+**File:** New/extended client command (TUI or other boundary client).
 
-`telec login <email>`:
+Client auth flow:
 
-1. Validate email in people config via identity resolver.
+1. Validate identity input using config/resolver.
 2. Call daemon `POST /auth/token`.
-3. Store token at `~/.teleclaude/auth_token`.
-4. Subsequent API calls include `Authorization: Bearer <token>`.
+3. Use returned bearer token for API calls.
+4. Token persistence is client-managed and out of daemon scope.
 
-**Verification:** Login stores token; authenticated API calls succeed.
+**Verification:** Client command returns usable token; authenticated API calls succeed.
 
 ## Task 5: Web boundary identity normalization
 

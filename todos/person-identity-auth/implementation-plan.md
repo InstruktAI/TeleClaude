@@ -246,16 +246,16 @@ Write human identity marker during session creation (same flow that writes `tele
 Ensure inbound identity is normalized to `{email, role, username?}` before
 session binding and authorization checks.
 
-### Task 3.4: TUI login command
+### Task 3.4: Client auth command
 
 **File:** New command or extension in TUI CLI.
 
-`telec login <email>`:
+Client auth flow:
 
 1. Validate email exists in people config via identity resolver.
 2. Call daemon API to issue a signed token.
-3. Store token at `~/.teleclaude/auth_token`.
-4. Subsequent `telec` API calls include `Authorization: Bearer <token>`.
+3. Return token to caller; persistence is client-managed and out of daemon scope.
+4. Subsequent client API calls include `Authorization: Bearer <token>`.
 
 **File:** `teleclaude/api_server.py` — add `POST /auth/token` endpoint:
 

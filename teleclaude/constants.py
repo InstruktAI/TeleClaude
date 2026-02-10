@@ -37,6 +37,13 @@ ENV_ENABLE = "1"
 ROLE_ORCHESTRATOR = "orchestrator"
 ROLE_WORKER = "worker"
 
+# Human identity roles
+HUMAN_ROLE_ADMIN = "admin"
+HUMAN_ROLE_MEMBER = "member"
+HUMAN_ROLE_CONTRIBUTOR = "contributor"
+HUMAN_ROLE_NEWCOMER = "newcomer"
+HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER)
+
 
 class ResultStatus(str, Enum):
     SUCCESS = "success"

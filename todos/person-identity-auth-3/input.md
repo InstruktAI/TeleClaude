@@ -16,7 +16,7 @@ web/TUI/MCP boundaries, and add TUI login command.
 1. **Human role tool gating** — extend `teleclaude/mcp/role_tools.py` with `HUMAN_ROLE_EXCLUDED_TOOLS` dict and filtering functions. Parallel to existing AI role filtering.
 2. **MCP wrapper human identity marker** — in `teleclaude/entrypoints/mcp_wrapper.py`, add `teleclaude_human_identity` marker file read/write alongside existing `teleclaude_role`. Marker payload includes email, role, and optional username. Apply both AI and human role filters.
 3. **Web boundary identity normalization** — ensure header-based identity is normalized to internal metadata (`human_email`, `human_role`, optional `human_username`) before authorization and binding paths.
-4. **TUI login command** — `telec login <email>` validates against config, calls `POST /auth/token` on daemon, stores token at `~/.teleclaude/auth_token`.
+4. **Client auth command** — validates identity input, calls `POST /auth/token` on daemon, and uses returned bearer token (client-managed storage).
 5. **Token issuance endpoint** — `POST /auth/token` on daemon API (Unix socket only).
 6. **Integration tests** covering full identity resolution + session binding + role gating flows.
 
@@ -29,6 +29,6 @@ web/TUI/MCP boundaries, and add TUI login command.
 ## Verification
 
 - MCP: human identity marker written and read; human role tools filtered.
-- TUI: `telec login user@example.com` stores token; API calls authenticated.
+- Client auth command returns bearer token; API calls authenticated.
 - Role gating: newcomer can't start sessions; admin unrestricted.
 - Web boundary headers map consistently to internal session metadata.
