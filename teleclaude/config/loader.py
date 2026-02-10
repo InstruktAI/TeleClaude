@@ -46,8 +46,8 @@ def load_config(path: Path, model_class: Type[T]) -> T:
         with open(path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
     except Exception as e:
-        logger.warning("Failed to read config file %s: %s", path, e)
-        return model_class()
+        logger.error("Failed to read config file %s: %s", path, e)
+        raise ValueError(f"Failed to read config file {path}: {e}") from e
 
     expanded = expand_env_vars(raw)
     model = model_class.model_validate(expanded)
