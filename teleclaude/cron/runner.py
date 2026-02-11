@@ -17,7 +17,9 @@ Jobs that have never run execute immediately on first discovery.
 
 from __future__ import annotations
 
+import atexit
 import importlib
+import os
 import re
 import subprocess
 import sys
@@ -157,6 +159,31 @@ def _is_due(
 
 
 _DEFAULT_JOB_TIMEOUT_S = 1800  # 30 minutes
+_PIDFILE = Path.home() / ".teleclaude" / "cron_runner.pid"
+
+
+def _acquire_pidlock() -> bool:
+    """Acquire a pidfile lock. Returns True if acquired, False if another runner is alive."""
+    if _PIDFILE.exists():
+        try:
+            old_pid = int(_PIDFILE.read_text().strip())
+            os.kill(old_pid, 0)  # Check if process is alive
+            return False  # Another runner is still running
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass  # Stale pidfile or unreadable — proceed
+
+    _PIDFILE.parent.mkdir(parents=True, exist_ok=True)
+    _PIDFILE.write_text(str(os.getpid()))
+    atexit.register(_release_pidlock)
+    return True
+
+
+def _release_pidlock() -> None:
+    """Remove the pidfile on exit."""
+    try:
+        _PIDFILE.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _job_slug_to_spec_filename(job_slug: str) -> str:
@@ -271,6 +298,10 @@ def run_due_jobs(
     Returns:
         Dict mapping job name to success status
     """
+    if not _acquire_pidlock():
+        logger.info("another cron runner is active, skipping")
+        return {}
+
     state = CronState.load()
     python_jobs = discover_jobs()
     schedules = _load_job_schedules()
@@ -320,7 +351,7 @@ def run_due_jobs(
             continue
 
         if is_agent_job:
-            # Agent job: spawn headless session via daemon API
+            # Agent job: spawn interactive subprocess
             success = _run_agent_job(job_name, schedule_config)  # type: ignore[arg-type]
             if success:
                 state.mark_success(job_name)
