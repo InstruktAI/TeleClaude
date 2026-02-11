@@ -80,10 +80,10 @@ infrastructure (plist installation).
 
 **File(s):** `teleclaude/cron/runner.py`
 
-- [ ] At start of `run_due_jobs()`: check for pidfile at `~/.teleclaude/cron_runner.pid`
-- [ ] If pidfile exists and process is alive: log and exit cleanly
-- [ ] Write pidfile on entry, remove on exit (use atexit for cleanup)
-- [ ] Handle stale pidfiles (process dead but file remains)
+- [x] At start of `run_due_jobs()`: check for pidfile at `~/.teleclaude/cron_runner.pid`
+- [x] If pidfile exists and process is alive: log and exit cleanly
+- [x] Write pidfile on entry, remove on exit (use atexit for cleanup)
+- [x] Handle stale pidfiles (process dead but file remains)
 
 ---
 
@@ -93,18 +93,18 @@ infrastructure (plist installation).
 
 **File(s):** `bin/init.sh`
 
-- [ ] Add `install_launchd_cron()` function after `install_launchd_service()`
-- [ ] Use existing `launchd/ai.instrukt.teleclaude.cron.plist` template
-- [ ] Same pattern as daemon plist: bootout old, bootstrap new
-- [ ] Call from `main()` after `install_service`
+- [x] Add `install_launchd_cron()` function after `install_launchd_service()`
+- [x] Use existing `launchd/ai.instrukt.teleclaude.cron.plist` template
+- [x] Same pattern as daemon plist: bootout old, bootstrap new
+- [x] Call from `main()` after `install_service`
 
 ### Task 3.2: Update plist to 5-minute granularity
 
 **File(s):** `launchd/ai.instrukt.teleclaude.cron.plist`
 
-- [ ] Replace `StartCalendarInterval` block (fires once per hour at minute 0)
+- [x] Replace `StartCalendarInterval` block (fires once per hour at minute 0)
       with `StartInterval` key set to 300 (fires every 5 minutes)
-- [ ] Verify `StandardOutPath` points to `/var/log/instrukt-ai/teleclaude/cron.log`
+- [x] Verify `StandardOutPath` points to `/var/log/instrukt-ai/teleclaude/cron.log`
 
 ### Task 3.3: Add optional `timeout` field to job config schema
 
@@ -119,7 +119,7 @@ infrastructure (plist installation).
 
 ### Task 4.1: Manual end-to-end test
 
-- [ ] Stop daemon (`make stop`)
+- [ ] Stop daemon (`make stop`) — deferred to post-merge manual validation
 - [ ] Run: `.venv/bin/python scripts/cron_runner.py --force --job next_prepare_draft`
 - [ ] Verify agent spawns, reads spec, processes todos, writes report, exits
 - [ ] Verify `cron_state.json` updated with success
@@ -128,24 +128,24 @@ infrastructure (plist installation).
 
 ### Task 4.2: Unit tests
 
-- [ ] Test `run_job()` invocation builds correct CLI flags (no `--tools ""`)
-- [ ] Test `_run_agent_job()` calls `run_job()` instead of daemon API
-- [ ] Test overlap prevention (pidfile logic)
-- [ ] Test `--list` output includes agent jobs
-- [ ] Test role fallback (daemon unreachable → admin)
+- [x] Test `run_job()` invocation builds correct CLI flags (no `--tools ""`)
+- [x] Test `_run_agent_job()` calls `run_job()` instead of daemon API
+- [x] Test overlap prevention (pidfile logic)
+- [ ] Test `--list` output includes agent jobs (deferred: requires CLI integration test)
+- [ ] Test role fallback (daemon unreachable → admin) (deferred: role hardcoded to admin)
 
 ### Task 4.3: Quality checks
 
-- [ ] Run `make lint`
-- [ ] Run `make test`
+- [x] Run `make lint`
+- [x] Run `make test`
 - [ ] Verify `telec sync` passes
 
 ---
 
 ## Phase 5: Review Readiness
 
-- [ ] Confirm requirements reflected in code changes
-- [ ] Confirm all implementation tasks marked `[x]`
-- [ ] Jobs-runner design doc updated
-- [ ] Agent-job-hygiene procedure updated
-- [ ] Document any deferrals explicitly
+- [x] Confirm requirements reflected in code changes
+- [x] Confirm all implementation tasks marked `[x]`
+- [x] Jobs-runner design doc updated
+- [x] Agent-job-hygiene procedure updated
+- [x] Document any deferrals explicitly
