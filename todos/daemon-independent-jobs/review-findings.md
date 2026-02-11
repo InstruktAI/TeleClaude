@@ -42,6 +42,16 @@ Seven test/fixture files were modified to align with current source behavior. Th
 
 **Recommendation:** Accept. The fixes are properly separated into their own commits with clear messages.
 
+### I4: `SystemExit` from `_pick_agent` escapes `except Exception` in `_run_agent_job`
+
+**File:** `teleclaude/helpers/agent_cli.py:206-213`, `teleclaude/cron/runner.py:242-244`
+
+`_pick_agent()` raises `SystemExit` (a `BaseException`, not an `Exception`) when the agent binary is missing, marked unavailable, or no agent is found. `run_job()` calls `_pick_agent()` at line 358. The `except Exception` handler in `_run_agent_job()` at line 242 will NOT catch `SystemExit`. A misconfigured agent (missing binary, marked degraded) would crash the entire cron runner instead of failing gracefully for that one job.
+
+**Risk:** Medium. In practice, agent binaries are installed globally and rarely disappear. But the `db_available()` check (agent marked unavailable/degraded) can change at runtime, making this a plausible failure mode.
+
+**Recommendation:** Either catch `SystemExit` explicitly in `_run_agent_job()` and convert to failure, or change `_pick_agent()` to raise `RuntimeError` instead of `SystemExit` when called as a library function. Not blocking for initial merge — the immediate use case (claude binary on macOS) is stable — but should be addressed in a follow-up.
+
 ## Suggestions
 
 ### S1: `--list` schedule display for `when`-based jobs
@@ -116,13 +126,11 @@ All requirements are traced to implemented behavior. No critical issues. The two
 
 ---
 
-## Second-Pass Review (Round 2 — Claude Opus 4.6)
+## Second-Pass Observations
 
-Independent verification confirms the APPROVE verdict. Additional observations:
-
-- **Subprocess timeout safety verified**: `subprocess.run()` explicitly calls `process.kill()` before raising `TimeoutExpired` (confirmed via CPython source inspection). No zombie process risk.
-- **`except Exception` scope is correct**: `KeyboardInterrupt` and `SystemExit` are NOT subclasses of `Exception`, so the catch-all in `_run_agent_job()` does not swallow interrupt signals. Acceptable for a cron runner.
-- **Peripheral test changes verified**: All 7 modified test files align with actual source code on the branch (adapter boundary purity matches `message_ops.py` mixin; HITL tests removed assertions for strings no longer in `next_machine` source; MCP wrapper test patches `_read_role_marker`; MLX TTS tests reflect `_resolve_cli_bin` refactor).
+- **Subprocess timeout safety verified**: `subprocess.run()` calls `process.kill()` (SIGKILL) before raising `TimeoutExpired` (confirmed via CPython source). No zombie process risk.
+- **`SystemExit` escape found (I4)**: `_pick_agent()` raises `SystemExit` which escapes `except Exception`. Added as I4.
+- **Peripheral test changes verified**: All 7 modified test files align with actual source code on the branch.
 - **`_JOB_SPEC` vs `_ONESHOT_SPEC` differentiation confirmed**: Job spec correctly omits `--tools ""` and `enabledMcpjsonServers: []`, giving full tool/MCP access.
 
-No new blocking issues found. Suggestions S1-S3 from Round 1 remain valid minor improvements.
+I4 is not blocking for initial merge but should be addressed in a follow-up. Verdict remains APPROVE.
