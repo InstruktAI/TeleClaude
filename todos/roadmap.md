@@ -53,6 +53,6 @@ Notification routing subsystem that sends job outputs, reports, and alerts to pe
 
 ## Maintenance
 
-- [.] tts-fallback-saturation
+- [>] tts-fallback-saturation
 
 Fix TTS fallback logic to respect voice saturation. Currently, fallback providers pick random voices without checking availability, leading to voice collisions and "multiple voices" in a single session. The fix ensures fallbacks only select _free_ voices, saturating providers from top to bottom.
