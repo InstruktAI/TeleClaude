@@ -72,9 +72,9 @@ infrastructure (plist installation).
 
 **File(s):** `scripts/cron_runner.py`
 
-- [ ] After `discover_jobs()`, also iterate `_load_job_schedules()` for agent-type entries
-- [ ] Include agent jobs in the list output with schedule, last run, and status
-- [ ] Mark type column: "script" vs "agent"
+- [x] After `discover_jobs()`, also iterate `_load_job_schedules()` for agent-type entries
+- [x] Include agent jobs in the list output with schedule, last run, and status
+- [x] Mark type column: "script" vs "agent"
 
 ### Task 2.4: Add overlap prevention
 
