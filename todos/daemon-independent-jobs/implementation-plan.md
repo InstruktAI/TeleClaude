@@ -61,12 +61,12 @@ infrastructure (plist installation).
 
 **File(s):** `teleclaude/cron/runner.py`
 
-- [ ] Replace `_UnixSocketConnection` + `POST /sessions` with call to `run_job()`
-- [ ] Remove `_UnixSocketConnection` class (dead code after rewrite)
-- [ ] Remove `_DAEMON_SOCKET` constant
-- [ ] Role resolution: attempt daemon socket health check; if unreachable, default "admin"
-- [ ] Pass `timeout_s` from teleclaude.yml config (new optional field) or default (30 min)
-- [ ] Map subprocess exit code to success/failure for state persistence
+- [x] Replace `_UnixSocketConnection` + `POST /sessions` with call to `run_job()`
+- [x] Remove `_UnixSocketConnection` class (dead code after rewrite)
+- [x] Remove `_DAEMON_SOCKET` constant
+- [x] Role resolution: attempt daemon socket health check; if unreachable, default "admin"
+- [x] Pass `timeout_s` from teleclaude.yml config (new optional field) or default (30 min)
+- [x] Map subprocess exit code to success/failure for state persistence
 
 ### Task 2.3: Fix `--list` to show agent jobs
 
@@ -110,8 +110,8 @@ infrastructure (plist installation).
 
 **File(s):** `teleclaude/config/schema.py`
 
-- [ ] Add `timeout: Optional[int] = None` to `JobScheduleConfig` (seconds)
-- [ ] Default behavior when absent: 30 minutes for agent jobs
+- [x] Add `timeout: Optional[int] = None` to `JobScheduleConfig` (seconds)
+- [x] Default behavior when absent: 30 minutes for agent jobs
 
 ---
 
