@@ -24,7 +24,9 @@ from teleclaude.constants import (
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
+    AgentActivityEvent,
     AgentEventContext,
     AgentHookEvents,
     AgentNotificationPayload,
@@ -32,6 +34,7 @@ from teleclaude.core.events import (
     AgentSessionEndPayload,
     AgentSessionStartPayload,
     AgentStopPayload,
+    TeleClaudeEvents,
     UserPromptSubmitPayload,
 )
 from teleclaude.core.feature_flags import is_threaded_output_enabled, is_threaded_output_include_tools_enabled
@@ -267,6 +270,16 @@ class AgentCoordinator:
             prompt_text[:50],
         )
 
+        # Emit activity event for UI updates
+        event_bus.emit(
+            TeleClaudeEvents.AGENT_ACTIVITY,
+            AgentActivityEvent(
+                session_id=session_id,
+                event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+
         # Non-headless: DB write done above, no further routing needed
         # (the agent already received the input directly)
         if session.lifecycle_status != "headless":
@@ -389,6 +402,16 @@ class AgentCoordinator:
         else:
             await db.update_session(session_id, reasons=("agent_stopped",))
 
+        # Emit activity event for UI updates
+        event_bus.emit(
+            TeleClaudeEvents.AGENT_ACTIVITY,
+            AgentActivityEvent(
+                session_id=session_id,
+                event_type=AgentHookEvents.AGENT_STOP,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+
         # 2. Incremental threaded output (final turn portion)
         await self._maybe_send_incremental_output(session_id, payload)
 
@@ -428,6 +451,7 @@ class AgentCoordinator:
         Cleared by handle_user_prompt_submit when a new turn begins.
         """
         session_id = context.session_id
+        payload = cast(AgentOutputPayload, context.data)
         session = await db.get_session(session_id)
         if session and session.last_after_model_at:
             logger.debug("after_model skipped (already set) for session %s", session_id[:8])
@@ -436,11 +460,37 @@ class AgentCoordinator:
         await db.update_session(session_id, last_after_model_at=now.isoformat())
         logger.debug("after_model recorded for session %s", session_id[:8])
 
+        # Extract tool name from raw payload if available
+        tool_name = None
+        if payload.raw:
+            tool_name = str(payload.raw.get("tool_name") or payload.raw.get("toolName"))
+
+        # Emit activity event for UI updates
+        event_bus.emit(
+            TeleClaudeEvents.AGENT_ACTIVITY,
+            AgentActivityEvent(
+                session_id=session_id,
+                event_type=AgentHookEvents.AFTER_MODEL,
+                tool_name=tool_name,
+                timestamp=now.isoformat(),
+            ),
+        )
+
     async def handle_agent_output(self, context: AgentEventContext) -> None:
         """Handle rich incremental agent output (thinking, tools)."""
         session_id = context.session_id
         payload = cast(AgentOutputPayload, context.data)
         await self._maybe_send_incremental_output(session_id, payload)
+
+        # Emit activity event for UI updates
+        event_bus.emit(
+            TeleClaudeEvents.AGENT_ACTIVITY,
+            AgentActivityEvent(
+                session_id=session_id,
+                event_type=AgentHookEvents.AGENT_OUTPUT,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            ),
+        )
 
     async def _maybe_send_incremental_output(
         self, session_id: str, payload: AgentStopPayload | AgentOutputPayload
