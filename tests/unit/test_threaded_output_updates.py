@@ -43,7 +43,7 @@ async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(co
         source_computer="macbook",
         raw={"agent_name": "gemini"},
     )
-    context = AgentEventContext(event_type=AgentHookEvents.AGENT_OUTPUT, session_id=session_id, data=payload)
+    context = AgentEventContext(event_type=AgentHookEvents.TOOL_DONE, session_id=session_id, data=payload)
 
     session = Session(
         session_id=session_id,
@@ -73,16 +73,16 @@ async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(co
         # Mock send_message returning an ID
         mock_client.send_message.return_value = "msg_123"
 
-        await coordinator.handle_agent_output(context)
+        await coordinator.handle_tool_done(context)
 
         # 1. Should call send_threaded_output
         mock_client.send_threaded_output.assert_called_once_with(session, "Message 1", multi_message=False)
 
         # 2. Should update session to persist metadata (cursor check)
-        # Verify cursor update was NOT called (no LAST_AGENT_OUTPUT_AT in kwargs)
+        # Verify cursor update was NOT called (no LAST_TOOL_DONE_AT in kwargs)
         for call in mock_update_session.call_args_list:
             args, kwargs = call
-            assert "last_agent_output_at" not in kwargs, "Cursor should not be updated on initial threaded send"
+            assert "last_tool_done_at" not in kwargs, "Cursor should not be updated on initial threaded send"
 
 
 @pytest.mark.asyncio
@@ -95,7 +95,7 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         source_computer="macbook",
         raw={"agent_name": "gemini"},
     )
-    context = AgentEventContext(event_type=AgentHookEvents.AGENT_OUTPUT, session_id=session_id, data=payload)
+    context = AgentEventContext(event_type=AgentHookEvents.TOOL_DONE, session_id=session_id, data=payload)
 
     # Session with existing message ID (top-level column, not nested in adapter_metadata)
     session = Session(
@@ -122,7 +122,7 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         mock_get_messages.return_value = [{"role": "assistant", "content": []}]
         mock_render.return_value = ("Message 1 + 2", "timestamp_2")
 
-        await coordinator.handle_agent_output(context)
+        await coordinator.handle_tool_done(context)
 
         # 1. Should call send_threaded_output to edit the existing message
         mock_client.send_threaded_output.assert_called_once_with(session, "Message 1 + 2", multi_message=True)
@@ -130,7 +130,7 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         # 2. Verify cursor was NOT updated (if update_session was called, it shouldn't include cursor)
         for call in mock_update_session.call_args_list:
             args, kwargs = call
-            assert "last_agent_output_at" not in kwargs, "Cursor should NOT be updated during message edits"
+            assert "last_tool_done_at" not in kwargs, "Cursor should NOT be updated during message edits"
 
 
 @pytest.mark.asyncio
@@ -194,7 +194,7 @@ async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
             _, kwargs = call
             if "adapter_metadata" in kwargs:
                 meta_update_found = True
-            if "last_agent_output_at" in kwargs and kwargs["last_agent_output_at"] is None:
+            if "last_tool_done_at" in kwargs and kwargs["last_tool_done_at"] is None:
                 cursor_clear_found = True
 
         assert meta_update_found, "Should persist adapter_metadata (char_offset reset)"

@@ -3,8 +3,8 @@
 from teleclaude.cli.tui.state import Intent, IntentType, TuiState, reduce_state
 
 
-def test_agent_output_clears_input_and_sets_temp_output_highlight() -> None:
-    """Agent output should move highlight from input to temporary output."""
+def test_tool_done_clears_input_and_sets_temp_output_highlight() -> None:
+    """Tool done should move highlight from input to temporary output."""
     state = TuiState()
     session_id = "sess-1"
     state.sessions.input_highlights.add(session_id)
@@ -14,7 +14,7 @@ def test_agent_output_clears_input_and_sets_temp_output_highlight() -> None:
         state,
         Intent(
             IntentType.SESSION_ACTIVITY,
-            {"session_id": session_id, "reason": "agent_output"},
+            {"session_id": session_id, "reason": "tool_done"},
         ),
     )
 
@@ -43,8 +43,8 @@ def test_agent_stopped_sets_permanent_output_highlight() -> None:
     assert session_id in state.sessions.output_highlights
 
 
-def test_agent_activity_after_model_signals_timer_reset() -> None:
-    """after_model event should clear input, set temp highlight, and signal timer reset."""
+def test_agent_activity_tool_use_signals_timer_reset() -> None:
+    """tool_use event should clear input, set temp highlight, and signal timer reset."""
     state = TuiState()
     session_id = "sess-activity-1"
     state.sessions.input_highlights.add(session_id)
@@ -53,7 +53,7 @@ def test_agent_activity_after_model_signals_timer_reset() -> None:
         state,
         Intent(
             IntentType.AGENT_ACTIVITY,
-            {"session_id": session_id, "event_type": "after_model", "tool_name": "Edit"},
+            {"session_id": session_id, "event_type": "tool_use", "tool_name": "Edit"},
         ),
     )
 
@@ -63,8 +63,8 @@ def test_agent_activity_after_model_signals_timer_reset() -> None:
     assert state.sessions.active_tool[session_id] == "Edit"
 
 
-def test_agent_activity_agent_output_signals_timer_reset() -> None:
-    """agent_output event should keep temp highlight, clear tool, and signal timer reset."""
+def test_agent_activity_tool_done_signals_timer_reset() -> None:
+    """tool_done event should keep temp highlight, clear tool, and signal timer reset."""
     state = TuiState()
     session_id = "sess-activity-2"
     state.sessions.input_highlights.add(session_id)
@@ -74,7 +74,7 @@ def test_agent_activity_agent_output_signals_timer_reset() -> None:
         state,
         Intent(
             IntentType.AGENT_ACTIVITY,
-            {"session_id": session_id, "event_type": "agent_output"},
+            {"session_id": session_id, "event_type": "tool_done"},
         ),
     )
 

@@ -220,10 +220,10 @@ class AgentCoordinator:
             await self.handle_session_start(context)
         elif context.event_type == AgentHookEvents.AGENT_STOP:
             await self.handle_agent_stop(context)
-        elif context.event_type == AgentHookEvents.AGENT_OUTPUT:
-            await self.handle_agent_output(context)
-        elif context.event_type == AgentHookEvents.AFTER_MODEL:
-            await self.handle_after_model(context)
+        elif context.event_type == AgentHookEvents.TOOL_DONE:
+            await self.handle_tool_done(context)
+        elif context.event_type == AgentHookEvents.TOOL_USE:
+            await self.handle_tool_use(context)
         elif context.event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
             await self.handle_user_prompt_submit(context)
         elif context.event_type == AgentHookEvents.AGENT_NOTIFICATION:
@@ -299,7 +299,7 @@ class AgentCoordinator:
         await db.set_notification_flag(session_id, False)
 
         # Clear checkpoint state on real user input
-        await db.update_session(session_id, last_checkpoint_at=None, last_after_model_at=None)
+        await db.update_session(session_id, last_checkpoint_at=None, last_tool_use_at=None)
 
         # Prepare batched update
         update_kwargs: dict[str, object] = {  # guard: loose-dict - Dynamic session updates
@@ -327,7 +327,7 @@ class AgentCoordinator:
         # Codex synthetic prompts arrive only after output activity is already visible
         # (e.g. "out: Working..."), so treat them as output-start in the TUI state.
         if _is_codex_synthetic_prompt_event(payload.raw):
-            self._emit_activity_event(session_id, AgentHookEvents.AFTER_MODEL)
+            self._emit_activity_event(session_id, AgentHookEvents.TOOL_USE)
         else:
             self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
@@ -473,7 +473,7 @@ class AgentCoordinator:
             await db.update_session(session_id, adapter_metadata=session.adapter_metadata)
 
         # Clear turn-specific cursor at turn completion
-        await db.update_session(session_id, last_agent_output_at=None)
+        await db.update_session(session_id, last_tool_done_at=None)
 
         # 3. Notify local listeners (AI-to-AI on same computer)
         await self._notify_session_listener(session_id, source_computer=source_computer)
@@ -485,10 +485,10 @@ class AgentCoordinator:
         # 5. Inject checkpoint into the stopped agent's tmux pane
         await self._maybe_inject_checkpoint(session_id, session)
 
-    async def handle_after_model(self, context: AgentEventContext) -> None:
-        """Handle after_model event — agent finished reasoning, action may follow.
+    async def handle_tool_use(self, context: AgentEventContext) -> None:
+        """Handle tool_use event — agent started a tool call.
 
-        Only records the FIRST after_model per turn (when last_after_model_at is NULL).
+        Only records the FIRST tool_use per turn (when last_tool_use_at is NULL).
         This gives _maybe_inject_checkpoint the true turn start time, not the last tool call.
         Cleared by handle_user_prompt_submit when a new turn begins.
         """
@@ -498,28 +498,29 @@ class AgentCoordinator:
         # Extract tool name from raw payload if available
         tool_name = None
         if payload.raw:
-            tool_name = str(payload.raw.get("tool_name") or payload.raw.get("toolName"))
+            raw_tool = payload.raw.get("tool_name") or payload.raw.get("toolName")
+            tool_name = str(raw_tool) if raw_tool else None
 
         # Always emit activity event for UI updates (every tool call)
-        self._emit_activity_event(session_id, AgentHookEvents.AFTER_MODEL, tool_name)
+        self._emit_activity_event(session_id, AgentHookEvents.TOOL_USE, tool_name)
 
-        # DB write is deduped: only record the FIRST after_model per turn for checkpoint timing
+        # DB write is deduped: only record the FIRST tool_use per turn for checkpoint timing
         session = await db.get_session(session_id)
-        if session and session.last_after_model_at:
-            logger.debug("after_model DB write skipped (already set) for session %s", session_id[:8])
+        if session and session.last_tool_use_at:
+            logger.debug("tool_use DB write skipped (already set) for session %s", session_id[:8])
             return
         now = datetime.now(timezone.utc)
-        await db.update_session(session_id, last_after_model_at=now.isoformat())
-        logger.debug("after_model recorded for session %s", session_id[:8])
+        await db.update_session(session_id, last_tool_use_at=now.isoformat())
+        logger.debug("tool_use recorded for session %s", session_id[:8])
 
-    async def handle_agent_output(self, context: AgentEventContext) -> None:
-        """Handle rich incremental agent output (thinking, tools)."""
+    async def handle_tool_done(self, context: AgentEventContext) -> None:
+        """Handle tool_done event — tool execution completed, output available."""
         session_id = context.session_id
         payload = cast(AgentOutputPayload, context.data)
         await self._maybe_send_incremental_output(session_id, payload)
 
         # Emit activity event for UI updates
-        self._emit_activity_event(session_id, AgentHookEvents.AGENT_OUTPUT)
+        self._emit_activity_event(session_id, AgentHookEvents.TOOL_DONE)
 
     async def _maybe_send_incremental_output(
         self, session_id: str, payload: AgentStopPayload | AgentOutputPayload
@@ -559,7 +560,7 @@ class AgentCoordinator:
 
         # 1. Retrieve all assistant messages since the last cursor
         assistant_messages = get_assistant_messages_since(
-            transcript_path, agent_name, since_timestamp=session.last_agent_output_at
+            transcript_path, agent_name, since_timestamp=session.last_tool_done_at
         )
 
         # Decide between clean (single-block) and standard (multi-block) rendering
@@ -568,7 +569,7 @@ class AgentCoordinator:
         renderable_block_count = count_renderable_assistant_blocks(
             transcript_path,
             agent_name,
-            since_timestamp=session.last_agent_output_at,
+            since_timestamp=session.last_tool_done_at,
             include_tools=include_tools,
             include_tool_results=False,
         )
@@ -595,13 +596,13 @@ class AgentCoordinator:
                 agent_name,
                 include_tools=include_tools,
                 include_tool_results=False,
-                since_timestamp=session.last_agent_output_at,
+                since_timestamp=session.last_tool_done_at,
                 include_timestamps=False,
             )
         else:
             # Single message: use clean, metadata-free renderer (italics/bold-monospace).
             message, last_ts = render_clean_agent_output(
-                transcript_path, agent_name, since_timestamp=session.last_agent_output_at
+                transcript_path, agent_name, since_timestamp=session.last_tool_done_at
             )
 
         if not message:
@@ -641,7 +642,7 @@ class AgentCoordinator:
                 if should_update_cursor and last_ts:
                     from teleclaude.core.models import SessionField
 
-                    update_kwargs[SessionField.LAST_AGENT_OUTPUT_AT.value] = last_ts.isoformat()
+                    update_kwargs[SessionField.LAST_TOOL_DONE_AT.value] = last_ts.isoformat()
                     logger.debug("Updating cursor for session %s to %s", session_id[:8], last_ts.isoformat())
 
                 # Persist cursor timestamp (activity events are emitted separately).
@@ -868,7 +869,7 @@ class AgentCoordinator:
         Tmux injection logic:
         1. Determine turn start: max(last_message_sent_at, last_checkpoint_at)
            — the most recent input event marks when the current work period began.
-        2. Dedup (agents without after_model, e.g. Codex): if last transcript
+        2. Dedup (agents without tool_use, e.g. Codex): if last transcript
            input is our checkpoint message → skip (prevents injection loops).
         3. Otherwise → inject, persist last_checkpoint_at.
         """
@@ -903,13 +904,13 @@ class AgentCoordinator:
 
         elapsed = (now - turn_start).total_seconds()
 
-        # For agents without after_model (Codex): dedup via transcript to prevent
+        # For agents without tool_use (Codex): dedup via transcript to prevent
         # checkpoint → response → stop → checkpoint loops.
         agent_name = str(fresh.active_agent or "")
         agent_hooks = AgentHookEvents.HOOK_EVENT_MAP.get(agent_name, {})
-        has_after_model = AgentHookEvents.AFTER_MODEL in agent_hooks.values()
+        has_tool_use = AgentHookEvents.TOOL_USE in agent_hooks.values()
 
-        if not has_after_model:
+        if not has_tool_use:
             transcript_path = fresh.native_log_file
             if transcript_path:
                 try:

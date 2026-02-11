@@ -241,7 +241,7 @@ async def test_user_prompt_submit_persists_non_checkpoint_codex_synthetic_prompt
             ) as mock_summarize:
                 mock_summarize.return_value = "Output regression follow-up"
                 await coordinator.handle_user_prompt_submit(context)
-            mock_emit.assert_called_once_with("sess-1", AgentHookEvents.AFTER_MODEL)
+            mock_emit.assert_called_once_with("sess-1", AgentHookEvents.TOOL_USE)
 
         mock_db.set_notification_flag.assert_called_once_with("sess-1", False)
         assert mock_db.update_session.await_count >= 1

@@ -310,8 +310,8 @@ class SessionField(Enum):
     LAST_MESSAGE_SENT_AT = "last_message_sent_at"
     LAST_FEEDBACK_RECEIVED = "last_feedback_received"
     LAST_FEEDBACK_RECEIVED_AT = "last_feedback_received_at"
-    LAST_AGENT_OUTPUT_AT = "last_agent_output_at"
-    LAST_AFTER_MODEL_AT = "last_after_model_at"
+    LAST_TOOL_DONE_AT = "last_tool_done_at"
+    LAST_TOOL_USE_AT = "last_tool_use_at"
     LAST_CHECKPOINT_AT = "last_checkpoint_at"
 
 
@@ -354,8 +354,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
     last_feedback_received_at: Optional[datetime] = None
     last_feedback_summary: Optional[str] = None
     last_output_digest: Optional[str] = None
-    last_agent_output_at: Optional[datetime] = None
-    last_after_model_at: Optional[datetime] = None
+    last_tool_done_at: Optional[datetime] = None
+    last_tool_use_at: Optional[datetime] = None
     last_checkpoint_at: Optional[datetime] = None
     working_slug: Optional[str] = None
     lifecycle_status: str = "active"
@@ -371,10 +371,10 @@ class Session:  # pylint: disable=too-many-instance-attributes
             data["last_message_sent_at"] = self.last_message_sent_at.isoformat()
         if self.last_feedback_received_at:
             data["last_feedback_received_at"] = self.last_feedback_received_at.isoformat()
-        if self.last_agent_output_at:
-            data["last_agent_output_at"] = self.last_agent_output_at.isoformat()
-        if self.last_after_model_at:
-            data["last_after_model_at"] = self.last_after_model_at.isoformat()
+        if self.last_tool_done_at:
+            data["last_tool_done_at"] = self.last_tool_done_at.isoformat()
+        if self.last_tool_use_at:
+            data["last_tool_use_at"] = self.last_tool_use_at.isoformat()
         if self.last_checkpoint_at:
             data["last_checkpoint_at"] = self.last_checkpoint_at.isoformat()
         if self.closed_at:
@@ -415,17 +415,15 @@ class Session:  # pylint: disable=too-many-instance-attributes
             if isinstance(last_feedback_received_at_raw, str)
             else last_feedback_received_at_raw
         )
-        last_agent_output_at_raw = data.get("last_agent_output_at")
-        last_agent_output_at = (
-            parse_iso_datetime(last_agent_output_at_raw)
-            if isinstance(last_agent_output_at_raw, str)
-            else last_agent_output_at_raw
+        last_tool_done_at_raw = data.get("last_tool_done_at")
+        last_tool_done_at = (
+            parse_iso_datetime(last_tool_done_at_raw)
+            if isinstance(last_tool_done_at_raw, str)
+            else last_tool_done_at_raw
         )
-        last_after_model_at_raw = data.get("last_after_model_at")
-        last_after_model_at = (
-            parse_iso_datetime(last_after_model_at_raw)
-            if isinstance(last_after_model_at_raw, str)
-            else last_after_model_at_raw
+        last_tool_use_at_raw = data.get("last_tool_use_at")
+        last_tool_use_at = (
+            parse_iso_datetime(last_tool_use_at_raw) if isinstance(last_tool_use_at_raw, str) else last_tool_use_at_raw
         )
         last_checkpoint_at_raw = data.get("last_checkpoint_at")
         last_checkpoint_at = (
@@ -484,10 +482,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
             last_feedback_received_at=ensure_utc(last_feedback_received_at)
             if isinstance(last_feedback_received_at, datetime)
             else None,
-            last_agent_output_at=ensure_utc(last_agent_output_at)
-            if isinstance(last_agent_output_at, datetime)
-            else None,
-            last_after_model_at=ensure_utc(last_after_model_at) if isinstance(last_after_model_at, datetime) else None,
+            last_tool_done_at=ensure_utc(last_tool_done_at) if isinstance(last_tool_done_at, datetime) else None,
+            last_tool_use_at=ensure_utc(last_tool_use_at) if isinstance(last_tool_use_at, datetime) else None,
             last_checkpoint_at=ensure_utc(last_checkpoint_at) if isinstance(last_checkpoint_at, datetime) else None,
             last_feedback_summary=_get_optional_str("last_feedback_summary"),
             last_output_digest=_get_optional_str("last_output_digest"),

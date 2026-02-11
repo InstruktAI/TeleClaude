@@ -31,7 +31,7 @@ Both paths call the same `get_checkpoint_content()` entry point, ensuring parity
 
 - `agent_stop` hook event — Agent's turn ended. Triggers checkpoint evaluation.
 - `user_prompt_submit` hook event — New user input. Clears checkpoint state for the new turn.
-- `after_model` hook event — Agent finished reasoning. Tracked for other uses but not used in checkpoint decisions.
+- `tool_use` hook event — Agent finished reasoning. Tracked for other uses but not used in checkpoint decisions.
 - Agent restart via API — Triggers unconditional checkpoint injection after a delay.
 - `git diff --name-only HEAD` — Uncommitted files relative to HEAD, categorized into action instructions.
 - `TurnTimeline` — Ordered tool calls from the current turn, extracted from the agent transcript via `extract_tool_calls_current_turn()`.
@@ -52,9 +52,9 @@ Both paths call the same `get_checkpoint_content()` entry point, ensuring parity
 
 3. **Notification flag preservation**: Checkpoint injections do not clear the notification flag. Only real user input clears it. This prevents users from missing notifications about completed agent work.
 
-4. **Per-turn clearing**: `handle_user_prompt_submit` clears `last_checkpoint_at` and `last_after_model_at` on real user input so each turn starts fresh.
+4. **Per-turn clearing**: `handle_user_prompt_submit` clears `last_checkpoint_at` and `last_tool_use_at` on real user input so each turn starts fresh.
 
-5. **Transcript-based dedup (Codex)**: For agents without `after_model` support (e.g. Codex), an additional check reads the last user message from the session transcript via `extract_last_user_message`. If it matches the checkpoint constant, injection is skipped. This prevents checkpoint-response-stop loops specific to agents that fire `agent_stop` rapidly.
+5. **Transcript-based dedup (Codex)**: For agents without `tool_use` support (e.g. Codex), an additional check reads the last user message from the session transcript via `extract_last_user_message`. If it matches the checkpoint constant, injection is skipped. This prevents checkpoint-response-stop loops specific to agents that fire `agent_stop` rapidly.
 
 6. **TTS dedup**: Agent output extracted at `agent_stop` is compared against `last_feedback_received` in the session. If identical, summarization and TTS are skipped. This prevents double-speaking when a checkpoint-induced `agent_stop` re-extracts the same output.
 
@@ -213,4 +213,4 @@ sequenceDiagram
 
 ## See also
 
-- project/spec/event-types — Canonical event type definitions including `after_model`
+- project/spec/event-types — Canonical event type definitions including `tool_use`

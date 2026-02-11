@@ -40,8 +40,8 @@ _HANDLED_EVENTS: frozenset[AgentHookEventType] = frozenset(
     {
         AgentHookEvents.AGENT_SESSION_START,
         AgentHookEvents.USER_PROMPT_SUBMIT,
-        AgentHookEvents.AGENT_OUTPUT,
-        AgentHookEvents.AFTER_MODEL,
+        AgentHookEvents.TOOL_DONE,
+        AgentHookEvents.TOOL_USE,
         AgentHookEvents.AGENT_STOP,
         AgentHookEvents.AGENT_NOTIFICATION,
         AgentHookEvents.AGENT_ERROR,
@@ -685,19 +685,19 @@ def main() -> None:
     raw_event_type = event_type
     agent_map = AgentHookEvents.HOOK_EVENT_MAP.get(args.agent, {})
 
-    # Try direct match, then try title-cased match (e.g., 'after_model' -> 'AfterModel')
+    # Try direct match, then try title-cased match (e.g., 'tool_use' -> 'ToolUse')
     # Use replace('_', '') to handle snake_case to PascalCase mapping if needed.
     pascal_event_type = raw_event_type.replace("_", " ").title().replace(" ", "") if raw_event_type else None
 
     mapped_event_type = agent_map.get(raw_event_type) or agent_map.get(pascal_event_type)
 
-    # Use mapped event if found, otherwise keep original (for direct events like 'agent_output')
+    # Use mapped event if found, otherwise keep original (for direct events like 'tool_done')
     if mapped_event_type:
         event_type = mapped_event_type
         logger.debug("Mapped hook event: %s (pascal: %s) -> %s", raw_event_type, pascal_event_type, event_type)
 
     # Early exit for unhandled events - don't spawn mcp-wrapper
-    # Note: We check against AgentHookEvents.ALL which contains internal types like AGENT_OUTPUT
+    # Note: We check against AgentHookEvents.ALL which contains internal types like TOOL_DONE
     if event_type not in _HANDLED_EVENTS:
         if event_type in {"prompt", "stop"}:
             _emit_receiver_error_best_effort(

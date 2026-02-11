@@ -16,7 +16,7 @@ The highlight system provides visual cues in the TUI to alert users about sessio
 **Inputs:**
 
 - `user_input_sent` event — User sends a message to an agent
-- `agent_output` event — Agent produces output (streaming, Gemini only currently)
+- `tool_done` event — Agent produces output (streaming, Gemini only currently)
 - `agent_stop` event — Agent completes its turn
 - User navigation — Selecting/previewing a session
 
@@ -35,7 +35,7 @@ The highlight system provides visual cues in the TUI to alert users about sessio
 
 4. **Viewing clears output highlight**: Selecting a session (preview pane or sticky) acknowledges the output, clearing its highlight.
 
-5. **Brief output highlight on streaming output**: For agents with streaming output (`agent_output` events), output is temporarily highlighted for 3 seconds, then cleared — unless `agent_stop` follows, which sets persistent highlight.
+5. **Brief output highlight on streaming output**: For agents with streaming output (`tool_done` events), output is temporarily highlighted for 3 seconds, then cleared — unless `agent_stop` follows, which sets persistent highlight.
 
 ## Primary flows
 
@@ -72,7 +72,7 @@ sequenceDiagram
     User->>TUI: Send message
     TUI->>TUI: Highlight input
 
-    Agent->>TUI: agent_output event
+    Agent->>TUI: tool_done event
     TUI->>TUI: Clear input highlight
     TUI->>TUI: Set temp output highlight (3s)
     Note over TUI: Brief highlight during streaming
