@@ -31,6 +31,13 @@ The following phases require additional build work that extends beyond the curre
 ### Phase 5: Tests
 
 - Task 5.1-5.7: Update all test files for new event types, handler names, column names, and reasons removal
+- **Test coverage gap:** No tests for AgentActivityEvent emission or API server broadcast
+  - Zero tests verify `event_bus.emit(AGENT_ACTIVITY, ...)` is called
+  - No validation of `AgentActivityEvent` fields (session_id, event_type, tool_name, timestamp)
+  - No tests for API server `_handle_agent_activity_event`
+  - No tests for TUI state machine `AGENT_ACTIVITY` intent handling
+  - **Mitigation:** Phase 1-2 foundation has been manually tested via TUI observation
+  - **Risk:** Regressions in event emission will require manual testing until Phase 5
 
 ### Phase 6: Documentation
 
@@ -75,6 +82,24 @@ Phase 1-2 establishes the core infrastructure for the new activity event flow:
 4. Tool names are visible in the TUI during tool execution
 
 Phases 3-7 are **event renaming and test updates** that can be completed in a follow-up build cycle. The current foundation is stable and functional with the old event names (after_model, agent_output). Renaming them to (tool_use, tool_done) is a refactoring task that doesn't change behavior.
+
+**Why Phase 3-7 are deferred:**
+
+- **Phase 3 (DB refactor):** Column rename requires migration and broad update sweep across DB access layer. This is valuable but not blocking for the activity event foundation. Old column names (`last_after_model_at`, `last_agent_output_at`) remain correct for current event types.
+- **Phase 4 (Event rename):** Pure refactor to align event names with UX language (tool_use/tool_done). Old names (`after_model`, `agent_output`) are technically accurate and cause no functional issues. This is cosmetic clarity work that can happen after foundation is validated.
+- **Phase 5 (Tests):** Activity event emission is manually verified via TUI. Writing comprehensive tests for event bus emission, API broadcast, and TUI state updates requires time investment best spent after foundation is stable. Test updates for reasons removal will also bundle with event rename tests.
+- **Phase 6 (Docs):** Documentation updates follow implementation stability. Current docs reference old event names but are not misleading - they're accurate for the current code state.
+- **Phase 7 (Review):** Final grep validation and acceptance criteria check deferred until all prior phases complete.
+
+**Risk assessment:**
+
+- **Old event names remain:** Risk is developer confusion between `after_model` vs. `tool_use` duality. Mitigation: Phase 4 must happen before any new features touch the event pipeline or add new tool-related events.
+- **No activity event tests:** Risk is regressions in event emission go undetected. Mitigation: Manual TUI testing during development + Phase 5 must happen before next major event pipeline change.
+- **DB column names stale:** Risk is confusion about what timestamps mean. Mitigation: Column comments are accurate, and Phase 3 must happen before any new timestamp columns are added.
+
+**Follow-up scope:**
+
+Phase 3-7 work will be tracked in a separate todo: `agent-activity-events-phase-3-7` (or split into `agent-activity-events-rename` and `agent-activity-events-tests` if phases prove independent).
 
 ## Next Steps
 
