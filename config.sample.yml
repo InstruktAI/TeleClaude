@@ -77,6 +77,84 @@ tts:
     session_start:
       enabled: true
   services:
+    voxcpm:
+      enabled: true
+      # Optional: local model path or HF repo id.
+      # Example local path:
+      # ${HOME}/.cache/lm-studio/models/mlx-community/voxcpm1.5
+      model: mlx-community/voxcpm1.5
+      params:
+        temperature: 0.5
+        speed: 1.1
+        cfg_scale: 3.0
+        ddpm_steps: 15
+      voices:
+        - name: narrator
+          params:
+            temperature: 0.1
+            speed: 0.9
+        - name: reporter
+          params:
+            temperature: 0.1
+            speed: 1.1
+        - name: excited
+          params:
+            temperature: 0.1
+            speed: 1.2
+    kokoro:
+      enabled: true
+      model: mlx-community/Kokoro-82M-bf16
+      voices:
+        - name: adam
+          voice_id: am_adam
+        - name: echo
+          voice_id: am_echo
+        - name: eric
+          voice_id: am_eric
+        - name: fenrir
+          voice_id: am_fenrir
+        - name: liam
+          voice_id: am_liam
+        - name: michael
+          voice_id: am_michael
+        - name: onyx
+          voice_id: am_onyx
+        - name: puck
+          voice_id: am_puck
+        - name: alloy
+          voice_id: af_alloy
+        - name: aoede
+          voice_id: af_aoede
+        - name: bella
+          voice_id: af_bella
+        - name: heart
+          voice_id: af_heart
+        - name: jessica
+          voice_id: af_jessica
+        - name: kore
+          voice_id: af_kore
+        - name: nicole
+          voice_id: af_nicole
+        - name: nova
+          voice_id: af_nova
+        - name: river
+          voice_id: af_river
+        - name: sarah
+          voice_id: af_sarah
+        - name: sky
+          voice_id: af_sky
+    qwen3:
+      enabled: true
+      model: mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
+      voices:
+        - name: serena
+        # - name: vivian
+        - name: uncle_fu
+        # - name: ryan
+        - name: aiden
+        - name: sohee
+        - name: eric
+        - name: dylan
     elevenlabs:
       enabled: true
       voices:
@@ -128,22 +206,6 @@ tts:
         - name: 'Jamie (Premium)'
         - name: 'Rishi (Enhanced)'
         - name: 'Zoe (Premium)'
-    qwen3:
-      enabled: true
-      # Optional: local model path or HF repo id.
-      # Example local path:
-      # ${HOME}/.cache/lm-studio/models/mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16
-      model: mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
-      voices:
-        - name: serena
-        - name: vivian
-        - name: uncle_fu
-        - name: ryan
-        - name: aiden
-        - name: ono_anna
-        - name: sohee
-        - name: eric
-        - name: dylan
     pyttsx3:
       enabled: true
       voices: []
