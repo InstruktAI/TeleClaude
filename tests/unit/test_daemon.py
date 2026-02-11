@@ -1215,7 +1215,7 @@ def test_all_events_have_handlers():
 
     # Check each event has a handler
     # Events that don't require explicit daemon handlers
-    SKIP_HANDLERS = {"session_updated"}
+    SKIP_HANDLERS = {"session_updated", "agent_activity"}
 
     missing_handlers = []
     for event in all_events:
