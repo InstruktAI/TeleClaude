@@ -34,9 +34,7 @@ Connect external messaging platforms (WhatsApp, Discord) to the Help Desk lobby.
 
 ## Agent Activity Events
 
-- [>] agent-activity-events-phase-3-7
-
-Complete remaining phases of agent-activity-events: DB column rename (last_tool_use_at, last_tool_done_at), event vocabulary rename (tool_use, tool_done), comprehensive test coverage for event emission and broadcast, documentation updates, and final validation. Closes the gap from Phase 1-2 foundation to production-ready event pipeline.
+All phases complete. Event pipeline is production-ready.
 
 ## Release Automation
 
