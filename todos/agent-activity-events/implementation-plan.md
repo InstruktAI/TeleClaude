@@ -82,21 +82,21 @@ Note: uses OLD event type names during Phase 1. Rename happens in Phase 4.
 
 **Files:** `teleclaude/cli/models.py`, `teleclaude/cli/tui/app.py`
 
-- [ ] Add `AgentActivityEvent` to TUI event model imports
-- [ ] In `app.py` `process_events()`: handle `AgentActivityEvent` alongside existing `SessionUpdatedEvent`
-- [ ] Dispatch new `AGENT_ACTIVITY` intent with `event_type`, `session_id`, `tool_name`
+- [x] Add `AgentActivityEvent` to TUI event model imports
+- [x] In `app.py` `process_events()`: handle `AgentActivityEvent` alongside existing `SessionUpdatedEvent`
+- [x] Dispatch new `AGENT_ACTIVITY` intent with `event_type`, `session_id`, `tool_name`
 
 ### Task 1.5: TUI state machine handles activity events
 
 **File:** `teleclaude/cli/tui/state.py`
 
-- [ ] Add `AGENT_ACTIVITY` to `IntentType`
-- [ ] Add handler that branches on `event_type`:
+- [x] Add `AGENT_ACTIVITY` to `IntentType`
+- [x] Add handler that branches on `event_type`:
   - `user_prompt_submit` → add to `input_highlights`, clear output highlights
   - `after_model` → add to `temp_output_highlights`, store tool_name in new `active_tool` dict
   - `agent_output` → add to `temp_output_highlights`, clear `active_tool`
   - `agent_stop` → clear input/temp, add to `output_highlights`
-- [ ] Add `active_tool: dict[str, str]` to sessions state (session_id → tool_name)
+- [x] Add `active_tool: dict[str, str]` to sessions state (session_id → tool_name)
 
 Note: still uses OLD event type names. Rename happens in Phase 4.
 
@@ -104,9 +104,9 @@ Note: still uses OLD event type names. Rename happens in Phase 4.
 
 **File:** `teleclaude/cli/tui/views/sessions.py`
 
-- [ ] Update `_thinking_placeholder_text()` (or add parallel function) to check `active_tool` dict
-- [ ] If `active_tool[session_id]` is set → show "Using [tool_name]..." instead of "thinking..."
-- [ ] When `active_tool` is cleared (on `agent_output`/`agent_stop`) → fall back to "thinking..."
+- [x] Update `_thinking_placeholder_text()` (or add parallel function) to check `active_tool` dict
+- [x] If `active_tool[session_id]` is set → show "Using [tool_name]..." instead of "thinking..."
+- [x] When `active_tool` is cleared (on `agent_output`/`agent_stop`) → fall back to "thinking..."
 
 ---
 
