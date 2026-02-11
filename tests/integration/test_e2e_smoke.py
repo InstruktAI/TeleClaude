@@ -664,7 +664,7 @@ async def test_dead_websocket_client_removed_on_error(
     """
     # Set up WebSocket client that fails on send
     mock_ws = create_mock_websocket()
-    mock_ws.send_json.side_effect = Exception("Connection closed")
+    mock_ws.send_json.side_effect = ConnectionError("Connection closed")
 
     api_server._ws_clients.add(mock_ws)
     api_server._client_subscriptions[mock_ws] = {"local": {"sessions"}}
