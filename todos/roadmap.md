@@ -34,7 +34,7 @@ Connect external messaging platforms (WhatsApp, Discord) to the Help Desk lobby.
 
 ## Agent Activity Events
 
-- [.] agent-activity-events (after: cross-project-context)
+- [>] agent-activity-events (after: cross-project-context)
 
 Replace DB-mediated session update path with direct typed agent activity events. One event vocabulary (`tool_use`, `tool_done`, `agent_stop`) flows from coordinator to TUI/Web consumers via event bus and websocket. Database persists state for cold start only. Deletes `SessionUpdateReason`, `_infer_update_reasons()`, and the reasons pipeline. TUI shows "Using [tool_name]..." during tool execution.
 

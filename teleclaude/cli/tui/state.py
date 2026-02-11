@@ -133,7 +133,7 @@ class IntentPayload(TypedDict, total=False):
     doc_id: str
     command: str
     title: str
-    reason: str  # SessionUpdateReason: "user_input", "agent_output", "agent_stopped", "state_change"
+    reason: str  # Legacy field, no longer populated - use event_type in AGENT_ACTIVITY intents instead
     event_type: str  # AgentHookEventType: "user_prompt_submit", "after_model", "agent_output", "agent_stop"
     tool_name: str | None  # Tool name for tool_use events
 
