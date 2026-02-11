@@ -104,7 +104,7 @@ TeleClaude's current interfaces (Telegram, TUI, MCP) serve power users. The web 
 
 - **config-schema-validation** — PersonEntry with email + role.
 - **person-identity-auth** — session-to-person binding, auth middleware, role resolution.
-- **output-streaming-unification** — canonical activity stream (recommended but not blocking for basic SSE).
+- **agent-activity-events** — canonical activity stream (recommended but not blocking for basic SSE).
 
 ## Technology Stack
 

@@ -42,10 +42,14 @@ def ensure_worktree(cwd: str, slug: str) -> bool:
 
     try:
         repo.git.worktree("add", str(worktree_path), "-b", slug)
-    except GitCommandError as exc:
-        msg = f"Failed to create worktree at {worktree_path}"
-        logger.error(msg)
-        raise RuntimeError(msg) from exc
+    except GitCommandError:
+        # Branch may already exist (e.g. partial finalize cleanup)
+        try:
+            repo.git.worktree("add", str(worktree_path), slug)
+        except GitCommandError as exc:
+            msg = f"Failed to create worktree at {worktree_path}"
+            logger.error(msg)
+            raise RuntimeError(msg) from exc
 
     logger.info("Created worktree at %s", worktree_path)
     return True

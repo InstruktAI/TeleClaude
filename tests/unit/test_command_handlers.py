@@ -427,6 +427,9 @@ async def test_handle_get_session_data_returns_transcript():
     mock_session.created_at = datetime.now()
     mock_session.last_activity = datetime.now()
     mock_session.native_log_file = None  # No file yet
+    mock_session.lifecycle_status = "active"
+    mock_session.closed_at = None
+    mock_session.last_feedback_received_at = datetime.now()
 
     cmd = GetSessionDataCommand(session_id="test-session-123")
 
@@ -529,6 +532,95 @@ async def test_handle_get_session_data_codex_pending_when_transcript_path_missin
 
     with patch.object(command_handlers, "db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        result = await command_handlers.get_session_data(cmd)
+
+    assert result["status"] == "success"
+    assert "not available yet" in result["messages"].lower()
+    assert result["transcript"] is None
+
+
+@pytest.mark.asyncio
+async def test_handle_get_session_data_pending_for_pre_stop_non_codex_session():
+    """Non-codex sessions should return pending payload before first completed turn."""
+    mock_session = MagicMock()
+    mock_session.session_id = "claude-session-1"
+    mock_session.title = "Claude Session"
+    mock_session.project_path = "/home/user"
+    mock_session.subdir = None
+    mock_session.created_at = datetime.now()
+    mock_session.last_activity = datetime.now()
+    mock_session.native_log_file = None
+    mock_session.native_session_id = None
+    mock_session.active_agent = "claude"
+    mock_session.lifecycle_status = "active"
+    mock_session.closed_at = None
+    mock_session.last_feedback_received_at = None
+
+    cmd = GetSessionDataCommand(session_id="claude-session-1")
+
+    with patch.object(command_handlers, "db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        result = await command_handlers.get_session_data(cmd)
+
+    assert result["status"] == "success"
+    assert "not available yet" in result["messages"].lower()
+    assert result["transcript"] is None
+
+
+@pytest.mark.asyncio
+async def test_handle_get_session_data_errors_after_completed_turn_when_transcript_missing():
+    """A missing transcript after a completed turn remains an error for non-codex sessions."""
+    mock_session = MagicMock()
+    mock_session.session_id = "claude-session-2"
+    mock_session.title = "Claude Session"
+    mock_session.project_path = "/home/user"
+    mock_session.created_at = datetime.now()
+    mock_session.last_activity = datetime.now()
+    mock_session.native_log_file = None
+    mock_session.native_session_id = None
+    mock_session.active_agent = "claude"
+    mock_session.lifecycle_status = "active"
+    mock_session.closed_at = None
+    mock_session.last_feedback_received_at = datetime.now()
+
+    cmd = GetSessionDataCommand(session_id="claude-session-2")
+
+    with patch.object(command_handlers, "db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        result = await command_handlers.get_session_data(cmd)
+
+    assert result["status"] == "error"
+    assert "file" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_get_session_data_codex_pending_is_case_insensitive():
+    """Codex pending path should work for non-lowercase active_agent values."""
+    mock_session = MagicMock()
+    mock_session.session_id = "codex-session-3"
+    mock_session.title = "Codex Session"
+    mock_session.project_path = "/home/user"
+    mock_session.subdir = None
+    mock_session.created_at = datetime.now()
+    mock_session.last_activity = datetime.now()
+    mock_session.native_log_file = None
+    mock_session.native_session_id = "019c-test"
+    mock_session.active_agent = "Codex"
+    mock_session.lifecycle_status = "active"
+    mock_session.closed_at = None
+    mock_session.last_feedback_received_at = None
+
+    cmd = GetSessionDataCommand(session_id="codex-session-3")
+
+    with (
+        patch.object(command_handlers, "db") as mock_db,
+        patch("teleclaude.hooks.adapters.codex._discover_transcript_path", return_value=None),
+    ):
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+        mock_db.update_session = AsyncMock()
 
         result = await command_handlers.get_session_data(cmd)
 

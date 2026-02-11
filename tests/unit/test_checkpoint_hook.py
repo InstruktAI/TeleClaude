@@ -200,7 +200,13 @@ def test_checkpoint_prefers_session_project_path_over_transcript_workdir(db_with
 
     called: dict[str, str | None] = {"project_path": None}
 
-    def _fake_get_checkpoint_content(transcript_path, agent_name, project_path, working_slug=None):
+    def _fake_get_checkpoint_content(
+        transcript_path,
+        agent_name,
+        project_path,
+        working_slug=None,
+        elapsed_since_turn_start_s=None,
+    ):
         called["project_path"] = project_path
         return "checkpoint"
 
@@ -227,7 +233,13 @@ def test_checkpoint_falls_back_to_transcript_workdir_when_project_path_missing(d
 
     called: dict[str, str | None] = {"project_path": None}
 
-    def _fake_get_checkpoint_content(transcript_path, agent_name, project_path, working_slug=None):
+    def _fake_get_checkpoint_content(
+        transcript_path,
+        agent_name,
+        project_path,
+        working_slug=None,
+        elapsed_since_turn_start_s=None,
+    ):
         called["project_path"] = project_path
         return "checkpoint"
 

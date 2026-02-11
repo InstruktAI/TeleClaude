@@ -8,7 +8,7 @@
     "score": 7,
     "status": "needs_work",
     "schema_version": 1,
-    "blockers": ["config-schema-validation", "person-identity-auth"],
+    "blockers": ["person-identity-auth"],
     "actions_taken": {
       "requirements_updated": true,
       "implementation_plan_updated": true

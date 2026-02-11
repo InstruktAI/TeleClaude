@@ -1614,6 +1614,31 @@ def _infer_function_call_output_error(output_text: str) -> bool:
     return False
 
 
+def _is_user_tool_result_only_message(message: Mapping[str, object]) -> bool:
+    """Return True when a user message only carries tool_result blocks.
+
+    Claude writes tool outputs as role=user messages. Those entries are part
+    of the assistant turn and must not reset current-turn boundaries.
+    """
+    if message.get("role") != "user":
+        return False
+
+    content = message.get("content")
+    if isinstance(content, str):
+        return False
+    if not isinstance(content, list) or not content:
+        return False
+
+    saw_block = False
+    for block in content:
+        if not isinstance(block, dict):
+            return False
+        saw_block = True
+        if block.get("type") != "tool_result":
+            return False
+    return saw_block
+
+
 def extract_tool_calls_current_turn(
     transcript_path: str,
     agent_name: AgentName,
@@ -1634,7 +1659,9 @@ def extract_tool_calls_current_turn(
         if entries is None:
             return TurnTimeline(tool_calls=[], has_data=False)
 
-        # Find turn boundary: walk backward to last user-role message
+        # Find turn boundary: walk backward to last *real* user prompt.
+        # Claude tool outputs are encoded as role=user tool_result messages and
+        # must not reset the boundary within the same turn.
         turn_start_idx = 0
         for i in range(len(entries) - 1, -1, -1):
             entry = entries[i]
@@ -1644,6 +1671,8 @@ def extract_tool_calls_current_turn(
                 if isinstance(payload, dict):
                     message = payload
             if isinstance(message, dict) and message.get("role") == "user":
+                if _is_user_tool_result_only_message(message):
+                    continue
                 turn_start_idx = i + 1
                 break
 

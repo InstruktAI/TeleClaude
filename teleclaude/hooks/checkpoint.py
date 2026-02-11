@@ -95,14 +95,54 @@ def _get_uncommitted_files(project_path: str) -> Optional[list[str]]:
 
     Returns None if git is unavailable or the command fails (fail-open).
     """
-    try:
-        result = subprocess.run(
+
+    def _run_git_diff_name_only() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
             ["git", "diff", "--name-only", "HEAD"],
             capture_output=True,
             text=True,
             timeout=10,
             cwd=project_path or None,
         )
+
+    def _normalize_non_bare_repo() -> bool:
+        bare_probe = subprocess.run(
+            ["git", "rev-parse", "--is-bare-repository"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=project_path or None,
+        )
+        if bare_probe.returncode != 0:
+            return False
+        if bare_probe.stdout.strip().lower() != "true":
+            return True
+
+        normalize = subprocess.run(
+            ["git", "config", "--local", "core.bare", "false"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=project_path or None,
+        )
+        if normalize.returncode != 0:
+            logger.warning(
+                "Checkpoint git self-heal failed: unable to set core.bare=false for %s",
+                project_path,
+            )
+            return False
+        logger.warning(
+            "Checkpoint git self-heal applied: normalized core.bare=false for %s",
+            project_path,
+        )
+        return True
+
+    try:
+        _normalize_non_bare_repo()
+        result = _run_git_diff_name_only()
+        if result.returncode != 0 and "must be run in a work tree" in (result.stderr or "").lower():
+            if _normalize_non_bare_repo():
+                result = _run_git_diff_name_only()
         if result.returncode != 0:
             return None
         files = [f.strip() for f in result.stdout.strip().splitlines() if f.strip()]
@@ -697,6 +737,29 @@ def _extract_plan_file_paths(plan_text: str) -> set[str]:
     return paths
 
 
+def _dedupe_strings(items: list[str]) -> list[str]:
+    """De-duplicate strings while preserving first-seen order."""
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return deduped
+
+
+def _compute_log_since_window(elapsed_since_turn_start_s: Optional[float]) -> str:
+    """Compute `instrukt-ai-logs --since` window from elapsed turn time.
+
+    Uses minute granularity, rounded up, with a conservative 2-minute minimum.
+    """
+    if elapsed_since_turn_start_s is None or elapsed_since_turn_start_s <= 0:
+        return "2m"
+    minutes = max(2, int((elapsed_since_turn_start_s + 59) // 60))
+    return f"{minutes}m"
+
+
 # ---------------------------------------------------------------------------
 # Heuristic engine (R2-R8)
 # ---------------------------------------------------------------------------
@@ -706,6 +769,7 @@ def run_heuristics(
     git_files: list[str],
     timeline: TurnTimeline,
     context: CheckpointContext,
+    log_since_window: str = "2m",
 ) -> CheckpointResult:
     """Run all checkpoint heuristics and return structured result."""
     result = CheckpointResult()
@@ -740,7 +804,7 @@ def run_heuristics(
     # Add log check if code changed and not already done
     has_code_changes = any(c.name != "tests only" for c in categories)
     if has_code_changes and not _has_evidence(timeline, CHECKPOINT_LOG_CHECK_EVIDENCE):
-        append_required_action("Check logs: `instrukt-ai-logs teleclaude --since 2m`")
+        append_required_action(f"Check logs: `instrukt-ai-logs teleclaude --since {log_since_window}`")
 
     # Add test instruction if code changed and not already done
     if categories and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
@@ -754,6 +818,9 @@ def run_heuristics(
 
     # 5. Working slug alignment
     result.observations.extend(_check_slug_alignment(git_files, context))
+
+    # Keep observations signal-rich and non-repetitive.
+    result.observations = _dedupe_strings(result.observations)
 
     # Determine all-clear
     if not result.required_actions and not result.observations:
@@ -771,9 +838,10 @@ def build_checkpoint_message(
     git_files: list[str],
     timeline: TurnTimeline,
     context: CheckpointContext,
+    log_since_window: str = "2m",
 ) -> str:
     """Build a structured checkpoint message from all signal sources."""
-    result = run_heuristics(git_files, timeline, context)
+    result = run_heuristics(git_files, timeline, context, log_since_window=log_since_window)
     return _compose_checkpoint_message(git_files, result)
 
 
@@ -834,6 +902,7 @@ def get_checkpoint_content(
     agent_name: AgentName,
     project_path: str,
     working_slug: Optional[str] = None,
+    elapsed_since_turn_start_s: Optional[float] = None,
 ) -> Optional[str]:
     """Build context-aware checkpoint content for both hook and codex routes.
 
@@ -887,8 +956,9 @@ def get_checkpoint_content(
             working_slug=working_slug,
             agent_name=agent_name,
         )
+        log_since_window = _compute_log_since_window(elapsed_since_turn_start_s)
 
-        result = run_heuristics(effective_git_files, timeline, context)
+        result = run_heuristics(effective_git_files, timeline, context, log_since_window=log_since_window)
         if not effective_git_files or _is_docs_only(effective_git_files):
             logger.info(
                 "Checkpoint payload skipped (no turn-local code changes)",

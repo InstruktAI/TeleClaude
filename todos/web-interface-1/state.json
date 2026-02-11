@@ -8,7 +8,7 @@
     "score": 8,
     "status": "pass",
     "schema_version": 1,
-    "blockers": ["person-identity-auth", "config-schema-validation"],
+    "blockers": ["session-messages-api", "person-identity-auth"],
     "actions_taken": {
       "requirements_updated": true,
       "implementation_plan_updated": true

@@ -58,6 +58,11 @@ Merge approved work to main, log delivery, and clean up.
 9. Remove the item for `{slug}` from `todos/roadmap.md`.
 10. Delete `todos/{slug}/` after logging delivery and updating the roadmap.
 11. Remove the worktree for `{slug}` if it exists.
+12. Delete the feature branch:
+
+    ```bash
+    git branch -d {slug}
+    ```
 
 ## Report format
 
@@ -68,13 +73,14 @@ Merged: yes
 Delivered log: updated
 Roadmap: updated
 Worktree: removed
+Branch: deleted
 ```
 
 ## Outputs
 
 - Merged changes on `main`.
 - Updated `todos/delivered.md` and `todos/roadmap.md`.
-- Removed `todos/{slug}/` and any worktree.
+- Removed `todos/{slug}/`, worktree, and feature branch.
 
 ## Recovery
 

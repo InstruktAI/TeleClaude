@@ -23,11 +23,11 @@ Connect external messaging platforms (WhatsApp, Discord) to the Help Desk lobby 
 
 3.  **Admin Observability (The Control Room)**
     - **Supergroup Logic:** Extend the Telegram Adapter's "Forum Topic" model to include _all_ Help Desk sessions, not just those created by the Admin.
-    - **Stream Mirroring:** When a customer starts a session in `help-desk`, the `output-streaming-unification` layer must mirror the `agent_output_update` events to a new topic in the Admin Telegram Supergroup.
+    - **Stream Mirroring:** When a customer starts a session in `help-desk`, the `agent-activity-events` layer must mirror activity events to a new topic in the Admin Telegram Supergroup.
     - **Intervention:** Allow Admins to send messages _into_ that customer session from the Telegram topic (using the mirrored `session_id`).
 
 4.  **Unified Streaming**
-    - Leverage `output-streaming-unification` infrastructure.
+    - Leverage `agent-activity-events` infrastructure.
     - Ensure `AdapterClient` routes output to _both_ the origin adapter (WhatsApp/Discord) AND the Admin Telegram adapter (if configured as supervisor).
 
 ## Success Criteria

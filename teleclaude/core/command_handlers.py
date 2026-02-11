@@ -571,19 +571,20 @@ async def get_session_data(
         logger.error("Session %s not found", session_id[:8])
         return {"status": "error", "error": "Session not found"}
 
-    def _pending_codex_transcript_payload(reason: str) -> SessionDataPayload:
+    def _pending_transcript_payload(reason: str) -> SessionDataPayload:
         logger.debug(
-            "Codex transcript pending for session %s (%s)",
+            "Transcript pending for session %s (%s)",
             session_id[:8],
             reason,
         )
+        agent_label = str(session.active_agent or "session")
         return {
             "status": "success",
             "session_id": session_id,
             "project_path": session.project_path,
             "subdir": session.subdir,
             "messages": (
-                "Transcript is not available yet for this Codex session. "
+                f"Transcript is not available yet for this {agent_label} session. "
                 "Wait for the first completed turn (`agent_stop`) and retry."
             ),
             "created_at": session.created_at.isoformat() if session.created_at else None,
@@ -591,11 +592,19 @@ async def get_session_data(
             "transcript": None,
         }
 
+    raw_agent_name = session.active_agent or ""
+    normalized_agent_name = raw_agent_name.strip().lower()
+    lifecycle_status = session.lifecycle_status or ""
+    closed_at_raw = session.closed_at
+    session_closed = closed_at_raw is not None or lifecycle_status == "closed"
+    feedback_at_raw = session.last_feedback_received_at
+    has_completed_turn = feedback_at_raw is not None
+
     # Get native_log_file from session, or discover it if not set
     native_log_file_str = session.native_log_file
 
     # For Codex sessions, try to discover transcript if not yet bound
-    if not native_log_file_str and session.active_agent == "codex" and session.native_session_id:
+    if not native_log_file_str and normalized_agent_name == "codex" and session.native_session_id:
         logger.debug(
             "Attempting to discover Codex transcript for session %s (native_id=%s)",
             session_id[:8],
@@ -615,19 +624,35 @@ async def get_session_data(
             await db.update_session(session_id, native_log_file=discovered_path)
 
     if not native_log_file_str:
-        if session.active_agent == "codex":
-            return _pending_codex_transcript_payload("no_native_log_file")
+        if normalized_agent_name == "codex":
+            return _pending_transcript_payload("no_native_log_file_codex")
+        if not has_completed_turn and not session_closed:
+            return _pending_transcript_payload("no_native_log_file_pre_stop")
+        if session.tmux_session_name:
+            pane_output = await tmux_bridge.capture_pane(session.tmux_session_name)
+            if pane_output:
+                tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
+                return {
+                    "status": "success",
+                    "session_id": session_id,
+                    "project_path": session.project_path,
+                    "subdir": session.subdir,
+                    "messages": pane_output[-tail:],
+                    "created_at": session.created_at.isoformat() if session.created_at else None,
+                    "last_activity": (session.last_activity.isoformat() if session.last_activity else None),
+                }
         logger.error("No native_log_file for session %s", session_id[:8])
         return {"status": "error", "error": "Session file not found"}
 
     native_log_file = Path(native_log_file_str)
     if not native_log_file.exists():
-        if session.active_agent == "codex":
-            return _pending_codex_transcript_payload("native_log_file_missing_on_disk")
+        if normalized_agent_name == "codex":
+            return _pending_transcript_payload("native_log_file_missing_on_disk_codex")
+        if not has_completed_turn and not session_closed:
+            return _pending_transcript_payload("native_log_file_missing_pre_stop")
         logger.error("Native session file does not exist: %s", native_log_file)
         return {"status": "error", "error": "Session file does not exist"}
 
-    raw_agent_name = session.active_agent
     if not raw_agent_name:
         logger.error("Session %s missing active_agent metadata", session_id[:8])
         return {"status": "error", "error": "Active agent unknown"}

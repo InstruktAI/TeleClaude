@@ -74,6 +74,8 @@ Both paths call the same `get_checkpoint_content()` entry point, ensuring parity
 
 14. **Delivery parity**: Both hook route (Claude/Gemini) and tmux route (Codex) call the same `get_checkpoint_content()` entry point with equivalent inputs, ensuring identical heuristic output regardless of delivery mechanism.
 
+15. **Dynamic log-check window**: The required `instrukt-ai-logs teleclaude --since <window>` action is derived from elapsed time since the turn start (`max(last_message_sent_at, last_checkpoint_at)`), rounded up to minutes with a minimum of `2m`.
+
 ## Primary flows
 
 ### 0. Context-aware checkpoint builder

@@ -198,9 +198,7 @@ def format_tool_call(
         # Substitute {args} and {next_call} placeholders
         post_completion = post_completion.format(args=completion_value, next_call=next_call_display)
 
-    result = f"""Before running the command below, read ~/.agents/commands/{command}.md if you haven't already.
-
-IMPORTANT: This output is an execution script. Follow it verbatim. If you've already read that command file, do not re-read it.
+    result = f"""IMPORTANT: This output is an execution script. Follow it verbatim. If you've already read that command file, do not re-read it.
 
 Execute these steps in order (FOLLOW TO THE LETTER!):
 
@@ -295,9 +293,7 @@ def format_hitl_guidance(context: str) -> str:
 
     Used when HITL=True.
     """
-    return f"""Before proceeding, read docs/global/general/procedure/maintenance/next-prepare.md if you haven't already.
-
-{context}"""
+    return context
 
 
 def _find_next_prepare_slug(cwd: str) -> str | None:

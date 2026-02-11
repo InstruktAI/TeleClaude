@@ -115,6 +115,63 @@ def test_extract_scopes_to_current_turn():
         _cleanup(path)
 
 
+def test_extract_ignores_tool_result_user_messages_as_turn_boundaries():
+    """Tool-result user entries must not reset Claude turn boundary."""
+    entries = [
+        {"type": "user", "message": {"role": "user", "content": "fix session highlight"}},
+        {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": "teleclaude/cli/tui/state.py"}},
+                ],
+            },
+        },
+        {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{"type": "tool_result", "content": "file contents", "is_error": False}],
+            },
+        },
+        {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "Bash",
+                        "input": {"command": "pytest -q tests/unit/test_tui_state.py"},
+                    },
+                    {"type": "tool_result", "content": "1 passed", "is_error": False},
+                ],
+            },
+        },
+        {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{"type": "tool_result", "content": "ok", "is_error": False}],
+            },
+        },
+        {
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "Done."}]},
+        },
+    ]
+    path = _write_jsonl(entries)
+    try:
+        timeline = extract_tool_calls_current_turn(path, AgentName.CLAUDE)
+        assert timeline.has_data is True
+        assert len(timeline.tool_calls) == 2
+        assert timeline.tool_calls[0].tool_name == "Read"
+        assert timeline.tool_calls[1].tool_name == "Bash"
+    finally:
+        _cleanup(path)
+
+
 def test_get_entries_for_agent_honors_tail_entries():
     entries = []
     for i in range(120):

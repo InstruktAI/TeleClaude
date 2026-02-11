@@ -1,18 +1,9 @@
 {
-  "cache-startup-warmup": [
-    "model-boundary-consolidation"
+  "agent-activity-events": [
+    "cross-project-context"
   ],
   "code-context-auditor": [
     "code-context-annotations"
-  ],
-  "job-contract-refinements": [
-    "config-schema-validation"
-  ],
-  "person-identity-auth": [
-    "config-schema-validation"
-  ],
-  "person-identity-auth-1": [
-    "config-schema-validation"
   ],
   "person-identity-auth-2": [
     "person-identity-auth-1"
@@ -25,6 +16,10 @@
   ],
   "web-interface": [
     "person-identity-auth",
-    "output-streaming-unification"
+    "agent-activity-events"
+  ],
+  "web-interface-1": [
+    "session-messages-api",
+    "person-identity-auth"
   ]
 }

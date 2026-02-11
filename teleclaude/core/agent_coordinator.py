@@ -878,6 +878,7 @@ class AgentCoordinator:
             agent_name=agent_enum_ckpt,
             project_path=project_path,
             working_slug=working_slug,
+            elapsed_since_turn_start_s=elapsed,
         )
         if not checkpoint_text:
             logger.debug(

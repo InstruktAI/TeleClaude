@@ -1,5 +1,7 @@
 """Tests for the checkpoint heuristic engine and message builder."""
 
+from types import SimpleNamespace
+
 from teleclaude.core.agents import AgentName
 from teleclaude.hooks.checkpoint import (
     CheckpointContext,
@@ -10,6 +12,7 @@ from teleclaude.hooks.checkpoint import (
     _command_likely_mutates_files,
     _enrich_error,
     _extract_turn_file_signals,
+    _get_uncommitted_files,
     _has_evidence,
     _is_docs_only,
     _scope_git_files_to_current_turn,
@@ -131,6 +134,60 @@ def test_docs_only_returns_false_for_code():
 
 def test_empty_diff_is_docs_only():
     assert _is_docs_only([]) is True
+
+
+def test_get_uncommitted_files_normalizes_bare_repo(monkeypatch):
+    calls: list[list[str]] = []
+    responses = iter(
+        [
+            SimpleNamespace(returncode=0, stdout="true\n", stderr=""),
+            SimpleNamespace(returncode=0, stdout="", stderr=""),
+            SimpleNamespace(returncode=0, stdout="teleclaude/hooks/checkpoint.py\n", stderr=""),
+        ]
+    )
+
+    def _fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        return next(responses)
+
+    monkeypatch.setattr("teleclaude.hooks.checkpoint.subprocess.run", _fake_run)
+
+    files = _get_uncommitted_files("/repo")
+    assert files == ["teleclaude/hooks/checkpoint.py"]
+    assert calls == [
+        ["git", "rev-parse", "--is-bare-repository"],
+        ["git", "config", "--local", "core.bare", "false"],
+        ["git", "diff", "--name-only", "HEAD"],
+    ]
+
+
+def test_get_uncommitted_files_retries_after_worktree_error(monkeypatch):
+    calls: list[list[str]] = []
+    responses = iter(
+        [
+            SimpleNamespace(returncode=0, stdout="false\n", stderr=""),
+            SimpleNamespace(returncode=128, stdout="", stderr="fatal: this operation must be run in a work tree"),
+            SimpleNamespace(returncode=0, stdout="true\n", stderr=""),
+            SimpleNamespace(returncode=0, stdout="", stderr=""),
+            SimpleNamespace(returncode=0, stdout="teleclaude/core/db.py\n", stderr=""),
+        ]
+    )
+
+    def _fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        return next(responses)
+
+    monkeypatch.setattr("teleclaude.hooks.checkpoint.subprocess.run", _fake_run)
+
+    files = _get_uncommitted_files("/repo")
+    assert files == ["teleclaude/core/db.py"]
+    assert calls == [
+        ["git", "rev-parse", "--is-bare-repository"],
+        ["git", "diff", "--name-only", "HEAD"],
+        ["git", "rev-parse", "--is-bare-repository"],
+        ["git", "config", "--local", "core.bare", "false"],
+        ["git", "diff", "--name-only", "HEAD"],
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -632,6 +689,16 @@ def test_partial_fix_still_fires():
     assert len(observations) == 1
 
 
+def test_run_heuristics_dedupes_duplicate_error_observations():
+    timeline = _timeline_with(
+        _bash_record("foo-cmd", had_error=True, result_snippet="error one"),
+        _bash_record("bar-cmd", had_error=True, result_snippet="error two"),
+    )
+    result = run_heuristics(["teleclaude/core/foo.py"], timeline, _default_context())
+    generic = "A command returned errors — verify the issue is resolved"
+    assert result.observations.count(generic) == 1
+
+
 def test_duplicate_failed_commands_keep_later_unresolved_error():
     """Duplicate failed command values should not alias to the first record."""
     timeline = _timeline_with(
@@ -797,6 +864,16 @@ def test_message_has_required_actions():
     assert "Docs check" in msg
 
 
+def test_message_uses_supplied_log_window():
+    msg = build_checkpoint_message(
+        ["teleclaude/core/foo.py"],
+        _empty_timeline(),
+        _default_context(),
+        log_since_window="9m",
+    )
+    assert "instrukt-ai-logs teleclaude --since 9m" in msg
+
+
 def test_message_action_precedence_is_deterministic():
     """Actions follow fixed order based on category precedence."""
     msg = build_checkpoint_message(
@@ -898,6 +975,34 @@ def test_get_checkpoint_content_keeps_actions_for_exec_command_cmd_mutation(monk
     )
     assert msg is not None
     assert "Run `make restart`" in msg
+
+
+def test_get_checkpoint_content_derives_log_window_from_elapsed(monkeypatch):
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
+        lambda _project: True,
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._get_uncommitted_files",
+        lambda _project: ["teleclaude/core/foo.py"],
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
+        lambda _path, _agent: _timeline_with(
+            _edit_record("teleclaude/core/foo.py"),
+            _bash_record("make restart"),
+            _bash_record("make status"),
+        ),
+    )
+
+    msg = get_checkpoint_content(
+        transcript_path="/tmp/fake.jsonl",
+        agent_name=AgentName.CLAUDE,
+        project_path="/repo",
+        elapsed_since_turn_start_s=601.0,
+    )
+    assert msg is not None
+    assert "instrukt-ai-logs teleclaude --since 11m" in msg
 
 
 def test_get_checkpoint_content_returns_none_for_docs_only_changes(monkeypatch):

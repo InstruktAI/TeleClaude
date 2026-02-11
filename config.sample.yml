@@ -47,12 +47,6 @@ ui:
   animations_periodic_interval: 60 # Seconds between periodic animations
   animations_subset: [] # Empty list = all animations. Specify names to filter (e.g., ["FullSpectrumCycle", "LetterWave"])
 
-# Summarizer Configuration
-# Controls how agent feedback is processed for TTS and UI display
-summarizer:
-  enabled: true # If true, use LLM to summarize agent output. If false, use raw agent text.
-  max_summary_words: 30 # Target max words for the summary (~1-2 sentences)
-
 # Speech-to-Text Configuration
 stt:
   enabled: true
@@ -73,7 +67,7 @@ stt:
 tts:
   enabled: true
   service_priority:
-    - voxcpm # Local MLX, greate voice quality. Size in mem: 
+    - voxcpm # Local MLX, greate voice quality. Size in mem:
     - qwen3 # Local MLX, fun to test as has weird voices
     - openai
     - elevenlabs
