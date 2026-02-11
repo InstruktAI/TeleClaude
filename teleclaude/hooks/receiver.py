@@ -40,8 +40,8 @@ _HANDLED_EVENTS: frozenset[AgentHookEventType] = frozenset(
     {
         AgentHookEvents.AGENT_SESSION_START,
         AgentHookEvents.USER_PROMPT_SUBMIT,
-        AgentHookEvents.AGENT_OUTPUT,
-        AgentHookEvents.AFTER_MODEL,
+        AgentHookEvents.TOOL_DONE,
+        AgentHookEvents.TOOL_USE,
         AgentHookEvents.AGENT_STOP,
         AgentHookEvents.AGENT_NOTIFICATION,
         AgentHookEvents.AGENT_ERROR,
@@ -697,7 +697,7 @@ def main() -> None:
         logger.debug("Mapped hook event: %s (pascal: %s) -> %s", raw_event_type, pascal_event_type, event_type)
 
     # Early exit for unhandled events - don't spawn mcp-wrapper
-    # Note: We check against AgentHookEvents.ALL which contains internal types like AGENT_OUTPUT
+    # Note: We check against AgentHookEvents.ALL which contains internal types like TOOL_DONE
     if event_type not in _HANDLED_EVENTS:
         if event_type in {"prompt", "stop"}:
             _emit_receiver_error_best_effort(

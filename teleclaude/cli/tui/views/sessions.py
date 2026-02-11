@@ -610,7 +610,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     def _update_streaming_timers(self) -> None:
         """Manage safety timers for streaming output highlights.
 
-        Agent activity events (after_model, agent_output) set temp_output_highlights.
+        Agent activity events (tool_use, tool_done) set temp_output_highlights.
         agent_stop is the authoritative signal that clears them. The timer is a safety
         net that clears stale highlights if agent_stop is missed.
         """
