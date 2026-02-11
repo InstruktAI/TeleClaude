@@ -137,9 +137,12 @@ infrastructure (plist installation).
 ### Task 4.3: Quality checks
 
 - [x] Run `make lint`
-- [x] Run `make test` — 31/31 branch-specific tests pass; 6 integration + 6 unit
-      failures are pre-existing at merge-base (01536cd4), verified by checkout and
-      re-run. No integration test files or their production dependencies were modified
+- [x] Run `make test` — unit: 1313/1313 passed; integration: 67 passed, 6 failed.
+      The 6 integration failures (test_command_e2e ×2, test_feedback_cleanup ×2,
+      test_e2e_smoke ×1, test_mcp_tools ×1) are pre-existing at merge-base
+      (01536cd4), verified by detached-HEAD re-run producing identical failures.
+      Root cause: missing telegram adapter mock setup (KeyError/AttributeError).
+      No integration test files or their production dependencies were modified
       in this branch (`git diff 01536cd4..HEAD --stat -- tests/integration/` is empty).
 - [x] Verify `telec sync` passes — `telec sync --validate-only` reports only
       pre-existing warnings in files not touched by this branch
