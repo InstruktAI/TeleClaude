@@ -113,3 +113,16 @@ All deferrals are explicit, justified, and do not hide required scope.
 ## Verdict: APPROVE
 
 All requirements are traced to implemented behavior. No critical issues. The two Important findings (TOCTOU race, atexit accumulation) are acceptable for the current use case. Deferrals are explicit and justified. Code quality is clean, structured logging is used throughout, and tests cover the core paths.
+
+---
+
+## Second-Pass Review (Round 2 — Claude Opus 4.6)
+
+Independent verification confirms the APPROVE verdict. Additional observations:
+
+- **Subprocess timeout safety verified**: `subprocess.run()` explicitly calls `process.kill()` before raising `TimeoutExpired` (confirmed via CPython source inspection). No zombie process risk.
+- **`except Exception` scope is correct**: `KeyboardInterrupt` and `SystemExit` are NOT subclasses of `Exception`, so the catch-all in `_run_agent_job()` does not swallow interrupt signals. Acceptable for a cron runner.
+- **Peripheral test changes verified**: All 7 modified test files align with actual source code on the branch (adapter boundary purity matches `message_ops.py` mixin; HITL tests removed assertions for strings no longer in `next_machine` source; MCP wrapper test patches `_read_role_marker`; MLX TTS tests reflect `_resolve_cli_bin` refactor).
+- **`_JOB_SPEC` vs `_ONESHOT_SPEC` differentiation confirmed**: Job spec correctly omits `--tools ""` and `enabledMcpjsonServers: []`, giving full tool/MCP access.
+
+No new blocking issues found. Suggestions S1-S3 from Round 1 remain valid minor improvements.
