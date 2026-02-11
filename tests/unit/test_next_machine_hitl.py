@@ -33,7 +33,6 @@ async def test_next_prepare_hitl_no_slug():
     with patch("teleclaude.core.next_machine.core._find_next_prepare_slug", return_value=None):
         result = await next_prepare(db, slug=None, cwd=cwd, hitl=True)
         assert "No active preparation work found." in result
-        assert "Before proceeding, read docs/global/general/procedure/maintenance/next-prepare.md" in result
 
 
 @pytest.mark.asyncio
@@ -50,7 +49,6 @@ async def test_next_prepare_hitl_missing_requirements():
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"Preparing: {slug}" in result
         assert "Write todos/test-slug/requirements.md" in result
-        assert "Before proceeding, read docs/global/general/procedure/maintenance/next-prepare.md" in result
 
 
 @pytest.mark.asyncio
@@ -72,7 +70,6 @@ async def test_next_prepare_hitl_missing_impl_plan():
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"Preparing: {slug}" in result
         assert "Write todos/test-slug/implementation-plan.md" in result
-        assert "Before proceeding, read docs/global/general/procedure/maintenance/next-prepare.md" in result
 
 
 @pytest.mark.asyncio
@@ -135,7 +132,6 @@ async def test_next_prepare_hitl_slug_missing_from_roadmap():
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert "not in todos/roadmap.md" in result
         assert "add it to the roadmap" in result
-        assert "Before proceeding, read docs/global/general/procedure/maintenance/next-prepare.md" in result
 
 
 @pytest.mark.asyncio

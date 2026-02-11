@@ -76,23 +76,36 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.list_jobs:
-        jobs = discover_jobs()
+        python_jobs = discover_jobs()
         state = CronState.load()
         schedules = _load_job_schedules()
 
-        if not jobs:
+        # Build unified list: Python jobs + agent jobs from config
+        python_job_names = {job.name for job in python_jobs}
+        agent_job_names = [
+            name for name, cfg in schedules.items() if cfg.type == "agent" and name not in python_job_names
+        ]
+
+        if not python_jobs and not agent_job_names:
             print("No jobs found")
             return 0
 
-        print(f"{'Job':<30} {'Schedule':<10} {'Last Run':<25} {'Status':<10}")
-        print("-" * 80)
+        print(f"{'Job':<30} {'Type':<8} {'Schedule':<10} {'Last Run':<25} {'Status':<10}")
+        print("-" * 88)
 
-        for job in jobs:
+        for job in python_jobs:
             job_state = state.get_job(job.name)
             sched = schedules.get(job.name)
             schedule_str = sched.schedule if sched and sched.schedule else "none"
             last_run = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else "never"
-            print(f"{job.name:<30} {schedule_str:<10} {last_run:<25} {job_state.last_status:<10}")
+            print(f"{job.name:<30} {'script':<8} {schedule_str:<10} {last_run:<25} {job_state.last_status:<10}")
+
+        for name in agent_job_names:
+            job_state = state.get_job(name)
+            sched = schedules[name]
+            schedule_str = sched.schedule if sched.schedule else "none"
+            last_run = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else "never"
+            print(f"{name:<30} {'agent':<8} {schedule_str:<10} {last_run:<25} {job_state.last_status:<10}")
 
         return 0
 

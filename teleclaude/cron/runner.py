@@ -4,7 +4,7 @@ Two job types are supported:
 
 1. **Python jobs** — modules in jobs/*.py that export a JOB instance.
 2. **Agent jobs** — declared in teleclaude.yml with `type: agent`. The runner
-   spawns a headless agent session via the daemon API. No Python module needed.
+   spawns a full interactive agent subprocess via run_job(). No daemon required.
 
 Scheduling configuration (frequency, preferred timing) lives in teleclaude.yml
 under the `jobs:` key. The runner reads this config, evaluates whether each job
@@ -17,14 +17,14 @@ Jobs that have never run execute immediately on first discovery.
 
 from __future__ import annotations
 
+import atexit
 import importlib
-import json
+import os
 import re
-import socket
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from http.client import HTTPConnection
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -158,19 +158,32 @@ def _is_due(
             return now.day == preferred_day and now.hour >= preferred_hour
 
 
-_DAEMON_SOCKET = "/tmp/teleclaude-api.sock"
+_DEFAULT_JOB_TIMEOUT_S = 1800  # 30 minutes
+_PIDFILE = Path.home() / ".teleclaude" / "cron_runner.pid"
 
 
-class _UnixSocketConnection(HTTPConnection):
-    """HTTP connection over a Unix domain socket."""
+def _acquire_pidlock() -> bool:
+    """Acquire a pidfile lock. Returns True if acquired, False if another runner is alive."""
+    if _PIDFILE.exists():
+        try:
+            old_pid = int(_PIDFILE.read_text().strip())
+            os.kill(old_pid, 0)  # Check if process is alive
+            return False  # Another runner is still running
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass  # Stale pidfile or unreadable — proceed
 
-    def __init__(self, socket_path: str) -> None:
-        super().__init__("localhost")
-        self._socket_path = socket_path
+    _PIDFILE.parent.mkdir(parents=True, exist_ok=True)
+    _PIDFILE.write_text(str(os.getpid()))
+    atexit.register(_release_pidlock)
+    return True
 
-    def connect(self) -> None:
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.connect(self._socket_path)
+
+def _release_pidlock() -> None:
+    """Remove the pidfile on exit."""
+    try:
+        _PIDFILE.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _job_slug_to_spec_filename(job_slug: str) -> str:
@@ -194,47 +207,38 @@ def _build_agent_job_message(job_name: str, config: JobScheduleConfig) -> str | 
 
 
 def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
-    """Spawn a headless agent session for an agent-type job.
+    """Spawn an agent subprocess for an agent-type job.
 
-    Calls the daemon's POST /sessions endpoint via the unix socket.
-    Fire-and-forget: the agent session runs to completion independently.
+    Uses run_job() from agent_cli to spawn a full interactive agent subprocess
+    with tools and MCP enabled. Blocks until the agent completes or times out.
     """
+    from teleclaude.helpers.agent_cli import run_job
+
     message = _build_agent_job_message(job_name, config)
     if not message:
         return False
 
     agent = str(config.agent or "claude")
     thinking_mode = str(config.thinking_mode or "fast")
-    project_path = str(_REPO_ROOT)
-
-    payload = json.dumps(
-        {
-            "computer": "local",
-            "project_path": project_path,
-            "title": job_name,
-            "agent": agent,
-            "thinking_mode": thinking_mode,
-            "launch_kind": "agent_then_message",
-            "message": message,
-        }
-    )
+    timeout_s = config.timeout if config.timeout is not None else _DEFAULT_JOB_TIMEOUT_S
 
     try:
-        conn = _UnixSocketConnection(_DAEMON_SOCKET)
-        conn.request("POST", "/sessions", body=payload, headers={"Content-Type": "application/json"})
-        resp = conn.getresponse()
-        body = json.loads(resp.read().decode())
-        conn.close()
+        exit_code = run_job(
+            agent=agent,
+            thinking_mode=thinking_mode,
+            prompt=message,
+            role="admin",
+            timeout_s=timeout_s,
+        )
+        if exit_code == 0:
+            logger.info("agent job completed", name=job_name)
+            return True
+        logger.error("agent job failed", name=job_name, exit_code=exit_code)
+        return False
 
-        if resp.status != 200 or body.get("status") != "success":
-            error = body.get("detail") or body.get("message") or "unknown error"
-            logger.error("agent job session creation failed", name=job_name, error=error)
-            return False
-
-        session_id = body.get("session_id", "?")
-        logger.info("agent job session spawned", name=job_name, session_id=session_id[:8])
-        return True
-
+    except subprocess.TimeoutExpired:
+        logger.error("agent job timed out", name=job_name, timeout_s=timeout_s)
+        return False
     except Exception as e:
         logger.error("agent job dispatch failed", name=job_name, error=str(e))
         return False
@@ -294,6 +298,10 @@ def run_due_jobs(
     Returns:
         Dict mapping job name to success status
     """
+    if not _acquire_pidlock():
+        logger.info("another cron runner is active, skipping")
+        return {}
+
     state = CronState.load()
     python_jobs = discover_jobs()
     schedules = _load_job_schedules()
@@ -343,7 +351,7 @@ def run_due_jobs(
             continue
 
         if is_agent_job:
-            # Agent job: spawn headless session via daemon API
+            # Agent job: spawn interactive subprocess
             success = _run_agent_job(job_name, schedule_config)  # type: ignore[arg-type]
             if success:
                 state.mark_success(job_name)

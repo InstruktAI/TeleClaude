@@ -80,6 +80,7 @@ class JobScheduleConfig(BaseModel):
     agent: Optional[str] = "claude"
     thinking_mode: Optional[str] = "fast"
     message: Optional[str] = None
+    timeout: Optional[int] = None
 
 
 class BusinessConfig(BaseModel):
