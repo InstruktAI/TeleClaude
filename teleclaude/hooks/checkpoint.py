@@ -359,6 +359,10 @@ def run_heuristics(
     """Run all checkpoint heuristics and return structured result."""
     result = CheckpointResult()
 
+    def append_required_action(action: str) -> None:
+        if action not in result.required_actions:
+            result.required_actions.append(action)
+
     # 1. File categorization
     categories = _categorize_files(git_files)
     result.categories = [c.name for c in categories]
@@ -371,10 +375,10 @@ def run_heuristics(
         if category.evidence_substrings and _has_evidence(timeline, category.evidence_substrings):
             # Also check for status evidence when daemon/config restart was suppressed
             if "make restart" in category.instruction and not _has_status_evidence(timeline):
-                result.required_actions.append("Run `make status` to verify daemon health")
+                append_required_action("Run `make status` to verify daemon health")
             continue  # Suppress the main instruction
 
-        result.required_actions.append(category.instruction)
+        append_required_action(category.instruction)
         # Add observation about missing verification
         if timeline.has_data and category.evidence_substrings:
             result.observations.append(
@@ -385,11 +389,11 @@ def run_heuristics(
     # Add log check if code changed and not already done
     has_code_changes = any(c.name != "tests only" for c in categories)
     if has_code_changes and not _has_evidence(timeline, CHECKPOINT_LOG_CHECK_EVIDENCE):
-        result.required_actions.append("Check logs: `instrukt-ai-logs teleclaude --since 2m`")
+        append_required_action("Check logs: `instrukt-ai-logs teleclaude --since 2m`")
 
     # Add test instruction if code changed and not already done
     if categories and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
-        result.required_actions.append("Run targeted tests for changed behavior")
+        append_required_action("Run targeted tests for changed behavior")
 
     # 3. Error state detection
     result.observations.extend(_check_error_state(timeline))

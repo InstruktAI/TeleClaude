@@ -260,6 +260,16 @@ def test_mixed_source_and_tests_no_duplicate_test_actions():
     assert len(test_actions) == 1
 
 
+def test_daemon_and_config_emit_single_restart_action():
+    result = run_heuristics(
+        ["teleclaude/core/foo.py", "config.yml"],
+        _empty_timeline(),
+        _default_context(),
+    )
+    restart_actions = [action for action in result.required_actions if "make restart" in action]
+    assert len(restart_actions) == 1
+
+
 def test_tests_plus_docs_still_requires_tests_action():
     result = run_heuristics(
         ["tests/unit/test_foo.py", "docs/notes.md"],
