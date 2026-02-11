@@ -32,7 +32,7 @@ Draft and gate must run in separate worker sessions.
 1. Inspect slug state.
 2. If requirements or implementation plan are missing, route to draft.
 3. If both exist but DOR is not final pass, route to gate.
-4. Never run draft and gate in one worker turn.
+4. Enforce session isolation: Terminate any active draft session before dispatching the gate session. Never reuse the same worker session for both phases.
 5. Only gate outcomes can authorize readiness transition criteria.
 
 ## Outputs

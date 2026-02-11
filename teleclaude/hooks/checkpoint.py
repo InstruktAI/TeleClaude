@@ -847,17 +847,24 @@ def build_checkpoint_message(
 
 def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str:
     """Compose checkpoint text from precomputed heuristic output."""
+    escape_hatch = (
+        "Escape hatch (last resort only, and only when there is no actionable information left): "
+        'run `touch "$TMPDIR/teleclaude_checkpoint_clear"` and then stop again.'
+    )
 
     # Special case: docs only
     if not git_files or _is_docs_only(git_files):
-        return f"{CHECKPOINT_PREFIX}No code changes detected this turn. Did you run `telec sync`?\nCommit if ready."
+        return (
+            f"{CHECKPOINT_PREFIX}No code changes detected this turn. Did you run `telec sync`?\n"
+            f"Commit if ready.\n\n{escape_hatch}"
+        )
 
     # Special case: all clear
     if result.is_all_clear:
         return (
             f"{CHECKPOINT_PREFIX}All expected validations were observed. "
             "Docs check: if relevant, update existing docs or add a new doc. "
-            "Commit if ready."
+            f"Commit if ready.\n\n{escape_hatch}"
         )
 
     lines: list[str] = [f"{CHECKPOINT_PREFIX}Context-aware checkpoint"]
@@ -888,6 +895,8 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     # Capture reminder
     lines.append("")
     lines.append('Finish the steps above. Then capture "aha moment" memories if needed.')
+    lines.append("")
+    lines.append(escape_hatch)
 
     return "\n".join(lines)
 

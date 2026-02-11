@@ -358,6 +358,91 @@ def test_checkpoint_output_handles_mixed_timezone_timestamps(monkeypatch, tmp_pa
     assert receiver._maybe_checkpoint_output("sess-mixed-tz", "gemini", {}) is None
 
 
+def test_checkpoint_output_clear_flag_skips_block(monkeypatch, tmp_path):
+    """Clear marker should short-circuit checkpoint blocking for the resolved session."""
+    from sqlalchemy import create_engine
+    from sqlmodel import SQLModel
+
+    db_path = tmp_path / "teleclaude.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    SQLModel.metadata.create_all(engine)
+
+    now = datetime.now(timezone.utc)
+    message_at = (now - timedelta(seconds=120)).isoformat()
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO sessions (session_id, computer_name, last_input_origin, last_message_sent_at)"
+            " VALUES (?, ?, ?, ?)",
+            ("sess-clear", "test", "telegram", message_at),
+        )
+        conn.commit()
+
+    monkeypatch.setattr(receiver, "_create_sync_engine", lambda: engine)
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
+
+    clear_path = receiver._checkpoint_flag_path("sess-clear", receiver._CHECKPOINT_CLEAR_FLAG)
+    clear_path.parent.mkdir(parents=True, exist_ok=True)
+    clear_path.touch()
+
+    calls = {"count": 0}
+
+    def _should_not_run(*_args, **_kwargs):
+        calls["count"] += 1
+        return "unexpected"
+
+    monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", _should_not_run)
+
+    result = receiver._maybe_checkpoint_output("sess-clear", "claude", {})
+    assert result is None
+    assert calls["count"] == 0
+    assert not clear_path.exists()
+
+
+def test_checkpoint_output_stop_hook_active_blocks_once_then_allows(monkeypatch, tmp_path):
+    """stop_hook_active should allow at most one additional checkpoint block."""
+    from sqlalchemy import create_engine
+    from sqlmodel import SQLModel
+
+    db_path = tmp_path / "teleclaude.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    SQLModel.metadata.create_all(engine)
+
+    now = datetime.now(timezone.utc)
+    message_at = (now - timedelta(seconds=120)).isoformat()
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO sessions (session_id, computer_name, last_input_origin, last_message_sent_at)"
+            " VALUES (?, ?, ?, ?)",
+            ("sess-recheck", "test", "telegram", message_at),
+        )
+        conn.commit()
+
+    monkeypatch.setattr(receiver, "_create_sync_engine", lambda: engine)
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
+
+    calls = {"count": 0}
+
+    def _fake_checkpoint(*_args, **_kwargs):
+        calls["count"] += 1
+        return "checkpoint"
+
+    monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", _fake_checkpoint)
+
+    first = receiver._maybe_checkpoint_output("sess-recheck", "claude", {"stop_hook_active": True})
+    assert first == json.dumps({"decision": "block", "reason": "checkpoint"})
+    assert calls["count"] == 1
+
+    recheck_path = receiver._checkpoint_flag_path("sess-recheck", receiver._CHECKPOINT_RECHECK_FLAG)
+    assert recheck_path.exists()
+
+    second = receiver._maybe_checkpoint_output("sess-recheck", "claude", {"stop_hook_active": True})
+    assert second is None
+    assert calls["count"] == 1
+    assert not recheck_path.exists()
+
+
 def test_receiver_agent_stop_checkpoint_failure_fails_open(monkeypatch, tmp_path):
     """Checkpoint failures should never crash hook receiver or block enqueue."""
     sent = []
@@ -391,6 +476,86 @@ def test_receiver_agent_stop_checkpoint_failure_fails_open(monkeypatch, tmp_path
     assert len(sent) == 1
     assert sent[0][0] == "sess-12"
     assert sent[0][1] == "agent_stop"
+
+
+def test_receiver_user_prompt_submit_resets_checkpoint_flags_tmux(monkeypatch, tmp_path):
+    """Real user_prompt_submit should clear checkpoint escape markers for tmux sessions."""
+    sent = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(
+        receiver,
+        "_read_stdin",
+        lambda: ('{"session_id":"native-20","prompt":"hello"}', {"session_id": "native-20", "prompt": "hello"}),
+    )
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="user_prompt_submit", cwd=None)
+    )
+    monkeypatch.setattr(receiver, "_resolve_or_refresh_session_id", lambda candidate, _native, *, agent: candidate)
+    monkeypatch.setattr(receiver, "_persist_session_map", lambda *_args, **_kwargs: None)
+
+    tmpdir = tmp_path / "tmp-reset-flags"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("sess-20")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
+
+    clear_path = receiver._checkpoint_flag_path("sess-20", receiver._CHECKPOINT_CLEAR_FLAG)
+    recheck_path = receiver._checkpoint_flag_path("sess-20", receiver._CHECKPOINT_RECHECK_FLAG)
+    clear_path.parent.mkdir(parents=True, exist_ok=True)
+    clear_path.touch()
+    recheck_path.touch()
+
+    receiver.main()
+
+    assert sent
+    assert sent[0][0] == "sess-20"
+    assert sent[0][1] == "user_prompt_submit"
+    assert not clear_path.exists()
+    assert not recheck_path.exists()
+
+
+def test_receiver_user_prompt_submit_resets_checkpoint_flags_headless(monkeypatch, tmp_path):
+    """Headless session resolution via native map should clear checkpoint markers too."""
+    sent = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(
+        receiver,
+        "_read_stdin",
+        lambda: (
+            '{"session_id":"native-headless-1","prompt":"hello"}',
+            {"session_id": "native-headless-1", "prompt": "hello"},
+        ),
+    )
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="user_prompt_submit", cwd=None)
+    )
+    monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: "headless-1")
+    monkeypatch.setattr(receiver, "_resolve_or_refresh_session_id", lambda candidate, _native, *, agent: candidate)
+    monkeypatch.setattr(receiver, "_persist_session_map", lambda *_args, **_kwargs: None)
+    monkeypatch.delenv("TMPDIR", raising=False)
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
+
+    clear_path = receiver._checkpoint_flag_path("headless-1", receiver._CHECKPOINT_CLEAR_FLAG)
+    recheck_path = receiver._checkpoint_flag_path("headless-1", receiver._CHECKPOINT_RECHECK_FLAG)
+    clear_path.parent.mkdir(parents=True, exist_ok=True)
+    clear_path.touch()
+    recheck_path.touch()
+
+    receiver.main()
+
+    assert sent
+    assert sent[0][0] == "headless-1"
+    assert sent[0][1] == "user_prompt_submit"
+    assert not clear_path.exists()
+    assert not recheck_path.exists()
 
 
 def test_receiver_forwards_gemini_prompt_event(monkeypatch, tmp_path):

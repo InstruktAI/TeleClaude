@@ -62,7 +62,7 @@ Both paths call the same `get_checkpoint_content()` entry point, ensuring parity
 
 8. **Post-restart unconditional injection**: After an agent restart via the API, a checkpoint is injected after a 5-second delay regardless of the 30-second threshold.
 
-9. **Hook escape hatch (Claude)**: Claude's `stop_hook_active` field in the hook payload indicates the CLI already blocked a stop once this turn. When set, `_maybe_checkpoint_output` returns None, letting the real stop pass through to the daemon.
+9. **Session-scoped hook escape hatch (Claude/Gemini hook route)**: The receiver honors a per-session clear marker file (`teleclaude_checkpoint_clear`) in the session temp directory. If present, it is consumed and `agent_stop` passes through immediately. For Claude re-entry (`stop_hook_active=true`), the receiver allows at most one extra block by using a per-session `teleclaude_checkpoint_recheck` marker; subsequent re-entry passes through (consumed) to avoid infinite loops. State is reset on real `user_prompt_submit`.
 
 10. **Hook stop suppression**: When `_maybe_checkpoint_output` fires for Claude/Gemini, the receiver prints blocking JSON and exits without enqueuing the `agent_stop` event. The daemon never sees the blocked stop, so no output extraction, TTS, or listener notifications fire for checkpoint turns.
 
@@ -132,8 +132,9 @@ sequenceDiagram
     Note over Hook: exit(0) — no enqueue
 
     Note over Agent: Agent receives checkpoint, continues working
-    Agent->>Hook: agent_stop (stop_hook_active=true for Claude)
-    Hook->>Hook: Escape hatch → pass through
+    Note over Agent: Last resort manual clear: touch "$TMPDIR/teleclaude_checkpoint_clear"
+    Agent->>Hook: agent_stop (Claude may send stop_hook_active=true on re-entry)
+    Hook->>Hook: clear marker or recheck limit reached → pass through
     Hook->>DB: Enqueue agent_stop (real stop enters daemon)
 ```
 
