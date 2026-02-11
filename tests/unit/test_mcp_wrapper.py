@@ -365,6 +365,8 @@ async def test_socket_sender_exits_on_shutdown(monkeypatch: pytest.MonkeyPatch) 
 async def test_long_running_tool_uses_extended_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     """Paranoid test that long running tool uses extended timeout still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
+    # Prevent role-based blocking from TMPDIR/teleclaude_role leaking into tests
+    monkeypatch.setattr(wrapper._impl, "_read_role_marker", lambda: None)
     proxy = wrapper.MCPProxy()
 
     reader = asyncio.StreamReader()
