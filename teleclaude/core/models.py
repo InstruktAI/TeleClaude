@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Protocol, cast
+from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, cast
 
 from teleclaude.constants import FIELD_ADAPTER_METADATA, FIELD_COMMAND, FIELD_COMPUTER
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
@@ -15,15 +15,6 @@ if TYPE_CHECKING:
 
     class InlineKeyboardMarkup(Protocol):
         """Telegram inline keyboard marker interface for type checking."""
-
-
-# Session update reason for highlight logic
-SessionUpdateReason = Literal[
-    "user_input",  # User sent input to agent
-    "agent_output",  # Agent produced streaming output
-    "agent_stopped",  # Agent completed its turn
-    "state_change",  # Generic state change (status, title, etc.)
-]
 
 
 # JSON-serializable types for database storage

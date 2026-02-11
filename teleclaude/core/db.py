@@ -20,7 +20,7 @@ from teleclaude.core.event_bus import event_bus
 from . import db_models
 from .dates import ensure_utc, parse_iso_datetime
 from .events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
-from .models import Session, SessionAdapterMetadata, SessionField, SessionUpdateReason
+from .models import Session, SessionAdapterMetadata, SessionField
 from .voice_assignment import VoiceConfig
 
 if TYPE_CHECKING:
@@ -507,46 +507,15 @@ class Db:
             rows = result.all()
             return [self._to_core_session(row) for row in rows]
 
-    @staticmethod
-    def _infer_update_reasons(
-        updates: dict[str, object],  # guard: loose-dict - Dynamic session field updates
-    ) -> tuple[SessionUpdateReason, ...]:
-        """Infer ordered activity reasons from updated session fields."""
-        if not updates:
-            return ()
-
-        reasons: list[SessionUpdateReason] = []
-
-        if any(key in updates for key in ("last_message_sent", "last_message_sent_at", "last_input_origin")):
-            reasons.append("user_input")
-
-        if any(
-            key in updates for key in ("last_feedback_received", "last_feedback_summary", "last_feedback_received_at")
-        ):
-            reasons.append("agent_stopped")
-
-        # Incremental output updates the turn cursor. Avoid duplicating agent_output
-        # when stop fields are also present.
-        if "last_agent_output_at" in updates and "agent_stopped" not in reasons:
-            reasons.append("agent_output")
-
-        if not reasons:
-            reasons.append("state_change")
-
-        return tuple(reasons)
-
     async def update_session(
         self,
         session_id: str,
-        *,
-        reasons: tuple[SessionUpdateReason, ...] = (),
         **fields: object,
     ) -> Session | None:
         """Update session fields and handle events.
 
         Args:
             session_id: Session ID
-            reasons: Ordered activity reasons for highlight logic
             **fields: Fields to update (title, status, tmux_size, etc.)
         """
         updates: dict[str, object] = {}  # guard: loose-dict - Dynamic update payload
@@ -628,22 +597,19 @@ class Db:
         # Digest updates are internal dedupe state for output routing and can occur
         # very frequently. Emitting SESSION_UPDATED for digest-only writes creates
         # unnecessary event fan-out and cache churn.
-        if not reasons and set(updates) == {"last_output_digest"}:
+        if set(updates) == {"last_output_digest"}:
             logger.trace("Skipping SESSION_UPDATED emit for digest-only update: %s", session_id[:8])
             return
 
-        effective_reasons = reasons or self._infer_update_reasons(updates)
-
-        if not updates and not effective_reasons:
+        if not updates:
             logger.trace("Skipping redundant update for session %s", session_id[:8])
             return
 
-        # Emit SESSION_UPDATED event — decoupled from DB writes so that
-        # reason-only signals (e.g. agent_output with no field change) still
-        # reach the TUI for highlight logic.
+        # Emit SESSION_UPDATED event for state changes (title, status, etc.).
+        # Activity events (user input, tool use, agent output) flow through AgentActivityEvent.
         event_bus.emit(
             TeleClaudeEvents.SESSION_UPDATED,
-            SessionUpdatedContext(session_id=session_id, updated_fields=updates, reasons=effective_reasons),
+            SessionUpdatedContext(session_id=session_id, updated_fields=updates),
         )
 
     async def close_session(self, session_id: str) -> None:

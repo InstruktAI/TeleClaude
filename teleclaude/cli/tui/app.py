@@ -536,15 +536,8 @@ class TelecApp:
                     )
                 self._session_status_cache[updated_session.session_id] = new_status
 
-                # Dispatch SESSION_ACTIVITY intents in-order for highlight logic.
-                for reason in event.reasons:
-                    self.controller.dispatch(
-                        Intent(
-                            IntentType.SESSION_ACTIVITY,
-                            {"session_id": updated_session.session_id, "reason": reason},
-                        )
-                    )
-
+                # Refresh data for state changes (title, status, etc.)
+                # Activity events (user input, tool use, agent output) flow through AgentActivityEvent
                 if self._loop:
                     self._loop.run_until_complete(self.refresh_data())
 

@@ -172,7 +172,7 @@ class APIServer:
             self.cache.remove_session(context.session_id)
             return
         summary = SessionSummary.from_db_session(session, computer=config.computer.name)
-        self.cache.update_session(summary, reasons=context.reasons)
+        self.cache.update_session(summary)
 
     async def _handle_session_started_event(
         self,
@@ -1134,16 +1134,12 @@ class APIServer:
         # Convert to DTO payload if necessary
         payload: dict[str, object]  # guard: loose-dict - WebSocket payload assembly
         if event in ("session_started", "session_updated"):
-            # Extract session and ordered reasons from cache notification
+            # Extract session from cache notification
             session: SessionSummary | None = None
-            reasons: list[str] = []
             if isinstance(data, dict):
                 session_val = data.get("session")
                 if isinstance(session_val, SessionSummary):
                     session = session_val
-                reasons_val = data.get("reasons")
-                if isinstance(reasons_val, list):
-                    reasons = [str(item) for item in reasons_val if isinstance(item, str)]
             elif isinstance(data, SessionSummary):
                 session = data
 
@@ -1158,7 +1154,6 @@ class APIServer:
                     payload = SessionUpdatedEventDTO(
                         event=event,
                         data=dto,
-                        reasons=reasons,  # type: ignore[arg-type]
                     ).model_dump(exclude_none=True)
             else:
                 payload = {"event": event, "data": data}

@@ -7,10 +7,7 @@ import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Literal, Optional, Union, cast
-
-if TYPE_CHECKING:
-    from teleclaude.core.models import SessionUpdateReason
+from typing import Literal, Optional, Union, cast
 
 # Event bus carries internal events (not user commands).
 EventType = Literal[
@@ -445,7 +442,6 @@ class SessionUpdatedContext:
 
     session_id: str
     updated_fields: Mapping[str, object]
-    reasons: tuple["SessionUpdateReason", ...] = ()  # Ordered UI activity reasons
 
 
 @dataclass(frozen=True)

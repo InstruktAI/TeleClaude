@@ -12,7 +12,7 @@ from typing import Callable, Generic, TypeVar
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER
-from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, SessionUpdateReason, TodoInfo
+from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
 
 logger = get_logger(__name__)
 
@@ -309,29 +309,26 @@ class DaemonCache:
     def update_session(
         self,
         session: SessionSummary,
-        *,
-        reasons: tuple[SessionUpdateReason, ...] = (),
     ) -> None:
         """Update session info in cache.
 
         Args:
             session: Session summary object
-            reasons: Ordered activity reasons (for highlight logic)
         """
         session_id = session.session_id
         is_new = session_id not in self._sessions
         self._sessions[session_id] = CachedItem(session)
         logger.debug(
-            "Updated session cache: %s (computer=%s, new=%s, title=%s, reasons=%s)",
+            "Updated session cache: %s (computer=%s, new=%s, title=%s)",
             session_id[:8],
             session.computer,
             is_new,
             session.title,
-            reasons,
         )
-        # Include reasons in the notification payload
+        # Notify cache subscribers (state changes only).
+        # Activity events (user input, tool use, agent output) flow through AgentActivityEvent.
         event = "session_started" if is_new else "session_updated"
-        self._notify(event, {"session": session, "reasons": list(reasons)})
+        self._notify(event, session)
 
     def remove_session(self, session_id: str) -> None:
         """Remove session from cache.

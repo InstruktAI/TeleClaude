@@ -395,12 +395,9 @@ class AgentCoordinator:
                 except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
                     logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
 
-        # Emit a single consolidated update for this stop turn.
-        # If no fields changed, still emit agent_stopped so UI transitions correctly.
+        # Persist feedback and status to DB (activity events are emitted separately).
         if update_kwargs:
             await db.update_session(session_id, **update_kwargs)
-        else:
-            await db.update_session(session_id, reasons=("agent_stopped",))
 
         # Emit activity event for UI updates
         event_bus.emit(
@@ -615,10 +612,9 @@ class AgentCoordinator:
                     update_kwargs[SessionField.LAST_AGENT_OUTPUT_AT.value] = last_ts.isoformat()
                     logger.debug("Updating cursor for session %s to %s", session_id[:8], last_ts.isoformat())
 
+                # Persist cursor timestamp (activity events are emitted separately).
                 if update_kwargs:
                     await db.update_session(session_id, **update_kwargs)
-                else:
-                    await db.update_session(session_id, reasons=("agent_output",))
 
                 return True
             except Exception as exc:  # noqa: BLE001 - Message send should never crash event handling

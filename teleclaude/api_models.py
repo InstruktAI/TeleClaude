@@ -243,7 +243,6 @@ class SessionUpdatedEventDTO(BaseModel):  # type: ignore[explicit-any]
 
     event: Literal["session_updated"]
     data: SessionSummaryDTO
-    reasons: list[Literal["user_input", "agent_output", "agent_stopped", "state_change"]] = Field(default_factory=list)
 
 
 class SessionClosedDataDTO(BaseModel):  # type: ignore[explicit-any]
