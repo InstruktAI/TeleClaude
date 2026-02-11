@@ -7,14 +7,21 @@
     "todos": []
   },
   "dor": {
-    "last_assessed_at": "2026-02-11T22:00:00Z",
-    "score": 8,
+    "last_assessed_at": "2026-02-11T23:15:00Z",
+    "score": 10,
     "status": "pass",
     "schema_version": 1,
     "blockers": [],
     "actions_taken": {
       "requirements_updated": true,
-      "implementation_plan_updated": true
+      "implementation_plan_updated": true,
+      "dor_report_created": true,
+      "role_mapping_reconciled": true,
+      "home_field_made_optional": true,
+      "dm_routing_detailed": true,
+      "backward_compat_specified": true,
+      "codebase_verified": true,
+      "gate_validation_completed": true
     }
   },
   "review_round": 0,
