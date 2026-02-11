@@ -10,6 +10,7 @@ type: 'procedure'
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/policy/commits.md
+- @~/.teleclaude/docs/software-development/policy/version-control-safety.md
 
 ## Goal
 
@@ -30,6 +31,7 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
    - Implement the task.
    - Commit changes for the task (one commit per task).
    - Update the task checkbox to `[x]` and include that change in the same commit.
+   - Do not use `git stash`/`git stash pop`; keep the flow commit-based inside the current worktree.
 4. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
 5. Update only the Build section in `quality-checklist.md`.
    - Do not edit Review or Finalize sections.

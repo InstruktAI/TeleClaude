@@ -718,3 +718,4 @@ async def test_mark_phase_blocks_on_uncommitted_changes(mock_mcp_server):
         )
 
         assert "UNCOMMITTED_CHANGES" in result
+        assert "stash" not in result.lower()

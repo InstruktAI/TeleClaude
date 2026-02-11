@@ -1049,7 +1049,10 @@ class MCPHandlersMixin:
             return f"ERROR: Worktree not found at {worktree_cwd}"
 
         if has_uncommitted_changes(cwd, slug):
-            return f"ERROR: UNCOMMITTED_CHANGES\nWorktree trees/{slug} has uncommitted changes. Please commit or stash them before marking phase as complete."
+            return (
+                f"ERROR: UNCOMMITTED_CHANGES\nWorktree trees/{slug} has uncommitted changes. "
+                "Please commit them before marking phase as complete."
+            )
 
         updated_state = mark_phase(worktree_cwd, slug, phase, status)
         return f"OK: {slug} state updated - {phase}: {status}\nCurrent state: {updated_state}"

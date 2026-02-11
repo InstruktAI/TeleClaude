@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+LOOSE_DICT_LITERAL = "dict[str, " + "object]"
+
 
 def _load_guardrails_module():
     path = Path(__file__).resolve().parents[2] / "tools" / "lint" / "guardrails.py"
@@ -19,7 +21,7 @@ def _load_guardrails_module():
 
 def test_line_has_exception_marker_on_same_line() -> None:
     module = _load_guardrails_module()
-    lines = ["value: dict[str, object]  # guard: loose-dict - dynamic payload"]
+    lines = [f"value: {LOOSE_DICT_LITERAL}  # guard: loose-dict - dynamic payload"]
     markers = ("# guard: loose-dict", "# guard:loose-dict", "# guard: loose-dict-func")
     assert module._line_has_exception_marker(lines, 1, markers) is True
 
@@ -28,7 +30,7 @@ def test_line_has_exception_marker_on_previous_line() -> None:
     module = _load_guardrails_module()
     lines = [
         "# guard: loose-dict - boundary JSON payload",
-        "value: dict[str, object]",
+        f"value: {LOOSE_DICT_LITERAL}",
     ]
     markers = ("# guard: loose-dict", "# guard:loose-dict", "# guard: loose-dict-func")
     assert module._line_has_exception_marker(lines, 2, markers) is True
@@ -38,7 +40,7 @@ def test_line_without_marker_is_not_exempt() -> None:
     module = _load_guardrails_module()
     lines = [
         "# unrelated comment",
-        "value: dict[str, " "object]",
+        f"value: {LOOSE_DICT_LITERAL}",
     ]
     markers = ("# guard: loose-dict", "# guard:loose-dict", "# guard: loose-dict-func")
     assert module._line_has_exception_marker(lines, 2, markers) is False
@@ -69,3 +71,28 @@ def test_debug_probe_prints_fail_guardrails(tmp_path: Path) -> None:
     )
     with pytest.raises(SystemExit, match="leftover debug probe prints detected"):
         module._warn_for_debug_probes(tmp_path)
+
+
+def test_stash_commands_in_agent_artifacts_fail_guardrails(tmp_path: Path) -> None:
+    module = _load_guardrails_module()
+    file_path = tmp_path / "agents" / "commands" / "next-build.md"
+    file_path.parent.mkdir(parents=True)
+    file_path.write_text(
+        "Run `git stash` before switching tasks.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="forbidden git stash command usage"):
+        module._fail_on_stash_commands_in_agent_artifacts(tmp_path)
+
+
+def test_stash_commands_allowlisted_with_marker(tmp_path: Path) -> None:
+    module = _load_guardrails_module()
+    file_path = tmp_path / "agents" / "commands" / "example.md"
+    file_path.parent.mkdir(parents=True)
+    file_path.write_text(
+        "guard: allow-git-stash\nThis line documents `git stash` for explanation only.\n",
+        encoding="utf-8",
+    )
+
+    module._fail_on_stash_commands_in_agent_artifacts(tmp_path)

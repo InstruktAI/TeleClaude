@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from pathlib import Path
 
 
@@ -33,6 +34,7 @@ def main() -> None:
         _fail("pyproject.toml must define [tool.ruff]")
 
     _warn_for_debug_probes(repo_root)
+    _fail_on_stash_commands_in_agent_artifacts(repo_root)
     _warn_for_loose_dicts(repo_root)
 
 
@@ -70,6 +72,48 @@ def _warn_for_debug_probes(repo_root: Path) -> None:
     _fail(
         "leftover debug probe prints detected.\n"
         "Use structured logger calls and remove temporary probes before commit.\n"
+        f"{formatted}\n"
+    )
+
+
+def _fail_on_stash_commands_in_agent_artifacts(repo_root: Path) -> None:
+    """Fail when agent instruction artifacts include git stash workflows.
+
+    Stash state is repository-wide, so stash pop/apply is unsafe in multi-worktree automation.
+    """
+    scan_roots = [
+        repo_root / "agents",
+        repo_root / ".agents",
+    ]
+    # Match command-like stash usage, including common subcommands.
+    stash_pattern = re.compile(r"\bgit\s+stash(?:\s+(?:pop|apply|push|drop|list|show))?\b")
+    marker = "guard: allow-git-stash"
+    matches: list[str] = []
+
+    for root in scan_roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*.md"):
+            rel = path.relative_to(repo_root).as_posix()
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                continue
+            for lineno, line in enumerate(lines, start=1):
+                if marker in line:
+                    continue
+                if lineno > 1 and marker in lines[lineno - 2]:
+                    continue
+                if stash_pattern.search(line):
+                    matches.append(f"{rel}:{lineno}: {line.strip()}")
+
+    if not matches:
+        return
+
+    formatted = "\n".join(f"- {match}" for match in matches)
+    _fail(
+        "forbidden git stash command usage detected in agent artifacts.\n"
+        "Use explicit commits and worktrees instead of stash workflows.\n"
         f"{formatted}\n"
     )
 
