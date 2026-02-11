@@ -48,15 +48,15 @@ Verify the implementation against requirements and standards, and deliver a bina
    - Do not edit Build or Finalize sections.
 8. Run review lanes in parallel where possible:
 
-   | Aspect   | When to use              | Skill                      | Task                              |
-   | -------- | ------------------------ | -------------------------- | --------------------------------- |
-   | code     | Always                   | next-code-reviewer         | Find bugs and pattern violations  |
-   | tests    | Test files changed       | next-test-analyzer         | Evaluate coverage and quality     |
-   | errors   | Error handling changed   | next-silent-failure-hunter | Find silent failures              |
-   | types    | Types added/modified     | next-type-design-analyzer  | Validate type design              |
-   | comments | Comments/docs added      | next-comment-analyzer      | Check accuracy                    |
+   | Aspect   | When to use              | Skill                      | Task                                               |
+   | -------- | ------------------------ | -------------------------- | -------------------------------------------------- |
+   | code     | Always                   | next-code-reviewer         | Find bugs and pattern violations                   |
+   | tests    | Test files changed       | next-test-analyzer         | Evaluate coverage and quality                      |
+   | errors   | Error handling changed   | next-silent-failure-hunter | Find silent failures                               |
+   | types    | Types added/modified     | next-type-design-analyzer  | Validate type design                               |
+   | comments | Comments/docs added      | next-comment-analyzer      | Check accuracy                                     |
    | logging  | Logging changed or noisy | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes |
-   | simplify | After other reviews pass | next-code-simplifier       | Simplify without behavior changes |
+   | simplify | After other reviews pass | next-code-simplifier       | Simplify without behavior changes                  |
 
 9. Logging hygiene check (required):
    - Reject temporary debug probes (e.g., `print("DEBUG: ...")`, one-off file/line probes).

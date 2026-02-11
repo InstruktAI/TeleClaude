@@ -71,9 +71,7 @@ def test_pick_agent_rejects_unavailable_preferred(monkeypatch: pytest.MonkeyPatc
         agent_cli._pick_agent(AgentName.CODEX)
 
 
-def test_pick_agent_treats_expired_unavailability_as_available(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
+def test_pick_agent_treats_expired_unavailability_as_available(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setattr(agent_cli, "_REPO_ROOT", tmp_path)
     _set_binary_map(monkeypatch, {"claude", "codex", "gemini"})
 

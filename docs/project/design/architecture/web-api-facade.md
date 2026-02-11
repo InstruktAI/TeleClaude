@@ -26,13 +26,13 @@ Define the web boundary where Next.js route handlers are the only public API for
 
 The stable public surface is the Next.js API namespace (`/api/*` in frontend app), not daemon URLs.
 
-| Public Route | Initial Mode | Upstream |
-| --- | --- | --- |
-| `POST /api/chat` | `proxy` | daemon stream endpoint |
-| `GET /api/people` | `proxy` | daemon people endpoint |
-| `GET /api/sessions` | `proxy` | daemon sessions endpoint |
-| `POST /api/sessions` | `proxy` | daemon create session endpoint |
-| `POST /api/sessions/:id/messages` | `proxy` | daemon message ingest endpoint |
+| Public Route                      | Initial Mode | Upstream                       |
+| --------------------------------- | ------------ | ------------------------------ |
+| `POST /api/chat`                  | `proxy`      | daemon stream endpoint         |
+| `GET /api/people`                 | `proxy`      | daemon people endpoint         |
+| `GET /api/sessions`               | `proxy`      | daemon sessions endpoint       |
+| `POST /api/sessions`              | `proxy`      | daemon create session endpoint |
+| `POST /api/sessions/:id/messages` | `proxy`      | daemon message ingest endpoint |
 
 ## Data/Transport Strategy
 

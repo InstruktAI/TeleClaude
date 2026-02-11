@@ -26,8 +26,12 @@ def test_runtime_binary_resolution_platform_policy() -> None:
     """Runtime resolver should enforce platform policy for all agent/tmux binaries."""
     if sys.platform == "darwin":
         assert resolve_tmux_binary().endswith("/Applications/TmuxLauncher.app/Contents/MacOS/tmux-launcher")
-        assert resolve_agent_binary("claude").endswith("/Applications/ClaudeLauncher.app/Contents/MacOS/claude-launcher")
-        assert resolve_agent_binary("gemini").endswith("/Applications/GeminiLauncher.app/Contents/MacOS/gemini-launcher")
+        assert resolve_agent_binary("claude").endswith(
+            "/Applications/ClaudeLauncher.app/Contents/MacOS/claude-launcher"
+        )
+        assert resolve_agent_binary("gemini").endswith(
+            "/Applications/GeminiLauncher.app/Contents/MacOS/gemini-launcher"
+        )
         assert resolve_agent_binary("codex").endswith("/Applications/CodexLauncher.app/Contents/MacOS/codex-launcher")
     else:
         assert resolve_tmux_binary() == "tmux"
@@ -45,9 +49,7 @@ def test_config_rejects_legacy_agents_key(monkeypatch: pytest.MonkeyPatch, tmp_p
     env_path.write_text("", encoding="utf-8")
     config_file = tmp_path / "config.yml"
     config_file.write_text(
-        "agents:\n"
-        "  claude:\n"
-        "    binary: /tmp/claude\n",
+        "agents:\n  claude:\n    binary: /tmp/claude\n",
         encoding="utf-8",
     )
 
@@ -68,8 +70,7 @@ def test_config_rejects_legacy_tmux_key(monkeypatch: pytest.MonkeyPatch, tmp_pat
     env_path.write_text("", encoding="utf-8")
     config_file = tmp_path / "config.yml"
     config_file.write_text(
-        "computer:\n"
-        "  tmux_binary: /tmp/tmux\n",
+        "computer:\n  tmux_binary: /tmp/tmux\n",
         encoding="utf-8",
     )
 

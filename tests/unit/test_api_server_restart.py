@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -105,3 +105,33 @@ def test_get_fd_count_uses_dev_fd(monkeypatch) -> None:
     monkeypatch.setattr("teleclaude.api_server.os.listdir", lambda _path: ["0", "1", "2", "3"])
 
     assert _get_fd_count() == 4
+
+
+def test_dump_stacks_logs_traceback_dump() -> None:
+    adapter = APIServer(_DummyClient())
+
+    def fake_dump(*, file, all_threads: bool) -> None:
+        assert all_threads is True
+        file.write("fake-stack")
+
+    with (
+        patch("teleclaude.api_server.faulthandler.dump_traceback", side_effect=fake_dump),
+        patch("teleclaude.api_server.logger.error") as mock_error,
+    ):
+        adapter._dump_stacks("slow_requests")
+
+    mock_error.assert_called_once_with("API HANG_DUMP reason=%s\n%s", "slow_requests", "fake-stack")
+
+
+def test_dump_stacks_logs_failure_when_dump_raises() -> None:
+    adapter = APIServer(_DummyClient())
+
+    with (
+        patch("teleclaude.api_server.faulthandler.dump_traceback", side_effect=RuntimeError("fileno")),
+        patch("teleclaude.api_server.logger.error") as mock_error,
+    ):
+        adapter._dump_stacks("loop_lag")
+
+    assert mock_error.call_count == 1
+    assert mock_error.call_args.args[0] == "API watch dump failed: %s"
+    assert str(mock_error.call_args.args[1]) == "fileno"

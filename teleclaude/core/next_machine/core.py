@@ -93,23 +93,15 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
         (AgentName.CODEX.value, ThinkingMode.MED.value),
         (AgentName.CLAUDE.value, ThinkingMode.MED.value),
         (AgentName.GEMINI.value, ThinkingMode.MED.value),
-        (AgentName.CODEX.value, ThinkingMode.MED.value),
     ],
     "finalize": [
         (AgentName.CODEX.value, ThinkingMode.MED.value),
         (AgentName.CLAUDE.value, ThinkingMode.MED.value),
         (AgentName.GEMINI.value, ThinkingMode.MED.value),
-        (AgentName.CODEX.value, ThinkingMode.MED.value),
     ],
     "defer": [
         (AgentName.CLAUDE.value, ThinkingMode.MED.value),
         (AgentName.CODEX.value, ThinkingMode.MED.value),
-        (AgentName.GEMINI.value, ThinkingMode.MED.value),
-        (AgentName.CODEX.value, ThinkingMode.MED.value),
-    ],
-    "docs": [
-        (AgentName.CODEX.value, ThinkingMode.MED.value),
-        (AgentName.CLAUDE.value, ThinkingMode.MED.value),
         (AgentName.GEMINI.value, ThinkingMode.MED.value),
     ],
 }

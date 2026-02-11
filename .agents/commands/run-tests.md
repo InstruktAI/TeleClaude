@@ -9,7 +9,6 @@ argument-hint: '[--csv <path>]'
 
 @~/.teleclaude/docs/software-development/concept/tester.md
 
-
 You are now the Tester.
 
 ## Purpose

@@ -20,8 +20,6 @@ from teleclaude.core.models import (
     ChannelMetadata,
     CleanupTrigger,
     MessageMetadata,
-    RedisTransportMetadata,
-    TelegramAdapterMetadata,
 )
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.core.session_utils import get_display_title_for_session
@@ -636,74 +634,16 @@ class AdapterClient:
             )
             return result
         except Exception as exc:
-            if adapter_type == "telegram" and self._is_missing_telegram_thread_error(exc):
-                logger.warning(
-                    "[UI_LANE] Missing Telegram thread detected for session %s; resetting channel metadata and retrying",
+            try:
+                return await adapter.recover_lane_error(session, exc, task_factory, display_title)
+            except Exception:
+                logger.error(
+                    "[UI_LANE] UI adapter %s failed in lane for session %s: %s",
+                    adapter_type,
                     session.session_id[:8],
+                    exc,
                 )
-                return await self._retry_ui_lane_after_missing_thread(
-                    session=session,
-                    adapter=adapter,
-                    task_factory=task_factory,
-                    display_title=display_title,
-                    original_error=exc,
-                )
-            logger.error(
-                "[UI_LANE] UI adapter %s failed in lane for session %s: %s",
-                adapter_type,
-                session.session_id[:8],
-                exc,
-            )
-            return None
-
-    @staticmethod
-    def _is_missing_telegram_thread_error(exc: Exception) -> bool:
-        """Return True when Telegram indicates the session topic/thread is gone."""
-        message = str(exc).lower()
-        return "message thread not found" in message or "topic_deleted" in message
-
-    async def _retry_ui_lane_after_missing_thread(
-        self,
-        session: "Session",
-        adapter: UiAdapter,
-        task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
-        display_title: str,
-        original_error: Exception,
-    ) -> object | None:
-        """Reset stale Telegram topic metadata, recreate channel, and retry once."""
-        refreshed = await db.get_session(session.session_id)
-        recovery_session = refreshed or session
-
-        if not recovery_session.adapter_metadata.telegram:
-            recovery_session.adapter_metadata.telegram = TelegramAdapterMetadata()
-        recovery_session.adapter_metadata.telegram.topic_id = None
-        recovery_session.adapter_metadata.telegram.output_message_id = None
-        recovery_session.adapter_metadata.telegram.footer_message_id = None
-        recovery_session.adapter_metadata.telegram.char_offset = 0
-
-        await db.update_session(
-            recovery_session.session_id,
-            adapter_metadata=recovery_session.adapter_metadata,
-            last_output_digest=None,
-        )
-        await db.set_output_message_id(recovery_session.session_id, None)
-
-        try:
-            retry_session = await adapter.ensure_channel(recovery_session, display_title)
-            result = await task_factory(adapter, retry_session)
-            logger.info(
-                "[UI_LANE] Recovered Telegram lane after missing thread for session %s",
-                session.session_id[:8],
-            )
-            return result
-        except Exception as retry_exc:
-            logger.error(
-                "[UI_LANE] Telegram recovery retry failed for session %s: initial=%s retry=%s",
-                session.session_id[:8],
-                original_error,
-                retry_exc,
-            )
-            return None
+                return None
 
     @staticmethod
     def _summarize_output(output: str) -> str:
@@ -1037,23 +977,11 @@ class AdapterClient:
         # Store ALL adapter channel_ids in session metadata (enables observer broadcasting)
         updated_session = await db.get_session(session_id)
         if updated_session:
-            # Store each adapter's channel_id in its namespace
+            # Store each adapter's channel_id via its own metadata interface
             for adapter_type, channel_id in all_channel_ids.items():
-                adapter_meta: object = getattr(updated_session.adapter_metadata, adapter_type, None)
-                if not adapter_meta:
-                    if adapter_type == "telegram":
-                        adapter_meta = TelegramAdapterMetadata()
-                    elif adapter_type == "redis":
-                        adapter_meta = RedisTransportMetadata()
-                    else:
-                        continue
-                    setattr(updated_session.adapter_metadata, adapter_type, adapter_meta)
-
-                # Store channel_id - telegram uses topic_id, redis uses channel_id
-                if adapter_type == "telegram" and isinstance(adapter_meta, TelegramAdapterMetadata):
-                    adapter_meta.topic_id = int(channel_id)
-                elif adapter_type == "redis" and isinstance(adapter_meta, RedisTransportMetadata):
-                    adapter_meta.channel_id = channel_id
+                adapter = self.adapters.get(adapter_type)
+                if adapter:
+                    adapter.store_channel_id(updated_session.adapter_metadata, channel_id)
 
             await db.update_session(session_id, adapter_metadata=updated_session.adapter_metadata)
             logger.debug("Stored channel_ids for all adapters in session %s metadata", session_id[:8])

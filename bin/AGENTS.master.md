@@ -25,4 +25,3 @@
 ## Placement Rule
 
 If a file is not required to install, initialize, or lifecycle-manage TeleClaude, it does not belong in `bin/`.
-

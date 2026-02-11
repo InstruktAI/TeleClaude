@@ -20,7 +20,7 @@ def test_bin_init_has_no_embedded_python_blocks() -> None:
 
     forbidden_markers = (
         "<<'PY'",
-        "<<\"PY\"",
+        '<<"PY"',
         "python - <<",
         "python3 - <<",
     )

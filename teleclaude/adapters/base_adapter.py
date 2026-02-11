@@ -109,6 +109,15 @@ class BaseAdapter(ABC):
         """
         # Default: do nothing
 
+    # ==================== Adapter Metadata ====================
+
+    def store_channel_id(self, adapter_metadata: object, channel_id: str) -> None:
+        """Store platform channel ID into session adapter metadata.
+
+        Each adapter knows its own metadata shape. Override in subclasses.
+        Default: no-op (adapter does not use channel metadata).
+        """
+
     # ==================== Lifecycle Methods ====================
 
     @abstractmethod

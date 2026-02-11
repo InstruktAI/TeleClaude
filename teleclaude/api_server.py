@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import faulthandler
-import io
 import json
 import os
 import shlex
+import tempfile
 import time
 from typing import TYPE_CHECKING, Callable, Literal
 
@@ -1346,13 +1346,15 @@ class APIServer:
         if (now - self._last_dump_at) < API_WATCH_DUMP_COOLDOWN_S:
             return
         self._last_dump_at = now
-        buf = io.StringIO()
         try:
-            faulthandler.dump_traceback(file=buf, all_threads=True)
+            with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as buf:
+                faulthandler.dump_traceback(file=buf, all_threads=True)
+                buf.seek(0)
+                dump = buf.read()
         except Exception as exc:  # pragma: no cover - defensive
             logger.error("API watch dump failed: %s", exc)
             return
-        logger.error("API HANG_DUMP reason=%s\n%s", reason, buf.getvalue())
+        logger.error("API HANG_DUMP reason=%s\n%s", reason, dump)
 
     async def _watch_loop(self) -> None:
         """Detect API stalls (loop lag or long in-flight requests)."""

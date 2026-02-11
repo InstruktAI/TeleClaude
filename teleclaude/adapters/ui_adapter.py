@@ -89,6 +89,20 @@ class UiAdapter(BaseAdapter):
         _ = title
         return session
 
+    async def recover_lane_error(
+        self,
+        session: "Session",
+        error: Exception,
+        task_factory: Callable[["UiAdapter", "Session"], Awaitable[object]],
+        display_title: str,
+    ) -> object | None:
+        """Attempt platform-specific recovery from a lane task error.
+
+        Returns the task result if recovery succeeded, or None on recovery failure.
+        Default: re-raises (no recovery available).
+        """
+        raise error
+
     async def _get_output_message_id(self, session: "Session") -> Optional[str]:
         """Get output_message_id from top-level DB column.
 

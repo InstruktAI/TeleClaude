@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
 
 import httpx
@@ -205,6 +205,66 @@ class TelegramAdapter(
         refreshed = await db.get_session(session.session_id)
         logger.debug("[TG_ENSURE] Refreshed session from DB for %s", session.session_id[:8])
         return refreshed or session
+
+    async def recover_lane_error(
+        self,
+        session: Session,
+        error: Exception,
+        task_factory: Callable[[UiAdapter, Session], Awaitable[object]],
+        display_title: str,
+    ) -> object | None:
+        """Recover from missing Telegram thread by resetting topic metadata and retrying."""
+        message = str(error).lower()
+        if "message thread not found" not in message and "topic_deleted" not in message:
+            raise error
+
+        logger.warning(
+            "[TG_RECOVER] Missing thread detected for session %s; resetting channel metadata",
+            session.session_id[:8],
+        )
+        refreshed = await db.get_session(session.session_id)
+        recovery_session = refreshed or session
+
+        if not recovery_session.adapter_metadata.telegram:
+            recovery_session.adapter_metadata.telegram = TelegramAdapterMetadata()
+        recovery_session.adapter_metadata.telegram.topic_id = None
+        recovery_session.adapter_metadata.telegram.output_message_id = None
+        recovery_session.adapter_metadata.telegram.footer_message_id = None
+        recovery_session.adapter_metadata.telegram.char_offset = 0
+
+        await db.update_session(
+            recovery_session.session_id,
+            adapter_metadata=recovery_session.adapter_metadata,
+            last_output_digest=None,
+        )
+        await db.set_output_message_id(recovery_session.session_id, None)
+
+        try:
+            retry_session = await self.ensure_channel(recovery_session, display_title)
+            result = await task_factory(self, retry_session)
+            logger.info(
+                "[TG_RECOVER] Recovered lane after missing thread for session %s",
+                session.session_id[:8],
+            )
+            return result
+        except Exception as retry_exc:
+            logger.error(
+                "[TG_RECOVER] Recovery retry failed for session %s: initial=%s retry=%s",
+                session.session_id[:8],
+                error,
+                retry_exc,
+            )
+            return None
+
+    def store_channel_id(self, adapter_metadata: object, channel_id: str) -> None:
+        """Store Telegram topic_id into session adapter metadata."""
+        from teleclaude.core.models import SessionAdapterMetadata
+
+        if not isinstance(adapter_metadata, SessionAdapterMetadata):
+            return
+        if not adapter_metadata.telegram:
+            adapter_metadata.telegram = TelegramAdapterMetadata()
+        adapter_metadata.telegram.topic_id = int(channel_id)
 
     def _register_simple_command_handlers(self) -> None:
         """Create handler methods for simple commands dynamically.

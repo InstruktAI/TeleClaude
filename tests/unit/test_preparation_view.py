@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-from teleclaude.cli.models import CreateSessionResult
+from teleclaude.cli.models import AgentAvailabilityInfo, CreateSessionResult
 from teleclaude.cli.tui.app import FocusContext
 from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.state import TuiState
@@ -19,15 +19,26 @@ from teleclaude.cli.tui.views.preparation import PreparationView, PrepTodoDispla
 class DummyAPI:
     """API stub for create_session calls."""
 
-    def __init__(self, result: dict[str, object]) -> None:  # guard: loose-dict
-        self._result = result
+    def __init__(self, *, session_id: str = "sess-123", tmux_session_name: str = "tc_missing") -> None:
+        self.session_id = session_id
+        self.tmux_session_name = tmux_session_name
 
-    async def create_session(self, **kwargs: object) -> object:
-        _ = kwargs
-        tmux_session_name = str(self._result.get("tmux_session_name") or "tc_missing")
+    async def create_session(
+        self,
+        *,
+        computer: str,
+        project_path: str,
+        subdir: str | None = None,
+        agent: str,
+        thinking_mode: str,
+        title: str | None = None,
+        message: str | None = None,
+        auto_command: str | None = None,
+    ) -> CreateSessionResult:
+        _ = (computer, project_path, subdir, agent, thinking_mode, title, message, auto_command)
         return CreateSessionResult(
-            session_id=self._result.get("session_id", "sess-123"),
-            tmux_session_name=tmux_session_name,
+            session_id=self.session_id,
+            tmux_session_name=self.tmux_session_name,
             status="success",
         )
 
@@ -68,7 +79,7 @@ def _build_ready_todo_node(slug: str, status: str = "ready") -> PrepTodoNode:
 
 def test_handle_enter_on_ready_todo_uses_start_modal_with_prefilled_next_work(monkeypatch):
     """Enter on ready todo should open modal prefilled with /next-work <slug>."""
-    api = DummyAPI(result={"tmux_session_name": "session-1"})
+    api = DummyAPI(tmux_session_name="session-1")
     pane_manager = Mock()
     pane_manager.is_available = True
 
@@ -95,10 +106,19 @@ def test_handle_enter_on_ready_todo_uses_start_modal_with_prefilled_next_work(mo
     result = CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_123", agent="codex")
 
     class FakeStartSessionModal:
-        def __init__(self, **kwargs: object) -> None:
-            captured["computer"] = str(kwargs["computer"])
-            captured["project_path"] = str(kwargs["project_path"])
-            captured["default_prompt"] = str(kwargs["default_prompt"])
+        def __init__(
+            self,
+            computer: str,
+            project_path: str,
+            api: DummyAPI,
+            agent_availability: dict[str, AgentAvailabilityInfo],
+            default_prompt: str = "",
+            notify: object | None = None,
+        ) -> None:
+            _ = (api, agent_availability, notify)
+            captured["computer"] = computer
+            captured["project_path"] = project_path
+            captured["default_prompt"] = default_prompt
             self.start_requested = False
 
         def run(self, _stdscr: DummyScreen) -> CreateSessionResult:
@@ -117,7 +137,7 @@ def test_handle_enter_on_ready_todo_uses_start_modal_with_prefilled_next_work(mo
 
 def test_prepare_key_uses_start_modal_with_prefilled_next_prepare(monkeypatch):
     """Pressing p on a todo should open modal prefilled with /next-prepare <slug>."""
-    api = DummyAPI(result={"tmux_session_name": "session-1"})
+    api = DummyAPI(tmux_session_name="session-1")
     pane_manager = Mock()
     pane_manager.is_available = True
 
@@ -142,10 +162,19 @@ def test_prepare_key_uses_start_modal_with_prefilled_next_prepare(monkeypatch):
     }
 
     class FakeStartSessionModal:
-        def __init__(self, **kwargs: object) -> None:
-            captured["computer"] = str(kwargs["computer"])
-            captured["project_path"] = str(kwargs["project_path"])
-            captured["default_prompt"] = str(kwargs["default_prompt"])
+        def __init__(
+            self,
+            computer: str,
+            project_path: str,
+            api: DummyAPI,
+            agent_availability: dict[str, AgentAvailabilityInfo],
+            default_prompt: str = "",
+            notify: object | None = None,
+        ) -> None:
+            _ = (api, agent_availability, notify)
+            captured["computer"] = computer
+            captured["project_path"] = project_path
+            captured["default_prompt"] = default_prompt
             self.start_requested = False
 
         def run(self, _stdscr: DummyScreen) -> CreateSessionResult:

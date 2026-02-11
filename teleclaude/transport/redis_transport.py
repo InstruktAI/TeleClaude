@@ -93,6 +93,16 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
     _ALLOWED_REFRESH_REASONS = {"startup", "digest", "interest", "ttl"}
 
+    def store_channel_id(self, adapter_metadata: object, channel_id: str) -> None:
+        """Store Redis channel_id into session adapter metadata."""
+        from teleclaude.core.models import SessionAdapterMetadata
+
+        if not isinstance(adapter_metadata, SessionAdapterMetadata):
+            return
+        if not adapter_metadata.redis:
+            adapter_metadata.redis = RedisTransportMetadata()
+        adapter_metadata.redis.channel_id = channel_id
+
     def __init__(self, adapter_client: "AdapterClient", task_registry: "TaskRegistry | None" = None):
         """Initialize Redis transport.
 

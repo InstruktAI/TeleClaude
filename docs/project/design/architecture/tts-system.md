@@ -27,7 +27,6 @@ type: 'design'
 
 - Audio playback via the selected backend
 - Updated voice assignments in the database (adaptive fallback promotion)
-- Session environment variables: `ELEVENLABS_VOICE_ID`, `OPENAI_VOICE`, `MACOS_VOICE`
 
 ## Primary flows
 
