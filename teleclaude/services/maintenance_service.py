@@ -166,7 +166,7 @@ class MaintenanceService:
                 native_session_id=session.native_session_id,
             )
 
-            wrapped_cmd = tmux_io.wrap_bracketed_paste(cmd)
+            wrapped_cmd = tmux_io.wrap_bracketed_paste(cmd, active_agent=session.active_agent)
 
             restored = await tmux_bridge.send_keys(
                 session_name=session.tmux_session_name,

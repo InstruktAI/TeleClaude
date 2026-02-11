@@ -9,6 +9,7 @@ from typing import Optional
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge
+from teleclaude.core.codex_prompt_normalization import normalize_codex_next_command
 from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
@@ -18,9 +19,10 @@ _BRACKETED_PASTE_START = "\x1b[200~"
 _BRACKETED_PASTE_END = "\x1b[201~"
 
 
-def wrap_bracketed_paste(text: str) -> str:
+def wrap_bracketed_paste(text: str, active_agent: Optional[str] = None) -> str:
     if not text:
         return text
+    text = normalize_codex_next_command(active_agent, text)
     # Only bypass bracketed paste for single-word slash commands (e.g., /help, /exit)
     # Absolute paths like /Users/... should still be wrapped to prevent shell echo
     stripped = text.lstrip()

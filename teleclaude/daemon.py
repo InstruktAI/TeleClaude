@@ -1134,7 +1134,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Step 2: Inject the message immediately (TUI should be ready)
         logger.debug("agent_then_message: injecting message to session=%s", session_id[:8])
 
-        sanitized_message = tmux_io.wrap_bracketed_paste(message)
+        sanitized_message = tmux_io.wrap_bracketed_paste(message, active_agent=agent_name)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         pasted = await tmux_io.process_text(
             session,
@@ -1440,7 +1440,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.error("Session %s not found", session_id[:8])
             return False
 
-        sanitized_command = tmux_io.wrap_bracketed_paste(command)
+        sanitized_command = tmux_io.wrap_bracketed_paste(command, active_agent=session.active_agent)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         success = await tmux_io.process_text(
             session,

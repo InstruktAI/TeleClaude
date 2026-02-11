@@ -367,6 +367,45 @@ async def test_agent_then_message_applies_gemini_delay():
 
 
 @pytest.mark.asyncio
+async def test_agent_then_message_normalizes_codex_next_commands() -> None:
+    """agent_then_message should normalize Codex /next-* commands before injection."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon._execute_terminal_command = AsyncMock()
+    daemon._poll_and_send_output = AsyncMock()
+    daemon.command_service = MagicMock()
+    daemon.command_service.start_agent = AsyncMock()
+
+    async def mock_wait_stable(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+        return True, "stable output"
+
+    async def mock_confirm(*_args: object, **_kwargs: object) -> bool:
+        return True
+
+    with (
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.tmux_io.process_text", new_callable=AsyncMock, return_value=True) as mock_send,
+        patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock, return_value=True),
+        patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
+        patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
+    ):
+        mock_db.get_session = AsyncMock(
+            return_value=MagicMock(tmux_session_name="tc_123", project_path=".", active_agent="codex")
+        )
+        mock_db.update_session = AsyncMock()
+        mock_db.update_last_activity = AsyncMock()
+
+        result = await daemon._handle_agent_then_message(
+            "sess-123",
+            ["codex", "slow", "/next-work test-todo"],
+        )
+
+        assert result["status"] == "success"
+        sent_text = mock_send.await_args.args[1]
+        assert sent_text == "/prompts:next-work test-todo"
+
+
+@pytest.mark.asyncio
 async def test_execute_auto_command_updates_last_message_sent():
     """Auto-command should update last_message_sent in session."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)

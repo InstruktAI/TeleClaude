@@ -212,7 +212,7 @@ async def _ensure_tmux_for_headless(
             exec=False,
             native_session_id=session.native_session_id,
         )
-        wrapped = tmux_io.wrap_bracketed_paste(resume_cmd)
+        wrapped = tmux_io.wrap_bracketed_paste(resume_cmd, active_agent=session.active_agent)
         await tmux_io.process_text(
             session,
             wrapped,
@@ -837,7 +837,7 @@ async def process_message(
         await client.broadcast_user_input(session, message_text, cmd.origin)
 
     active_agent = session.active_agent
-    sanitized_text = tmux_io.wrap_bracketed_paste(message_text)
+    sanitized_text = tmux_io.wrap_bracketed_paste(message_text, active_agent=active_agent)
 
     working_dir = resolve_working_dir(session.project_path, session.subdir)
     success = await tmux_io.process_text(
@@ -1036,7 +1036,7 @@ async def escape_command(
         active_agent = session.active_agent
 
         # Send text + ENTER
-        sanitized_text = tmux_io.wrap_bracketed_paste(text)
+        sanitized_text = tmux_io.wrap_bracketed_paste(text, active_agent=active_agent)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         success = await tmux_io.process_text(
             session,

@@ -36,3 +36,17 @@ def test_wrap_bracketed_paste_wraps_absolute_paths() -> None:
     text = "/Users/Morriz/Applications/ClaudeLauncher.app/Contents/MacOS/claude-launcher --resume abc123"
     wrapped = tmux_io.wrap_bracketed_paste(text)
     assert wrapped == f"\x1b[200~{text}\x1b[201~"
+
+
+def test_wrap_bracketed_paste_normalizes_codex_next_commands() -> None:
+    """Codex /next-* commands should be normalized to /prompts:next-*."""
+    text = "/next-work todo-123"
+    wrapped = tmux_io.wrap_bracketed_paste(text, active_agent="codex")
+    assert wrapped == "/prompts:next-work todo-123"
+
+
+def test_wrap_bracketed_paste_does_not_normalize_non_codex_next_commands() -> None:
+    """Non-Codex agents should keep /next-* commands unchanged."""
+    text = "/next-work todo-123"
+    wrapped = tmux_io.wrap_bracketed_paste(text, active_agent="claude")
+    assert wrapped == "/next-work todo-123"
