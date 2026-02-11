@@ -12,12 +12,6 @@
 
 ---
 
-## Daemon-Independent Jobs
-
-- [.] daemon-independent-jobs — Subprocess-based agent job execution with role-aware invocation
-
-Replace daemon-dependent `POST /sessions` agent job spawning with direct subprocess invocation. Agent jobs get full tool and MCP access, fall back silently to admin role when daemon is unavailable. Cron plist auto-installed by `make init`, 5-minute trigger granularity, overlap prevention, `--list` shows all job types. No hard dependencies — current prepare jobs work immediately.
-
 ## Person Identity & Authentication
 
 - [.] person-identity-auth — **BROKEN DOWN**

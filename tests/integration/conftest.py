@@ -129,9 +129,9 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     base_dir = Path(__file__).parent
     load_dotenv(base_dir / ".env")
 
-    # CRITICAL: Clear TELEGRAM_BOT_TOKEN immediately after loading .env
-    # This prevents real Telegram adapter from starting - we'll use a mock instead
-    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    # CRITICAL: Set a fake token so adapter_client.start() enters the telegram
+    # branch and instantiates MockTelegramAdapter (patched below).
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-token-for-tests")
 
     # CRITICAL: Set temp database path BEFORE importing teleclaude modules
     # tmp_path is function-scoped, so each test gets unique database automatically

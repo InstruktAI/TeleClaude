@@ -42,3 +42,4 @@
 | 2026-02-11 | agent-output-monitor         | Context-aware checkpoint messages at agent stop boundaries                                            | DELIVERED | 4173c150                                 |
 | 2026-02-11 | runtime-settings-tts-toggle  | RuntimeSettings layer, TTS toggle in TUI footer, debounced YAML persistence, SummarizerConfig cleanup | DELIVERED | c7102753                                 |
 | 2026-02-11 | agent-activity-events        | Direct agent activity event pipeline (Phase 1-2: foundation without DB-mediated reasons)              | DELIVERED | 61fe04e3                                 |
+| 2026-02-11 | daemon-independent-jobs      | Daemon-independent agent job execution with subprocess spawning, full tool/MCP access                 | DELIVERED | 93fb9b97                                 |
