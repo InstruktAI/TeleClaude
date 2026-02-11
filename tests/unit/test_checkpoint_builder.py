@@ -526,6 +526,19 @@ def test_slug_partial_overlap_suppressed(tmp_path):
     assert observations == []
 
 
+def test_slug_overlap_ignores_new_annotation_in_plan(tmp_path):
+    slug_dir = tmp_path / "todos" / "my-slug"
+    slug_dir.mkdir(parents=True)
+    plan = slug_dir / "implementation-plan.md"
+    plan.write_text(
+        "## Files to Change\n\n| File | Change |\n| --- | --- |\n| `teleclaude/core/foo.py` (NEW) | Add |\n",
+        encoding="utf-8",
+    )
+    ctx = _default_context(project_path=str(tmp_path), working_slug="my-slug")
+    observations = _check_slug_alignment(["teleclaude/core/foo.py"], ctx)
+    assert observations == []
+
+
 # ---------------------------------------------------------------------------
 # Message composition (R9)
 # ---------------------------------------------------------------------------

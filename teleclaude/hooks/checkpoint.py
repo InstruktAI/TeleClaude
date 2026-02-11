@@ -6,6 +6,7 @@ All heuristics are deterministic pattern matching, zero LLM calls.
 """
 
 import logging
+import re
 import subprocess
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
@@ -338,7 +339,9 @@ def _extract_plan_file_paths(plan_text: str) -> set[str]:
                 # Extract first column (file path)
                 cells = [c.strip() for c in line.split("|")]
                 if len(cells) >= 2:
-                    path = cells[1].strip("`").strip()
+                    path_cell = cells[1]
+                    match = re.search(r"`([^`]+)`", path_cell)
+                    path = match.group(1).strip() if match else path_cell.strip("`").strip()
                     if path and not path.startswith("---"):
                         paths.add(path)
             elif not line.strip().startswith("|"):
