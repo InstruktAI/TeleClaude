@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from teleclaude.constants import CHECKPOINT_MESSAGE
-from teleclaude.core.agent_coordinator import AgentCoordinator
+from teleclaude.core.agent_coordinator import AgentCoordinator, _is_checkpoint_prompt
 from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload, UserPromptSubmitPayload
 from teleclaude.core.models import Session
 
@@ -191,6 +191,14 @@ async def test_user_prompt_submit_skips_truncated_codex_checkpoint(coordinator):
 
         mock_db.set_notification_flag.assert_not_called()
         mock_db.update_session.assert_not_called()
+
+
+def test_checkpoint_prompt_requires_canonical_prefix():
+    assert _is_checkpoint_prompt("Context-aware checkpoint\n\nNo code changes detected.") is False
+
+
+def test_checkpoint_prompt_detects_canonical_prefix():
+    assert _is_checkpoint_prompt("[TeleClaude Checkpoint] - Context-aware checkpoint") is True
 
 
 @pytest.mark.asyncio

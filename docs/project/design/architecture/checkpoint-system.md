@@ -11,6 +11,8 @@ description: 'Checkpoint injection mechanism that delivers structured debrief pr
 
 Deliver context-aware checkpoint messages to AI agents at natural work boundaries, prompting them to validate work and capture artifacts. The system uses a unified timer based on the most recent input event and keeps checkpoint messages invisible to session state.
 
+All checkpoint payload variants use the canonical prefix `"[TeleClaude Checkpoint] - "` so runtime filtering can reliably distinguish system checkpoints from normal user prompts.
+
 Two signal axes feed a shared checkpoint builder (`checkpoint.py`):
 
 1. **File-based** — `git diff --name-only HEAD` maps changed files to file categories and action instructions (e.g., daemon code changed → "Run `make restart`").
@@ -205,7 +207,7 @@ sequenceDiagram
 | Git not available in hook subprocess                          | `_get_uncommitted_files` returns None → generic Phase 1 message | Correct fail-open behavior                          |
 | Transcript missing or corrupt                                 | `TurnTimeline(has_data=False)` → file-based instructions only   | No suppression; all actions listed                  |
 | Large transcript (>512KB JSONL)                               | Extraction reads full file via `_get_entries_for_agent()`       | Performance acceptable for checkpoint frequency     |
-| False suppression (evidence substring in unrelated command)    | Action incorrectly suppressed                                   | Acceptable: false suppression > false negative (R8) |
+| False suppression (evidence substring in unrelated command)   | Action incorrectly suppressed                                   | Acceptable: false suppression > false negative (R8) |
 
 ## See also
 

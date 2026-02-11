@@ -16,7 +16,12 @@ from typing import TYPE_CHECKING, Coroutine, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import CHECKPOINT_MESSAGE, CHECKPOINT_REACTIVATION_THRESHOLD_S, LOCAL_COMPUTER
+from teleclaude.constants import (
+    CHECKPOINT_MESSAGE,
+    CHECKPOINT_PREFIX,
+    CHECKPOINT_REACTIVATION_THRESHOLD_S,
+    LOCAL_COMPUTER,
+)
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.events import (
@@ -80,13 +85,6 @@ SESSION_START_MESSAGES = [
 ]
 
 
-_CHECKPOINT_PREFIXES = (
-    "Context-aware checkpoint",
-    "All expected validations",
-    "Checkpoint \u2014",
-)
-
-
 def _is_checkpoint_prompt(
     prompt: str,
     *,
@@ -103,13 +101,13 @@ def _is_checkpoint_prompt(
     if not prompt_clean:
         return False
 
-    # Prefix match covers all checkpoint variants (generic + context-aware)
-    if any(prompt_clean.startswith(prefix) for prefix in _CHECKPOINT_PREFIXES):
+    # Canonical prefix match covers all checkpoint variants.
+    if prompt_clean.startswith(CHECKPOINT_PREFIX):
         return True
 
-    # Exact/contained match for the generic constant (backward compat)
+    # Exact match for the generic constant (backward compat).
     checkpoint_clean = CHECKPOINT_MESSAGE.strip()
-    if checkpoint_clean in prompt_clean:
+    if prompt_clean == checkpoint_clean:
         return True
 
     # Truncated Codex synthetic prompt (from output polling / fast-poll)

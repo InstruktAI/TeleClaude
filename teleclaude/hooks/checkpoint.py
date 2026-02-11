@@ -22,6 +22,7 @@ from teleclaude.constants import (
     CHECKPOINT_LOG_CHECK_EVIDENCE,
     CHECKPOINT_MESSAGE,
     CHECKPOINT_NO_ACTION_PATTERNS,
+    CHECKPOINT_PREFIX,
     CHECKPOINT_STATUS_EVIDENCE,
     CHECKPOINT_TEST_ERROR_COMMANDS,
     CHECKPOINT_TEST_ERROR_MESSAGE,
@@ -455,6 +456,40 @@ def _command_has_evidence(command: str, evidence_markers: list[str]) -> bool:
     return False
 
 
+def _command_invokes_search(command: str) -> bool:
+    """Return True when a shell command executes rg/grep (directly or via wrappers)."""
+    for segment in _split_shell_segments(command):
+        tokens = _segment_tokens(segment.lower())
+        if not tokens:
+            continue
+        head = tokens[0]
+        rest = tokens[1:]
+        if head in {"rg", "grep"}:
+            return True
+        if head == "uv" and len(rest) >= 2 and rest[0] == "run" and rest[1] in {"rg", "grep"}:
+            return True
+        if head in {"python", "python3"} and len(rest) >= 3 and rest[0] == "-m" and rest[1] in {"rg", "grep"}:
+            return True
+    return False
+
+
+def _command_references_file(command: str, file_path: str) -> bool:
+    """Return True when command segments include the file path as an argument token."""
+    normalized = file_path.strip().replace("\\", "/")
+    if not normalized:
+        return False
+
+    for segment in _split_shell_segments(command):
+        for token in _segment_tokens(segment):
+            clean = token.strip().strip("\"'`").strip(",;:")
+            if not clean:
+                continue
+            clean = clean.replace("\\", "/")
+            if clean == normalized or clean.endswith(f"/{normalized}"):
+                return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Error state detection (R5)
 # ---------------------------------------------------------------------------
@@ -487,7 +522,7 @@ def _is_non_actionable_error(record: ToolCallRecord) -> bool:
     """Ignore expected non-zero exits for search commands with no matches."""
     command = _extract_shell_command(record.input_data).strip().lower()
     snippet = (record.result_snippet or "").lower()
-    if command.startswith("rg ") or command.startswith("grep "):
+    if _command_invokes_search(command):
         if "process exited with code 1" in snippet:
             # `rg`/`grep` use exit code 1 for "no matches"; this is informational.
             if "no such file or directory" not in snippet and "permission denied" not in snippet:
@@ -509,7 +544,7 @@ def _is_error_resolved(error_record: ToolCallRecord, subsequent: list[ToolCallRe
             if error_command and _commands_overlap(error_command, later_command):
                 return True
             # Bash command referencing same file area
-            if error_file and error_file in later_command:
+            if error_file and _command_references_file(later_command, error_file):
                 return True
 
         # Edit/Write targeting same file path
@@ -518,7 +553,7 @@ def _is_error_resolved(error_record: ToolCallRecord, subsequent: list[ToolCallRe
             if error_file and later_file == error_file:
                 return True
             # Also check if Edit targets a file mentioned in the error command
-            if error_command and later_file and later_file in error_command:
+            if error_command and later_file and _command_references_file(error_command, later_file):
                 return True
 
     return False
@@ -559,7 +594,7 @@ def _enrich_error(record: ToolCallRecord) -> str:
 
     # Check if it was a test command
     command = _extract_shell_command(record.input_data)
-    if any(cmd in command for cmd in CHECKPOINT_TEST_ERROR_COMMANDS):
+    if _command_has_evidence(command, CHECKPOINT_TEST_ERROR_COMMANDS):
         return CHECKPOINT_TEST_ERROR_MESSAGE
 
     return CHECKPOINT_GENERIC_ERROR_MESSAGE
@@ -747,17 +782,17 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
 
     # Special case: docs only
     if not git_files or _is_docs_only(git_files):
-        return "Context-aware checkpoint\n\nNo code changes detected this turn. Did you run `telec sync`?\nCommit if ready."
+        return f"{CHECKPOINT_PREFIX}No code changes detected this turn. Did you run `telec sync`?\nCommit if ready."
 
     # Special case: all clear
     if result.is_all_clear:
         return (
-            "All expected validations were observed. "
+            f"{CHECKPOINT_PREFIX}All expected validations were observed. "
             "Docs check: if relevant, update existing docs or add a new doc. "
             "Commit if ready."
         )
 
-    lines: list[str] = ["Context-aware checkpoint"]
+    lines: list[str] = [f"{CHECKPOINT_PREFIX}Context-aware checkpoint"]
 
     # Changed files summary grouped by category
     if result.categories:

@@ -269,6 +269,13 @@ def test_has_evidence_ignores_failed_commands():
     assert _has_evidence(timeline, ["make restart"]) is False
 
 
+def test_has_evidence_ignores_literal_mentions():
+    timeline = _timeline_with(
+        _bash_record("echo \"Run pkill -SIGUSR2 -f -- '-m teleclaude.cli.telec$'\""),
+    )
+    assert _has_evidence(timeline, ["pkill -SIGUSR2"]) is False
+
+
 # ---------------------------------------------------------------------------
 # Verification gap detection (R4 integration)
 # ---------------------------------------------------------------------------
@@ -540,6 +547,12 @@ def test_enrichment_unknown_error():
     assert "command returned errors" in msg
 
 
+def test_enrichment_does_not_treat_test_mentions_as_test_commands():
+    record = _bash_record("echo pytest tests/unit/test_foo.py", had_error=True, result_snippet="error")
+    msg = _enrich_error(record)
+    assert "command returned errors" in msg
+
+
 def test_enrichment_only_fires_when_layer1_fires():
     """Successful command with SyntaxError in stdout should have no observations."""
     timeline = _timeline_with(
@@ -558,6 +571,18 @@ def test_search_no_matches_exit_code_is_non_actionable():
     timeline = _timeline_with(
         _bash_record(
             "rg -n no_such_token tests/unit",
+            had_error=True,
+            result_snippet="Process exited with code 1\nOutput:\n",
+        ),
+    )
+    observations = _check_error_state(timeline)
+    assert observations == []
+
+
+def test_search_no_matches_uv_run_rg_is_non_actionable():
+    timeline = _timeline_with(
+        _bash_record(
+            "uv run rg -n no_such_token tests/unit",
             had_error=True,
             result_snippet="Process exited with code 1\nOutput:\n",
         ),
@@ -731,12 +756,14 @@ def test_slug_overlap_ignores_new_annotation_in_plan(tmp_path):
 
 def test_docs_only_message():
     msg = build_checkpoint_message(["docs/foo.md"], _empty_timeline(), _default_context())
+    assert msg.startswith("[TeleClaude Checkpoint] - ")
     assert "No code changes" in msg
     assert "telec sync" in msg
 
 
 def test_empty_diff_message():
     msg = build_checkpoint_message([], _empty_timeline(), _default_context())
+    assert msg.startswith("[TeleClaude Checkpoint] - ")
     assert "No code changes" in msg
     assert "telec sync" in msg
 
@@ -753,6 +780,7 @@ def test_all_clear_message_is_minimal():
         timeline,
         _default_context(),
     )
+    assert msg.startswith("[TeleClaude Checkpoint] - ")
     assert "All expected" in msg
     assert "Docs check" in msg
 
@@ -763,6 +791,7 @@ def test_message_has_required_actions():
         _empty_timeline(),
         _default_context(),
     )
+    assert msg.startswith("[TeleClaude Checkpoint] - ")
     assert "Required actions:" in msg
     assert "1." in msg
     assert "Docs check" in msg

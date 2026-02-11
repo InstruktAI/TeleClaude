@@ -1086,7 +1086,8 @@ async def test_handle_agent_restart_uses_context_payload_for_post_restart_checkp
         patch.object(command_handlers.asyncio, "sleep", new=AsyncMock()),
         patch.object(command_handlers.asyncio, "create_task", side_effect=_capture_task),
         patch(
-            "teleclaude.hooks.checkpoint.get_checkpoint_content", return_value="Context-aware checkpoint\n\nok"
+            "teleclaude.hooks.checkpoint.get_checkpoint_content",
+            return_value="[TeleClaude Checkpoint] - Context-aware checkpoint\n\nok",
         ) as mock_ckpt,
         patch(
             "teleclaude.core.tmux_bridge.send_keys_existing_tmux", new=AsyncMock(return_value=True)
@@ -1113,7 +1114,7 @@ async def test_handle_agent_restart_uses_context_payload_for_post_restart_checkp
     )
     mock_send_keys.assert_awaited_once_with(
         session_name="tc_ctx",
-        text="Context-aware checkpoint\n\nok",
+        text="[TeleClaude Checkpoint] - Context-aware checkpoint\n\nok",
         send_enter=True,
     )
     assert mock_execute.await_count == 1
