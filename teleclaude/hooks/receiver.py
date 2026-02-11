@@ -26,7 +26,6 @@ from teleclaude.core.agents import AgentName  # noqa: E402
 from teleclaude.core import db_models  # noqa: E402
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType  # noqa: E402
 from teleclaude.constants import (  # noqa: E402
-    CHECKPOINT_REACTIVATION_THRESHOLD_S,
     MAIN_MODULE,
     UI_MESSAGE_MAX_CHARS,
 )
@@ -154,20 +153,12 @@ def _maybe_checkpoint_output(
         return None
 
     elapsed = (now - turn_start).total_seconds()
-    if elapsed < CHECKPOINT_REACTIVATION_THRESHOLD_S:
-        logger.debug(
-            "Checkpoint skipped (%.1fs < %ds threshold) for session %s",
-            elapsed,
-            CHECKPOINT_REACTIVATION_THRESHOLD_S,
-            session_id[:8],
-        )
-        return None
 
     # Capture session fields before the DB update re-fetches row
     transcript_path = getattr(row, "native_log_file", None)
     working_slug = getattr(row, "working_slug", None)
 
-    logger.debug("Checkpoint threshold met for session %s (%.1fs elapsed)", session_id[:8], elapsed)
+    logger.debug("Checkpoint eval for session %s (%.1fs elapsed)", session_id[:8], elapsed)
 
     # Build context-aware checkpoint message from git diff + transcript
     from teleclaude.hooks.checkpoint import get_checkpoint_content

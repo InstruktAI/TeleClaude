@@ -906,15 +906,15 @@ def test_get_checkpoint_content_suppresses_stale_dirty_files(monkeypatch):
     """Repo-wide stale dirty files should not force turn-local restart actions."""
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
-        lambda _project: True,
+        lambda _project="": True,  # noqa: ARG005
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._get_uncommitted_files",
-        lambda _project: ["teleclaude/core/foo.py", "teleclaude/cli/tui/app.py"],
+        lambda _project="": ["teleclaude/core/foo.py", "teleclaude/cli/tui/app.py"],  # noqa: ARG005
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
-        lambda _path, _agent, **_kw: _timeline_with(
+        lambda _path="", _agent="", **_kw: _timeline_with(  # noqa: ARG005  # type: ignore[arg-type]
             _read_record("README.md"),
             _bash_record("make status"),
         ),
@@ -942,11 +942,11 @@ def test_get_checkpoint_content_session_fallback_catches_earlier_turn_edits(monk
 
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
-        lambda _project: True,
+        lambda _project="": True,  # noqa: ARG005
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._get_uncommitted_files",
-        lambda _project: ["teleclaude/core/foo.py"],
+        lambda _project="": ["teleclaude/core/foo.py"],  # noqa: ARG005
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
@@ -967,15 +967,15 @@ def test_get_checkpoint_content_session_fallback_catches_earlier_turn_edits(monk
 def test_get_checkpoint_content_keeps_actions_for_turn_local_edits(monkeypatch):
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
-        lambda _project: True,
+        lambda _project="": True,  # noqa: ARG005
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._get_uncommitted_files",
-        lambda _project: ["teleclaude/core/foo.py", "teleclaude/cli/tui/app.py"],
+        lambda _project="": ["teleclaude/core/foo.py", "teleclaude/cli/tui/app.py"],  # noqa: ARG005
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
-        lambda _path, _agent, **_kw: _timeline_with(
+        lambda _path="", _agent="", **_kw: _timeline_with(  # noqa: ARG005  # type: ignore[arg-type]
             _edit_record("teleclaude/core/foo.py"),
         ),
     )
@@ -991,15 +991,15 @@ def test_get_checkpoint_content_keeps_actions_for_turn_local_edits(monkeypatch):
 def test_get_checkpoint_content_keeps_actions_for_exec_command_cmd_mutation(monkeypatch):
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
-        lambda _project: True,
+        lambda _project="": True,  # noqa: ARG005
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._get_uncommitted_files",
-        lambda _project: ["teleclaude/core/foo.py"],
+        lambda _project="": ["teleclaude/core/foo.py"],  # noqa: ARG005
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
-        lambda _path, _agent, **_kw: _timeline_with(
+        lambda _path="", _agent="", **_kw: _timeline_with(  # noqa: ARG005  # type: ignore[arg-type]
             ToolCallRecord(tool_name="exec_command", input_data={"cmd": "apply_patch <<'PATCH'"}),
         ),
     )
@@ -1016,15 +1016,15 @@ def test_get_checkpoint_content_keeps_actions_for_exec_command_cmd_mutation(monk
 def test_get_checkpoint_content_derives_log_window_from_elapsed(monkeypatch):
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
-        lambda _project: True,
+        lambda _project="": True,  # noqa: ARG005
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._get_uncommitted_files",
-        lambda _project: ["teleclaude/core/foo.py"],
+        lambda _project="": ["teleclaude/core/foo.py"],  # noqa: ARG005
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
-        lambda _path, _agent, **_kw: _timeline_with(
+        lambda _path="", _agent="", **_kw: _timeline_with(  # noqa: ARG005  # type: ignore[arg-type]
             _edit_record("teleclaude/core/foo.py"),
             _bash_record("make restart"),
             _bash_record("make status"),
@@ -1044,15 +1044,15 @@ def test_get_checkpoint_content_derives_log_window_from_elapsed(monkeypatch):
 def test_get_checkpoint_content_returns_none_for_docs_only_changes(monkeypatch):
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
-        lambda _project: True,
+        lambda _project="": True,  # noqa: ARG005
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._get_uncommitted_files",
-        lambda _project: ["docs/notes.md"],
+        lambda _project="": ["docs/notes.md"],  # noqa: ARG005
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
-        lambda _path, _agent, **_kw: _timeline_with(
+        lambda _path="", _agent="", **_kw: _timeline_with(  # noqa: ARG005  # type: ignore[arg-type]
             _edit_record("docs/notes.md"),
         ),
     )

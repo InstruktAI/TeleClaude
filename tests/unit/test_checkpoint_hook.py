@@ -79,18 +79,11 @@ def test_no_turn_start_returns_none(db_with_session):
     assert result is None
 
 
-def test_elapsed_below_threshold_returns_none(db_with_session):
-    """Elapsed time under 30s should skip checkpoint."""
-    now = datetime.now(timezone.utc)
-    db_with_session(last_message_sent_at=now - timedelta(seconds=10))
-    result = receiver._maybe_checkpoint_output("sess-1", "claude", {})
-    assert result is None
-
-
-def test_elapsed_above_threshold_claude(db_with_session):
-    """Elapsed > 30s for Claude should return blocking JSON."""
+def test_checkpoint_claude_returns_blocking_json(db_with_session, monkeypatch):
+    """Claude checkpoint should return blocking JSON with reason."""
     now = datetime.now(timezone.utc)
     engine = db_with_session(last_message_sent_at=now - timedelta(seconds=60))
+    monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", lambda **_kw: "test checkpoint")
 
     result = receiver._maybe_checkpoint_output("sess-1", "claude", {})
     assert result is not None
@@ -111,10 +104,11 @@ def test_elapsed_above_threshold_claude(db_with_session):
         assert row.last_checkpoint_at is not None
 
 
-def test_elapsed_above_threshold_gemini(db_with_session):
-    """Elapsed > 30s for Gemini should return deny JSON."""
+def test_checkpoint_gemini_returns_deny_json(db_with_session, monkeypatch):
+    """Gemini checkpoint should return deny JSON with reason."""
     now = datetime.now(timezone.utc)
     db_with_session(last_message_sent_at=now - timedelta(seconds=60))
+    monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", lambda **_kw: "test checkpoint")
 
     result = receiver._maybe_checkpoint_output("sess-1", "gemini", {})
     assert result is not None
@@ -163,26 +157,36 @@ def test_codex_returns_none(db_with_session):
         assert row.last_checkpoint_at is None
 
 
-def test_checkpoint_uses_most_recent_timestamp(db_with_session):
-    """Turn start should be max(message_at, checkpoint_at)."""
+def test_checkpoint_uses_most_recent_timestamp(db_with_session, monkeypatch):
+    """Turn start should be max(message_at, checkpoint_at) for elapsed calculation."""
     now = datetime.now(timezone.utc)
-    # Message was 60s ago, but checkpoint was 10s ago — should skip
+    # Message was 60s ago, but checkpoint was 10s ago — elapsed should be ~10s
     db_with_session(
         last_message_sent_at=now - timedelta(seconds=60),
         last_checkpoint_at=now - timedelta(seconds=10),
     )
 
+    captured: dict[str, float | None] = {"elapsed": None}
+
+    def _capture(**kwargs):
+        captured["elapsed"] = kwargs.get("elapsed_since_turn_start_s")
+        return "checkpoint"
+
+    monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", _capture)
     result = receiver._maybe_checkpoint_output("sess-1", "claude", {})
-    assert result is None
+    assert result is not None
+    assert captured["elapsed"] is not None
+    assert captured["elapsed"] < 15  # ~10s from checkpoint_at, not ~60s from message_at
 
 
-def test_checkpoint_fires_when_checkpoint_at_is_old(db_with_session):
-    """When last_checkpoint_at is old enough, should fire again."""
+def test_checkpoint_fires_when_checkpoint_at_is_old(db_with_session, monkeypatch):
+    """When last_checkpoint_at is old, checkpoint should fire with correct elapsed."""
     now = datetime.now(timezone.utc)
     db_with_session(
         last_message_sent_at=now - timedelta(seconds=120),
         last_checkpoint_at=now - timedelta(seconds=45),
     )
+    monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", lambda **_kw: "test checkpoint")
 
     result = receiver._maybe_checkpoint_output("sess-1", "claude", {})
     assert result is not None

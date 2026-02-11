@@ -20,7 +20,6 @@ from teleclaude.config import config
 from teleclaude.constants import (
     CHECKPOINT_MESSAGE,
     CHECKPOINT_PREFIX,
-    CHECKPOINT_REACTIVATION_THRESHOLD_S,
     LOCAL_COMPUTER,
 )
 from teleclaude.core.agents import AgentName
@@ -869,10 +868,9 @@ class AgentCoordinator:
         Tmux injection logic:
         1. Determine turn start: max(last_message_sent_at, last_checkpoint_at)
            — the most recent input event marks when the current work period began.
-        2. If elapsed < threshold → skip (short/interactive response).
-        3. Dedup (agents without after_model, e.g. Codex): if last transcript
+        2. Dedup (agents without after_model, e.g. Codex): if last transcript
            input is our checkpoint message → skip (prevents injection loops).
-        4. Otherwise → inject, persist last_checkpoint_at.
+        3. Otherwise → inject, persist last_checkpoint_at.
         """
         if not session:
             return
@@ -903,16 +901,7 @@ class AgentCoordinator:
             logger.debug("Checkpoint skipped (no turn start) for session %s", session_id[:8])
             return
 
-        # Short turn — agent was active less than threshold
         elapsed = (now - turn_start).total_seconds()
-        if elapsed < CHECKPOINT_REACTIVATION_THRESHOLD_S:
-            logger.debug(
-                "Checkpoint skipped (%.1fs < %ds threshold) for session %s",
-                elapsed,
-                CHECKPOINT_REACTIVATION_THRESHOLD_S,
-                session_id[:8],
-            )
-            return
 
         # For agents without after_model (Codex): dedup via transcript to prevent
         # checkpoint → response → stop → checkpoint loops.

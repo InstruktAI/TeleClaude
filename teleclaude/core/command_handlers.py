@@ -1691,8 +1691,7 @@ async def agent_restart(
 
     await execute_terminal_command(session.session_id, restart_cmd, None, True)
 
-    # Inject checkpoint after restart — the agent is resuming with context,
-    # so it should debrief immediately without waiting for the 30s threshold.
+    # Inject checkpoint after restart — the agent is resuming with context.
     async def _inject_checkpoint_after_restart() -> None:
         from teleclaude.core.tmux_bridge import send_keys_existing_tmux
         from teleclaude.hooks.checkpoint import get_checkpoint_content

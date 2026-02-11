@@ -99,7 +99,6 @@ CHECKPOINT_MESSAGE = (
     "Any truly interesting memories to be created that meet our criteria? "
     "(DON'T abuse it as work log!) If everything that is expected of you is done, do not respond."
 )
-CHECKPOINT_REACTIVATION_THRESHOLD_S = 30
 
 # Max chars to capture from tool result content for error enrichment
 CHECKPOINT_RESULT_SNIPPET_MAX_CHARS = 500
