@@ -344,15 +344,14 @@ class TestUpdateSession:
         mock_emit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_digest_update_with_reasons_still_emits_session_updated(self, test_db):
-        """Reason-driven updates must still emit for highlight logic."""
+    async def test_field_update_emits_session_updated(self, test_db):
+        """Field updates (non-digest) must emit SESSION_UPDATED."""
         session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
 
         with patch("teleclaude.core.db.event_bus.emit") as mock_emit:
             await test_db.update_session(
                 session.session_id,
-                reasons=("agent_output",),
-                last_output_digest="digest-1",
+                title="Updated Title",
             )
 
         mock_emit.assert_called_once()

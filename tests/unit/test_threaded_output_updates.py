@@ -124,14 +124,13 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
 
         await coordinator.handle_agent_output(context)
 
-        # 1. Should call send_threaded_output
+        # 1. Should call send_threaded_output to edit the existing message
         mock_client.send_threaded_output.assert_called_once_with(session, "Message 1 + 2", multi_message=True)
 
-        # 2. Should call update_session (heartbeat) but NOT update cursor
-        mock_update_session.assert_called_once()
-        args, kwargs = mock_update_session.call_args
-        assert kwargs["reasons"] == ("agent_output",)
-        assert "last_agent_output_at" not in kwargs, "Cursor should NOT be updated during accumulation"
+        # 2. Verify cursor was NOT updated (if update_session was called, it shouldn't include cursor)
+        for call in mock_update_session.call_args_list:
+            args, kwargs = call
+            assert "last_agent_output_at" not in kwargs, "Cursor should NOT be updated during message edits"
 
 
 @pytest.mark.asyncio

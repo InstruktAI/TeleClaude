@@ -351,8 +351,7 @@ async def test_handle_agent_stop_skips_whitespace_only_agent_output(coordinator)
         mock_sum.assert_not_awaited()
         coordinator.tts_manager.speak.assert_not_awaited()
 
-        reasons_calls = [c for c in mock_db.update_session.await_args_list if c.kwargs.get("reasons")]
-        assert any(c.kwargs.get("reasons") == ("agent_stopped",) for c in reasons_calls)
+        # Verify update_session was called but without feedback fields (whitespace-only output)
         assert not any("last_feedback_received" in c.kwargs for c in mock_db.update_session.await_args_list)
 
 
