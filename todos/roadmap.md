@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last Updated**: 2026-02-11
+> **Last Updated**: 2026-02-09
 >
 > **Status**: `[ ]` Pending | `[.]` Ready (has requirements) | `[>]` In Progress | `[x]` Done
 >
@@ -20,11 +20,27 @@ Daemon-side identity infrastructure for multi-person deployments. PersonEntry co
 - [.] person-identity-auth-2 (after: person-identity-auth-1) — Session Binding & Auth Middleware
 - [.] person-identity-auth-3 (after: person-identity-auth-2) — Role Gating & Adapter Integration
 
+## Help Desk Platform
+
+- [.] help-desk (after: person-identity-auth-3)
+
+Establish `help-desk` as the universal entry point for external interactions. Implements the "Help Desk Trap" (forced routing to `help-desk` project for non-admin identities) and dual-profile agent configuration (`default` vs `restricted`). Restricts file access via settings.json denial rules and CLI flags, while allowing explicit doc mounts.
+
+- [.] help-desk-clients (after: help-desk, output-streaming-unification)
+
+Connect external messaging platforms (WhatsApp, Discord) to the Help Desk lobby. Implements "Admin Supergroup" observability where all customer sessions are mirrored to a Telegram Control Room for real-time monitoring and intervention. Updates AdapterClient for multi-destination routing.
+
 ## Output Streaming Unification
 
 - [.] output-streaming-unification
 
 Target-state outbound architecture: canonical agent activity stream events (`user_prompt_submit`, `agent_output_update`, `agent_output_stop`) routed through AdapterClient/distributor to Telegram/TUI/Web consumers, while cache/API websocket stays focused on state snapshots.
+
+## Release Automation
+
+- [.] release-automation
+
+A fully automated release pipeline where a dedicated AI inspector analyzes diffs on every main push, decides whether to release (patch/minor) based on contract manifests, and creates releases automatically with generated notes. Features a dual-lane pipeline (Claude Code + Codex CLI) and a consensus arbiter.
 
 ## Web Interface
 
@@ -38,6 +54,10 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 - [ ] web-interface-4 (after: web-interface-3) — Session Management & Role-Based Access
 
 ## Context-Aware Checkpoint (Phase 2)
+
+- [.] agent-output-monitor
+
+Context-aware checkpoint messages at agent stop boundaries. Inspects git diff to categorize changed files and produces specific validation instructions (restart daemon, SIGUSR2 TUI, run tests) instead of generic checkpoint text. Shared builder used by both hook (Claude/Gemini) and tmux (Codex) delivery paths.
 
 ## Role-Based Notifications
 

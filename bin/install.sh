@@ -83,6 +83,17 @@ EOF
     fi
 }
 
+# Confirm action
+confirm() {
+    local prompt_text="$1"
+    local default="${2:-n}"
+
+    local response
+    read -p "$prompt_text (y/n) [$default]: " response
+    response="${response:-$default}"
+    [[ "$response" =~ ^[Yy]$ ]]
+}
+
 # Detect OS
 detect_os() {
     OS_TYPE=$(uname -s)
