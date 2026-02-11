@@ -21,3 +21,18 @@
 ## Verdict
 
 REQUEST CHANGES
+
+## Fixes Applied
+
+- Issue: Mixed `tests + docs` diffs were not treated as tests-required, allowing false all-clear outcomes.
+  Fix: `_categorize_files()` now evaluates tests-only against non-doc/non-todo files so `tests + docs` still maps to tests-required behavior; added regression test `test_tests_plus_docs_still_requires_tests_action`.
+  Commit: `3dcfeee5`
+- Issue: Hook-runtime-only changes skipped required log-check guidance.
+  Fix: `run_heuristics()` now treats hook runtime as code change for log-check requirements (while still excluding tests-only); added regression test `test_hook_runtime_only_requires_log_check_when_missing`.
+  Commit: `30ee8b7b`
+- Issue: Duplicate restart actions were emitted when daemon and config changed together.
+  Fix: Added ordered deduplication for required actions in `run_heuristics()` and covered it with `test_daemon_and_config_emit_single_restart_action`.
+  Commit: `1502e687`
+- Issue: Working-slug plan file parsing included trailing annotations like `(NEW)`.
+  Fix: `_extract_plan_file_paths()` now extracts the fenced file path token from the plan table cell, ignoring trailing annotations; added regression test `test_slug_overlap_ignores_new_annotation_in_plan`.
+  Commit: `b0232920`
