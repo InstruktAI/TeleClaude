@@ -498,7 +498,8 @@ class AgentCoordinator:
         # Extract tool name from raw payload if available
         tool_name = None
         if payload.raw:
-            tool_name = str(payload.raw.get("tool_name") or payload.raw.get("toolName"))
+            raw_tool = payload.raw.get("tool_name") or payload.raw.get("toolName")
+            tool_name = str(raw_tool) if raw_tool else None
 
         # Always emit activity event for UI updates (every tool call)
         self._emit_activity_event(session_id, AgentHookEvents.TOOL_USE, tool_name)
