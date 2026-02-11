@@ -109,11 +109,20 @@ def _shorten_path(path: str) -> str:
     return path
 
 
-def _thinking_placeholder_text() -> str:
-    """Return placeholder text shown during temporary streaming highlight."""
+def _thinking_placeholder_text(tool_name: str | None = None) -> str:
+    """Return placeholder text shown during temporary streaming highlight.
+
+    Args:
+        tool_name: If set, shows "Using [tool_name]..." instead of "thinking..."
+    """
+    if tool_name:
+        text = f"Using {tool_name}..."
+    else:
+        text = _THINKING_BASE_TEXT
+
     if getattr(curses, "A_ITALIC", 0):
-        return _THINKING_BASE_TEXT
-    return f"**{_THINKING_BASE_TEXT}**"
+        return text
+    return f"**{text}**"
 
 
 def _working_placeholder_text() -> str:
@@ -1509,7 +1518,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
         if has_temp_output_highlight:
             output_time = _format_time(last_output_at or session.last_activity)
-            line4 = f"{detail_indent}[{output_time}] out: {_thinking_placeholder_text()}"
+            tool_name = self.state.sessions.active_tool.get(session_id)
+            line4 = f"{detail_indent}[{output_time}] out: {_thinking_placeholder_text(tool_name)}"
             lines.append(line4[:width])
         elif has_input_highlight:
             output_time = _format_time(last_output_at or session.last_activity)
@@ -1814,7 +1824,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             output_time = _format_time(last_output_at or session.last_activity)
             italic_attr = getattr(curses, "A_ITALIC", 0)
             prefix_text = f"{detail_indent}[{output_time}] out: "
-            placeholder_text = _thinking_placeholder_text()
+            tool_name = self.state.sessions.active_tool.get(session_id)
+            placeholder_text = _thinking_placeholder_text(tool_name)
             if italic_attr:
                 _safe_addstr_with_italic_suffix(
                     row + lines_used,

@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import TypeAlias, Union
 
 from teleclaude.api_models import (
+    AgentActivityEventDTO as AgentActivityEvent,
+)
+from teleclaude.api_models import (
     AgentAvailabilityDTO as AgentAvailabilityInfo,
 )
 from teleclaude.api_models import (
@@ -69,6 +72,7 @@ from teleclaude.api_models import (
 )
 
 __all__ = [
+    "AgentActivityEvent",
     "AgentAvailabilityInfo",
     "ComputerInfo",
     "CreateSessionResult",
@@ -111,6 +115,7 @@ WsEvent: TypeAlias = Union[
     SessionClosedEvent,
     RefreshEvent,
     ErrorEvent,
+    AgentActivityEvent,
 ]
 
 

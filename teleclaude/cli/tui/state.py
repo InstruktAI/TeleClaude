@@ -59,6 +59,7 @@ class SessionViewState:
     input_highlights: set[str] = field(default_factory=set)
     output_highlights: set[str] = field(default_factory=set)
     temp_output_highlights: set[str] = field(default_factory=set)  # For 3s streaming timer
+    active_tool: dict[str, str] = field(default_factory=dict)  # session_id -> tool_name
 
 
 @dataclass
@@ -102,6 +103,7 @@ class IntentType(str, Enum):
     SET_SCROLL_OFFSET = "set_scroll_offset"
     SET_SELECTION_METHOD = "set_selection_method"
     SESSION_ACTIVITY = "session_activity"
+    AGENT_ACTIVITY = "agent_activity"
     SYNC_SESSIONS = "sync_sessions"
     SYNC_TODOS = "sync_todos"
     SET_FILE_PANE_ID = "set_file_pane_id"
@@ -132,6 +134,8 @@ class IntentPayload(TypedDict, total=False):
     command: str
     title: str
     reason: str  # SessionUpdateReason: "user_input", "agent_output", "agent_stopped", "state_change"
+    event_type: str  # AgentHookEventType: "user_prompt_submit", "after_model", "agent_output", "agent_stop"
+    tool_name: str | None  # Tool name for tool_use events
 
 
 MAX_STICKY_PANES = 5
@@ -326,6 +330,42 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.output_highlights.add(session_id)
             logger.debug("output_highlight ADDED for %s (agent_stopped)", session_id[:8])
         # "state_change" reason: no highlight changes (status, title, etc.)
+        return
+
+    if t is IntentType.AGENT_ACTIVITY:
+        session_id = p.get("session_id")
+        event_type = p.get("event_type")
+        tool_name = p.get("tool_name")
+        if not session_id or not event_type:
+            return
+        if event_type == "user_prompt_submit":
+            # User sent input: highlight input, clear output highlight
+            state.sessions.input_highlights.add(session_id)
+            state.sessions.output_highlights.discard(session_id)
+            state.sessions.temp_output_highlights.discard(session_id)
+            logger.debug("input_highlight ADDED for %s (event=user_prompt_submit)", session_id[:8])
+        elif event_type == "after_model":
+            # Tool started: add temp highlight, store tool name
+            state.sessions.temp_output_highlights.add(session_id)
+            if tool_name:
+                state.sessions.active_tool[session_id] = tool_name
+            logger.debug(
+                "temp_output_highlight + active_tool ADDED for %s (event=after_model, tool=%s)",
+                session_id[:8],
+                tool_name,
+            )
+        elif event_type == "agent_output":
+            # Tool finished: keep temp highlight, clear tool name
+            state.sessions.temp_output_highlights.add(session_id)
+            state.sessions.active_tool.pop(session_id, None)
+            logger.debug("active_tool CLEARED for %s (event=agent_output)", session_id[:8])
+        elif event_type == "agent_stop":
+            # Agent finished: clear input/temp/tool, make output highlight permanent
+            state.sessions.input_highlights.discard(session_id)
+            state.sessions.temp_output_highlights.discard(session_id)
+            state.sessions.active_tool.pop(session_id, None)
+            state.sessions.output_highlights.add(session_id)
+            logger.debug("output_highlight ADDED for %s (event=agent_stop)", session_id[:8])
         return
 
     if t is IntentType.CLEAR_TEMP_HIGHLIGHT:

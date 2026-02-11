@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Optional
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.models import (
+    AgentActivityEvent,
     AgentAvailabilityInfo,
     ErrorEvent,
     ProjectInfo,
@@ -546,6 +547,19 @@ class TelecApp:
 
                 if self._loop:
                     self._loop.run_until_complete(self.refresh_data())
+
+            elif isinstance(event, AgentActivityEvent):
+                # Dispatch AGENT_ACTIVITY intent with event_type, session_id, tool_name
+                self.controller.dispatch(
+                    Intent(
+                        IntentType.AGENT_ACTIVITY,
+                        {
+                            "session_id": event.session_id,
+                            "event_type": event.type,
+                            "tool_name": event.tool_name,
+                        },
+                    )
+                )
 
             elif isinstance(event, SessionClosedEvent):
                 if self._loop:
