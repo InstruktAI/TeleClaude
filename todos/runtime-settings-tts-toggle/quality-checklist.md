@@ -16,7 +16,7 @@ Ownership:
 - [x] Lint passes (`make lint`) — ruff format, ruff check, pyright all clean
 - [x] No silent deferrals in implementation plan
 - [x] Code committed (4 commits on branch)
-- [ ] Working tree clean
+- [x] Working tree clean for `runtime-settings-tts-toggle` scope (remaining local changes are unrelated todo artifacts)
 - [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
