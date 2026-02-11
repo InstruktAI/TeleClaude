@@ -8,8 +8,6 @@ from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
 
-from teleclaude.config import config
-
 SUMMARY_MODEL_ANTHROPIC = "claude-haiku-4-5-20251001"
 SUMMARY_MODEL_OPENAI = "gpt-5-nano-2025-08-07"
 TITLE_SCHEMA: dict[str, object] = {  # guard: loose-dict - JSON schema definition
@@ -66,7 +64,7 @@ async def summarize_agent_output(agent_output: str) -> tuple[str | None, str]:
     """Summarize agent output. Returns (None, summary)."""
     if not agent_output or not agent_output.strip():
         raise ValueError("Empty agent output")
-    max_summary_words = config.summarizer.max_summary_words
+    max_summary_words = 30
     prompt = _build_agent_output_summary_prompt(agent_output, max_summary_words)
     summary = await _call_summary_summarizer(prompt)
     return None, summary

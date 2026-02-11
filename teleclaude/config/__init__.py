@@ -225,21 +225,6 @@ class STTConfig:
 
 
 @dataclass
-class SummarizerConfig:
-    """Summarizer configuration.
-
-    Controls whether the LLM summarizer runs and how feedback is displayed.
-
-    Attributes:
-        enabled: If True, run LLM summarizer. If False, skip summarization entirely.
-        max_summary_words: Target maximum words for the summary output.
-    """
-
-    enabled: bool = True
-    max_summary_words: int = 30
-
-
-@dataclass
 class TerminalConfig:
     """Terminal display settings."""
 
@@ -284,7 +269,6 @@ class Config:
     terminal: TerminalConfig
     tts: TTSConfig | None = None
     stt: STTConfig | None = None
-    summarizer: SummarizerConfig = field(default_factory=SummarizerConfig)
     experiments: list[ExperimentConfig] = field(default_factory=list)
 
     def is_experiment_enabled(self, name: str, agent: str | None = None) -> bool:
@@ -376,10 +360,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
                 "voices": [],
             },
         },
-    },
-    "summarizer": {
-        "enabled": True,
-        "max_summary_words": 30,
     },
     "experiments": [],
 }
@@ -556,7 +536,6 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     terminal_raw = raw.get("terminal", {"strip_ansi": True})
     tts_raw = raw.get("tts", None)
     stt_raw = raw.get("stt", None)
-    summarizer_raw = raw.get("summarizer", {})
     experiments_raw = raw.get("experiments", [])
 
     # Import AGENT_PROTOCOL from constants
@@ -640,12 +619,6 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
         ),
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
         stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]
-        summarizer=SummarizerConfig(
-            enabled=bool(summarizer_raw.get("enabled", True)) if isinstance(summarizer_raw, dict) else True,
-            max_summary_words=int(summarizer_raw.get("max_summary_words", 30))
-            if isinstance(summarizer_raw, dict)
-            else 30,
-        ),
         experiments=experiments,
     )
 
