@@ -46,16 +46,16 @@ infrastructure (plist installation).
 
 **File(s):** `teleclaude/helpers/agent_cli.py`
 
-- [ ] Add `_JOB_SPEC` dict alongside existing `_ONESHOT_SPEC` — same agent binaries
+- [x] Add `_JOB_SPEC` dict alongside existing `_ONESHOT_SPEC` — same agent binaries
       but WITHOUT `--tools ""` and WITHOUT `enabledMcpjsonServers: []`
-- [ ] Keep `--dangerously-skip-permissions` and `--no-chrome`
-- [ ] Keep `--no-session-persistence` (jobs are stateless between runs)
-- [ ] Accept parameters: `agent`, `thinking_mode`, `prompt`, `role` (default "admin"),
+- [x] Keep `--dangerously-skip-permissions` and `--no-chrome`
+- [x] Keep `--no-session-persistence` (jobs are stateless between runs)
+- [x] Accept parameters: `agent`, `thinking_mode`, `prompt`, `role` (default "admin"),
       `timeout_s` (default None)
-- [ ] Set `TELECLAUDE_JOB_ROLE` env var on the subprocess so downstream MCP wrapper
+- [x] Set `TELECLAUDE_JOB_ROLE` env var on the subprocess so downstream MCP wrapper
       can read it for tool filtering
-- [ ] Use `subprocess.run()` with `timeout=timeout_s`
-- [ ] Return exit code (success/failure), not parsed JSON
+- [x] Use `subprocess.run()` with `timeout=timeout_s`
+- [x] Return exit code (success/failure), not parsed JSON
 
 ### Task 2.2: Rewrite `_run_agent_job()` to use subprocess
 

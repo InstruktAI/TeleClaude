@@ -303,6 +303,97 @@ def _run_agent(
     return result.stdout
 
 
+# ---------------------------------------------------------------------------
+# Job invocation — full interactive subprocess with tools and MCP enabled.
+# Unlike run_once (lobotomized JSON), run_job gives the agent full access.
+# ---------------------------------------------------------------------------
+
+_JOB_SPEC: dict[str, dict[str, str | dict[str, str]]] = {
+    "claude": {
+        "flags": (
+            "--dangerously-skip-permissions --no-session-persistence --no-chrome"
+            " --disable-slash-commands --setting-sources user"
+            ' --settings \'{"forceLoginMethod": "claudeai", "disableAllHooks": true}\''
+        ),
+        "model_flags": {
+            "fast": "--model haiku",
+            "med": "--model sonnet",
+            "slow": "--model opus",
+        },
+    },
+    "gemini": {
+        "flags": "--yolo",
+        "model_flags": {
+            "fast": "-m gemini-2.5-flash-lite",
+            "med": "-m gemini-3-flash-preview",
+            "slow": "-m gemini-3-pro-preview",
+        },
+    },
+    "codex": {
+        "flags": "--dangerously-bypass-approvals-and-sandbox",
+        "model_flags": {
+            "fast": "-m gpt-5.3-codex --config model_reasoning_effort='low'",
+            "med": "-m gpt-5.3-codex --config model_reasoning_effort='medium'",
+            "slow": "-m gpt-5.3-codex --config model_reasoning_effort='high'",
+            "deep": "-m gpt-5.3-codex --config model_reasoning_effort='xhigh'",
+        },
+        "exec_subcommand": "exec",
+    },
+}
+
+
+def run_job(
+    *,
+    agent: str | None,
+    thinking_mode: str,
+    prompt: str,
+    role: str = "admin",
+    timeout_s: int | None = None,
+) -> int:
+    """Spawn a full interactive agent subprocess for a cron job.
+
+    Unlike run_once, the agent has full tool access (bash, read, write, etc.)
+    and MCP access when the daemon is running. Returns the subprocess exit code.
+    """
+    agent_enum = _pick_agent(AgentName.from_str(agent) if agent else None)
+    mode_enum = ThinkingMode.from_str(thinking_mode or ThinkingMode.FAST.value)
+
+    spec = _JOB_SPEC.get(agent_enum.value)
+    if not spec:
+        raise RuntimeError(f"No job spec for agent '{agent_enum.value}'")
+
+    binary = resolve_agent_binary(agent_enum.value)
+    flags = str(spec.get("flags", ""))
+    model_flags_raw = spec.get("model_flags", {})
+    model_flags: dict[str, str] = model_flags_raw if isinstance(model_flags_raw, dict) else {}
+    model_flag = model_flags.get(mode_enum.value)
+    if model_flag is None:
+        raise RuntimeError(f"Invalid thinking_mode '{mode_enum.value}' for agent '{agent_enum.value}'")
+
+    cmd_parts = shlex.split(f"{binary} {flags}".strip())
+
+    exec_subcommand = str(spec.get("exec_subcommand", "") or "")
+    if exec_subcommand:
+        cmd_parts.append(exec_subcommand)
+    if model_flag:
+        cmd_parts.extend(shlex.split(model_flag))
+
+    cmd_parts.extend(["-p", prompt])
+
+    env = os.environ.copy()
+    env["TELECLAUDE_JOB_ROLE"] = role
+
+    result = subprocess.run(
+        cmd_parts,
+        capture_output=False,
+        text=True,
+        check=False,
+        timeout=timeout_s,
+        env=env,
+    )
+    return result.returncode
+
+
 def run_once(
     *,
     agent: str | None,
