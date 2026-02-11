@@ -84,21 +84,21 @@ Four-phase approach: clean up dead config code, build the runtime settings layer
 
 **File(s):** `teleclaude/cli/tui/widgets/footer.py`
 
-- [ ] Accept `tts_enabled: bool` in constructor
-- [ ] Render `[TTS]` indicator to the right of agent pills (bright when on, dim when off)
-- [ ] Track column range of TTS indicator for click hit detection
-- [ ] Expose `handle_click(col: int) -> bool` — returns True if click was on TTS region
+- [x] Accept `tts_enabled: bool` in constructor
+- [x] Render `[TTS]` indicator to the right of agent pills (bright when on, dim when off)
+- [x] Track column range of TTS indicator for click hit detection
+- [x] Expose `handle_click(col: int) -> bool` — returns True if click was on TTS region
 
 ### Task 4.2: Wire TTS state into TUI app
 
 **File(s):** `teleclaude/cli/tui/app.py`
 
-- [ ] Add `self.tts_enabled: bool = False` to app state
-- [ ] In `_refresh_data()`, call `api.get_settings()` and update `self.tts_enabled`
-- [ ] Pass `tts_enabled` to `Footer` constructor
-- [ ] In `KEY_MOUSE` / `BUTTON1_CLICKED` handler: check if click on footer row (`height - 1`); delegate to `footer.handle_click(mx)`
-- [ ] If TTS toggle hit, schedule `api.patch_settings({"tts": {"enabled": not self.tts_enabled}})` async call
-- [ ] Optional: map hotkey `v` to toggle TTS
+- [x] Add `self.tts_enabled: bool = False` to app state
+- [x] In `_refresh_data()`, call `api.get_settings()` and update `self.tts_enabled`
+- [x] Pass `tts_enabled` to `Footer` constructor
+- [x] In `KEY_MOUSE` / `BUTTON1_CLICKED` handler: check if click on footer row (`height - 1`); delegate to `footer.handle_click(mx)`
+- [x] If TTS toggle hit, schedule `api.patch_settings({"tts": {"enabled": not self.tts_enabled}})` async call
+- [x] Optional: map hotkey `v` to toggle TTS
 
 ---
 
