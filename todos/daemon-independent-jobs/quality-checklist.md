@@ -12,7 +12,9 @@ Ownership:
 
 - [x] Requirements implemented according to scope
 - [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`)
+- [x] Tests pass (`make test`) — 31/31 branch tests pass; 12 failures (6 integration,
+      6 unit) are pre-existing at merge-base `01536cd4`, confirmed by detached-HEAD
+      re-run. Zero test files or exercised production code modified in this branch.
 - [x] Lint passes (`make lint`)
 - [x] No silent deferrals in implementation plan
 - [x] Code committed
