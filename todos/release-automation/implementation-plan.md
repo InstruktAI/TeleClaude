@@ -1,162 +1,32 @@
-# Release Automation — Implementation Plan
+# Implementation Plan: Release Automation
 
-## Goals
+## Phase 1: Contract Manifests
 
-- Automated release inspector on every push to `main`.
-- Single decision authority: patch vs minor based on diff vs last release tag.
-- Dual-lane AI reports (Claude Code + Codex CLI) with a consensus arbiter.
-- Deterministic contract checks to remove guesswork.
-- Idempotent releases (no re-tagging when no diff).
+Define what constitutes the "Public Surface" that the AI must protect.
 
-## Non-Goals
+- [ ] **Create `docs/project/spec/public-surface.md`**: List CLI commands (`telec`), MCP tools (`teleclaude__*`), and Config schema (`config.yml`).
+- [ ] **Create `tests/contract/`**: Add basic snapshot tests for CLI help output and MCP tool lists (to help AI see changes).
 
-- Alpha/beta tags or pre-releases.
-- Manual approval for patches.
-- Major releases (disabled until explicitly enabled).
+## Phase 2: Inspector Prompts
 
-## Inputs
+Author the prompts that drive the AI lanes.
 
-- `todos/release-automation/input.md`
-- Third-party docs:
-  - `third-party/claude-code/github-actions`
-  - `third-party/codex-cli/github-actions`
+- [ ] **Create `agents/prompts/release-inspector.md`**: The system prompt for analyzing diffs.
+  - _Instructions:_ "You are the Release Inspector. Compare HEAD to {last_tag}. Check against @public-surface.md. Output JSON."
+- [ ] **Create `agents/prompts/release-arbiter.md`**: The prompt for synthesizing lane reports.
 
-## Plan
+## Phase 3: GitHub Actions Workflow
 
-### 1) Contract Manifests (public surface)
+Build the `.github/workflows/release.yml` pipeline.
 
-Create a canonical contract folder and schema:
+- [ ] **Job 1: Prereqs**: Checkout, fetch tags, run `make test`.
+- [ ] **Job 2: Lane A (Claude)**: Run `claude-code` action. Input: `git diff`. Output: artifact `claude-report`.
+- [ ] **Job 3: Lane B (Codex)**: Run `codex-cli` action. Input: `git diff`. Output: artifact `codex-report`.
+- [ ] **Job 4: Arbiter**: Download artifacts. Run Arbiter AI. Output: `decision.json`.
+- [ ] **Job 5: Tag & Publish**: Read `decision.json`. If `release=true`, push tag and create GitHub Release.
 
-- `release/contracts/`
-  - `cli-commands.json`
-  - `mcp-tools.json`
-  - `event-types.json`
-  - `config-schema.json`
-  - `dto-fields.json`
+## Phase 4: Verification
 
-Define a small JSON schema for each to keep them consistent and machine-checkable.
-
-### 2) Contract Tests
-
-Add tests that assert runtime matches the manifests:
-
-- CLI: parse `teleclaude/cli/telec.py` command registry.
-- MCP: compare `teleclaude/mcp/tool_definitions.py`.
-- Events: compare `teleclaude/core/events.py` + any public event registries.
-- Config: compare `config.yml` schema + documented env vars.
-- DTOs: compare `teleclaude/api_models.py`.
-
-These tests should fail when public surface changes are not reflected in the contracts.
-
-### 3) Release Inspector Prompts
-
-Create prompts used by both lanes:
-
-- `.github/prompts/release-inspector.prompt.yml`
-  - Inputs: diff summary, contract test results, lint/test status, last tag.
-  - Output: JSON report with classification (`patch|minor|skip`) + notes.
-
-### 4) Report Schemas
-
-Define strict JSON schemas to make decisions machine-checkable:
-
-- `.github/schemas/release-report.schema.json`
-  - Required fields: `decision`, `confidence`, `evidence`, `notes_markdown`
-  - `decision`: `patch | minor | skip`
-  - `evidence`: last tag, diff range, contract checks, test status
-- `.github/schemas/release-decision.schema.json`
-  - Required fields: `release`, `bump`, `notes_markdown`, `selected_lane`
-  - `release`: `true | false`
-  - `bump`: `patch | minor`
-
-### 5) Dual-Lane Workflows
-
-Add two near-identical workflows:
-
-- `.github/workflows/release-inspector-claude.yml`
-- `.github/workflows/release-inspector-codex.yml`
-
-Each produces:
-
-- `report-claude.json` / `report-codex.json`
-- `notes-claude.md` / `notes-codex.md`
-
-Both must be uploaded as workflow artifacts.
-
-### 6) Orchestration (Atomic)
-
-Preferred: one orchestrator workflow with parallel jobs and a dependent arbiter:
-
-- `release-orchestrator.yml`
-  - `inspect-claude` job → uploads lane report
-  - `inspect-codex` job → uploads lane report
-  - `arbiter` job (needs both) → produces `decision.json` + `release-notes.md`
-  - `release` job (needs arbiter) → performs tagging/release
-
-Alternative (if separate workflows): use `workflow_run` to trigger the arbiter
-and pull artifacts by run ID. This is more complex; prefer single workflow.
-
-### 7) Consensus Arbiter
-
-Add a small arbiter step (third AI pass):
-
-- Consumes both reports and chooses the most convincing report.
-- Emits `decision.json` (authoritative).
-- Writes `release-notes.md` (from chosen report).
-
-Only the arbiter decision can trigger tagging and releasing.
-
-### 8) Release Execution
-
-If `decision.json` says `release`:
-
-- Bump version (patch or minor) with `uv version --bump` based on arbiter output.
-- Tag `vX.Y.Z` and push tag.
-- Create GitHub Release using `release-notes.md`.
-
-If `decision.json` says `skip`, exit cleanly.
-
-Idempotency guards:
-
-- Skip if `git diff <last_tag>..HEAD` is empty.
-- Skip if the computed tag already exists.
-
-### 9) CI Prerequisite
-
-Add `ci.yml` for PRs:
-
-- Lint + tests on PRs.
-- Required status checks before merge.
-
-### 10) Runner Auth Wiring
-
-Codex CLI:
-
-- **Prerequisite**: `~/.codex/auth.json` already exists on the self-hosted runner.
-- Workflow wiring must set `codex-home` (or the equivalent) to the runner home so
-  Codex reuses the existing auth file.
-- Add a guard step that fails fast if the auth file is missing.
-
-Claude Code:
-
-- **Prerequisite**: valid auth is already provided via secrets/env.
-- Workflow only consumes the provided auth (no provisioning).
-
-## Implementation Checklist
-
-- Contract manifests exist and are enforced by tests.
-- Dual-lane reports produced on every `main` push.
-- Arbiter produces a single authoritative decision.
-- Release workflow is idempotent and only runs on arbiter approval.
-- Patch/minor decisions align with 0.x policy.
-- Release notes generated and attached to GitHub Releases.
-
-## Status
-
-- [ ] Contract manifests defined
-- [ ] Contract tests added
-- [ ] Release inspector prompts written
-- [ ] Dual-lane workflows added
-- [ ] Arbiter step implemented
-- [ ] Release execution wired
-- [ ] CI workflow added
+- [ ] **Dry Run**: Run workflow on a branch with `dry-run: true`.
+- [ ] **Patch Test**: Merge a dummy fix to `main`. Verify patch bump.
+- [ ] **Minor Test**: Merge a non-breaking feature. Verify minor bump.
