@@ -515,6 +515,29 @@ install_launchd_service() {
     fi
 }
 
+# Install launchd cron runner (macOS)
+install_launchd_cron() {
+    local service_name="ai.instrukt.teleclaude.cron"
+    local plist_file="$HOME/Library/LaunchAgents/${service_name}.plist"
+    local source_file="$INSTALL_DIR/launchd/${service_name}.plist"
+
+    if [ ! -f "$source_file" ]; then
+        print_warning "Cron plist not found: $source_file"
+        return 0
+    fi
+
+    mkdir -p "$HOME/Library/LaunchAgents"
+    cp "$source_file" "$plist_file"
+
+    local domain="gui/$(id -u)"
+    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
+    if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
+        launchctl load "$plist_file"
+    fi
+
+    print_success "Cron runner installed (5-minute interval)"
+}
+
 # Install service
 install_service() {
     print_header "Installing System Service"
@@ -546,6 +569,7 @@ main() {
     setup_config
     setup_log_file
     install_service
+    [ "$OS" = "macos" ] && install_launchd_cron
     setup_mcp_config
     setup_agent_hooks
     link_shared_scripts
