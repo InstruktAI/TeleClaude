@@ -38,6 +38,10 @@ Connect external messaging platforms (WhatsApp, Discord) to the Help Desk lobby.
 
 Replace DB-mediated session update path with direct typed agent activity events. One event vocabulary (`tool_use`, `tool_done`, `agent_stop`) flows from coordinator to TUI/Web consumers via event bus and websocket. Database persists state for cold start only. Deletes `SessionUpdateReason`, `_infer_update_reasons()`, and the reasons pipeline. TUI shows "Using [tool_name]..." during tool execution.
 
+- [.] agent-activity-events-phase-3-7 (after: agent-activity-events)
+
+Complete remaining phases of agent-activity-events: DB column rename (last_tool_use_at, last_tool_done_at), event vocabulary rename (tool_use, tool_done), comprehensive test coverage for event emission and broadcast, documentation updates, and final validation. Closes the gap from Phase 1-2 foundation to production-ready event pipeline.
+
 ## Release Automation
 
 - [.] release-automation

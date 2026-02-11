@@ -2,6 +2,9 @@
   "agent-activity-events": [
     "cross-project-context"
   ],
+  "agent-activity-events-phase-3-7": [
+    "agent-activity-events"
+  ],
   "code-context-auditor": [
     "code-context-annotations"
   ],

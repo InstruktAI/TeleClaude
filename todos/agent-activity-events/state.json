@@ -1,14 +1,15 @@
 {
   "build": "complete",
   "review": "approved",
-  "deferrals_processed": false,
+  "deferrals_processed": true,
+  "deferrals_hash": "50ce980340d14bca8a4ceec6434195bd9c9a8f4085c954b8be5754caf59a844a",
   "breakdown": {
     "assessed": false,
     "todos": []
   },
-  "review_round": 2,
+  "review_round": 3,
   "max_review_rounds": 3,
-  "review_baseline_commit": "55ce3fd4f069f01680a3fc265d29a53df312a60a",
+  "review_baseline_commit": "47b0965debea586aaeeeb9f1cfe7f20967e64cdb",
   "unresolved_findings": [],
   "resolved_findings": [
     "Stale SessionUpdateReason comment removed",
