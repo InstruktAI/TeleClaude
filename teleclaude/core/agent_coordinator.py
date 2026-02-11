@@ -127,6 +127,14 @@ def _is_checkpoint_prompt(
     return False
 
 
+def _is_codex_synthetic_prompt_event(raw_payload: object) -> bool:
+    """Return True for Codex synthetic prompt events derived from output polling."""
+    if not isinstance(raw_payload, dict):
+        return False
+    source = raw_payload.get("source")
+    return bool(raw_payload.get("synthetic")) and isinstance(source, str) and source.startswith("codex_")
+
+
 class AgentCoordinator:
     """Coordinator for agent events and inter-agent communication."""
 
@@ -315,8 +323,13 @@ class AgentCoordinator:
             prompt_text[:50],
         )
 
-        # Emit activity event for UI updates
-        self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
+        # Emit activity event for UI updates.
+        # Codex synthetic prompts arrive only after output activity is already visible
+        # (e.g. "out: Working..."), so treat them as output-start in the TUI state.
+        if _is_codex_synthetic_prompt_event(payload.raw):
+            self._emit_activity_event(session_id, AgentHookEvents.AFTER_MODEL)
+        else:
+            self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
         # Non-headless: DB write done above, no further routing needed
         # (the agent already received the input directly)

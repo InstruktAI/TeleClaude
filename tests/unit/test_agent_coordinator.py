@@ -225,14 +225,46 @@ async def test_user_prompt_submit_persists_non_checkpoint_codex_synthetic_prompt
         mock_db.get_session = AsyncMock(return_value=session)
         mock_db.set_notification_flag = AsyncMock()
         mock_db.update_session = AsyncMock()
-        with patch(
-            "teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock
-        ) as mock_summarize:
-            mock_summarize.return_value = "Output regression follow-up"
-            await coordinator.handle_user_prompt_submit(context)
+        with patch.object(coordinator, "_emit_activity_event") as mock_emit:
+            with patch(
+                "teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock
+            ) as mock_summarize:
+                mock_summarize.return_value = "Output regression follow-up"
+                await coordinator.handle_user_prompt_submit(context)
+            mock_emit.assert_called_once_with("sess-1", AgentHookEvents.AFTER_MODEL)
 
         mock_db.set_notification_flag.assert_called_once_with("sess-1", False)
         assert mock_db.update_session.await_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_user_prompt_submit_emits_user_prompt_activity_for_non_synthetic_event(coordinator):
+    session = Session(
+        session_id="sess-2",
+        computer_name="macbook",
+        tmux_session_name="tmux-2",
+        title="Untitled",
+        active_agent="claude",
+    )
+    payload = UserPromptSubmitPayload(
+        prompt="please continue",
+        session_id="sess-2",
+        raw={},
+    )
+    context = AgentEventContext(
+        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+        session_id="sess-2",
+        data=payload,
+    )
+
+    with patch("teleclaude.core.agent_coordinator.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.set_notification_flag = AsyncMock()
+        mock_db.update_session = AsyncMock()
+        with patch.object(coordinator, "_emit_activity_event") as mock_emit:
+            await coordinator.handle_user_prompt_submit(context)
+
+        mock_emit.assert_called_once_with("sess-2", AgentHookEvents.USER_PROMPT_SUBMIT)
 
 
 @pytest.mark.asyncio

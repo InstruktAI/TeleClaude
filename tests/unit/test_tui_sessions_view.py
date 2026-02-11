@@ -12,7 +12,7 @@ from teleclaude.cli.models import (
     SessionInfo,
 )
 from teleclaude.cli.tui.controller import TuiController
-from teleclaude.cli.tui.state import TuiState
+from teleclaude.cli.tui.state import PreviewState, TuiState
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     ComputerNode,
@@ -751,3 +751,41 @@ class TestSessionsViewLogic:
         assert "[17:43:21] out: real output now" in output
         assert "thinking" not in output
         assert "working" not in output
+
+    def test_watched_preview_output_highlight_auto_clears_after_3s(self, sessions_view, monkeypatch):
+        """Selected + actively previewed sessions should auto-clear output highlight quickly."""
+        session_id = "watch-1"
+        sessions_view.state.sessions.selected_session_id = session_id
+        sessions_view.state.sessions.preview = PreviewState(session_id=session_id)
+        sessions_view.state.sessions.output_highlights.add(session_id)
+
+        tick = iter([100.0, 102.0, 103.2])
+        monkeypatch.setattr("teleclaude.cli.tui.views.sessions.time.monotonic", lambda: next(tick))
+
+        sessions_view._update_viewing_timer()
+        assert sessions_view._viewing_timer_session == session_id
+        assert session_id in sessions_view.state.sessions.output_highlights
+
+        sessions_view._update_viewing_timer()
+        assert session_id in sessions_view.state.sessions.output_highlights
+
+        sessions_view._update_viewing_timer()
+        assert sessions_view._viewing_timer_session is None
+        assert session_id not in sessions_view.state.sessions.output_highlights
+
+    def test_output_highlight_persists_when_session_not_actively_previewed(self, sessions_view, monkeypatch):
+        """Without active preview watch, output highlight should stay persistent."""
+        session_id = "not-watched-1"
+        sessions_view.state.sessions.selected_session_id = session_id
+        sessions_view.state.sessions.preview = None
+        sessions_view.state.sessions.output_highlights.add(session_id)
+
+        tick = iter([200.0, 205.0, 210.0])
+        monkeypatch.setattr("teleclaude.cli.tui.views.sessions.time.monotonic", lambda: next(tick))
+
+        sessions_view._update_viewing_timer()
+        sessions_view._update_viewing_timer()
+        sessions_view._update_viewing_timer()
+
+        assert sessions_view._viewing_timer_session is None
+        assert session_id in sessions_view.state.sessions.output_highlights

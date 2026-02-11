@@ -57,6 +57,7 @@ logger = get_logger(__name__)
 _THINKING_BASE_TEXT = "Thinking..."
 _WORKING_BASE_TEXT = "Working..."
 _STREAMING_SAFETY_TIMEOUT = 30.0  # Safety net; agent_stop is the authoritative clear signal
+_WATCHED_OUTPUT_HIGHLIGHT_TIMEOUT = 3.0
 
 
 def _format_time(iso_timestamp: str | None) -> str:
@@ -193,7 +194,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_detected_pane_id: str | None = None
         self._we_caused_focus: bool = False
         self._initial_layout_done: bool = False
-        # Auto-clear timer for currently viewed session (60s viewing = seen)
+        # Auto-clear timer for currently watched preview session.
         self._viewing_timer_session: str | None = None
         self._viewing_timer_expires: float | None = None
         # Per-session 3-second streaming timers (session_id -> expiry time)
@@ -549,34 +550,53 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             self._prev_state[session_id] = {"input": curr_input, "output_digest": curr_output_digest}
 
     def _update_viewing_timer(self) -> None:
-        """Manage 60-second auto-clear timer for currently selected session.
+        """Manage short auto-clear timer for actively watched preview sessions.
 
-        If user is viewing a session with output highlight for 60 seconds,
-        auto-clear the highlight. Timer resets when user selects a different session.
+        If user is actively watching a selected session in the preview pane and that
+        session has output highlight, clear it after a short delay. Sessions not being
+        actively previewed keep their persistent highlight.
         """
         selected_id = self.state.sessions.selected_session_id
+        preview_session_id = self.state.sessions.preview.session_id if self.state.sessions.preview else None
+        is_actively_watched = bool(selected_id and preview_session_id == selected_id)
         now = time.monotonic()
 
-        # Check if timer expired
+        # Check if timer expired.
         if self._viewing_timer_session and self._viewing_timer_expires and now >= self._viewing_timer_expires:
-            # Timer expired - clear highlight directly
+            # Timer expired - clear highlight directly.
             if self._viewing_timer_session in self.state.sessions.output_highlights:
                 self.state.sessions.output_highlights.discard(self._viewing_timer_session)
-                logger.debug("60s viewing timer expired, cleared highlight for %s", self._viewing_timer_session[:8])
+                logger.debug(
+                    "Watched preview timer expired (%.1fs), cleared highlight for %s",
+                    _WATCHED_OUTPUT_HIGHLIGHT_TIMEOUT,
+                    self._viewing_timer_session[:8],
+                )
             self._viewing_timer_session = None
             self._viewing_timer_expires = None
 
-        # Check if selection changed - reset timer
-        if selected_id != self._viewing_timer_session:
-            # Selection changed - cancel old timer
+        # Cancel timer when watched context changed or highlight is gone.
+        if self._viewing_timer_session and (
+            not is_actively_watched
+            or selected_id != self._viewing_timer_session
+            or self._viewing_timer_session not in self.state.sessions.output_highlights
+        ):
             self._viewing_timer_session = None
             self._viewing_timer_expires = None
 
-            # Start new timer if selected session has output highlight
-            if selected_id and selected_id in self.state.sessions.output_highlights:
-                self._viewing_timer_session = selected_id
-                self._viewing_timer_expires = now + 60
-                logger.debug("Started 60s viewing timer for session %s", selected_id[:8])
+        # Start timer only for actively watched preview sessions.
+        if (
+            is_actively_watched
+            and selected_id is not None
+            and selected_id in self.state.sessions.output_highlights
+            and self._viewing_timer_session != selected_id
+        ):
+            self._viewing_timer_session = selected_id
+            self._viewing_timer_expires = now + _WATCHED_OUTPUT_HIGHLIGHT_TIMEOUT
+            logger.debug(
+                "Started watched preview timer (%.1fs) for session %s",
+                _WATCHED_OUTPUT_HIGHLIGHT_TIMEOUT,
+                selected_id[:8],
+            )
 
     def _update_streaming_timers(self) -> None:
         """Manage safety timers for streaming output highlights.
