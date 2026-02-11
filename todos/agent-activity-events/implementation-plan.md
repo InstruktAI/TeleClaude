@@ -38,7 +38,7 @@ coordinator → event_bus.emit(AGENT_ACTIVITY, AgentActivityEvent(...))
 
 **File:** `teleclaude/core/events.py`
 
-- [ ] Add `AgentActivityEvent` dataclass:
+- [x] Add `AgentActivityEvent` dataclass:
   ```python
   @dataclass(frozen=True)
   class AgentActivityEvent:
@@ -47,8 +47,8 @@ coordinator → event_bus.emit(AGENT_ACTIVITY, AgentActivityEvent(...))
       tool_name: str | None = None
       timestamp: str | None = None
   ```
-- [ ] Add `AGENT_ACTIVITY = "agent_activity"` to `TeleClaudeEvents`
-- [ ] Add `AgentActivityEvent` to the `EventContext` union
+- [x] Add `AGENT_ACTIVITY = "agent_activity"` to `TeleClaudeEvents`
+- [x] Add `AgentActivityEvent` to the `EventContext` union
 
 ### Task 1.2: Coordinator emits activity events
 
@@ -56,10 +56,10 @@ coordinator → event_bus.emit(AGENT_ACTIVITY, AgentActivityEvent(...))
 
 Coordinator already knows the event type. Emit it directly, alongside existing DB writes (dual-emit for safe migration).
 
-- [ ] In `handle_after_model()`: emit `AgentActivityEvent(type="after_model", tool_name=...)` after DB write
-- [ ] In `handle_agent_output()` / `_maybe_send_incremental_output()`: emit `AgentActivityEvent(type="agent_output")` after DB write
-- [ ] In `handle_agent_stop()`: emit `AgentActivityEvent(type="agent_stop")` after DB write
-- [ ] In `handle_user_prompt_submit()`: emit `AgentActivityEvent(type="user_prompt_submit")`
+- [x] In `handle_after_model()`: emit `AgentActivityEvent(type="after_model", tool_name=...)` after DB write
+- [x] In `handle_agent_output()` / `_maybe_send_incremental_output()`: emit `AgentActivityEvent(type="agent_output")` after DB write
+- [x] In `handle_agent_stop()`: emit `AgentActivityEvent(type="agent_stop")` after DB write
+- [x] In `handle_user_prompt_submit()`: emit `AgentActivityEvent(type="user_prompt_submit")`
 
 Note: uses OLD event type names during Phase 1. Rename happens in Phase 4.
 
@@ -67,9 +67,9 @@ Note: uses OLD event type names during Phase 1. Rename happens in Phase 4.
 
 **File:** `teleclaude/api_server.py`
 
-- [ ] Subscribe to `AGENT_ACTIVITY` event on bus
-- [ ] Handler serializes lightweight `AgentActivityEventDTO` and pushes directly to websocket subscribers — no cache update, no session re-read
-- [ ] Add `AgentActivityEventDTO` to `teleclaude/api_models.py`:
+- [x] Subscribe to `AGENT_ACTIVITY` event on bus
+- [x] Handler serializes lightweight `AgentActivityEventDTO` and pushes directly to websocket subscribers — no cache update, no session re-read
+- [x] Add `AgentActivityEventDTO` to `teleclaude/api_models.py`:
   ```python
   class AgentActivityEventDTO(BaseModel):
       event: Literal["agent_activity"] = "agent_activity"
