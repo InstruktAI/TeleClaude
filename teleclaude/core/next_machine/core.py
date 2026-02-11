@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import cast
 
 from git import Repo
-from git.exc import GitCommandError, InvalidGitRepositoryError
+from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
@@ -283,6 +283,19 @@ def format_uncommitted_changes(slug: str) -> str:
     return f"""UNCOMMITTED CHANGES in trees/{slug}
 
 NEXT: Resolve these changes according to the commit policy, then call teleclaude__next_work(slug="{slug}") to continue."""
+
+
+def format_stash_debt(slug: str, count: int) -> str:
+    """Format instruction when repository stash is non-empty."""
+    noun = "entry" if count == 1 else "entries"
+    return format_error(
+        "STASH_DEBT",
+        f"Repository has {count} git stash {noun}. Stash workflows are forbidden for AI orchestration.",
+        next_call=(
+            "Clear all repository stash entries with maintainer-approved workflow, "
+            f'then call teleclaude__next_work(slug="{slug}") to continue.'
+        ),
+    )
 
 
 def format_hitl_guidance(context: str) -> str:
@@ -1147,6 +1160,29 @@ def has_uncommitted_changes(cwd: str, slug: str) -> bool:
         return False
 
 
+def get_stash_entries(cwd: str) -> list[str]:
+    """Return git stash entries for the repository at cwd.
+
+    Stash state is repository-wide (shared by all worktrees), so this check is
+    intentionally evaluated at repo scope.
+    """
+    try:
+        repo = Repo(cwd)
+        raw = cast(str, repo.git.stash("list"))
+        return [line.strip() for line in raw.splitlines() if line.strip()]
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        logger.warning("Invalid git repository path for stash lookup: %s", cwd)
+        return []
+    except GitCommandError as exc:
+        logger.warning("Unable to read git stash list at %s: %s", cwd, exc)
+        return []
+
+
+def has_git_stash_entries(cwd: str) -> bool:
+    """Return True when repository stash contains one or more entries."""
+    return bool(get_stash_entries(cwd))
+
+
 def ensure_worktree(cwd: str, slug: str) -> bool:
     """Ensure worktree exists and is prepared, creating/preparing as needed.
 
@@ -1618,7 +1654,12 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             )
         resolved_slug = found_slug
 
-    # 2. Validate preconditions
+    # 2. Guardrail: stash debt is forbidden for AI orchestration
+    stash_entries = await asyncio.to_thread(get_stash_entries, cwd)
+    if stash_entries:
+        return format_stash_debt(resolved_slug, len(stash_entries))
+
+    # 3. Validate preconditions
     precondition_root = cwd
     worktree_path = Path(cwd) / "trees" / resolved_slug
     if (

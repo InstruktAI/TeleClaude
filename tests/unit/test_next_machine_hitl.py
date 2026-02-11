@@ -11,6 +11,8 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import (
     format_tool_call,
+    get_stash_entries,
+    has_git_stash_entries,
     has_uncommitted_changes,
     is_build_complete,
     is_review_approved,
@@ -296,6 +298,26 @@ def test_has_uncommitted_changes_ignores_slug_todo_scaffold_paths():
 
         with patch("teleclaude.core.next_machine.core.Repo", return_value=repo_mock):
             assert has_uncommitted_changes(tmpdir, "test-slug") is False
+
+
+def test_get_stash_entries_returns_repo_stash_list():
+    """Stash entries are repository-wide and should be detected for orchestration guardrails."""
+    repo_mock = MagicMock()
+    repo_mock.git.stash.return_value = "stash@{0}: WIP on test\nstash@{1}: On test"
+
+    with patch("teleclaude.core.next_machine.core.Repo", return_value=repo_mock):
+        entries = get_stash_entries("/tmp/test")
+
+    assert entries == ["stash@{0}: WIP on test", "stash@{1}: On test"]
+
+
+def test_has_git_stash_entries_true_when_stash_not_empty():
+    """Non-empty stash list should block workflow progression."""
+    repo_mock = MagicMock()
+    repo_mock.git.stash.return_value = "stash@{0}: WIP on test"
+
+    with patch("teleclaude.core.next_machine.core.Repo", return_value=repo_mock):
+        assert has_git_stash_entries("/tmp/test") is True
 
 
 def test_sync_slug_todo_from_main_to_worktree_copies_slug_files():

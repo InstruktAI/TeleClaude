@@ -719,3 +719,23 @@ async def test_mark_phase_blocks_on_uncommitted_changes(mock_mcp_server):
 
         assert "UNCOMMITTED_CHANGES" in result
         assert "stash" not in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_mark_phase_blocks_on_stash_debt(mock_mcp_server):
+    """mark_phase should hard-stop when repository stash is non-empty."""
+    server = mock_mcp_server
+
+    with (
+        patch("teleclaude.mcp.handlers.has_uncommitted_changes", return_value=False),
+        patch("teleclaude.mcp.handlers.get_stash_entries", return_value=["stash@{0}: WIP on foo"]),
+        patch("teleclaude.mcp.handlers.Path.exists", return_value=True),
+    ):
+        result = await server.teleclaude__mark_phase(
+            slug="test-slug",
+            phase="build",
+            status="complete",
+            cwd="/home/user/project",
+        )
+
+    assert "STASH_DEBT" in result

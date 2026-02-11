@@ -30,6 +30,7 @@ from teleclaude.core.models import MessageMetadata, ThinkingMode
 from teleclaude.core.next_machine import next_maintain, next_prepare, next_work
 from teleclaude.core.next_machine.core import (
     detect_circular_dependency,
+    get_stash_entries,
     has_uncommitted_changes,
     mark_phase,
     read_dependencies,
@@ -1052,6 +1053,14 @@ class MCPHandlersMixin:
             return (
                 f"ERROR: UNCOMMITTED_CHANGES\nWorktree trees/{slug} has uncommitted changes. "
                 "Please commit them before marking phase as complete."
+            )
+        stash_entries = get_stash_entries(cwd)
+        if stash_entries:
+            noun = "entry" if len(stash_entries) == 1 else "entries"
+            return (
+                "ERROR: STASH_DEBT\n"
+                f"Repository has {len(stash_entries)} git stash {noun}. "
+                "Clear stash entries before marking phases complete."
             )
 
         updated_state = mark_phase(worktree_cwd, slug, phase, status)

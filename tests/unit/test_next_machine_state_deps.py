@@ -355,6 +355,31 @@ async def test_next_work_review_includes_merge_base_note():
 
 
 @pytest.mark.asyncio
+async def test_next_work_blocks_when_stash_debt_exists():
+    """next_work should hard-stop when repository stash is non-empty."""
+    db = MagicMock(spec=Db)
+    slug = "stash-blocked"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
+        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_path.write_text(f"# Roadmap\n\n- [.] {slug}\n")
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.get_stash_entries", return_value=["stash@{0}: WIP on foo"]),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        assert "ERROR: STASH_DEBT" in result
+
+
+@pytest.mark.asyncio
 async def test_next_work_does_not_block_review_when_main_ahead():
     """Verify next_work stays worktree-local and still dispatches review."""
     db = MagicMock(spec=Db)
