@@ -571,6 +571,26 @@ async def get_session_data(
         logger.error("Session %s not found", session_id[:8])
         return {"status": "error", "error": "Session not found"}
 
+    def _pending_codex_transcript_payload(reason: str) -> SessionDataPayload:
+        logger.debug(
+            "Codex transcript pending for session %s (%s)",
+            session_id[:8],
+            reason,
+        )
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "project_path": session.project_path,
+            "subdir": session.subdir,
+            "messages": (
+                "Transcript is not available yet for this Codex session. "
+                "Wait for the first completed turn (`agent_stop`) and retry."
+            ),
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+            "last_activity": (session.last_activity.isoformat() if session.last_activity else None),
+            "transcript": None,
+        }
+
     # Get native_log_file from session, or discover it if not set
     native_log_file_str = session.native_log_file
 
@@ -595,11 +615,15 @@ async def get_session_data(
             await db.update_session(session_id, native_log_file=discovered_path)
 
     if not native_log_file_str:
+        if session.active_agent == "codex":
+            return _pending_codex_transcript_payload("no_native_log_file")
         logger.error("No native_log_file for session %s", session_id[:8])
         return {"status": "error", "error": "Session file not found"}
 
     native_log_file = Path(native_log_file_str)
     if not native_log_file.exists():
+        if session.active_agent == "codex":
+            return _pending_codex_transcript_payload("native_log_file_missing_on_disk")
         logger.error("Native session file does not exist: %s", native_log_file)
         return {"status": "error", "error": "Session file does not exist"}
 

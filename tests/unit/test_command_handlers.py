@@ -486,6 +486,58 @@ async def test_handle_get_session_data_returns_markdown(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_handle_get_session_data_codex_pending_when_no_transcript():
+    """Codex get_session_data should be non-error before first transcript binding."""
+    mock_session = MagicMock()
+    mock_session.session_id = "codex-session-1"
+    mock_session.title = "Codex Session"
+    mock_session.project_path = "/home/user"
+    mock_session.subdir = None
+    mock_session.created_at = datetime.now()
+    mock_session.last_activity = datetime.now()
+    mock_session.native_log_file = None
+    mock_session.native_session_id = None
+    mock_session.active_agent = "codex"
+
+    cmd = GetSessionDataCommand(session_id="codex-session-1")
+
+    with patch.object(command_handlers, "db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        result = await command_handlers.get_session_data(cmd)
+
+    assert result["status"] == "success"
+    assert "not available yet" in result["messages"].lower()
+    assert result["transcript"] is None
+
+
+@pytest.mark.asyncio
+async def test_handle_get_session_data_codex_pending_when_transcript_path_missing(tmp_path):
+    """Codex get_session_data should be non-error when transcript file is not yet on disk."""
+    mock_session = MagicMock()
+    mock_session.session_id = "codex-session-2"
+    mock_session.title = "Codex Session"
+    mock_session.project_path = "/home/user"
+    mock_session.subdir = None
+    mock_session.created_at = datetime.now()
+    mock_session.last_activity = datetime.now()
+    mock_session.native_log_file = str(tmp_path / "missing-transcript.jsonl")
+    mock_session.native_session_id = "019c-test"
+    mock_session.active_agent = "codex"
+
+    cmd = GetSessionDataCommand(session_id="codex-session-2")
+
+    with patch.object(command_handlers, "db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        result = await command_handlers.get_session_data(cmd)
+
+    assert result["status"] == "success"
+    assert "not available yet" in result["messages"].lower()
+    assert result["transcript"] is None
+
+
+@pytest.mark.asyncio
 async def test_handle_get_session_data_returns_error_for_missing_session():
     """Test that get_session_data returns error for missing sessions."""
     cmd = GetSessionDataCommand(session_id="missing-session")
