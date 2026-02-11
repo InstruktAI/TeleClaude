@@ -216,8 +216,25 @@ AgentEventPayload = Union[
 ]
 
 
+# Event types supported by build_agent_payload
+# Additional AgentHookEventType values exist but have no payload builders yet
+SUPPORTED_PAYLOAD_TYPES: set[AgentHookEventType] = {
+    AgentHookEvents.AGENT_SESSION_START,
+    AgentHookEvents.USER_PROMPT_SUBMIT,
+    AgentHookEvents.AGENT_OUTPUT,
+    AgentHookEvents.AGENT_STOP,
+    AgentHookEvents.AGENT_NOTIFICATION,
+    AgentHookEvents.AGENT_SESSION_END,
+    AgentHookEvents.AFTER_MODEL,
+}
+
+
 def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, object]) -> AgentEventPayload:
-    """Build typed agent payload from normalized hook data."""
+    """Build typed agent payload from normalized hook data.
+
+    Raises:
+        ValueError: If event_type is not in SUPPORTED_PAYLOAD_TYPES
+    """
     native_id = cast(str | None, data.get("session_id"))
     frozen_raw = MappingProxyType(dict(data))
 
@@ -277,7 +294,10 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
             raw=frozen_raw,
         )
 
-    raise ValueError(f"Unknown agent hook event_type '{event_type}'")
+    raise ValueError(
+        f"Unsupported agent hook event_type '{event_type}' for payload building. "
+        f"Supported types: {sorted(SUPPORTED_PAYLOAD_TYPES)}"
+    )
 
 
 # UI commands mapping (intentionally lowercase - not a constant despite dict type)
