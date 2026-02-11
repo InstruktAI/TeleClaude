@@ -314,29 +314,17 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.temp_output_highlights.discard(session_id)
             logger.debug("input_highlight ADDED for %s (reason=user_input)", session_id[:8])
         elif reason == "agent_output":
-            # Streaming: just flicker temp, don't touch input/output
-            state.sessions.temp_output_highlights.add(session_id)
-            logger.debug("temp_output_highlight ADDED for %s (streaming)", session_id[:8])
-        elif reason == "agent_stopped":
-            # Agent finished: clear input, set output based on whether user is watching
+            # Agent started responding: remove input highlight and show temporary output highlight
             state.sessions.input_highlights.discard(session_id)
-
-            # Check if user is watching this session
-            is_selected = session_id == state.sessions.selected_session_id
-            is_sticky = any(s.session_id == session_id for s in state.sessions.sticky_sessions)
-            is_preview = state.sessions.preview and state.sessions.preview.session_id == session_id
-            is_watching = is_selected or is_sticky or is_preview
-
-            if is_watching:
-                # Ephemeral 3-sec highlight
-                state.sessions.output_highlights.discard(session_id)
-                state.sessions.temp_output_highlights.add(session_id)
-                logger.debug("temp_output_highlight ADDED for %s (agent_stopped, watching)", session_id[:8])
-            else:
-                # Permanent highlight
-                state.sessions.temp_output_highlights.discard(session_id)
-                state.sessions.output_highlights.add(session_id)
-                logger.debug("output_highlight ADDED for %s (agent_stopped, not watching)", session_id[:8])
+            state.sessions.output_highlights.discard(session_id)
+            state.sessions.temp_output_highlights.add(session_id)
+            logger.debug("temp_output_highlight ADDED for %s (agent_output)", session_id[:8])
+        elif reason == "agent_stopped":
+            # Agent finished: clear input/temp and make output highlight permanent
+            state.sessions.input_highlights.discard(session_id)
+            state.sessions.temp_output_highlights.discard(session_id)
+            state.sessions.output_highlights.add(session_id)
+            logger.debug("output_highlight ADDED for %s (agent_stopped)", session_id[:8])
         # "state_change" reason: no highlight changes (status, title, etc.)
         return
 

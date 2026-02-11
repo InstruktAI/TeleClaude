@@ -213,7 +213,7 @@ if t is IntentType.SESSION_UPDATED:
     elif reason == "agent_output":
         # Clear input highlight, set temporary output highlight
         state.sessions.input_highlights.discard(session_id)
-        state.sessions.output_highlights.add(session_id)
+        state.sessions.output_highlights.discard(session_id)
         state.sessions.temp_output_highlights.add(session_id)
 
     elif reason == "agent_stopped":
