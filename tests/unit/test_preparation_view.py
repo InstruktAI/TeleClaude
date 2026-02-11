@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
-from unittest.mock import Mock, patch
+from typing import TypedDict
+from unittest.mock import Mock
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
@@ -42,22 +42,35 @@ class DummyScreen:
         self.refresh_called = True
 
 
-def _run_with_loop(func: callable) -> None:
-    """Run a synchronous function with a dedicated event loop."""
-    loop = asyncio.new_event_loop()
-    try:
-        asyncio.set_event_loop(loop)
-        func()
-    finally:
-        loop.close()
-        asyncio.set_event_loop(None)
+class ModalInitCapture(TypedDict):
+    computer: str
+    project_path: str
+    default_prompt: str
 
 
-def test_handle_enter_on_ready_todo_splits_tmux_in_tmux_env():
-    """Test that handle_enter on a ready todo triggers tmux split when in TMUX."""
+def _build_ready_todo_node(slug: str, status: str = "ready") -> PrepTodoNode:
+    return PrepTodoNode(
+        type="todo",
+        data=PrepTodoDisplayInfo(
+            todo=TodoItem(
+                slug=slug,
+                status=status,
+                description="test",
+                has_requirements=True,
+                has_impl_plan=True,
+            ),
+            project_path="/tmp",
+            computer="local",
+        ),
+        depth=0,
+    )
+
+
+def test_handle_enter_on_ready_todo_uses_start_modal_with_prefilled_next_work(monkeypatch):
+    """Enter on ready todo should open modal prefilled with /next-work <slug>."""
     api = DummyAPI(result={"tmux_session_name": "session-1"})
     pane_manager = Mock()
-    pane_manager.is_available = False  # Force attach_tmux_from_result / fallback path
+    pane_manager.is_available = True
 
     state = TuiState()
     controller = TuiController(state, pane_manager, lambda _name: None)
@@ -71,38 +84,78 @@ def test_handle_enter_on_ready_todo_splits_tmux_in_tmux_env():
     )
     screen = DummyScreen()
 
-    view.flat_items = [
-        PrepTodoNode(
-            type="todo",
-            data=PrepTodoDisplayInfo(
-                todo=TodoItem(
-                    slug="test-todo",
-                    status="ready",
-                    description="test",
-                    has_requirements=True,
-                    has_impl_plan=True,
-                ),
-                project_path="/tmp",
-                computer="local",
-            ),
-            depth=0,
-        )
-    ]
+    view.flat_items = [_build_ready_todo_node("test-todo")]
     view.selected_index = 0
 
-    with (
-        patch.dict("os.environ", {"TMUX": "1"}),
-        patch("teleclaude.cli.tui.views.preparation.subprocess.run"),
-        patch("teleclaude.cli.tui.session_launcher.subprocess.run") as mock_launcher_run,
-        patch("teleclaude.cli.tui.views.preparation.curses.def_prog_mode"),
-        patch("teleclaude.cli.tui.views.preparation.curses.endwin"),
-        patch("teleclaude.cli.tui.views.preparation.curses.reset_prog_mode"),
-    ):
-        _run_with_loop(lambda: view.handle_enter(screen))
+    captured: ModalInitCapture = {
+        "computer": "",
+        "project_path": "",
+        "default_prompt": "",
+    }
+    result = CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_123", agent="codex")
 
-    # Verification: Side effects of session launch
-    assert screen.refresh_called is True
-    # The actual tmux split happens in session_launcher.attach_tmux_session
-    args = mock_launcher_run.call_args[0][0]
-    assert "split-window" in args
-    assert "session-1" in args[-1]
+    class FakeStartSessionModal:
+        def __init__(self, **kwargs: object) -> None:
+            captured["computer"] = str(kwargs["computer"])
+            captured["project_path"] = str(kwargs["project_path"])
+            captured["default_prompt"] = str(kwargs["default_prompt"])
+            self.start_requested = False
+
+        def run(self, _stdscr: DummyScreen) -> CreateSessionResult:
+            return result
+
+    monkeypatch.setattr("teleclaude.cli.tui.views.preparation.StartSessionModal", FakeStartSessionModal)
+
+    view.handle_enter(screen)
+
+    assert captured["computer"] == "local"
+    assert captured["project_path"] == "/tmp"
+    assert captured["default_prompt"] == "/next-work test-todo"
+    assert view.needs_refresh is True
+    pane_manager.show_session.assert_called_once()
+
+
+def test_prepare_key_uses_start_modal_with_prefilled_next_prepare(monkeypatch):
+    """Pressing p on a todo should open modal prefilled with /next-prepare <slug>."""
+    api = DummyAPI(result={"tmux_session_name": "session-1"})
+    pane_manager = Mock()
+    pane_manager.is_available = True
+
+    state = TuiState()
+    controller = TuiController(state, pane_manager, lambda _name: None)
+    view = PreparationView(
+        api=api,
+        agent_availability={},
+        focus=FocusContext(),
+        pane_manager=pane_manager,
+        state=state,
+        controller=controller,
+    )
+    screen = DummyScreen()
+    view.flat_items = [_build_ready_todo_node("todo-2", status="pending")]
+    view.selected_index = 0
+
+    captured: ModalInitCapture = {
+        "computer": "",
+        "project_path": "",
+        "default_prompt": "",
+    }
+
+    class FakeStartSessionModal:
+        def __init__(self, **kwargs: object) -> None:
+            captured["computer"] = str(kwargs["computer"])
+            captured["project_path"] = str(kwargs["project_path"])
+            captured["default_prompt"] = str(kwargs["default_prompt"])
+            self.start_requested = False
+
+        def run(self, _stdscr: DummyScreen) -> CreateSessionResult:
+            return CreateSessionResult(
+                status="success", session_id="sess-2", tmux_session_name="tc_456", agent="claude"
+            )
+
+    monkeypatch.setattr("teleclaude.cli.tui.views.preparation.StartSessionModal", FakeStartSessionModal)
+
+    view.handle_key(ord("p"), screen)
+
+    assert captured["default_prompt"] == "/next-prepare todo-2"
+    assert view.needs_refresh is True

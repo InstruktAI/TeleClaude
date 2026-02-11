@@ -6,7 +6,6 @@ Required reads:
 
 from __future__ import annotations
 
-import asyncio
 import curses
 import os
 import shlex
@@ -667,21 +666,21 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         return None
 
     def _start_work(self, item: PrepTodoDisplayInfo, stdscr: CursesWindow) -> None:
-        """Start work on a ready todo - launches session in tmux split pane."""
+        """Start work on a ready todo via session modal."""
         slug = item.todo.slug
-        self._launch_session_split(
+        self._launch_todo_session_modal(
             item,
-            f"/next-work {slug}",
-            stdscr,
+            default_prompt=f"/next-work {slug}",
+            stdscr=stdscr,
         )
 
     def _prepare(self, item: PrepTodoDisplayInfo, stdscr: CursesWindow) -> None:
-        """Prepare a todo - launches session in tmux split pane."""
+        """Prepare a todo via session modal."""
         slug = item.todo.slug
-        self._launch_session_split(
+        self._launch_todo_session_modal(
             item,
-            f"/next-prepare {slug}",
-            stdscr,
+            default_prompt=f"/next-prepare {slug}",
+            stdscr=stdscr,
         )
 
     def _prepare_project(self, item: PrepProjectDisplayInfo, stdscr: CursesWindow) -> None:
@@ -710,33 +709,33 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         elif modal.start_requested:
             self.needs_refresh = True
 
-    def _launch_session_split(
+    def _launch_todo_session_modal(
         self,
         item: PrepTodoDisplayInfo,
-        message: str,
+        default_prompt: str,
         stdscr: CursesWindow,
     ) -> None:
-        """Launch a session and open it in a tmux split pane.
+        """Open session modal for todo command and attach selected launch result.
 
         Args:
-            item: Todo data dict with computer, project_path
-            message: Initial message/command for the session
-            stdscr: Curses screen object for restoration
+            item: Todo context (computer and project path)
+            default_prompt: Pre-filled command (e.g. /next-work <slug>)
+            stdscr: Curses screen object
         """
-        # Create the session via API
-        result = asyncio.get_event_loop().run_until_complete(
-            self.api.create_session(
-                computer=item.computer,
-                project_path=item.project_path,
-                agent="claude",
-                thinking_mode="slow",
-                message=message,
-            )
+        modal = StartSessionModal(
+            computer=item.computer,
+            project_path=item.project_path,
+            api=self.api,
+            agent_availability=self.agent_availability,
+            default_prompt=default_prompt,
+            notify=self.notify,
         )
-
-        computer = item.computer
-        self._attach_new_session(result, computer, stdscr)
-        self.needs_refresh = True
+        result = modal.run(stdscr)
+        if result:
+            self._attach_new_session(result, item.computer, stdscr)
+            self.needs_refresh = True
+        elif modal.start_requested:
+            self.needs_refresh = True
 
     def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
         """Get SSH connection info for a computer."""
