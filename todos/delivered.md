@@ -44,3 +44,4 @@
 | 2026-02-11 | agent-activity-events           | Direct agent activity event pipeline (Phase 1-2: foundation without DB-mediated reasons)                      | DELIVERED | 61fe04e3                                 |
 | 2026-02-11 | daemon-independent-jobs         | Daemon-independent agent job execution with subprocess spawning, full tool/MCP access                         | DELIVERED | 93fb9b97                                 |
 | 2026-02-11 | agent-activity-events-phase-3-7 | Complete agent-activity-events pipeline: DB column rename, event vocabulary rename, comprehensive tests, docs | DELIVERED | 5cd7f2d8                                 |
+| 2026-02-12 | tts-fallback-saturation         | Fix TTS fallback logic to respect voice saturation                                                            | DELIVERED | fd8d5cd2                                 |

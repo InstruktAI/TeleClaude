@@ -52,7 +52,3 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 Notification routing subsystem that sends job outputs, reports, and alerts to people based on their role and channel subscriptions in per-person teleclaude.yml. Generalizes the existing personal Telegram script into a multi-person delivery layer.
 
 ## Maintenance
-
-- [>] tts-fallback-saturation
-
-Fix TTS fallback logic to respect voice saturation. Currently, fallback providers pick random voices without checking availability, leading to voice collisions and "multiple voices" in a single session. The fix ensures fallbacks only select _free_ voices, saturating providers from top to bottom.
