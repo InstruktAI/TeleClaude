@@ -41,7 +41,10 @@ See the Agent Job Hygiene procedure for the full contract.
 ## Architecture
 
 ```
-launchd (hourly, minute 0)
+launchd (every 5 minutes)
+  │
+  ├── pidfile check (~/.teleclaude/cron_runner.pid)
+  │   └── If another instance running → exit cleanly
   │
   ▼
 scripts/cron_runner.py          CLI entry point
@@ -50,15 +53,15 @@ scripts/cron_runner.py          CLI entry point
 teleclaude/cron/runner.py       Engine: config → discover → schedule check → execute
   │  ├── _load_job_schedules()  Read schedule config from teleclaude.yml
   │  ├── discover_jobs()        Dynamic import of jobs/*.py (python-type jobs)
-  │  ├── _run_agent_job()       Spawn headless agent session (agent-type jobs)
+  │  ├── _run_agent_job()       Spawn agent subprocess (agent-type jobs)
   │  ├── _is_due()              Evaluate schedule against last run timestamp
   │  └── run_due_jobs()         Main loop: config → is_due() → run/spawn → mark state
   │
   ▼
 teleclaude.yml                  Schedule configuration (frequency, timing, execution mode)
   │
-  ├── script: jobs/foo.py       → Direct execution (no agent)
-  └── job: foo                  → Agent-supervised (reads spec doc, owns outcome)
+  ├── script: jobs/foo.py       → Direct execution via run() (no agent)
+  └── job: foo                  → Agent subprocess via run_job() (full tools + MCP)
   │
   ▼
 ~/.teleclaude/cron_state.json   Persistent state (last_run, status, errors)
@@ -68,13 +71,42 @@ teleclaude.yml                  Schedule configuration (frequency, timing, execu
 
 The `script` field is the discriminator. Its presence determines the execution mode:
 
+| Mode           | Function     | Characteristics                                                   |
+| -------------- | ------------ | ----------------------------------------------------------------- |
+| Script jobs    | `job.run()`  | Direct Python execution, no agent, returns `JobResult`            |
+| Agent jobs     | `run_job()`  | Full interactive subprocess with tools + MCP, role-aware          |
+| One-shot calls | `run_once()` | Lobotomized JSON-only invocation, no tools, no MCP (not for jobs) |
+
 **Script jobs** (`script` present) — The runner executes the script directly. No
 agent is involved. Use for simple, deterministic jobs that need no AI reasoning.
 
-**Agent jobs** (`script` absent, `job` required) — The runner spawns a headless
-agent session. The agent reads its spec doc (`docs/project/spec/jobs/<job>.md`),
-runs whatever scripts and tools the spec describes, fixes forward within scope,
-writes a run report, and stops. The agent is the supervisor.
+**Agent jobs** (`script` absent, `job` required) — The runner spawns a subprocess
+via `run_job()`. The agent has full tool access (bash, read, write, glob, grep,
+etc.) and MCP access when the daemon is running. The agent reads its spec doc
+(`docs/project/spec/jobs/<job>.md`), runs whatever scripts and tools the spec
+describes, fixes forward within scope, writes a run report, and stops.
+
+Agent jobs are daemon-independent: they run as direct subprocesses, not as daemon
+API calls. If the daemon is down, the agent still spawns and executes — it just
+lacks MCP tools (teleclaude\_\_\*), which is acceptable degradation for filesystem-
+based jobs.
+
+**One-shot calls** (`run_once()`) are unrelated to the job runner. They are
+lobotomized invocations for structured JSON output (e.g., YouTube tagging) with
+no tool or MCP access.
+
+### Role Resolution
+
+Agent jobs accept a `role` parameter that propagates to the subprocess environment
+via `TELECLAUDE_JOB_ROLE`. The MCP wrapper reads this for tool filtering.
+
+Resolution chain:
+
+1. Daemon available → resolve role from config (future: person-identity-auth)
+2. Daemon unavailable → silently default to `admin`
+
+No warnings are emitted for daemon unavailability. The fallback is silent because
+other runners (log-bug-hunter) monitor daemon health.
 
 ### Components
 
@@ -145,6 +177,7 @@ jobs:
 | `job`           | string | (none)   | Spec doc name, resolves to `docs/project/spec/jobs/<job>.md` |
 | `agent`         | string | `claude` | AI agent to use (`claude`, `gemini`, `codex`)                |
 | `thinking_mode` | string | `fast`   | Model tier (`fast`, `med`, `slow`)                           |
+| `timeout`       | int    | (none)   | Per-job timeout in seconds (default: 1800 for agent jobs)    |
 
 `script` and `job` are mutually exclusive. `script` is leading: if present, the
 job runs directly without an agent. If absent, `job` is required and the runner
@@ -176,14 +209,17 @@ subscriptions.
 
 ## Primary Flows
 
-### Normal execution (hourly launchd trigger)
+### Normal execution (5-minute launchd trigger)
 
-1. `cron_runner.py` invokes `run_due_jobs()`.
-2. Engine loads schedule config from `teleclaude.yml`.
-3. Engine discovers job modules from `jobs/*.py`.
-4. For each job with a config entry: load last run from state, evaluate `_is_due()`.
-5. If due: call `job.run()` or spawn agent session, persist result to state.
-6. Jobs without config entries are silently skipped.
+1. Check pidfile at `~/.teleclaude/cron_runner.pid`. If another instance is alive, exit.
+2. Write pidfile. Register cleanup via `atexit`.
+3. `cron_runner.py` invokes `run_due_jobs()`.
+4. Engine loads schedule config from `teleclaude.yml`.
+5. Engine discovers job modules from `jobs/*.py`.
+6. For each job with a config entry: load last run from state, evaluate `_is_due()`.
+7. If due: call `job.run()` (script) or `run_job()` (agent subprocess), persist result.
+8. Jobs without config entries are silently skipped.
+9. Remove pidfile on exit.
 
 ### Force run (CLI)
 
@@ -251,9 +287,11 @@ jobs:
 The runner constructs the agent prompt from the `job` field:
 `"Read @docs/project/spec/jobs/{job}.md and execute the job instructions."`
 
-The runner spawns a headless agent session via `POST /sessions` on the daemon's
-unix socket. The agent loads its spec (its complete mandate), does its work,
-writes a run report, and exits.
+The runner invokes `run_job()` which spawns a full interactive agent subprocess
+via `subprocess.run()`. The agent has all tools enabled and MCP access when the
+daemon is running. It loads its spec (its complete mandate), does its work,
+writes a run report, and exits. The subprocess blocks until the agent completes
+or the timeout is reached.
 
 ### Schedule Semantics
 
@@ -295,16 +333,25 @@ File: `~/.teleclaude/cron_state.json`
 - **Job module fails to import**: Logged as error, other jobs still run.
 - **Job raises exception during `run()`**: Caught, marked as failed in state, other jobs still run.
 - **Invalid schedule value in config**: `Schedule(value)` raises `ValueError`, job skipped.
-- **Agent job fails mid-run**: Run report may be missing. The cron runner logs spawn
-  success/failure. A missing report for a spawned session indicates a crash.
+- **Agent job subprocess timeout**: `subprocess.run()` raises `TimeoutExpired`, marked as
+  failed in state. Default timeout: 1800s (30 min), configurable per job via `timeout`.
+- **Agent job fails mid-run**: Run report may be missing. The cron runner logs exit code.
+  A missing report with a non-zero exit code indicates a crash.
+- **Overlap (concurrent runner instances)**: Second instance detects pidfile, logs, exits
+  cleanly. Stale pidfiles (process dead but file remains) are detected and overwritten.
+- **Daemon unavailable during agent job**: Agent spawns without MCP tools. Filesystem-
+  based jobs (prepare, gate) work normally. Jobs requiring teleclaude\_\_\* tools degrade
+  gracefully — the tools are simply absent from the agent's tool set.
 
 ## Service Integration
 
 - **Launchd label**: `ai.instrukt.teleclaude.cron`
 - **Plist**: `launchd/ai.instrukt.teleclaude.cron.plist`
-- **Trigger**: Every hour at minute 0
+- **Trigger**: Every 5 minutes (`StartInterval` = 300)
+- **Installation**: `bin/init.sh` installs the cron plist alongside the daemon plist
 - **Working directory**: Repository root
 - **Logs**: `/var/log/instrukt-ai/teleclaude/cron.log`
+- **Overlap prevention**: Pidfile at `~/.teleclaude/cron_runner.pid`
 
 ### CLI
 
@@ -334,6 +381,4 @@ complete mandate — the agent reads it, executes it, and stays within its scope
 
 ## Known Issues
 
-1. **Launchd plist not installed by automation.** `bin/init.sh` and `Makefile` have no
-   cron references. The plist must be installed manually.
-2. **No tests.** No unit tests exist for the cron engine or job implementations.
+1. **No tests.** No unit tests exist for the cron engine or job implementations.
