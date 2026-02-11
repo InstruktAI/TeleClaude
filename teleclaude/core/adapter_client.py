@@ -681,7 +681,9 @@ class AdapterClient:
         result = await self._route_to_ui(session, "delete_channel")
         return bool(result)
 
-    async def discover_peers(self, redis_enabled: bool | None = None) -> list[dict[str, object]]:  # guard: loose-dict - Adapter peer data
+    async def discover_peers(
+        self, redis_enabled: bool | None = None
+    ) -> list[dict[str, object]]:  # guard: loose-dict - Adapter peer data
         """Discover peers from all registered adapters.
 
         Aggregates peer lists from all adapters and deduplicates by name.
@@ -849,7 +851,11 @@ class AdapterClient:
             except Exception as e:
                 logger.warning("Failed to broadcast %s to observer %s: %s", event, adapter_type, e)
 
-    def _format_event_for_observers(self, event: str, payload: dict[str, object]) -> Optional[str]:  # guard: loose-dict - Event payload
+    def _format_event_for_observers(
+        self,
+        event: str,
+        payload: dict[str, object],  # guard: loose-dict - Event payload
+    ) -> Optional[str]:
         """Format event as human-readable text for observer adapters.
 
         Args:

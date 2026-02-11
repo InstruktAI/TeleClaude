@@ -124,9 +124,7 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
             guarded_ranges = _collect_function_guard_ranges(lines)
             for lineno, line in enumerate(lines, start=1):
                 if legacy_noqa_marker in line:
-                    legacy_marker_matches.append(
-                        f"{path.relative_to(repo_root)}:{lineno}: {line.strip()}"
-                    )
+                    legacy_marker_matches.append(f"{path.relative_to(repo_root)}:{lineno}: {line.strip()}")
                 if any(pattern in line for pattern in patterns):
                     # Skip if line or previous line has documented exception.
                     if _line_has_exception_marker(lines, lineno, exception_markers):

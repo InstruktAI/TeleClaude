@@ -3,20 +3,23 @@
 import os
 import shutil
 import tempfile
+from importlib import import_module
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-try:
-    from mlx_audio.stt import load as load_stt_model
-except Exception as import_error:  # noqa: BLE001 - keep backend available via CLI fallback
-    load_stt_model = None  # type: ignore[assignment]
-    MLX_AUDIO_IMPORT_ERROR = import_error
-else:
-    MLX_AUDIO_IMPORT_ERROR = None
-
 from teleclaude.config import config
 from teleclaude.mlx_utils import is_local_path, resolve_model_ref
+
+load_stt_model = None
+mlx_audio_import_error: Exception | None = None
+try:
+    stt_module = import_module("mlx_audio.stt")
+    load_candidate = getattr(stt_module, "load", None)
+    if callable(load_candidate):
+        load_stt_model = load_candidate
+except Exception as import_error:  # noqa: BLE001 - keep backend available via CLI fallback
+    mlx_audio_import_error = import_error
 
 logger = get_logger(__name__)
 
@@ -82,7 +85,7 @@ class MLXParakeetBackend:
                 logger.info(
                     "Parakeet STT using CLI fallback (%s); mlx_audio import failed: %s",
                     self._cli_bin,
-                    MLX_AUDIO_IMPORT_ERROR,
+                    mlx_audio_import_error,
                 )
                 return True
             logger.error("Parakeet STT unavailable: mlx_audio not installed and no CLI fallback")
@@ -137,11 +140,14 @@ class MLXParakeetBackend:
         import json
         import subprocess
 
+        if not self._cli_bin:
+            raise RuntimeError("Parakeet CLI unavailable")
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as output_file:
             output_path = output_file.name
 
         cmd = [
-            self._cli_bin,  # type: ignore[list-item]
+            self._cli_bin,
             "--model",
             self._model_ref,
             "--audio",

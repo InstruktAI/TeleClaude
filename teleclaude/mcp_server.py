@@ -328,7 +328,11 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
         return True
 
     @staticmethod
-    def _str_arg(args: dict[str, object] | None, key: str, default: str = "") -> str:  # guard: loose-dict - MCP arguments
+    def _str_arg(
+        args: dict[str, object] | None,  # guard: loose-dict - MCP arguments
+        key: str,
+        default: str = "",
+    ) -> str:
         """Extract string argument from MCP tool arguments."""
         if not args:
             return default

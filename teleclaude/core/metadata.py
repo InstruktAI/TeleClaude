@@ -25,8 +25,12 @@ class AdapterMetadata(BaseModel):  # type: ignore[explicit-any]
     target_computer: Optional[str] = Field(None, description="Target computer for AI-to-AI sessions")
 
     # Platform-specific data (nested dicts)
-    telegram: Optional[dict[str, object]] = Field(None, description="Telegram-specific data")  # guard: loose-dict - Adapter-specific metadata
-    redis: Optional[dict[str, object]] = Field(None, description="Redis-specific data")  # guard: loose-dict - Adapter-specific metadata
+    telegram: Optional[dict[str, object]] = Field(  # guard: loose-dict - Adapter-specific metadata
+        None, description="Telegram-specific data"
+    )
+    redis: Optional[dict[str, object]] = Field(  # guard: loose-dict - Adapter-specific metadata
+        None, description="Redis-specific data"
+    )
 
     class Config:
         """Pydantic configuration."""

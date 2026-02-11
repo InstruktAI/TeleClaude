@@ -652,8 +652,7 @@ def get_tool_definitions() -> list[Tool]:
                         "type": "string",
                         "enum": ["available", "unavailable", "degraded"],
                         "description": (
-                            "Dispatch status to apply. "
-                            "'degraded' excludes the agent from automatic fallback selection."
+                            "Dispatch status to apply. 'degraded' excludes the agent from automatic fallback selection."
                         ),
                     },
                     "reason": {

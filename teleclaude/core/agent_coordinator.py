@@ -80,6 +80,13 @@ SESSION_START_MESSAGES = [
 ]
 
 
+_CHECKPOINT_PREFIXES = (
+    "Context-aware checkpoint",
+    "All expected validations",
+    "Checkpoint \u2014",
+)
+
+
 def _is_checkpoint_prompt(
     prompt: str,
     *,
@@ -87,17 +94,21 @@ def _is_checkpoint_prompt(
 ) -> bool:
     """Return True when prompt text is our system checkpoint message.
 
-    Codex synthetic input detection truncates captured prompt text to a fixed
-    max length. For those synthetic events, treat long-enough prefixes of the
-    checkpoint constant as checkpoint input too.
+    Matches both the generic Phase 1 message and context-aware Phase 2
+    messages by checking known prefixes.  Codex synthetic input detection
+    truncates captured prompt text, so we also accept 40-char prefixes of
+    the generic constant for synthetic events.
     """
     prompt_clean = (prompt or "").strip()
     if not prompt_clean:
         return False
 
-    checkpoint_clean = CHECKPOINT_MESSAGE.strip()
+    # Prefix match covers all checkpoint variants (generic + context-aware)
+    if any(prompt_clean.startswith(prefix) for prefix in _CHECKPOINT_PREFIXES):
+        return True
 
-    # Exact/contained match (Claude/Gemini hooks and full Codex text)
+    # Exact/contained match for the generic constant (backward compat)
+    checkpoint_clean = CHECKPOINT_MESSAGE.strip()
     if checkpoint_clean in prompt_clean:
         return True
 
@@ -843,10 +854,31 @@ class AgentCoordinator:
                 )
                 return
 
+        # Build context-aware checkpoint message
+        from teleclaude.hooks.checkpoint import get_checkpoint_content
+
+        transcript_path = fresh.native_log_file
+        working_slug = getattr(fresh, "working_slug", None)
+        project_path = ""
+        if transcript_path:
+            from teleclaude.utils.transcript import extract_workdir_from_transcript
+
+            project_path = extract_workdir_from_transcript(transcript_path) or ""
+        try:
+            agent_enum_ckpt = AgentName.from_str(agent_name)
+        except ValueError:
+            agent_enum_ckpt = AgentName.CLAUDE
+        checkpoint_text = get_checkpoint_content(
+            transcript_path=transcript_path,
+            agent_name=agent_enum_ckpt,
+            project_path=project_path,
+            working_slug=working_slug,
+        )
+
         # Inject
         delivered = await send_keys_existing_tmux(
             session_name=tmux_name,
-            text=CHECKPOINT_MESSAGE,
+            text=checkpoint_text,
             send_enter=True,
         )
         if delivered:

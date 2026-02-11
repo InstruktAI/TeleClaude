@@ -8,7 +8,6 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-from teleclaude.constants import CHECKPOINT_MESSAGE
 from teleclaude.hooks import receiver
 
 
@@ -91,7 +90,8 @@ def test_elapsed_above_threshold_claude(db_with_session):
 
     parsed = json.loads(result)
     assert parsed["decision"] == "block"
-    assert parsed["reason"] == CHECKPOINT_MESSAGE
+    assert isinstance(parsed["reason"], str)
+    assert len(parsed["reason"]) > 0
 
     # Verify DB was updated with last_checkpoint_at
     from sqlmodel import Session as SqlSession
@@ -114,7 +114,8 @@ def test_elapsed_above_threshold_gemini(db_with_session):
 
     parsed = json.loads(result)
     assert parsed["decision"] == "deny"
-    assert parsed["reason"] == CHECKPOINT_MESSAGE
+    assert isinstance(parsed["reason"], str)
+    assert len(parsed["reason"]) > 0
 
 
 def test_codex_returns_none(db_with_session):

@@ -28,7 +28,7 @@ Both axes merge in a shared builder used by both delivery paths (hook for Claude
 
 ### Phase A: Infrastructure
 
-#### Task 1: File category patterns and evidence configuration
+#### Task 1: File category patterns and evidence configuration [x]
 
 Add to `teleclaude/constants.py`:
 
@@ -47,7 +47,7 @@ Add to `teleclaude/constants.py`:
 
 **Verify:** Import succeeds, pattern data structure is well-typed.
 
-#### Task 2: Tool-call extraction layer in transcript.py
+#### Task 2: Tool-call extraction layer in transcript.py [x]
 
 Extend `teleclaude/utils/transcript.py` with a new Layer 2 consumer alongside the existing rendering and extraction functions. All new code lives IN transcript.py, sharing the existing Layer 0 (I/O) and Layer 1 (format normalization) infrastructure.
 
@@ -96,7 +96,7 @@ Tool-use/tool-result pairing: walk content blocks sequentially. When a `tool_use
 - Graceful failure on missing/corrupt transcripts
 - Tool-use/tool-result pairing produces correct `had_error` and `result_snippet`
 
-#### Task 3: Heuristic engine
+#### Task 3: Heuristic engine [x]
 
 Add to `teleclaude/hooks/checkpoint.py` — this module is a thin consumer of `transcript.py`. It imports `TurnTimeline` and `ToolCallRecord` from transcript.py and never reads or parses transcript files directly.
 
@@ -131,7 +131,7 @@ Resolution evidence for error state detection accepts three signal types:
 
 ### Phase B: Integration
 
-#### Task 4: Shared checkpoint message builder
+#### Task 4: Shared checkpoint message builder [x]
 
 Add to `teleclaude/hooks/checkpoint.py`:
 
@@ -150,7 +150,7 @@ Add to `teleclaude/hooks/checkpoint.py`:
 
 **Verify:** Integration tests with mock git output and fixture transcripts producing expected messages.
 
-#### Task 5: Hook route integration (Claude/Gemini)
+#### Task 5: Hook route integration (Claude/Gemini) [x]
 
 Modify `_maybe_checkpoint_output()` in `receiver.py`:
 
@@ -164,7 +164,7 @@ The receiver already has DB access via `_get_session_from_db()`. Extract `native
 
 **Verify:** Hook tests assert JSON shape with context-aware message content. Test suppression by providing fixture transcripts where actions were already performed.
 
-#### Task 6: Codex route integration (tmux injection)
+#### Task 6: Codex route integration (tmux injection) [x]
 
 Modify `_maybe_inject_checkpoint()` in `agent_coordinator.py`:
 
@@ -174,7 +174,7 @@ Modify `_maybe_inject_checkpoint()` in `agent_coordinator.py`:
 
 **Verify:** Coordinator tests assert codex receives context-aware content. Verify parity with hook route for same inputs.
 
-#### Task 7: Escape hatch behavior (single block per turn)
+#### Task 7: Escape hatch behavior (single block per turn) [x]
 
 Ensure the `stop_hook_active` escape hatch in `_maybe_checkpoint_output()`:
 
@@ -186,7 +186,7 @@ Ensure the `stop_hook_active` escape hatch in `_maybe_checkpoint_output()`:
 
 ### Phase C: Verification
 
-#### Task 8: Comprehensive tests
+#### Task 8: Comprehensive tests [x]
 
 Add/adjust tests across test files:
 
@@ -281,7 +281,7 @@ Add/adjust tests across test files:
 
 **Verify:** `pytest tests/unit/test_transcript_extraction.py tests/unit/test_checkpoint_builder.py tests/unit/test_checkpoint_hook.py tests/unit/test_agent_coordinator.py -q` all green.
 
-#### Task 9: Update design doc
+#### Task 9: Update design doc [x]
 
 Update `docs/project/design/architecture/checkpoint-system.md`:
 
