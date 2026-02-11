@@ -6,9 +6,9 @@
     "assessed": false,
     "todos": []
   },
-  "review_round": 2,
+  "review_round": 3,
   "max_review_rounds": 3,
-  "review_baseline_commit": "e827a799d3aa084dcf3003afb5255722e565a451",
+  "review_baseline_commit": "16270d4ee0a0e1f34bd4e378857a5b8501a36f88",
   "unresolved_findings": [],
   "resolved_findings": [
     "tool_name coercion bug (fac0e656)",
