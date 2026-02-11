@@ -56,7 +56,16 @@ from teleclaude.api_models import (
     SessionUpdatedEventDTO as SessionUpdatedEvent,
 )
 from teleclaude.api_models import (
+    SettingsDTO as SettingsInfo,
+)
+from teleclaude.api_models import (
+    SettingsPatchDTO as SettingsPatchInfo,
+)
+from teleclaude.api_models import (
     TodoDTO as TodoInfo,
+)
+from teleclaude.api_models import (
+    TTSSettingsPatchDTO as TTSSettingsPatchInfo,
 )
 
 __all__ = [
@@ -77,6 +86,9 @@ __all__ = [
     "SessionInfo",
     "SessionStartedEvent",
     "SessionUpdatedEvent",
+    "SettingsInfo",
+    "SettingsPatchInfo",
+    "TTSSettingsPatchInfo",
     "TodoInfo",
     "JsonValue",
     "JsonObject",

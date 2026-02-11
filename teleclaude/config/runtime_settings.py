@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from ruamel.yaml import YAML
@@ -14,8 +15,35 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-MUTABLE_SETTINGS = {"tts.enabled"}
 FLUSH_DELAY_S = 0.5
+
+
+@dataclass
+class TTSSettings:
+    """TTS section of mutable settings."""
+
+    enabled: bool = False
+
+
+@dataclass
+class SettingsState:
+    """Full mutable settings state."""
+
+    tts: TTSSettings
+
+
+@dataclass
+class TTSSettingsPatch:
+    """Patch payload for TTS settings. All fields optional."""
+
+    enabled: bool | None = None
+
+
+@dataclass
+class SettingsPatch:
+    """Typed patch payload for settings updates."""
+
+    tts: TTSSettingsPatch | None = None
 
 
 class RuntimeSettings:
@@ -29,35 +57,64 @@ class RuntimeSettings:
         self._yaml = YAML()
         self._yaml.preserve_quotes = True
 
-    def get_state(self) -> dict[str, Any]:  # guard: loose-dict - settings shape varies by key set
-        """Return current mutable settings as a nested dict."""
-        return {"tts": {"enabled": self._tts_enabled}}
+    def get_state(self) -> SettingsState:
+        """Return current mutable settings."""
+        return SettingsState(tts=TTSSettings(enabled=self._tts_enabled))
 
-    def patch(self, updates: dict[str, Any]) -> dict[str, Any]:  # guard: loose-dict - caller-provided patch
+    def patch(self, updates: SettingsPatch) -> SettingsState:
         """Apply validated updates and schedule persistence.
-
-        Args:
-            updates: Nested dict, e.g. {"tts": {"enabled": False}}.
 
         Returns:
             The full settings state after patching.
 
         Raises:
-            ValueError: If any key is not in the mutable whitelist.
+            ValueError: If patch contains no recognized fields.
         """
-        flat = _flatten(updates)
-        invalid = set(flat) - MUTABLE_SETTINGS
-        if invalid:
-            raise ValueError(f"Immutable or unknown keys: {sorted(invalid)}")
+        applied = False
 
-        if "tts.enabled" in flat:
-            val = bool(flat["tts.enabled"])
+        if updates.tts is not None and updates.tts.enabled is not None:
+            val = updates.tts.enabled
             self._tts_enabled = val
             self._tts_manager.enabled = val
             logger.info("Runtime tts.enabled → %s", val)
+            applied = True
+
+        if not applied:
+            raise ValueError("No mutable settings in patch")
 
         self._schedule_flush()
         return self.get_state()
+
+    @staticmethod
+    def parse_patch(raw: object) -> SettingsPatch:
+        """Parse a raw JSON body into a typed SettingsPatch.
+
+        Raises:
+            ValueError: If the payload structure is invalid or contains unknown keys.
+        """
+        if not isinstance(raw, dict):
+            raise ValueError("Expected JSON object")
+
+        allowed_top = {"tts"}
+        unknown_top = set(raw) - allowed_top
+        if unknown_top:
+            raise ValueError(f"Unknown settings keys: {sorted(unknown_top)}")
+
+        tts_patch: TTSSettingsPatch | None = None
+        tts_raw = raw.get("tts")
+        if tts_raw is not None:
+            if not isinstance(tts_raw, dict):
+                raise ValueError("tts must be an object")
+            allowed_tts = {"enabled"}
+            unknown_tts = set(tts_raw) - allowed_tts
+            if unknown_tts:
+                raise ValueError(f"Unknown tts keys: {sorted(unknown_tts)}")
+            enabled_val = tts_raw.get("enabled")
+            tts_patch = TTSSettingsPatch(
+                enabled=bool(enabled_val) if enabled_val is not None else None,
+            )
+
+        return SettingsPatch(tts=tts_patch)
 
     def _schedule_flush(self) -> None:
         if self._flush_task and not self._flush_task.done():
@@ -75,7 +132,6 @@ class RuntimeSettings:
             if doc is None:
                 doc = {}
 
-            # Deep-set mutable values
             tts_section = doc.get("tts")
             if isinstance(tts_section, dict):
                 tts_section["enabled"] = self._tts_enabled
@@ -86,15 +142,3 @@ class RuntimeSettings:
             logger.info("Settings flushed to %s", self._config_path)
         except Exception:
             logger.exception("Failed to flush settings to disk")
-
-
-def _flatten(d: dict[str, Any], prefix: str = "") -> dict[str, Any]:  # guard: loose-dict - recursive flattening
-    """Flatten nested dict to dot-notation keys."""
-    out: dict[str, Any] = {}  # guard: loose-dict - accumulator for flattened keys
-    for k, v in d.items():
-        key = f"{prefix}{k}" if not prefix else f"{prefix}.{k}"
-        if isinstance(v, dict):
-            out.update(_flatten(v, key))
-        else:
-            out[key] = v
-    return out

@@ -16,7 +16,7 @@ import time
 from typing import TYPE_CHECKING, Callable, Literal
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import (
@@ -39,7 +39,10 @@ from teleclaude.api_models import (
     SessionStartedEventDTO,
     SessionSummaryDTO,
     SessionUpdatedEventDTO,
+    SettingsDTO,
+    SettingsPatchDTO,
     TodoDTO,
+    TTSSettingsDTO,
     VoiceInputRequest,
 )
 from teleclaude.config import config
@@ -746,22 +749,26 @@ class APIServer:
             return result
 
         @self.app.get("/settings")
-        async def get_settings() -> dict[str, object]:  # pyright: ignore  # guard: loose-dict - dynamic settings
+        async def get_settings() -> SettingsDTO:  # pyright: ignore
             """Return current mutable runtime settings."""
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
-            return self.runtime_settings.get_state()
+            state = self.runtime_settings.get_state()
+            return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))
 
         @self.app.patch("/settings")
-        async def patch_settings(request: Request) -> dict[str, object]:  # pyright: ignore  # guard: loose-dict - dynamic settings
+        async def patch_settings(body: SettingsPatchDTO) -> SettingsDTO:  # pyright: ignore
             """Apply partial updates to mutable runtime settings."""
+            from teleclaude.config.runtime_settings import SettingsPatch, TTSSettingsPatch
+
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
-            body = await request.json()
-            if not isinstance(body, dict):
-                raise HTTPException(400, "Expected JSON object")
             try:
-                return self.runtime_settings.patch(body)
+                typed_patch = SettingsPatch(
+                    tts=TTSSettingsPatch(enabled=body.tts.enabled) if body.tts else None,
+                )
+                state = self.runtime_settings.patch(typed_patch)
+                return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
 

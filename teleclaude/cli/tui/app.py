@@ -27,7 +27,9 @@ from teleclaude.cli.models import (
     SessionsInitialEvent,
     SessionStartedEvent,
     SessionUpdatedEvent,
+    SettingsPatchInfo,
     TodoInfo,
+    TTSSettingsPatchInfo,
     WsEvent,
 )
 from teleclaude.cli.models import (
@@ -321,9 +323,7 @@ class TelecApp:
             self.agent_availability.update(availability)
 
             # Update TTS state from settings
-            tts_section = settings.get("tts")
-            if isinstance(tts_section, dict):
-                self.tts_enabled = bool(tts_section.get("enabled", False))
+            self.tts_enabled = settings.tts.enabled
 
             # Refresh ALL views with data (not just current)
             for view_num, view in self.views.items():
@@ -842,7 +842,9 @@ class TelecApp:
                         self.footer.tts_enabled = self.tts_enabled
                         if self._loop:
                             asyncio.run_coroutine_threadsafe(
-                                self.api.patch_settings({"tts": {"enabled": self.tts_enabled}}),
+                                self.api.patch_settings(
+                                    SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=self.tts_enabled))
+                                ),
                                 self._loop,
                             )
                         logger.debug("TTS toggled to %s via footer click", self.tts_enabled)
@@ -991,7 +993,7 @@ class TelecApp:
                 self.footer.tts_enabled = self.tts_enabled
             if self._loop:
                 asyncio.run_coroutine_threadsafe(
-                    self.api.patch_settings({"tts": {"enabled": self.tts_enabled}}),
+                    self.api.patch_settings(SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=self.tts_enabled))),
                     self._loop,
                 )
             logger.debug("TTS toggled to %s via hotkey", self.tts_enabled)
