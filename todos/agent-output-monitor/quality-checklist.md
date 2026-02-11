@@ -17,6 +17,6 @@
 
 ## Finalize Gates (Finalizer)
 
-- [ ] Branch merged or PR created
-- [ ] Delivery logged
-- [ ] Cleanup complete
+- [x] Branch merged or PR created
+- [x] Delivery logged
+- [x] Cleanup complete
