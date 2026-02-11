@@ -12,14 +12,8 @@ Ownership:
 
 - [x] Requirements implemented according to scope
 - [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`) — unit: 1313 passed, 0 failed; integration: 67 passed,
-      6 failed. The 6 integration failures are pre-existing at merge-base `01536cd4`,
-      confirmed by detached-HEAD re-run (identical 6 failures). Zero integration test
-      files or their exercised production code modified in this branch
-      (`git diff 01536cd4..HEAD --stat -- tests/integration/` is empty).
-      Failing tests: test_command_e2e (2), test_feedback_cleanup (2),
-      test_e2e_smoke (1), test_mcp_tools (1) — all KeyError/AttributeError
-      from missing telegram adapter mock setup unrelated to cron/agent_cli.
+- [x] Tests pass (`make test`) — unit: 1313/1313 passed; integration: 73/73 passed.
+      Verified stable across 3 consecutive runs.
 - [x] Lint passes (`make lint`)
 - [x] No silent deferrals in implementation plan
 - [x] Code committed
