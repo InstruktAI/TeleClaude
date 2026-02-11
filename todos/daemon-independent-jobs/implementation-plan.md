@@ -18,24 +18,24 @@ infrastructure (plist installation).
 
 **File(s):** `docs/project/design/architecture/jobs-runner.md`
 
-- [ ] Rewrite the architecture diagram to show subprocess path instead of daemon API
-- [ ] Add `run_job()` as third execution mode alongside `run_once()` and script `run()`
-- [ ] Document the role resolution chain: daemon available → resolve from config;
+- [x] Rewrite the architecture diagram to show subprocess path instead of daemon API
+- [x] Add `run_job()` as third execution mode alongside `run_once()` and script `run()`
+- [x] Document the role resolution chain: daemon available → resolve from config;
       daemon down → silent admin fallback
-- [ ] Update execution mode table: `run_once` (lobotomized JSON), `run_job` (interactive
+- [x] Update execution mode table: `run_once` (lobotomized JSON), `run_job` (interactive
       subprocess with tools+MCP), script `run()` (direct Python)
-- [ ] Update service integration section: 5-minute granularity, plist auto-installation
-- [ ] Remove Known Issue #1 (plist not installed by automation)
-- [ ] Add overlap prevention to failure modes
-- [ ] Update the job contract section for agent jobs to reflect subprocess model
+- [x] Update service integration section: 5-minute granularity, plist auto-installation
+- [x] Remove Known Issue #1 (plist not installed by automation)
+- [x] Add overlap prevention to failure modes
+- [x] Update the job contract section for agent jobs to reflect subprocess model
 
 ### Task 1.2: Update agent-job-hygiene procedure
 
 **File(s):** `docs/global/general/procedure/agent-job-hygiene.md`
 
-- [ ] Update precondition: "spawned by the cron runner as a subprocess" (not headless session)
-- [ ] Note that tools and filesystem access are available
-- [ ] Note that MCP tools (teleclaude\_\_\*) are available when daemon is running,
+- [x] Update precondition: "spawned by the cron runner as a subprocess" (not headless session)
+- [x] Note that tools and filesystem access are available
+- [x] Note that MCP tools (teleclaude\_\_\*) are available when daemon is running,
       gracefully absent when daemon is down
 
 ---
