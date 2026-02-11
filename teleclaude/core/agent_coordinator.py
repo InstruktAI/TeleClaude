@@ -9,6 +9,7 @@ Handles agent lifecycle events (start, stop, notification) and routes them to:
 import asyncio
 import base64
 import random
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import TYPE_CHECKING, Coroutine, cast
@@ -129,7 +130,7 @@ def _is_checkpoint_prompt(
 
 def _is_codex_synthetic_prompt_event(raw_payload: object) -> bool:
     """Return True for Codex synthetic prompt events derived from output polling."""
-    if not isinstance(raw_payload, dict):
+    if not isinstance(raw_payload, Mapping):
         return False
     source = raw_payload.get("source")
     return bool(raw_payload.get("synthetic")) and isinstance(source, str) and source.startswith("codex_")

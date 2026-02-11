@@ -169,7 +169,10 @@ async def _fast_poll_for_marker(
     try:
         while time.time() - start_time < FAST_POLL_TIMEOUT_S:
             output = await tmux_bridge.capture_pane(tmux_name)
-            if _has_agent_marker(output):
+            current_input = _find_prompt_input(output)
+
+            # Only emit after submit: marker + prompt line no longer shows input.
+            if _has_agent_marker(output) and not current_input:
                 logger.info(
                     "Fast poll detected agent marker for Codex session %s: %d chars: %r",
                     session_id[:8],
@@ -249,40 +252,57 @@ async def _maybe_emit_codex_input(
     # Check if agent is responding
     agent_responding = _has_agent_marker(current_output)
 
-    if agent_responding:
-        # Cancel fast poll if running (we'll emit from here)
+    async def _emit_captured_input(source: str) -> bool:
+        if not state.last_prompt_input:
+            return False
+        logger.info(
+            "Emitting synthetic user_prompt_submit for Codex session %s: %d chars: %r",
+            session_id[:8],
+            len(state.last_prompt_input),
+            state.last_prompt_input[:50],
+        )
+        payload = UserPromptSubmitPayload(
+            prompt=state.last_prompt_input,
+            session_id=session_id,
+            raw={"synthetic": True, "source": source},
+        )
+        context = AgentEventContext(
+            session_id=session_id,
+            event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+            data=payload,
+        )
+        await emit_agent_event(context)
+        state.last_prompt_input = ""
         if state.fast_poll_task and not state.fast_poll_task.done():
             state.fast_poll_task.cancel()
             state.fast_poll_task = None
+        return True
 
-        # Agent started responding - emit what we captured
-        if state.last_prompt_input:
-            logger.info(
-                "Emitting synthetic user_prompt_submit for Codex session %s: %d chars: %r",
+    def _maybe_start_fast_poll(input_text: str) -> None:
+        time_since_last = current_time - state.last_output_change_time
+        was_idle = time_since_last >= IDLE_THRESHOLD_S
+        fast_poll_running = state.fast_poll_task and not state.fast_poll_task.done()
+        if was_idle and not fast_poll_running:
+            logger.debug(
+                "[CODEX %s] Idle→active transition detected (idle %.1fs), starting fast poll",
                 session_id[:8],
-                len(state.last_prompt_input),
-                state.last_prompt_input[:50],
+                time_since_last,
             )
+            state.fast_poll_task = asyncio.create_task(_fast_poll_for_marker(session_id, input_text, emit_agent_event))
 
-            payload = UserPromptSubmitPayload(
-                prompt=state.last_prompt_input,
-                session_id=session_id,
-                raw={"synthetic": True, "source": "codex_output_polling"},
-            )
-            context = AgentEventContext(
-                session_id=session_id,
-                event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
-                data=payload,
-            )
-            await emit_agent_event(context)
-
-            # Clear state after emit
-            state.last_prompt_input = ""
-        else:
+    if agent_responding:
+        # Marker alone is not enough; stale markers exist in history.
+        # Emit only after prompt input is no longer visible.
+        if current_input:
+            if current_input != state.last_prompt_input:
+                logger.debug("[CODEX %s] Tracking input: %r", session_id[:8], current_input[:50])
+            state.last_prompt_input = current_input
+            _maybe_start_fast_poll(current_input)
+        elif not await _emit_captured_input("codex_output_polling"):
             logger.debug("[CODEX %s] Agent marker found but no input to emit", session_id[:8])
 
-        # Update last change time
-        state.last_output_change_time = current_time
+        if output_changed:
+            state.last_output_change_time = current_time
     else:
         # No agent marker - track current input and check for idle→active
         if current_input:
@@ -293,21 +313,11 @@ async def _maybe_emit_codex_input(
                     current_input[:50],
                 )
             state.last_prompt_input = current_input
-
-            # Check if this is idle→active transition (user started typing after idle)
-            time_since_last = current_time - state.last_output_change_time
-            was_idle = time_since_last >= IDLE_THRESHOLD_S
-            fast_poll_running = state.fast_poll_task and not state.fast_poll_task.done()
-
-            if was_idle and not fast_poll_running:
-                logger.debug(
-                    "[CODEX %s] Idle→active transition detected (idle %.1fs), starting fast poll",
-                    session_id[:8],
-                    time_since_last,
-                )
-                state.fast_poll_task = asyncio.create_task(
-                    _fast_poll_for_marker(session_id, current_input, emit_agent_event)
-                )
+            _maybe_start_fast_poll(current_input)
+        elif output_changed and state.last_prompt_input:
+            # Fallback for Codex layouts that don't expose known marker glyphs:
+            # prompt disappeared and pane changed, treat as submit boundary.
+            await _emit_captured_input("codex_prompt_cleared")
 
         # Update last change time only when output actually changed
         if output_changed:

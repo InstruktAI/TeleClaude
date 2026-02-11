@@ -134,6 +134,15 @@ def _working_placeholder_text() -> str:
     return f"**{_WORKING_BASE_TEXT}**"
 
 
+def _temp_output_placeholder_text(active_agent: str | None, tool_name: str | None = None) -> str:
+    """Return placeholder text for temporary output highlight."""
+    if tool_name:
+        return _thinking_placeholder_text(tool_name)
+    if (active_agent or "").lower() == "codex":
+        return _working_placeholder_text()
+    return _thinking_placeholder_text()
+
+
 class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     """View 1: Sessions - project-centric tree with AI-to-AI nesting."""
 
@@ -1546,7 +1555,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         activity_time = _format_time(session.last_activity)
         if has_temp_output_highlight:
             tool_name = self.state.sessions.active_tool.get(session_id)
-            line4 = f"{detail_indent}[{activity_time}] out: {_thinking_placeholder_text(tool_name)}"
+            line4 = f"{detail_indent}[{activity_time}] out: {_temp_output_placeholder_text(session.active_agent, tool_name)}"
             lines.append(line4[:width])
         elif has_input_highlight:
             line4 = f"{detail_indent}[{activity_time}] out: {_working_placeholder_text()}"
@@ -1846,7 +1855,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             italic_attr = getattr(curses, "A_ITALIC", 0)
             prefix_text = f"{detail_indent}[{activity_time}] out: "
             tool_name = self.state.sessions.active_tool.get(session_id)
-            placeholder_text = _thinking_placeholder_text(tool_name)
+            placeholder_text = _temp_output_placeholder_text(session.active_agent, tool_name)
             if italic_attr:
                 _safe_addstr_with_italic_suffix(
                     row + lines_used,

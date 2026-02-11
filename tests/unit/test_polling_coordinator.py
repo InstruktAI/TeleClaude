@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from teleclaude.core import polling_coordinator
+from teleclaude.core.events import AgentHookEvents, UserPromptSubmitPayload
 from teleclaude.core.models import Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, ProcessExited
@@ -317,3 +318,59 @@ class TestPollAndSendOutput:
         assert mock_unreg.call_args == ((session_id,),)
         # Verify error feedback sent
         assert adapter_client.send_error_feedback.called
+
+
+@pytest.mark.asyncio
+class TestCodexSyntheticPromptDetection:
+    async def test_does_not_emit_while_prompt_text_is_still_visible(self):
+        """Stale marker glyphs should not trigger synthetic submit during typing."""
+        session_id = "codex-visible-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+        polling_coordinator._codex_input_state[session_id] = polling_coordinator.CodexInputState(
+            last_prompt_input="hello world",
+            last_output_change_time=0.0,
+        )
+
+        try:
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› hello world\n• Working...",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            emit.assert_not_awaited()
+            state = polling_coordinator._codex_input_state[session_id]
+            assert state.last_prompt_input == "hello world"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_emits_when_prompt_clears_even_without_marker(self):
+        """Prompt-clear transition should emit synthetic submit for markerless layouts."""
+        session_id = "codex-cleared-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+        polling_coordinator._codex_input_state[session_id] = polling_coordinator.CodexInputState(
+            last_prompt_input="please continue",
+            last_output_change_time=0.0,
+        )
+
+        try:
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="some changed pane output",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            assert context.event_type == AgentHookEvents.USER_PROMPT_SUBMIT
+            payload = context.data
+            assert isinstance(payload, UserPromptSubmitPayload)
+            assert payload.prompt == "please continue"
+            assert payload.raw.get("source") == "codex_prompt_cleared"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)

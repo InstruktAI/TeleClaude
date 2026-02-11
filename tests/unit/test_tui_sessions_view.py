@@ -444,6 +444,21 @@ class TestSessionsViewLogic:
         assert "[17:43:21] out: **Thinking" in output
         assert "final answer text" not in output
 
+    def test_temp_output_highlight_shows_working_placeholder_for_codex(self, sessions_view, monkeypatch):
+        """Codex temp output highlight should show working placeholder for synthetic start."""
+        monkeypatch.setattr("teleclaude.cli.tui.views.sessions._format_time", lambda _ts: "17:43:21")
+        monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
+
+        session = self._make_session_node(session_id="s-codex-temp", active_agent="codex")
+        sessions_view.state.sessions.last_summary["s-codex-temp"] = "final answer text"
+        sessions_view.state.sessions.temp_output_highlights.add("s-codex-temp")
+        sessions_view.flat_items = [session]
+
+        output = "\n".join(sessions_view.get_render_lines(120, 10))
+
+        assert "[17:43:21] out: **Working" in output
+        assert "final answer text" not in output
+
     def test_input_highlight_shows_working_placeholder_after_temp_window(self, sessions_view, monkeypatch):
         """After temp highlight clears, input highlight shows working placeholder."""
         monkeypatch.setattr("teleclaude.cli.tui.views.sessions._format_time", lambda _ts: "17:43:21")

@@ -1,10 +1,15 @@
 from datetime import datetime, timedelta, timezone
+from types import MappingProxyType
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from teleclaude.constants import CHECKPOINT_MESSAGE
-from teleclaude.core.agent_coordinator import AgentCoordinator, _is_checkpoint_prompt
+from teleclaude.core.agent_coordinator import (
+    AgentCoordinator,
+    _is_checkpoint_prompt,
+    _is_codex_synthetic_prompt_event,
+)
 from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload, UserPromptSubmitPayload
 from teleclaude.core.models import Session
 
@@ -199,6 +204,11 @@ def test_checkpoint_prompt_requires_canonical_prefix():
 
 def test_checkpoint_prompt_detects_canonical_prefix():
     assert _is_checkpoint_prompt("[TeleClaude Checkpoint] - Context-aware checkpoint") is True
+
+
+def test_codex_synthetic_prompt_detection_accepts_mapping_payload():
+    payload = MappingProxyType({"synthetic": True, "source": "codex_output_polling"})
+    assert _is_codex_synthetic_prompt_event(payload) is True
 
 
 @pytest.mark.asyncio
