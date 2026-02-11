@@ -1765,6 +1765,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         project=cwd,
         agent=agent,
         thinking_mode=mode,
-        subfolder="",  # Empty = main repo, NOT worktree
+        subfolder=f"trees/{resolved_slug}",
         next_call="teleclaude__next_work()",
     )

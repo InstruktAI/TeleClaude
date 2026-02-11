@@ -571,11 +571,12 @@ class MCPHandlersMixin:
         auto_command = f"agent_then_message {agent} {thinking_mode.value} {quoted_command}"
         normalized_subfolder = subfolder.strip().strip("/") if subfolder else ""
 
-        # Extract working_slug for state machine commands (next-build, next-review, etc.)
-        # These commands always have the slug as the first arg
-        state_machine_commands = {"next-build", "next-review", "next-fix-review", "next-finalize"}
+        # Worker commands require a slug as the first arg
+        worker_commands = {"next-build", "next-review", "next-fix-review", "next-finalize"}
         working_slug: str | None = None
-        if normalized_cmd in state_machine_commands and normalized_args:
+        if normalized_cmd in worker_commands:
+            if not normalized_args:
+                return {"status": "error", "message": f"/{normalized_cmd} requires a slug argument"}
             working_slug = normalized_args.split()[0]
 
         if self._is_local_computer(computer):
