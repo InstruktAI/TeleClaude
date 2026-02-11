@@ -362,7 +362,7 @@ def _has_evidence(timeline: TurnTimeline, substrings: list[str]) -> bool:
         if record.had_error:
             continue
         command = _extract_shell_command(record.input_data)
-        if any(sub in command for sub in substrings):
+        if _command_has_evidence(command, substrings):
             return True
     return False
 
@@ -379,9 +379,78 @@ def _has_status_evidence(timeline: TurnTimeline) -> bool:
         command = _extract_shell_command(record.input_data)
         if record.had_error:
             continue
-        if "make restart" in command:
-            saw_restart = True
-        elif saw_restart and any(sub in command for sub in CHECKPOINT_STATUS_EVIDENCE):
+        for segment in _split_shell_segments(command):
+            if _segment_matches_evidence(segment, "make restart"):
+                saw_restart = True
+                continue
+            if saw_restart and any(_segment_matches_evidence(segment, sub) for sub in CHECKPOINT_STATUS_EVIDENCE):
+                return True
+    return False
+
+
+def _split_shell_segments(command: str) -> list[str]:
+    """Split a shell command into sequential segments (`&&`, `||`, `;`, newline)."""
+    if not command:
+        return []
+    parts = re.split(r"(?:&&|\|\||;|\n)", command)
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _segment_tokens(segment: str) -> list[str]:
+    """Best-effort tokenization for a command segment."""
+    if not segment:
+        return []
+    try:
+        return shlex.split(segment)
+    except ValueError:
+        return segment.split()
+
+
+def _segment_matches_evidence(segment: str, evidence: str) -> bool:
+    """Match evidence against executable intent, not raw substring mentions."""
+    tokens = _segment_tokens(segment)
+    if not tokens:
+        return False
+
+    head = tokens[0]
+    rest = tokens[1:]
+
+    if evidence == "make restart":
+        return head == "make" and "restart" in rest
+    if evidence == "make status":
+        return head == "make" and "status" in rest
+    if evidence == "make test":
+        return head == "make" and "test" in rest
+    if evidence == "uv sync":
+        return head == "uv" and "sync" in rest
+    if evidence == "telec init":
+        return head == "telec" and "init" in rest
+    if evidence == "pytest":
+        return (
+            head == "pytest"
+            or (head == "uv" and "pytest" in rest)
+            or (head in {"python", "python3"} and len(rest) >= 2 and rest[0] == "-m" and rest[1] == "pytest")
+        )
+    if evidence == "instrukt-ai-logs":
+        return head == "instrukt-ai-logs"
+    if evidence == "pkill -SIGUSR2":
+        return head == "pkill" and any("SIGUSR2" in token for token in rest)
+    if evidence == "kill -USR2":
+        return head in {"kill", "pkill"} and any("USR2" in token for token in rest)
+    if evidence == "--unix-socket /tmp/teleclaude-api.sock":
+        return "--unix-socket" in tokens and "/tmp/teleclaude-api.sock" in tokens
+    if evidence == "/agent-restart":
+        return any("/agent-restart" in token for token in tokens)
+    if evidence == "agent_restart":
+        return "agent_restart" in segment
+
+    return evidence in segment
+
+
+def _command_has_evidence(command: str, evidence_markers: list[str]) -> bool:
+    """Check evidence against executable command segments."""
+    for segment in _split_shell_segments(command):
+        if any(_segment_matches_evidence(segment, marker) for marker in evidence_markers):
             return True
     return False
 
