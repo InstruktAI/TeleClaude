@@ -17,12 +17,6 @@ Re-summarize session titles based on the last 3 user inputs instead of only the 
 
 Legacy broad cleanup item with unclear boundaries. Parked until split into concrete, testable sub-tasks.
 
-## Release Automation
-
-- release-automation
-
-Automated AI-driven release pipeline with external inspectors. Valuable, but not part of the current core delivery path.
-
 ## Code Context Annotations
 
 - code-context-annotations

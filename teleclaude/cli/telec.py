@@ -30,6 +30,7 @@ class TelecCommand(str, Enum):
     CLAUDE = "claude"
     GEMINI = "gemini"
     CODEX = "codex"
+    REVIVE = "revive"
     INIT = "init"
     SYNC = "sync"
     WATCH = "watch"
@@ -44,6 +45,7 @@ _COMMAND_DESCRIPTIONS = {
     "claude": "Start interactive Claude Code session (fast/med/slow)",
     "gemini": "Start interactive Gemini session (fast/med/slow)",
     "codex": "Start interactive Codex session (fast/med/slow)",
+    "revive": "Revive session by TeleClaude session ID",
     "init": "Set up project hooks, watchers, and doc sync",
     "sync": "Validate refs and build doc artifacts",
     "watch": "Auto-sync docs on file changes",
@@ -67,6 +69,10 @@ _SYNC_FLAGS = [
 _WATCH_FLAGS = [
     ("-h", "--help", "Show usage information"),
     (None, "--project-root", "Project root directory"),
+]
+_REVIVE_FLAGS = [
+    ("-h", "--help", "Show usage information"),
+    (None, "--attach", "Attach to tmux session after revive"),
 ]
 _AGENT_MODES = [
     ("fast", "Cheapest, quickest"),
@@ -133,6 +139,8 @@ def _handle_completion() -> None:
         _complete_flags(_SYNC_FLAGS, rest, current, is_partial)
     elif cmd == "watch":
         _complete_flags(_WATCH_FLAGS, rest, current, is_partial)
+    elif cmd == "revive":
+        _complete_flags(_REVIVE_FLAGS, rest, current, is_partial)
     elif cmd in ("claude", "gemini", "codex"):
         _complete_agent(rest, current, is_partial)
     elif cmd == "todo":
@@ -342,6 +350,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         mode = args[0] if args else "slow"
         prompt = " ".join(args[1:]) if len(args) > 1 else None
         _quick_start(cmd_enum.value, mode, prompt)
+    elif cmd_enum is TelecCommand.REVIVE:
+        _handle_revive(args)
     elif cmd_enum is TelecCommand.INIT:
         init_project(Path.cwd())
     elif cmd_enum is TelecCommand.SYNC:
@@ -441,6 +451,86 @@ def _quick_start(agent: str, mode: str, prompt: str | None) -> None:
         return
 
     _attach_tmux_session(tmux_session_name)
+
+
+def _handle_revive(args: list[str]) -> None:
+    """Handle telec revive command."""
+    if not args or args[0] in ("--help", "-h"):
+        print(_revive_usage())
+        return
+
+    attach = False
+    session_id: str | None = None
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--attach":
+            attach = True
+            i += 1
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_revive_usage())
+            raise SystemExit(1)
+        else:
+            if session_id is not None:
+                print("Only one session_id is allowed.")
+                print(_revive_usage())
+                raise SystemExit(1)
+            session_id = arg
+            i += 1
+
+    if not session_id:
+        print("Missing required session_id.")
+        print(_revive_usage())
+        raise SystemExit(1)
+
+    _revive_session(session_id, attach)
+
+
+def _revive_session(session_id: str, attach: bool) -> None:
+    """Revive a session by TeleClaude session ID."""
+    try:
+        result = asyncio.run(_revive_session_via_api(session_id))
+    except APIError as e:
+        print(f"Error: {e}")
+        return
+
+    if result.status != "success":
+        print(result.error or "Revive failed")
+        return
+
+    print(f"Revived session {result.session_id[:8]}")
+    try:
+        asyncio.run(_send_revive_enter_via_api(result.session_id))
+    except APIError as e:
+        print(f"Warning: revive kick failed: {e}")
+    if attach and result.tmux_session_name:
+        _attach_tmux_session(result.tmux_session_name)
+
+
+async def _revive_session_via_api(session_id: str) -> CreateSessionResult:
+    """Revive a session via API and return the response."""
+    api = TelecAPIClient()
+    await api.connect()
+    try:
+        return await api.revive_session(session_id)
+    finally:
+        await api.close()
+
+
+async def _send_revive_enter_via_api(session_id: str) -> bool:
+    """Send an enter key after revive so headless activity resumes immediately."""
+    api = TelecAPIClient()
+    await api.connect()
+    try:
+        return await api.send_keys(
+            session_id=session_id,
+            computer=config.computer.name,
+            key="enter",
+            count=1,
+        )
+    finally:
+        await api.close()
 
 
 async def _quick_start_via_api(agent: str, mode: str, prompt: str | None) -> CreateSessionResult:
@@ -612,6 +702,8 @@ def _usage() -> str:
         "  telec claude [mode] [prompt]   # Start Claude (mode: fast/med/slow, prompt optional)\n"
         "  telec gemini [mode] [prompt]   # Start Gemini (mode: fast/med/slow, prompt optional)\n"
         "  telec codex [mode] [prompt]    # Start Codex (mode: fast/med/slow/deep, prompt optional)\n"
+        "  telec revive <session_id> [--attach]\n"
+        "                                 # Revive session by TeleClaude session ID\n"
         "  telec init                     # Initialize docs sync and auto-rebuild watcher\n"
         "  telec sync [--warn-only] [--validate-only] [--project-root PATH]\n"
         "                                 # Validate, build indexes, and deploy artifacts\n"
@@ -620,6 +712,17 @@ def _usage() -> str:
         "  telec docs [OPTIONS] [IDS...]  # Query documentation snippets (use --help for details)\n"
         "  telec todo create <slug> [--project-root PATH] [--after dep1,dep2]\n"
         "                                 # Scaffold todo files without modifying roadmap\n"
+    )
+
+
+def _revive_usage() -> str:
+    """Return usage string for telec revive."""
+    return (
+        "Usage:\n"
+        "  telec revive <session_id> [--attach]\n"
+        "\n"
+        "Options:\n"
+        "  --attach      Attach to tmux session after revive\n"
     )
 
 

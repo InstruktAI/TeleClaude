@@ -41,4 +41,5 @@ Run the next-work state machine and execute its instructions verbatim.
   2. Dispatch the worker exactly as instructed.
   3. Start the timer and stop.
   4. On completion or timeout, follow POST_COMPLETION steps.
-  5. Repeat until the state machine returns COMPLETE / NO_READY_ITEMS / error.
+  5. If the machine returns `REVIEW_ROUND_LIMIT`, apply the orchestrator-owned pragmatic closure path from `software-development/procedure/orchestration` (do not punt by default).
+  6. Repeat until the state machine returns COMPLETE / NO_READY_ITEMS / non-recoverable error.

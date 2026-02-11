@@ -199,6 +199,13 @@ snippets:
   scope: project
   path: docs/project/design/architecture/ui-adapter.md
   source_project: TeleClaude
+- id: project/design/architecture/web-api-facade
+  description: Next.js API facade as the canonical web contract, proxying to daemon
+    APIs during migration.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/web-api-facade.md
+  source_project: TeleClaude
 - id: project/design/ux/session-highlight
   description: Session highlight system for user attention in TUI.
   type: design

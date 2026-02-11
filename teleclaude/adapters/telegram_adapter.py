@@ -868,10 +868,11 @@ class TelegramAdapter(
             return None
 
         try:
-            await self.bot.send_message(
-                chat_id=chat_id,
-                message_thread_id=thread_id,
-                text=error_msg,
+            await self._send_general_message_with_retry(
+                thread_id,
+                error_msg,
+                None,
+                None,
             )
         except Exception as e:
             logger.error("Failed to send session error feedback: %s", e)
@@ -928,17 +929,18 @@ class TelegramAdapter(
         self._ensure_started()
         # Build kwargs with explicit typing
         if topic_id is not None:
-            message = await self.bot.send_message(
-                chat_id=self.supergroup_id,
-                message_thread_id=topic_id,
-                text=text,
-                parse_mode=parse_mode,
+            message = await self._send_general_message_with_retry(
+                topic_id,
+                text,
+                parse_mode,
+                None,
             )
         else:
-            message = await self.bot.send_message(
-                chat_id=self.supergroup_id,
-                text=text,
-                parse_mode=parse_mode,
+            message = await self._send_general_message_with_retry(
+                None,
+                text,
+                parse_mode,
+                None,
             )
 
         return message

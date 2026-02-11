@@ -65,3 +65,68 @@ def test_attach_tmux_session_attaches_outside_tmux(monkeypatch: pytest.MonkeyPat
     telec._attach_tmux_session("tc_888")
 
     assert called["args"][1:] == (telec.config.computer.tmux_binary, "attach-session", "-t", "tc_888")
+
+
+def test_revive_session_attaches_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: Dict[str, str] = {}
+
+    async def fake_revive(_session_id: str) -> CreateSessionResult:
+        return CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_revived", agent="codex")
+
+    async def fake_kick(_session_id: str) -> bool:
+        called["kick"] = "1"
+        return True
+
+    def fake_attach(name: str) -> None:
+        called["name"] = name
+
+    monkeypatch.setattr(telec, "_revive_session_via_api", fake_revive)
+    monkeypatch.setattr(telec, "_send_revive_enter_via_api", fake_kick)
+    monkeypatch.setattr(telec, "_attach_tmux_session", fake_attach)
+
+    telec._revive_session("sess-1", attach=True)
+
+    assert called["kick"] == "1"
+    assert called["name"] == "tc_revived"
+
+
+def test_revive_session_does_not_attach_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: Dict[str, str] = {}
+
+    async def fake_revive(_session_id: str) -> CreateSessionResult:
+        return CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_revived", agent="codex")
+
+    async def fake_kick(_session_id: str) -> bool:
+        called["kick"] = "1"
+        return True
+
+    def fake_attach(name: str) -> None:
+        called["name"] = name
+
+    monkeypatch.setattr(telec, "_revive_session_via_api", fake_revive)
+    monkeypatch.setattr(telec, "_send_revive_enter_via_api", fake_kick)
+    monkeypatch.setattr(telec, "_attach_tmux_session", fake_attach)
+
+    telec._revive_session("sess-1", attach=False)
+
+    assert called["kick"] == "1"
+    assert "name" not in called
+
+
+def test_revive_session_warns_when_kick_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    async def fake_revive(_session_id: str) -> CreateSessionResult:
+        return CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_revived", agent="codex")
+
+    async def fake_kick(_session_id: str) -> bool:
+        raise APIError("kick failed")
+
+    monkeypatch.setattr(telec, "_revive_session_via_api", fake_revive)
+    monkeypatch.setattr(telec, "_send_revive_enter_via_api", fake_kick)
+
+    telec._revive_session("sess-1", attach=False)
+
+    out = capsys.readouterr().out
+    assert "Revived session sess-1" in out
+    assert "Warning: revive kick failed: kick failed" in out

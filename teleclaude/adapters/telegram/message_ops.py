@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from instrukt_ai_logging import get_logger
@@ -313,6 +314,14 @@ class MessageOperationsMixin:
             # Other BadRequest errors (e.g., "Message to edit not found") are real failures
             logger.error("[TELEGRAM %s] edit_message failed: %s", session.session_id[:8], e)
             return False
+        except (NetworkError, TimedOut, TimeoutError, ConnectionError) as e:
+            logger.warning(
+                "[TELEGRAM %s] transient network error editing message %s; keeping message id and retrying later: %s",
+                session.session_id[:8],
+                message_id,
+                e,
+            )
+            return True
         except Exception as e:
             logger.error(
                 "[TELEGRAM %s] edit_message failed after retries: %s",
@@ -394,13 +403,13 @@ class MessageOperationsMixin:
             logger.debug("send_file: skipping, topic_id not ready for session %s", session.session_id[:8])
             return ""
 
-        with open(file_path, "rb") as f:
-            message = await self.bot.send_document(
-                chat_id=self.supergroup_id,
-                message_thread_id=topic_id,
-                document=f,
-                caption=caption,
-            )
+        message = await self._send_document_with_retry(
+            self.supergroup_id,
+            topic_id,
+            file_path,
+            Path(file_path).name,
+            caption,
+        )
 
         return str(message.message_id)
 
@@ -425,21 +434,39 @@ class MessageOperationsMixin:
         ):
             reply_markup = None
 
-        result = await self.bot.send_message(
+        result = await self._send_general_message_with_retry(
+            message_thread_id,
+            text,
+            parse_mode,
+            reply_markup,
+        )
+        return str(result.message_id)
+
+    @command_retry(max_retries=3, max_timeout=15.0)
+    async def _send_general_message_with_retry(
+        self,
+        message_thread_id: Optional[int],
+        text: str,
+        parse_mode: Optional[str],
+        reply_markup: Optional[object],
+    ) -> Message:
+        """Internal method with retry logic for general-topic messages."""
+        return await self.bot.send_message(
             chat_id=self.supergroup_id,
             message_thread_id=message_thread_id,
             text=text,
             parse_mode=parse_mode,
             reply_markup=reply_markup,
         )
-        return str(result.message_id)
 
     async def edit_general_message(
         self, message_id: str, text: str, *, metadata: MessageMetadata | None = None
     ) -> bool:
         """Edit an existing message in the general topic.
 
-        Returns True on success, False if message not found or other error.
+        Returns:
+            True when edit succeeded or encountered a transient/retryable error.
+            False only when the message is definitely gone/not editable.
         """
         self._ensure_started()
         metadata = metadata or MessageMetadata()
@@ -452,12 +479,13 @@ class MessageOperationsMixin:
             reply_markup = None
 
         try:
-            await self.bot.edit_message_text(
-                chat_id=self.supergroup_id,
-                message_id=int(message_id),
-                text=text,
-                parse_mode=parse_mode,
-                reply_markup=reply_markup,
+            await self._edit_general_message_with_retry(message_id, text, parse_mode, reply_markup)
+            return True
+        except RetryAfter as e:
+            logger.debug(
+                "Rate limited editing general message %s; keeping existing id and retrying later: %s",
+                message_id,
+                e,
             )
             return True
         except BadRequest as e:
@@ -466,8 +494,37 @@ class MessageOperationsMixin:
             if "message to edit not found" in str(e).lower():
                 logger.debug("Menu message %s not found, will recreate", message_id)
                 return False
+            if "message can't be edited" in str(e).lower():
+                logger.debug("Menu message %s cannot be edited, will recreate", message_id)
+                return False
             logger.error("Failed to edit general message %s: %s", message_id, e)
-            return False
+            # Non-not-found BadRequest is often transient under Telegram load.
+            return True
+        except (NetworkError, TimedOut, TimeoutError, ConnectionError) as e:
+            logger.warning(
+                "Transient network error editing general message %s; keeping existing id and retrying later: %s",
+                message_id,
+                e,
+            )
+            return True
         except Exception as e:
             logger.error("Failed to edit general message %s: %s", message_id, e)
-            return False
+            # Avoid creating duplicate menu messages on unknown transient failures.
+            return True
+
+    @command_retry(max_retries=3, max_timeout=60.0)
+    async def _edit_general_message_with_retry(
+        self,
+        message_id: str,
+        text: str,
+        parse_mode: Optional[str],
+        reply_markup: Optional[InlineKeyboardMarkup],
+    ) -> None:
+        """Internal method with retry logic for general-topic edits."""
+        await self.bot.edit_message_text(
+            chat_id=self.supergroup_id,
+            message_id=int(message_id),
+            text=text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )

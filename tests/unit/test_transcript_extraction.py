@@ -251,6 +251,117 @@ def test_extract_codex_tool_calls():
         _cleanup(path)
 
 
+def test_extract_codex_function_call_records():
+    """Codex response_item function_call payloads map to ToolCallRecord entries."""
+    entries = [
+        {
+            "type": "response_item",
+            "timestamp": "2026-01-15T10:00:00.000Z",
+            "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "run"}]},
+        },
+        {
+            "type": "response_item",
+            "timestamp": "2026-01-15T10:00:05.000Z",
+            "payload": {
+                "type": "function_call",
+                "name": "exec_command",
+                "call_id": "call-1",
+                "arguments": json.dumps({"command": "make status"}),
+            },
+        },
+        {
+            "type": "response_item",
+            "timestamp": "2026-01-15T10:00:06.000Z",
+            "payload": {
+                "type": "function_call_output",
+                "call_id": "call-1",
+                "output": "Process exited with code 0",
+            },
+        },
+    ]
+    path = _write_jsonl(entries)
+    try:
+        timeline = extract_tool_calls_current_turn(path, AgentName.CODEX)
+        assert timeline.has_data is True
+        assert len(timeline.tool_calls) == 1
+        record = timeline.tool_calls[0]
+        assert record.tool_name == "exec_command"
+        assert record.input_data.get("command") == "make status"
+        assert record.had_error is False
+    finally:
+        _cleanup(path)
+
+
+def test_extract_codex_function_call_output_error_flagged():
+    """Non-zero function_call_output exit is treated as had_error=True."""
+    entries = [
+        {
+            "type": "response_item",
+            "timestamp": "2026-01-15T10:00:00.000Z",
+            "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "run"}]},
+        },
+        {
+            "type": "response_item",
+            "timestamp": "2026-01-15T10:00:05.000Z",
+            "payload": {
+                "type": "function_call",
+                "name": "exec_command",
+                "call_id": "call-2",
+                "arguments": json.dumps({"command": "pytest tests/unit"}),
+            },
+        },
+        {
+            "type": "response_item",
+            "timestamp": "2026-01-15T10:00:06.000Z",
+            "payload": {
+                "type": "function_call_output",
+                "call_id": "call-2",
+                "output": "Process exited with code 1",
+            },
+        },
+    ]
+    path = _write_jsonl(entries)
+    try:
+        timeline = extract_tool_calls_current_turn(path, AgentName.CODEX)
+        assert len(timeline.tool_calls) == 1
+        assert timeline.tool_calls[0].had_error is True
+    finally:
+        _cleanup(path)
+
+
+def test_extract_codex_custom_tool_call_apply_patch():
+    """Codex custom_tool_call payloads are extracted for mutation-aware checkpoints."""
+    patch_text = "*** Begin Patch\n*** Update File: teleclaude/hooks/checkpoint.py\n*** End Patch\n"
+    entries = [
+        {
+            "type": "response_item",
+            "timestamp": "2026-01-15T10:00:00.000Z",
+            "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "patch"}]},
+        },
+        {
+            "type": "response_item",
+            "timestamp": "2026-01-15T10:00:05.000Z",
+            "payload": {
+                "type": "custom_tool_call",
+                "name": "apply_patch",
+                "status": "completed",
+                "input": patch_text,
+            },
+        },
+    ]
+    path = _write_jsonl(entries)
+    try:
+        timeline = extract_tool_calls_current_turn(path, AgentName.CODEX)
+        assert timeline.has_data is True
+        assert len(timeline.tool_calls) == 1
+        record = timeline.tool_calls[0]
+        assert record.tool_name == "apply_patch"
+        assert record.had_error is False
+        assert record.input_data.get("input") == patch_text
+    finally:
+        _cleanup(path)
+
+
 # ---------------------------------------------------------------------------
 # Gemini JSON extraction
 # ---------------------------------------------------------------------------

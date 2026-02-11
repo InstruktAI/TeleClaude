@@ -570,6 +570,45 @@ class APIServer:
                 logger.error("agent_restart failed for session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to restart agent: {e}") from e
 
+        @self.app.post("/sessions/{session_id}/revive")
+        async def revive_session(  # pyright: ignore
+            session_id: str,
+        ) -> CreateSessionResponseDTO:
+            """Revive a session by TeleClaude session ID, including previously closed sessions."""
+            try:
+                session = await db.get_session(session_id)
+                if not session:
+                    raise HTTPException(status_code=404, detail="Session not found")
+                if not session.active_agent:
+                    raise HTTPException(status_code=409, detail="No active agent for this session")
+                if not session.native_session_id:
+                    raise HTTPException(status_code=409, detail="No native session ID - start agent first")
+
+                metadata = self._metadata()
+                cmd = CommandMapper.map_api_input(
+                    "agent_restart",
+                    {"session_id": session_id, "args": []},
+                    metadata,
+                )
+                success, error = await get_command_service().restart_agent(cmd)
+                if not success:
+                    detail = error or "Failed to revive session"
+                    raise HTTPException(status_code=409, detail=detail)
+
+                refreshed = await db.get_session(session_id)
+                tmux_session_name = refreshed.tmux_session_name if refreshed and refreshed.tmux_session_name else ""
+                return CreateSessionResponseDTO(
+                    status="success",
+                    session_id=session_id,
+                    tmux_session_name=tmux_session_name,
+                    agent=session.active_agent if session.active_agent in {"claude", "gemini", "codex"} else None,
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error("revive_session failed for session %s: %s", session_id, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to revive session: {e}") from e
+
         @self.app.get("/computers")
         async def list_computers() -> list[ComputerDTO]:  # pyright: ignore
             """List available computers (local + cached remote computers)."""

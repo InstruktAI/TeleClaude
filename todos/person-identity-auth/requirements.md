@@ -34,7 +34,7 @@ TeleClaude currently has zero human identity awareness:
 - Newcomer onboarding wizard UI (web-interface todo).
 - OAuth/SSO providers, password auth.
 - Full enterprise revocation infrastructure.
-- Telegram migration work.
+- Telegram platform identity capture and person mapping are in scope.
 
 ### Relationship to downstream consumers
 
@@ -60,22 +60,26 @@ TeleClaude currently has zero human identity awareness:
 ### FR2: Identity resolver
 
 - Resolve person from: email (exact, primary), username (exact, secondary).
-- Return normalized identity: `IdentityContext(email, role, username, resolution_source)`.
+- Resolve trusted people from platform identifiers (telegram user_id now; extensible to future platforms).
+- Return normalized identity context with person + platform fields and trust metadata.
 - Unknown signals return None (deny at middleware level).
 - Resolver reads from config at startup; no runtime config reload required.
 - Resolver consumes validated `GlobalConfig.people` from config-schema-validation loaders.
+- Resolver cross-references per-person creds from `~/.teleclaude/people/*/teleclaude.yml`.
 
 ### FR3: Session-to-person binding
 
-- New fields on sessions table: `human_email TEXT`, `human_role TEXT`, `human_username TEXT NULL`.
+- New fields on sessions table: `human_email TEXT`, `human_role TEXT`, `human_username TEXT NULL`,
+  `human_platform TEXT`, `human_platform_user_id TEXT`.
 - Set during session creation when identity is available.
 - Child sessions (via `initiator_session_id`) inherit parent's human identity.
 - Headless sessions (hook-originated) may have null human identity.
-- `SessionSummary` and `SessionSummaryDTO` gain `human_email`, `human_role`, and optional `human_username` fields.
+- `SessionSummary` and `SessionSummaryDTO` gain `human_email`, `human_role`, optional `human_username`,
+  and platform identity fields.
 
 ### FR4: Auth middleware
 
-- FastAPI middleware on daemon API validates identity on every request.
+- Pure ASGI middleware on daemon API validates identity on every request (no `BaseHTTPMiddleware`).
 - Identity sources (checked in order):
   1. `X-TeleClaude-Person-Email` + `X-TeleClaude-Person-Role` (+ optional `X-TeleClaude-Person-Username`) from trusted web boundary.
   2. `Authorization: Bearer <token>` header with daemon-signed JWT (from TUI).
@@ -103,9 +107,10 @@ TeleClaude currently has zero human identity awareness:
 
 ### FR7: Adapter identity integration
 
-- **MCP wrapper**: Write `teleclaude_human_identity` marker file to session TMPDIR with email, role, and optional username. Read during tool filtering.
+- **MCP wrapper**: Write `teleclaude_human_identity` marker file to session TMPDIR with email, role, optional username, platform, and platform_user_id. Read during tool filtering.
 - **Client auth**: a client command can validate identity input, obtain a signed bearer token, and use it for API calls. Token persistence is client-managed and never daemon-host coupled.
 - **API (direct)**: Middleware handles auth as described in FR4.
+- **Telegram adapter**: capture `effective_user.id` and username at boundary, resolve against person creds mapping, and pass normalized identity context into session creation metadata.
 
 ## Non-functional Requirements
 
@@ -132,5 +137,6 @@ TeleClaude currently has zero human identity awareness:
 6. Daemon API middleware validates identity on protected routes.
 7. Bearer token issuance works; subsequent API calls are authenticated without daemon-host token files.
 8. JWT claims map to internal metadata (`human_email`, `human_role`, optional `human_username`) consistently.
-9. Human role filtering blocks restricted tools for non-admin roles.
-10. Auth failures are logged with context.
+9. Telegram user_id-based lookup maps known users to trusted people; unknown users are explicitly classified (`external`/`unknown`) and handled per policy.
+10. Human role filtering blocks restricted tools for non-admin roles.
+11. Auth failures are logged with context.

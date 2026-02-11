@@ -1,268 +1,107 @@
-# Stateless Email Magic-Link Authentication Without Verification DB
+## assistant-ui Integration Research (TeleClaude Web Frontend)
 
-Research brief for the `person-identity-auth` work item.
+This document focuses on integrating the `assistant-ui` repository as TeleClaude's web frontend.
 
-## Executive Summary
+## What assistant-ui gives us
 
-Stateless magic-link auth using signed tokens (JWT or PASETO) with session cookies is
-a well-established pattern that is **secure enough for small trusted deployments**
-when implemented with short TTLs, proper signature verification, and explicit replay
-limitations. The main tradeoff is accepting that without server-side state, true
-one-time-use token invalidation is not guaranteed — mitigated by short expiry windows
-and optional nonce binding.
+- A production-grade React chat UI layer (thread/composer/messages, streaming UX, keyboard/a11y).
+- Integration paths for AI SDK and custom backends.
+- A CLI (`create`/`init`) for fast scaffolding in Next.js projects.
 
-**Recommendation:** Use **PyJWT with HS256** for magic-link tokens and session cookies.
-JWT wins over PASETO on ecosystem maturity, library support, and simplicity for this
-use case. Reserve PASETO as a future upgrade path if algorithm confusion becomes a
-concern (unlikely in a single-service deployment).
+## TeleClaude integration target
 
----
+Use `assistant-ui` as the web client only. Keep TeleClaude daemon as backend authority.
 
-## Q1: Is DB-less Magic-Link Secure Enough for Small Trusted Deployment?
+- Frontend: Next.js + `assistant-ui`
+- Backend for frontend (BFF): Next.js API routes
+- Core backend: TeleClaude daemon (`/sessions`, `/messages`, `/ws`, MCP tools)
 
-**Yes, with explicit constraints.**
+## Recommended architecture
 
-### Threat Model
+### 1) Web frontend boundary
 
-| Threat                                | Severity | Stateless Mitigation                                   | Residual Risk          |
-| ------------------------------------- | -------- | ------------------------------------------------------ | ---------------------- |
-| Token interception (network)          | High     | HTTPS-only delivery, short TTL (10-15 min)             | Low if TLS enforced    |
-| Email account compromise              | High     | Out of scope — delegates to email provider security    | Accepted               |
-| Token replay (reuse before expiry)    | Medium   | Short TTL + optional nonce binding                     | Low for small user set |
-| Redirect URL manipulation             | High     | Hardcoded callback URL, no user-supplied redirect      | Eliminated             |
-| Session fixation                      | Medium   | Generate fresh `sid` on each login                     | Eliminated             |
-| Algorithm confusion (JWT `alg: none`) | Critical | Hardcode algorithm in verification, never trust header | Eliminated             |
-| Key compromise                        | Critical | Key rotation procedure, forced re-auth                 | Mitigated              |
-| Clickjacking on magic link            | Low      | X-Frame-Options: DENY, CSP frame-ancestors             | Eliminated             |
+- `assistant-ui` components live in Next.js app.
+- Browser never calls daemon internals directly.
+- Next.js API routes proxy/translate to TeleClaude API and websocket.
 
-### Why It Works for This Profile
+### 2) Identity and metadata mapping
 
-- **Small user set** (< 10 people): replay window affects few accounts.
-- **Trusted users**: social trust reduces insider attack surface.
-- **Local/private deployment**: network exposure is limited.
-- **Config-driven identity**: person records live in `config.yml`, not a user registration DB.
+At BFF layer:
 
-### Explicit Limitations to Document
+- Validate incoming auth token/session.
+- Resolve person identity (email/telegram/whatsapp identifiers) against configured persons.
+- Construct normalized metadata for every TeleClaude request:
+  - `human_id`
+  - `human_role`
+  - `human_name` (optional)
+  - `source_adapter=web`
+  - `trusted=true|false`
 
-1. A magic-link token can be used more than once within its TTL window.
-2. Token revocation requires key rotation (affects all sessions) or waiting for expiry.
-3. If email is compromised, attacker gets access until token expires.
+Then pass that metadata into session create/message calls.
 
----
+### 3) Session model mapping
 
-## Q2: JWT vs PASETO Tradeoffs
+assistant-ui thread != daemon process by default. We map explicitly:
 
-### Comparison
+- assistant-ui `threadId` -> TeleClaude `session_id`
+- client-side thread state -> server-side authoritative session metadata
+- stream output via daemon websocket (or SSE bridge) into assistant-ui message stream
 
-| Property            | JWT (RFC 7519)                                        | PASETO                                           |
-| ------------------- | ----------------------------------------------------- | ------------------------------------------------ |
-| Algorithm selection | Developer chooses (risk of misconfiguration)          | Version determines algorithm (secure by default) |
-| `alg: none` attack  | Possible if library allows                            | Impossible (no algorithm header)                 |
-| Algorithm confusion | Possible (RS256/HS256 swap)                           | Impossible (version = algorithm)                 |
-| Encryption support  | Via JWE (separate spec)                               | Built-in (`local` purpose = AEAD)                |
-| Python libraries    | PyJWT (mature, minimal deps), python-jose (full JOSE) | pyseto (v1-v4, actively maintained), pypaseto    |
-| Ecosystem maturity  | Dominant standard, universal support                  | Growing but niche                                |
-| Performance         | ~0.5ms generation                                     | ~2.4ms generation                                |
-| Debugging tools     | jwt.io, widespread tooling                            | Limited                                          |
+### 4) Streaming
 
-### PASETO Version Algorithms
+Two valid approaches:
 
-| Version      | Local (symmetric)                | Public (asymmetric) |
-| ------------ | -------------------------------- | ------------------- |
-| v1 (legacy)  | AES-256-CTR + HMAC-SHA384        | RSA-PSS + SHA384    |
-| v2           | XChaCha20-Poly1305               | Ed25519             |
-| v3           | AES-256-CTR + HMAC-SHA384 (NIST) | ECDSA P-384         |
-| v4 (current) | XChaCha20-Poly1305 + BLAKE2b     | Ed25519             |
+- Preferred now: Next.js route bridges daemon websocket to frontend (single browser-friendly channel).
+- Future: direct web adapter channel from daemon when stable.
 
-### Recommendation
+## Migration plan (pragmatic)
 
-**Use JWT (PyJWT + HS256)** for this project:
+1. Scaffold a Next.js shell with assistant-ui (`init` on existing web app or starter template).
+2. Build a minimal BFF route for:
+   - create/get session
+   - send message
+   - stream outputs
+3. Add identity resolver middleware in BFF and inject normalized metadata.
+4. Replace current web chat UI with assistant-ui thread/composer primitives.
+5. Add role-aware UX controls (read-only/tool restrictions) from metadata.
+6. Validate parity with Telegram/TUI for session behavior and observability.
 
-- Single service, single signing key — algorithm confusion is not a real risk.
-- Hardcode `algorithm="HS256"` in both sign and verify — eliminates the `alg: none`
-  and algorithm confusion vectors entirely.
-- PyJWT is a zero-additional-dependency choice (already common in Python ecosystems).
-- PASETO adds complexity without material security gain for symmetric single-service use.
+## Non-goals
 
-**If asymmetric signing is needed later** (e.g., third-party token verification), consider
-upgrading to Ed25519 via PyJWT (`algorithm="EdDSA"`) or switching to PASETO v4.public.
+- Rewriting TeleClaude backend around assistant-ui.
+- Storing user identity in local home-path token files.
+- Making assistant-ui the source of truth for roles/persons.
 
----
+## Risks and controls
 
-## Q3: Replay Mitigation Without Persistent Token Store
+- Protocol mismatch (assistant-ui runtime expectations vs daemon payloads):
+  - control: strict translation layer in BFF + contract tests.
+- Session drift:
+  - control: treat daemon session state as authoritative.
+- Identity leakage:
+  - control: resolve/normalize at BFF once, never trust raw client claims downstream.
 
-### The Core Problem
+## What should exist next in this repo
 
-Without server-side state, you cannot track which tokens have been consumed. A valid,
-unexpired magic-link token can be used multiple times within its TTL.
+- `docs/third-party/assistant-ui/` expanded with:
+  - `integration.md` (end-to-end integration contract)
+  - `thread-mapping.md` (assistant-ui thread <-> TeleClaude session mapping)
+  - `streaming.md` (WS/SSE bridge details)
+- `todos/person-identity-auth*/` updated to include web metadata injection at boundary.
 
-### Mitigation Strategies (No DB Required)
+## Sources
 
-#### Strategy 1: Short TTL (Primary)
-
-- Set magic-link TTL to **10 minutes** (or less).
-- The replay window is bounded by TTL — acceptable for small trusted deployments.
-- Implementation: `exp` claim in JWT, verified on every request.
-
-#### Strategy 2: Nonce Binding via Pre-Auth Cookie
-
-- On `POST /auth/start`, set a short-lived HttpOnly cookie with a random `nonce`.
-- Embed the same `nonce` in the magic-link token's claims.
-- On `GET /auth/callback`, verify `nonce` in token matches `nonce` in cookie.
-- **Effect**: token is bound to the browser that initiated the login request.
-  A different browser/device cannot replay the link.
-- **Limitation**: same-browser replay is still possible within TTL.
-
-#### Strategy 3: In-Memory JTI Tracking (Optional, Lightweight)
-
-- Include a `jti` (JWT ID) claim with a UUID in each magic-link token.
-- Maintain an in-memory set of consumed `jti` values with TTL-based expiry.
-- Reject tokens whose `jti` is already in the set.
-- **Tradeoff**: state is lost on daemon restart (acceptable — tokens are short-lived).
-- **Implementation**: Python `dict` with timestamp cleanup, or `cachetools.TTLCache`.
-- This is NOT a database — it's a volatile cache that self-cleans.
-
-#### Strategy 4: One-Time Use via Token Hash in SQLite (Upgrade Path)
-
-- If replay becomes a real concern, store consumed token hashes in the existing
-  `teleclaude.db` SQLite — no new database needed.
-- Query: `SELECT 1 FROM consumed_tokens WHERE hash = ? AND expires_at > NOW()`.
-- Cleanup: periodic DELETE of expired entries.
-
-### Recommended Approach
-
-**Start with Strategy 1 + 2** (short TTL + nonce binding). Add Strategy 3 (in-memory
-JTI) if replay is observed or becomes a concern. Strategy 4 is the upgrade path that
-stays within the single-database policy.
-
----
-
-## Q4: Session Cookie Claims and Validation
-
-### Cookie Token Claims
-
-```json
-{
-  "sub": "username",
-  "email": "user@example.com",
-  "role": "admin",
-  "sid": "uuid-session-id",
-  "iss": "teleclaude",
-  "aud": "teleclaude-web",
-  "iat": 1707500000,
-  "exp": 1708104800
-}
-```
-
-### Claim Purposes
-
-| Claim   | Purpose                        | Validation                                 |
-| ------- | ------------------------------ | ------------------------------------------ |
-| `sub`   | Identity resolution            | Must match a person in config              |
-| `email` | Identity confirmation          | Must match person's email in config        |
-| `role`  | Authorization context          | Must be a valid role enum value            |
-| `sid`   | Audit trail / session tracking | UUID, logged for observability             |
-| `iss`   | Issuer verification            | Must equal `"teleclaude"`                  |
-| `aud`   | Audience verification          | Must equal expected audience               |
-| `iat`   | Token freshness                | Informational, used for rotation detection |
-| `exp`   | Expiry enforcement             | Reject if current time > exp               |
-
-### Cookie Configuration
-
-```python
-response.set_cookie(
-    key="tc_session",
-    value=token,
-    httponly=True,
-    secure=True,         # Set False for local HTTP dev
-    samesite="lax",
-    path="/",
-    max_age=60 * 60 * 24 * 7,  # 7 days default
-)
-```
-
-### Validation Flow (Middleware)
-
-1. Extract `tc_session` cookie from request.
-2. Decode and verify signature using server secret.
-3. Verify `exp` (reject expired), `iss`, `aud`.
-4. Resolve `sub` against config — reject if person no longer exists.
-5. Compare `role` in token against current config role — use **config role** as
-   authoritative (handles role changes between token issuance and request).
-6. Attach normalized `IdentityContext(username, email, role)` to request state.
-
-### Re-validation on Config Change
-
-When config is reloaded and a person's role changes, active session cookies still carry
-the old role. The middleware should **always read the authoritative role from config**,
-using the token's `sub` for lookup. The token's `role` claim serves as a cache hint and
-audit record, not as the authorization source.
-
----
-
-## Q5: Key Rotation and Forced Re-Auth Strategy
-
-### Key Rotation Procedure
-
-#### Dual-Key Overlap Window
-
-1. Generate new signing key (`key_v2`).
-2. Update config to sign new tokens with `key_v2`.
-3. Keep `key_v1` in a verification-only key list.
-4. Verify incoming tokens against **all active keys** (try `key_v2` first, fall back
-   to `key_v1`).
-5. After overlap period (>= longest session TTL), remove `key_v1`.
-
-#### Implementation
-
-```python
-SIGNING_KEY = config.auth.current_key       # Used for new tokens
-VERIFY_KEYS = [config.auth.current_key] + config.auth.previous_keys  # Ordered
-
-def verify_token(token: str) -> dict:
-    for key in VERIFY_KEYS:
-        try:
-            return jwt.decode(token, key, algorithms=["HS256"], ...)
-        except jwt.InvalidSignatureError:
-            continue
-    raise AuthenticationError("Invalid token signature")
-```
-
-#### Key ID (`kid`) Header (Optional)
-
-- Include a `kid` in the JWT header to identify which key signed the token.
-- Allows direct key lookup instead of iterating all keys.
-- Adds a few bytes of overhead but improves verification performance with many keys.
-
-### Forced Re-Auth Strategy
-
-| Trigger               | Action                                                              |
-| --------------------- | ------------------------------------------------------------------- |
-| Key compromise        | Remove compromised key from verify list immediately                 |
-| Role change           | Middleware already reads config role — no token invalidation needed |
-| User removal          | Middleware rejects unknown `sub` — immediate lockout                |
-| Explicit logout       | Clear cookie via `POST /auth/logout`                                |
-| Global forced re-auth | Remove all previous keys, keep only new key                         |
-
-### Emergency Key Revocation
-
-1. Generate new key.
-2. Set `VERIFY_KEYS = [new_key]` (no previous keys).
-3. All existing tokens become invalid immediately.
-4. All users must re-authenticate.
-
----
-
-## Q6: FastAPI/Python Implementation Patterns
-
-### Library Choice
-
-| Library          | Use For                               | Version  |
-| ---------------- | ------------------------------------- | -------- |
-| PyJWT            | Token creation and verification       | >= 2.8   |
-| cryptography     | Key generation (if asymmetric needed) | Optional |
-| email (stdlib)   | SMTP magic-link delivery              | Built-in |
-| smtplib (stdlib) | SMTP transport                        | Built-in |
+- https://www.assistant-ui.com/docs/getting-started
+- https://www.assistant-ui.com/docs/installation
+- https://www.assistant-ui.com/docs/cli
+- https://www.assistant-ui.com/docs/runtimes/ai-sdk/use-assistant-hook
+- https://github.com/assistant-ui/assistant-ui
+- https://github.com/assistant-ui/assistant-ui-starter
+  | ---------------- | ------------------------------------- | -------- |
+  | PyJWT | Token creation and verification | >= 2.8 |
+  | cryptography | Key generation (if asymmetric needed) | Optional |
+  | email (stdlib) | SMTP magic-link delivery | Built-in |
+  | smtplib (stdlib) | SMTP transport | Built-in |
 
 ### Token Module Pattern
 

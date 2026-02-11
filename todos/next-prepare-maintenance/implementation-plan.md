@@ -49,7 +49,7 @@ Work:
 
 1. Evaluate `requirements.md` quality (clarity, testability, constraints, dependencies).
 2. Evaluate `implementation-plan.md` quality (concrete edits, verification, risks).
-3. Generate score (`1..10`) + verdict (`pass|needs_work|needs_human_review`).
+3. Generate score (`1..10`) + verdict (`pass|needs_work|needs_decision`).
 
 Verification:
 
@@ -115,4 +115,4 @@ Verification:
 1. DOR job spec is published and synced.
 2. Routine runs on active todos and writes report + score metadata.
 3. Skip logic prevents noisy churn.
-4. Human-review escalations are explicit and actionable.
+4. Decision escalations are explicit and actionable.

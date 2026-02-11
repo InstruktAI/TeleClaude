@@ -57,7 +57,7 @@ dependencies = [
 mlx = [
     "mlx-audio @ git+https://github.com/Blaizzy/mlx-audio.git@main",
     "misaki[en]",
-    "phonemizer",
+    "phonemizer-fork>=3.3.2",
     "num2words",
 ]
 test = [

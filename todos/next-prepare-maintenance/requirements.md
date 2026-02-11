@@ -43,17 +43,17 @@ auditable outcomes via `dor-report.md` and `state.json`.
 - Score each todo on `1..10`.
 - Use thresholds:
   - target: `8`
-  - human review threshold: `7`
+  - decision threshold: `7`
 - Set verdict:
   - `pass` for score >= 8
   - `needs_work` for score < 8 and improved safely
-  - `needs_human_review` for score < 7 when safe improvement is exhausted
+  - `needs_decision` for score < 7 when safe improvement is exhausted
 
 ### FR4: Autonomous improvement
 
 - Improve docs when gaps are concrete and grounded.
 - Do not invent behavior or architecture outside known context.
-- Stop and flag `needs_human_review` when uncertainty becomes blocking.
+- Stop and flag `needs_decision` when uncertainty becomes blocking.
 
 ### FR5: DOR report output
 
@@ -63,7 +63,7 @@ auditable outcomes via `dor-report.md` and `state.json`.
   - edits performed
   - remaining gaps
   - stop reason when applicable
-  - specific human decisions needed
+  - specific decisions needed
 
 ### FR6: state.json writeback
 
@@ -97,4 +97,4 @@ auditable outcomes via `dor-report.md` and `state.json`.
 3. state.json quality metadata is written consistently.
 4. Freshness skip avoids unnecessary rewrites.
 5. At least one intentionally weak todo is improved and rescored.
-6. At least one ambiguous todo is flagged `needs_human_review` with explicit blockers.
+6. At least one ambiguous todo is flagged `needs_decision` with explicit blockers.

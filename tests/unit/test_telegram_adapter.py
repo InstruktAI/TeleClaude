@@ -4,10 +4,10 @@ import asyncio
 import inspect
 import os
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
-from telegram.error import BadRequest, RetryAfter
+from telegram.error import BadRequest, RetryAfter, TimedOut
 from telegram.ext import filters
 
 from teleclaude.core.origins import InputOrigin
@@ -233,6 +233,32 @@ class TestMessaging:
         assert not sent_text.endswith("\\")
 
     @pytest.mark.asyncio
+    async def test_edit_message_timeout_treated_as_transient(self, telegram_adapter):
+        """Session output edits should keep message id on transient timeout."""
+        session = Session(
+            session_id="session-edit-timeout",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
+        )
+
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        telegram_adapter.app.bot.edit_message_text = AsyncMock(side_effect=TimedOut("Timed out"))
+
+        with patch("teleclaude.utils.asyncio.sleep", new=AsyncMock()):
+            result = await telegram_adapter.edit_message(
+                session,
+                "456",
+                "updated",
+                metadata=MessageMetadata(parse_mode=None),
+            )
+
+        assert result is True
+
+    @pytest.mark.asyncio
     async def test_send_message_honors_parse_mode_none(self, telegram_adapter):
         """Explicit parse_mode=None should send plain text (no markdown parser)."""
         session = Session(
@@ -305,6 +331,111 @@ class TestMessaging:
             )
         assert len(calls) == 1
         assert calls[0]["parse_mode"] == "MarkdownV2"
+
+    @pytest.mark.asyncio
+    async def test_edit_general_message_timeout_treated_as_transient(self, telegram_adapter):
+        """General menu edits should not force recreation on transient timeout."""
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        telegram_adapter.app.bot.edit_message_text = AsyncMock(side_effect=TimedOut("Timed out"))
+
+        with patch("teleclaude.utils.asyncio.sleep", new=AsyncMock()):
+            result = await telegram_adapter.edit_general_message(
+                "123",
+                "menu text",
+                metadata=MessageMetadata(parse_mode=None),
+            )
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_edit_general_message_not_found_returns_false(self, telegram_adapter):
+        """General menu edits should recreate only when message is actually missing."""
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        telegram_adapter.app.bot.edit_message_text = AsyncMock(side_effect=BadRequest("Message to edit not found"))
+
+        result = await telegram_adapter.edit_general_message(
+            "123",
+            "menu text",
+            metadata=MessageMetadata(parse_mode=None),
+        )
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_file_uses_retry_wrapper(self, telegram_adapter):
+        """send_file should route through _send_document_with_retry (retry-protected path)."""
+        session = Session(
+            session_id="session-file",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
+        )
+
+        telegram_adapter.app = MagicMock()
+        telegram_adapter._send_document_with_retry = AsyncMock()  # type: ignore[method-assign]
+        mock_msg = MagicMock()
+        mock_msg.message_id = 987
+        telegram_adapter._send_document_with_retry.return_value = mock_msg  # type: ignore[attr-defined]
+
+        result = await telegram_adapter.send_file(session, "/tmp/example.log", caption="cap")
+
+        assert result == "987"
+        telegram_adapter._send_document_with_retry.assert_awaited_once_with(  # type: ignore[attr-defined]
+            telegram_adapter.supergroup_id,
+            123,
+            "/tmp/example.log",
+            "example.log",
+            "cap",
+        )
+
+    @pytest.mark.asyncio
+    async def test_send_general_message_uses_retry_wrapper(self, telegram_adapter):
+        """send_general_message should route through retry-protected helper."""
+        telegram_adapter.app = MagicMock()
+        telegram_adapter._send_general_message_with_retry = AsyncMock()  # type: ignore[method-assign]
+        mock_msg = MagicMock()
+        mock_msg.message_id = 1234
+        telegram_adapter._send_general_message_with_retry.return_value = mock_msg  # type: ignore[attr-defined]
+
+        result = await telegram_adapter.send_general_message(
+            "menu",
+            metadata=MessageMetadata(parse_mode=None, message_thread_id=10),
+        )
+
+        assert result == "1234"
+        telegram_adapter._send_general_message_with_retry.assert_awaited_once_with(  # type: ignore[attr-defined]
+            10,
+            "menu",
+            None,
+            None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_send_message_to_topic_uses_retry_wrapper(self, telegram_adapter):
+        """send_message_to_topic should use retry-protected helper for topic/general routes."""
+        telegram_adapter.app = MagicMock()
+        telegram_adapter._send_general_message_with_retry = AsyncMock()  # type: ignore[method-assign]
+        topic_msg = MagicMock()
+        topic_msg.message_id = 44
+        general_msg = MagicMock()
+        general_msg.message_id = 45
+        telegram_adapter._send_general_message_with_retry.side_effect = [topic_msg, general_msg]  # type: ignore[attr-defined]
+
+        result_topic = await telegram_adapter.send_message_to_topic(7, "hello", parse_mode="Markdown")
+        result_general = await telegram_adapter.send_message_to_topic(None, "hi", parse_mode=None)
+
+        assert result_topic.message_id == 44
+        assert result_general.message_id == 45
+        telegram_adapter._send_general_message_with_retry.assert_has_awaits(  # type: ignore[attr-defined]
+            [
+                call(7, "hello", "Markdown", None),
+                call(None, "hi", None, None),
+            ]
+        )
 
     def test_truncate_for_platform_keeps_markdownv2_balanced(self, telegram_adapter):
         """MarkdownV2 truncation should respect Telegram limit and avoid dangling escapes."""

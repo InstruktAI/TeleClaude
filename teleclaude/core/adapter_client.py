@@ -636,11 +636,72 @@ class AdapterClient:
             )
             return result
         except Exception as exc:
+            if adapter_type == "telegram" and self._is_missing_telegram_thread_error(exc):
+                logger.warning(
+                    "[UI_LANE] Missing Telegram thread detected for session %s; resetting channel metadata and retrying",
+                    session.session_id[:8],
+                )
+                return await self._retry_ui_lane_after_missing_thread(
+                    session=session,
+                    adapter=adapter,
+                    task_factory=task_factory,
+                    display_title=display_title,
+                    original_error=exc,
+                )
             logger.error(
                 "[UI_LANE] UI adapter %s failed in lane for session %s: %s",
                 adapter_type,
                 session.session_id[:8],
                 exc,
+            )
+            return None
+
+    @staticmethod
+    def _is_missing_telegram_thread_error(exc: Exception) -> bool:
+        """Return True when Telegram indicates the session topic/thread is gone."""
+        message = str(exc).lower()
+        return "message thread not found" in message or "topic_deleted" in message
+
+    async def _retry_ui_lane_after_missing_thread(
+        self,
+        session: "Session",
+        adapter: UiAdapter,
+        task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
+        display_title: str,
+        original_error: Exception,
+    ) -> object | None:
+        """Reset stale Telegram topic metadata, recreate channel, and retry once."""
+        refreshed = await db.get_session(session.session_id)
+        recovery_session = refreshed or session
+
+        if not recovery_session.adapter_metadata.telegram:
+            recovery_session.adapter_metadata.telegram = TelegramAdapterMetadata()
+        recovery_session.adapter_metadata.telegram.topic_id = None
+        recovery_session.adapter_metadata.telegram.output_message_id = None
+        recovery_session.adapter_metadata.telegram.footer_message_id = None
+        recovery_session.adapter_metadata.telegram.char_offset = 0
+
+        await db.update_session(
+            recovery_session.session_id,
+            adapter_metadata=recovery_session.adapter_metadata,
+            last_output_digest=None,
+        )
+        await db.set_output_message_id(recovery_session.session_id, None)
+
+        try:
+            retry_session = await adapter.ensure_channel(recovery_session, display_title)
+            result = await task_factory(adapter, retry_session)
+            logger.info(
+                "[UI_LANE] Recovered Telegram lane after missing thread for session %s",
+                session.session_id[:8],
+            )
+            return result
+        except Exception as retry_exc:
+            logger.error(
+                "[UI_LANE] Telegram recovery retry failed for session %s: initial=%s retry=%s",
+                session.session_id[:8],
+                original_error,
+                retry_exc,
             )
             return None
 

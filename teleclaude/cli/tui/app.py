@@ -508,8 +508,11 @@ class TelecApp:
             elif isinstance(event, SessionStartedEvent):
                 sessions_view = self.views.get(1)
                 if isinstance(sessions_view, SessionsView):
-                    if event.data.tmux_session_name:
-                        sessions_view.request_select_session(event.data.session_id)
+                    # Do not auto-select delegated child sessions; they should appear in
+                    # the tree without hijacking the user's current preview.
+                    is_ai_child = bool(event.data.initiator_session_id)
+                    if event.data.tmux_session_name and not is_ai_child:
+                        sessions_view.request_select_session(event.data.session_id, source="system")
                 if self._loop:
                     self._loop.run_until_complete(self.refresh_data())
 

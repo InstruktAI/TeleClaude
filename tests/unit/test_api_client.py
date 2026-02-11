@@ -192,6 +192,32 @@ async def test_end_session_success():
 
 
 @pytest.mark.asyncio
+async def test_revive_session_success():
+    """Test revive_session sends POST and parses response."""
+    client = TelecAPIClient()
+    await client.connect()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = json.dumps(
+        {
+            "status": "success",
+            "session_id": "sess-1",
+            "tmux_session_name": "tc_abc123",
+            "agent": "codex",
+        }
+    )
+
+    with patch.object(client, "_request", new=AsyncMock(return_value=mock_response)):
+        result = await client.revive_session("sess-1")
+        assert result.status == "success"
+        assert result.session_id == "sess-1"
+        assert result.tmux_session_name == "tc_abc123"
+
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_api_error_on_connect_error():
     """Test APIError raised on connection failure."""
     client = TelecAPIClient()

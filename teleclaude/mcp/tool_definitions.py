@@ -161,8 +161,7 @@ def get_tool_definitions() -> list[Tool]:
             description=(
                 "List active sessions from local or remote computer(s). "
                 "Defaults to local sessions only. Set computer=None to query ALL computers, "
-                "or computer='name' to query a specific remote computer. "
-                "By default, returns only sessions spawned by the caller; set spawned_by_me=false to list all."
+                "or computer='name' to query a specific remote computer."
             ),
             inputSchema={
                 "type": "object",
@@ -175,11 +174,6 @@ def get_tool_definitions() -> list[Tool]:
                             "Omit this field to query all computers."
                         ),
                         "default": "local",
-                    },
-                    "spawned_by_me": {
-                        "type": "boolean",
-                        "description": "When true (default), only return sessions spawned by this caller.",
-                        "default": True,
                     },
                 },
             },

@@ -280,7 +280,7 @@ def format_prepared(slug: str) -> str:
     """Format a 'prepared' message indicating work item is ready."""
     return f"""PREPARED: todos/{slug} is ready for work.
 
-ASK USER: Do you want to continue with more preparation work, or start the build/review cycle with teleclaude__next_work(slug="{slug}")?"""
+DECISION REQUIRED: Continue preparation work, or start the build/review cycle with teleclaude__next_work(slug="{slug}")."""
 
 
 def format_uncommitted_changes(slug: str) -> str:
@@ -1714,9 +1714,12 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 "REVIEW_ROUND_LIMIT",
                 (
                     f"Review rounds exceeded for {resolved_slug}: "
-                    f"current={current_round}, max={max_rounds}. Human decision required."
+                    f"current={current_round}, max={max_rounds}. Decision required."
                 ),
-                next_call=f'Resolve findings manually, then call teleclaude__next_work(slug="{resolved_slug}")',
+                next_call=(
+                    f"Apply orchestrator review-round-limit closure for {resolved_slug}, "
+                    f'then call teleclaude__next_work(slug="{resolved_slug}")'
+                ),
             )
         selection = await _pick_agent(PhaseName.REVIEW.value)
         if isinstance(selection, str):

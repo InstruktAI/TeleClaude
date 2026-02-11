@@ -147,8 +147,8 @@ async def test_teleclaude_end_session_wraps_close_command(mock_mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_teleclaude_list_sessions_filters_spawned_by_me(mock_mcp_server):
-    """Test that list_sessions defaults to sessions spawned by the caller."""
+async def test_teleclaude_list_sessions_filters_by_caller(mock_mcp_server):
+    """Test that list_sessions returns sessions spawned by the caller."""
     server = mock_mcp_server
 
     with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
@@ -189,7 +189,6 @@ async def test_teleclaude_list_sessions_filters_spawned_by_me(mock_mcp_server):
 
         result = await server.teleclaude__list_sessions(
             computer="local",
-            spawned_by_me=True,
             caller_session_id="caller-1",
         )
 
@@ -197,8 +196,8 @@ async def test_teleclaude_list_sessions_filters_spawned_by_me(mock_mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_teleclaude_list_sessions_allows_all_sessions(mock_mcp_server):
-    """Test that list_sessions returns all sessions when spawned_by_me is false."""
+async def test_teleclaude_list_sessions_without_caller_returns_unfiltered(mock_mcp_server):
+    """Test that list_sessions returns unfiltered sessions when caller is unknown."""
     server = mock_mcp_server
 
     with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
@@ -229,8 +228,7 @@ async def test_teleclaude_list_sessions_allows_all_sessions(mock_mcp_server):
 
         result = await server.teleclaude__list_sessions(
             computer="local",
-            spawned_by_me=False,
-            caller_session_id="caller-1",
+            caller_session_id=None,
         )
 
         assert [session["session_id"] for session in result] == ["sess-1", "sess-2"]
@@ -269,12 +267,10 @@ async def test_teleclaude_list_sessions_isolates_multiple_callers(mock_mcp_serve
 
         caller_one = await server.teleclaude__list_sessions(
             computer="local",
-            spawned_by_me=True,
             caller_session_id="caller-1",
         )
         caller_two = await server.teleclaude__list_sessions(
             computer="local",
-            spawned_by_me=True,
             caller_session_id="caller-2",
         )
 

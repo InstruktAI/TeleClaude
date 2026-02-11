@@ -277,6 +277,60 @@ def test_receiver_persists_native_fields_to_db(monkeypatch, tmp_path):
     assert row == ("native-1", "/tmp/native.jsonl")
 
 
+def test_receiver_logs_native_log_rotation(monkeypatch, tmp_path, caplog):
+    """When transcript path changes mid-session, receiver should persist and log it."""
+    db_path = tmp_path / "teleclaude.db"
+
+    from sqlalchemy import create_engine
+    from sqlmodel import Session as SqlSession
+    from sqlmodel import SQLModel
+
+    from teleclaude.core import db_models as _models  # noqa: F811
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    SQLModel.metadata.create_all(engine)
+    with SqlSession(engine) as session:
+        session.add(
+            _models.Session(
+                session_id="sess-1",
+                computer_name="test",
+                native_session_id="native-1",
+                native_log_file="/tmp/old-native.jsonl",
+            )
+        )
+        session.commit()
+
+    monkeypatch.setenv("TELECLAUDE_DB_PATH", str(db_path))
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(receiver, "_maybe_checkpoint_output", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        receiver,
+        "_read_stdin",
+        lambda: (
+            '{"session_id": "native-1", "transcript_path": "/tmp/new-native.jsonl", "prompt_response":"ok"}',
+            {"session_id": "native-1", "transcript_path": "/tmp/new-native.jsonl", "prompt_response": "ok"},
+        ),
+    )
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="agent_stop", cwd=None)
+    )
+    tmpdir = tmp_path / "tmp-native-rotation"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("sess-1")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
+
+    caplog.set_level("INFO")
+    receiver.main()
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT native_session_id, native_log_file FROM sessions WHERE session_id = ?", ("sess-1",)
+        ).fetchone()
+    assert row == ("native-1", "/tmp/new-native.jsonl")
+    assert any("Native session metadata changed" in rec.message for rec in caplog.records)
+
+
 def test_checkpoint_output_handles_mixed_timezone_timestamps(monkeypatch, tmp_path):
     """Checkpoint evaluation must not crash on mixed aware/naive DB timestamps."""
     from sqlalchemy import create_engine
@@ -312,7 +366,9 @@ def test_receiver_agent_stop_checkpoint_failure_fails_open(monkeypatch, tmp_path
         sent.append((session_id, event_type, data))
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
-    monkeypatch.setattr(receiver, "_maybe_checkpoint_output", lambda *_args, **_kwargs: (_ for _ in ()).throw(TypeError("boom")))
+    monkeypatch.setattr(
+        receiver, "_maybe_checkpoint_output", lambda *_args, **_kwargs: (_ for _ in ()).throw(TypeError("boom"))
+    )
     monkeypatch.setattr(
         receiver,
         "_read_stdin",
@@ -349,10 +405,11 @@ def test_receiver_forwards_gemini_prompt_event(monkeypatch, tmp_path):
         receiver,
         "_read_stdin",
         lambda: (
-            '{"session_id": "native-2", "transcript_path": "/tmp/gemini-2.jsonl"}',
+            '{"session_id": "native-2", "transcript_path": "/tmp/gemini-2.jsonl", "prompt":"hello"}',
             {
                 "session_id": "native-2",
                 "transcript_path": "/tmp/gemini-2.jsonl",
+                "prompt": "hello",
             },
         ),
     )

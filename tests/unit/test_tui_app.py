@@ -10,6 +10,8 @@ from teleclaude.cli.models import (
     ProjectWithTodosInfo,
     RefreshData,
     RefreshEvent,
+    SessionInfo,
+    SessionStartedEvent,
 )
 from teleclaude.cli.tui.app import TelecApp
 from tests.conftest import MockAPIClient
@@ -58,6 +60,66 @@ class TestTelecAppWebSocketEvents:
         app._on_ws_event(event)
         app._process_ws_events()
 
+        assert app._loop.run_until_complete.called
+
+    def test_session_started_auto_selects_root_session(self, monkeypatch):
+        """Root session_started events should auto-select newly started session."""
+        app = _make_app()
+        select_calls: list[tuple[str, str | None]] = []
+
+        class DummySessionsView:
+            def request_select_session(self, session_id: str, *, source: str | None = None) -> bool:
+                select_calls.append((session_id, source))
+                return True
+
+        monkeypatch.setattr("teleclaude.cli.tui.app.SessionsView", DummySessionsView)
+        app.views[1] = DummySessionsView()
+
+        event = SessionStartedEvent(
+            event="session_started",
+            data=SessionInfo(
+                session_id="sess-root",
+                title="Root Session",
+                status="active",
+                tmux_session_name="tc_sess-root",
+                initiator_session_id=None,
+            ),
+        )
+
+        app._on_ws_event(event)
+        app._process_ws_events()
+
+        assert select_calls == [("sess-root", "system")]
+        assert app._loop.run_until_complete.called
+
+    def test_session_started_does_not_auto_select_ai_child(self, monkeypatch):
+        """Child AI-to-AI session_started events should not hijack selection."""
+        app = _make_app()
+        select_calls: list[tuple[str, str | None]] = []
+
+        class DummySessionsView:
+            def request_select_session(self, session_id: str, *, source: str | None = None) -> bool:
+                select_calls.append((session_id, source))
+                return True
+
+        monkeypatch.setattr("teleclaude.cli.tui.app.SessionsView", DummySessionsView)
+        app.views[1] = DummySessionsView()
+
+        event = SessionStartedEvent(
+            event="session_started",
+            data=SessionInfo(
+                session_id="sess-child",
+                title="Child Session",
+                status="active",
+                tmux_session_name="tc_sess-child",
+                initiator_session_id="sess-parent",
+            ),
+        )
+
+        app._on_ws_event(event)
+        app._process_ws_events()
+
+        assert select_calls == []
         assert app._loop.run_until_complete.called
 
     def test_ws_heal_refreshes_when_disconnected(self):

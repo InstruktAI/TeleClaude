@@ -47,6 +47,8 @@ Evaluate work against requirements and standards. Run parallel review lanes (cod
 
 Address review findings. Re-commit. Workflow returns to Review phase.
 
+Review/fix loops are capped by `max_review_rounds` (default `3`). At the cap, orchestrator owns pragmatic closure: approve with documented follow-up for non-critical residual items, and escalate only when unresolved critical risk remains.
+
 ### 5. Documentation
 
 **Output:** Updated docstrings and docs

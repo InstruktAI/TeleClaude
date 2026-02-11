@@ -55,6 +55,20 @@ type: 'procedure'
 3. Re-run `teleclaude__next_work(...)` after status update.
 4. Do not delegate this decision to workers; only orchestrator should mutate provider status.
 
+### Review Round Limit Handling (Orchestrator-Owned)
+
+When `teleclaude__next_work(...)` returns `REVIEW_ROUND_LIMIT`, the orchestrator must close the loop pragmatically instead of punting by default.
+
+1. Inspect current evidence before deciding:
+   - `todos/{slug}/review-findings.md`
+   - `todos/{slug}/state.json`
+   - Fix commits since `review_baseline_commit`
+2. Decide and act:
+   - If unresolved **Critical** findings remain, keep `review=changes_requested`, record an explicit blocker summary, and escalate with a concrete decision request.
+   - If only non-critical findings remain and the implementation is stable, mark `review=approved`, capture residual work as follow-up/deferred items, and continue lifecycle progression.
+3. Always end the active worker session before applying this decision.
+4. Record rationale in todo artifacts so the closure is auditable.
+
 - Point workers to `todos/{slug}/requirements.md` or `implementation-plan.md`.
 - Reference project docs or standards.
 - Never dictate specific commands or code.
@@ -63,7 +77,7 @@ The loop terminates when the work state machine returns:
 
 - `NO_READY_ITEMS` (run the preparation state machine first)
 - `COMPLETE`
-- Error requiring human intervention
+- Non-recoverable error requiring intervention
 
 ## Preconditions
 

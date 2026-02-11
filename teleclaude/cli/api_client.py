@@ -576,3 +576,12 @@ class TelecAPIClient:
         """
         resp = await self._request("POST", f"/sessions/{session_id}/agent-restart")
         return resp.status_code == 200
+
+    async def revive_session(self, session_id: str) -> CreateSessionResult:
+        """Revive a session by TeleClaude session ID.
+
+        This endpoint can revive previously closed sessions as long as the session
+        still has an active agent and native session ID.
+        """
+        resp = await self._request("POST", f"/sessions/{session_id}/revive", timeout=30.0)
+        return TypeAdapter(CreateSessionResult).validate_json(resp.text)

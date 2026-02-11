@@ -102,6 +102,16 @@ class InputHandlersMixin:
             """Delete orphan topic."""
             ...
 
+        async def _send_general_message_with_retry(
+            self,
+            message_thread_id: int | None,
+            text: str,
+            parse_mode: str | None,
+            reply_markup: object | None,
+        ) -> Message:
+            """Send Telegram message with retry (type-check stub)."""
+            ...
+
     # =========================================================================
     # Input Handler Implementation
     # =========================================================================
@@ -130,7 +140,12 @@ Usage:
 
         message = update.effective_message
         if message:
-            await message.reply_text(help_text)
+            await self._send_general_message_with_retry(
+                message.message_thread_id,
+                help_text,
+                None,
+                None,
+            )
 
     async def _handle_text_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle text messages in topics and General topic.

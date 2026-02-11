@@ -2,7 +2,9 @@
 
 > **Last Updated**: 2026-02-09
 >
-> **Status**: `[ ]` Pending | `[.]` Ready (has requirements) | `[>]` In Progress | `[x]` Done
+> **Status**: `[ ]` Pending | `[.]` Ready (has requirements) | `[>]` In Progress
+>
+> Delivered items are listed in [delivered.md](./delivered.md). The roadmap focuses on upcoming work and high-level initiatives, while delivered.md serves as a comprehensive > > changelog of completed tasks. This separation allows the roadmap to remain forward-looking and strategic, while still providing a detailed record of past accomplishments in > delivered.md.
 >
 > **Other lists**:
 > [delivered.md](./delivered.md) — completed work |
@@ -52,12 +54,6 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 - [ ] web-interface-2 (after: web-interface-1) — Next.js Scaffold & Auth
 - [ ] web-interface-3 (after: web-interface-2) — Chat Interface & Part Rendering
 - [ ] web-interface-4 (after: web-interface-3) — Session Management & Role-Based Access
-
-## Context-Aware Checkpoint (Phase 2)
-
-- [.] agent-output-monitor
-
-Context-aware checkpoint messages at agent stop boundaries. Inspects git diff to categorize changed files and produces specific validation instructions (restart daemon, SIGUSR2 TUI, run tests) instead of generic checkpoint text. Shared builder used by both hook (Claude/Gemini) and tmux (Codex) delivery paths.
 
 ## Role-Based Notifications
 

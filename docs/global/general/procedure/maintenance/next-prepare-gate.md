@@ -36,7 +36,7 @@ This phase is critical and evidence-driven. It is not a drafting phase.
 3. Tighten artifacts with minimal edits when factual gaps exist.
 4. Assign final gate result in `state.json.dor`:
    - `score` (`1..10`)
-   - `status` (`pass`, `needs_work`, `needs_human_review`)
+   - `status` (`pass`, `needs_work`, `needs_decision`)
    - `schema_version`
    - `blockers`
    - `actions_taken`
@@ -54,5 +54,5 @@ This phase is critical and evidence-driven. It is not a drafting phase.
 
 ## Recovery
 
-1. If evidence is insufficient, set `needs_human_review` and list required decisions.
+1. If evidence is insufficient, set `needs_decision` and list required decisions.
 2. If contradictions exist between artifacts, mark `needs_work` and describe exact fixes.

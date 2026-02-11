@@ -7,11 +7,12 @@ All heuristics are deterministic pattern matching, zero LLM calls.
 
 import logging
 import re
+import shlex
 import subprocess
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Optional
+from typing import Mapping, Optional, TypedDict
 
 from teleclaude.constants import (
     CHECKPOINT_BLAST_RADIUS_THRESHOLD,
@@ -31,6 +32,37 @@ from teleclaude.core.agents import AgentName
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline, extract_tool_calls_current_turn
 
 logger = logging.getLogger(__name__)
+
+
+class TranscriptObservability(TypedDict):
+    transcript_path: str
+    transcript_exists: bool
+    transcript_size_bytes: int
+
+
+def _canonical_tool_name(tool_name: str) -> str:
+    """Normalize tool names across transcript adapters."""
+    normalized = (tool_name or "").strip().lower()
+    if "." in normalized:
+        normalized = normalized.rsplit(".", 1)[-1]
+    return normalized
+
+
+def _is_checkpoint_project_supported(project_path: str) -> bool:
+    """Return True only for projects that carry TeleClaude checkpoint semantics."""
+    if not project_path:
+        return False
+    try:
+        root = Path(project_path).expanduser().resolve()
+    except Exception:
+        return False
+
+    # Require clear TeleClaude markers so other repositories are excluded.
+    required_markers = (
+        root / "teleclaude" / "hooks" / "checkpoint.py",
+        root / "agents" / "commands" / "next-work.md",
+    )
+    return all(marker.exists() for marker in required_markers)
 
 
 @dataclass
@@ -76,6 +108,196 @@ def _get_uncommitted_files(project_path: str) -> Optional[list[str]]:
         return files
     except Exception:
         return None
+
+
+def _transcript_observability(transcript_path: Optional[str]) -> TranscriptObservability:
+    """Return lightweight transcript-path observability fields for logging."""
+    if not transcript_path:
+        return {
+            "transcript_path": "",
+            "transcript_exists": False,
+            "transcript_size_bytes": 0,
+        }
+    try:
+        path = Path(transcript_path).expanduser()
+        exists = path.exists()
+        size = path.stat().st_size if exists else 0
+        return {
+            "transcript_path": str(path),
+            "transcript_exists": exists,
+            "transcript_size_bytes": size,
+        }
+    except Exception:
+        return {
+            "transcript_path": transcript_path,
+            "transcript_exists": False,
+            "transcript_size_bytes": 0,
+        }
+
+
+def _normalize_repo_path(path: str, project_path: str) -> str:
+    """Normalize absolute/relative paths to project-relative POSIX form."""
+    raw = (path or "").strip()
+    if not raw:
+        return ""
+    try:
+        candidate = Path(raw)
+        if candidate.is_absolute() and project_path:
+            try:
+                candidate = candidate.relative_to(Path(project_path))
+            except ValueError:
+                return ""
+        return candidate.as_posix().lstrip("./")
+    except Exception:
+        return ""
+
+
+def _command_likely_mutates_files(command: str) -> bool:
+    """Best-effort shell command classifier for file-mutating intent."""
+    if not command:
+        return False
+    cmd = command.strip()
+    if not cmd:
+        return False
+
+    patterns = (
+        r"\bapply_patch\b",
+        r"\bgit\s+(add|mv|rm|restore|checkout|apply)\b",
+        r"\bsed\s+-i\b",
+        r"\bperl\s+-pi\b",
+        r"\btouch\b",
+        r"\bmkdir\b",
+        r"\bmv\b",
+        r"\bcp\b",
+        r"\brm\b",
+        r"\btee\b",
+    )
+    if any(re.search(pattern, cmd) for pattern in patterns):
+        return True
+
+    # Redirection is a loose mutation signal; used only as fallback.
+    if ">>" in cmd or " > " in cmd:
+        return True
+    return False
+
+
+def _extract_shell_command(input_data: Mapping[str, object]) -> str:
+    """Extract command text from tool input payloads across adapters."""
+    command = input_data.get("command")
+    if not isinstance(command, str) or not command.strip():
+        command = input_data.get("cmd")
+    if isinstance(command, str):
+        return command.strip()
+    return ""
+
+
+def _extract_apply_patch_paths(patch_text: str, project_path: str) -> set[str]:
+    """Extract file paths from apply_patch payload text."""
+    paths: set[str] = set()
+    if not patch_text:
+        return paths
+    prefixes = (
+        "*** Update File:",
+        "*** Add File:",
+        "*** Delete File:",
+        "*** Move to:",
+    )
+    for line in patch_text.splitlines():
+        stripped = line.strip()
+        for prefix in prefixes:
+            if not stripped.startswith(prefix):
+                continue
+            raw_path = stripped[len(prefix) :].strip()
+            normalized = _normalize_repo_path(raw_path, project_path)
+            if normalized:
+                paths.add(normalized)
+    return paths
+
+
+def _extract_turn_file_signals(timeline: TurnTimeline, project_path: str) -> tuple[set[str], bool]:
+    """Extract turn-local file touches and mutation intent."""
+    touched_files: set[str] = set()
+    saw_mutation_signal = False
+
+    if not timeline.has_data:
+        return touched_files, saw_mutation_signal
+
+    for record in timeline.tool_calls:
+        tool_name = _canonical_tool_name(record.tool_name)
+
+        # Structured file mutators (explicit file_path semantics).
+        if tool_name in {"edit", "write", "multiedit", "apply_patch"}:
+            saw_mutation_signal = True
+            for key in ("file_path", "path", "filepath", "target_file"):
+                value = record.input_data.get(key)
+                if isinstance(value, str):
+                    normalized = _normalize_repo_path(value, project_path)
+                    if normalized:
+                        touched_files.add(normalized)
+            for key in ("file_paths", "paths"):
+                value = record.input_data.get(key)
+                if isinstance(value, list):
+                    for entry in value:
+                        if isinstance(entry, str):
+                            normalized = _normalize_repo_path(entry, project_path)
+                            if normalized:
+                                touched_files.add(normalized)
+            if tool_name == "apply_patch":
+                for key in ("input", "patch", "raw_arguments", "command", "cmd"):
+                    value = record.input_data.get(key)
+                    if isinstance(value, str):
+                        touched_files.update(_extract_apply_patch_paths(value, project_path))
+            continue
+
+        # Shell tools can mutate files but usually expose only freeform command text.
+        if tool_name in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
+            command = _extract_shell_command(record.input_data)
+            if _command_likely_mutates_files(command):
+                saw_mutation_signal = True
+
+    return touched_files, saw_mutation_signal
+
+
+def _scope_git_files_to_current_turn(
+    git_files: list[str],
+    timeline: TurnTimeline,
+    project_path: str,
+) -> list[str]:
+    """Reduce repo-wide dirty files to likely current-turn changes.
+
+    Rationale:
+    - `git diff --name-only HEAD` returns repo-wide dirty state.
+    - Checkpoint obligations are turn-local.
+    - Without scoping, stale files from previous turns trigger false positives.
+    """
+    if not git_files:
+        return []
+    if not timeline.has_data:
+        return git_files
+
+    touched_files, saw_mutation_signal = _extract_turn_file_signals(timeline, project_path)
+    if touched_files:
+        normalized_git: dict[str, str] = {}
+        for filepath in git_files:
+            normalized = _normalize_repo_path(filepath, project_path)
+            if normalized:
+                normalized_git[normalized] = filepath
+
+        scoped = [normalized_git[path] for path in sorted(touched_files) if path in normalized_git]
+        if scoped:
+            return scoped
+
+        # Explicit mutators seen but path mapping failed: prefer fail-open.
+        if saw_mutation_signal:
+            return git_files
+        return []
+
+    # No mutation signals in this turn: avoid stale dirty-file false positives.
+    if not saw_mutation_signal:
+        return []
+
+    # Mutation by shell command detected, but no structured file paths available.
+    return git_files
 
 
 # ---------------------------------------------------------------------------
@@ -134,11 +356,12 @@ def _has_evidence(timeline: TurnTimeline, substrings: list[str]) -> bool:
     if not timeline.has_data or not substrings:
         return False
     for record in timeline.tool_calls:
-        if record.tool_name != "Bash":
+        tool_name = _canonical_tool_name(record.tool_name)
+        if tool_name not in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
             continue
         if record.had_error:
             continue
-        command = str(record.input_data.get("command", ""))
+        command = _extract_shell_command(record.input_data)
         if any(sub in command for sub in substrings):
             return True
     return False
@@ -150,9 +373,10 @@ def _has_status_evidence(timeline: TurnTimeline) -> bool:
         return False
     saw_restart = False
     for record in timeline.tool_calls:
-        if record.tool_name != "Bash":
+        tool_name = _canonical_tool_name(record.tool_name)
+        if tool_name not in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
             continue
-        command = str(record.input_data.get("command", ""))
+        command = _extract_shell_command(record.input_data)
         if record.had_error:
             continue
         if "make restart" in command:
@@ -176,6 +400,8 @@ def _check_error_state(timeline: TurnTimeline) -> list[str]:
     for error_pos, error_record in enumerate(timeline.tool_calls):
         if not error_record.had_error:
             continue
+        if _is_non_actionable_error(error_record):
+            continue
         # Layer 1: check for resolution evidence after this error
         subsequent = timeline.tool_calls[error_pos + 1 :]
 
@@ -188,15 +414,28 @@ def _check_error_state(timeline: TurnTimeline) -> list[str]:
     return observations
 
 
+def _is_non_actionable_error(record: ToolCallRecord) -> bool:
+    """Ignore expected non-zero exits for search commands with no matches."""
+    command = _extract_shell_command(record.input_data).strip().lower()
+    snippet = (record.result_snippet or "").lower()
+    if command.startswith("rg ") or command.startswith("grep "):
+        if "process exited with code 1" in snippet:
+            # `rg`/`grep` use exit code 1 for "no matches"; this is informational.
+            if "no such file or directory" not in snippet and "permission denied" not in snippet:
+                return True
+    return False
+
+
 def _is_error_resolved(error_record: ToolCallRecord, subsequent: list[ToolCallRecord]) -> bool:
     """Check if a subsequent action addressed the error."""
-    error_command = str(error_record.input_data.get("command", ""))
+    error_command = _extract_shell_command(error_record.input_data)
     error_file = str(error_record.input_data.get("file_path", ""))
 
     for later in subsequent:
         # Re-invocation of the same command
-        if later.tool_name == "Bash":
-            later_command = str(later.input_data.get("command", ""))
+        later_tool_name = _canonical_tool_name(later.tool_name)
+        if later_tool_name in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
+            later_command = _extract_shell_command(later.input_data)
             # Same command re-run (e.g., second pytest after first failed)
             if error_command and _commands_overlap(error_command, later_command):
                 return True
@@ -205,7 +444,7 @@ def _is_error_resolved(error_record: ToolCallRecord, subsequent: list[ToolCallRe
                 return True
 
         # Edit/Write targeting same file path
-        if later.tool_name in ("Edit", "Write"):
+        if _canonical_tool_name(later.tool_name) in {"edit", "write"}:
             later_file = str(later.input_data.get("file_path", ""))
             if error_file and later_file == error_file:
                 return True
@@ -217,23 +456,27 @@ def _is_error_resolved(error_record: ToolCallRecord, subsequent: list[ToolCallRe
 
 
 def _commands_overlap(cmd_a: str, cmd_b: str) -> bool:
-    """Check if two commands are essentially the same operation.
+    """Check if two commands are the same operation with argument-level fidelity.
 
-    Extracts the base command (first word or known compound like 'make test')
-    and checks for equality.
+    We intentionally require near-exact overlap to avoid suppressing unresolved
+    errors when a different command happens to share the same executable name
+    (e.g. `pytest tests/a.py` vs `pytest tests/b.py`).
     """
 
-    def _base_cmd(cmd: str) -> str:
+    def _normalize(cmd: str) -> str:
         stripped = cmd.strip()
-        for compound in ("make test", "make restart", "make lint", "make status", "pip install"):
-            if compound in stripped:
-                return compound
-        parts = stripped.split()
-        return parts[0] if parts else ""
+        if not stripped:
+            return ""
+        try:
+            # Preserve argument identity while normalizing whitespace/quoting.
+            return " ".join(shlex.split(stripped))
+        except ValueError:
+            # Fall back safely when shell parsing fails.
+            return " ".join(stripped.split())
 
-    base_a = _base_cmd(cmd_a)
-    base_b = _base_cmd(cmd_b)
-    return bool(base_a) and base_a == base_b
+    norm_a = _normalize(cmd_a)
+    norm_b = _normalize(cmd_b)
+    return bool(norm_a) and norm_a == norm_b
 
 
 def _enrich_error(record: ToolCallRecord) -> str:
@@ -246,7 +489,7 @@ def _enrich_error(record: ToolCallRecord) -> str:
             return message
 
     # Check if it was a test command
-    command = str(record.input_data.get("command", ""))
+    command = _extract_shell_command(record.input_data)
     if any(cmd in command for cmd in CHECKPOINT_TEST_ERROR_COMMANDS):
         return CHECKPOINT_TEST_ERROR_MESSAGE
 
@@ -266,11 +509,12 @@ def _check_edit_hygiene(timeline: TurnTimeline, git_files: list[str]) -> list[st
     if timeline.has_data:
         read_files: set[str] = set()
         for record in timeline.tool_calls:
-            if record.tool_name == "Read":
+            tool_name = _canonical_tool_name(record.tool_name)
+            if tool_name == "read":
                 path = str(record.input_data.get("file_path", ""))
                 if path:
                     read_files.add(path)
-            elif record.tool_name == "Edit":
+            elif tool_name == "edit":
                 path = str(record.input_data.get("file_path", ""))
                 if path and path not in read_files:
                     observations.append(
@@ -426,19 +670,23 @@ def build_checkpoint_message(
 ) -> str:
     """Build a structured checkpoint message from all signal sources."""
     result = run_heuristics(git_files, timeline, context)
+    return _compose_checkpoint_message(git_files, result)
+
+
+def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str:
+    """Compose checkpoint text from precomputed heuristic output."""
 
     # Special case: docs only
     if not git_files or _is_docs_only(git_files):
-        return (
-            "Context-aware checkpoint\n\n"
-            "No code changes detected. "
-            "Check logs: `instrukt-ai-logs teleclaude --since 2m`.\n"
-            "Capture memories/bugs/ideas if needed. Commit if ready."
-        )
+        return "Context-aware checkpoint\n\nNo code changes detected this turn. Did you run `telec sync`?\nCommit if ready."
 
     # Special case: all clear
     if result.is_all_clear:
-        return "All expected validations were observed. Commit if ready."
+        return (
+            "All expected validations were observed. "
+            "Docs check: if relevant, update existing docs or add a new doc. "
+            "Commit if ready."
+        )
 
     lines: list[str] = ["Context-aware checkpoint"]
 
@@ -462,9 +710,12 @@ def build_checkpoint_message(
         for obs in result.observations:
             lines.append(f"- {obs}")
 
+    lines.append("")
+    lines.append("Docs check: If relevant, update existing docs or add a new doc.")
+
     # Capture reminder
     lines.append("")
-    lines.append("Capture memories/bugs/ideas if needed.")
+    lines.append('Finish the steps above. Then capture "aha moment" memories if needed.')
 
     return "\n".join(lines)
 
@@ -479,15 +730,46 @@ def get_checkpoint_content(
     agent_name: AgentName,
     project_path: str,
     working_slug: Optional[str] = None,
-) -> str:
+) -> Optional[str]:
     """Build context-aware checkpoint content for both hook and codex routes.
 
     Top-level entry point that orchestrates git diff, transcript extraction,
-    and message building. Fail-open: returns generic Phase 1 message on any error.
+    and message building.
+
+    Returns:
+    - str: checkpoint payload when agent action is required or confirmation is useful.
+    - None: no turn-local code changes detected; skip checkpoint entirely.
+    - CHECKPOINT_MESSAGE: fail-open fallback on internal errors.
     """
     try:
+        transcript_meta = _transcript_observability(transcript_path)
+        if not _is_checkpoint_project_supported(project_path):
+            logger.info(
+                "Checkpoint payload skipped (project out of scope)",
+                agent=agent_name.value,
+                project_path=project_path or "",
+                working_slug=working_slug or "",
+                transcript_present=bool(transcript_path),
+                transcript_path=transcript_meta["transcript_path"],
+                transcript_exists=transcript_meta["transcript_exists"],
+                transcript_size_bytes=transcript_meta["transcript_size_bytes"],
+                mode="unsupported_project",
+                message_len=0,
+            )
+            return None
+
         git_files = _get_uncommitted_files(project_path)
         if git_files is None:
+            logger.warning(
+                "Checkpoint payload fallback to generic message (git unavailable)",
+                agent=agent_name.value,
+                project_path=project_path or "",
+                working_slug=working_slug or "",
+                transcript_present=bool(transcript_path),
+                transcript_path=transcript_meta["transcript_path"],
+                transcript_exists=transcript_meta["transcript_exists"],
+                transcript_size_bytes=transcript_meta["transcript_size_bytes"],
+            )
             return CHECKPOINT_MESSAGE  # git unavailable — fall back to generic
 
         if transcript_path:
@@ -495,14 +777,76 @@ def get_checkpoint_content(
         else:
             timeline = TurnTimeline(tool_calls=[], has_data=False)
 
+        effective_git_files = _scope_git_files_to_current_turn(
+            git_files,
+            timeline,
+            project_path,
+        )
+
         context = CheckpointContext(
             project_path=project_path,
             working_slug=working_slug,
             agent_name=agent_name,
         )
 
-        return build_checkpoint_message(git_files, timeline, context)
+        result = run_heuristics(effective_git_files, timeline, context)
+        if not effective_git_files or _is_docs_only(effective_git_files):
+            logger.info(
+                "Checkpoint payload skipped (no turn-local code changes)",
+                agent=agent_name.value,
+                project_path=project_path or "",
+                working_slug=working_slug or "",
+                transcript_present=bool(transcript_path),
+                transcript_path=transcript_meta["transcript_path"],
+                transcript_exists=transcript_meta["transcript_exists"],
+                transcript_size_bytes=transcript_meta["transcript_size_bytes"],
+                timeline_has_data=timeline.has_data,
+                timeline_records=len(timeline.tool_calls),
+                dirty_files=len(git_files),
+                changed_files=len(effective_git_files),
+                categories=result.categories,
+                required_actions=len(result.required_actions),
+                observations=len(result.observations),
+                mode="silent_no_changes",
+                message_len=0,
+            )
+            return None
+
+        message = _compose_checkpoint_message(effective_git_files, result)
+        mode = (
+            "docs_only"
+            if (not effective_git_files or _is_docs_only(effective_git_files))
+            else ("all_clear" if result.is_all_clear else "actionable")
+        )
+        logger.info(
+            "Checkpoint payload computed",
+            agent=agent_name.value,
+            project_path=project_path or "",
+            working_slug=working_slug or "",
+            transcript_present=bool(transcript_path),
+            transcript_path=transcript_meta["transcript_path"],
+            transcript_exists=transcript_meta["transcript_exists"],
+            transcript_size_bytes=transcript_meta["transcript_size_bytes"],
+            timeline_has_data=timeline.has_data,
+            timeline_records=len(timeline.tool_calls),
+            dirty_files=len(git_files),
+            changed_files=len(effective_git_files),
+            categories=result.categories,
+            required_actions=len(result.required_actions),
+            observations=len(result.observations),
+            mode=mode,
+            message_len=len(message),
+        )
+        return message
 
     except Exception:
-        logger.debug("Checkpoint content build failed (fail-open)", exc_info=True)
+        logger.warning(
+            "Checkpoint content build failed (fail-open)",
+            agent=agent_name.value,
+            project_path=project_path or "",
+            working_slug=working_slug or "",
+            transcript_present=bool(transcript_path),
+            transcript_path=(transcript_path or ""),
+            exc_info=True,
+        )
         return CHECKPOINT_MESSAGE

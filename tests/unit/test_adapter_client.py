@@ -473,8 +473,8 @@ async def test_adapter_client_discover_peers_redis_disabled():
 
 
 @pytest.mark.asyncio
-async def test_send_output_update_missing_thread_does_not_recreate_topic():
-    """AdapterClient should not handle missing-thread recovery."""
+async def test_send_output_update_missing_thread_recovers_by_recreating_topic():
+    """AdapterClient should recover missing-thread errors by forcing channel re-ensure."""
     client = AdapterClient()
     client.register_adapter(
         "telegram",
@@ -495,17 +495,18 @@ async def test_send_output_update_missing_thread_does_not_recreate_topic():
     with (
         patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)),
         patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session,
+        patch("teleclaude.core.adapter_client.db.set_output_message_id", new=AsyncMock()) as set_output_message_id,
     ):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    # Outcome-based assertions
-    assert result is None
-    update_session.assert_not_called()
+    assert result == "msg"
+    update_session.assert_called()
+    set_output_message_id.assert_awaited_once_with(session.session_id, None)
 
 
 @pytest.mark.asyncio
-async def test_send_output_update_missing_thread_non_telegram_origin_no_recreate():
-    """AdapterClient should not handle missing-thread recovery for non-telegram origin."""
+async def test_send_output_update_missing_thread_recovers_for_non_telegram_origin():
+    """Recovery should not depend on the last input origin."""
     client = AdapterClient()
     client.register_adapter(
         "telegram",
@@ -526,17 +527,18 @@ async def test_send_output_update_missing_thread_non_telegram_origin_no_recreate
     with (
         patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)),
         patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session,
+        patch("teleclaude.core.adapter_client.db.set_output_message_id", new=AsyncMock()) as set_output_message_id,
     ):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    # Outcome-based assertions
-    assert result is None
-    update_session.assert_not_called()
+    assert result == "msg"
+    update_session.assert_called()
+    set_output_message_id.assert_awaited_once_with(session.session_id, None)
 
 
 @pytest.mark.asyncio
-async def test_send_output_update_missing_thread_terminal_no_recreate():
-    """AdapterClient should not handle missing-thread recovery for CLI origin."""
+async def test_send_output_update_topic_deleted_recovers_by_recreating_topic():
+    """Topic deleted errors should trigger the same Telegram channel recovery."""
     client = AdapterClient()
     client.register_adapter(
         "telegram",
@@ -554,13 +556,16 @@ async def test_send_output_update_missing_thread_terminal_no_recreate():
         ),
     )
 
-    with patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)):
-        with patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session:
-            result = await client.send_output_update(session, "output", 0.0, 0.0)
+    with (
+        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)),
+        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session,
+        patch("teleclaude.core.adapter_client.db.set_output_message_id", new=AsyncMock()) as set_output_message_id,
+    ):
+        result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    # Outcome: success after retry
-    assert result is None
-    update_session.assert_not_called()
+    assert result == "msg"
+    update_session.assert_called()
+    set_output_message_id.assert_awaited_once_with(session.session_id, None)
 
 
 @pytest.mark.asyncio

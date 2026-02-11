@@ -453,7 +453,6 @@ class MCPHandlersMixin:
     async def teleclaude__list_sessions(
         self,
         computer: Optional[str] = "local",
-        spawned_by_me: bool = True,
         caller_session_id: str | None = None,
     ) -> list[SessionInfo]:
         """List sessions from local or remote computer(s)."""
@@ -464,7 +463,7 @@ class MCPHandlersMixin:
         else:
             sessions = await self._list_remote_sessions(computer)
 
-        return self._filter_spawned_sessions(sessions, spawned_by_me, caller_session_id)
+        return self._filter_spawned_sessions(sessions, caller_session_id)
 
     async def _list_local_sessions(self) -> list[SessionInfo]:
         """List sessions from local database directly."""
@@ -509,13 +508,10 @@ class MCPHandlersMixin:
     @staticmethod
     def _filter_spawned_sessions(
         sessions: list[SessionInfo],
-        spawned_by_me: bool,
         caller_session_id: str | None,
     ) -> list[SessionInfo]:
-        if not spawned_by_me:
-            return sessions
         if not caller_session_id:
-            logger.debug("spawned_by_me requested but missing caller_session_id; returning unfiltered sessions")
+            logger.debug("Missing caller_session_id; returning unfiltered sessions")
             return sessions
         return [session for session in sessions if session.get("initiator_session_id") == caller_session_id]
 

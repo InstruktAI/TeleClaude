@@ -429,11 +429,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
             async def _handle_list_sessions() -> list[TextContent]:
                 computer_obj = arguments.get("computer", "local") if arguments else "local"
                 computer: str | None = None if computer_obj is None else str(computer_obj)
-                spawned_obj = arguments.get("spawned_by_me", True) if arguments else True
-                spawned_by_me = bool(spawned_obj)
-                return self._json_response(
-                    await self.teleclaude__list_sessions(computer, spawned_by_me, caller_session_id)
-                )
+                return self._json_response(await self.teleclaude__list_sessions(computer, caller_session_id))
 
             async def _handle_start_session() -> list[TextContent]:
                 args = StartSessionArgs.from_mcp(arguments or {}, caller_session_id)

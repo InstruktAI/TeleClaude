@@ -122,13 +122,13 @@ sequenceDiagram
 
 ### 4. Worker Dispatch Pattern
 
-| Phase    | Worker Role | Command Example                                |
-| -------- | ----------- | ---------------------------------------------- |
+| Phase    | Worker Role  | Command Example                                                                          |
+| -------- | ------------ | ---------------------------------------------------------------------------------------- |
 | Prepare  | Orchestrator | `/prime-orchestrator` then route with `teleclaude__next_prepare`/`teleclaude__next_work` |
-| Build    | Builder     | `/next-build` in worktree                      |
-| Review   | Reviewer    | `/next-review` - evaluate against requirements |
-| Fix      | Fixer       | `/next-fix-review` - address findings          |
-| Finalize | Finalizer   | `/next-finalize` - merge and log               |
+| Build    | Builder      | `/next-build` in worktree                                                                |
+| Review   | Reviewer     | `/next-review` - evaluate against requirements                                           |
+| Fix      | Fixer        | `/next-fix-review` - address findings                                                    |
+| Finalize | Finalizer    | `/next-finalize` - merge and log                                                         |
 
 ## Failure modes
 

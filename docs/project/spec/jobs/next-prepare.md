@@ -70,13 +70,13 @@ Per processed slug, the job may update:
 Allowed values:
 
 - `dor.score`: integer `1..10`
-- `dor.status`: `pass`, `needs_work`, `needs_human_review`
+- `dor.status`: `pass`, `needs_work`, `needs_decision`
 - `dor.schema_version`: positive integer
 
 Threshold constants:
 
 - Target quality: `8`
-- Human review required: `< 7`
+- Decision required: `< 7`
 
 ## Roadmap state contract
 

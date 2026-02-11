@@ -37,7 +37,9 @@ Create identity bootstrap logic that:
 
 1. Calls `load_global_config()` from `teleclaude/config/loader.py`.
 2. Reads `global_config.people` from the validated model.
-3. Exposes a module-level `get_identity_resolver() -> IdentityResolver` function.
+3. Scans and loads per-person configs from `~/.teleclaude/people/*/teleclaude.yml`.
+4. Builds cross-reference maps for platform credentials (telegram user_id now).
+5. Exposes a module-level `get_identity_resolver() -> IdentityResolver` function.
 
 **Note:** No new YAML loading or parsing logic is allowed in this todo.
 
@@ -48,18 +50,26 @@ Create identity bootstrap logic that:
 ```python
 @dataclass
 class IdentityContext:
-    email: str
-    role: str
-    username: str | None
-    resolution_source: str  # "email", "username", "header", "token"
+    person_email: str | None
+    person_role: str
+    person_name: str | None
+    person_username: str | None
+    platform: str
+    platform_user_id: str | None
+    platform_username: str | None
+    auth_source: str      # "jwt", "telegram_user_id", "header", "token", "parent_inherit"
+    trust_level: str      # "trusted_person", "external", "unknown"
 
 class IdentityResolver:
-    def __init__(self, people: list[PersonEntry]):
+    def __init__(self, people: list[PersonEntry], person_configs: dict[str, PersonConfig]):
         self._by_email: dict[str, PersonEntry] = ...
         self._by_username: dict[str, PersonEntry] = ...
+        self._by_telegram_user_id: dict[int, PersonEntry] = ...
 
     def resolve_by_email(self, email: str) -> IdentityContext | None: ...
     def resolve_by_username(self, username: str) -> IdentityContext | None: ...
+    def resolve_by_telegram_user_id(self, user_id: int) -> IdentityContext | None: ...
+    def resolve_by_platform_user_id(self, platform: str, user_id: str) -> IdentityContext | None: ...
 ```
 
 Singleton resolver initialized at daemon startup from validated global config loaders.
@@ -102,6 +112,9 @@ Depends on: `person-identity-auth-1`.
 ALTER TABLE sessions ADD COLUMN human_username TEXT;
 ALTER TABLE sessions ADD COLUMN human_email TEXT;
 ALTER TABLE sessions ADD COLUMN human_role TEXT;
+ALTER TABLE sessions ADD COLUMN human_platform TEXT;
+ALTER TABLE sessions ADD COLUMN human_platform_user_id TEXT;
+CREATE INDEX idx_sessions_human_email ON sessions(human_email);
 ```
 
 ### Task 2.2: Session model update
@@ -109,7 +122,8 @@ ALTER TABLE sessions ADD COLUMN human_role TEXT;
 **Files:**
 
 - `teleclaude/core/db_models.py` — add `human_username: Optional[str] = None` and
-  `human_email: Optional[str] = None` and `human_role: Optional[str] = None` to `Session` model.
+  `human_email: Optional[str] = None` and `human_role: Optional[str] = None` and
+  `human_platform: Optional[str] = None` and `human_platform_user_id: Optional[str] = None` to `Session` model.
 - `teleclaude/core/models.py` — add same fields to `SessionSummary` dataclass.
 - `teleclaude/api_models.py` — add same fields to `SessionSummaryDTO` and
   update `from_core()` mapper.
@@ -119,7 +133,8 @@ ALTER TABLE sessions ADD COLUMN human_role TEXT;
 **Files:**
 
 - `teleclaude/core/command_handlers.py` — during session creation, if identity context
-  is available in command metadata, set `human_email`, optional `human_username`, and `human_role` on the
+  is available in command metadata, set `human_email`, optional `human_username`, `human_role`,
+  `human_platform`, and `human_platform_user_id` on the
   session record.
 - `teleclaude/core/db.py` — ensure `create_session()` persists the new fields.
 
@@ -144,16 +159,17 @@ Claims: `sub` (email), `role`, optional `username`, `iat`, `exp`, `iss`.
 
 **File:** `teleclaude/api_server.py`
 
-Add middleware in `APIServer._setup_routes()` after existing `_track_requests`:
+Add pure ASGI middleware in API startup path (do not use `@app.middleware("http")` / `BaseHTTPMiddleware`):
 
 ```python
-@self.app.middleware("http")
-async def auth_middleware(request: Request, call_next):
-    # 1. Check X-TeleClaude-Person-Email + X-TeleClaude-Person-Role (+ optional username header)
-    # 2. Check Authorization: Bearer <token>
-    # Attach IdentityContext to request.state.identity
-    # Enforce 401/403 on non-public routes
-    ...
+class AuthMiddleware:
+    async def __call__(self, scope, receive, send):
+        # 1. Exempt /health and selected public paths
+        # 2. Check X-TeleClaude-Person-* headers (trusted web boundary)
+        # 3. Check Authorization: Bearer <token>
+        # 4. Attach IdentityContext to request.state.identity
+        # 5. Return JSON 401/403 directly on auth failure
+        ...
 ```
 
 Exempt paths: `/health`, `/ws`.
@@ -226,7 +242,8 @@ def filter_tools_by_human_role(human_role: str | None, tools: list[ToolSpec]) ->
 **File:** `teleclaude/entrypoints/mcp_wrapper.py`
 
 Add `_read_human_identity_marker()` alongside existing `_read_role_marker()`.
-Reads `teleclaude_human_identity` file from session TMPDIR (JSON: `{"email": "...", "role": "...", "username": "..."}`).
+Reads `teleclaude_human_identity` file from session TMPDIR
+(JSON: `{"email": "...", "role": "...", "username": "...", "platform": "...", "platform_user_id": "..."}`).
 
 During tool filtering, apply BOTH:
 
@@ -235,7 +252,7 @@ During tool filtering, apply BOTH:
 
 Write human identity marker during session creation (same flow that writes `teleclaude_role`).
 
-### Task 3.3: Boundary identity integration (no Telegram changes in this todo)
+### Task 3.3: Boundary identity integration
 
 **Files:**
 
@@ -245,6 +262,12 @@ Write human identity marker during session creation (same flow that writes `tele
 
 Ensure inbound identity is normalized to `{email, role, username?}` before
 session binding and authorization checks.
+
+Explicitly include Telegram boundary mapping now:
+
+- Capture `update.effective_user.id` and `update.effective_user.username`.
+- Resolve against person creds mapping (per-person config).
+- Emit normalized IdentityContext into session creation metadata.
 
 ### Task 3.4: Client auth command
 

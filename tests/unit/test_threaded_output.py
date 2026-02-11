@@ -199,6 +199,126 @@ def test_render_agent_output_delta(tmp_path):
     assert last_ts.isoformat().startswith("2025-01-01T10:00:02")
 
 
+def test_rotation_fallback_render_agent_output_with_no_user_boundary(tmp_path):
+    """If rotated transcript has no user entries, render from start as fallback."""
+    transcript_path = tmp_path / "rotated.jsonl"
+    transcript_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": "2025-01-01T10:00:00.000Z",
+                        "type": "assistant",
+                        "message": {"role": "assistant", "content": [{"type": "text", "text": "After rotate A"}]},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2025-01-01T10:00:01.000Z",
+                        "type": "assistant",
+                        "message": {"role": "assistant", "content": [{"type": "text", "text": "After rotate B"}]},
+                    }
+                ),
+            ]
+        )
+    )
+
+    dt_after = datetime(2025, 1, 1, 10, 5, 0, tzinfo=timezone.utc)
+    result, _last_ts = render_agent_output(str(transcript_path), AgentName.CLAUDE, since_timestamp=dt_after)
+    assert result is not None
+    assert "After rotate A" in result
+    assert "After rotate B" in result
+
+
+def test_rotation_fallback_get_assistant_messages_with_no_user_boundary(tmp_path):
+    """Cursor misses should still return assistant messages for rotated files."""
+    transcript_path = tmp_path / "rotated_messages.jsonl"
+    transcript_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": "2025-01-01T10:00:00.000Z",
+                        "type": "assistant",
+                        "message": {"role": "assistant", "content": [{"type": "text", "text": "Chunk A"}]},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2025-01-01T10:00:01.000Z",
+                        "type": "assistant",
+                        "message": {"role": "assistant", "content": [{"type": "text", "text": "Chunk B"}]},
+                    }
+                ),
+            ]
+        )
+    )
+
+    dt_after = datetime(2025, 1, 1, 10, 5, 0, tzinfo=timezone.utc)
+    messages = get_assistant_messages_since(str(transcript_path), AgentName.CLAUDE, since_timestamp=dt_after)
+    assert len(messages) == 2
+
+
+def test_no_rotation_fallback_when_user_boundary_exists(tmp_path):
+    """When a user boundary exists, no fallback should occur for stale cursors."""
+    transcript_path = tmp_path / "not_rotated.jsonl"
+    transcript_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": "2025-01-01T10:00:00.000Z",
+                        "type": "user",
+                        "message": {"role": "user", "content": [{"type": "input_text", "text": "Prompt"}]},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2025-01-01T10:00:01.000Z",
+                        "type": "assistant",
+                        "message": {"role": "assistant", "content": [{"type": "text", "text": "Reply"}]},
+                    }
+                ),
+            ]
+        )
+    )
+
+    dt_after = datetime(2025, 1, 1, 10, 5, 0, tzinfo=timezone.utc)
+    messages = get_assistant_messages_since(str(transcript_path), AgentName.CLAUDE, since_timestamp=dt_after)
+    assert messages == []
+
+
+def test_rotation_fallback_render_clean_output_with_no_user_boundary(tmp_path):
+    """Clean renderer should also fallback for rotated files without user entries."""
+    transcript_path = tmp_path / "rotated_clean.jsonl"
+    transcript_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": "2025-01-01T10:00:00.000Z",
+                        "type": "assistant",
+                        "message": {"role": "assistant", "content": [{"type": "text", "text": "Clean A"}]},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2025-01-01T10:00:01.000Z",
+                        "type": "assistant",
+                        "message": {"role": "assistant", "content": [{"type": "text", "text": "Clean B"}]},
+                    }
+                ),
+            ]
+        )
+    )
+
+    dt_after = datetime(2025, 1, 1, 10, 5, 0, tzinfo=timezone.utc)
+    result, _last_ts = render_clean_agent_output(str(transcript_path), AgentName.CLAUDE, since_timestamp=dt_after)
+    assert result is not None
+    assert "Clean A" in result
+    assert "Clean B" in result
+
+
 def test_real_gemini_artifact_returns_single_message_with_multiple_blocks():
     fixture = Path("tests/fixtures/transcripts/gemini_real_incremental_snapshot.json")
     assert fixture.exists(), "Expected real Gemini artifact fixture to exist"

@@ -859,8 +859,10 @@ class AgentCoordinator:
 
         transcript_path = fresh.native_log_file
         working_slug = getattr(fresh, "working_slug", None)
-        project_path = ""
-        if transcript_path:
+        # Prefer persisted project path; fall back to transcript-derived workdir
+        # only when project context is missing.
+        project_path = str(getattr(fresh, "project_path", "") or "")
+        if not project_path and transcript_path:
             from teleclaude.utils.transcript import extract_workdir_from_transcript
 
             project_path = extract_workdir_from_transcript(transcript_path) or ""
@@ -874,6 +876,24 @@ class AgentCoordinator:
             project_path=project_path,
             working_slug=working_slug,
         )
+        if not checkpoint_text:
+            logger.debug(
+                "Checkpoint skipped: no turn-local changes for session %s (transcript=%s)",
+                session_id[:8],
+                transcript_path or "<none>",
+            )
+            return
+
+        logger.info(
+            "Checkpoint payload prepared",
+            route="codex_tmux",
+            session=session_id[:8],
+            agent=agent_name,
+            transcript_present=bool(transcript_path),
+            project_path=project_path or "",
+            working_slug=working_slug or "",
+            payload_len=len(checkpoint_text),
+        )
 
         # Inject
         delivered = await send_keys_existing_tmux(
@@ -884,3 +904,10 @@ class AgentCoordinator:
         if delivered:
             await db.update_session(session_id, last_checkpoint_at=now.isoformat())
             logger.debug("Checkpoint injected for session %s", session_id[:8])
+        else:
+            logger.warning(
+                "Checkpoint injection not delivered",
+                session=session_id[:8],
+                tmux_session=tmux_name,
+                payload_len=len(checkpoint_text),
+            )

@@ -352,6 +352,39 @@ def test_send_message_success(test_client, mock_command_service):  # type: ignor
     assert cmd.text == "Hello AI"
 
 
+def test_revive_session_success(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """Test revive endpoint restarts session by TeleClaude session ID."""
+    mock_session = MagicMock()
+    mock_session.active_agent = "codex"
+    mock_session.native_session_id = "native-123"
+    mock_session.tmux_session_name = "tc_revived"
+    mock_command_service.restart_agent.return_value = (True, None)
+
+    with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get_session:
+        mock_get_session.side_effect = [mock_session, mock_session]
+        response = test_client.post("/sessions/sess-123/revive")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    assert payload["session_id"] == "sess-123"
+    assert payload["tmux_session_name"] == "tc_revived"
+
+    call_args = mock_command_service.restart_agent.call_args
+    cmd = call_args.args[0]
+    assert cmd.session_id == "sess-123"
+
+
+def test_revive_session_not_found_returns_404(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """Test revive endpoint returns 404 for missing session."""
+    with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock, return_value=None):
+        response = test_client.post("/sessions/missing/revive")
+
+    assert response.status_code == 404
+    assert "Session not found" in response.json()["detail"]
+    mock_command_service.restart_agent.assert_not_called()
+
+
 def test_list_computers_success(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
     """Test list_computers returns local + cached computers."""
     with patch("teleclaude.api_server.command_handlers.get_computer_info", new_callable=AsyncMock) as mock_handler:

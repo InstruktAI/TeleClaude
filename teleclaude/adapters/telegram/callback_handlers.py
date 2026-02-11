@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Optional
 
 from instrukt_ai_logging import get_logger
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes, ExtBot
 
 from teleclaude.core.agents import AgentName
@@ -21,6 +22,7 @@ from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata
+from teleclaude.utils import command_retry
 from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
 
 if TYPE_CHECKING:
@@ -161,6 +163,48 @@ class CallbackHandlersMixin:
         elif action in AGENT_START_ACTIONS:
             await self._handle_agent_start(query, action.value, args)
 
+    async def _edit_callback_message(
+        self,
+        query: object,
+        text: str,
+        *,
+        parse_mode: Optional[str] = None,
+        reply_markup: Optional[InlineKeyboardMarkup] = None,
+    ) -> None:
+        """Edit callback message with retry and benign-error tolerance."""
+        from telegram import CallbackQuery
+
+        if not isinstance(query, CallbackQuery):
+            return
+
+        try:
+            await self._edit_callback_message_with_retry(query, text, parse_mode=parse_mode, reply_markup=reply_markup)
+        except BadRequest as exc:
+            if "message is not modified" in str(exc).lower():
+                return
+            raise
+
+    @command_retry(max_retries=3, max_timeout=60.0)
+    async def _edit_callback_message_with_retry(
+        self,
+        query: object,
+        text: str,
+        *,
+        parse_mode: Optional[str] = None,
+        reply_markup: Optional[InlineKeyboardMarkup] = None,
+    ) -> None:
+        """Internal retry-protected callback message edit."""
+        from telegram import CallbackQuery
+
+        if not isinstance(query, CallbackQuery):
+            return
+
+        await query.edit_message_text(
+            text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
+
     async def _handle_download_full(self, query: object, args: list[str]) -> None:
         """Handle download_full callback to download session transcript."""
         # Type narrow query
@@ -183,7 +227,8 @@ class CallbackHandlersMixin:
             native_log_file = session.native_log_file
             agent_value = session.active_agent
             if not agent_value:
-                await query.edit_message_text(
+                await self._edit_callback_message(
+                    query,
                     "❌ Active agent unknown for this session",
                     parse_mode="Markdown",
                 )
@@ -191,13 +236,14 @@ class CallbackHandlersMixin:
             try:
                 agent_name = AgentName.from_str(agent_value)
             except ValueError as exc:
-                await query.edit_message_text(f"❌ {exc}", parse_mode="Markdown")
+                await self._edit_callback_message(query, f"❌ {exc}", parse_mode="Markdown")
                 return
             parser_info = get_transcript_parser_info(agent_name)
 
             # Convert transcript to markdown
             if not native_log_file:
-                await query.edit_message_text(
+                await self._edit_callback_message(
+                    query,
                     f"❌ No {parser_info.display_name} session file found",
                     parse_mode="Markdown",
                 )
@@ -238,7 +284,7 @@ class CallbackHandlersMixin:
             await db.add_pending_deletion(session_id, str(doc_message.message_id), deletion_type="feedback")
         except Exception as e:
             logger.error("Failed to send output file: %s", e)
-            await query.edit_message_text(f"❌ Error sending file: {e}", parse_mode="Markdown")
+            await self._edit_callback_message(query, f"❌ Error sending file: {e}", parse_mode="Markdown")
 
     async def _handle_session_select(self, query: object) -> None:
         """Handle ssel callback to show project selection for Tmux Session."""
@@ -271,7 +317,8 @@ class CallbackHandlersMixin:
         )
 
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(
+        await self._edit_callback_message(
+            query,
             "**Select project for Tmux Session:**",
             reply_markup=reply_markup,
             parse_mode="Markdown",
@@ -320,7 +367,8 @@ class CallbackHandlersMixin:
         )
 
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(
+        await self._edit_callback_message(
+            query,
             f"**Select project for {mode_label}:**",
             reply_markup=reply_markup,
             parse_mode="Markdown",
@@ -337,7 +385,7 @@ class CallbackHandlersMixin:
         bot_username = bot_info.username or "unknown"
         reply_markup = self._build_heartbeat_keyboard(bot_username)
         text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        await query.edit_message_text(text, reply_markup=reply_markup)
+        await self._edit_callback_message(query, text, reply_markup=reply_markup)
 
     async def _handle_cancel(self, query: object, args: list[str]) -> None:
         """Handle ccancel callback to return to heartbeat view."""

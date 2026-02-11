@@ -3,8 +3,8 @@
 import json
 import os
 import tempfile
-from datetime import datetime
-from typing import TypedDict, cast
+from datetime import datetime, timezone
+from typing import Awaitable, TypedDict, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -918,6 +918,7 @@ async def test_handle_agent_restart_fails_without_active_agent(mock_initialized_
     mock_session = MagicMock()
     mock_session.session_id = "restart-session-123"
     mock_session.tmux_session_name = "tc_test"
+    mock_session.closed_at = None
 
     mock_execute_calls = []
 
@@ -952,6 +953,7 @@ async def test_handle_agent_restart_fails_without_native_session_id(mock_initial
     mock_session.tmux_session_name = "tc_test"
     mock_session.active_agent = "claude"
     mock_session.native_session_id = None
+    mock_session.closed_at = None
 
     mock_execute = AsyncMock()
     mock_client = MagicMock()
@@ -977,6 +979,7 @@ async def test_handle_agent_restart_resumes_with_native_session_id(mock_initiali
     mock_session.tmux_session_name = "tc_test"
     mock_session.active_agent = "claude"
     mock_session.native_session_id = "native-abc"
+    mock_session.closed_at = None
 
     mock_execute_calls: list[tuple[tuple[object, ...], ExecuteKwargs]] = []
 
@@ -989,8 +992,10 @@ async def test_handle_agent_restart_resumes_with_native_session_id(mock_initiali
 
     with (
         patch.object(command_handlers, "tmux_io") as mock_tmux_bridge,
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
         patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
         patch.object(command_handlers.asyncio, "sleep", new=AsyncMock()),
+        patch.object(command_handlers.asyncio, "create_task", side_effect=lambda coro: (coro.close(), MagicMock())[1]),
         patch.object(command_handlers, "config") as mock_config,
     ):
         mock_tmux_bridge.send_signal = AsyncMock(return_value=True)
@@ -1016,6 +1021,7 @@ async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized
     mock_session.tmux_session_name = "tc_test"
     mock_session.active_agent = "claude"
     mock_session.native_session_id = "native-xyz"
+    mock_session.closed_at = None
 
     mock_execute_calls = []
 
@@ -1029,6 +1035,7 @@ async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized
 
     with (
         patch.object(command_handlers, "tmux_io") as mock_tmux_bridge,
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
         patch.object(command_handlers, "config") as mock_config,
     ):
         mock_tmux_bridge.send_signal = AsyncMock(return_value=True)
@@ -1040,6 +1047,187 @@ async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized
 
     assert mock_client.send_message.await_count == 1
     assert mock_execute_calls == []
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_restart_uses_context_payload_for_post_restart_checkpoint(mock_initialized_db):
+    """Restart checkpoint injection should use context-aware payload, not legacy constant."""
+
+    mock_session = MagicMock()
+    mock_session.session_id = "restart-session-ctx"
+    mock_session.tmux_session_name = "tc_ctx"
+    mock_session.active_agent = "codex"
+    mock_session.native_session_id = "native-ctx"
+    mock_session.lifecycle_status = "active"
+    mock_session.thinking_mode = "med"
+    mock_session.closed_at = None
+
+    fresh_session = MagicMock()
+    fresh_session.tmux_session_name = "tc_ctx"
+    fresh_session.native_log_file = "/tmp/codex-transcript.jsonl"
+    fresh_session.project_path = "/tmp/project"
+    fresh_session.working_slug = "agent-output-monitor"
+    fresh_session.active_agent = "codex"
+
+    mock_execute = AsyncMock(return_value=True)
+    mock_client = MagicMock()
+    scheduled_coroutines: list[Awaitable[object]] = []
+
+    def _capture_task(coro: Awaitable[object]) -> MagicMock:
+        scheduled_coroutines.append(coro)
+        return MagicMock()
+
+    with (
+        patch.object(command_handlers, "tmux_io") as mock_tmux_bridge,
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
+        patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
+        patch.object(command_handlers, "config") as mock_config,
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers.asyncio, "sleep", new=AsyncMock()),
+        patch.object(command_handlers.asyncio, "create_task", side_effect=_capture_task),
+        patch(
+            "teleclaude.hooks.checkpoint.get_checkpoint_content", return_value="Context-aware checkpoint\n\nok"
+        ) as mock_ckpt,
+        patch(
+            "teleclaude.core.tmux_bridge.send_keys_existing_tmux", new=AsyncMock(return_value=True)
+        ) as mock_send_keys,
+    ):
+        mock_tmux_bridge.send_signal = AsyncMock(return_value=True)
+        mock_tmux_bridge.wait_for_shell_ready = AsyncMock(return_value=True)
+        mock_get_agent_command.return_value = "codex --resume native-ctx"
+        mock_config.agents.get.return_value = MagicMock()
+        mock_db.get_session = AsyncMock(return_value=fresh_session)
+        mock_db.update_session = AsyncMock()
+
+        cmd = RestartAgentCommand(session_id=mock_session.session_id, agent_name=None)
+        await command_handlers.agent_restart.__wrapped__(mock_session, cmd, mock_client, mock_execute)
+
+        assert len(scheduled_coroutines) == 1
+        await scheduled_coroutines[0]
+
+    mock_ckpt.assert_called_once_with(
+        transcript_path="/tmp/codex-transcript.jsonl",
+        agent_name=command_handlers.AgentName.CODEX,
+        project_path="/tmp/project",
+        working_slug="agent-output-monitor",
+    )
+    mock_send_keys.assert_awaited_once_with(
+        session_name="tc_ctx",
+        text="Context-aware checkpoint\n\nok",
+        send_enter=True,
+    )
+    assert mock_execute.await_count == 1
+    assert mock_tmux_bridge.send_signal.await_count == 2
+    mock_db.update_session.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_restart_skips_post_restart_checkpoint_when_no_payload(mock_initialized_db):
+    mock_session = MagicMock()
+    mock_session.session_id = "restart-session-empty"
+    mock_session.tmux_session_name = "tc_empty"
+    mock_session.active_agent = "codex"
+    mock_session.native_session_id = "native-empty"
+    mock_session.lifecycle_status = "active"
+    mock_session.thinking_mode = "med"
+    mock_session.closed_at = None
+
+    fresh_session = MagicMock()
+    fresh_session.tmux_session_name = "tc_empty"
+    fresh_session.native_log_file = "/tmp/codex-transcript.jsonl"
+    fresh_session.project_path = "/tmp/project"
+    fresh_session.working_slug = "agent-output-monitor"
+    fresh_session.active_agent = "codex"
+
+    mock_execute = AsyncMock(return_value=True)
+    mock_client = MagicMock()
+    scheduled_coroutines: list[Awaitable[object]] = []
+
+    def _capture_task(coro: Awaitable[object]) -> MagicMock:
+        scheduled_coroutines.append(coro)
+        return MagicMock()
+
+    with (
+        patch.object(command_handlers, "tmux_io") as mock_tmux_bridge,
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
+        patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
+        patch.object(command_handlers, "config") as mock_config,
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers.asyncio, "sleep", new=AsyncMock()),
+        patch.object(command_handlers.asyncio, "create_task", side_effect=_capture_task),
+        patch("teleclaude.hooks.checkpoint.get_checkpoint_content", return_value=None),
+        patch(
+            "teleclaude.core.tmux_bridge.send_keys_existing_tmux", new=AsyncMock(return_value=True)
+        ) as mock_send_keys,
+    ):
+        mock_tmux_bridge.send_signal = AsyncMock(return_value=True)
+        mock_tmux_bridge.wait_for_shell_ready = AsyncMock(return_value=True)
+        mock_get_agent_command.return_value = "codex --resume native-empty"
+        mock_config.agents.get.return_value = MagicMock()
+        mock_db.get_session = AsyncMock(return_value=fresh_session)
+        mock_db.update_session = AsyncMock()
+
+        cmd = RestartAgentCommand(session_id=mock_session.session_id, agent_name=None)
+        await command_handlers.agent_restart.__wrapped__(mock_session, cmd, mock_client, mock_execute)
+
+        assert len(scheduled_coroutines) == 1
+        await scheduled_coroutines[0]
+
+    mock_send_keys.assert_not_awaited()
+    mock_db.update_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_restart_revives_closed_session_before_restart(mock_initialized_db):
+    """Restart should revive closed sessions before attempting resume."""
+
+    mock_session = MagicMock()
+    mock_session.session_id = "restart-session-closed"
+    mock_session.tmux_session_name = "tc_stale"
+    mock_session.active_agent = "claude"
+    mock_session.native_session_id = "native-closed"
+    mock_session.lifecycle_status = "closed"
+    mock_session.closed_at = datetime.now(timezone.utc)
+
+    revived_session = MagicMock()
+    revived_session.session_id = mock_session.session_id
+    revived_session.tmux_session_name = "tc_revived"
+    revived_session.active_agent = "claude"
+    revived_session.native_session_id = "native-closed"
+    revived_session.lifecycle_status = "active"
+    revived_session.closed_at = None
+    revived_session.thinking_mode = "slow"
+
+    mock_execute = AsyncMock(return_value=True)
+    mock_client = MagicMock()
+
+    with (
+        patch.object(command_handlers, "tmux_io") as mock_tmux_io,
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=False)),
+        patch.object(command_handlers, "_ensure_tmux_for_headless", new=AsyncMock(return_value=revived_session)),
+        patch.object(command_handlers, "get_agent_command", return_value="claude --resume native-closed"),
+        patch.object(command_handlers, "config") as mock_config,
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers.asyncio, "sleep", new=AsyncMock()),
+        patch.object(command_handlers.asyncio, "create_task", side_effect=lambda coro: (coro.close(), MagicMock())[1]),
+    ):
+        mock_tmux_io.send_signal = AsyncMock(return_value=True)
+        mock_tmux_io.wait_for_shell_ready = AsyncMock(return_value=True)
+        mock_config.agents.get.return_value = MagicMock()
+        mock_db.update_session = AsyncMock()
+        mock_db.get_session = AsyncMock(return_value=revived_session)
+
+        cmd = RestartAgentCommand(session_id=mock_session.session_id, agent_name=None)
+        result = await command_handlers.agent_restart.__wrapped__(mock_session, cmd, mock_client, mock_execute)
+
+    assert result == (True, None)
+    mock_db.update_session.assert_awaited_once_with(
+        "restart-session-closed",
+        closed_at=None,
+        lifecycle_status="headless",
+        tmux_session_name=None,
+    )
+    mock_execute.assert_awaited_once()
 
 
 @pytest.mark.asyncio

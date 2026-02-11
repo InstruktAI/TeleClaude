@@ -7,10 +7,14 @@ from teleclaude.hooks.checkpoint import (
     _check_edit_hygiene,
     _check_error_state,
     _check_slug_alignment,
+    _command_likely_mutates_files,
     _enrich_error,
+    _extract_turn_file_signals,
     _has_evidence,
     _is_docs_only,
+    _scope_git_files_to_current_turn,
     build_checkpoint_message,
+    get_checkpoint_content,
     run_heuristics,
 )
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
@@ -84,6 +88,9 @@ def test_agent_artifacts_maps_to_restart():
     cats = _categorize_files(["agents/skills/foo/SKILL.md"])
     names = [c.name for c in cats]
     assert "agent artifacts" in names
+    category = next(c for c in cats if c.name == "agent artifacts")
+    assert "curl -s --unix-socket /tmp/teleclaude-api.sock -X POST" in category.instruction
+    assert category.instruction.startswith("Reload artifacts:")
 
 
 def test_config_maps_to_restart():
@@ -96,6 +103,9 @@ def test_dependencies_maps_to_install():
     cats = _categorize_files(["pyproject.toml"])
     names = [c.name for c in cats]
     assert "dependencies" in names
+    dep_cat = next(c for c in cats if c.name == "dependencies")
+    assert dep_cat.instruction == "Install updated dependencies: `uv sync --extra test`"
+    assert "uv sync" in dep_cat.evidence_substrings
 
 
 def test_tests_only_maps_to_tests():
@@ -121,6 +131,118 @@ def test_docs_only_returns_false_for_code():
 
 def test_empty_diff_is_docs_only():
     assert _is_docs_only([]) is True
+
+
+# ---------------------------------------------------------------------------
+# Turn-local file scoping (false-positive guardrails)
+# ---------------------------------------------------------------------------
+
+
+def test_scope_git_files_no_mutation_signals_returns_empty():
+    timeline = _timeline_with(
+        _read_record("teleclaude/core/foo.py"),
+        _bash_record("make status"),
+    )
+    scoped = _scope_git_files_to_current_turn(
+        ["teleclaude/core/foo.py", "teleclaude/cli/tui/app.py"],
+        timeline,
+        "/repo",
+    )
+    assert scoped == []
+
+
+def test_scope_git_files_intersects_explicit_edit_paths():
+    timeline = _timeline_with(
+        _edit_record("teleclaude/core/foo.py"),
+    )
+    scoped = _scope_git_files_to_current_turn(
+        ["teleclaude/core/foo.py", "teleclaude/cli/tui/app.py"],
+        timeline,
+        "/repo",
+    )
+    assert scoped == ["teleclaude/core/foo.py"]
+
+
+def test_scope_git_files_handles_absolute_edit_paths():
+    timeline = _timeline_with(
+        _edit_record("/repo/teleclaude/core/foo.py"),
+    )
+    scoped = _scope_git_files_to_current_turn(
+        ["teleclaude/core/foo.py", "teleclaude/cli/tui/app.py"],
+        timeline,
+        "/repo",
+    )
+    assert scoped == ["teleclaude/core/foo.py"]
+
+
+def test_scope_git_files_shell_mutation_falls_back_to_git():
+    timeline = _timeline_with(
+        _bash_record("sed -i '' 's/a/b/' teleclaude/core/foo.py"),
+    )
+    scoped = _scope_git_files_to_current_turn(
+        ["teleclaude/core/foo.py", "teleclaude/cli/tui/app.py"],
+        timeline,
+        "/repo",
+    )
+    assert scoped == ["teleclaude/core/foo.py", "teleclaude/cli/tui/app.py"]
+
+
+def test_extract_turn_file_signals_detects_mutation_tools_and_bash():
+    timeline = _timeline_with(
+        ToolCallRecord(tool_name="Write", input_data={"file_path": "/repo/teleclaude/core/foo.py"}),
+        _bash_record("apply_patch <<'PATCH'"),
+    )
+    touched, saw_mutation = _extract_turn_file_signals(timeline, "/repo")
+    assert "teleclaude/core/foo.py" in touched
+    assert saw_mutation is True
+
+
+def test_extract_turn_file_signals_detects_exec_command_mutation():
+    timeline = _timeline_with(
+        ToolCallRecord(tool_name="exec_command", input_data={"command": "sed -i '' 's/a/b/' teleclaude/core/foo.py"}),
+    )
+    touched, saw_mutation = _extract_turn_file_signals(timeline, "/repo")
+    assert touched == set()
+    assert saw_mutation is True
+
+
+def test_extract_turn_file_signals_detects_exec_command_mutation_via_cmd_key():
+    timeline = _timeline_with(
+        ToolCallRecord(tool_name="exec_command", input_data={"cmd": "sed -i '' 's/a/b/' teleclaude/core/foo.py"}),
+    )
+    touched, saw_mutation = _extract_turn_file_signals(timeline, "/repo")
+    assert touched == set()
+    assert saw_mutation is True
+
+
+def test_extract_turn_file_signals_detects_namespaced_exec_command_mutation():
+    timeline = _timeline_with(
+        ToolCallRecord(
+            tool_name="functions.exec_command", input_data={"cmd": "sed -i '' 's/a/b/' teleclaude/core/foo.py"}
+        ),
+    )
+    touched, saw_mutation = _extract_turn_file_signals(timeline, "/repo")
+    assert touched == set()
+    assert saw_mutation is True
+
+
+def test_extract_turn_file_signals_extracts_apply_patch_paths():
+    timeline = _timeline_with(
+        ToolCallRecord(
+            tool_name="apply_patch",
+            input_data={
+                "input": "*** Begin Patch\n*** Update File: /repo/teleclaude/core/foo.py\n*** End Patch\n",
+            },
+        ),
+    )
+    touched, saw_mutation = _extract_turn_file_signals(timeline, "/repo")
+    assert "teleclaude/core/foo.py" in touched
+    assert saw_mutation is True
+
+
+def test_command_likely_mutates_files_ignores_non_mutating_commands():
+    assert _command_likely_mutates_files("make status") is False
+    assert _command_likely_mutates_files("instrukt-ai-logs teleclaude --since 2m") is False
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +285,19 @@ def test_restart_suppressed_when_make_restart_in_transcript():
         _default_context(),
     )
     # Restart instruction should be suppressed
+    assert not any("make restart" in a.lower() for a in result.required_actions)
+
+
+def test_restart_suppressed_when_exec_command_uses_cmd_key():
+    timeline = _timeline_with(
+        ToolCallRecord(tool_name="exec_command", input_data={"cmd": "make restart"}),
+        ToolCallRecord(tool_name="exec_command", input_data={"cmd": "make status"}),
+    )
+    result = run_heuristics(
+        ["teleclaude/core/foo.py"],
+        timeline,
+        _default_context(),
+    )
     assert not any("make restart" in a.lower() for a in result.required_actions)
 
 
@@ -210,6 +345,20 @@ def test_sigusr2_suppressed_when_pkill_in_transcript():
         _default_context(),
     )
     assert not any("SIGUSR2" in a for a in result.required_actions)
+
+
+def test_agent_restart_suppressed_when_api_restart_call_seen():
+    timeline = _timeline_with(
+        _bash_record(
+            'curl --unix-socket /tmp/teleclaude-api.sock -X POST "http://localhost/sessions/abc/agent-restart"'
+        ),
+    )
+    result = run_heuristics(
+        ["agents/commands/next-work.md"],
+        timeline,
+        _default_context(),
+    )
+    assert not any("agent-restart" in a.lower() for a in result.required_actions)
 
 
 def test_log_check_suppressed_when_instrukt_ai_logs_in_transcript():
@@ -404,6 +553,32 @@ def test_enrichment_only_fires_when_layer1_fires():
     assert observations == []
 
 
+def test_search_no_matches_exit_code_is_non_actionable():
+    """`rg`/`grep` exit code 1 for no matches should not create checkpoint noise."""
+    timeline = _timeline_with(
+        _bash_record(
+            "rg -n no_such_token tests/unit",
+            had_error=True,
+            result_snippet="Process exited with code 1\nOutput:\n",
+        ),
+    )
+    observations = _check_error_state(timeline)
+    assert observations == []
+
+
+def test_search_error_exit_code_with_path_issue_is_actionable():
+    """Path/permission problems should still surface as actionable errors."""
+    timeline = _timeline_with(
+        _bash_record(
+            "rg -n token missing/path",
+            had_error=True,
+            result_snippet="Process exited with code 1\nNo such file or directory\n",
+        ),
+    )
+    observations = _check_error_state(timeline)
+    assert len(observations) == 1
+
+
 # ---------------------------------------------------------------------------
 # Error state — workflow scenarios
 # ---------------------------------------------------------------------------
@@ -438,6 +613,16 @@ def test_duplicate_failed_commands_keep_later_unresolved_error():
         _bash_record("pytest tests/unit/test_alpha.py", had_error=True, result_snippet="FAILED"),
         _bash_record("pytest tests/unit/test_alpha.py", had_error=True, result_snippet="FAILED"),
         _edit_record("/tmp/alpha.py"),
+    )
+    observations = _check_error_state(timeline)
+    assert len(observations) == 1
+
+
+def test_error_not_resolved_by_different_pytest_command():
+    """Different pytest target should not suppress unresolved original failure."""
+    timeline = _timeline_with(
+        _bash_record("pytest tests/unit/test_alpha.py", had_error=True, result_snippet="FAILED"),
+        _bash_record("pytest tests/unit/test_beta.py", had_error=False, result_snippet="PASSED"),
     )
     observations = _check_error_state(timeline)
     assert len(observations) == 1
@@ -547,13 +732,13 @@ def test_slug_overlap_ignores_new_annotation_in_plan(tmp_path):
 def test_docs_only_message():
     msg = build_checkpoint_message(["docs/foo.md"], _empty_timeline(), _default_context())
     assert "No code changes" in msg
-    assert "instrukt-ai-logs teleclaude --since 2m" in msg
+    assert "telec sync" in msg
 
 
 def test_empty_diff_message():
     msg = build_checkpoint_message([], _empty_timeline(), _default_context())
     assert "No code changes" in msg
-    assert "instrukt-ai-logs teleclaude --since 2m" in msg
+    assert "telec sync" in msg
 
 
 def test_all_clear_message_is_minimal():
@@ -569,7 +754,7 @@ def test_all_clear_message_is_minimal():
         _default_context(),
     )
     assert "All expected" in msg
-    assert len(msg) < 100
+    assert "Docs check" in msg
 
 
 def test_message_has_required_actions():
@@ -580,6 +765,7 @@ def test_message_has_required_actions():
     )
     assert "Required actions:" in msg
     assert "1." in msg
+    assert "Docs check" in msg
 
 
 def test_message_action_precedence_is_deterministic():
@@ -592,7 +778,7 @@ def test_message_action_precedence_is_deterministic():
     lines = msg.splitlines()
     action_lines = [line for line in lines if line.strip().startswith(("1.", "2.", "3.", "4.", "5."))]
     # Dependencies (precedence 20) before daemon code (precedence 30)
-    dep_idx = next((i for i, line in enumerate(action_lines) if "pip install" in line.lower()), None)
+    dep_idx = next((i for i, line in enumerate(action_lines) if "uv sync" in line.lower()), None)
     restart_idx = next((i for i, line in enumerate(action_lines) if "restart" in line.lower()), None)
     if dep_idx is not None and restart_idx is not None:
         assert dep_idx < restart_idx
@@ -608,3 +794,118 @@ def test_message_observations_separate_from_actions():
         obs_idx = msg.index("Observations:")
         actions_idx = msg.index("Required actions:")
         assert obs_idx > actions_idx
+
+
+def test_get_checkpoint_content_suppresses_stale_dirty_files(monkeypatch):
+    """Repo-wide stale dirty files should not force turn-local restart actions."""
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
+        lambda _project: True,
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._get_uncommitted_files",
+        lambda _project: ["teleclaude/core/foo.py", "teleclaude/cli/tui/app.py"],
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
+        lambda _path, _agent: _timeline_with(
+            _read_record("README.md"),
+            _bash_record("make status"),
+        ),
+    )
+
+    msg = get_checkpoint_content(
+        transcript_path="/tmp/fake.jsonl",
+        agent_name=AgentName.CLAUDE,
+        project_path="/repo",
+    )
+    assert msg is None
+
+
+def test_get_checkpoint_content_keeps_actions_for_turn_local_edits(monkeypatch):
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
+        lambda _project: True,
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._get_uncommitted_files",
+        lambda _project: ["teleclaude/core/foo.py", "teleclaude/cli/tui/app.py"],
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
+        lambda _path, _agent: _timeline_with(
+            _edit_record("teleclaude/core/foo.py"),
+        ),
+    )
+
+    msg = get_checkpoint_content(
+        transcript_path="/tmp/fake.jsonl",
+        agent_name=AgentName.CLAUDE,
+        project_path="/repo",
+    )
+    assert "Run `make restart`" in msg
+
+
+def test_get_checkpoint_content_keeps_actions_for_exec_command_cmd_mutation(monkeypatch):
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
+        lambda _project: True,
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._get_uncommitted_files",
+        lambda _project: ["teleclaude/core/foo.py"],
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
+        lambda _path, _agent: _timeline_with(
+            ToolCallRecord(tool_name="exec_command", input_data={"cmd": "apply_patch <<'PATCH'"}),
+        ),
+    )
+
+    msg = get_checkpoint_content(
+        transcript_path="/tmp/fake.jsonl",
+        agent_name=AgentName.CLAUDE,
+        project_path="/repo",
+    )
+    assert msg is not None
+    assert "Run `make restart`" in msg
+
+
+def test_get_checkpoint_content_returns_none_for_docs_only_changes(monkeypatch):
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
+        lambda _project: True,
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._get_uncommitted_files",
+        lambda _project: ["docs/notes.md"],
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
+        lambda _path, _agent: _timeline_with(
+            _edit_record("docs/notes.md"),
+        ),
+    )
+
+    msg = get_checkpoint_content(
+        transcript_path="/tmp/fake.jsonl",
+        agent_name=AgentName.CLAUDE,
+        project_path="/repo",
+    )
+    assert msg is None
+
+
+def test_get_checkpoint_content_skips_out_of_scope_project(monkeypatch, tmp_path):
+    """Non-TeleClaude projects should not receive checkpoint injections."""
+
+    def _unexpected_git_call(_project: str):
+        raise AssertionError("git diff should not be called for out-of-scope projects")
+
+    monkeypatch.setattr("teleclaude.hooks.checkpoint._get_uncommitted_files", _unexpected_git_call)
+
+    msg = get_checkpoint_content(
+        transcript_path="/tmp/fake.jsonl",
+        agent_name=AgentName.CLAUDE,
+        project_path=str(tmp_path),
+    )
+    assert msg is None

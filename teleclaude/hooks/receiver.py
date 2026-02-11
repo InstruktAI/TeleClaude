@@ -117,6 +117,12 @@ def _maybe_checkpoint_output(
         logger.debug("Checkpoint skipped (stop_hook_active escape hatch)")
         return None
 
+    # Codex does not support hook blocking; checkpoint injection is handled
+    # by AgentCoordinator tmux logic only.
+    if agent == AgentName.CODEX.value:
+        logger.debug("Checkpoint skipped (codex uses tmux injection path)")
+        return None
+
     from sqlmodel import Session as SqlSession
 
     try:
@@ -161,24 +167,15 @@ def _maybe_checkpoint_output(
     transcript_path = getattr(row, "native_log_file", None)
     working_slug = getattr(row, "working_slug", None)
 
-    # Checkpoint warranted — update DB and return agent-specific blocking JSON
-    try:
-        with SqlSession(_create_sync_engine()) as db_session:
-            update_row = db_session.get(db_models.Session, session_id)
-            if update_row:
-                update_row.last_checkpoint_at = now
-                db_session.add(update_row)
-                db_session.commit()
-    except Exception as exc:  # noqa: BLE001 - best-effort DB update
-        logger.warning("Checkpoint DB update failed: %s", exc)
-
-    logger.debug("Checkpoint blocking stop for session %s (%.1fs elapsed)", session_id[:8], elapsed)
+    logger.debug("Checkpoint threshold met for session %s (%.1fs elapsed)", session_id[:8], elapsed)
 
     # Build context-aware checkpoint message from git diff + transcript
     from teleclaude.hooks.checkpoint import get_checkpoint_content
 
-    project_path = ""
-    if transcript_path:
+    # Prefer persisted session project_path (source of truth). Fall back to
+    # transcript-derived workdir only when project_path is missing.
+    project_path = str(getattr(row, "project_path", "") or "")
+    if not project_path and transcript_path:
         from teleclaude.utils.transcript import extract_workdir_from_transcript
 
         project_path = extract_workdir_from_transcript(transcript_path) or ""
@@ -191,6 +188,34 @@ def _maybe_checkpoint_output(
         agent_name=agent_enum,
         project_path=project_path,
         working_slug=working_slug,
+    )
+    if not checkpoint_reason:
+        logger.debug(
+            "Checkpoint skipped: no turn-local changes for session %s (transcript=%s)",
+            session_id[:8],
+            transcript_path or "<none>",
+        )
+        return None
+
+    # Checkpoint warranted — update DB and return agent-specific blocking JSON
+    try:
+        with SqlSession(_create_sync_engine()) as db_session:
+            update_row = db_session.get(db_models.Session, session_id)
+            if update_row:
+                update_row.last_checkpoint_at = now
+                db_session.add(update_row)
+                db_session.commit()
+    except Exception as exc:  # noqa: BLE001 - best-effort DB update
+        logger.warning("Checkpoint DB update failed: %s", exc)
+    logger.info(
+        "Checkpoint payload prepared",
+        route="hook",
+        session=session_id[:8],
+        agent=agent,
+        transcript_present=bool(transcript_path),
+        project_path=project_path or "",
+        working_slug=working_slug or "",
+        payload_len=len(checkpoint_reason),
     )
 
     if agent == AgentName.CLAUDE.value:
@@ -292,6 +317,8 @@ def _enqueue_hook_event(
 def _update_session_native_fields(
     session_id: str,
     *,
+    agent: str,
+    event_type: str,
     native_log_file: str | None = None,
     native_session_id: str | None = None,
 ) -> None:
@@ -304,12 +331,39 @@ def _update_session_native_fields(
         row = session.get(db_models.Session, session_id)
         if not row:
             return
+        previous_native_session_id = row.native_session_id
+        previous_native_log_file = row.native_log_file
         if native_log_file:
             row.native_log_file = native_log_file
         if native_session_id:
             row.native_session_id = native_session_id
         session.add(row)
         session.commit()
+
+        session_changed = bool(native_session_id and previous_native_session_id != native_session_id)
+        transcript_changed = bool(native_log_file and previous_native_log_file != native_log_file)
+        if not session_changed and not transcript_changed:
+            return
+
+        old_path = Path(previous_native_log_file).expanduser() if previous_native_log_file else None
+        new_path = Path(native_log_file).expanduser() if native_log_file else None
+        old_exists = bool(old_path and old_path.exists())
+        new_exists = bool(new_path and new_path.exists())
+
+        logger.info(
+            "Native session metadata changed",
+            session_id=session_id[:8],
+            agent=agent,
+            event_type=event_type,
+            native_session_id_before=(previous_native_session_id or "")[:8],
+            native_session_id_after=(native_session_id or "")[:8],
+            native_session_changed=session_changed,
+            native_log_file_before=previous_native_log_file or "",
+            native_log_file_after=native_log_file or "",
+            native_log_changed=transcript_changed,
+            old_path_exists=old_exists,
+            new_path_exists=new_exists,
+        )
 
 
 # guard: loose-dict-func - Native identity fields come from dynamic hook payloads.
@@ -740,6 +794,8 @@ def main() -> None:
         try:
             _update_session_native_fields(
                 teleclaude_session_id,
+                agent=args.agent,
+                event_type=event_type,
                 native_log_file=raw_native_log_file,
                 native_session_id=raw_native_session_id,
             )

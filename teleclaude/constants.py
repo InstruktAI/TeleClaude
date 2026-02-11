@@ -135,8 +135,8 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
     FileCategory(
         name="dependencies",
         include_patterns=["pyproject.toml", "requirements*.txt"],
-        instruction="Install updated dependencies: `pip install -e .`",
-        evidence_substrings=["pip install"],
+        instruction="Install updated dependencies: `uv sync --extra test`",
+        evidence_substrings=["uv sync", "make install", "pip install"],
         precedence=20,
     ),
     FileCategory(
@@ -164,8 +164,13 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
     FileCategory(
         name="agent artifacts",
         include_patterns=["agents/**", ".agents/**", "**/AGENTS.master.md"],
-        instruction="Run agent-restart to reload artifacts",
-        evidence_substrings=["agent-restart"],
+        instruction=(
+            "Reload artifacts: `curl -s --unix-socket "
+            "/tmp/teleclaude-api.sock -X POST "
+            '"http://localhost/sessions/$(cat \\"$TMPDIR/teleclaude_session_id\\")/agent-restart"`'
+        ),
+        # Evidence accepts direct API call text and daemon restart log markers.
+        evidence_substrings=["--unix-socket /tmp/teleclaude-api.sock", "/agent-restart", "agent_restart"],
         precedence=50,
     ),
     FileCategory(

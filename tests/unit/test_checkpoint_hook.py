@@ -37,6 +37,8 @@ def db_with_session(tmp_path, monkeypatch):
         session_id: str = "sess-1",
         last_message_sent_at: datetime | None = None,
         last_checkpoint_at: datetime | None = None,
+        project_path: str | None = None,
+        native_log_file: str | None = None,
     ):
         with SqlSession(engine) as session:
             row = db_models.Session(
@@ -44,6 +46,8 @@ def db_with_session(tmp_path, monkeypatch):
                 computer_name="test",
                 last_message_sent_at=last_message_sent_at,
                 last_checkpoint_at=last_checkpoint_at,
+                project_path=project_path,
+                native_log_file=native_log_file,
             )
             session.add(row)
             session.commit()
@@ -118,13 +122,42 @@ def test_elapsed_above_threshold_gemini(db_with_session):
     assert len(parsed["reason"]) > 0
 
 
+def test_checkpoint_skips_when_context_builder_returns_none(db_with_session, monkeypatch):
+    """No-op checkpoint payload should not block or update checkpoint timestamp."""
+    now = datetime.now(timezone.utc)
+    engine = db_with_session(last_message_sent_at=now - timedelta(seconds=60))
+
+    monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", lambda **_kwargs: None)
+    result = receiver._maybe_checkpoint_output("sess-1", "claude", {})
+    assert result is None
+
+    from sqlmodel import Session as SqlSession
+
+    from teleclaude.core import db_models
+
+    with SqlSession(engine) as session:
+        row = session.get(db_models.Session, "sess-1")
+        assert row is not None
+        assert row.last_checkpoint_at is None
+
+
 def test_codex_returns_none(db_with_session):
     """Codex has no hook mechanism; should always return None."""
     now = datetime.now(timezone.utc)
-    db_with_session(last_message_sent_at=now - timedelta(seconds=60))
+    engine = db_with_session(last_message_sent_at=now - timedelta(seconds=60))
 
     result = receiver._maybe_checkpoint_output("sess-1", "codex", {})
     assert result is None
+
+    # Ensure codex hook path does not mutate checkpoint timestamp.
+    from sqlmodel import Session as SqlSession
+
+    from teleclaude.core import db_models
+
+    with SqlSession(engine) as session:
+        row = session.get(db_models.Session, "sess-1")
+        assert row is not None
+        assert row.last_checkpoint_at is None
 
 
 def test_checkpoint_uses_most_recent_timestamp(db_with_session):
@@ -152,3 +185,55 @@ def test_checkpoint_fires_when_checkpoint_at_is_old(db_with_session):
     assert result is not None
     parsed = json.loads(result)
     assert parsed["decision"] == "block"
+
+
+def test_checkpoint_prefers_session_project_path_over_transcript_workdir(db_with_session, monkeypatch):
+    now = datetime.now(timezone.utc)
+    db_with_session(
+        last_message_sent_at=now - timedelta(seconds=60),
+        project_path="/tmp/project-from-session",
+        native_log_file="/tmp/transcript.jsonl",
+    )
+
+    called: dict[str, str | None] = {"project_path": None}
+
+    def _fake_get_checkpoint_content(transcript_path, agent_name, project_path, working_slug=None):
+        called["project_path"] = project_path
+        return "checkpoint"
+
+    monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", _fake_get_checkpoint_content)
+    monkeypatch.setattr(
+        "teleclaude.utils.transcript.extract_workdir_from_transcript",
+        lambda _path: (_ for _ in ()).throw(
+            AssertionError("should not read transcript workdir when project_path exists")
+        ),
+    )
+
+    result = receiver._maybe_checkpoint_output("sess-1", "claude", {})
+    assert result is not None
+    assert called["project_path"] == "/tmp/project-from-session"
+
+
+def test_checkpoint_falls_back_to_transcript_workdir_when_project_path_missing(db_with_session, monkeypatch):
+    now = datetime.now(timezone.utc)
+    db_with_session(
+        last_message_sent_at=now - timedelta(seconds=60),
+        project_path=None,
+        native_log_file="/tmp/transcript.jsonl",
+    )
+
+    called: dict[str, str | None] = {"project_path": None}
+
+    def _fake_get_checkpoint_content(transcript_path, agent_name, project_path, working_slug=None):
+        called["project_path"] = project_path
+        return "checkpoint"
+
+    monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", _fake_get_checkpoint_content)
+    monkeypatch.setattr(
+        "teleclaude.utils.transcript.extract_workdir_from_transcript",
+        lambda _path: "/tmp/project-from-transcript",
+    )
+
+    result = receiver._maybe_checkpoint_output("sess-1", "claude", {})
+    assert result is not None
+    assert called["project_path"] == "/tmp/project-from-transcript"

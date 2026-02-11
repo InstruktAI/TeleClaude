@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional, cast
+from typing import Callable, Mapping, Optional, Sequence, cast
 
 from teleclaude.constants import CHECKPOINT_RESULT_SNIPPET_MAX_CHARS
 from teleclaude.core.agents import AgentName
@@ -356,21 +356,14 @@ def render_clean_agent_output(
     # Find the lower boundary (activity after since_timestamp)
     start_idx = 0
     if since_timestamp:
-        if since_timestamp.tzinfo is None:
-            since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
-
-        for i, entry in enumerate(entries):
-            entry_ts_str = entry.get("timestamp")
-            if isinstance(entry_ts_str, str):
-                entry_dt = _parse_timestamp(entry_ts_str)
-                if entry_dt:
-                    if entry_dt.tzinfo is None:
-                        entry_dt = entry_dt.replace(tzinfo=timezone.utc)
-
-                    if entry_dt > since_timestamp:
-                        start_idx = i
-                        break
-        else:
+        start_idx = _start_index_after_timestamp_or_rotation(
+            entries,
+            since_timestamp,
+            transcript_path=transcript_path,
+            agent_name=agent_name,
+            mode="clean",
+        )
+        if start_idx is None:
             return None, None
     else:
         # Fall back to last user boundary if no timestamp provided
@@ -891,24 +884,15 @@ def render_agent_output(
     # Find the lower boundary
     start_idx = 0
     if since_timestamp:
-        if since_timestamp.tzinfo is None:
-            since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
-
-        # If we have a since_timestamp, only look at entries after it
-        for i, entry in enumerate(entries):
-            entry_ts_str = entry.get("timestamp")
-            if isinstance(entry_ts_str, str):
-                entry_dt = _parse_timestamp(entry_ts_str)
-                if entry_dt:
-                    if entry_dt.tzinfo is None:
-                        entry_dt = entry_dt.replace(tzinfo=timezone.utc)
-
-                    if entry_dt > since_timestamp:
-                        logger.debug("[STD_RENDER] Found first new entry at index %d (ts: %s)", i, entry_ts_str)
-                        start_idx = i
-                        break
-        else:
-            # All entries are before or at since_timestamp
+        start_idx = _start_index_after_timestamp_or_rotation(
+            entries,
+            since_timestamp,
+            transcript_path=transcript_path,
+            agent_name=agent_name,
+            mode="standard",
+        )
+        if start_idx is None:
+            # All entries are before/equal to since_timestamp and no rotation fallback applies.
             return None, None
     else:
         # If no since_timestamp, find the last user boundary
@@ -1035,21 +1019,14 @@ def get_assistant_messages_since(
     # Find activity AFTER since_timestamp
     start_idx = 0
     if since_timestamp:
-        if since_timestamp.tzinfo is None:
-            since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
-
-        for i, entry in enumerate(entries):
-            entry_ts_str = entry.get("timestamp")
-            if isinstance(entry_ts_str, str):
-                entry_dt = _parse_timestamp(entry_ts_str)
-                if entry_dt:
-                    if entry_dt.tzinfo is None:
-                        entry_dt = entry_dt.replace(tzinfo=timezone.utc)
-
-                    if entry_dt > since_timestamp:
-                        start_idx = i
-                        break
-        else:
+        start_idx = _start_index_after_timestamp_or_rotation(
+            entries,
+            since_timestamp,
+            transcript_path=transcript_path,
+            agent_name=agent_name,
+            mode="messages",
+        )
+        if start_idx is None:
             return []
     else:
         # If no since_timestamp, find the last user boundary
@@ -1069,6 +1046,68 @@ def get_assistant_messages_since(
             assistant_messages.append(msg)
 
     return assistant_messages
+
+
+def _entry_role(entry: Mapping[str, object]) -> Optional[str]:
+    """Return normalized role from an entry's message/payload."""
+    message = entry.get("message")
+    if not isinstance(message, dict) and entry.get("type") == "response_item":
+        payload = entry.get("payload")
+        if isinstance(payload, dict):
+            message = payload
+    if isinstance(message, dict):
+        role = message.get("role")
+        if isinstance(role, str):
+            return role
+    return None
+
+
+def _is_rotation_fallback_candidate(entries: Sequence[Mapping[str, object]]) -> bool:
+    """Detect transcript rotation window with assistant output but no user boundary."""
+    saw_user = False
+    saw_assistant = False
+    for entry in entries:
+        role = _entry_role(entry)
+        if role == "user":
+            saw_user = True
+        elif role == "assistant":
+            saw_assistant = True
+    return saw_assistant and not saw_user
+
+
+def _start_index_after_timestamp_or_rotation(
+    entries: Sequence[Mapping[str, object]],
+    since_timestamp: datetime,
+    *,
+    transcript_path: str,
+    agent_name: AgentName,
+    mode: str,
+) -> Optional[int]:
+    """Return first entry index after cursor; fallback to start for rotation windows."""
+    if since_timestamp.tzinfo is None:
+        since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
+
+    for i, entry in enumerate(entries):
+        entry_ts_str = entry.get("timestamp")
+        if isinstance(entry_ts_str, str):
+            entry_dt = _parse_timestamp(entry_ts_str)
+            if entry_dt:
+                if entry_dt.tzinfo is None:
+                    entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+                if entry_dt > since_timestamp:
+                    return i
+
+    if _is_rotation_fallback_candidate(entries):
+        logger.info(
+            "Rotation fallback in transcript extraction: mode=%s agent=%s path=%s entries=%d since=%s",
+            mode,
+            agent_name.value,
+            transcript_path,
+            len(entries),
+            since_timestamp.isoformat(),
+        )
+        return 0
+    return None
 
 
 def count_renderable_assistant_blocks(
@@ -1533,6 +1572,48 @@ class TurnTimeline:
     has_data: bool = True
 
 
+def _parse_function_call_arguments(raw_arguments: object) -> Mapping[str, object]:
+    """Parse function_call arguments into a dict payload."""
+    if isinstance(raw_arguments, dict):
+        return cast(
+            dict[str, object],  # guard: loose-dict - External tool input
+            raw_arguments,
+        )
+    if isinstance(raw_arguments, str):
+        try:
+            parsed = json.loads(raw_arguments)
+            if isinstance(parsed, dict):
+                return cast(
+                    dict[str, object],  # guard: loose-dict - External tool input
+                    parsed,
+                )
+        except json.JSONDecodeError:
+            return {"raw_arguments": raw_arguments}
+        return {"raw_arguments": raw_arguments}
+    return {}
+
+
+def _infer_function_call_output_error(output_text: str) -> bool:
+    """Best-effort error detection for Codex function_call_output payloads."""
+    lowered = output_text.lower()
+    if lowered.startswith("err:") or "tool call error" in lowered:
+        return True
+
+    marker = "Process exited with code "
+    idx = output_text.find(marker)
+    if idx >= 0:
+        remainder = output_text[idx + len(marker) :].strip()
+        digits = ""
+        for ch in remainder:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        if digits:
+            return digits != "0"
+    return False
+
+
 def extract_tool_calls_current_turn(
     transcript_path: str,
     agent_name: AgentName,
@@ -1569,10 +1650,102 @@ def extract_tool_calls_current_turn(
         # Walk forward from turn boundary, extracting tool calls
         records: list[ToolCallRecord] = []
         pending_record: ToolCallRecord | None = None
+        pending_function_calls: dict[str, ToolCallRecord] = {}
 
         for entry in entries[turn_start_idx:]:
             entry_ts_str = entry.get("timestamp")
             entry_dt = _parse_timestamp(entry_ts_str) if isinstance(entry_ts_str, str) else None
+
+            # Codex function tool calls are emitted as response_item payloads.
+            if entry.get("type") == "response_item":
+                payload = entry.get("payload")
+                if isinstance(payload, dict):
+                    payload_type = payload.get("type")
+
+                    if payload_type == "function_call":
+                        if pending_record is not None:
+                            records.append(pending_record)
+                            pending_record = None
+
+                        tool_name = str(payload.get("name", "unknown"))
+                        call_id = str(payload.get("call_id", "")).strip()
+                        input_data = dict(_parse_function_call_arguments(payload.get("arguments", {})))
+                        function_record = ToolCallRecord(
+                            tool_name=tool_name,
+                            input_data=input_data,
+                            had_error=False,
+                            result_snippet="",
+                            timestamp=entry_dt,
+                        )
+                        if call_id:
+                            pending_function_calls[call_id] = function_record
+                        else:
+                            records.append(function_record)
+                        continue
+
+                    if payload_type == "function_call_output":
+                        output_raw = payload.get("output", "")
+                        output_str = str(output_raw)
+                        snippet = output_str[:CHECKPOINT_RESULT_SNIPPET_MAX_CHARS]
+                        had_error = _infer_function_call_output_error(output_str)
+                        call_id = str(payload.get("call_id", "")).strip()
+
+                        if call_id and call_id in pending_function_calls:
+                            matched = pending_function_calls.pop(call_id)
+                            records.append(
+                                ToolCallRecord(
+                                    tool_name=matched.tool_name,
+                                    input_data=matched.input_data,
+                                    had_error=had_error,
+                                    result_snippet=snippet,
+                                    timestamp=matched.timestamp,
+                                )
+                            )
+                        continue
+
+                    if payload_type == "custom_tool_call":
+                        if pending_record is not None:
+                            records.append(pending_record)
+                            pending_record = None
+
+                        tool_name = str(payload.get("name", "unknown"))
+                        raw_input = payload.get("input", {})
+                        input_data = {}
+                        if isinstance(raw_input, dict):
+                            input_data = cast(
+                                dict[str, object],  # guard: loose-dict - External tool input
+                                raw_input,
+                            )
+                        elif isinstance(raw_input, str):
+                            try:
+                                parsed_input = json.loads(raw_input)
+                            except json.JSONDecodeError:
+                                parsed_input = None
+                            if isinstance(parsed_input, dict):
+                                input_data = cast(
+                                    dict[str, object],  # guard: loose-dict - External tool input
+                                    parsed_input,
+                                )
+                            else:
+                                input_data = {"input": raw_input}
+
+                        status = str(payload.get("status", "")).strip().lower()
+                        had_error = status in {"error", "failed", "cancelled", "canceled"}
+                        output_text = payload.get("output")
+                        if output_text is None and had_error:
+                            output_text = payload.get("error", "")
+                        snippet = str(output_text or "")[:CHECKPOINT_RESULT_SNIPPET_MAX_CHARS]
+
+                        records.append(
+                            ToolCallRecord(
+                                tool_name=tool_name,
+                                input_data=input_data,
+                                had_error=had_error,
+                                result_snippet=snippet,
+                                timestamp=entry_dt,
+                            )
+                        )
+                        continue
 
             message = entry.get("message")
             if not isinstance(message, dict) and entry.get("type") == "response_item":
@@ -1629,6 +1802,8 @@ def extract_tool_calls_current_turn(
         # Finalize any trailing tool_use without a result
         if pending_record is not None:
             records.append(pending_record)
+        if pending_function_calls:
+            records.extend(pending_function_calls.values())
 
         return TurnTimeline(tool_calls=records, has_data=True)
 
