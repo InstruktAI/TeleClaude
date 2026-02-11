@@ -24,9 +24,12 @@ Ownership:
 - [x] Requirements traced to implemented behavior
 - [x] Deferrals justified and not hiding required scope
 - [x] Findings written in `review-findings.md`
-- [x] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [x] Critical issues resolved or explicitly blocked
+- [x] Verdict recorded (APPROVE)
+- [x] Critical issues resolved
 - [x] Test coverage and regression risk assessed
+- [x] Error handling validated at boundaries
+- [x] Type constraints explicit and documented
+- [x] No stale references to deleted types
 
 ## Finalize Gates (Finalizer)
 
