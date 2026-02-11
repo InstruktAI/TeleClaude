@@ -2,7 +2,34 @@
 
 ## Summary
 
-Rename of event vocabulary (`after_model`/`agent_output` → `tool_use`/`tool_done`) and DB columns is mechanically correct and comprehensive. New tests cover event emission and broadcast paths well. Two issues found: one bug and one stale comment.
+Rename of event vocabulary (`after_model`/`agent_output` → `tool_use`/`tool_done`) and DB columns is mechanically correct and comprehensive. New tests cover event emission and broadcast paths well. All findings from round 1 have been resolved.
+
+## Round 1 Findings (all resolved)
+
+### 1. `tool_name` coercion produces `"None"` string when absent (Important)
+
+**Fixed in:** fac0e656
+
+- Guarded `str()` call to prevent `str(None)` when tool_name/toolName keys are absent
+- Now returns `None` instead of the literal string `"None"`
+
+### 2. Stale comments in receiver still reference old vocabulary (Suggestion)
+
+**Fixed in:** 75f9ec33
+
+- Updated comment on line 688: `'tool_use' -> 'ToolUse'`
+- Updated comment on line 694: `for direct events like 'tool_done'`
+
+## Round 2 Verification
+
+- All round 1 findings confirmed fixed by code inspection
+- `make test`: 73 passed, 0 failed
+- `make lint`: ruff format, ruff check, pyright all clean
+- Grep for stale references (`after_model`/`agent_output`/`AFTER_MODEL`/`AGENT_OUTPUT`) in production code: only migration files and legitimate function names (e.g., `render_agent_output`, `summarize_agent_output`) which describe output-as-concept, not event vocabulary
+- All implementation-plan tasks checked `[x]`
+- No deferrals
+- Documentation updated across 5 doc files
+- New test files: `test_agent_activity_events.py` (5 tests), `test_agent_activity_broadcast.py` (7 tests)
 
 ## Critical
 
@@ -10,54 +37,10 @@ None.
 
 ## Important
 
-### 1. `tool_name` coercion produces `"None"` string when absent
-
-**File:** `teleclaude/core/agent_coordinator.py:501`
-
-```python
-tool_name = str(payload.raw.get("tool_name") or payload.raw.get("toolName"))
-```
-
-When neither key exists in `payload.raw`, this evaluates to `str(None)` → `"None"` (the string). The `tool_name` field will be the literal string `"None"` instead of `None`, which leaks into the `AgentActivityEvent` and downstream WebSocket broadcasts.
-
-**Fix:** Guard the `str()` call:
-
-```python
-raw_tool = payload.raw.get("tool_name") or payload.raw.get("toolName")
-tool_name = str(raw_tool) if raw_tool else None
-```
+None.
 
 ## Suggestions
 
-### 2. Stale comments in receiver still reference old vocabulary
+None.
 
-**File:** `teleclaude/hooks/receiver.py:688,694`
-
-Two comments still reference old event names:
-
-- Line 688: `'after_model' -> 'AfterModel'`
-- Line 694: `for direct events like 'agent_output'`
-
-These are cosmetic but create confusion since neither `after_model` nor `agent_output` exist as event types anymore.
-
-## Fixes Applied
-
-### 1. tool_name coercion bug (Important)
-
-**Fixed in:** fac0e656
-
-- Guarded `str()` call to prevent `str(None)` when tool_name/toolName keys are absent
-- Now returns `None` instead of the literal string `"None"`
-- Tests passing, lint passing
-
-### 2. Stale event vocabulary comments (Suggestion)
-
-**Fixed in:** 75f9ec33
-
-- Updated comment on line 688: `'tool_use' -> 'ToolUse'`
-- Updated comment on line 694: `for direct events like 'tool_done'`
-- Tests passing, lint passing
-
-## Verdict: REQUEST CHANGES
-
-One Important finding (tool_name bug) needs fixing before merge.
+## Verdict: APPROVE
