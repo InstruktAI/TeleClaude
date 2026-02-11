@@ -278,6 +278,8 @@ class TelecAPIClient:
                         resp = await self._client.get(url, params=params, timeout=request_timeout)
                     elif method_enum is HTTPMethod.POST:
                         resp = await self._client.post(url, params=params, json=json_body, timeout=request_timeout)
+                    elif method_enum is HTTPMethod.PATCH:
+                        resp = await self._client.patch(url, params=params, json=json_body, timeout=request_timeout)
                     elif method_enum is HTTPMethod.DELETE:
                         resp = await self._client.delete(url, params=params, timeout=request_timeout)
                     else:
@@ -576,6 +578,19 @@ class TelecAPIClient:
         """
         resp = await self._request("POST", f"/sessions/{session_id}/agent-restart")
         return resp.status_code == 200
+
+    async def get_settings(self) -> dict[str, object]:  # guard: loose-dict - dynamic settings shape
+        """Get current runtime settings."""
+        resp = await self._request("GET", "/settings")
+        return resp.json()
+
+    async def patch_settings(
+        self,
+        updates: dict[str, object],  # guard: loose-dict - dynamic settings shape
+    ) -> dict[str, object]:  # guard: loose-dict - dynamic settings shape
+        """Apply partial updates to runtime settings."""
+        resp = await self._request("PATCH", "/settings", json_body=updates)
+        return resp.json()
 
     async def revive_session(self, session_id: str) -> CreateSessionResult:
         """Revive a session by TeleClaude session ID.

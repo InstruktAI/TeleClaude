@@ -17,7 +17,8 @@ from typing import Awaitable, Callable, Coroutine, Optional, TextIO, cast
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config  # config.py loads .env at import time
+from teleclaude.config import config, config_path  # config.py loads .env at import time
+from teleclaude.config.runtime_settings import RuntimeSettings
 from teleclaude.constants import MCP_SOCKET_PATH, UI_MESSAGE_MAX_CHARS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
@@ -217,6 +218,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.tts_manager = TTSManager()
         logger.info("TTSManager initialized")
 
+        # Mutable runtime settings with debounced YAML persistence
+        self.runtime_settings = RuntimeSettings(config_path, self.tts_manager)
+
         # Summary + headless snapshot services
         self.headless_snapshot_service = HeadlessSnapshotService()
         self.maintenance_service = MaintenanceService(
@@ -297,6 +301,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             mcp_server=self.mcp_server,
             shutdown_event=self.shutdown_event,
             task_registry=self.task_registry,
+            runtime_settings=self.runtime_settings,
             log_background_task_exception=self._log_background_task_exception,
             handle_mcp_task_done=self._handle_mcp_task_done,
             mcp_watch_factory=lambda: asyncio.create_task(self._mcp_watch_loop()),

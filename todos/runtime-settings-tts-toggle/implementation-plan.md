@@ -36,26 +36,26 @@ Four-phase approach: clean up dead config code, build the runtime settings layer
 
 **File(s):** `pyproject.toml`
 
-- [ ] Add `"ruamel.yaml>=0.18.0"` to `[project.dependencies]`
+- [x] Add `"ruamel.yaml>=0.18.0"` to `[project.dependencies]`
 
 ### Task 2.2: Create RuntimeSettings class
 
 **File(s):** `teleclaude/config/runtime_settings.py` (new)
 
-- [ ] `RuntimeSettings.__init__(config_path, tts_manager)` — seed `tts_enabled` from `config.tts.enabled`
-- [ ] `MUTABLE_SETTINGS` whitelist: `{"tts.enabled"}`
-- [ ] `patch(updates: dict) -> dict` — validate keys, mutate in-memory, update `tts_manager.enabled`, schedule debounced write
-- [ ] `get_state() -> dict` — return `{"tts": {"enabled": self.tts_enabled}}`
-- [ ] `_schedule_flush()` — cancel previous debounce task, create new one with 500ms delay
-- [ ] `_flush_to_disk()` — use `ruamel.yaml` to load config, deep-merge pending patches, write back
+- [x] `RuntimeSettings.__init__(config_path, tts_manager)` — seed `tts_enabled` from `config.tts.enabled`
+- [x] `MUTABLE_SETTINGS` whitelist: `{"tts.enabled"}`
+- [x] `patch(updates: dict) -> dict` — validate keys, mutate in-memory, update `tts_manager.enabled`, schedule debounced write
+- [x] `get_state() -> dict` — return `{"tts": {"enabled": self.tts_enabled}}`
+- [x] `_schedule_flush()` — cancel previous debounce task, create new one with 500ms delay
+- [x] `_flush_to_disk()` — use `ruamel.yaml` to load config, deep-merge pending patches, write back
 
 ### Task 2.3: Wire RuntimeSettings into daemon
 
 **File(s):** `teleclaude/daemon.py`, `teleclaude/core/lifecycle.py`
 
-- [ ] Create `RuntimeSettings(config_path, tts_manager)` on daemon after `TTSManager` init
-- [ ] Store as `self.runtime_settings` on daemon
-- [ ] Pass `runtime_settings` to `DaemonLifecycle` → `APIServer`
+- [x] Create `RuntimeSettings(config_path, tts_manager)` on daemon after `TTSManager` init
+- [x] Store as `self.runtime_settings` on daemon
+- [x] Pass `runtime_settings` to `DaemonLifecycle` → `APIServer`
 
 ---
 
@@ -65,16 +65,16 @@ Four-phase approach: clean up dead config code, build the runtime settings layer
 
 **File(s):** `teleclaude/api_server.py`
 
-- [ ] Accept `runtime_settings` in `APIServer.__init__`
-- [ ] `GET /settings` — return `runtime_settings.get_state()`
-- [ ] `PATCH /settings` — parse JSON body, call `runtime_settings.patch()`, return result; 400 on invalid keys
+- [x] Accept `runtime_settings` in `APIServer.__init__`
+- [x] `GET /settings` — return `runtime_settings.get_state()`
+- [x] `PATCH /settings` — parse JSON body, call `runtime_settings.patch()`, return result; 400 on invalid keys
 
 ### Task 3.2: Add settings methods to TUI API client
 
 **File(s):** `teleclaude/cli/api_client.py`
 
-- [ ] `get_settings() -> dict` — `GET /settings`
-- [ ] `patch_settings(updates: dict) -> dict` — `PATCH /settings`
+- [x] `get_settings() -> dict` — `GET /settings`
+- [x] `patch_settings(updates: dict) -> dict` — `PATCH /settings`
 
 ---
 

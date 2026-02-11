@@ -16,7 +16,7 @@ import time
 from typing import TYPE_CHECKING, Callable, Literal
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import (
@@ -56,6 +56,7 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
+    from teleclaude.config.runtime_settings import RuntimeSettings
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.task_registry import TaskRegistry
@@ -83,18 +84,12 @@ class APIServer:
         cache: "DaemonCache | None" = None,
         task_registry: "TaskRegistry | None" = None,
         socket_path: str | None = None,
+        runtime_settings: "RuntimeSettings | None" = None,
     ) -> None:
-        """Initialize API server.
-
-        Args:
-            client: AdapterClient instance for routing events
-            cache: Optional DaemonCache for remote data (None = local-only mode)
-            task_registry: Optional TaskRegistry for tracking background tasks
-            socket_path: Optional override for API Unix socket path
-        """
         self.client = client
         self._cache: "DaemonCache | None" = None  # Initialize private variable
         self.task_registry = task_registry
+        self.runtime_settings = runtime_settings
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._setup_routes()
 
@@ -749,6 +744,26 @@ class APIServer:
                     )
 
             return result
+
+        @self.app.get("/settings")
+        async def get_settings() -> dict[str, object]:  # pyright: ignore  # guard: loose-dict - dynamic settings
+            """Return current mutable runtime settings."""
+            if not self.runtime_settings:
+                raise HTTPException(503, "Runtime settings not available")
+            return self.runtime_settings.get_state()
+
+        @self.app.patch("/settings")
+        async def patch_settings(request: Request) -> dict[str, object]:  # pyright: ignore  # guard: loose-dict - dynamic settings
+            """Apply partial updates to mutable runtime settings."""
+            if not self.runtime_settings:
+                raise HTTPException(503, "Runtime settings not available")
+            body = await request.json()
+            if not isinstance(body, dict):
+                raise HTTPException(400, "Expected JSON object")
+            try:
+                return self.runtime_settings.patch(body)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
 
         @self.app.get("/todos")
         async def list_todos(  # pyright: ignore

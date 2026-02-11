@@ -669,3 +669,4 @@ if isinstance(_user_config, dict):
 _merged = _deep_merge(DEFAULT_CONFIG, _user_config)  # type: ignore[arg-type]
 
 config = _build_config(_merged)
+config_path = _config_path
