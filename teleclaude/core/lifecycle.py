@@ -17,6 +17,7 @@ from teleclaude.core.models import SessionSummary
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:  # pragma: no cover
+    from teleclaude.config.runtime_settings import RuntimeSettings
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.task_registry import TaskRegistry
@@ -36,6 +37,7 @@ class DaemonLifecycle:
         mcp_server: Optional["TeleClaudeMCPServer"],
         shutdown_event: asyncio.Event,
         task_registry: "TaskRegistry",
+        runtime_settings: "RuntimeSettings | None" = None,
         log_background_task_exception: Callable[[str], Callable[[asyncio.Task[object]], None]],
         handle_mcp_task_done: Callable[[asyncio.Task[object]], None],
         mcp_watch_factory: Callable[[], asyncio.Task[object]],
@@ -47,6 +49,7 @@ class DaemonLifecycle:
     ) -> None:
         self.client = client
         self.cache = cache
+        self.runtime_settings = runtime_settings
         self.mcp_server = mcp_server
         self.shutdown_event = shutdown_event
         self.task_registry = task_registry
@@ -86,6 +89,7 @@ class DaemonLifecycle:
             self.client,
             cache=self.cache,
             task_registry=self.task_registry,
+            runtime_settings=self.runtime_settings,
         )
         await self.api_server.start()
         self.api_server.set_on_server_exit(self.handle_api_server_exit)

@@ -310,3 +310,35 @@ class ErrorEventDTO(BaseModel):  # type: ignore[explicit-any]
 
     event: Literal["error"] = "error"
     data: ErrorEventDataDTO
+
+
+class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]
+    """TTS section of settings response."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = False
+
+
+class SettingsDTO(BaseModel):  # type: ignore[explicit-any]
+    """Runtime settings response."""
+
+    model_config = ConfigDict(frozen=True)
+
+    tts: TTSSettingsDTO
+
+
+class TTSSettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
+    """TTS section of settings patch request."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool | None = None
+
+
+class SettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
+    """Settings patch request body."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tts: TTSSettingsPatchDTO | None = None

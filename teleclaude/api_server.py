@@ -16,7 +16,7 @@ import time
 from typing import TYPE_CHECKING, Callable, Literal
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import (
@@ -39,7 +39,9 @@ from teleclaude.api_models import (
     SessionStartedEventDTO,
     SessionSummaryDTO,
     SessionUpdatedEventDTO,
+    SettingsDTO,
     TodoDTO,
+    TTSSettingsDTO,
     VoiceInputRequest,
 )
 from teleclaude.config import config
@@ -56,6 +58,7 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
+    from teleclaude.config.runtime_settings import RuntimeSettings
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.task_registry import TaskRegistry
@@ -72,6 +75,8 @@ API_WATCH_INFLIGHT_THRESHOLD_S = float(os.getenv("API_WATCH_INFLIGHT_THRESHOLD_S
 API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
 
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
+PatchBodyScalar = str | int | float | bool | None
+PatchBodyValue = PatchBodyScalar | list[PatchBodyScalar] | dict[str, PatchBodyScalar]
 
 
 class APIServer:
@@ -83,18 +88,12 @@ class APIServer:
         cache: "DaemonCache | None" = None,
         task_registry: "TaskRegistry | None" = None,
         socket_path: str | None = None,
+        runtime_settings: "RuntimeSettings | None" = None,
     ) -> None:
-        """Initialize API server.
-
-        Args:
-            client: AdapterClient instance for routing events
-            cache: Optional DaemonCache for remote data (None = local-only mode)
-            task_registry: Optional TaskRegistry for tracking background tasks
-            socket_path: Optional override for API Unix socket path
-        """
         self.client = client
         self._cache: "DaemonCache | None" = None  # Initialize private variable
         self.task_registry = task_registry
+        self.runtime_settings = runtime_settings
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._setup_routes()
 
@@ -749,6 +748,28 @@ class APIServer:
                     )
 
             return result
+
+        @self.app.get("/settings")
+        async def get_settings() -> SettingsDTO:  # pyright: ignore
+            """Return current mutable runtime settings."""
+            if not self.runtime_settings:
+                raise HTTPException(503, "Runtime settings not available")
+            state = self.runtime_settings.get_state()
+            return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))
+
+        @self.app.patch("/settings")
+        async def patch_settings(body: dict[str, PatchBodyValue] = Body(...)) -> SettingsDTO:  # pyright: ignore
+            """Apply partial updates to mutable runtime settings."""
+            from teleclaude.config.runtime_settings import RuntimeSettings
+
+            if not self.runtime_settings:
+                raise HTTPException(503, "Runtime settings not available")
+            try:
+                typed_patch = RuntimeSettings.parse_patch(body)
+                state = self.runtime_settings.patch(typed_patch)
+                return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
 
         @self.app.get("/todos")
         async def list_todos(  # pyright: ignore

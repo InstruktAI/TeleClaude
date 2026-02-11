@@ -27,7 +27,9 @@ from teleclaude.cli.models import (
     SessionsInitialEvent,
     SessionStartedEvent,
     SessionUpdatedEvent,
+    SettingsPatchInfo,
     TodoInfo,
+    TTSSettingsPatchInfo,
     WsEvent,
 )
 from teleclaude.cli.models import (
@@ -197,6 +199,7 @@ class TelecApp:
         self.footer: Footer | None = None
         self.running = True
         self.agent_availability: dict[str, AgentAvailabilityInfo] = {}
+        self.tts_enabled: bool = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self.focus = FocusContext()  # Shared focus across views
         self.notification: Notification | None = None
@@ -270,12 +273,13 @@ class TelecApp:
         """Refresh all data from API."""
         logger.debug("Refreshing data from API...")
         try:
-            computers, projects, sessions, availability, todos = await asyncio.gather(
+            computers, projects, sessions, availability, todos, settings = await asyncio.gather(
                 self.api.list_computers(),
                 self.api.list_projects(),
                 self.api.list_sessions(),
                 self.api.get_agent_availability(),
                 self.api.list_todos(),
+                self.api.get_settings(),
             )
 
             todos_by_project: dict[tuple[str, str], list[TodoInfo]] = {}
@@ -318,6 +322,9 @@ class TelecApp:
             self.agent_availability.clear()
             self.agent_availability.update(availability)
 
+            # Update TTS state from settings
+            self.tts_enabled = settings.tts.enabled
+
             # Refresh ALL views with data (not just current)
             for view_num, view in self.views.items():
                 await view.refresh(computers, projects_with_todos, sessions)
@@ -327,8 +334,8 @@ class TelecApp:
                     len(view.flat_items),
                 )
 
-            # Update footer with new availability
-            self.footer = Footer(self.agent_availability)
+            # Update footer with new availability and TTS state
+            self.footer = Footer(self.agent_availability, tts_enabled=self.tts_enabled)
             logger.debug("Data refresh complete")
             self._refresh_error_since = None
             self._refresh_error_notified = False
@@ -828,9 +835,22 @@ class TelecApp:
                                     )
                 # Single click: select item or switch tab
                 elif bstate & curses.BUTTON1_CLICKED:
-                    # First check if a tab was clicked
-                    clicked_tab = self.tab_bar.handle_click(my, mx)
-                    if clicked_tab is not None:
+                    height, _ = stdscr.getmaxyx()  # type: ignore[attr-defined]
+                    # Check if click is on footer row (TTS toggle)
+                    if my == height - 1 and self.footer and self.footer.handle_click(mx):
+                        self.tts_enabled = not self.tts_enabled
+                        self.footer.tts_enabled = self.tts_enabled
+                        if self._loop:
+                            asyncio.run_coroutine_threadsafe(
+                                self.api.patch_settings(
+                                    SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=self.tts_enabled))
+                                ),
+                                self._loop,
+                            )
+                        logger.debug("TTS toggled to %s via footer click", self.tts_enabled)
+                    # Check if a tab was clicked
+                    elif self.tab_bar.handle_click(my, mx) is not None:
+                        clicked_tab = self.tab_bar.handle_click(my, mx)
                         self._switch_view(clicked_tab)
                         logger.trace(
                             "mouse_single_click_tab",
@@ -965,6 +985,18 @@ class TelecApp:
                     except Exception as e:
                         logger.error("Error restarting agents: %s", e)
                         self.notify(f"Restart failed: {e}", NotificationLevel.ERROR)
+
+        # TTS toggle hotkey
+        elif key == ord("v"):
+            self.tts_enabled = not self.tts_enabled
+            if self.footer:
+                self.footer.tts_enabled = self.tts_enabled
+            if self._loop:
+                asyncio.run_coroutine_threadsafe(
+                    self.api.patch_settings(SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=self.tts_enabled))),
+                    self._loop,
+                )
+            logger.debug("TTS toggled to %s via hotkey", self.tts_enabled)
 
         # View-specific actions
         else:
@@ -1104,7 +1136,7 @@ class TelecApp:
         stdscr.addstr(height - 3, 0, action_bar[:line_width])  # type: ignore[attr-defined]
 
         # Row height-2: Global shortcuts bar
-        global_bar = "[+/-] Expand/Collapse  [r] Refresh  [q] Quit"
+        global_bar = "[+/-] Expand/Collapse  [r] Refresh  [v] TTS  [q] Quit"
         stdscr.addstr(height - 2, 0, global_bar[:line_width], curses.A_DIM)  # type: ignore[attr-defined]
 
         # Row height-1: Footer
