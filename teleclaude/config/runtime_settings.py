@@ -109,9 +109,16 @@ class RuntimeSettings:
             unknown_tts = set(tts_raw) - allowed_tts
             if unknown_tts:
                 raise ValueError(f"Unknown tts keys: {sorted(unknown_tts)}")
-            enabled_val = tts_raw.get("enabled")
+            enabled_val: bool | None
+            if "enabled" in tts_raw:
+                raw_enabled = tts_raw["enabled"]
+                if not isinstance(raw_enabled, bool):
+                    raise ValueError("tts.enabled must be a boolean")
+                enabled_val = raw_enabled
+            else:
+                enabled_val = None
             tts_patch = TTSSettingsPatch(
-                enabled=bool(enabled_val) if enabled_val is not None else None,
+                enabled=enabled_val,
             )
 
         return SettingsPatch(tts=tts_patch)

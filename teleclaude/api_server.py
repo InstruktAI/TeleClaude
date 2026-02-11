@@ -16,7 +16,7 @@ import time
 from typing import TYPE_CHECKING, Callable, Literal
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import (
@@ -40,7 +40,6 @@ from teleclaude.api_models import (
     SessionSummaryDTO,
     SessionUpdatedEventDTO,
     SettingsDTO,
-    SettingsPatchDTO,
     TodoDTO,
     TTSSettingsDTO,
     VoiceInputRequest,
@@ -76,6 +75,8 @@ API_WATCH_INFLIGHT_THRESHOLD_S = float(os.getenv("API_WATCH_INFLIGHT_THRESHOLD_S
 API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
 
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
+PatchBodyScalar = str | int | float | bool | None
+PatchBodyValue = PatchBodyScalar | list[PatchBodyScalar] | dict[str, PatchBodyScalar]
 
 
 class APIServer:
@@ -757,16 +758,14 @@ class APIServer:
             return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))
 
         @self.app.patch("/settings")
-        async def patch_settings(body: SettingsPatchDTO) -> SettingsDTO:  # pyright: ignore
+        async def patch_settings(body: dict[str, PatchBodyValue] = Body(...)) -> SettingsDTO:  # pyright: ignore
             """Apply partial updates to mutable runtime settings."""
-            from teleclaude.config.runtime_settings import SettingsPatch, TTSSettingsPatch
+            from teleclaude.config.runtime_settings import RuntimeSettings
 
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
             try:
-                typed_patch = SettingsPatch(
-                    tts=TTSSettingsPatch(enabled=body.tts.enabled) if body.tts else None,
-                )
+                typed_patch = RuntimeSettings.parse_patch(body)
                 state = self.runtime_settings.patch(typed_patch)
                 return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))
             except ValueError as exc:

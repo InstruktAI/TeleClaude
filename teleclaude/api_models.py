@@ -331,7 +331,7 @@ class SettingsDTO(BaseModel):  # type: ignore[explicit-any]
 class TTSSettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
     """TTS section of settings patch request."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     enabled: bool | None = None
 
@@ -339,6 +339,6 @@ class TTSSettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
 class SettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
     """Settings patch request body."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     tts: TTSSettingsPatchDTO | None = None
