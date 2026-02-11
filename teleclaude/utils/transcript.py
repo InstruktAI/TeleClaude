@@ -1659,7 +1659,12 @@ def extract_tool_calls_current_turn(
     Fails open: returns TurnTimeline(tool_calls=[], has_data=False) on any error.
     """
     try:
-        tail_entries = CHECKPOINT_JSONL_TAIL_ENTRIES if agent_name in (AgentName.CLAUDE, AgentName.CODEX) else None
+        # full_session=True: read entire transcript (fallback after tail-scoping missed edits)
+        tail_entries = (
+            None
+            if full_session
+            else (CHECKPOINT_JSONL_TAIL_ENTRIES if agent_name in (AgentName.CLAUDE, AgentName.CODEX) else None)
+        )
         entries = _get_entries_for_agent(transcript_path, agent_name, tail_entries=tail_entries)
         if entries is None:
             return TurnTimeline(tool_calls=[], has_data=False)
