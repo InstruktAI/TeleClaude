@@ -40,6 +40,24 @@ Two comments still reference old event names:
 
 These are cosmetic but create confusion since neither `after_model` nor `agent_output` exist as event types anymore.
 
+## Fixes Applied
+
+### 1. tool_name coercion bug (Important)
+
+**Fixed in:** fac0e656
+
+- Guarded `str()` call to prevent `str(None)` when tool_name/toolName keys are absent
+- Now returns `None` instead of the literal string `"None"`
+- Tests passing, lint passing
+
+### 2. Stale event vocabulary comments (Suggestion)
+
+**Fixed in:** 75f9ec33
+
+- Updated comment on line 688: `'tool_use' -> 'ToolUse'`
+- Updated comment on line 694: `for direct events like 'tool_done'`
+- Tests passing, lint passing
+
 ## Verdict: REQUEST CHANGES
 
 One Important finding (tool_name bug) needs fixing before merge.
