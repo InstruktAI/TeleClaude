@@ -52,7 +52,13 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import ErrorEventContext, SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
+from teleclaude.core.events import (
+    AgentActivityEvent,
+    ErrorEventContext,
+    SessionLifecycleContext,
+    SessionUpdatedContext,
+    TeleClaudeEvents,
+)
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSummary, TodoInfo
 from teleclaude.core.origins import InputOrigin
 from teleclaude.transport.redis_transport import RedisTransport
@@ -125,6 +131,7 @@ class APIServer:
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated_event)
         event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started_event)
         event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed_event)
+        event_bus.subscribe(TeleClaudeEvents.AGENT_ACTIVITY, self._handle_agent_activity_event)
         event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error_event)
 
         # Set cache through property to trigger subscription
@@ -192,6 +199,20 @@ class APIServer:
             logger.warning("Cache unavailable, cannot remove session from cache")
             return
         self.cache.remove_session(context.session_id)
+
+    async def _handle_agent_activity_event(
+        self,
+        _event: str,
+        context: AgentActivityEvent,
+    ) -> None:
+        """Broadcast agent activity events to WS clients (no cache, no DB re-read)."""
+        payload = {
+            "event": "agent_activity",
+            "session_id": context.session_id,
+            "type": context.event_type,
+            "tool_name": context.tool_name,
+        }
+        self._broadcast_payload("agent_activity", payload)
 
     async def _handle_error_event(
         self,

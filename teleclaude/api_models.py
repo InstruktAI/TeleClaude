@@ -312,6 +312,17 @@ class ErrorEventDTO(BaseModel):  # type: ignore[explicit-any]
     data: ErrorEventDataDTO
 
 
+class AgentActivityEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for agent activity (tool_use, tool_done, agent_stop)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["agent_activity"] = "agent_activity"
+    session_id: str
+    type: str
+    tool_name: str | None = None
+
+
 class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]
     """TTS section of settings response."""
 
