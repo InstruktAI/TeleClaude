@@ -4,6 +4,10 @@
 
 Stand up the Next.js web app using assistant-ui, with Next.js API routes as the canonical public API. In this phase, those routes are proxy stubs to existing TeleClaude daemon endpoints.
 
+## Architecture Contract
+
+- Canonical design: `docs/project/design/architecture/web-api-facade.md`
+
 ## Problem
 
 We need to adopt assistant-ui/Next.js without a risky big-bang backend rewrite. The migration must preserve behavior while moving the public contract from daemon API routes to Next.js route handlers.

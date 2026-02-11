@@ -1,5 +1,7 @@
 # Web Interface Phase 2 Route Map
 
+Architecture reference: `docs/project/design/architecture/web-api-facade.md`
+
 | Public Route (Next.js) | Daemon Target | Mode | Owner | Notes |
 | --- | --- | --- | --- | --- |
 | `POST /api/chat` | `POST /api/chat/stream` | `proxy` | web-interface-2 | Streaming passthrough |

@@ -4,6 +4,10 @@
 
 Adopt assistant-ui as the web UI while making Next.js API routes the public contract, backed by proxy forwarding to existing daemon endpoints.
 
+## Architecture Contract
+
+- Canonical design: `docs/project/design/architecture/web-api-facade.md`
+
 ## Design Principle
 
 "Facade first, migration second":
