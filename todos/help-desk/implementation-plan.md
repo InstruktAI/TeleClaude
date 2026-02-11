@@ -1,47 +1,105 @@
 # Help Desk Platform — Implementation Plan
 
-## Phase 1: Configuration Refactor
+## Phase 1: Identity Resolver & Session Binding
 
-Refactor the static configuration to support multiple profiles.
+Build the identity lookup and stamp it on sessions.
+
+- [ ] **Human role constants** in `teleclaude/constants.py`:
+  - `HUMAN_ROLE_ADMIN = "admin"`, `HUMAN_ROLE_MEMBER = "member"`.
+  - `HUMAN_ROLES = {"admin", "member"}`.
+
+- [ ] **IdentityContext + IdentityResolver** in `teleclaude/core/identity.py` (new):
+  - `IdentityContext` dataclass: `person_name`, `person_email`, `person_role`,
+    `platform`, `platform_user_id`. All nullable for unauthorized.
+  - `IdentityResolver.__init__(people, person_configs)` builds lookup maps:
+    `_by_email`, `_by_username`, `_by_telegram_user_id`.
+  - `resolve(origin, channel_metadata) -> IdentityContext | None`:
+    - telegram → match `user_id` against per-person creds.
+    - web → match `email` from metadata.
+    - tui → admin (local user).
+    - mcp → returns None (caller handles parent inheritance).
+    - no match → returns None (unauthorized).
+  - `get_identity_resolver()` module function: calls `load_global_config()`,
+    scans `~/.teleclaude/people/*/teleclaude.yml`, returns singleton.
+
+- [ ] **DB migration** in `teleclaude/core/migrations/`:
+
+  ```sql
+  ALTER TABLE sessions ADD COLUMN human_email TEXT;
+  ALTER TABLE sessions ADD COLUMN human_role TEXT;
+  ```
+
+- [ ] **Session model updates**:
+  - `teleclaude/core/db_models.py`: add `human_email`, `human_role` optional fields.
+  - `teleclaude/core/models.py`: add to `SessionSummary`.
+  - `teleclaude/api_models.py`: add to `SessionSummaryDTO` + `from_core()`.
+
+- [ ] **Session creation binding** in `teleclaude/core/command_handlers.py`:
+  - In `create_session`, call `get_identity_resolver().resolve(origin, channel_metadata)`.
+  - Stamp `human_email`, `human_role` on session record.
+  - For child sessions: inherit parent's identity via `initiator_session_id`.
+
+- [ ] **Unit tests** in `tests/unit/test_identity.py`:
+  - Resolver maps telegram user_id to known person.
+  - Resolver maps email to known person.
+  - Unknown signals return None.
+  - Session created with identity has fields set.
+  - Child session inherits parent identity.
+
+## Phase 2: Configuration Refactor (Dual Profiles)
 
 - [ ] **Update `teleclaude/constants.py`**:
-  - Change `AGENT_PROTOCOL` structure. Replace the flat `flags` string with a `profiles` dictionary.
-  - Define `default` (existing flags) and `restricted` (new safe flags) for `claude`, `gemini`, `codex`.
+  - `AGENT_PROTOCOL` structure: replace flat `flags` with `profiles` dict.
+  - Define `default` and `restricted` for each agent.
+
 - [ ] **Update `teleclaude/config/__init__.py`**:
-  - Update `AgentConfig` dataclass to hold a `profiles` dict instead of `flags` str.
-  - Update `_build_config` to parse this new structure.
+  - `AgentConfig` holds `profiles` dict instead of `flags` str.
+
 - [ ] **Update `teleclaude/core/agents.py`**:
-  - Update `get_agent_command` signature to accept `profile: str = "default"`.
-  - Logic: Look up flags from `agent_config.profiles[profile]`.
+  - `get_agent_command` accepts `profile: str = "default"`.
+  - Looks up flags from `agent_config.profiles[profile]`.
 
-## Phase 2: The Routing Logic (The Trap)
+## Phase 3: The Routing Logic (The Trap)
 
-Implement the forced routing in the session handler, integrating with `person-identity-auth` plumbing.
+- [ ] **Modify `create_session`** in `teleclaude/core/command_handlers.py`:
+  - After identity resolution (Phase 1):
+    - Admin/Member → proceed normally, `profile="default"`.
+    - Unauthorized (None identity) → force `project_path` to help-desk,
+      `profile="restricted"`. Log the redirect.
+  - Pass selected `profile` to agent launch.
 
-- [ ] **Modify `create_session` in `teleclaude/core/command_handlers.py`**:
-  - **Identity Check:** Retrieve `IdentityContext` (via `get_identity_resolver` or command metadata).
-  - **Branching:**
-    - **If Admin/Member:** Proceed as normal (allow `project_path` selection, use `default` profile).
-    - **If Newcomer/External:**
-      - **Force Path:** Set `project_path = resolve_project_path("help-desk")`.
-      - **Force Profile:** Set `profile = "restricted"`.
-      - **Log:** Log a warning that the session was trapped/redirected.
-  - **Pass Down:** Ensure the selected `profile` is passed to `start_agent` / `get_agent_command`.
+- [ ] **Human role tool gating** in `teleclaude/mcp/role_tools.py`:
+  - `HUMAN_ROLE_EXCLUDED_TOOLS` dict parallel to AI role filtering.
+  - `admin`: no restrictions.
+  - `member`: exclude deploy, end_session (others'), mark_agent_status.
+  - MCP wrapper reads `human_role` from session DB record.
 
-## Phase 3: Project Scaffolding
+## Phase 4: Project Scaffolding
 
-Set up the physical jail.
+- [ ] **Create `help-desk/`** directory in repo root.
+- [ ] **Claude security**: `help-desk/.claude/settings.json` with deny rules.
+- [ ] **Documentation**: `help-desk/README.md` visible to jailed agents.
 
-- [ ] **Create Directory:** `mkdir help-desk` in repo root.
-- [ ] **Claude Security:** Create `help-desk/.claude/settings.json` with strict `deny` rules for parent traversal.
-- [ ] **Documentation:** Add a `README.md` in `help-desk/` explaining its purpose (this is visible to the Agent).
+## Phase 5: Verification
 
-## Phase 4: Verification
+- [ ] Unit test: `create_session` overrides path for unauthorized.
+- [ ] Unit test: identity resolver returns correct person for known telegram user.
+- [ ] Unit test: human role tool filtering blocks expected tools for member.
+- [ ] Manual: start session as "customer", verify jail works.
 
-- [ ] **Unit Test:** Add test in `test_command_handlers.py` ensuring `create_session` overrides path for non-admins.
-- [ ] **Manual Verification:**
-  - Start a session as "customer".
-  - Try to read a file outside the directory.
-  - Verify it fails.
-  - Try to read a global doc.
-  - Verify it succeeds.
+## Files Changed
+
+| File                                  | Change                          |
+| ------------------------------------- | ------------------------------- |
+| `teleclaude/constants.py`             | Human role constants + profiles |
+| `teleclaude/core/identity.py`         | New — resolver + context        |
+| `teleclaude/core/migrations/`         | New migration                   |
+| `teleclaude/core/db_models.py`        | Add identity columns            |
+| `teleclaude/core/models.py`           | Add identity to SessionSummary  |
+| `teleclaude/api_models.py`            | Add identity to DTO             |
+| `teleclaude/core/command_handlers.py` | Resolve + stamp + trap          |
+| `teleclaude/core/agents.py`           | Profile-based launch            |
+| `teleclaude/config/__init__.py`       | Profile support                 |
+| `teleclaude/mcp/role_tools.py`        | Human role filtering            |
+| `help-desk/`                          | New project directory           |
+| `tests/unit/test_identity.py`         | New tests                       |
