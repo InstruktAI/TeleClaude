@@ -41,3 +41,4 @@
 | 2026-02-10 | telec-config-cli             | Add `telec config` get/patch/validate workflow for AI-safe config mutation                            | DELIVERED | de0c0d2f                                 |
 | 2026-02-11 | agent-output-monitor         | Context-aware checkpoint messages at agent stop boundaries                                            | DELIVERED | 4173c150                                 |
 | 2026-02-11 | runtime-settings-tts-toggle  | RuntimeSettings layer, TTS toggle in TUI footer, debounced YAML persistence, SummarizerConfig cleanup | DELIVERED | c7102753                                 |
+| 2026-02-11 | agent-activity-events        | Direct agent activity event pipeline (Phase 1-2: foundation without DB-mediated reasons)              | DELIVERED | 61fe04e3                                 |
