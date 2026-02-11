@@ -177,6 +177,7 @@ class AgentCoordinator:
         session_id: str,
         event_type: str,
         tool_name: str | None = None,
+        summary: str | None = None,
     ) -> None:
         """Emit agent activity event with error handling.
 
@@ -184,6 +185,7 @@ class AgentCoordinator:
             session_id: Session identifier
             event_type: AgentHookEventType value
             tool_name: Optional tool name for tool_use events
+            summary: Optional output summary (agent_stop only)
         """
         try:
             event_bus.emit(
@@ -192,6 +194,7 @@ class AgentCoordinator:
                     session_id=session_id,
                     event_type=event_type,
                     tool_name=tool_name,
+                    summary=summary,
                     timestamp=datetime.now(timezone.utc).isoformat(),
                 ),
             )
@@ -409,6 +412,7 @@ class AgentCoordinator:
                 logger.debug("Skip stop summary/TTS (agent output empty after normalization)", session=session_id[:8])
                 raw_output = None
 
+        summary: str | None = None
         if raw_output:
             summary = await self._summarize_output(session_id, raw_output)
             update_kwargs.update(
@@ -434,8 +438,8 @@ class AgentCoordinator:
         if update_kwargs:
             await db.update_session(session_id, **update_kwargs)
 
-        # Emit activity event for UI updates
-        self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP)
+        # Emit activity event for UI updates (summary flows to TUI via event, not DB)
+        self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
 
         # 2. Incremental threaded output (final turn portion)
         await self._maybe_send_incremental_output(session_id, payload)
@@ -477,21 +481,23 @@ class AgentCoordinator:
         """
         session_id = context.session_id
         payload = cast(AgentOutputPayload, context.data)
-        session = await db.get_session(session_id)
-        if session and session.last_after_model_at:
-            logger.debug("after_model skipped (already set) for session %s", session_id[:8])
-            return
-        now = datetime.now(timezone.utc)
-        await db.update_session(session_id, last_after_model_at=now.isoformat())
-        logger.debug("after_model recorded for session %s", session_id[:8])
 
         # Extract tool name from raw payload if available
         tool_name = None
         if payload.raw:
             tool_name = str(payload.raw.get("tool_name") or payload.raw.get("toolName"))
 
-        # Emit activity event for UI updates
+        # Always emit activity event for UI updates (every tool call)
         self._emit_activity_event(session_id, AgentHookEvents.AFTER_MODEL, tool_name)
+
+        # DB write is deduped: only record the FIRST after_model per turn for checkpoint timing
+        session = await db.get_session(session_id)
+        if session and session.last_after_model_at:
+            logger.debug("after_model DB write skipped (already set) for session %s", session_id[:8])
+            return
+        now = datetime.now(timezone.utc)
+        await db.update_session(session_id, last_after_model_at=now.isoformat())
+        logger.debug("after_model recorded for session %s", session_id[:8])
 
     async def handle_agent_output(self, context: AgentEventContext) -> None:
         """Handle rich incremental agent output (thinking, tools)."""

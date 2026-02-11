@@ -54,8 +54,9 @@ if TYPE_CHECKING:
     from teleclaude.cli.tui.app import FocusContext
 
 logger = get_logger(__name__)
-_THINKING_BASE_TEXT = "thinking..."
-_WORKING_BASE_TEXT = "working..."
+_THINKING_BASE_TEXT = "Thinking..."
+_WORKING_BASE_TEXT = "Working..."
+_STREAMING_SAFETY_TIMEOUT = 30.0  # Safety net; agent_stop is the authoritative clear signal
 
 
 def _format_time(iso_timestamp: str | None) -> str:
@@ -578,13 +579,20 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 logger.debug("Started 60s viewing timer for session %s", selected_id[:8])
 
     def _update_streaming_timers(self) -> None:
-        """Manage 3-second timers for streaming output highlights.
+        """Manage safety timers for streaming output highlights.
 
-        When agent_output events add sessions to temp_output_highlights,
-        we start/reset a 3-second timer. When the timer expires (no new output),
-        we clear the temp highlight and keep the regular output highlight.
+        Agent activity events (after_model, agent_output) set temp_output_highlights.
+        agent_stop is the authoritative signal that clears them. The timer is a safety
+        net that clears stale highlights if agent_stop is missed.
         """
         now = time.monotonic()
+
+        # Reset timers for sessions with new activity events
+        for session_id in list(self.state.sessions.activity_timer_reset):
+            if session_id in self._streaming_timers:
+                self._streaming_timers[session_id] = now + _STREAMING_SAFETY_TIMEOUT
+                logger.debug("Reset streaming timer for %s (new activity)", session_id[:8])
+        self.state.sessions.activity_timer_reset.clear()
 
         # Check for expired timers
         expired = [sid for sid, expiry in self._streaming_timers.items() if now >= expiry]
@@ -592,13 +600,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             del self._streaming_timers[session_id]
             if session_id in self.state.sessions.temp_output_highlights:
                 self.controller.dispatch(Intent(IntentType.CLEAR_TEMP_HIGHLIGHT, {"session_id": session_id}))
-                logger.debug("Streaming timer expired for %s, cleared temp highlight", session_id[:8])
+                logger.debug("Streaming safety timer expired for %s, cleared temp highlight", session_id[:8])
 
-        # Start/reset timers for sessions with temp highlights
+        # Start timers for sessions with temp highlights that don't have one yet
         for session_id in self.state.sessions.temp_output_highlights:
             if session_id not in self._streaming_timers:
-                self._streaming_timers[session_id] = now + 3.0
-                logger.debug("Started 3s streaming timer for %s", session_id[:8])
+                self._streaming_timers[session_id] = now + _STREAMING_SAFETY_TIMEOUT
+                logger.debug("Started streaming safety timer for %s", session_id[:8])
 
         # Remove timers for sessions no longer in temp highlights
         stale = [sid for sid in self._streaming_timers if sid not in self.state.sessions.temp_output_highlights]
@@ -1511,24 +1519,21 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             line3 = f"{detail_indent}[{input_time}] in: {input_text}"
             lines.append(line3[:width])
 
-        # Line 4: Last output (only if content exists)
-        last_output = (session.last_output_summary or "").strip()
-        last_output_at = session.last_output_summary_at
+        # Line 4: Last output — driven by activity events, not session record
+        last_output = self.state.sessions.last_summary.get(session_id, "")
         has_input_highlight = session_id in self.state.sessions.input_highlights
         has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
+        activity_time = _format_time(session.last_activity)
         if has_temp_output_highlight:
-            output_time = _format_time(last_output_at or session.last_activity)
             tool_name = self.state.sessions.active_tool.get(session_id)
-            line4 = f"{detail_indent}[{output_time}] out: {_thinking_placeholder_text(tool_name)}"
+            line4 = f"{detail_indent}[{activity_time}] out: {_thinking_placeholder_text(tool_name)}"
             lines.append(line4[:width])
         elif has_input_highlight:
-            output_time = _format_time(last_output_at or session.last_activity)
-            line4 = f"{detail_indent}[{output_time}] out: {_working_placeholder_text()}"
+            line4 = f"{detail_indent}[{activity_time}] out: {_working_placeholder_text()}"
             lines.append(line4[:width])
         elif last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            output_time = _format_time(last_output_at)
-            line4 = f"{detail_indent}[{output_time}] out: {output_text}"
+            line4 = f"{detail_indent}[{activity_time}] out: {output_text}"
             lines.append(line4[:width])
 
         return lines
@@ -1814,16 +1819,12 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if lines_used >= remaining:
                 return lines_used
 
-        # Line 4: Last output (only if content exists)
-        last_output = (session.last_output_summary or "").strip()
-        last_output_at = session.last_output_summary_at
-        if last_output and not last_input and session_id not in self._missing_last_input_logged:
-            self._missing_last_input_logged.add(session_id)
-            logger.trace("missing_last_input", session=session_id[:8])
+        # Line 4: Last output — driven by activity events, not session record
+        last_output = self.state.sessions.last_summary.get(session_id, "")
+        activity_time = _format_time(session.last_activity)
         if has_temp_output_highlight:
-            output_time = _format_time(last_output_at or session.last_activity)
             italic_attr = getattr(curses, "A_ITALIC", 0)
-            prefix_text = f"{detail_indent}[{output_time}] out: "
+            prefix_text = f"{detail_indent}[{activity_time}] out: "
             tool_name = self.state.sessions.active_tool.get(session_id)
             placeholder_text = _thinking_placeholder_text(tool_name)
             if italic_attr:
@@ -1838,9 +1839,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 _safe_addstr(row + lines_used, f"{prefix_text}{placeholder_text}", output_attr)
             lines_used += 1
         elif has_input_highlight:
-            output_time = _format_time(last_output_at or session.last_activity)
             italic_attr = getattr(curses, "A_ITALIC", 0)
-            prefix_text = f"{detail_indent}[{output_time}] out: "
+            prefix_text = f"{detail_indent}[{activity_time}] out: "
             placeholder_text = _working_placeholder_text()
             if italic_attr:
                 _safe_addstr_with_italic_suffix(
@@ -1855,8 +1855,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             lines_used += 1
         elif last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            output_time = _format_time(last_output_at)
-            line4 = f"{detail_indent}[{output_time}] out: {output_text}"
+            line4 = f"{detail_indent}[{activity_time}] out: {output_text}"
             _safe_addstr(row + lines_used, line4, output_attr)
             lines_used += 1
 

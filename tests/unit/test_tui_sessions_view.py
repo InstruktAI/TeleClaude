@@ -254,9 +254,8 @@ class TestSessionsViewLogic:
             title="Test Session",
             last_input="Test input",
             last_input_at="2024-01-01T00:00:00Z",
-            last_output_summary="Test output",
-            last_output_summary_at="2024-01-01T00:01:00Z",
         )
+        sessions_view.state.sessions.last_summary["test-session-001"] = "Test output"
         sessions_view.flat_items = [session]
         # Don't add to collapsed_sessions = expanded by default
 
@@ -420,9 +419,8 @@ class TestSessionsViewLogic:
             session_id="s1",
             last_input="hello",
             last_input_at="2024-01-01T00:00:00Z",
-            last_output_summary="world",
-            last_output_summary_at="2024-01-01T00:01:00Z",
         )
+        sessions_view.state.sessions.last_summary["s1"] = "world"
         sessions_view.flat_items = [session]
 
         lines = sessions_view.get_render_lines(120, 10)
@@ -436,17 +434,14 @@ class TestSessionsViewLogic:
         monkeypatch.setattr("teleclaude.cli.tui.views.sessions._format_time", lambda _ts: "17:43:21")
         monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
 
-        session = self._make_session_node(
-            session_id="s1",
-            last_output_summary="final answer text",
-            last_output_summary_at="2024-01-01T00:01:00Z",
-        )
+        session = self._make_session_node(session_id="s1")
+        sessions_view.state.sessions.last_summary["s1"] = "final answer text"
         sessions_view.state.sessions.temp_output_highlights.add("s1")
         sessions_view.flat_items = [session]
 
         output = "\n".join(sessions_view.get_render_lines(120, 10))
 
-        assert "[17:43:21] out: **thinking" in output
+        assert "[17:43:21] out: **Thinking" in output
         assert "final answer text" not in output
 
     def test_input_highlight_shows_working_placeholder_after_temp_window(self, sessions_view, monkeypatch):
@@ -454,17 +449,14 @@ class TestSessionsViewLogic:
         monkeypatch.setattr("teleclaude.cli.tui.views.sessions._format_time", lambda _ts: "17:43:21")
         monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
 
-        session = self._make_session_node(
-            session_id="s-working",
-            last_output_summary="final answer text",
-            last_output_summary_at="2024-01-01T00:01:00Z",
-        )
+        session = self._make_session_node(session_id="s-working")
+        sessions_view.state.sessions.last_summary["s-working"] = "final answer text"
         sessions_view.state.sessions.input_highlights.add("s-working")
         sessions_view.flat_items = [session]
 
         output = "\n".join(sessions_view.get_render_lines(120, 10))
 
-        assert "[17:43:21] out: **working" in output
+        assert "[17:43:21] out: **Working" in output
         assert "final answer text" not in output
 
     def test_double_clicking_session_id_row_toggles_sticky_parent_only(self, mock_focus):
@@ -601,9 +593,8 @@ class TestSessionsViewLogic:
             active_agent="unknown",
             thinking_mode="slow",
             tmux_session_name=None,
-            last_output_summary="agent output",
-            last_output_summary_at="2024-01-01T00:01:00Z",
         )
+        sessions_view.state.sessions.last_summary["headless-1"] = "agent output"
         sessions_view.state.sessions.output_highlights.add("headless-1")
 
         screen = FakeScreen()
@@ -698,8 +689,6 @@ class TestSessionsViewLogic:
         session = self._make_session_node(
             session_id="temp-italic",
             active_agent="unknown",
-            last_output_summary="old output",
-            last_output_summary_at="2024-01-01T00:01:00Z",
         )
         sessions_view.state.sessions.temp_output_highlights.add("temp-italic")
 
@@ -713,8 +702,8 @@ class TestSessionsViewLogic:
         assert "out:" in output_row_calls[0][2]
         assert output_row_calls[0][3] == curses.A_BOLD
         # Placeholder overlay is italicized
-        assert "thinking" in output_row_calls[1][2]
-        assert "**thinking" not in output_row_calls[1][2]
+        assert "Thinking" in output_row_calls[1][2]
+        assert "**Thinking" not in output_row_calls[1][2]
         assert output_row_calls[1][3] == (curses.A_BOLD | curses.A_ITALIC)
 
     def test_working_placeholder_uses_agent_color_with_italics(self, sessions_view, monkeypatch):
@@ -732,8 +721,6 @@ class TestSessionsViewLogic:
         session = self._make_session_node(
             session_id="working-italic",
             active_agent="claude",
-            last_output_summary="old output",
-            last_output_summary_at="2024-01-01T00:01:00Z",
         )
         sessions_view.state.sessions.input_highlights.add("working-italic")
 
@@ -747,7 +734,7 @@ class TestSessionsViewLogic:
         assert "out:" in output_row_calls[0][2]
         assert output_row_calls[0][3] == 2  # claude normal pair
         # Placeholder overlay keeps agent color + italic
-        assert "working" in output_row_calls[1][2]
+        assert "Working" in output_row_calls[1][2]
         assert output_row_calls[1][3] == (2 | curses.A_ITALIC)
 
     def test_real_output_wins_when_no_highlights(self, sessions_view, monkeypatch):
@@ -755,11 +742,8 @@ class TestSessionsViewLogic:
         monkeypatch.setattr("teleclaude.cli.tui.views.sessions._format_time", lambda _ts: "17:43:21")
         monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
 
-        session = self._make_session_node(
-            session_id="s-final",
-            last_output_summary="real output now",
-            last_output_summary_at="2024-01-01T00:01:00Z",
-        )
+        session = self._make_session_node(session_id="s-final")
+        sessions_view.state.sessions.last_summary["s-final"] = "real output now"
         sessions_view.flat_items = [session]
 
         output = "\n".join(sessions_view.get_render_lines(120, 10))

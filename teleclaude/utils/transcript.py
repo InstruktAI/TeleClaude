@@ -1642,14 +1642,19 @@ def _is_user_tool_result_only_message(message: Mapping[str, object]) -> bool:
 def extract_tool_calls_current_turn(
     transcript_path: str,
     agent_name: AgentName,
+    *,
+    full_session: bool = False,
 ) -> TurnTimeline:
-    """Extract tool calls from the current turn of a transcript.
+    """Extract tool calls from the current turn (or full session) of a transcript.
 
     guard: allow-string-compare
 
     Uses _get_entries_for_agent() (Layer 1) to load normalized entries,
     then walks from the last user message boundary to end of transcript,
     building ToolCallRecord instances from tool_use/tool_result blocks.
+
+    When full_session=True, skips the turn boundary and extracts from all entries.
+    Used as a fallback when current-turn scoping misses edits from earlier turns.
 
     Fails open: returns TurnTimeline(tool_calls=[], has_data=False) on any error.
     """
@@ -1662,19 +1667,21 @@ def extract_tool_calls_current_turn(
         # Find turn boundary: walk backward to last *real* user prompt.
         # Claude tool outputs are encoded as role=user tool_result messages and
         # must not reset the boundary within the same turn.
+        # When full_session=True, skip this and start from the beginning.
         turn_start_idx = 0
-        for i in range(len(entries) - 1, -1, -1):
-            entry = entries[i]
-            message = entry.get("message")
-            if not isinstance(message, dict) and entry.get("type") == "response_item":
-                payload = entry.get("payload")
-                if isinstance(payload, dict):
-                    message = payload
-            if isinstance(message, dict) and message.get("role") == "user":
-                if _is_user_tool_result_only_message(message):
-                    continue
-                turn_start_idx = i + 1
-                break
+        if not full_session:
+            for i in range(len(entries) - 1, -1, -1):
+                entry = entries[i]
+                message = entry.get("message")
+                if not isinstance(message, dict) and entry.get("type") == "response_item":
+                    payload = entry.get("payload")
+                    if isinstance(payload, dict):
+                        message = payload
+                if isinstance(message, dict) and message.get("role") == "user":
+                    if _is_user_tool_result_only_message(message):
+                        continue
+                    turn_start_idx = i + 1
+                    break
 
         # Walk forward from turn boundary, extracting tool calls
         records: list[ToolCallRecord] = []

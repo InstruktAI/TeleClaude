@@ -542,7 +542,7 @@ class TelecApp:
                     self._loop.run_until_complete(self.refresh_data())
 
             elif isinstance(event, AgentActivityEvent):
-                # Dispatch AGENT_ACTIVITY intent with event_type, session_id, tool_name
+                # Dispatch AGENT_ACTIVITY intent with event_type, session_id, tool_name, summary
                 self.controller.dispatch(
                     Intent(
                         IntentType.AGENT_ACTIVITY,
@@ -550,6 +550,7 @@ class TelecApp:
                             "session_id": event.session_id,
                             "event_type": event.type,
                             "tool_name": event.tool_name,
+                            "summary": event.summary,
                         },
                     )
                 )

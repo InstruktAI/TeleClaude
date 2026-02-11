@@ -951,6 +951,27 @@ def get_checkpoint_content(
             project_path,
         )
 
+        # Fallback: current-turn scoping found nothing but git has dirty files.
+        # This happens when a user message shifts the turn boundary past earlier edits.
+        # Re-scope using the full session transcript to attribute files to this session.
+        used_session_fallback = False
+        if not effective_git_files and git_files and transcript_path:
+            full_timeline = extract_tool_calls_current_turn(transcript_path, agent_name, full_session=True)
+            effective_git_files = _scope_git_files_to_current_turn(git_files, full_timeline, project_path)
+            if effective_git_files:
+                used_session_fallback = True
+                # Use the full timeline for heuristics so evidence checks cover all turns
+                timeline = full_timeline
+                logger.info(
+                    "Checkpoint session-fallback activated",
+                    extra={
+                        **base_extra,
+                        "dirty_files": len(git_files),
+                        "session_scoped_files": len(effective_git_files),
+                        "full_timeline_records": len(full_timeline.tool_calls),
+                    },
+                )
+
         context = CheckpointContext(
             project_path=project_path,
             working_slug=working_slug,
@@ -973,6 +994,7 @@ def get_checkpoint_content(
                     "observations": len(result.observations),
                     "mode": "silent_no_changes",
                     "message_len": 0,
+                    "used_session_fallback": used_session_fallback,
                 },
             )
             return None
@@ -996,6 +1018,7 @@ def get_checkpoint_content(
                 "observations": len(result.observations),
                 "mode": mode,
                 "message_len": len(message),
+                "used_session_fallback": used_session_fallback,
             },
         )
         return message

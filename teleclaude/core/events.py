@@ -475,6 +475,7 @@ class AgentActivityEvent:
     session_id: str
     event_type: AgentHookEventType
     tool_name: str | None = None
+    summary: str | None = None
     timestamp: str | None = None
 
 

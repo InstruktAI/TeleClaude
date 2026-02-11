@@ -20,6 +20,7 @@ from fastapi import Body, FastAPI, HTTPException, Query, WebSocket, WebSocketDis
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import (
+    AgentActivityEventDTO,
     AgentAvailabilityDTO,
     ComputerDTO,
     CreateSessionRequest,
@@ -206,13 +207,13 @@ class APIServer:
         context: AgentActivityEvent,
     ) -> None:
         """Broadcast agent activity events to WS clients (no cache, no DB re-read)."""
-        payload = {
-            "event": "agent_activity",
-            "session_id": context.session_id,
-            "type": context.event_type,
-            "tool_name": context.tool_name,
-        }
-        self._broadcast_payload("agent_activity", payload)
+        dto = AgentActivityEventDTO(
+            session_id=context.session_id,
+            type=context.event_type,
+            tool_name=context.tool_name,
+            summary=context.summary,
+        )
+        self._broadcast_payload("agent_activity", dto.model_dump(exclude_none=True))
 
     async def _handle_error_event(
         self,

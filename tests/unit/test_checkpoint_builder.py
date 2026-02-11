@@ -914,7 +914,7 @@ def test_get_checkpoint_content_suppresses_stale_dirty_files(monkeypatch):
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
-        lambda _path, _agent: _timeline_with(
+        lambda _path, _agent, **_kw: _timeline_with(
             _read_record("README.md"),
             _bash_record("make status"),
         ),
@@ -928,6 +928,42 @@ def test_get_checkpoint_content_suppresses_stale_dirty_files(monkeypatch):
     assert msg is None
 
 
+def test_get_checkpoint_content_session_fallback_catches_earlier_turn_edits(monkeypatch):
+    """When current turn has no edits but full session does, fallback should fire."""
+    call_log: list[bool] = []
+
+    def _mock_extract(_path, _agent, *, full_session=False):
+        call_log.append(full_session)
+        if full_session:
+            # Full session has the edit from an earlier turn
+            return _timeline_with(_edit_record("teleclaude/core/foo.py"))
+        # Current turn only has reads (user message shifted the boundary)
+        return _timeline_with(_read_record("README.md"))
+
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
+        lambda _project: True,
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._get_uncommitted_files",
+        lambda _project: ["teleclaude/core/foo.py"],
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
+        _mock_extract,
+    )
+
+    msg = get_checkpoint_content(
+        transcript_path="/tmp/fake.jsonl",
+        agent_name=AgentName.CLAUDE,
+        project_path="/repo",
+    )
+    assert msg is not None
+    assert "Run `make restart`" in msg
+    # Should have been called twice: first current-turn, then full-session fallback
+    assert call_log == [False, True]
+
+
 def test_get_checkpoint_content_keeps_actions_for_turn_local_edits(monkeypatch):
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
@@ -939,7 +975,7 @@ def test_get_checkpoint_content_keeps_actions_for_turn_local_edits(monkeypatch):
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
-        lambda _path, _agent: _timeline_with(
+        lambda _path, _agent, **_kw: _timeline_with(
             _edit_record("teleclaude/core/foo.py"),
         ),
     )
@@ -963,7 +999,7 @@ def test_get_checkpoint_content_keeps_actions_for_exec_command_cmd_mutation(monk
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
-        lambda _path, _agent: _timeline_with(
+        lambda _path, _agent, **_kw: _timeline_with(
             ToolCallRecord(tool_name="exec_command", input_data={"cmd": "apply_patch <<'PATCH'"}),
         ),
     )
@@ -988,7 +1024,7 @@ def test_get_checkpoint_content_derives_log_window_from_elapsed(monkeypatch):
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
-        lambda _path, _agent: _timeline_with(
+        lambda _path, _agent, **_kw: _timeline_with(
             _edit_record("teleclaude/core/foo.py"),
             _bash_record("make restart"),
             _bash_record("make status"),
@@ -1016,7 +1052,7 @@ def test_get_checkpoint_content_returns_none_for_docs_only_changes(monkeypatch):
     )
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
-        lambda _path, _agent: _timeline_with(
+        lambda _path, _agent, **_kw: _timeline_with(
             _edit_record("docs/notes.md"),
         ),
     )

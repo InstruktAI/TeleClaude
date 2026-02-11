@@ -58,8 +58,10 @@ class SessionViewState:
     # Highlight state: sessions with active input/output highlights
     input_highlights: set[str] = field(default_factory=set)
     output_highlights: set[str] = field(default_factory=set)
-    temp_output_highlights: set[str] = field(default_factory=set)  # For 3s streaming timer
+    temp_output_highlights: set[str] = field(default_factory=set)  # For streaming safety timer
     active_tool: dict[str, str] = field(default_factory=dict)  # session_id -> tool_name
+    activity_timer_reset: set[str] = field(default_factory=set)  # Sessions needing timer reset
+    last_summary: dict[str, str] = field(default_factory=dict)  # session_id -> output summary from agent_stop
 
 
 @dataclass
@@ -136,6 +138,7 @@ class IntentPayload(TypedDict, total=False):
     reason: str  # Legacy field, no longer populated - use event_type in AGENT_ACTIVITY intents instead
     event_type: str  # AgentHookEventType: "user_prompt_submit", "after_model", "agent_output", "agent_stop"
     tool_name: str | None  # Tool name for tool_use events
+    summary: str | None  # Output summary from agent_stop events
 
 
 MAX_STICKY_PANES = 5
@@ -345,26 +348,33 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.temp_output_highlights.discard(session_id)
             logger.debug("input_highlight ADDED for %s (event=user_prompt_submit)", session_id[:8])
         elif event_type == "after_model":
-            # Tool started: add temp highlight, store tool name
+            # Tool started: clear input highlight, add temp highlight, store tool name, reset timer
+            state.sessions.input_highlights.discard(session_id)
             state.sessions.temp_output_highlights.add(session_id)
+            state.sessions.activity_timer_reset.add(session_id)
             if tool_name:
                 state.sessions.active_tool[session_id] = tool_name
             logger.debug(
-                "temp_output_highlight + active_tool ADDED for %s (event=after_model, tool=%s)",
+                "input CLEARED, temp_output + active_tool ADDED for %s (event=after_model, tool=%s)",
                 session_id[:8],
                 tool_name,
             )
         elif event_type == "agent_output":
-            # Tool finished: keep temp highlight, clear tool name
+            # Tool finished: clear input highlight, keep temp highlight, clear tool name, reset timer
+            state.sessions.input_highlights.discard(session_id)
             state.sessions.temp_output_highlights.add(session_id)
+            state.sessions.activity_timer_reset.add(session_id)
             state.sessions.active_tool.pop(session_id, None)
-            logger.debug("active_tool CLEARED for %s (event=agent_output)", session_id[:8])
+            logger.debug("input_highlight CLEARED, active_tool CLEARED for %s (event=agent_output)", session_id[:8])
         elif event_type == "agent_stop":
-            # Agent finished: clear input/temp/tool, make output highlight permanent
+            # Agent finished: clear input/temp/tool, make output highlight permanent, store summary
             state.sessions.input_highlights.discard(session_id)
             state.sessions.temp_output_highlights.discard(session_id)
             state.sessions.active_tool.pop(session_id, None)
             state.sessions.output_highlights.add(session_id)
+            summary = p.get("summary")
+            if isinstance(summary, str) and summary:
+                state.sessions.last_summary[session_id] = summary
             logger.debug("output_highlight ADDED for %s (event=agent_stop)", session_id[:8])
         return
 
@@ -389,6 +399,11 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         state.sessions.input_highlights.intersection_update(session_ids)
         state.sessions.output_highlights.intersection_update(session_ids)
         state.sessions.temp_output_highlights.intersection_update(session_ids)
+        state.sessions.activity_timer_reset.intersection_update(session_ids)
+        # Prune last_summary for removed sessions
+        stale_summaries = set(state.sessions.last_summary) - session_ids
+        for sid in stale_summaries:
+            del state.sessions.last_summary[sid]
         return
 
     if t is IntentType.SYNC_TODOS:
