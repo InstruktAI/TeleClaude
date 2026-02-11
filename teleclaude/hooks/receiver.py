@@ -685,13 +685,13 @@ def main() -> None:
     raw_event_type = event_type
     agent_map = AgentHookEvents.HOOK_EVENT_MAP.get(args.agent, {})
 
-    # Try direct match, then try title-cased match (e.g., 'after_model' -> 'AfterModel')
+    # Try direct match, then try title-cased match (e.g., 'tool_use' -> 'ToolUse')
     # Use replace('_', '') to handle snake_case to PascalCase mapping if needed.
     pascal_event_type = raw_event_type.replace("_", " ").title().replace(" ", "") if raw_event_type else None
 
     mapped_event_type = agent_map.get(raw_event_type) or agent_map.get(pascal_event_type)
 
-    # Use mapped event if found, otherwise keep original (for direct events like 'agent_output')
+    # Use mapped event if found, otherwise keep original (for direct events like 'tool_done')
     if mapped_event_type:
         event_type = mapped_event_type
         logger.debug("Mapped hook event: %s (pascal: %s) -> %s", raw_event_type, pascal_event_type, event_type)
