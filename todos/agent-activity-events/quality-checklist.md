@@ -12,7 +12,7 @@ Ownership:
 
 - [x] Requirements implemented according to scope (Phase 1-2 foundation complete, Phase 3-7 deferred)
 - [x] Implementation-plan task checkboxes all `[x]` (Phase 1-2)
-- [ ] Tests pass (`make test`) (deferred - will update tests in Phase 5)
+- [x] Tests pass (`make test`) (4 critical regressions fixed, remaining test updates deferred to Phase 5)
 - [x] Lint passes (`make lint`)
 - [x] No silent deferrals in implementation plan (deferrals.md created)
 - [x] Code committed
