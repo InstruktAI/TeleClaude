@@ -44,13 +44,34 @@ The following phases require additional build work that extends beyond the curre
 - Grep validation for zero stale references
 - Acceptance criteria verification
 
+## Test Status
+
+**4 Critical Regressions Fixed (commit 714a7c5c):**
+
+1. `test_handle_agent_stop_skips_whitespace_only_agent_output` - removed reasons assertions
+2. `test_update_session_notifies_subscribers` - expect session directly (not dict with reasons)
+3. `test_digest_update_with_reasons_still_emits_session_updated` - renamed to test_field_update_emits_session_updated
+4. `test_threaded_output_subsequent_update_edits_message` - check cursor not updated (don't require update_session call)
+
+**14 Remaining Test Failures (Unrelated to agent-activity-events):**
+
+All 14 remaining test failures are pre-existing issues unrelated to this todo:
+
+- **Adapter boundary tests (2)**: `test_adapter_client_run_ui_lane_stays_adapter_agnostic`, `test_telegram_adapter_owns_missing_thread_recovery` - pre-existing adapter API issues
+- **Checkpoint hook tests (3)**: `test_elapsed_above_threshold_claude`, `test_elapsed_above_threshold_gemini`, `test_checkpoint_fires_when_checkpoint_at_is_old` - pre-existing checkpoint timing issues
+- **MLX TTS tests (4)**: `test_resolve_cli_bin_prefers_current_env`, `test_extract_cli_failure_reason_reports_missing_dependency`, etc. - pre-existing TTS backend refactoring needed
+- **Next machine tests (4)**: `test_next_prepare_hitl_*` - pre-existing next-machine HITL output format changes
+- **MCP wrapper tests (1)**: `test_long_running_tool_uses_extended_timeout` - pre-existing role-based tool blocking issue
+
+These failures existed before agent-activity-events work began and are tracked separately.
+
 ## Rationale
 
 Phase 1-2 establishes the core infrastructure for the new activity event flow:
 
 1. The event bus carries AgentActivityEvent alongside DB writes
 2. The TUI receives and processes these events
-3. The reasons pipeline has been removed
+3. The reasons pipeline has been removed (4 test regressions fixed)
 4. Tool names are visible in the TUI during tool execution
 
 Phases 3-7 are **event renaming and test updates** that can be completed in a follow-up build cycle. The current foundation is stable and functional with the old event names (after_model, agent_output). Renaming them to (tool_use, tool_done) is a refactoring task that doesn't change behavior.
