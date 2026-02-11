@@ -1014,11 +1014,12 @@ class Db:
             )
 
     async def get_voices_in_use(self) -> set[tuple[str, str]]:
-        """Get all (service_name, voice) pairs assigned to active sessions.
+        """Get all (service_name, voice) pairs assigned to non-closed sessions.
 
         Returns:
             Set of (service_name, voice) tuples currently in use.
         """
+        from sqlalchemy import or_
         from sqlmodel import select
 
         stmt = (
@@ -1026,7 +1027,10 @@ class Db:
             .join(db_models.Session, db_models.VoiceAssignment.id == db_models.Session.session_id)
             .where(
                 db_models.Session.closed_at.is_(None),
-                db_models.Session.lifecycle_status == "active",
+                or_(
+                    db_models.Session.lifecycle_status.is_(None),
+                    db_models.Session.lifecycle_status != "closed",
+                ),
                 db_models.VoiceAssignment.service_name.is_not(None),
             )
         )

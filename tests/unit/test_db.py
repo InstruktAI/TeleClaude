@@ -691,6 +691,40 @@ class TestVoiceAssignments:
         assert assigned.service_name == "service-b"
         assert assigned.voice == "beta"
 
+    @pytest.mark.asyncio
+    async def test_get_voices_in_use_includes_initializing_and_excludes_closed(self, test_db):
+        initializing = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="init-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Initializing Session",
+            lifecycle_status="initializing",
+        )
+        await test_db.assign_voice(initializing.session_id, VoiceConfig(service_name="openai", voice="nova"))
+
+        active = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="active-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Active Session",
+            lifecycle_status="active",
+        )
+        await test_db.assign_voice(active.session_id, VoiceConfig(service_name="openai", voice="alloy"))
+
+        closed = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="closed-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Closed Session",
+            lifecycle_status="closed",
+        )
+        await test_db.assign_voice(closed.session_id, VoiceConfig(service_name="openai", voice="echo"))
+
+        in_use = await test_db.get_voices_in_use()
+        assert ("openai", "nova") in in_use
+        assert ("openai", "alloy") in in_use
+        assert ("openai", "echo") not in in_use
+
 
 class TestSyncHelpers:
     """Tests for standalone sync helpers."""

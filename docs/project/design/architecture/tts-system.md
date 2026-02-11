@@ -43,7 +43,7 @@ type: 'design'
 
 **Voice assignment:**
 
-1. `get_random_voice_for_session()` picks a random available voice from enabled services, excluding voices already assigned to active sessions.
+1. `get_random_voice_for_session()` picks a random available voice from enabled services, excluding voices already assigned to non-closed sessions (including `initializing`).
 2. `_get_or_assign_voice(session_id)` persists the assignment in the database — one voice per session.
 3. `get_voice_env_vars(voice)` converts the assignment to environment variables injected into the tmux session.
 
