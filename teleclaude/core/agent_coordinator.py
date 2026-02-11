@@ -161,6 +161,37 @@ class AgentCoordinator:
 
         task.add_done_callback(_on_done)
 
+    def _emit_activity_event(
+        self,
+        session_id: str,
+        event_type: str,
+        tool_name: str | None = None,
+    ) -> None:
+        """Emit agent activity event with error handling.
+
+        Args:
+            session_id: Session identifier
+            event_type: AgentHookEventType value
+            tool_name: Optional tool name for tool_use events
+        """
+        try:
+            event_bus.emit(
+                TeleClaudeEvents.AGENT_ACTIVITY,
+                AgentActivityEvent(
+                    session_id=session_id,
+                    event_type=event_type,
+                    tool_name=tool_name,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to emit activity event: %s",
+                exc,
+                exc_info=True,
+                extra={"session_id": session_id[:8], "event_type": event_type},
+            )
+
     async def handle_event(self, context: AgentEventContext) -> None:
         """Handle any agent lifecycle event."""
         if context.event_type == AgentHookEvents.AGENT_SESSION_START:
@@ -271,14 +302,7 @@ class AgentCoordinator:
         )
 
         # Emit activity event for UI updates
-        event_bus.emit(
-            TeleClaudeEvents.AGENT_ACTIVITY,
-            AgentActivityEvent(
-                session_id=session_id,
-                event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-            ),
-        )
+        self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
         # Non-headless: DB write done above, no further routing needed
         # (the agent already received the input directly)
@@ -400,14 +424,7 @@ class AgentCoordinator:
             await db.update_session(session_id, **update_kwargs)
 
         # Emit activity event for UI updates
-        event_bus.emit(
-            TeleClaudeEvents.AGENT_ACTIVITY,
-            AgentActivityEvent(
-                session_id=session_id,
-                event_type=AgentHookEvents.AGENT_STOP,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-            ),
-        )
+        self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP)
 
         # 2. Incremental threaded output (final turn portion)
         await self._maybe_send_incremental_output(session_id, payload)
@@ -463,15 +480,7 @@ class AgentCoordinator:
             tool_name = str(payload.raw.get("tool_name") or payload.raw.get("toolName"))
 
         # Emit activity event for UI updates
-        event_bus.emit(
-            TeleClaudeEvents.AGENT_ACTIVITY,
-            AgentActivityEvent(
-                session_id=session_id,
-                event_type=AgentHookEvents.AFTER_MODEL,
-                tool_name=tool_name,
-                timestamp=now.isoformat(),
-            ),
-        )
+        self._emit_activity_event(session_id, AgentHookEvents.AFTER_MODEL, tool_name)
 
     async def handle_agent_output(self, context: AgentEventContext) -> None:
         """Handle rich incremental agent output (thinking, tools)."""
@@ -480,14 +489,7 @@ class AgentCoordinator:
         await self._maybe_send_incremental_output(session_id, payload)
 
         # Emit activity event for UI updates
-        event_bus.emit(
-            TeleClaudeEvents.AGENT_ACTIVITY,
-            AgentActivityEvent(
-                session_id=session_id,
-                event_type=AgentHookEvents.AGENT_OUTPUT,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-            ),
-        )
+        self._emit_activity_event(session_id, AgentHookEvents.AGENT_OUTPUT)
 
     async def _maybe_send_incremental_output(
         self, session_id: str, payload: AgentStopPayload | AgentOutputPayload
