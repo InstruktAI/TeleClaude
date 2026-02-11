@@ -157,7 +157,18 @@ class AgentCoordinator:
             except asyncio.CancelledError:
                 return
             except Exception as exc:  # noqa: BLE001 - background task errors are logged and dropped
-                logger.warning("Background task '%s' failed: %s", label, exc)
+                logger.error("Background task '%s' failed: %s", label, exc, exc_info=True)
+
+                # Emit error event for user-visible failures (title updates, TTS)
+                # Other background failures are logged but don't require user notification
+                if "title" in label.lower():
+                    try:
+                        event_bus.emit(
+                            TeleClaudeEvents.ERROR,
+                            {"message": f"Failed to update session title: {exc}", "severity": "warning"},
+                        )
+                    except Exception:  # noqa: BLE001 - don't cascade error event failures
+                        pass
 
         task.add_done_callback(_on_done)
 
