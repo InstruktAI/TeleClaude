@@ -3,12 +3,15 @@
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.hooks import receiver
+
+TEST_PROJECT_PATH = str(Path(__file__).resolve().parents[2])
 
 
 @pytest.fixture()
@@ -37,7 +40,7 @@ def db_with_session(tmp_path, monkeypatch):
         session_id: str = "sess-1",
         last_message_sent_at: datetime | None = None,
         last_checkpoint_at: datetime | None = None,
-        project_path: str | None = None,
+        project_path: str | None = TEST_PROJECT_PATH,
         native_log_file: str | None = None,
     ):
         with SqlSession(engine) as session:

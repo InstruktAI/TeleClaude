@@ -743,18 +743,19 @@ def get_checkpoint_content(
     """
     try:
         transcript_meta = _transcript_observability(transcript_path)
+        base_extra = {
+            "agent": agent_name.value,
+            "project_path": project_path or "",
+            "working_slug": working_slug or "",
+            "transcript_present": bool(transcript_path),
+            "transcript_path": transcript_meta["transcript_path"],
+            "transcript_exists": transcript_meta["transcript_exists"],
+            "transcript_size_bytes": transcript_meta["transcript_size_bytes"],
+        }
         if not _is_checkpoint_project_supported(project_path):
             logger.info(
                 "Checkpoint payload skipped (project out of scope)",
-                agent=agent_name.value,
-                project_path=project_path or "",
-                working_slug=working_slug or "",
-                transcript_present=bool(transcript_path),
-                transcript_path=transcript_meta["transcript_path"],
-                transcript_exists=transcript_meta["transcript_exists"],
-                transcript_size_bytes=transcript_meta["transcript_size_bytes"],
-                mode="unsupported_project",
-                message_len=0,
+                extra={**base_extra, "mode": "unsupported_project", "message_len": 0},
             )
             return None
 
@@ -762,13 +763,7 @@ def get_checkpoint_content(
         if git_files is None:
             logger.warning(
                 "Checkpoint payload fallback to generic message (git unavailable)",
-                agent=agent_name.value,
-                project_path=project_path or "",
-                working_slug=working_slug or "",
-                transcript_present=bool(transcript_path),
-                transcript_path=transcript_meta["transcript_path"],
-                transcript_exists=transcript_meta["transcript_exists"],
-                transcript_size_bytes=transcript_meta["transcript_size_bytes"],
+                extra=base_extra,
             )
             return CHECKPOINT_MESSAGE  # git unavailable — fall back to generic
 
@@ -793,22 +788,18 @@ def get_checkpoint_content(
         if not effective_git_files or _is_docs_only(effective_git_files):
             logger.info(
                 "Checkpoint payload skipped (no turn-local code changes)",
-                agent=agent_name.value,
-                project_path=project_path or "",
-                working_slug=working_slug or "",
-                transcript_present=bool(transcript_path),
-                transcript_path=transcript_meta["transcript_path"],
-                transcript_exists=transcript_meta["transcript_exists"],
-                transcript_size_bytes=transcript_meta["transcript_size_bytes"],
-                timeline_has_data=timeline.has_data,
-                timeline_records=len(timeline.tool_calls),
-                dirty_files=len(git_files),
-                changed_files=len(effective_git_files),
-                categories=result.categories,
-                required_actions=len(result.required_actions),
-                observations=len(result.observations),
-                mode="silent_no_changes",
-                message_len=0,
+                extra={
+                    **base_extra,
+                    "timeline_has_data": timeline.has_data,
+                    "timeline_records": len(timeline.tool_calls),
+                    "dirty_files": len(git_files),
+                    "changed_files": len(effective_git_files),
+                    "categories": result.categories,
+                    "required_actions": len(result.required_actions),
+                    "observations": len(result.observations),
+                    "mode": "silent_no_changes",
+                    "message_len": 0,
+                },
             )
             return None
 
@@ -820,33 +811,31 @@ def get_checkpoint_content(
         )
         logger.info(
             "Checkpoint payload computed",
-            agent=agent_name.value,
-            project_path=project_path or "",
-            working_slug=working_slug or "",
-            transcript_present=bool(transcript_path),
-            transcript_path=transcript_meta["transcript_path"],
-            transcript_exists=transcript_meta["transcript_exists"],
-            transcript_size_bytes=transcript_meta["transcript_size_bytes"],
-            timeline_has_data=timeline.has_data,
-            timeline_records=len(timeline.tool_calls),
-            dirty_files=len(git_files),
-            changed_files=len(effective_git_files),
-            categories=result.categories,
-            required_actions=len(result.required_actions),
-            observations=len(result.observations),
-            mode=mode,
-            message_len=len(message),
+            extra={
+                **base_extra,
+                "timeline_has_data": timeline.has_data,
+                "timeline_records": len(timeline.tool_calls),
+                "dirty_files": len(git_files),
+                "changed_files": len(effective_git_files),
+                "categories": result.categories,
+                "required_actions": len(result.required_actions),
+                "observations": len(result.observations),
+                "mode": mode,
+                "message_len": len(message),
+            },
         )
         return message
 
     except Exception:
         logger.warning(
             "Checkpoint content build failed (fail-open)",
-            agent=agent_name.value,
-            project_path=project_path or "",
-            working_slug=working_slug or "",
-            transcript_present=bool(transcript_path),
-            transcript_path=(transcript_path or ""),
+            extra={
+                "agent": agent_name.value,
+                "project_path": project_path or "",
+                "working_slug": working_slug or "",
+                "transcript_present": bool(transcript_path),
+                "transcript_path": transcript_path or "",
+            },
             exc_info=True,
         )
         return CHECKPOINT_MESSAGE

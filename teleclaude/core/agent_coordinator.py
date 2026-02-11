@@ -339,7 +339,7 @@ class AgentCoordinator:
 
         # For Codex: recover last user input from transcript (no native prompt hook).
         codex_input = await self._extract_user_input_for_codex(session_id, payload)
-        if codex_input:
+        if isinstance(codex_input, tuple) and len(codex_input) == 2:
             input_text, input_timestamp = codex_input
             update_kwargs.update(
                 {
@@ -349,6 +349,11 @@ class AgentCoordinator:
             )
             if input_timestamp:
                 update_kwargs["last_message_sent_at"] = input_timestamp.isoformat()
+        elif codex_input:
+            logger.debug(
+                "Ignoring malformed codex input tuple for session %s",
+                session_id[:8],
+            )
 
         raw_output = await self._extract_agent_output(session_id, payload)
         if raw_output:

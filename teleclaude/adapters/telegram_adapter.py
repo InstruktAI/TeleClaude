@@ -845,7 +845,6 @@ class TelegramAdapter(
         if not message:
             return None  # Can't send feedback without a message
 
-        chat_id = message.chat_id
         thread_id = message.message_thread_id
 
         if not thread_id:
