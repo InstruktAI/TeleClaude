@@ -99,13 +99,11 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
-            patch.object(command_handlers, "get_random_voice", new_callable=AsyncMock, return_value=None),
         ):
             mock_config.computer.name = "TestComputer"
             mock_config.computer.default_working_dir = tmpdir
             mock_db.create_session = mock_initialized_db.create_session
             mock_db.get_session = mock_initialized_db.get_session
-            mock_db.assign_voice = mock_initialized_db.assign_voice
 
             cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", origin=InputOrigin.TELEGRAM.value)
             result = await command_handlers.create_session(cmd, mock_client)
@@ -145,13 +143,11 @@ async def test_handle_create_session_does_not_send_welcome(mock_initialized_db, 
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
-            patch.object(command_handlers, "get_random_voice", new_callable=AsyncMock, return_value=None),
         ):
             mock_config.computer.name = "TestComputer"
             mock_config.computer.default_working_dir = tmpdir
             mock_db.create_session = mock_initialized_db.create_session
             mock_db.get_session = mock_initialized_db.get_session
-            mock_db.assign_voice = mock_initialized_db.assign_voice
 
             cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", origin=InputOrigin.TELEGRAM.value)
             await command_handlers.create_session(cmd, mock_client)
@@ -171,13 +167,11 @@ async def test_create_session_inherits_parent_origin(mock_initialized_db):
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
-            patch.object(command_handlers, "get_random_voice", new_callable=AsyncMock, return_value=None),
         ):
             mock_config.computer.name = "TestComputer"
             mock_config.computer.default_working_dir = tmpdir
             mock_db.create_session = mock_initialized_db.create_session
             mock_db.get_session = mock_initialized_db.get_session
-            mock_db.assign_voice = mock_initialized_db.assign_voice
 
             parent = await mock_initialized_db.create_session(
                 computer_name="TestComputer",
@@ -221,13 +215,11 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
-            patch.object(command_handlers, "get_random_voice", new_callable=AsyncMock, return_value=None),
         ):
             mock_config.computer.name = "TestComputer"
             mock_config.computer.default_working_dir = tmpdir
             mock_db.create_session = mock_initialized_db.create_session
             mock_db.get_session = mock_initialized_db.get_session
-            mock_db.assign_voice = mock_initialized_db.assign_voice
             mock_db.update_session = mock_initialized_db.update_session
 
             cmd = CreateSessionCommand(
@@ -270,7 +262,6 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
         mock_db.create_session = mock_initialized_db.create_session
         mock_db.get_session = mock_initialized_db.get_session
         mock_db.delete_session = mock_initialized_db.delete_session
-        mock_db.assign_voice = mock_initialized_db.assign_voice
 
         cmd = CreateSessionCommand(project_path="/nonexistent", origin=InputOrigin.TELEGRAM.value)
         with pytest.raises(ValueError, match="Working directory does not exist"):

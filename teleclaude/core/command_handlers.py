@@ -40,7 +40,7 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_utils import resolve_working_dir
-from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
+from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import (
     CloseSessionCommand,
@@ -306,11 +306,6 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     # The full formatted title (with agent/computer prefix) is built by UI adapters
     # using build_display_title() when displaying to users
     title = cmd.title or "Untitled"
-
-    # Assign random voice for TTS
-    voice = await get_random_voice()
-    if voice:
-        await db.assign_voice(session_id, voice)
 
     # Prefer parent origin for AI-to-AI sessions
     last_input_origin = origin
