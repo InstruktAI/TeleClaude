@@ -349,11 +349,7 @@ class TmuxPaneManager:
 
     def _build_tmux_attach_command(self, tmux_session_name: str) -> str:
         """Build tmux command with inline appearance tweaks before attach."""
-        return (
-            f'set-option -t {tmux_session_name} status-right "" \\; '
-            f"set-option -t {tmux_session_name} status-right-length 0 \\; "
-            f"attach-session -t {tmux_session_name}"
-        )
+        return f"set-option -t {tmux_session_name} status off \\; attach-session -t {tmux_session_name}"
 
     def show_session(
         self,
@@ -686,11 +682,11 @@ class TmuxPaneManager:
             self._set_pane_background(pane_id, spec.tmux_session_name, spec.active_agent)
 
     def _set_pane_background(self, pane_id: str, tmux_session_name: str, agent: str) -> None:
-        """Set per-pane background color and status bar with agent haze.
+        """Set per-pane colors and keep embedded tmux status bar hidden.
 
         Args:
             pane_id: Tmux pane ID
-            tmux_session_name: Tmux session name (for status bar styling)
+            tmux_session_name: Tmux session name
             agent: Agent name for color calculation
         """
         # Set inactive pane background (10% haze) and foreground (agent normal color)
@@ -722,11 +718,8 @@ class TmuxPaneManager:
                 f"fg=colour{fg_color_code},bg=terminal",
             )
 
-        # Set status bar to use terminal default background (no haze)
-        fg_color = theme.STATUS_FG_COLOR
-        self._run_tmux("set", "-t", tmux_session_name, "status-style", f"fg={fg_color},bg=default")
-        # Make status-left long enough to show full session name
-        self._run_tmux("set", "-t", tmux_session_name, "status-left-length", "50")
+        # Embedded session panes should not render tmux status bars.
+        self._run_tmux("set", "-t", tmux_session_name, "status", "off")
 
         # Override color 236 (message box backgrounds) for specific agents
         if agent == "codex" and theme.get_current_mode():  # dark mode
