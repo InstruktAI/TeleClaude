@@ -30,7 +30,7 @@ type: 'design'
 
 **Inputs:**
 
-- Agent lifecycle events emitted by agent CLIs and mapped by the receiver to internal `event_type` values (`session_start`, `user_prompt_submit`, `after_model`, `agent_output`, `agent_stop`, `notification`, `error`)
+- Agent lifecycle events emitted by agent CLIs and mapped by the receiver to internal `event_type` values (`session_start`, `user_prompt_submit`, `tool_use`, `tool_done`, `agent_stop`, `notification`, `error`)
 - Hook payloads with session metadata and event data
 - Daemon polling loop triggers for batch processing
 - Receiver forwarding is allowlisted: normalized but unhandled events (for example `session_end`) are dropped before outbox insertion.
@@ -128,8 +128,8 @@ sequenceDiagram
 | -------------------- | ----------------------------------------- | ------------------------------------------------------------------------- |
 | `session_start`      | `session_id`, `transcript_path`           | Initialize/anchor headless lifecycle and capture native identity          |
 | `user_prompt_submit` | `session_id`, `prompt`                    | Update last user input for session history                                |
-| `after_model`        | `session_id`, `transcript_path`           | Treated as output-bearing event (currently typed as `AgentOutputPayload`) |
-| `agent_output`       | `session_id`, `transcript_path`           | Process rich incremental output events                                    |
+| `tool_use`           | `session_id`, `transcript_path`           | Treated as output-bearing event (currently typed as `AgentOutputPayload`) |
+| `tool_done`          | `session_id`, `transcript_path`           | Process rich incremental output events                                    |
 | `agent_stop`         | `session_id`, `transcript_path`, `prompt` | Complete turn handling and downstream summary/notification flow           |
 | `notification`       | `session_id`, `message`                   | Relay permission/notification signals                                     |
 | `error`              | `message`, `code`, `details`              | Surface hook receiver/runtime failures                                    |

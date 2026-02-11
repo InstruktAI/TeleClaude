@@ -90,7 +90,7 @@ from typing import Literal
 
 SessionUpdateReason = Literal[
     "user_input",      # User sent input to agent
-    "agent_output",    # Agent produced streaming output
+    "tool_done",       # Agent produced streaming output
     "agent_stopped",   # Agent completed its turn
     "state_change",    # Generic state change (status, title, etc.)
 ]
@@ -140,14 +140,14 @@ async def handle_user_prompt_submit(self, context: AgentEventContext) -> None:
 
 #### 3.2 On agent output
 
-In `handle_agent_output`:
+In `handle_tool_done`:
 
 ```python
-async def handle_agent_output(self, context: AgentEventContext) -> None:
+async def handle_tool_done(self, context: AgentEventContext) -> None:
     # ... existing code ...
 
     # Notify with reason
-    self.cache.notify_session_updated(session_id, reason="agent_output")
+    self.cache.notify_session_updated(session_id, reason="tool_done")
 ```
 
 #### 3.3 On agent stop
@@ -190,7 +190,7 @@ class SessionUpdatedEvent(BaseModel):
     """WebSocket event for session updates."""
     event: Literal["session_updated"] = "session_updated"
     session_id: str
-    reason: Literal["user_input", "agent_output", "agent_stopped", "state_change"] | None = None
+    reason: Literal["user_input", "tool_done", "agent_stopped", "state_change"] | None = None
 ```
 
 ### Phase 5: TUI Reads Reason Directly
@@ -210,7 +210,7 @@ if t is IntentType.SESSION_UPDATED:
         state.sessions.input_highlights.add(session_id)
         state.sessions.output_highlights.discard(session_id)
 
-    elif reason == "agent_output":
+    elif reason == "tool_done":
         # Clear input highlight, set temporary output highlight
         state.sessions.input_highlights.discard(session_id)
         state.sessions.output_highlights.discard(session_id)
@@ -245,7 +245,7 @@ async def _handle_websocket_event(self, event: dict) -> None:
         ))
 
         # Handle 3-second timer for streaming output
-        if reason == "agent_output":
+        if reason == "tool_done":
             self._start_temp_highlight_timer(session_id)
         elif reason == "agent_stopped":
             self._cancel_temp_highlight_timer(session_id)
