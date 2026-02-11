@@ -205,6 +205,9 @@ class TTSManager:
         # First, add the session's assigned voice
         service_chain.append((voice.service_name, voice.voice))
 
+        # Query active voices to filter saturated providers from fallback chain
+        voices_in_use = await db.get_voices_in_use()
+
         # Then add fallback services (different from assigned service)
         priority = self.tts_config.service_priority or [
             "elevenlabs",
@@ -216,12 +219,24 @@ class TTSManager:
             if service_name == voice.service_name:
                 continue  # Skip - already added as primary
             service_cfg = self.tts_config.services.get(service_name)
-            if service_cfg and service_cfg.enabled:
-                fallback_voice: Optional[str] = None
-                if service_cfg.voices:
-                    random_voice = random.choice(service_cfg.voices)
-                    fallback_voice = random_voice.voice_id or random_voice.name
-                service_chain.append((service_name, fallback_voice))
+            if not service_cfg or not service_cfg.enabled:
+                continue
+
+            fallback_voice: Optional[str] = None
+            if service_cfg.voices:
+                available = [v for v in service_cfg.voices if (service_name, v.voice_id or v.name) not in voices_in_use]
+                if not available:
+                    logger.debug("All %s voices in use, skipping fallback service", service_name)
+                    continue
+                random_voice = random.choice(available)
+                fallback_voice = random_voice.voice_id or random_voice.name
+            else:
+                # Services with no voice list use the provider name as voice ID
+                if (service_name, service_name) in voices_in_use:
+                    logger.debug("All %s voices in use, skipping fallback service", service_name)
+                    continue
+
+            service_chain.append((service_name, fallback_voice))
 
         logger.debug(
             f"TTS triggered for {normalized_event_name}: {text_to_speak[:50]}...",

@@ -11,7 +11,7 @@
 
 ### TTS Manager
 
-#### [ ] Update `trigger_event` logic
+#### [x] Update `trigger_event` logic
 
 - **File**: `teleclaude/tts/manager.py`
 - **Function**: `trigger_event`
@@ -26,7 +26,7 @@
 
 ### Command Handlers
 
-#### [ ] Remove eager voice assignment
+#### [x] Remove eager voice assignment
 
 - **File**: `teleclaude/core/command_handlers.py`
 - **Function**: `create_session`
