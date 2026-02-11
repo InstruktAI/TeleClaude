@@ -18,6 +18,7 @@ EventType = Literal[
     "session_closed",
     "session_updated",
     "agent_event",
+    "agent_activity",
     "error",
     "system_command",
 ]
@@ -322,6 +323,7 @@ class TeleClaudeEvents:
     SESSION_CLOSED: Literal["session_closed"] = "session_closed"
     SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB
     AGENT_EVENT: Literal["agent_event"] = "agent_event"  # Agent events (title change, etc.)
+    AGENT_ACTIVITY: Literal["agent_activity"] = "agent_activity"  # Agent activity events (tool_use, tool_done, etc.)
     ERROR: Literal["error"] = "error"
 
 
@@ -447,6 +449,20 @@ class SessionUpdatedContext:
 
 
 @dataclass(frozen=True)
+class AgentActivityEvent:
+    """Agent activity event for real-time UI updates.
+
+    Direct event from coordinator to consumers (TUI/Web) without DB mediation.
+    Carries typed activity events (tool_use, tool_done, agent_stop) with optional metadata.
+    """
+
+    session_id: str
+    event_type: AgentHookEventType
+    tool_name: str | None = None
+    timestamp: str | None = None
+
+
+@dataclass(frozen=True)
 class ErrorEventContext:
     """Context for error events.
 
@@ -470,4 +486,5 @@ EventContext = (
     | AgentEventContext
     | ErrorEventContext
     | SessionUpdatedContext
+    | AgentActivityEvent
 )
