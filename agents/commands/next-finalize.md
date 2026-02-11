@@ -26,17 +26,15 @@ Merge approved work, log delivery, and clean up.
 
 - Merged branch
 - Delivery log entry
-- Cleaned worktree
 - Report format:
 
   ```
   FINALIZE COMPLETE: {slug}
 
-  Branch merged: {branch_name}
-  Delivery logged: YES
-  Cleanup: COMPLETE
-
-  Work item delivered.
+  Merged: yes
+  Delivered log: updated
+  Roadmap: updated
+  Cleanup: orchestrator-owned (worktree, branch, todo folder)
   ```
 
 ## Steps
@@ -44,4 +42,4 @@ Merge approved work, log delivery, and clean up.
 - Verify review is APPROVED.
 - Merge the worktree branch to main.
 - Log delivery.
-- Clean up.
+- Do NOT delete the worktree, branch, or todo folder — the orchestrator owns cleanup.

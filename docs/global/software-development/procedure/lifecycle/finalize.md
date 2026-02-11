@@ -56,13 +56,10 @@ Merge approved work to main, log delivery, and clean up.
    ```
 
 9. Remove the item for `{slug}` from `todos/roadmap.md`.
-10. Delete `todos/{slug}/` after logging delivery and updating the roadmap.
-11. Remove the worktree for `{slug}` if it exists.
-12. Delete the feature branch:
 
-    ```bash
-    git branch -d {slug}
-    ```
+**STOP HERE.** Do not delete `todos/{slug}/`, the worktree, or the feature branch.
+The orchestrator owns cleanup after `end_session` — the worker cannot safely delete
+its own working directory.
 
 ## Report format
 
@@ -72,15 +69,13 @@ FINALIZE COMPLETE: {slug}
 Merged: yes
 Delivered log: updated
 Roadmap: updated
-Worktree: removed
-Branch: deleted
+Cleanup: orchestrator-owned (worktree, branch, todo folder)
 ```
 
 ## Outputs
 
 - Merged changes on `main`.
 - Updated `todos/delivered.md` and `todos/roadmap.md`.
-- Removed `todos/{slug}/`, worktree, and feature branch.
 
 ## Recovery
 

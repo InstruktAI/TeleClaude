@@ -10,6 +10,7 @@ Detects macOS dark/light mode via system settings.
 
 import curses
 import os
+import re
 import subprocess
 from typing import Optional
 
@@ -335,6 +336,11 @@ _HAZE_PERCENTAGE = 0.06
 _ACTIVE_HAZE_PERCENTAGE = 0.02
 # Status bar background: 5% agent color, 95% base color (subtle)
 _STATUS_HAZE_PERCENTAGE = 0.05
+# TUI pane inactive haze: subtle neutral dim/bright shift from terminal background.
+_TUI_INACTIVE_HAZE_PERCENTAGE = 0.06
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+_terminal_bg_cache: str | None = None
 
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
@@ -352,6 +358,31 @@ def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
         int(hex_color[2:4], 16),
         int(hex_color[4:6], 16),
     )
+
+
+def _is_hex_color(value: str) -> bool:
+    """Return True when value is a #RRGGBB literal."""
+    return bool(_HEX_COLOR_RE.match(value or ""))
+
+
+def _read_terminal_bg_from_appearance() -> str | None:
+    """Best-effort terminal background probe via appearance helper."""
+    appearance_bin = os.path.expanduser("~/.local/bin/appearance")
+    if not os.path.exists(appearance_bin):
+        return None
+    try:
+        result = subprocess.run(
+            [appearance_bin, "get-terminal-bg"],
+            capture_output=True,
+            text=True,
+            timeout=1,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    value = (result.stdout or "").strip()
+    return value if _is_hex_color(value) else None
 
 
 def _rgb_to_hex(r: int, g: int, b: int) -> str:
@@ -405,10 +436,9 @@ def get_agent_pane_background(agent: str) -> str:
     """
     if _is_dark_mode:
         agent_colors = _AGENT_HEX_COLORS_DARK
-        base_bg = _BASE_INACTIVE_BG_DARK
     else:
         agent_colors = _AGENT_HEX_COLORS_LIGHT
-        base_bg = _BASE_INACTIVE_BG_LIGHT
+    base_bg = get_terminal_background()
 
     agent_color = agent_colors.get(agent)
     if not agent_color:
@@ -432,10 +462,9 @@ def get_agent_active_pane_background(agent: str) -> str:
     """
     if _is_dark_mode:
         agent_colors = _AGENT_HEX_COLORS_DARK
-        base_bg = _BASE_INACTIVE_BG_DARK
     else:
         agent_colors = _AGENT_HEX_COLORS_LIGHT
-        base_bg = _BASE_INACTIVE_BG_LIGHT
+    base_bg = get_terminal_background()
 
     agent_color = agent_colors.get(agent)
     if not agent_color:
@@ -459,10 +488,9 @@ def get_agent_status_background(agent: str) -> str:
     """
     if _is_dark_mode:
         agent_colors = _AGENT_HEX_COLORS_DARK
-        base_bg = _BASE_INACTIVE_BG_DARK
     else:
         agent_colors = _AGENT_HEX_COLORS_LIGHT
-        base_bg = _BASE_INACTIVE_BG_LIGHT
+    base_bg = get_terminal_background()
 
     agent_color = agent_colors.get(agent)
     if not agent_color:
@@ -494,9 +522,33 @@ def get_terminal_background() -> str:
     Returns:
         Hex color string for terminal background
     """
+    global _terminal_bg_cache  # noqa: PLW0603
+
+    if _terminal_bg_cache:
+        return _terminal_bg_cache
+
+    env_bg = (os.environ.get("TERMINAL_BG") or "").strip()
+    if _is_hex_color(env_bg):
+        _terminal_bg_cache = env_bg
+        return env_bg
+
+    detected_bg = _read_terminal_bg_from_appearance()
+    if detected_bg:
+        _terminal_bg_cache = detected_bg
+        return detected_bg
+
     if _is_dark_mode:
-        return "#000000"  # Pure black for dark mode
-    return "#ffffff"  # Pure white for light mode
+        _terminal_bg_cache = "#000000"  # Pure black fallback for dark mode
+        return _terminal_bg_cache
+    _terminal_bg_cache = "#ffffff"  # Pure white fallback for light mode
+    return _terminal_bg_cache
+
+
+def get_tui_inactive_background() -> str:
+    """Get subtle inactive haze for the TUI pane from terminal background."""
+    base_bg = get_terminal_background()
+    blend_target = "#ffffff" if _is_dark_mode else "#000000"
+    return blend_colors(base_bg, blend_target, _TUI_INACTIVE_HAZE_PERCENTAGE)
 
 
 def get_agent_muted_color(agent: str) -> int:

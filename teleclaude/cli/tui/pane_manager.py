@@ -207,6 +207,7 @@ class TmuxPaneManager:
             self._sync_sticky_mappings()
             if not active_spec:
                 self._clear_active_state_if_sticky()
+            self._set_tui_pane_background()
             return
 
         self._render_layout()
@@ -668,6 +669,7 @@ class TmuxPaneManager:
                 self.state.parent_spec_id = self._active_spec.session_id
 
         self._layout_signature = self._compute_layout_signature()
+        self._set_tui_pane_background()
 
     def _track_session_pane(self, spec: SessionPaneSpec, pane_id: str) -> None:
         """Track pane ids for lookup and cleanup."""
@@ -726,6 +728,16 @@ class TmuxPaneManager:
             # Use color 237 (slightly lighter gray) for Codex message boxes
             self._run_tmux("set", "-p", "-t", pane_id, "pane-colours[236]", "#3a3a3a")
 
+    def _set_tui_pane_background(self) -> None:
+        """Apply subtle inactive haze styling to the TUI pane only."""
+        if not self._tui_pane_id or not self._get_pane_exists(self._tui_pane_id):
+            return
+
+        inactive_bg = theme.get_tui_inactive_background()
+        terminal_bg = theme.get_terminal_background()
+        self._run_tmux("set", "-p", "-t", self._tui_pane_id, "window-style", f"fg=default,bg={inactive_bg}")
+        self._run_tmux("set", "-p", "-t", self._tui_pane_id, "window-active-style", f"fg=default,bg={terminal_bg}")
+
     def reapply_agent_colors(self) -> None:
         """Re-apply agent-colored backgrounds and status bars to all session panes.
 
@@ -734,6 +746,8 @@ class TmuxPaneManager:
         """
         if not self._in_tmux:
             return
+
+        self._set_tui_pane_background()
 
         # Re-apply colors to sticky session panes
         for spec in self._sticky_specs:

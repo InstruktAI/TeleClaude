@@ -157,6 +157,11 @@ POST_COMPLETION: dict[str, str] = {
 1. Verify merge succeeded and delivery log updated
 2. If success:
    - teleclaude__end_session(computer="local", session_id="<session_id>")
+   - CLEANUP (orchestrator-owned, run from main repo):
+     a. git worktree remove trees/{args} --force  (if worktree exists)
+     b. git branch -d {args}  (if branch exists)
+     c. rm -rf todos/{args}
+     d. git add -A && git commit -m "chore: remove {args} worktree, branch, and todo folder"
    - Call {next_call}
 3. If failed:
    - Keep session alive and help resolve""",
