@@ -147,10 +147,17 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
     FileCategory(
         name="daemon code",
         include_patterns=["teleclaude/**/*.py"],
-        exclude_patterns=["teleclaude/hooks/**", "teleclaude/cli/tui/**"],
+        exclude_patterns=["teleclaude/hooks/**", "teleclaude/cli/tui/**", "teleclaude/utils/**"],
         instruction="Run `make restart` then `make status`",
         evidence_substrings=["make restart"],
         precedence=30,
+    ),
+    FileCategory(
+        name="shared utilities",
+        include_patterns=["teleclaude/utils/**"],
+        instruction="",  # Used by both daemon and hooks; agent decides if restart is needed
+        evidence_substrings=[],
+        precedence=35,
     ),
     FileCategory(
         name="config",
