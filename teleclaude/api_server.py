@@ -1256,11 +1256,27 @@ class APIServer:
             async def _send_with_timeout(client: WebSocket = ws) -> None:
                 try:
                     await asyncio.wait_for(client.send_json(payload), timeout=2.0)
-                except (TimeoutError, Exception) as exc:
-                    logger.warning("WebSocket send failed, removing client: %s", exc)
+                except TimeoutError:
+                    logger.warning("WebSocket send timeout, removing client")
                     self._ws_clients.discard(client)
                     self._client_subscriptions.pop(client, None)
                     await self._close_ws(client)
+                except (OSError, ConnectionError) as exc:
+                    logger.info("WebSocket connection lost: %s", exc)
+                    self._ws_clients.discard(client)
+                    self._client_subscriptions.pop(client, None)
+                    await self._close_ws(client)
+                except Exception as exc:
+                    # UNEXPECTED - likely a bug in payload construction or serialization
+                    logger.error(
+                        "Unexpected error sending WebSocket event '%s': %s",
+                        event,
+                        exc,
+                        exc_info=True,
+                        extra={"event_type": event, "payload_keys": list(payload.keys())},
+                    )
+                    # Re-raise to make bugs visible in tests/monitoring
+                    raise
 
             if self.task_registry:
                 self.task_registry.spawn(_send_with_timeout(), name=f"ws-broadcast-{event}")
