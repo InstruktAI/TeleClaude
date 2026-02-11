@@ -22,4 +22,22 @@
   - unknown nested `tts` key + valid `enabled`
   - unknown-only payload
 
+## Fixes Applied
+
+- Issue: Unknown settings keys were silently accepted when mixed with valid `tts.enabled` fields.
+  - Fix: `PATCH /settings` now parses request payloads through `RuntimeSettings.parse_patch(...)` before mutation; unknown top-level/nested keys now fail fast with `400`, and `tts.enabled` must be a boolean.
+  - Commit: `c35a8fc9`
+
+- Issue: Tests missed contract-breaking scenarios where unknown keys were combined with valid keys.
+  - Fix: Added API regression tests covering unknown top-level + valid `tts.enabled`, unknown nested `tts` key + valid `enabled`, and explicit assertion that invalid payloads never reach runtime mutation.
+  - Commit: `b77cfe97`
+
+- Issue: Implementation plan had unchecked validation tasks.
+  - Fix: Updated validation checklist entries to reflect completed automated verification for persistence path and API contract behavior.
+  - Commit: `a57b876a`
+
+- Issue: Build gate showed unchecked working tree status.
+  - Fix: Updated quality checklist to mark working-tree gate status for the current todo scope with explicit note about unrelated local todo artifacts.
+  - Commit: `7e62d439`
+
 Verdict: REQUEST CHANGES
