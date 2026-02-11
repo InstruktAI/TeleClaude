@@ -87,6 +87,12 @@ def test_parse_patch_unknown_tts_key() -> None:
         RuntimeSettings.parse_patch({"tts": {"enabled": True, "voice": "nova"}})
 
 
+def test_parse_patch_rejects_non_boolean_enabled() -> None:
+    """parse_patch() enforces boolean type for tts.enabled."""
+    with pytest.raises(ValueError, match="tts.enabled must be a boolean"):
+        RuntimeSettings.parse_patch({"tts": {"enabled": "false"}})
+
+
 @pytest.mark.asyncio
 async def test_flush_writes_yaml(settings: RuntimeSettings, config_yml: Path) -> None:
     """_flush_to_disk round-trips the config preserving structure."""
@@ -153,9 +159,25 @@ def test_patch_settings_success(settings_client: TestClient, mock_runtime_settin
 
 
 def test_patch_settings_invalid_key(settings_client: TestClient, mock_runtime_settings: MagicMock) -> None:
-    mock_runtime_settings.patch.side_effect = ValueError("Immutable or unknown keys: ['foo']")
     resp = settings_client.patch("/settings", json={"foo": "bar"})
     assert resp.status_code == 400
+    mock_runtime_settings.patch.assert_not_called()
+
+
+def test_patch_settings_invalid_key_with_valid_tts(
+    settings_client: TestClient, mock_runtime_settings: MagicMock
+) -> None:
+    """PATCH /settings rejects unknown top-level keys even when tts.enabled is present."""
+    resp = settings_client.patch("/settings", json={"foo": "bar", "tts": {"enabled": False}})
+    assert resp.status_code == 400
+    mock_runtime_settings.patch.assert_not_called()
+
+
+def test_patch_settings_invalid_nested_tts_key(settings_client: TestClient, mock_runtime_settings: MagicMock) -> None:
+    """PATCH /settings rejects unknown nested keys inside tts."""
+    resp = settings_client.patch("/settings", json={"tts": {"enabled": False, "voice": "nova"}})
+    assert resp.status_code == 400
+    mock_runtime_settings.patch.assert_not_called()
 
 
 def test_get_settings_no_runtime_settings() -> None:
