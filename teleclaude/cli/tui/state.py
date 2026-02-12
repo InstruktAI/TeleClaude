@@ -132,6 +132,7 @@ class IntentPayload(TypedDict, total=False):
     offset: int
     method: str
     source: str
+    active_agent: str | None
     pane_id: str
     doc_id: str
     command: str
@@ -149,6 +150,11 @@ def _sticky_count(state: TuiState) -> int:
     return len(state.sessions.sticky_sessions) + len(state.preparation.sticky_previews)
 
 
+def _preserve_output_highlight_on_select(active_agent: str | None) -> bool:
+    """Keep output highlight on selection-driven view actions for Codex only."""
+    return (active_agent or "").strip().lower() == "codex"
+
+
 def reduce_state(state: TuiState, intent: Intent) -> None:
     """Apply intent to state (pure state mutation only)."""
     t = intent.type
@@ -156,13 +162,15 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
 
     if t is IntentType.SET_PREVIEW:
         session_id = p.get("session_id")
+        active_agent = p.get("active_agent")
         if session_id:
             if _sticky_count(state) >= MAX_STICKY_PANES:
                 return
             state.sessions.preview = PreviewState(session_id=session_id)
             state.preparation.preview = None
-            # User viewed session: clear output highlight
-            state.sessions.output_highlights.discard(session_id)
+            if not _preserve_output_highlight_on_select(active_agent):
+                # Non-Codex behavior: viewing session clears output highlight.
+                state.sessions.output_highlights.discard(session_id)
         return
 
     if t is IntentType.CLEAR_PREVIEW:
@@ -171,6 +179,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
 
     if t is IntentType.TOGGLE_STICKY:
         session_id = p.get("session_id")
+        active_agent = p.get("active_agent")
         if not session_id:
             return
         existing_idx = None
@@ -186,8 +195,9 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.sticky_sessions.append(StickySessionInfo(session_id))
             if state.sessions.preview and state.sessions.preview.session_id == session_id:
                 state.sessions.preview = None
-            # User viewed session: clear output highlight
-            state.sessions.output_highlights.discard(session_id)
+            if not _preserve_output_highlight_on_select(active_agent):
+                # Non-Codex behavior: viewing session clears output highlight.
+                state.sessions.output_highlights.discard(session_id)
         return
 
     if t is IntentType.SET_PREP_PREVIEW:
@@ -272,6 +282,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         idx = p.get("index")
         session_id = p.get("session_id")
         source = p.get("source")
+        active_agent = p.get("active_agent")
         if view == "sessions" and isinstance(idx, int):
             prev_session_id = state.sessions.selected_session_id
             state.sessions.selected_index = idx
@@ -280,9 +291,12 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
                 state.sessions.last_selection_session_id = session_id
                 if source in ("user", "pane", "system"):
                     state.sessions.last_selection_source = source
-                # User actively switched to a DIFFERENT session: clear output highlight
-                # Skip if no previous selection (startup) or if same session (no real change)
-                if source in ("user", "pane") and prev_session_id and session_id != prev_session_id:
+                if (
+                    source in ("user", "pane")
+                    and prev_session_id
+                    and session_id != prev_session_id
+                    and not _preserve_output_highlight_on_select(active_agent)
+                ):
                     if session_id in state.sessions.output_highlights:
                         logger.debug(
                             "SET_SELECTION clearing output_highlight for %s (source=%s, prev=%s)",

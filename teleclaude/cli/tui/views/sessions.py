@@ -418,7 +418,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 self.controller.dispatch(
                     Intent(
                         IntentType.SET_SELECTION,
-                        {"view": "sessions", "index": idx, "session_id": session_id, "source": source or "system"},
+                        {
+                            "view": "sessions",
+                            "index": idx,
+                            "session_id": session_id,
+                            "source": source or "system",
+                            "active_agent": item.data.session.active_agent,
+                        },
                     )
                 )
                 if activate:
@@ -974,7 +980,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 )
         return None
 
-    def _toggle_sticky(self, session_id: str, *, clear_preview: bool = False) -> None:
+    def _toggle_sticky(self, session_id: str, *, active_agent: str | None = None, clear_preview: bool = False) -> None:
         """Toggle sticky state for a session (max 5 sessions).
 
         Args:
@@ -999,7 +1005,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if clear_preview and self._preview:
             self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
         self.controller.dispatch(
-            Intent(IntentType.TOGGLE_STICKY, {"session_id": session_id}),
+            Intent(IntentType.TOGGLE_STICKY, {"session_id": session_id, "active_agent": active_agent}),
             defer_layout=True,
         )
         logger.info("Toggled sticky: %s (total=%d)", session_id[:8], len(self.sticky_sessions))
@@ -1045,7 +1051,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if clear_preview and self._preview:
             self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
         self.controller.dispatch(
-            Intent(IntentType.SET_PREVIEW, {"session_id": session_id}),
+            Intent(
+                IntentType.SET_PREVIEW,
+                {"session_id": session_id, "active_agent": session.active_agent},
+            ),
             defer_layout=True,
         )
         logger.debug(
@@ -1265,7 +1274,15 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
             for sticky in sticky_project_sessions:
                 self.controller.dispatch(
-                    Intent(IntentType.TOGGLE_STICKY, {"session_id": sticky.session_id}),
+                    Intent(
+                        IntentType.TOGGLE_STICKY,
+                        {
+                            "session_id": sticky.session_id,
+                            "active_agent": session_by_id[sticky.session_id].active_agent
+                            if sticky.session_id in session_by_id
+                            else None,
+                        },
+                    ),
                     defer_layout=True,
                 )
             logger.info("_open_project_sessions: closed %d sticky sessions for project", len(sticky_project_sessions))
@@ -1293,7 +1310,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if session.session_id in current_sticky_ids:
                 continue
             self.controller.dispatch(
-                Intent(IntentType.TOGGLE_STICKY, {"session_id": session.session_id}),
+                Intent(
+                    IntentType.TOGGLE_STICKY,
+                    {"session_id": session.session_id, "active_agent": session.active_agent},
+                ),
                 defer_layout=True,
             )
 
@@ -1402,7 +1422,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Handle double-click on session nodes
         if is_double_click and is_session_node(item):
             session_id = item.data.session.session_id
-            self._toggle_sticky(session_id, clear_preview=True)
+            self._toggle_sticky(session_id, active_agent=item.data.session.active_agent, clear_preview=True)
             logger.debug("Double-click: toggled sticky for %s", session_id[:8])
 
             logger.trace(
