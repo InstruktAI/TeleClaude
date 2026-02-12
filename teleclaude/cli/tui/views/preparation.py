@@ -37,7 +37,6 @@ from teleclaude.cli.tui.types import (
     FocusLevelType,
     NodeType,
     NotificationLevel,
-    TodoFileFlag,
     TodoStatus,
 )
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
@@ -145,7 +144,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
 
     Shows tree structure: Computer -> Project -> Todos -> Files
     Computers and projects are always expanded.
-    Todos can be expanded to show file children (requirements.md, implementation-plan.md).
+    Todos can be expanded to show file children discovered from the todo folder.
     Files can be selected for view/edit actions.
     """
 
@@ -154,12 +153,6 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         TodoStatus.READY: "[.]",
         TodoStatus.IN_PROGRESS: "[>]",
     }
-
-    # Known files in todo folders
-    TODO_FILES = [
-        ("requirements.md", "Requirements", TodoFileFlag.HAS_REQUIREMENTS),
-        ("implementation-plan.md", "Implementation Plan", TodoFileFlag.HAS_IMPL_PLAN),
-    ]
 
     def __init__(
         self,
@@ -286,6 +279,10 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                     has_impl_plan=todo.has_impl_plan,
                     build_status=todo.build_status,
                     review_status=todo.review_status,
+                    dor_status=todo.dor_status,
+                    deferrals_status=todo.deferrals_status,
+                    findings_count=todo.findings_count,
+                    files=todo.files,
                 )
                 for todo in project.todos
             ]
@@ -471,19 +468,22 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             List of file nodes
         """
         file_nodes: list[PrepTreeNode] = []
-        for idx, (filename, display_name, has_flag) in enumerate(self.TODO_FILES, start=1):
-            todo_info = todo_node.data
-            exists = (
-                todo_info.todo.has_requirements
-                if has_flag is TodoFileFlag.HAS_REQUIREMENTS
-                else todo_info.todo.has_impl_plan
-            )
+        todo_info = todo_node.data
+        filenames = list(todo_info.todo.files)
+        # Backward compatibility while cache refresh catches up.
+        if not filenames:
+            if todo_info.todo.has_requirements:
+                filenames.append("requirements.md")
+            if todo_info.todo.has_impl_plan:
+                filenames.append("implementation-plan.md")
+
+        for idx, filename in enumerate(filenames, start=1):
             file_node = PrepFileNode(
                 type=NodeType.FILE,
                 data=PrepFileDisplayInfo(
                     filename=filename,
-                    display_name=display_name,
-                    exists=exists,
+                    display_name=filename,
+                    exists=True,
                     index=idx,
                     slug=todo_info.todo.slug,
                     project_path=todo_info.project_path,
@@ -1077,7 +1077,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             width: Screen width
 
         Returns:
-            List of formatted lines (1 or 2 depending on state.json)
+            List of formatted lines
         """
         indent = "  " * item.depth
         slug = item.data.todo.slug
@@ -1094,19 +1094,9 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             marker = self.STATUS_MARKERS.get(status_enum, "[ ]")
         status_label = status_enum.value if status_enum is not None else self._format_enum_value(item.data.todo.status)
 
-        line = f"{indent}{marker} {indicator} {slug}  [{status_label}]"
-        lines = [line[:width]]
-
-        # Second line: build/review status (if available)
-        build_status = item.data.todo.build_status
-        review_status = item.data.todo.review_status
-        if build_status or review_status:
-            build_str = self._format_enum_value(build_status) if build_status else "-"
-            review_str = self._format_enum_value(review_status) if review_status else "-"
-            state_line = f"{indent}      Build: {build_str}  Review: {review_str}"
-            lines.append(state_line[:width])
-
-        return lines
+        status_block = self._build_status_block(item.data.todo, status_label)
+        line = f"{indent}{marker} {indicator} {slug}  [{status_block}]"
+        return [line[:width]]
 
     def _format_file(self, item: PrepFileNode, width: int, index: int) -> list[str]:
         """Format a file item.
@@ -1123,6 +1113,46 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         display_name = item.data.display_name
         line = f"{indent}{index}. {display_name}"
         return [line[:width]]
+
+    def _build_status_block(self, todo: TodoItem, roadmap_status: str) -> str:
+        """Build compact status tags for todo rows."""
+        # TODO: Render status tags in fixed columns/right-aligned grid for improved scanability.
+        build_value = self._format_enum_value(todo.build_status) if todo.build_status else "-"
+        review_value = self._format_enum_value(todo.review_status) if todo.review_status else "-"
+        dor_value = self._format_enum_value(todo.dor_status) if todo.dor_status else "-"
+        def_value = self._format_enum_value(todo.deferrals_status) if todo.deferrals_status else "-"
+        findings = str(todo.findings_count) if todo.findings_count >= 0 else "-"
+        return f"{roadmap_status} b:{build_value} r:{review_value} dor:{dor_value} def:{def_value} f:{findings}"
+
+    def _status_parts(self, todo: TodoItem, roadmap_status: str) -> list[tuple[str, bool]]:
+        """Return status block parts with value-only bolding (no placeholder bold)."""
+        build_value = self._format_enum_value(todo.build_status) if todo.build_status else "-"
+        review_value = self._format_enum_value(todo.review_status) if todo.review_status else "-"
+        dor_value = self._format_enum_value(todo.dor_status) if todo.dor_status else "-"
+        def_value = self._format_enum_value(todo.deferrals_status) if todo.deferrals_status else "-"
+        findings = str(todo.findings_count) if todo.findings_count >= 0 else "-"
+
+        def _value_part(value: str) -> tuple[str, bool]:
+            return (value, value != "-")
+
+        return [
+            (roadmap_status, True),
+            (" ", False),
+            ("b:", False),
+            _value_part(build_value),
+            (" ", False),
+            ("r:", False),
+            _value_part(review_value),
+            (" ", False),
+            ("dor:", False),
+            _value_part(dor_value),
+            (" ", False),
+            ("def:", False),
+            _value_part(def_value),
+            (" ", False),
+            ("f:", False),
+            _value_part(findings),
+        ]
 
     def render(self, stdscr: CursesWindow, start_row: int, height: int, width: int) -> None:
         """Render view content with scrolling support.
@@ -1235,7 +1265,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             selected: Whether selected
 
         Returns:
-            Number of lines used (1 or 2 depending on state.json existence)
+            Number of lines used
         """
         indent = "  " * item.depth
         attr = curses.A_REVERSE if selected else 0
@@ -1253,24 +1283,26 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             marker = self.STATUS_MARKERS.get(status_enum, "[ ]")
         status_label = status_enum.value if status_enum is not None else self._format_enum_value(item.data.todo.status)
 
-        line = f"{indent}{marker} {indicator} {slug}  [{status_label}]"
+        status_parts = self._status_parts(item.data.todo, status_label)
+        prefix = f"{indent}{marker} {indicator} {slug}  ["
+        suffix = "]"
+        col = 0
         try:
-            stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
+            stdscr.addstr(row, col, prefix[:width], attr)  # type: ignore[attr-defined]
+            col += len(prefix)
+            remaining = max(0, width - col - len(suffix))
+            for part, is_bold in status_parts:
+                if remaining <= 0:
+                    break
+                chunk = part[:remaining]
+                part_attr = attr | (curses.A_BOLD if is_bold else 0)
+                stdscr.addstr(row, col, chunk, part_attr)  # type: ignore[attr-defined]
+                col += len(chunk)
+                remaining -= len(chunk)
+            if col < width:
+                stdscr.addstr(row, col, suffix[: max(0, width - col)], attr)  # type: ignore[attr-defined]
         except curses.error:
             pass
-
-        # Second line: build/review status (if available)
-        build_status = item.data.todo.build_status
-        review_status = item.data.todo.review_status
-        if build_status or review_status:
-            build_str = self._format_enum_value(build_status) if build_status else "-"
-            review_str = self._format_enum_value(review_status) if review_status else "-"
-            state_line = f"{indent}      Build: {build_str}  Review: {review_str}"
-            try:
-                stdscr.addstr(row + 1, 0, state_line[:width], curses.A_DIM)  # type: ignore[attr-defined]
-            except curses.error:
-                pass
-            return 2
 
         return 1
 
@@ -1299,7 +1331,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         indent = "  " * item.depth
         display_name = item.data.display_name
         exists = item.data.exists
-        filepath = os.path.join(item.data.project_path, item.data.slug, item.data.filename)
+        filepath = os.path.join(item.data.project_path, "todos", item.data.slug, item.data.filename)
 
         # Dimmed if file doesn't exist, normal otherwise
         if selected:

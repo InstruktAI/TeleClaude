@@ -23,6 +23,8 @@ class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
     auto_command: str | None = None
     native_session_id: str | None = None
     subdir: str | None = None
+    human_email: str | None = None
+    human_role: Literal["admin", "member", "contributor", "newcomer"] | None = None
 
 
 class CreateSessionResponseDTO(BaseModel):  # type: ignore[explicit-any]
@@ -169,6 +171,10 @@ class TodoDTO(BaseModel):  # type: ignore[explicit-any]
     has_impl_plan: bool
     build_status: str | None = None
     review_status: str | None = None
+    dor_status: str | None = None
+    deferrals_status: str | None = None
+    findings_count: int = 0
+    files: list[str] = Field(default_factory=list)
 
 
 class ProjectWithTodosDTO(ProjectDTO):  # type: ignore[explicit-any]
