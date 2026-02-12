@@ -341,9 +341,8 @@ _HAZE_PERCENTAGE = 0.06
 _ACTIVE_HAZE_PERCENTAGE = 0.02
 # Status bar background: 5% agent color, 95% base color (subtle)
 _STATUS_HAZE_PERCENTAGE = 0.05
-# TUI pane inactive haze: make dark mode more visible while keeping light mode subtle.
-_TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT = 0.08
-_TUI_INACTIVE_HAZE_PERCENTAGE_DARK = 0.14
+# TUI pane inactive haze: keep exact legacy percentage.
+_TUI_INACTIVE_HAZE_PERCENTAGE = _HAZE_PERCENTAGE
 # Terminal background hint weight: keep TUI palette stable while honoring terminal tone.
 _TERMINAL_HINT_WEIGHT = 0.35
 # Guardrails to reject hints that conflict with the current mode.
@@ -574,8 +573,7 @@ def get_tui_inactive_background() -> str:
     """Get subtle inactive haze for the TUI pane from terminal background."""
     base_bg = get_terminal_background()
     blend_target = "#ffffff" if _is_dark_mode else "#000000"
-    haze = _TUI_INACTIVE_HAZE_PERCENTAGE_DARK if _is_dark_mode else _TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT
-    return blend_colors(base_bg, blend_target, haze)
+    return blend_colors(base_bg, blend_target, _TUI_INACTIVE_HAZE_PERCENTAGE)
 
 
 def get_agent_muted_color(agent: str) -> int:
