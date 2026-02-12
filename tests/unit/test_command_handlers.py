@@ -492,6 +492,7 @@ async def test_handle_get_session_data_codex_pending_when_no_transcript():
     mock_session.native_log_file = None
     mock_session.native_session_id = None
     mock_session.active_agent = "codex"
+    mock_session.tmux_session_name = None
 
     cmd = GetSessionDataCommand(session_id="codex-session-1")
 
@@ -518,6 +519,7 @@ async def test_handle_get_session_data_codex_pending_when_transcript_path_missin
     mock_session.native_log_file = str(tmp_path / "missing-transcript.jsonl")
     mock_session.native_session_id = "019c-test"
     mock_session.active_agent = "codex"
+    mock_session.tmux_session_name = None
 
     cmd = GetSessionDataCommand(session_id="codex-session-2")
 
@@ -547,6 +549,7 @@ async def test_handle_get_session_data_pending_for_pre_stop_non_codex_session():
     mock_session.lifecycle_status = "active"
     mock_session.closed_at = None
     mock_session.last_feedback_received_at = None
+    mock_session.tmux_session_name = None
 
     cmd = GetSessionDataCommand(session_id="claude-session-1")
 
@@ -603,6 +606,7 @@ async def test_handle_get_session_data_codex_pending_is_case_insensitive():
     mock_session.lifecycle_status = "active"
     mock_session.closed_at = None
     mock_session.last_feedback_received_at = None
+    mock_session.tmux_session_name = None
 
     cmd = GetSessionDataCommand(session_id="codex-session-3")
 
@@ -618,6 +622,69 @@ async def test_handle_get_session_data_codex_pending_is_case_insensitive():
     assert result["status"] == "success"
     assert "not available yet" in result["messages"].lower()
     assert result["transcript"] is None
+
+
+@pytest.mark.asyncio
+async def test_handle_get_session_data_codex_falls_back_to_tmux_when_no_transcript():
+    """Codex sessions should return tmux pane tail when no transcript path is available."""
+    mock_session = MagicMock()
+    mock_session.session_id = "codex-session-tmux-1"
+    mock_session.title = "Codex Session"
+    mock_session.project_path = "/home/user"
+    mock_session.subdir = None
+    mock_session.created_at = datetime.now()
+    mock_session.last_activity = datetime.now()
+    mock_session.native_log_file = None
+    mock_session.native_session_id = None
+    mock_session.active_agent = "codex"
+    mock_session.tmux_session_name = "tc_codex_1"
+
+    cmd = GetSessionDataCommand(session_id="codex-session-tmux-1", tail_chars=6)
+
+    with (
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers.tmux_bridge, "capture_pane", new=AsyncMock(return_value="abcdef123456")),
+    ):
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        result = await command_handlers.get_session_data(cmd)
+
+    assert result["status"] == "success"
+    assert result["messages"] == "123456"
+    assert result.get("transcript") is None
+
+
+@pytest.mark.asyncio
+async def test_handle_get_session_data_non_codex_falls_back_to_tmux_before_pending():
+    """Pre-stop non-codex sessions should prefer tmux output over pending transcript notice."""
+    mock_session = MagicMock()
+    mock_session.session_id = "claude-session-tmux-1"
+    mock_session.title = "Claude Session"
+    mock_session.project_path = "/home/user"
+    mock_session.subdir = None
+    mock_session.created_at = datetime.now()
+    mock_session.last_activity = datetime.now()
+    mock_session.native_log_file = None
+    mock_session.native_session_id = None
+    mock_session.active_agent = "claude"
+    mock_session.lifecycle_status = "active"
+    mock_session.closed_at = None
+    mock_session.last_feedback_received_at = None
+    mock_session.tmux_session_name = "tc_claude_1"
+
+    cmd = GetSessionDataCommand(session_id="claude-session-tmux-1")
+
+    with (
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers.tmux_bridge, "capture_pane", new=AsyncMock(return_value="live output")),
+    ):
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        result = await command_handlers.get_session_data(cmd)
+
+    assert result["status"] == "success"
+    assert result["messages"] == "live output"
+    assert "not available yet" not in result["messages"].lower()
 
 
 @pytest.mark.asyncio

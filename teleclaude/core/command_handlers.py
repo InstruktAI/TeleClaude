@@ -587,6 +587,41 @@ async def get_session_data(
             "transcript": None,
         }
 
+    async def _tmux_fallback_payload(reason: str) -> SessionDataPayload | None:
+        tmux_session_name = getattr(session, "tmux_session_name", None)
+        if not isinstance(tmux_session_name, str) or not tmux_session_name.strip():
+            return None
+
+        try:
+            pane_output = await tmux_bridge.capture_pane(tmux_session_name)
+        except Exception as exc:
+            logger.warning(
+                "Tmux fallback capture failed for session %s (%s): %s",
+                session_id[:8],
+                reason,
+                exc,
+            )
+            return None
+
+        if not pane_output:
+            return None
+
+        tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
+        logger.debug(
+            "Returning tmux fallback output for session %s (%s)",
+            session_id[:8],
+            reason,
+        )
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "project_path": session.project_path,
+            "subdir": session.subdir,
+            "messages": pane_output[-tail:],
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+            "last_activity": (session.last_activity.isoformat() if session.last_activity else None),
+        }
+
     raw_agent_name = session.active_agent or ""
     normalized_agent_name = raw_agent_name.strip().lower()
     lifecycle_status = session.lifecycle_status or ""
@@ -619,28 +654,21 @@ async def get_session_data(
             await db.update_session(session_id, native_log_file=discovered_path)
 
     if not native_log_file_str:
+        tmux_payload = await _tmux_fallback_payload("no_native_log_file")
+        if tmux_payload:
+            return tmux_payload
         if normalized_agent_name == "codex":
             return _pending_transcript_payload("no_native_log_file_codex")
         if not has_completed_turn and not session_closed:
             return _pending_transcript_payload("no_native_log_file_pre_stop")
-        if session.tmux_session_name:
-            pane_output = await tmux_bridge.capture_pane(session.tmux_session_name)
-            if pane_output:
-                tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
-                return {
-                    "status": "success",
-                    "session_id": session_id,
-                    "project_path": session.project_path,
-                    "subdir": session.subdir,
-                    "messages": pane_output[-tail:],
-                    "created_at": session.created_at.isoformat() if session.created_at else None,
-                    "last_activity": (session.last_activity.isoformat() if session.last_activity else None),
-                }
         logger.error("No native_log_file for session %s", session_id[:8])
         return {"status": "error", "error": "Session file not found"}
 
     native_log_file = Path(native_log_file_str)
     if not native_log_file.exists():
+        tmux_payload = await _tmux_fallback_payload("native_log_file_missing")
+        if tmux_payload:
+            return tmux_payload
         if normalized_agent_name == "codex":
             return _pending_transcript_payload("native_log_file_missing_on_disk_codex")
         if not has_completed_turn and not session_closed:
