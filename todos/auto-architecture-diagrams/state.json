@@ -1,6 +1,6 @@
 {
-  "build": "pending",
-  "review": "pending",
+  "build": "complete",
+  "review": "changes_requested",
   "deferrals_processed": false,
   "breakdown": {
     "assessed": false,
