@@ -55,7 +55,6 @@ from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NotificationL
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import BANNER_HEIGHT, render_banner
-from teleclaude.cli.tui.widgets.footer import Footer
 from teleclaude.cli.tui.widgets.tab_bar import TabBar
 from teleclaude.config import config
 from teleclaude.constants import LOCAL_COMPUTER
@@ -204,7 +203,6 @@ class TelecApp:
         self.current_view = 1  # 1=Sessions, 2=Preparation
         self.views: dict[int, SessionsView | PreparationView] = {}
         self.tab_bar = TabBar()
-        self.footer: Footer | None = None
         self.running = True
         self.agent_availability: dict[str, AgentAvailabilityInfo] = {}
         self.tts_enabled: bool = False
@@ -343,8 +341,6 @@ class TelecApp:
                     len(view.flat_items),
                 )
 
-            # Update footer with new availability and TTS state
-            self.footer = Footer(self.agent_availability, tts_enabled=self.tts_enabled)
             logger.debug("Data refresh complete")
             self._refresh_error_since = None
             self._refresh_error_notified = False
@@ -879,21 +875,8 @@ class TelecApp:
                                     )
                 # Single click: select item or switch tab
                 elif bstate & curses.BUTTON1_CLICKED:
-                    height, _ = stdscr.getmaxyx()  # type: ignore[attr-defined]
-                    # Check if click is on footer row (TTS toggle)
-                    if my == height - 1 and self.footer and self.footer.handle_click(mx):
-                        self.tts_enabled = not self.tts_enabled
-                        self.footer.tts_enabled = self.tts_enabled
-                        if self._loop:
-                            asyncio.run_coroutine_threadsafe(
-                                self.api.patch_settings(
-                                    SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=self.tts_enabled))
-                                ),
-                                self._loop,
-                            )
-                        logger.debug("TTS toggled to %s via footer click", self.tts_enabled)
                     # Check if a tab was clicked
-                    elif self.tab_bar.handle_click(my, mx) is not None:
+                    if self.tab_bar.handle_click(my, mx) is not None:
                         clicked_tab = self.tab_bar.handle_click(my, mx)
                         self._switch_view(clicked_tab)
                         logger.trace(
@@ -1033,8 +1016,6 @@ class TelecApp:
         # TTS toggle hotkey
         elif key == ord("v"):
             self.tts_enabled = not self.tts_enabled
-            if self.footer:
-                self.footer.tts_enabled = self.tts_enabled
             if self._loop:
                 asyncio.run_coroutine_threadsafe(
                     self.api.patch_settings(SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=self.tts_enabled))),
@@ -1109,7 +1090,7 @@ class TelecApp:
             logger.warning("Attempted to switch to non-existent view %d", view_num)
 
     def _render(self, stdscr: CursesWindow) -> None:
-        """Render current view with banner, tab bar, and footer.
+        """Render current view with banner and tab bar.
 
         Args:
             stdscr: Curses screen object
@@ -1155,8 +1136,8 @@ class TelecApp:
             self._render_breadcrumb(stdscr, content_start, width)
             content_start += 1
 
-        # Content area: after breadcrumb to before footer section
-        content_height = height - content_start - 4  # Reserve 4 rows for separator + action bar + global bar + footer
+        # Content area: after breadcrumb to before bottom utility rows
+        content_height = height - content_start - 3  # Reserve 3 rows for separator + action bar + global bar
 
         # Store bounds for mouse click handling
         self._content_start = content_start
@@ -1170,22 +1151,18 @@ class TelecApp:
         toast_row = tab_row + TabBar.HEIGHT
         self._render_notification(stdscr, width, toast_row)
 
-        # Row height-4: Separator (avoid last-column writes)
+        # Row height-3: Separator (avoid last-column writes)
         separator_attr = get_tab_line_attr()
         line_width = max(0, width - 1)
-        stdscr.addstr(height - 4, 0, "─" * line_width, separator_attr)  # type: ignore[attr-defined]
+        stdscr.addstr(height - 3, 0, "─" * line_width, separator_attr)  # type: ignore[attr-defined]
 
-        # Row height-3: Action bar (view-specific)
+        # Row height-2: Action bar (view-specific)
         action_bar = current.get_action_bar() if current else ""
-        stdscr.addstr(height - 3, 0, action_bar[:line_width])  # type: ignore[attr-defined]
+        stdscr.addstr(height - 2, 0, action_bar[:line_width])  # type: ignore[attr-defined]
 
-        # Row height-2: Global shortcuts bar
+        # Row height-1: Global shortcuts bar
         global_bar = "[+/-] Expand/Collapse  [r] Refresh  [v] TTS  [q] Quit"
-        stdscr.addstr(height - 2, 0, global_bar[:line_width], curses.A_DIM)  # type: ignore[attr-defined]
-
-        # Row height-1: Footer
-        if self.footer and line_width > 0:
-            self.footer.render(stdscr, height - 1, line_width)
+        stdscr.addstr(height - 1, 0, global_bar[:line_width], curses.A_DIM)  # type: ignore[attr-defined]
 
         stdscr.move(0, 0)  # type: ignore[attr-defined]
         stdscr.refresh()  # type: ignore[attr-defined]

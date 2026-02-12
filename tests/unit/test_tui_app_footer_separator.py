@@ -52,7 +52,7 @@ def test_footer_separator_uses_tab_line_attr(monkeypatch) -> None:
     screen = _FakeScreen(height=20, width=40)
     app._render(screen)
 
-    separator_row = 20 - 4
+    separator_row = 20 - 3
     matches = [call for call in screen.calls if call[0] == separator_row and call[2] == "─" * 39]
 
     assert matches, "Separator line not rendered"
