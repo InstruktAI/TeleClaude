@@ -1812,8 +1812,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             idx_text = f"[{idx}]"
             idx_attr = header_attr
 
-        # Headless rows stay muted even when selected; non-headless rows show keyboard focus.
-        selected_header_attr = header_attr if is_headless else (curses.A_REVERSE | header_attr)
+        # Keep headless rows muted when unselected, but always show keyboard focus when selected.
+        selected_header_attr = curses.A_REVERSE | header_attr
         title_attr = selected_header_attr if selected else header_attr
 
         # Collapse indicator

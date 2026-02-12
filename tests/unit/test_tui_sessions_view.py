@@ -682,8 +682,8 @@ class TestSessionsViewLogic:
         assert len(row2_calls) == 1
         assert row2_calls[0][3] == curses.A_BOLD
 
-    def test_selected_headless_session_headers_stay_muted(self, sessions_view):
-        """Selected headless rows should keep header lines in muted color."""
+    def test_selected_headless_session_headers_show_keyboard_focus(self, sessions_view):
+        """Selected headless rows should remain muted but visibly focused."""
 
         class FakeScreen:
             def __init__(self):
@@ -707,8 +707,9 @@ class TestSessionsViewLogic:
         assert lines_used == 2
         row0_calls = [call for call in screen.calls if call[0] == 0]
         assert len(row0_calls) == 2
-        assert row0_calls[0][3] == curses.A_DIM
-        assert row0_calls[1][3] == curses.A_DIM
+        focused_headless_attr = curses.A_REVERSE | curses.A_DIM
+        assert row0_calls[0][3] == focused_headless_attr
+        assert row0_calls[1][3] == focused_headless_attr
 
     def test_headless_status_is_normalized_for_header_muting(self, sessions_view, monkeypatch):
         """Status normalization should treat whitespace/case headless values as headless."""
