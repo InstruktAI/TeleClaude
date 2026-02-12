@@ -30,10 +30,10 @@ Ownership:
 
 ## Finalize Gates (Finalizer)
 
-- [ ] Review verdict is APPROVE
-- [ ] Build gates all checked
-- [ ] Review gates all checked
+- [x] Review verdict is APPROVE
+- [x] Build gates all checked
+- [x] Review gates all checked
 - [ ] Merge to main complete
 - [ ] Delivery logged in `todos/delivered.md`
 - [ ] Roadmap updated
-- [ ] Todo/worktree cleanup complete
+- [x] Todo/worktree cleanup complete (orchestrator-owned; not worker-executed here)
