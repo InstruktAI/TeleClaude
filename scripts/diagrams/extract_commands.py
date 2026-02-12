@@ -1,29 +1,16 @@
 #!/usr/bin/env python3
-"""Extract command dispatch diagram from agents/commands/ markdown frontmatter."""
+"""Extract command dispatch diagram from command frontmatter and next_machine dispatch sites."""
 
+import ast
 import re
 import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 COMMANDS_DIR = PROJECT_ROOT / "agents" / "commands"
+NEXT_MACHINE_CORE_PATH = PROJECT_ROOT / "teleclaude" / "core" / "next_machine" / "core.py"
 OUTPUT_PATH = PROJECT_ROOT / "docs" / "diagrams" / "command-dispatch.mmd"
 
-# Known orchestration flow order
-ORCHESTRATION_ORDER = [
-    "next-prepare",
-    "next-prepare-draft",
-    "next-prepare-gate",
-    "next-work",
-    "next-build",
-    "next-review",
-    "next-fix-review",
-    "next-defer",
-    "next-finalize",
-    "next-maintain",
-]
-
-# Semantic grouping for node shapes
 COMMAND_ROLES: dict[str, str] = {
     "next-prepare": "router",
     "next-prepare-draft": "worker",
@@ -49,33 +36,115 @@ def parse_command_frontmatter(path: Path) -> dict[str, str]:
 
     frontmatter: dict[str, str] = {}
     for line in match.group(1).splitlines():
-        if ":" in line:
-            key, _, value = line.partition(":")
-            frontmatter[key.strip()] = value.strip().strip("'\"")
+        if ":" not in line:
+            continue
+        key, _, raw_value = line.partition(":")
+        frontmatter[key.strip()] = raw_value.strip().strip("'\"")
 
     return frontmatter
 
 
 def parse_all_commands() -> list[dict[str, str]]:
-    """Parse all command files and return their metadata."""
+    """Parse all command files and return metadata."""
     commands: list[dict[str, str]] = []
 
     for md_file in sorted(COMMANDS_DIR.glob("*.md")):
-        fm = parse_command_frontmatter(md_file)
-        name = md_file.stem
+        frontmatter = parse_command_frontmatter(md_file)
         commands.append(
             {
-                "name": name,
-                "description": fm.get("description", ""),
-                "argument_hint": fm.get("argument-hint", ""),
+                "name": md_file.stem,
+                "description": frontmatter.get("description", ""),
+                "argument_hint": frontmatter.get("argument-hint", ""),
             }
         )
 
     return commands
 
 
-def generate_mermaid(commands: list[dict[str, str]]) -> str:
-    """Generate Mermaid flowchart showing command orchestration."""
+def parse_dispatch_edges(tree: ast.Module) -> list[tuple[str, str, str]]:
+    """Extract dispatch edges from next_machine format_tool_call usage.
+
+    Returns (src_command, dst_command, label).
+    """
+    edges: list[tuple[str, str, str]] = []
+
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not node.name.startswith("next_"):
+            continue
+
+        src_command = node.name.replace("_", "-")
+        for call in ast.walk(node):
+            if not isinstance(call, ast.Call):
+                continue
+            if not isinstance(call.func, ast.Name) or call.func.id != "format_tool_call":
+                continue
+
+            command_value = _extract_keyword_str(call, "command")
+            if not command_value:
+                continue
+
+            edges.append((src_command, command_value, "dispatch"))
+
+    return _dedupe_edges(edges)
+
+
+def _extract_keyword_str(call: ast.Call, keyword_name: str) -> str | None:
+    for keyword in call.keywords:
+        if (
+            keyword.arg == keyword_name
+            and isinstance(keyword.value, ast.Constant)
+            and isinstance(keyword.value.value, str)
+        ):
+            return keyword.value.value
+    return None
+
+
+def parse_post_completion_next_calls(tree: ast.Module) -> list[tuple[str, str, str]]:
+    """Extract command-to-command re-entry edges from POST_COMPLETION next-call instructions."""
+    edges: list[tuple[str, str, str]] = []
+
+    post_completion: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "POST_COMPLETION" for target in node.targets):
+            continue
+        if not isinstance(node.value, ast.Dict):
+            continue
+
+        for key_node, value_node in zip(node.value.keys, node.value.values):
+            if not (isinstance(key_node, ast.Constant) and isinstance(key_node.value, str)):
+                continue
+            if isinstance(value_node, ast.Constant) and isinstance(value_node.value, str):
+                post_completion[key_node.value] = value_node.value
+
+    for src_command, body in post_completion.items():
+        for tool_name in re.findall(r"teleclaude__([a-z_]+)", body):
+            dst_command = tool_name.replace("_", "-")
+            if dst_command.startswith("next-"):
+                edges.append((src_command, dst_command, "post-completion"))
+
+    return _dedupe_edges(edges)
+
+
+def _dedupe_edges(edges: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
+    deduped: list[tuple[str, str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for edge in edges:
+        if edge not in seen:
+            seen.add(edge)
+            deduped.append(edge)
+    return deduped
+
+
+def generate_mermaid(
+    commands: list[dict[str, str]],
+    dispatch_edges: list[tuple[str, str, str]],
+    post_completion_edges: list[tuple[str, str, str]],
+) -> str:
+    """Generate Mermaid flowchart showing extracted command dispatch edges."""
     lines: list[str] = [
         "---",
         "title: Command Dispatch",
@@ -83,43 +152,25 @@ def generate_mermaid(commands: list[dict[str, str]]) -> str:
         "flowchart TD",
     ]
 
-    # Create nodes for known orchestration commands
-    cmd_names = {c["name"] for c in commands}
+    command_names = {command["name"] for command in commands}
 
-    for cmd in commands:
-        name = cmd["name"]
+    for command in commands:
+        name = command["name"]
         safe_name = name.replace("-", "_")
-        desc = cmd["description"]
+        description = command["description"]
         role = COMMAND_ROLES.get(name, "worker")
 
-        # Shape by role
-        if role == "orchestrator":
-            lines.append(f'    {safe_name}{{{{"{name}<br/>{desc}"}}}}')
-        elif role == "router":
-            lines.append(f'    {safe_name}{{{{"{name}<br/>{desc}"}}}}')
+        if role in {"orchestrator", "router"}:
+            lines.append(f'    {safe_name}{{{{"{name}<br/>{description}"}}}}')
         else:
-            lines.append(f'    {safe_name}["{name}<br/>{desc}"]')
+            lines.append(f'    {safe_name}["{name}<br/>{description}"]')
 
     lines.append("")
 
-    # Draw orchestration flow edges
-    flow_edges = [
-        ("next-prepare", "next-prepare-draft", "draft"),
-        ("next-prepare", "next-prepare-gate", "gate"),
-        ("next-prepare-gate", "next-work", "ready"),
-        ("next-work", "next-build", "build phase"),
-        ("next-work", "next-review", "review phase"),
-        ("next-review", "next-fix-review", "changes requested"),
-        ("next-fix-review", "next-review", "re-review"),
-        ("next-work", "next-defer", "deferrals pending"),
-        ("next-work", "next-finalize", "approved"),
-    ]
-
-    for src, dst, label in flow_edges:
-        if src in cmd_names and dst in cmd_names:
-            safe_src = src.replace("-", "_")
-            safe_dst = dst.replace("-", "_")
-            lines.append(f"    {safe_src} -->|{label}| {safe_dst}")
+    for src, dst, label in dispatch_edges + post_completion_edges:
+        if src not in command_names or dst not in command_names:
+            continue
+        lines.append(f"    {src.replace('-', '_')} -->|{label}| {dst.replace('-', '_')}")
 
     return "\n".join(lines) + "\n"
 
@@ -128,12 +179,21 @@ def main() -> None:
     if not COMMANDS_DIR.exists():
         print(f"ERROR: {COMMANDS_DIR} not found", file=sys.stderr)
         sys.exit(1)
+    if not NEXT_MACHINE_CORE_PATH.exists():
+        print(f"ERROR: {NEXT_MACHINE_CORE_PATH} not found", file=sys.stderr)
+        sys.exit(1)
 
     commands = parse_all_commands()
+    source = NEXT_MACHINE_CORE_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(NEXT_MACHINE_CORE_PATH))
+
+    dispatch_edges = parse_dispatch_edges(tree)
+    post_completion_edges = parse_post_completion_next_calls(tree)
+
     if not commands:
         print("WARNING: No command files found", file=sys.stderr)
 
-    mermaid = generate_mermaid(commands)
+    mermaid = generate_mermaid(commands, dispatch_edges, post_completion_edges)
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(mermaid, encoding="utf-8")
