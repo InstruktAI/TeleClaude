@@ -769,8 +769,12 @@ def main() -> None:
             if not env_session_id:
                 _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
     else:
-        if not env_session_id or teleclaude_session_id != env_session_id:
-            _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
+        # Always persist the latest native->TeleClaude mapping, even when the
+        # resolved session came from the legacy tmux marker. Without this,
+        # hooks that include a new native_session_id while env_session_id is set
+        # can repeatedly resolve correctly in-process but leave session_map stale
+        # for subsequent hooks that rely on the map.
+        _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
 
     data = dict(raw_data)
 

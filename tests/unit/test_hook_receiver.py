@@ -729,7 +729,7 @@ def test_receiver_includes_agent_name_in_payload(monkeypatch, tmp_path):
 
 
 def test_receiver_prefers_tmux_session_id_over_session_map(monkeypatch, tmp_path):
-    """TMUX session id must override headless session map resolution."""
+    """TMUX session id should win and refresh the native->session mapping."""
     sent = []
     persisted = []
 
@@ -758,7 +758,7 @@ def test_receiver_prefers_tmux_session_id_over_session_map(monkeypatch, tmp_path
     session_id, event_type, _data = sent[0]
     assert session_id == "tmux-1"
     assert event_type == "agent_stop"
-    assert persisted == []
+    assert persisted == [("claude", "native-1", "tmux-1")]
 
 
 def test_receiver_persists_session_map_for_headless(monkeypatch, tmp_path):
