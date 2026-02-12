@@ -18,6 +18,7 @@ import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import WORKING_DIR, config
+from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName, get_agent_command
@@ -281,9 +282,19 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             last_input_origin = parent_session.last_input_origin
 
     # Resolve identity
+    metadata_human_email: Optional[str] = None
+    metadata_human_role: Optional[str] = None
+    if cmd.channel_metadata:
+        raw_email = cmd.channel_metadata.get("human_email")
+        raw_role = cmd.channel_metadata.get("human_role")
+        if isinstance(raw_email, str) and raw_email.strip():
+            metadata_human_email = raw_email.strip()
+        if isinstance(raw_role, str) and raw_role.strip():
+            metadata_human_role = raw_role.strip().lower()
+
     identity = get_identity_resolver().resolve(origin, cmd.channel_metadata or {})
-    human_email = identity.person_email if identity else None
-    human_role = identity.person_role if identity else None
+    human_email = identity.person_email if identity and identity.person_email else metadata_human_email
+    human_role = identity.person_role if identity and identity.person_role else metadata_human_role
 
     # Handle parent session identity inheritance
     if parent_session:
@@ -292,9 +303,14 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         if not human_role and parent_session.human_role:
             human_role = parent_session.human_role
 
-    # Enforce Jail for unauthorized users
-    if not human_role:
-        logger.info("Unauthorized session attempt from origin=%s. Jailing to help-desk.", origin)
+    # Enforce jail only for explicit non-admin role assignments.
+    # Missing role means unrestricted fallback ("god mode") for local/TUI/API flows.
+    if human_role and human_role != HUMAN_ROLE_ADMIN:
+        logger.info(
+            "Restricted session attempt from origin=%s role=%s. Jailing to help-desk.",
+            origin,
+            human_role,
+        )
         project_path = os.path.join(WORKING_DIR, "help-desk")
         Path(project_path).mkdir(parents=True, exist_ok=True)
         subfolder = None
