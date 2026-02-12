@@ -1,44 +1,46 @@
 # Review Findings: auto-architecture-diagrams
 
-## Critical
+## Round 2
 
-- [R1-F1] Runtime matrix extraction does not produce per-agent feature support from the runtime adapters/config it claims to parse. `scripts/diagrams/extract_runtime_matrix.py:12` targets `teleclaude/adapters/` (UI transports), while runtime-specific normalization lives under `teleclaude/hooks/adapters/`. The matcher in `scripts/diagrams/extract_runtime_matrix.py:159` only links features when adapter filename contains an agent name, which never occurs for `base_adapter.py`, `telegram_adapter.py`, and `ui_adapter.py`; generated output has no agent->feature edges for blocking/transcript behavior. This violates the requirement that runtime matrix reflect per-agent feature support from code.
+### Critical
 
-- [R1-F2] Event-flow handler linkage is not extracted from real handler dispatch and is partially hardcoded. `scripts/diagrams/extract_events.py:111` collects `AgentHookEvents.*` constants referenced in `handle_event`, not the actual handler method names (`handle_session_start`, etc.). Then `scripts/diagrams/extract_events.py:172` uses a hardcoded `handler_map` to wire internal events. This can silently drift and does not satisfy the requirement to derive runtime->event->handler flow from actual code.
+None.
 
-- [R1-F3] State and command transitions are hardcoded instead of extracted, so diagrams are not "from code parsing alone" and are maintenance-sensitive. `scripts/diagrams/extract_state_machines.py:21` and `scripts/diagrams/extract_state_machines.py:29` hardcode lifecycle transitions; `scripts/diagrams/extract_commands.py:106` hardcodes orchestration edges. Any workflow change in source logic/docs can desynchronize diagrams without extractor changes.
+### Important
 
-## Important
+None.
 
-- [R1-F4] The new extractor scripts are not covered by the repository type-check gate. `pyrightconfig.json` includes only `teleclaude`, so `scripts/diagrams/*.py` are excluded from enforced checks. Running `uv run mypy scripts/diagrams` currently reports errors in `scripts/diagrams/extract_commands.py:51`. This is a policy gap for new automation code.
+### Suggestions
 
-- [R1-F5] No automated regression tests were added for six new extraction scripts, despite behavior depending on AST shape and file conventions. Current validation is manual (`make diagrams`) and cannot prevent future silent drift.
+- [R2-S1] `KNOWN_PACKAGES` in `scripts/diagrams/extract_modules.py:13` is a hardcoded filter. New packages added under `teleclaude/` will be silently excluded from the module dependency graph. Consider auto-discovering packages by listing subdirs that contain `__init__.py`.
 
-## Suggestions
+- [R2-S2] The `is_table` detection in `scripts/diagrams/extract_data_model.py:39-44` uses OR-logic: either inheriting `SQLModel` OR having `table=True` keyword marks a class as a table. Correct detection requires BOTH conditions. No current impact (all classes in `db_models.py` have both), but could produce false positives if non-table SQLModel classes are added.
 
-- Add fixture-based unit tests per extractor with small source fixtures and expected Mermaid snapshots.
-- Add a targeted CI check that runs `make diagrams` and validates key expected nodes/edges from current source (behavioral assertions, not prose locking).
+- [R2-S3] The roadmap lifecycle diagram shows the `r_DONE` state but has no incoming transition. The DONE transition occurs in the finalize worker, not in `core.py` which is the only file parsed by the state machine extractor.
 
-Verdict: REQUEST CHANGES
+- [R2-S4] Build and review phase statuses are combined into one state diagram in `extract_state_machines.py`, making `COMPLETE` appear as a dead-end when it is the terminal state for the build phase specifically. Grouping by phase name would improve clarity.
 
-## Fixes Applied
+- [R2-S5] `COMMAND_ROLES` in `scripts/diagrams/extract_commands.py:15` is a hardcoded visual role mapping that requires manual maintenance when commands change roles. Only affects node shapes, not edge correctness.
 
-- Issue: [R1-F1]
-  Fix: Reworked runtime matrix extraction to use runtime hook sources (`teleclaude/hooks/adapters/*.py`, `AgentHookEvents.HOOK_EVENT_MAP`, `AGENT_PROTOCOL`, checkpoint blocking path) and emit per-agent feature edges directly from parsed code.
-  Commit: `1bf5a2b9`
+### R1 Findings Resolution
 
-- Issue: [R1-F2]
-  Fix: Reworked event-flow extraction to derive `event -> handler` links from real `AgentCoordinator.handle_event` dispatch branches and resolved internal event values from `AgentHookEvents` constants, removing hardcoded handler wiring.
-  Commit: `c68955d6`
+All 5 Round 1 findings were resolved and verified:
 
-- Issue: [R1-F3]
-  Fix: Removed hardcoded lifecycle/command transitions and now parse roadmap/phase transitions plus dispatch/post-completion edges from `teleclaude/core/next_machine/core.py`.
-  Commit: `11062dc1`
+| Finding                                   | Status                | Verification                                                                                                                                                                      |
+| ----------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1-F1 (runtime matrix wrong adapters dir) | Resolved (`1bf5a2b9`) | Runtime matrix now reads from `teleclaude/hooks/adapters/`, `AGENT_PROTOCOL`, and checkpoint blocking path. Output shows correct per-agent features.                              |
+| R1-F2 (hardcoded handler dispatch)        | Resolved (`c68955d6`) | Handler dispatch now extracted from `AgentCoordinator.handle_event()` if/elif chain via AST. All 7 handler mappings match source.                                                 |
+| R1-F3 (hardcoded transitions)             | Resolved (`11062dc1`) | Roadmap transitions parsed from `update_roadmap_state` call sites; phase transitions from `POST_COMPLETION` mark_phase instructions; command edges from `format_tool_call` usage. |
+| R1-F4 (no type-check coverage)            | Resolved (`22497835`) | `pyrightconfig.json` includes `scripts/diagrams`. Pyright reports 0 errors.                                                                                                       |
+| R1-F5 (no regression tests)               | Resolved (`35a74d25`) | 6 regression tests covering all extractors with behavioral assertions. All pass.                                                                                                  |
 
-- Issue: [R1-F4]
-  Fix: Extended enforced type-check scope to include `scripts/diagrams` in `pyrightconfig.json` and fixed strict typing issues in extractor scripts so `pyright`/`mypy` pass.
-  Commit: `22497835`
+### Verification Summary
 
-- Issue: [R1-F5]
-  Fix: Added automated regression coverage for all six extractor scripts with behavior assertions on parsed edges/nodes to catch AST/flow drift.
-  Commit: `35a74d25`
+- `make diagrams`: Produces 6 .mmd files in `docs/diagrams/` ✓
+- `uv run pytest tests/unit/test_diagram_extractors.py`: 6/6 pass ✓
+- `uv run pyright scripts/diagrams/`: 0 errors ✓
+- Build gates in quality-checklist.md: All checked ✓
+- Implementation plan tasks: All checked ✓
+- No deferrals ✓
+
+Verdict: APPROVE
