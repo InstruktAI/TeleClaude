@@ -57,8 +57,9 @@ def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:
 def _normalize_frontmatter_single_quotes(content: str) -> str:
     """Normalize frontmatter scalars to single-quoted values.
 
-    TODO(codex-compat): Remove this compatibility normalization once Codex CLI
-    frontmatter false positives are fixed upstream.
+    TODO: GitHub issue openai/codex#11495
+    Remove this compatibility normalization once Codex CLI frontmatter false
+    positives are fixed upstream.
     """
     header, body, has_frontmatter = _split_frontmatter_block(content)
     if not has_frontmatter:

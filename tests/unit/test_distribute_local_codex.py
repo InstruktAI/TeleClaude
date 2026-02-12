@@ -5,6 +5,8 @@ import os
 import sys
 from pathlib import Path
 
+from frontmatter import Post
+
 
 def _load_distribute_module() -> object:
     script_path = Path(__file__).resolve().parents[2] / "scripts" / "distribute.py"
@@ -60,3 +62,27 @@ def test_local_agents_generates_codex_commands(tmp_path: Path) -> None:
     assert codex_prompts.exists(), "Codex prompts directory should be created"
     prompt_files = list(codex_prompts.glob("*.md"))
     assert len(prompt_files) > 0, "At least one codex prompt should be generated"
+
+
+def test_transform_to_codex_quotes_scalar_frontmatter(tmp_path: Path) -> None:
+    """Codex transform should single-quote scalar frontmatter values."""
+    distribute = _load_distribute_module()
+    post = Post("Body", description="Value: with colon", name="demo")
+
+    rendered = distribute.transform_to_codex(post)
+
+    assert rendered.startswith("---\n")
+    assert "description: 'Value: with colon'" in rendered
+    assert "name: 'demo'" in rendered
+
+
+def test_transform_skill_to_codex_preserves_nested_metadata(tmp_path: Path) -> None:
+    """Codex skill transform should quote scalars while keeping nested mappings."""
+    distribute = _load_distribute_module()
+    post = Post("Body", description="desc", hooks={"post": ["echo hi"]})
+
+    rendered = distribute.transform_skill_to_codex(post, "youtube")
+
+    assert "name: 'youtube'" in rendered
+    assert "description: 'desc'" in rendered
+    assert "\nhooks:\n" in rendered

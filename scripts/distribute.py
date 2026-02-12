@@ -71,6 +71,72 @@ def dump_frontmatter(post: Post) -> str:
     return frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER)
 
 
+def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:
+    """Split top-level frontmatter block from body.
+
+    Returns:
+        header_with_fences, body, has_frontmatter
+    """
+    lines = content.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return "", content, False
+    end_idx = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            end_idx = i
+            break
+    if end_idx is None:
+        return "", content, False
+    header = "".join(lines[: end_idx + 1])
+    body = "".join(lines[end_idx + 1 :])
+    return header, body, True
+
+
+def _normalize_frontmatter_single_quotes_for_codex(content: str) -> str:
+    """Normalize Codex frontmatter scalars to explicit single-quoted values.
+
+    TODO: GitHub issue openai/codex#11495
+    Remove this Codex-only compatibility path once upstream frontmatter parsing
+    false positives are fixed.
+    """
+    header, body, has_frontmatter = _split_frontmatter_block(content)
+    if not has_frontmatter:
+        return content
+
+    header_lines = header.splitlines(keepends=False)
+    if len(header_lines) < 2:
+        return content
+
+    raw_frontmatter = "\n".join(header_lines[1:-1])
+    try:
+        payload = yaml.safe_load(raw_frontmatter)
+    except Exception:
+        return content
+    if not isinstance(payload, dict):
+        return content
+
+    rendered_lines: list[str] = ["---"]
+    for key, value in payload.items():
+        if isinstance(value, (dict, list, tuple, set)):
+            nested = yaml.safe_dump(
+                {key: value},
+                sort_keys=False,
+                width=1000,
+                default_flow_style=False,
+                allow_unicode=True,
+            ).rstrip()
+            rendered_lines.extend(nested.splitlines())
+            continue
+        value_str = "" if value is None else str(value)
+        value_quoted = "'" + value_str.replace("'", "''") + "'"
+        rendered_lines.append(f"{key}: {value_quoted}")
+    rendered_lines.append("---")
+    rendered_header = "\n".join(rendered_lines) + "\n"
+
+    normalized = rendered_header + body
+    return normalized if normalized != content else content
+
+
 def _format_markdown(paths: list[str]) -> None:
     """Format markdown outputs using the repo prettier setup."""
     md_files = [p for p in paths if p.endswith(".md") and os.path.exists(p)]
@@ -124,8 +190,10 @@ class FileArtifactType:
 
 def transform_to_codex(post: Post) -> str:
     """Transform a post to the Codex format (same as Claude - standard YAML frontmatter)."""
-    # Codex uses the same format as Claude: standard Markdown with YAML frontmatter
-    return dump_frontmatter(post)
+    # Codex uses Markdown with YAML frontmatter. Force explicit scalar quotes as
+    # a compatibility workaround for intermittent frontmatter false positives.
+    # TODO: GitHub issue openai/codex#11495 — remove when fixed upstream.
+    return _normalize_frontmatter_single_quotes_for_codex(dump_frontmatter(post))
 
 
 def transform_to_gemini(post: Post) -> str:
@@ -153,7 +221,7 @@ def transform_skill_to_codex(post: Post, name: str) -> str:
     metadata["name"] = name
     metadata["description"] = metadata.get("description", "")
     transformed_post = Post(post.content, **metadata)
-    return dump_frontmatter(transformed_post)
+    return _normalize_frontmatter_single_quotes_for_codex(dump_frontmatter(transformed_post))
 
 
 def transform_skill_to_gemini(post: Post, name: str) -> str:
