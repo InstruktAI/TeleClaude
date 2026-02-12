@@ -613,17 +613,6 @@ def get_terminal_background() -> str:
         return _terminal_bg_cache
 
     mode_default_bg = "#000000" if _is_dark_mode else _LIGHT_MODE_PAPER_BG
-    hint_bg = _read_terminal_bg_from_appearance()
-
-    if hint_bg:
-        hint_luminance = _relative_luminance(hint_bg)
-        hint_matches_mode = (_is_dark_mode and hint_luminance <= _DARK_HINT_MAX_LUMINANCE) or (
-            not _is_dark_mode and hint_luminance >= _LIGHT_HINT_MIN_LUMINANCE
-        )
-        if hint_matches_mode:
-            _terminal_bg_cache = blend_colors(mode_default_bg, hint_bg, _TERMINAL_HINT_WEIGHT)
-            return _terminal_bg_cache
-
     _terminal_bg_cache = mode_default_bg
     return _terminal_bg_cache
 
