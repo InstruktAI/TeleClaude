@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import teleclaude.stt.backends.mlx_parakeet as mlx_parakeet
 from teleclaude.stt.backends.mlx_parakeet import MLXParakeetBackend
 
 
@@ -14,6 +15,14 @@ def _make_backend() -> MLXParakeetBackend:
     backend._model_ref = "mlx-community/parakeet-tdt-0.6b-v3"
     backend._model = None
     return backend
+
+
+def test_ensure_model_cli_only_does_not_import_mlx_audio():
+    """When CLI backend exists, mlx_audio import must not be attempted."""
+    backend = _make_backend()
+
+    with patch.object(mlx_parakeet, "import_module", side_effect=AssertionError("should not import mlx_audio")):
+        assert backend._ensure_model() is True
 
 
 def test_transcribe_cli_passes_output_path_and_reads_json_file():

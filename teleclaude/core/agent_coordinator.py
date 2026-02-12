@@ -9,6 +9,7 @@ Handles agent lifecycle events (start, stop, notification) and routes them to:
 import asyncio
 import base64
 import random
+import re
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -63,6 +64,8 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
+
+_PASTED_CONTENT_PLACEHOLDER_RE = re.compile(r"^\[Pasted Content \d+ chars\]$")
 
 SESSION_START_MESSAGES = [
     "Standing by with grep patterns locked and loaded. What can I find?",
@@ -133,6 +136,11 @@ def _is_codex_synthetic_prompt_event(raw_payload: object) -> bool:
         return False
     source = raw_payload.get("source")
     return bool(raw_payload.get("synthetic")) and isinstance(source, str) and source.startswith("codex_")
+
+
+def _is_pasted_content_placeholder(prompt: str) -> bool:
+    """Return True when prompt is a synthetic pasted-content placeholder."""
+    return bool(_PASTED_CONTENT_PLACEHOLDER_RE.fullmatch((prompt or "").strip()))
 
 
 class AgentCoordinator:
@@ -309,7 +317,9 @@ class AgentCoordinator:
         }
 
         # Title update is non-critical and must not block hook ordering.
-        if session.title == "Untitled":
+        if session.title == "Untitled" and not (
+            _is_codex_synthetic_prompt_event(payload.raw) and _is_pasted_content_placeholder(prompt_text)
+        ):
             self._queue_background_task(
                 self._update_session_title_async(session_id, prompt_text),
                 f"title-summary:{session_id[:8]}",

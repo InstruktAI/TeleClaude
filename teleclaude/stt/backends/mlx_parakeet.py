@@ -13,13 +13,7 @@ from teleclaude.mlx_utils import is_local_path, resolve_model_ref
 
 load_stt_model = None
 mlx_audio_import_error: Exception | None = None
-try:
-    stt_module = import_module("mlx_audio.stt")
-    load_candidate = getattr(stt_module, "load", None)
-    if callable(load_candidate):
-        load_stt_model = load_candidate
-except Exception as import_error:  # noqa: BLE001 - keep backend available via CLI fallback
-    mlx_audio_import_error = import_error
+_mlx_audio_import_attempted = False
 
 logger = get_logger(__name__)
 
@@ -80,15 +74,28 @@ class MLXParakeetBackend:
         return resolve_model_ref(configured_ref or DEFAULT_MODEL)
 
     def _ensure_model(self) -> bool:
+        global load_stt_model, mlx_audio_import_error, _mlx_audio_import_attempted
+
+        # CLI-only mode: never import mlx_audio when CLI backend exists.
+        if self._cli_bin:
+            logger.debug("Parakeet STT using CLI backend only: %s", self._cli_bin)
+            return True
+
+        # Local model path: lazy-import mlx_audio only when CLI is unavailable.
+        if not _mlx_audio_import_attempted:
+            _mlx_audio_import_attempted = True
+            try:
+                stt_module = import_module("mlx_audio.stt")
+                load_candidate = getattr(stt_module, "load", None)
+                if callable(load_candidate):
+                    load_stt_model = load_candidate
+            except Exception as import_error:  # noqa: BLE001 - keep backend available via CLI fallback
+                mlx_audio_import_error = import_error
+
         if load_stt_model is None:
-            if self._cli_bin:
-                logger.info(
-                    "Parakeet STT using CLI fallback (%s); mlx_audio import failed: %s",
-                    self._cli_bin,
-                    mlx_audio_import_error,
-                )
-                return True
-            logger.error("Parakeet STT unavailable: mlx_audio not installed and no CLI fallback")
+            logger.error(
+                "Parakeet STT unavailable: mlx_audio import failed and no CLI fallback (%s)", mlx_audio_import_error
+            )
             return False
 
         if self._model is not None:

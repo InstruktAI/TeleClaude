@@ -14,16 +14,7 @@ from teleclaude.mlx_utils import resolve_model_ref
 generate_audio = None
 load_model = None
 mlx_audio_import_error: Exception | None = None
-try:
-    tts_generate_module = import_module("mlx_audio.tts.generate")
-    tts_utils_module = import_module("mlx_audio.tts.utils")
-    generate_candidate = getattr(tts_generate_module, "generate_audio", None)
-    load_candidate = getattr(tts_utils_module, "load_model", None)
-    if callable(generate_candidate) and callable(load_candidate):
-        generate_audio = generate_candidate
-        load_model = load_candidate
-except Exception as import_error:  # noqa: BLE001 - keep backend available via CLI fallback
-    mlx_audio_import_error = import_error
+_mlx_audio_import_attempted = False
 
 logger = get_logger(__name__)
 
@@ -88,16 +79,33 @@ class MLXTTSBackend:
 
     def _ensure_model(self) -> bool:
         """Lazy-load the model on first use."""
+        global generate_audio, load_model, mlx_audio_import_error, _mlx_audio_import_attempted
+
+        # CLI-only mode: never import mlx_audio when CLI backend exists.
+        if self._cli_bin:
+            logger.debug("MLX TTS [%s] using CLI backend only: %s", self._service_name, self._cli_bin)
+            return True
+
+        # Local model path: lazy-import mlx_audio only when CLI is unavailable.
+        if not _mlx_audio_import_attempted:
+            _mlx_audio_import_attempted = True
+            try:
+                tts_generate_module = import_module("mlx_audio.tts.generate")
+                tts_utils_module = import_module("mlx_audio.tts.utils")
+                generate_candidate = getattr(tts_generate_module, "generate_audio", None)
+                load_candidate = getattr(tts_utils_module, "load_model", None)
+                if callable(generate_candidate) and callable(load_candidate):
+                    generate_audio = generate_candidate
+                    load_model = load_candidate
+            except Exception as import_error:  # noqa: BLE001 - keep backend available via CLI fallback
+                mlx_audio_import_error = import_error
+
         if load_model is None:
-            if self._cli_bin:
-                logger.info(
-                    "MLX TTS [%s] using CLI fallback (%s); mlx_audio import failed: %s",
-                    self._service_name,
-                    self._cli_bin,
-                    mlx_audio_import_error,
-                )
-                return True
-            logger.error("MLX TTS [%s] unavailable: mlx_audio not installed and no CLI fallback", self._service_name)
+            logger.error(
+                "MLX TTS [%s] unavailable: mlx_audio import failed and no CLI fallback (%s)",
+                self._service_name,
+                mlx_audio_import_error,
+            )
             return False
 
         if self._model is not None:

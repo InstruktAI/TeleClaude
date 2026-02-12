@@ -1,6 +1,8 @@
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 
+import teleclaude.tts.backends.mlx_tts as mlx_tts
 from teleclaude.tts.backends.mlx_tts import MLXTTSBackend
 
 
@@ -34,3 +36,16 @@ def test_resolve_cli_bin_returns_none_when_missing(monkeypatch, tmp_path: Path) 
 
     backend = MLXTTSBackend.__new__(MLXTTSBackend)
     assert backend._resolve_cli_bin() is None
+
+
+def test_ensure_model_cli_only_does_not_import_mlx_audio() -> None:
+    """When CLI backend exists, mlx_audio import must not be attempted."""
+    backend = MLXTTSBackend.__new__(MLXTTSBackend)
+    backend._service_name = "kokoro"
+    backend._cli_bin = "/tmp/mlx_audio.tts.generate"
+    backend._model = None
+    backend._model_ref = "mlx-community/Kokoro-82M-bf16"
+    backend._params = {}
+
+    with patch.object(mlx_tts, "import_module", side_effect=AssertionError("should not import mlx_audio")):
+        assert backend._ensure_model() is True
