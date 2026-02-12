@@ -53,6 +53,9 @@ Execute the build phase for the slug and verify completion.
   - Build Gates section fully checked in `quality-checklist.md`
   - tests passing
   - lint passing
-  - clean working tree
+  - clean working tree for build-scope changes; pre-existing orchestrator-synced planning drift is allowed:
+    - `todos/roadmap.md`
+    - `todos/dependencies.json`
+  - if only those files are dirty, report completion and note it explicitly
 - End with: `Ready for review.`
 - Summarize results in the completion report.
