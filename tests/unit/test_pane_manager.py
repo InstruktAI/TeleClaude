@@ -1,6 +1,7 @@
 """Unit tests for TmuxPaneManager."""
 
 import os
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
@@ -93,3 +94,65 @@ def test_set_pane_background_uses_highlight_fg_for_active_style():
     style_calls = [call.args for call in mock_run.call_args_list if call.args[:4] == ("set", "-p", "-t", "%9")]
     assert ("set", "-p", "-t", "%9", "window-style", "fg=colour111,bg=#101010") in style_calls
     assert ("set", "-p", "-t", "%9", "window-active-style", "fg=colour222,bg=#000000") in style_calls
+
+
+def test_doc_pane_background_is_applied_for_non_session_specs():
+    """Doc/preview panes should get explicit neutral styles."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    mock_run = Mock(return_value="")
+    with (
+        patch.object(manager, "_run_tmux", mock_run),
+        patch.object(theme, "get_tui_inactive_background", return_value="#e8e2d0"),
+        patch.object(theme, "get_terminal_background", return_value="#fdf6e3"),
+    ):
+        manager._set_doc_pane_background("%42")
+
+    style_calls = [call.args for call in mock_run.call_args_list if call.args[:4] == ("set", "-p", "-t", "%42")]
+    assert ("set", "-p", "-t", "%42", "window-style", "fg=default,bg=#e8e2d0") in style_calls
+    assert ("set", "-p", "-t", "%42", "window-active-style", "fg=default,bg=#fdf6e3") in style_calls
+
+
+def test_reapply_agent_colors_fallback_styles_tracked_session_panes():
+    """Theme refresh should style mapped panes even when active/sticky specs are empty."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    manager._sticky_specs = []
+    manager._active_spec = None
+    manager.state.session_to_pane = {"sid-1": "%77"}
+    manager._session_catalog = {
+        "sid-1": SimpleNamespace(session_id="sid-1", tmux_session_name="tc_sid-1", active_agent="claude")
+    }
+
+    with (
+        patch.object(manager, "_get_pane_exists", return_value=True),
+        patch.object(manager, "_set_tui_pane_background"),
+        patch.object(manager, "_set_pane_background") as set_session_bg,
+    ):
+        manager.reapply_agent_colors()
+
+    set_session_bg.assert_called_once_with("%77", "tc_sid-1", "claude")
+
+
+def test_set_tui_pane_background_sets_neutral_window_border_styles():
+    """TUI layout should neutralize window border colors locally."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    mock_run = Mock(return_value="")
+    with (
+        patch.object(manager, "_run_tmux", mock_run),
+        patch.object(manager, "_get_pane_exists", return_value=True),
+        patch.object(theme, "get_tui_inactive_background", return_value="#e8e2d0"),
+        patch.object(theme, "get_terminal_background", return_value="#fdf6e3"),
+    ):
+        manager._set_tui_pane_background()
+
+    calls = [call.args for call in mock_run.call_args_list]
+    assert ("set", "-w", "-t", "%1", "pane-border-style", "fg=#e8e2d0,bg=#e8e2d0") in calls
+    assert ("set", "-w", "-t", "%1", "pane-active-border-style", "fg=#e8e2d0,bg=#e8e2d0") in calls

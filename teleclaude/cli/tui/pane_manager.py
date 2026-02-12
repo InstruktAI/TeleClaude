@@ -559,6 +559,8 @@ class TmuxPaneManager:
             self._set_pane_background(
                 self.state.parent_pane_id, active_spec.tmux_session_name, active_spec.active_agent
             )
+        else:
+            self._set_doc_pane_background(self.state.parent_pane_id)
 
     def _layout_is_unchanged(self) -> bool:
         signature = self._compute_layout_signature()
@@ -679,9 +681,11 @@ class TmuxPaneManager:
             self.state.sticky_pane_ids.append(pane_id)
             self.state.sticky_session_to_pane[spec.session_id] = pane_id
 
-        # Apply agent-colored background haze for session panes only
+        # Apply explicit pane styling so panes never inherit stale colors.
         if spec.tmux_session_name:
             self._set_pane_background(pane_id, spec.tmux_session_name, spec.active_agent)
+        else:
+            self._set_doc_pane_background(pane_id)
 
     def _set_pane_background(self, pane_id: str, tmux_session_name: str, agent: str) -> None:
         """Set per-pane colors and keep embedded tmux status bar hidden.
@@ -697,26 +701,16 @@ class TmuxPaneManager:
         active_fg_color_code = theme.get_agent_highlight_color(agent)
         self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg=colour{inactive_fg_color_code},bg={bg_color}")
 
-        # Set active pane foreground (agent normal color) with terminal default background
-        if theme.get_current_mode():  # dark mode
-            terminal_bg = theme.get_terminal_background()
-            self._run_tmux(
-                "set",
-                "-p",
-                "-t",
-                pane_id,
-                "window-active-style",
-                f"fg=colour{active_fg_color_code},bg={terminal_bg}",
-            )
-        else:  # light mode - use 'terminal' to get iTerm background
-            self._run_tmux(
-                "set",
-                "-p",
-                "-t",
-                pane_id,
-                "window-active-style",
-                f"fg=colour{active_fg_color_code},bg=terminal",
-            )
+        # Set active pane style against explicit terminal background for both modes.
+        terminal_bg = theme.get_terminal_background()
+        self._run_tmux(
+            "set",
+            "-p",
+            "-t",
+            pane_id,
+            "window-active-style",
+            f"fg=colour{active_fg_color_code},bg={terminal_bg}",
+        )
 
         # Embedded session panes should not render tmux status bars.
         self._run_tmux("set", "-t", tmux_session_name, "status", "off")
@@ -735,6 +729,30 @@ class TmuxPaneManager:
         terminal_bg = theme.get_terminal_background()
         self._run_tmux("set", "-p", "-t", self._tui_pane_id, "window-style", f"fg=default,bg={inactive_bg}")
         self._run_tmux("set", "-p", "-t", self._tui_pane_id, "window-active-style", f"fg=default,bg={terminal_bg}")
+        # Keep tc_tui split borders visually neutral; global tmux theme remains untouched.
+        self._run_tmux(
+            "set",
+            "-w",
+            "-t",
+            self._tui_pane_id,
+            "pane-border-style",
+            f"fg={inactive_bg},bg={inactive_bg}",
+        )
+        self._run_tmux(
+            "set",
+            "-w",
+            "-t",
+            self._tui_pane_id,
+            "pane-active-border-style",
+            f"fg={inactive_bg},bg={inactive_bg}",
+        )
+
+    def _set_doc_pane_background(self, pane_id: str) -> None:
+        """Apply neutral styling for doc preview panes (glow/less)."""
+        inactive_bg = theme.get_tui_inactive_background()
+        terminal_bg = theme.get_terminal_background()
+        self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg=default,bg={inactive_bg}")
+        self._run_tmux("set", "-p", "-t", pane_id, "window-active-style", f"fg=default,bg={terminal_bg}")
 
     def reapply_agent_colors(self) -> None:
         """Re-apply agent-colored backgrounds and status bars to all session panes.
@@ -746,18 +764,39 @@ class TmuxPaneManager:
             return
 
         self._set_tui_pane_background()
+        reapplied_panes: set[str] = set()
 
         # Re-apply colors to sticky session panes
         for spec in self._sticky_specs:
             pane_id = self.state.session_to_pane.get(spec.session_id)
-            if pane_id and self._get_pane_exists(pane_id) and spec.tmux_session_name:
+            if not pane_id or not self._get_pane_exists(pane_id):
+                continue
+            if spec.tmux_session_name:
                 self._set_pane_background(pane_id, spec.tmux_session_name, spec.active_agent)
+            else:
+                self._set_doc_pane_background(pane_id)
+            reapplied_panes.add(pane_id)
 
         # Re-apply colors to active session pane
-        if self._active_spec and self._active_spec.tmux_session_name:
+        if self._active_spec:
             pane_id = self.state.session_to_pane.get(self._active_spec.session_id)
             if pane_id and self._get_pane_exists(pane_id):
-                self._set_pane_background(pane_id, self._active_spec.tmux_session_name, self._active_spec.active_agent)
+                if self._active_spec.tmux_session_name:
+                    self._set_pane_background(pane_id, self._active_spec.tmux_session_name, self._active_spec.active_agent)
+                else:
+                    self._set_doc_pane_background(pane_id)
+                reapplied_panes.add(pane_id)
+
+        # Fallback: style any remaining tracked panes from session mapping.
+        for session_id, pane_id in self.state.session_to_pane.items():
+            if pane_id in reapplied_panes or not self._get_pane_exists(pane_id):
+                continue
+            if session_id.startswith("doc:"):
+                self._set_doc_pane_background(pane_id)
+                continue
+            session = self._session_catalog.get(session_id)
+            if session and session.tmux_session_name:
+                self._set_pane_background(pane_id, session.tmux_session_name, session.active_agent)
 
     def _build_pane_command(self, spec: SessionPaneSpec) -> str:
         """Build the command used to populate a pane."""
