@@ -393,6 +393,8 @@ async def test_handle_list_sessions_formats_output():
     s0.last_activity = now
     s0.thinking_mode = "med"
     s0.lifecycle_status = "active"
+    s0.human_email = "owner@example.com"
+    s0.human_role = "admin"
 
     s1 = MagicMock()
     s1.session_id = "session-1"
@@ -403,6 +405,8 @@ async def test_handle_list_sessions_formats_output():
     s1.last_activity = now
     s1.thinking_mode = "med"
     s1.lifecycle_status = "active"
+    s1.human_email = "member@example.com"
+    s1.human_role = "member"
 
     mock_sessions = [s0, s1]
 
@@ -417,11 +421,15 @@ async def test_handle_list_sessions_formats_output():
     assert result[0].last_input_origin == "telegram"
     assert result[0].title == "Test Session 0"
     assert result[0].status == "active"
+    assert result[0].human_email == "owner@example.com"
+    assert result[0].human_role == "admin"
 
     assert result[1].session_id == "session-1"
     assert result[1].last_input_origin == "telegram"
     assert result[1].title == "Test Session 1"
     assert result[1].status == "active"
+    assert result[1].human_email == "member@example.com"
+    assert result[1].human_role == "member"
 
 
 @pytest.mark.asyncio

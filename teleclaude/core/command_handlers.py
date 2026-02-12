@@ -398,6 +398,8 @@ async def list_sessions() -> list[SessionSummary]:
                 tmux_session_name=s.tmux_session_name,
                 initiator_session_id=s.initiator_session_id,
                 computer=local_name,
+                human_email=s.human_email,
+                human_role=s.human_role,
             )
         )
 
