@@ -11,25 +11,24 @@ COORDINATOR_PATH = PROJECT_ROOT / "teleclaude" / "core" / "agent_coordinator.py"
 OUTPUT_PATH = PROJECT_ROOT / "docs" / "diagrams" / "event-flow.mmd"
 
 
-def parse_literal_type(tree: ast.Module, name: str) -> list[str]:
-    """Extract string values from a Literal type alias assignment."""
+def parse_agent_hook_constants(tree: ast.Module) -> dict[str, str]:
+    """Extract AgentHookEvents class string constants."""
+    constants: dict[str, str] = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == name:
-                    return _extract_literal_values(node.value)
-    return []
-
-
-def _extract_literal_values(node: ast.expr) -> list[str]:
-    """Recursively extract string constants from Literal[...] subscript."""
-    if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Tuple):
-        values: list[str] = []
-        for elt in node.slice.elts:
-            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                values.append(elt.value)
-        return values
-    return []
+        if isinstance(node, ast.ClassDef) and node.name == "AgentHookEvents":
+            for item in node.body:
+                if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                    if item.value and isinstance(item.value, ast.Constant) and isinstance(item.value.value, str):
+                        constants[item.target.id] = item.value.value
+                elif isinstance(item, ast.Assign):
+                    for target in item.targets:
+                        if (
+                            isinstance(target, ast.Name)
+                            and isinstance(item.value, ast.Constant)
+                            and isinstance(item.value.value, str)
+                        ):
+                            constants[target.id] = item.value.value
+    return constants
 
 
 def parse_hook_event_map(tree: ast.Module) -> dict[str, dict[str, str]]:
@@ -37,21 +36,10 @@ def parse_hook_event_map(tree: ast.Module) -> dict[str, dict[str, str]]:
 
     Returns {runtime: {native_event: internal_event}}.
     """
+    attr_values = parse_agent_hook_constants(tree)
+
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == "AgentHookEvents":
-            # Collect class-level attribute values for resolving references
-            # Attributes use AnnAssign (e.g. AGENT_SESSION_START: AgentHookEventType = "session_start")
-            attr_values: dict[str, str] = {}
-            for item in node.body:
-                if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
-                    if item.value and isinstance(item.value, ast.Constant):
-                        attr_values[item.target.id] = str(item.value.value)
-                elif isinstance(item, ast.Assign):
-                    for target in item.targets:
-                        if isinstance(target, ast.Name) and isinstance(item.value, ast.Constant):
-                            attr_values[target.id] = str(item.value.value)
-
-            # Find HOOK_EVENT_MAP assignment (may be Assign or AnnAssign)
             for item in node.body:
                 if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
                     if item.target.id == "HOOK_EVENT_MAP" and item.value:
@@ -64,10 +52,9 @@ def parse_hook_event_map(tree: ast.Module) -> dict[str, dict[str, str]]:
 
 
 def _parse_map_value(node: ast.expr, attr_values: dict[str, str]) -> dict[str, dict[str, str]]:
-    """Parse the nested MappingProxyType dict structure."""
+    """Parse nested MappingProxyType dict structure."""
     result: dict[str, dict[str, str]] = {}
 
-    # Unwrap MappingProxyType(...)
     inner = node
     if isinstance(node, ast.Call) and isinstance(node.args[0] if node.args else None, ast.Dict):
         inner = node.args[0]
@@ -80,27 +67,26 @@ def _parse_map_value(node: ast.expr, attr_values: dict[str, str]) -> dict[str, d
             continue
         runtime = key.value
 
-        # Unwrap inner MappingProxyType(...)
         inner_dict = val
         if isinstance(val, ast.Call) and val.args:
             inner_dict = val.args[0]
 
         if isinstance(inner_dict, ast.Dict):
             mapping: dict[str, str] = {}
-            for k, v in zip(inner_dict.keys, inner_dict.values):
-                if isinstance(k, ast.Constant) and isinstance(k.value, str):
-                    event_val = _resolve_attr(v, attr_values)
+            for native_key, internal_value in zip(inner_dict.keys, inner_dict.values):
+                if isinstance(native_key, ast.Constant) and isinstance(native_key.value, str):
+                    event_val = _resolve_attr(internal_value, attr_values)
                     if event_val:
-                        mapping[k.value] = event_val
+                        mapping[native_key.value] = event_val
             result[runtime] = mapping
 
     return result
 
 
 def _resolve_attr(node: ast.expr, attr_values: dict[str, str]) -> str | None:
-    """Resolve a class attribute reference or constant to its string value."""
-    if isinstance(node, ast.Constant):
-        return str(node.value)
+    """Resolve class attribute reference or constant to a string value."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
     if isinstance(node, ast.Name) and node.id in attr_values:
         return attr_values[node.id]
     if isinstance(node, ast.Attribute) and node.attr in attr_values:
@@ -108,25 +94,79 @@ def _resolve_attr(node: ast.expr, attr_values: dict[str, str]) -> str | None:
     return None
 
 
-def parse_handler_dispatch(tree: ast.Module) -> list[str]:
-    """Extract event types handled by AgentCoordinator.handle_event()."""
-    handlers: list[str] = []
+def parse_handler_dispatch(tree: ast.Module) -> dict[str, str]:
+    """Extract AgentHookEvents constant -> handler method mapping from handle_event()."""
+    dispatch: dict[str, str] = {}
+
     for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == "AgentCoordinator":
-            for item in ast.walk(node):
-                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "handle_event":
-                    for child in ast.walk(item):
-                        if isinstance(child, ast.Attribute) and isinstance(child.value, ast.Name):
-                            if child.value.id == "AgentHookEvents":
-                                handlers.append(child.attr)
-    return handlers
+        if not (isinstance(node, ast.ClassDef) and node.name == "AgentCoordinator"):
+            continue
+
+        for class_item in node.body:
+            if not (
+                isinstance(class_item, (ast.FunctionDef, ast.AsyncFunctionDef)) and class_item.name == "handle_event"
+            ):
+                continue
+
+            for stmt in class_item.body:
+                _collect_dispatch_from_stmt(stmt, dispatch)
+
+    return dispatch
+
+
+def _collect_dispatch_from_stmt(stmt: ast.stmt, dispatch: dict[str, str]) -> None:
+    """Collect event dispatch from if/elif blocks in handle_event."""
+    if not isinstance(stmt, ast.If):
+        return
+
+    event_constant = _extract_event_constant(stmt.test)
+    handler_name = _extract_handler_call(stmt.body)
+
+    if event_constant and handler_name:
+        dispatch[event_constant] = handler_name
+
+    for orelse_stmt in stmt.orelse:
+        _collect_dispatch_from_stmt(orelse_stmt, dispatch)
+
+
+def _extract_event_constant(test: ast.expr) -> str | None:
+    """Extract AgentHookEvents.<CONST> from compare expression."""
+    if not isinstance(test, ast.Compare):
+        return None
+    if len(test.ops) != 1 or len(test.comparators) != 1:
+        return None
+
+    comparator = test.comparators[0]
+    if isinstance(comparator, ast.Attribute) and isinstance(comparator.value, ast.Name):
+        if comparator.value.id == "AgentHookEvents":
+            return comparator.attr
+
+    return None
+
+
+def _extract_handler_call(body: list[ast.stmt]) -> str | None:
+    """Extract self.handle_* method name called in branch body."""
+    for stmt in body:
+        call_expr: ast.Call | None = None
+
+        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Await) and isinstance(stmt.value.value, ast.Call):
+            call_expr = stmt.value.value
+        elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+            call_expr = stmt.value
+
+        if call_expr and isinstance(call_expr.func, ast.Attribute) and isinstance(call_expr.func.value, ast.Name):
+            if call_expr.func.value.id == "self":
+                return call_expr.func.attr
+
+    return None
 
 
 def generate_mermaid(
     hook_map: dict[str, dict[str, str]],
-    handlers: list[str],
+    handler_dispatch: dict[str, str],
+    event_constants: dict[str, str],
 ) -> str:
-    """Generate Mermaid flowchart for event flow."""
+    """Generate Mermaid flowchart for runtime -> event -> handler flow."""
     lines: list[str] = [
         "---",
         "title: Event Flow",
@@ -134,33 +174,27 @@ def generate_mermaid(
         "flowchart LR",
     ]
 
-    # Collect all unique internal events
     internal_events: set[str] = set()
     for runtime_map in hook_map.values():
         internal_events.update(runtime_map.values())
 
-    # Runtime nodes
     for runtime in hook_map:
         lines.append(f"    {runtime}[{runtime}]")
 
     lines.append("")
 
-    # Internal event nodes
     for event in sorted(internal_events):
         safe_id = event.replace(" ", "_")
         lines.append(f"    {safe_id}({event})")
 
     lines.append("")
 
-    # Handler nodes
-    handler_set = set(handlers)
-    for h in sorted(handler_set):
-        safe_id = f"h_{h}"
-        lines.append(f"    {safe_id}[/{h}/]")
+    handler_names = sorted(set(handler_dispatch.values()))
+    for handler in handler_names:
+        lines.append(f"    h_{handler}[/{handler}/]")
 
     lines.append("")
 
-    # Edges: runtime --> native event label --> internal event
     for runtime, mapping in hook_map.items():
         for native_event, internal_event in mapping.items():
             safe_internal = internal_event.replace(" ", "_")
@@ -168,39 +202,14 @@ def generate_mermaid(
 
     lines.append("")
 
-    # Edges: internal event --> handler (match by name convention)
-    handler_map = {
-        "AGENT_SESSION_START": "handle_session_start",
-        "USER_PROMPT_SUBMIT": "handle_user_prompt_submit",
-        "TOOL_USE": "handle_tool_use",
-        "TOOL_DONE": "handle_tool_done",
-        "AGENT_STOP": "handle_agent_stop",
-        "AGENT_NOTIFICATION": "handle_notification",
-        "AGENT_SESSION_END": "handle_session_end",
-    }
-
-    for event in sorted(internal_events):
-        safe_event = event.replace(" ", "_")
-        for attr_name in handler_map:
-            if attr_name in handler_set and event == _attr_to_value(attr_name):
-                lines.append(f"    {safe_event} --> h_{attr_name}")
+    for event_constant, handler_name in sorted(handler_dispatch.items()):
+        internal_event = event_constants.get(event_constant)
+        if not internal_event:
+            continue
+        safe_internal = internal_event.replace(" ", "_")
+        lines.append(f"    {safe_internal} --> h_{handler_name}")
 
     return "\n".join(lines) + "\n"
-
-
-def _attr_to_value(attr: str) -> str:
-    """Convert AgentHookEvents attribute name to its likely string value."""
-    mapping = {
-        "AGENT_SESSION_START": "session_start",
-        "USER_PROMPT_SUBMIT": "user_prompt_submit",
-        "TOOL_USE": "tool_use",
-        "TOOL_DONE": "tool_done",
-        "AGENT_STOP": "agent_stop",
-        "AGENT_NOTIFICATION": "notification",
-        "AGENT_SESSION_END": "session_end",
-        "AGENT_ERROR": "error",
-    }
-    return mapping.get(attr, attr.lower())
 
 
 def main() -> None:
@@ -213,14 +222,15 @@ def main() -> None:
     coord_tree = ast.parse(COORDINATOR_PATH.read_text(encoding="utf-8"), filename=str(COORDINATOR_PATH))
 
     hook_map = parse_hook_event_map(events_tree)
-    handlers = parse_handler_dispatch(coord_tree)
+    event_constants = parse_agent_hook_constants(events_tree)
+    handler_dispatch = parse_handler_dispatch(coord_tree)
 
     if not hook_map:
         print("WARNING: No HOOK_EVENT_MAP found", file=sys.stderr)
-    if not handlers:
+    if not handler_dispatch:
         print("WARNING: No handler dispatch found", file=sys.stderr)
 
-    mermaid = generate_mermaid(hook_map, handlers)
+    mermaid = generate_mermaid(hook_map, handler_dispatch, event_constants)
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(mermaid, encoding="utf-8")
