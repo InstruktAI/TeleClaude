@@ -6,10 +6,8 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
-import re
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -27,9 +25,13 @@ from teleclaude.config import config  # noqa: E402
 from teleclaude.core.agents import AgentName  # noqa: E402
 from teleclaude.core import db_models  # noqa: E402
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType  # noqa: E402
-from teleclaude.constants import (  # noqa: E402
-    MAIN_MODULE,
-    UI_MESSAGE_MAX_CHARS,
+from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS  # noqa: E402
+from teleclaude.hooks.checkpoint_flags import (  # noqa: E402
+    CHECKPOINT_RECHECK_FLAG,
+    consume_checkpoint_flag,
+    is_checkpoint_disabled,
+    session_tmp_base_dir,
+    set_checkpoint_flag,
 )
 
 configure_logging("teleclaude")
@@ -49,9 +51,6 @@ _HANDLED_EVENTS: frozenset[AgentHookEventType] = frozenset(
         AgentHookEvents.AGENT_ERROR,
     }
 )
-
-_CHECKPOINT_CLEAR_FLAG = "teleclaude_checkpoint_clear"
-_CHECKPOINT_RECHECK_FLAG = "teleclaude_checkpoint_recheck"
 
 
 def _create_sync_engine() -> object:
@@ -105,59 +104,9 @@ def _format_injection_payload(agent: str, context: str) -> str:
     return ""
 
 
-def _session_tmp_base_dir() -> Path:
-    base_override = os.environ.get("TELECLAUDE_SESSION_TMPDIR_BASE")
-    if base_override:
-        return Path(base_override).expanduser().resolve()
-    return Path(os.path.expanduser("~/.teleclaude/tmp/sessions")).resolve()
-
-
-def _safe_session_path_component(value: str) -> str:
-    if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", value):
-        return value
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
-
-
-def _checkpoint_flag_path(session_id: str, flag_name: str) -> Path:
-    session_dir = _session_tmp_base_dir() / _safe_session_path_component(session_id)
-    return session_dir / flag_name
-
-
-def _set_checkpoint_flag(session_id: str, flag_name: str) -> None:
-    flag_path = _checkpoint_flag_path(session_id, flag_name)
-    try:
-        flag_path.parent.mkdir(parents=True, exist_ok=True)
-        flag_path.touch()
-    except OSError as exc:
-        logger.warning(
-            "Failed to set checkpoint flag",
-            session_id=session_id[:8],
-            flag=flag_name,
-            path=str(flag_path),
-            error=str(exc),
-        )
-
-
-def _consume_checkpoint_flag(session_id: str, flag_name: str) -> bool:
-    flag_path = _checkpoint_flag_path(session_id, flag_name)
-    if not flag_path.exists():
-        return False
-    try:
-        flag_path.unlink()
-    except OSError as exc:
-        logger.warning(
-            "Failed to consume checkpoint flag",
-            session_id=session_id[:8],
-            flag=flag_name,
-            path=str(flag_path),
-            error=str(exc),
-        )
-    return True
-
-
 def _reset_checkpoint_flags(session_id: str) -> None:
-    _consume_checkpoint_flag(session_id, _CHECKPOINT_CLEAR_FLAG)
-    _consume_checkpoint_flag(session_id, _CHECKPOINT_RECHECK_FLAG)
+    # Keep CLEAR persistent across turns; only reset one-shot recheck limiter.
+    consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
 
 
 def _maybe_checkpoint_output(
@@ -170,14 +119,14 @@ def _maybe_checkpoint_output(
     Returns agent-specific JSON to print to stdout (blocking the stop), or None
     to let the stop pass through to the normal enqueue path.
     """
-    # Session-scoped escape hatch: explicit clear marker from agent.
-    if _consume_checkpoint_flag(session_id, _CHECKPOINT_CLEAR_FLAG):
-        _consume_checkpoint_flag(session_id, _CHECKPOINT_RECHECK_FLAG)
-        logger.info("Checkpoint skipped (clear flag)", session_id=session_id[:8], agent=agent)
+    # Session-scoped persistent disable: while clear marker exists, skip checkpoints.
+    if is_checkpoint_disabled(session_id):
+        consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
+        logger.info("Checkpoint skipped (persistent clear flag)", session_id=session_id[:8], agent=agent)
         return None
 
     stop_hook_active = bool(raw_data.get("stop_hook_active"))
-    if stop_hook_active and _consume_checkpoint_flag(session_id, _CHECKPOINT_RECHECK_FLAG):
+    if stop_hook_active and consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG):
         logger.info("Checkpoint skipped (recheck limit reached)", session_id=session_id[:8], agent=agent)
         return None
 
@@ -257,7 +206,7 @@ def _maybe_checkpoint_output(
     # Claude stop_hook_active indicates we already blocked once for this turn.
     # If no explicit clear marker is provided, allow at most one extra recheck.
     if stop_hook_active:
-        _set_checkpoint_flag(session_id, _CHECKPOINT_RECHECK_FLAG)
+        set_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
 
     # Checkpoint warranted — update DB and return agent-specific blocking JSON
     try:
@@ -471,7 +420,7 @@ def _get_legacy_tmux_session_id() -> str | None:
         tmpdir_path = Path(tmpdir).expanduser().resolve()
     except OSError:
         return None
-    base_dir = _session_tmp_base_dir()
+    base_dir = session_tmp_base_dir()
     if base_dir not in tmpdir_path.parents:
         return None
     legacy_path = tmpdir_path / "teleclaude_session_id"

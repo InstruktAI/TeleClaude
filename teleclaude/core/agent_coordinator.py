@@ -24,6 +24,7 @@ from teleclaude.constants import (
     LOCAL_COMPUTER,
 )
 from teleclaude.core.agents import AgentName
+from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -43,7 +44,6 @@ from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import notify_input_request, notify_stop
 from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input_title
-from teleclaude.core.tmux_bridge import send_keys_existing_tmux
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
@@ -52,7 +52,6 @@ from teleclaude.utils.markdown import telegramify_markdown
 from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
     extract_last_agent_message,
-    extract_last_user_message,
     extract_last_user_message_with_timestamp,
     get_assistant_messages_since,
     render_agent_output,
@@ -875,122 +874,13 @@ class AgentCoordinator:
 
         Claude/Gemini: handled by hook output in receiver.py (invisible checkpoint).
         Codex: falls through to tmux injection below.
-
-        Tmux injection logic:
-        1. Determine turn start: max(last_message_sent_at, last_checkpoint_at)
-           — the most recent input event marks when the current work period began.
-        2. Dedup (agents without tool_use, e.g. Codex): if last transcript
-           input is our checkpoint message → skip (prevents injection loops).
-        3. Otherwise → inject, persist last_checkpoint_at.
         """
         if not session:
             return
 
-        # Claude and Gemini use hook-based invisible checkpoints (receiver.py).
-        # Only Codex needs tmux injection.
-        agent_name = str(session.active_agent or "")
-        if agent_name in (AgentName.CLAUDE.value, AgentName.GEMINI.value):
-            return
-
-        tmux_name = session.tmux_session_name
-        if not tmux_name:
-            return
-
-        # Re-read session to get fresh timestamps (events may have updated DB since
-        # handle_agent_stop fetched the session at the start of the method).
-        fresh = await db.get_session(session_id)
-        if not fresh:
-            return
-
-        checkpoint_at = fresh.last_checkpoint_at
-        message_at = fresh.last_message_sent_at
-        now = datetime.now(timezone.utc)
-
-        # Turn start = most recent input event (real user message or checkpoint)
-        turn_start = max(filter(None, [message_at, checkpoint_at]), default=None)
-        if not turn_start:
-            logger.debug("Checkpoint skipped (no turn start) for session %s", session_id[:8])
-            return
-
-        elapsed = (now - turn_start).total_seconds()
-
-        # For agents without tool_use (Codex): dedup via transcript to prevent
-        # checkpoint → response → stop → checkpoint loops.
-        agent_name = str(fresh.active_agent or "")
-        agent_hooks = AgentHookEvents.HOOK_EVENT_MAP.get(agent_name, {})
-        has_tool_use = AgentHookEvents.TOOL_USE in agent_hooks.values()
-
-        if not has_tool_use:
-            transcript_path = fresh.native_log_file
-            if transcript_path:
-                try:
-                    agent_enum = AgentName.from_str(agent_name)
-                    last_input = extract_last_user_message(transcript_path, agent_enum) or ""
-                except ValueError:
-                    last_input = ""
-            else:
-                last_input = ""
-            if _is_checkpoint_prompt(last_input):
-                logger.debug(
-                    "Checkpoint skipped (last input was checkpoint) for %s agent session %s", agent_name, session_id[:8]
-                )
-                return
-
-        # Build context-aware checkpoint message
-        from teleclaude.hooks.checkpoint import get_checkpoint_content
-
-        transcript_path = fresh.native_log_file
-        working_slug = getattr(fresh, "working_slug", None)
-        # Prefer persisted project path; fall back to transcript-derived workdir
-        # only when project context is missing.
-        project_path = str(getattr(fresh, "project_path", "") or "")
-        if not project_path and transcript_path:
-            from teleclaude.utils.transcript import extract_workdir_from_transcript
-
-            project_path = extract_workdir_from_transcript(transcript_path) or ""
-        try:
-            agent_enum_ckpt = AgentName.from_str(agent_name)
-        except ValueError:
-            agent_enum_ckpt = AgentName.CLAUDE
-        checkpoint_text = get_checkpoint_content(
-            transcript_path=transcript_path,
-            agent_name=agent_enum_ckpt,
-            project_path=project_path,
-            working_slug=working_slug,
-            elapsed_since_turn_start_s=elapsed,
-        )
-        if not checkpoint_text:
-            logger.debug(
-                "Checkpoint skipped: no turn-local changes for session %s (transcript=%s)",
-                session_id[:8],
-                transcript_path or "<none>",
-            )
-            return
-
-        logger.info(
-            "Checkpoint payload prepared",
+        await inject_checkpoint_if_needed(
+            session_id,
             route="codex_tmux",
-            session=session_id[:8],
-            agent=agent_name,
-            transcript_present=bool(transcript_path),
-            project_path=project_path or "",
-            working_slug=working_slug or "",
-            payload_len=len(checkpoint_text),
+            include_elapsed_since_turn_start=True,
+            default_agent=AgentName.CLAUDE,
         )
-
-        # Inject
-        delivered = await send_keys_existing_tmux(
-            session_name=tmux_name,
-            text=checkpoint_text,
-            send_enter=True,
-        )
-        if delivered:
-            await db.update_session(session_id, last_checkpoint_at=now.isoformat())
-            logger.debug("Checkpoint injected for session %s", session_id[:8])
-        else:
-            logger.warning(
-                "Checkpoint injection not delivered",
-                session=session_id[:8],
-                tmux_session=tmux_name,
-                payload_len=len(checkpoint_text),
-            )

@@ -667,6 +667,7 @@ async def test_handle_get_session_data_codex_falls_back_to_tmux_when_no_transcri
 
     with (
         patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
         patch.object(command_handlers.tmux_bridge, "capture_pane", new=AsyncMock(return_value="abcdef123456")),
     ):
         mock_db.get_session = AsyncMock(return_value=mock_session)
@@ -700,6 +701,7 @@ async def test_handle_get_session_data_non_codex_falls_back_to_tmux_before_pendi
 
     with (
         patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
         patch.object(command_handlers.tmux_bridge, "capture_pane", new=AsyncMock(return_value="live output")),
     ):
         mock_db.get_session = AsyncMock(return_value=mock_session)
@@ -708,6 +710,71 @@ async def test_handle_get_session_data_non_codex_falls_back_to_tmux_before_pendi
 
     assert result["status"] == "success"
     assert result["messages"] == "live output"
+    assert "not available yet" not in result["messages"].lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_get_session_data_codex_returns_empty_tmux_tail_instead_of_pending():
+    """Codex sessions should return tmux fallback immediately even when pane output is currently empty."""
+    mock_session = MagicMock()
+    mock_session.session_id = "codex-session-tmux-empty"
+    mock_session.title = "Codex Session"
+    mock_session.project_path = "/home/user"
+    mock_session.subdir = None
+    mock_session.created_at = datetime.now()
+    mock_session.last_activity = datetime.now()
+    mock_session.native_log_file = None
+    mock_session.native_session_id = None
+    mock_session.active_agent = "codex"
+    mock_session.tmux_session_name = "tc_codex_empty"
+
+    cmd = GetSessionDataCommand(session_id="codex-session-tmux-empty")
+
+    with (
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
+        patch.object(command_handlers.tmux_bridge, "capture_pane", new=AsyncMock(return_value="")),
+    ):
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        result = await command_handlers.get_session_data(cmd)
+
+    assert result["status"] == "success"
+    assert result["messages"] == ""
+    assert "not available yet" not in result["messages"].lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_get_session_data_non_codex_returns_empty_tmux_tail_before_pending():
+    """Pre-stop non-codex sessions should return empty tmux fallback instead of pending notice."""
+    mock_session = MagicMock()
+    mock_session.session_id = "claude-session-tmux-empty"
+    mock_session.title = "Claude Session"
+    mock_session.project_path = "/home/user"
+    mock_session.subdir = None
+    mock_session.created_at = datetime.now()
+    mock_session.last_activity = datetime.now()
+    mock_session.native_log_file = None
+    mock_session.native_session_id = None
+    mock_session.active_agent = "claude"
+    mock_session.lifecycle_status = "active"
+    mock_session.closed_at = None
+    mock_session.last_feedback_received_at = None
+    mock_session.tmux_session_name = "tc_claude_empty"
+
+    cmd = GetSessionDataCommand(session_id="claude-session-tmux-empty")
+
+    with (
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
+        patch.object(command_handlers.tmux_bridge, "capture_pane", new=AsyncMock(return_value="")),
+    ):
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        result = await command_handlers.get_session_data(cmd)
+
+    assert result["status"] == "success"
+    assert result["messages"] == ""
     assert "not available yet" not in result["messages"].lower()
 
 
@@ -1340,6 +1407,7 @@ async def test_handle_agent_restart_uses_context_payload_for_post_restart_checkp
         agent_name=command_handlers.AgentName.CODEX,
         project_path="/tmp/project",
         working_slug="agent-output-monitor",
+        elapsed_since_turn_start_s=None,
     )
     mock_send_keys.assert_awaited_once_with(
         session_name="tc_ctx",

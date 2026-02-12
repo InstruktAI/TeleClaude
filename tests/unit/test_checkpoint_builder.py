@@ -411,6 +411,32 @@ def test_sigusr2_suppressed_when_pkill_in_transcript():
     assert not any("SIGUSR2" in a for a in result.required_actions)
 
 
+def test_sigusr2_not_suppressed_when_pkill_precedes_latest_tui_edit():
+    timeline = _timeline_with(
+        _bash_record("pkill -SIGUSR2 -f -- '-m teleclaude.cli.telec$'"),
+        _edit_record("teleclaude/cli/tui/views/preparation.py"),
+    )
+    result = run_heuristics(
+        ["teleclaude/cli/tui/views/preparation.py"],
+        timeline,
+        _default_context(project_path="/repo"),
+    )
+    assert any("SIGUSR2" in a for a in result.required_actions)
+
+
+def test_sigusr2_suppressed_when_pkill_follows_latest_tui_edit():
+    timeline = _timeline_with(
+        _edit_record("teleclaude/cli/tui/views/preparation.py"),
+        _bash_record("pkill -SIGUSR2 -f -- '-m teleclaude.cli.telec$'"),
+    )
+    result = run_heuristics(
+        ["teleclaude/cli/tui/views/preparation.py"],
+        timeline,
+        _default_context(project_path="/repo"),
+    )
+    assert not any("SIGUSR2" in a for a in result.required_actions)
+
+
 def test_agent_restart_suppressed_when_api_restart_call_seen():
     timeline = _timeline_with(
         _bash_record(
@@ -928,8 +954,8 @@ def test_get_checkpoint_content_suppresses_stale_dirty_files(monkeypatch):
     assert msg is None
 
 
-def test_get_checkpoint_content_session_fallback_catches_earlier_turn_edits(monkeypatch):
-    """When current turn has no edits but full session does, fallback should fire."""
+def test_get_checkpoint_content_does_not_fallback_to_earlier_turn_edits(monkeypatch):
+    """Checkpoint attribution is strictly turn-local; earlier session edits are ignored."""
     call_log: list[bool] = []
 
     def _mock_extract(_path, _agent, *, full_session=False):
@@ -958,10 +984,9 @@ def test_get_checkpoint_content_session_fallback_catches_earlier_turn_edits(monk
         agent_name=AgentName.CLAUDE,
         project_path="/repo",
     )
-    assert msg is not None
-    assert "Run `make restart`" in msg
-    # Should have been called twice: first current-turn, then full-session fallback
-    assert call_log == [False, True]
+    assert msg is None
+    # Should only inspect current-turn records; no full-session fallback.
+    assert call_log == [False]
 
 
 def test_get_checkpoint_content_keeps_actions_for_turn_local_edits(monkeypatch):

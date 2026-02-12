@@ -10,6 +10,7 @@ from teleclaude.core.agent_coordinator import (
     _is_checkpoint_prompt,
     _is_codex_synthetic_prompt_event,
 )
+from teleclaude.core.agents import AgentName
 from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload, UserPromptSubmitPayload
 from teleclaude.core.models import Session
 
@@ -446,25 +447,18 @@ async def test_codex_checkpoint_injection_prefers_session_project_path(coordinat
     )
 
     with (
-        patch("teleclaude.core.agent_coordinator.db") as mock_db,
-        patch("teleclaude.core.agent_coordinator.extract_last_user_message", return_value="regular prompt"),
-        patch("teleclaude.hooks.checkpoint.get_checkpoint_content", return_value="checkpoint text") as mock_ckpt,
         patch(
-            "teleclaude.core.agent_coordinator.send_keys_existing_tmux", new=AsyncMock(return_value=True)
-        ) as mock_send,
-        patch(
-            "teleclaude.utils.transcript.extract_workdir_from_transcript",
-            side_effect=AssertionError("should not use transcript workdir when project_path exists"),
-        ),
+            "teleclaude.core.agent_coordinator.inject_checkpoint_if_needed", new=AsyncMock(return_value=True)
+        ) as mock_inject,
     ):
-        mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.update_session = AsyncMock()
-
         await coordinator._maybe_inject_checkpoint(session.session_id, session)
 
-        mock_send.assert_awaited_once()
-        assert mock_ckpt.call_args.kwargs["project_path"] == "/tmp/project-from-session"
-        mock_db.update_session.assert_awaited_once()
+        mock_inject.assert_awaited_once_with(
+            session.session_id,
+            route="codex_tmux",
+            include_elapsed_since_turn_start=True,
+            default_agent=AgentName.CLAUDE,
+        )
 
 
 @pytest.mark.asyncio
@@ -482,20 +476,18 @@ async def test_codex_checkpoint_injection_falls_back_to_transcript_workdir(coord
     )
 
     with (
-        patch("teleclaude.core.agent_coordinator.db") as mock_db,
-        patch("teleclaude.core.agent_coordinator.extract_last_user_message", return_value="regular prompt"),
-        patch("teleclaude.hooks.checkpoint.get_checkpoint_content", return_value="checkpoint text") as mock_ckpt,
-        patch("teleclaude.core.agent_coordinator.send_keys_existing_tmux", new=AsyncMock(return_value=True)),
         patch(
-            "teleclaude.utils.transcript.extract_workdir_from_transcript", return_value="/tmp/project-from-transcript"
-        ),
+            "teleclaude.core.agent_coordinator.inject_checkpoint_if_needed", new=AsyncMock(return_value=True)
+        ) as mock_inject,
     ):
-        mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.update_session = AsyncMock()
-
         await coordinator._maybe_inject_checkpoint(session.session_id, session)
 
-        assert mock_ckpt.call_args.kwargs["project_path"] == "/tmp/project-from-transcript"
+        mock_inject.assert_awaited_once_with(
+            session.session_id,
+            route="codex_tmux",
+            include_elapsed_since_turn_start=True,
+            default_agent=AgentName.CLAUDE,
+        )
 
 
 @pytest.mark.asyncio
@@ -513,17 +505,15 @@ async def test_codex_checkpoint_injection_skips_when_no_payload(coordinator):
     )
 
     with (
-        patch("teleclaude.core.agent_coordinator.db") as mock_db,
-        patch("teleclaude.core.agent_coordinator.extract_last_user_message", return_value="regular prompt"),
-        patch("teleclaude.hooks.checkpoint.get_checkpoint_content", return_value=None),
         patch(
-            "teleclaude.core.agent_coordinator.send_keys_existing_tmux", new=AsyncMock(return_value=True)
-        ) as mock_send,
+            "teleclaude.core.agent_coordinator.inject_checkpoint_if_needed", new=AsyncMock(return_value=False)
+        ) as mock_inject,
     ):
-        mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.update_session = AsyncMock()
-
         await coordinator._maybe_inject_checkpoint(session.session_id, session)
 
-        mock_send.assert_not_awaited()
-        mock_db.update_session.assert_not_awaited()
+        mock_inject.assert_awaited_once_with(
+            session.session_id,
+            route="codex_tmux",
+            include_elapsed_since_turn_start=True,
+            default_agent=AgentName.CLAUDE,
+        )

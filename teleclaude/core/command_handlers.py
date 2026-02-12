@@ -1752,71 +1752,17 @@ async def agent_restart(
 
     # Inject checkpoint after restart — the agent is resuming with context.
     async def _inject_checkpoint_after_restart() -> None:
-        from teleclaude.core.tmux_bridge import send_keys_existing_tmux
-        from teleclaude.hooks.checkpoint import get_checkpoint_content
-        from teleclaude.utils.transcript import extract_workdir_from_transcript
+        from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
 
         await asyncio.sleep(5)  # Let agent initialize before injecting
-        fresh = await db.get_session(session.session_id)
-        if not fresh:
-            return
-
-        tmux_name = fresh.tmux_session_name
-        if not tmux_name:
-            return
-
-        transcript_path = fresh.native_log_file
-        working_slug = getattr(fresh, "working_slug", None)
-        project_path = str(getattr(fresh, "project_path", "") or "")
-        if not project_path and transcript_path:
-            project_path = extract_workdir_from_transcript(transcript_path) or ""
-
-        try:
-            agent_enum = AgentName.from_str(str(fresh.active_agent or target_agent))
-        except ValueError:
-            agent_enum = AgentName.CLAUDE
-
-        checkpoint_text = get_checkpoint_content(
-            transcript_path=transcript_path,
-            agent_name=agent_enum,
-            project_path=project_path,
-            working_slug=working_slug,
-        )
-        if not checkpoint_text:
-            logger.debug(
-                "Post-restart checkpoint skipped (no turn-local changes) for session %s (transcript=%s)",
-                session.session_id[:8],
-                transcript_path or "<none>",
-            )
-            return
-
-        logger.info(
-            "Checkpoint payload prepared",
+        await inject_checkpoint_if_needed(
+            session.session_id,
             route="restart_tmux",
-            session=session.session_id[:8],
-            agent=str(fresh.active_agent or target_agent),
-            transcript_present=bool(transcript_path),
-            project_path=project_path or "",
-            working_slug=working_slug or "",
-            payload_len=len(checkpoint_text),
+            include_elapsed_since_turn_start=False,
+            default_agent=target_agent,
+            get_session_cb=db.get_session,
+            update_session_cb=db.update_session,
         )
-
-        delivered = await send_keys_existing_tmux(
-            session_name=tmux_name,
-            text=checkpoint_text,
-            send_enter=True,
-        )
-        if delivered:
-            now = datetime.now(timezone.utc)
-            await db.update_session(session.session_id, last_checkpoint_at=now.isoformat())
-            logger.debug("Post-restart checkpoint injected for session %s", session.session_id[:8])
-        else:
-            logger.warning(
-                "Post-restart checkpoint injection not delivered",
-                session=session.session_id[:8],
-                tmux_session=tmux_name,
-                payload_len=len(checkpoint_text),
-            )
 
     asyncio.create_task(_inject_checkpoint_after_restart())
 

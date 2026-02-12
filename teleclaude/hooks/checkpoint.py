@@ -314,7 +314,9 @@ def _scope_git_files_to_current_turn(
     if not git_files:
         return []
     if not timeline.has_data:
-        return git_files
+        # Fail-closed: if turn extraction failed, avoid attributing repo-wide dirty state
+        # to the current stop event.
+        return []
 
     touched_files, saw_mutation_signal = _extract_turn_file_signals(timeline, project_path)
     if touched_files:
@@ -406,6 +408,76 @@ def _has_evidence(timeline: TurnTimeline, substrings: list[str]) -> bool:
         if _command_has_evidence(command, substrings):
             return True
     return False
+
+
+def _iter_shell_command_records(timeline: TurnTimeline) -> list[tuple[int, ToolCallRecord, str]]:
+    """Return successful shell-like tool calls with extracted command text."""
+    records: list[tuple[int, ToolCallRecord, str]] = []
+    if not timeline.has_data:
+        return records
+    for idx, record in enumerate(timeline.tool_calls):
+        tool_name = _canonical_tool_name(record.tool_name)
+        if tool_name not in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
+            continue
+        if record.had_error:
+            continue
+        command = _extract_shell_command(record.input_data)
+        records.append((idx, record, command))
+    return records
+
+
+def _has_evidence_after_index(timeline: TurnTimeline, substrings: list[str], after_index: int) -> bool:
+    """Check if evidence appears after a specific tool-call index in the timeline."""
+    if not substrings:
+        return False
+    for idx, _record, command in _iter_shell_command_records(timeline):
+        if idx <= after_index:
+            continue
+        if _command_has_evidence(command, substrings):
+            return True
+    return False
+
+
+def _last_category_mutation_index(
+    timeline: TurnTimeline,
+    category: FileCategory,
+    project_path: str,
+) -> int | None:
+    """Return the last timeline index that mutated a file in the given category."""
+    if not timeline.has_data:
+        return None
+
+    last_index: int | None = None
+    for idx, record in enumerate(timeline.tool_calls):
+        tool_name = _canonical_tool_name(record.tool_name)
+        if tool_name not in {"edit", "write", "multiedit", "apply_patch"}:
+            continue
+
+        touched: set[str] = set()
+        for key in ("file_path", "path", "filepath", "target_file"):
+            value = record.input_data.get(key)
+            if isinstance(value, str):
+                normalized = _normalize_repo_path(value, project_path)
+                if normalized:
+                    touched.add(normalized)
+        for key in ("file_paths", "paths"):
+            value = record.input_data.get(key)
+            if isinstance(value, list):
+                for entry in value:
+                    if isinstance(entry, str):
+                        normalized = _normalize_repo_path(entry, project_path)
+                        if normalized:
+                            touched.add(normalized)
+        if tool_name == "apply_patch":
+            for key in ("input", "patch", "raw_arguments", "command", "cmd"):
+                value = record.input_data.get(key)
+                if isinstance(value, str):
+                    touched.update(_extract_apply_patch_paths(value, project_path))
+
+        if any(_file_matches_category(path, category) for path in touched):
+            last_index = idx
+
+    return last_index
 
 
 def _has_status_evidence(timeline: TurnTimeline) -> bool:
@@ -787,7 +859,22 @@ def run_heuristics(
         if not category.instruction:
             continue  # e.g., hook runtime — no action needed
 
-        if category.evidence_substrings and _has_evidence(timeline, category.evidence_substrings):
+        evidence_seen = False
+        if category.evidence_substrings:
+            if category.evidence_must_follow_last_mutation:
+                mutation_idx = _last_category_mutation_index(timeline, category, context.project_path)
+                if mutation_idx is not None:
+                    evidence_seen = _has_evidence_after_index(
+                        timeline,
+                        category.evidence_substrings,
+                        mutation_idx,
+                    )
+                else:
+                    evidence_seen = _has_evidence(timeline, category.evidence_substrings)
+            else:
+                evidence_seen = _has_evidence(timeline, category.evidence_substrings)
+
+        if category.evidence_substrings and evidence_seen:
             # Also check for status evidence when daemon/config restart was suppressed
             if "make restart" in category.instruction and not _has_status_evidence(timeline):
                 append_required_action("Run `make status` to verify daemon health")
@@ -849,7 +936,8 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     """Compose checkpoint text from precomputed heuristic output."""
     escape_hatch = (
         "Escape hatch (last resort only, and only when there is no actionable information left): "
-        'run `touch "$TMPDIR/teleclaude_checkpoint_clear"` and then stop again.'
+        'run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to disable checkpoints for this session. '
+        "Re-enable by removing that file."
     )
 
     # Special case: docs only
@@ -960,26 +1048,9 @@ def get_checkpoint_content(
             project_path,
         )
 
-        # Fallback: current-turn scoping found nothing but git has dirty files.
-        # This happens when a user message shifts the turn boundary past earlier edits.
-        # Re-scope using the full session transcript to attribute files to this session.
+        # Intentionally no full-session fallback:
+        # checkpoint attribution must stay strictly turn-local.
         used_session_fallback = False
-        if not effective_git_files and git_files and transcript_path:
-            full_timeline = extract_tool_calls_current_turn(transcript_path, agent_name, full_session=True)
-            effective_git_files = _scope_git_files_to_current_turn(git_files, full_timeline, project_path)
-            if effective_git_files:
-                used_session_fallback = True
-                # Use the full timeline for heuristics so evidence checks cover all turns
-                timeline = full_timeline
-                logger.info(
-                    "Checkpoint session-fallback activated",
-                    extra={
-                        **base_extra,
-                        "dirty_files": len(git_files),
-                        "session_scoped_files": len(effective_git_files),
-                        "full_timeline_records": len(full_timeline.tool_calls),
-                    },
-                )
 
         context = CheckpointContext(
             project_path=project_path,
