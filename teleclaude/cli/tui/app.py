@@ -43,7 +43,13 @@ from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.state import Intent, IntentType, TuiState
 from teleclaude.cli.tui.state_store import save_sticky_state
-from teleclaude.cli.tui.theme import get_tab_line_attr, init_colors
+from teleclaude.cli.tui.theme import (
+    get_current_mode,
+    get_system_dark_mode,
+    get_tab_line_attr,
+    init_colors,
+    is_dark_mode,
+)
 from teleclaude.cli.tui.tree import is_computer_node, is_session_node
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NotificationLevel
 from teleclaude.cli.tui.views.preparation import PreparationView
@@ -60,6 +66,7 @@ logger = get_logger(__name__)
 WS_POLL_INTERVAL_MS = 100
 WS_HEAL_REFRESH_S = 5.0
 API_DISCONNECT_GRACE_S = 15.0
+THEME_MODE_PROBE_S = 1.0
 
 # Mouse mask for curses - clicks, double-clicks, scroll wheel (NOT drag to allow text selection)
 MOUSE_MASK = (
@@ -221,6 +228,7 @@ class TelecApp:
         self._refresh_error_since: float | None = None
         self._refresh_error_notified = False
         self._refresh_error_escalated = False
+        self._last_theme_probe = time.monotonic()
         self._loop: asyncio.AbstractEventLoop | None = None
 
         # Animation system
@@ -681,6 +689,7 @@ class TelecApp:
             # Process any pending WebSocket events
             self._process_ws_events()
             self._maybe_heal_ws()
+            self._poll_theme_drift()
 
             key = stdscr.getch()  # type: ignore[attr-defined]
 
@@ -741,6 +750,31 @@ class TelecApp:
         if self._loop:
             self._loop.run_until_complete(self.refresh_data())
         return True
+
+    def _poll_theme_drift(self, now: float | None = None) -> None:
+        """Fallback refresh when external mode changed but SIGUSR1 was missed."""
+        current = now or time.monotonic()
+        if current - self._last_theme_probe < THEME_MODE_PROBE_S:
+            return
+        self._last_theme_probe = current
+
+        system_dark = get_system_dark_mode()
+        if system_dark is not None:
+            external_dark = system_dark
+        else:
+            try:
+                external_dark = is_dark_mode()
+            except (OSError, ValueError):
+                return
+
+        cached_dark = get_current_mode()
+        if external_dark != cached_dark:
+            logger.debug(
+                "Detected theme mode drift (cached=%s external=%s); scheduling refresh",
+                cached_dark,
+                external_dark,
+            )
+            self._theme_refresh_requested = True
 
     def _install_appearance_hook(self) -> None:
         if not os.environ.get("TMUX"):

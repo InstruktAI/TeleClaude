@@ -147,3 +147,39 @@ class TestTelecAppWebSocketEvents:
 
         assert refreshed is False
         assert not app._loop.run_until_complete.called
+
+    def test_theme_drift_sets_refresh_request(self, monkeypatch):
+        """Fallback probe should request refresh when mode drift is detected."""
+        app = _make_app()
+        app._last_theme_probe = 0.0
+        monkeypatch.setattr("teleclaude.cli.tui.app.get_system_dark_mode", lambda: None)
+        monkeypatch.setattr("teleclaude.cli.tui.app.get_current_mode", lambda: False)
+        monkeypatch.setattr("teleclaude.cli.tui.app.is_dark_mode", lambda: True)
+
+        app._poll_theme_drift(now=10.0)
+
+        assert app._theme_refresh_requested is True
+
+    def test_theme_drift_skips_when_probe_interval_not_elapsed(self, monkeypatch):
+        """Probe should not run before interval elapses."""
+        app = _make_app()
+        app._last_theme_probe = 9.5
+        monkeypatch.setattr("teleclaude.cli.tui.app.get_system_dark_mode", lambda: None)
+        monkeypatch.setattr("teleclaude.cli.tui.app.get_current_mode", lambda: False)
+        monkeypatch.setattr("teleclaude.cli.tui.app.is_dark_mode", lambda: True)
+
+        app._poll_theme_drift(now=10.0)
+
+        assert app._theme_refresh_requested is False
+
+    def test_theme_drift_prefers_system_mode_probe(self, monkeypatch):
+        """When available, drift probe should use system mode source first."""
+        app = _make_app()
+        app._last_theme_probe = 0.0
+        monkeypatch.setattr("teleclaude.cli.tui.app.get_system_dark_mode", lambda: True)
+        monkeypatch.setattr("teleclaude.cli.tui.app.get_current_mode", lambda: False)
+        monkeypatch.setattr("teleclaude.cli.tui.app.is_dark_mode", lambda: False)
+
+        app._poll_theme_drift(now=10.0)
+
+        assert app._theme_refresh_requested is True

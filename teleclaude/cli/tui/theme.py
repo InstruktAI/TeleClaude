@@ -12,6 +12,7 @@ import curses
 import os
 import re
 import subprocess
+import sys
 from typing import Optional
 
 from teleclaude.cli.tui.types import ThemeMode
@@ -98,18 +99,18 @@ def _get_tmux_appearance_mode() -> Optional[str]:
     return None
 
 
-def is_dark_mode() -> bool:
-    """Check if system is in dark mode via macOS settings.
+def _get_env_appearance_mode() -> Optional[str]:
+    """Return APPEARANCE_MODE if explicitly provided."""
+    mode = (os.environ.get("APPEARANCE_MODE") or "").strip().lower()
+    if mode in {ThemeMode.DARK.value, ThemeMode.LIGHT.value}:
+        return mode
+    return None
 
-    Uses `defaults read -g AppleInterfaceStyle` to detect dark mode.
-    Falls back to dark mode if detection fails (non-macOS or error).
 
-    Returns:
-        True if dark mode, False if light mode
-    """
-    tmux_mode = _get_tmux_appearance_mode()
-    if tmux_mode:
-        return tmux_mode == ThemeMode.DARK.value
+def _get_system_appearance_mode() -> Optional[str]:
+    """Return host OS appearance mode when detectable."""
+    if sys.platform != "darwin":
+        return None
     try:
         result = subprocess.run(
             ["defaults", "read", "-g", "AppleInterfaceStyle"],
@@ -117,10 +118,59 @@ def is_dark_mode() -> bool:
             text=True,
             timeout=1,
         )
-        return _APPLE_DARK_LABEL in result.stdout
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        # Default to dark mode if detection fails (non-macOS, etc.)
-        return True
+        return None
+
+    stdout = (result.stdout or "").strip()
+    stderr = (result.stderr or "").strip().lower()
+
+    if _APPLE_DARK_LABEL in stdout:
+        return ThemeMode.DARK.value
+
+    # macOS returns non-zero in light mode because the key is absent.
+    # Only treat that exact case as light mode; any other failure is unknown.
+    if result.returncode != 0:
+        if "does not exist" in stderr or "could not be found" in stderr:
+            return ThemeMode.LIGHT.value
+        return None
+
+    return ThemeMode.LIGHT.value
+
+
+def get_system_dark_mode() -> bool | None:
+    """Return host system dark mode when available, otherwise None."""
+    mode = _get_system_appearance_mode()
+    if mode is None:
+        return None
+    return mode == ThemeMode.DARK.value
+
+
+def is_dark_mode() -> bool:
+    """Resolve dark mode with stable precedence.
+
+    Precedence:
+    1) APPEARANCE_MODE env (explicit override)
+    2) Host system mode (macOS)
+    3) tmux @appearance_mode (fallback for non-macOS/session contexts)
+    4) dark mode default
+
+    Returns:
+        True if dark mode, False if light mode
+    """
+    env_mode = _get_env_appearance_mode()
+    if env_mode:
+        return env_mode == ThemeMode.DARK.value
+
+    system_mode = _get_system_appearance_mode()
+    if system_mode:
+        return system_mode == ThemeMode.DARK.value
+
+    tmux_mode = _get_tmux_appearance_mode()
+    if tmux_mode:
+        return tmux_mode == ThemeMode.DARK.value
+
+    # Default to dark mode if detection fails.
+    return True
 
 
 _is_dark_mode = is_dark_mode()
