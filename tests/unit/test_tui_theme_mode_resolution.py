@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from teleclaude.cli.tui import theme
 
 
@@ -32,3 +34,33 @@ def test_is_dark_mode_uses_tmux_when_system_unknown(monkeypatch) -> None:
 def test_get_system_dark_mode_none_when_unknown(monkeypatch) -> None:
     monkeypatch.setattr(theme, "_get_system_appearance_mode", lambda: None)
     assert theme.get_system_dark_mode() is None
+
+
+def test_system_appearance_mode_returns_light_for_missing_key(monkeypatch) -> None:
+    monkeypatch.setattr(theme.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        theme.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            stdout="",
+            stderr="The domain/default pair of (-g, AppleInterfaceStyle) does not exist",
+            returncode=1,
+        ),
+    )
+
+    assert theme._get_system_appearance_mode() == "light"
+
+
+def test_system_appearance_mode_returns_none_for_other_errors(monkeypatch) -> None:
+    monkeypatch.setattr(theme.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        theme.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            stdout="",
+            stderr="launch services unavailable",
+            returncode=1,
+        ),
+    )
+
+    assert theme._get_system_appearance_mode() is None
