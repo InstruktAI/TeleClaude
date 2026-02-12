@@ -747,9 +747,11 @@ class TelecApp:
             return
 
         def _handle_signal(_signum: int, _frame: object | None) -> None:
+            logger.debug("Received SIGUSR1 appearance refresh signal")
             self._theme_refresh_requested = True
 
         def _handle_reload_signal(_signum: int, _frame: object | None) -> None:
+            logger.debug("Received SIGUSR2 TUI reload signal")
             self._reload_requested = True
 
         signal.signal(signal.SIGUSR1, _handle_signal)

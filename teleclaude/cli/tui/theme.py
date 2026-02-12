@@ -147,11 +147,14 @@ def init_colors() -> None:
     - Dark mode: 15% white (#262626) for inactive, terminal bg for active
     - Light mode: 85% white (#d9d9d9) for inactive, terminal bg for active
     """
-    global _is_dark_mode  # noqa: PLW0603
+    global _is_dark_mode, _terminal_bg_cache  # noqa: PLW0603
     curses.start_color()
     curses.use_default_colors()
 
     _is_dark_mode = is_dark_mode()
+    # Reset terminal background hint cache on theme refresh so SIGUSR1 always
+    # recomputes against current system mode/profile values.
+    _terminal_bg_cache = None
 
     # Agent colors: invert muted/highlight between dark and light mode.
     # Dark mode: muted is darker, highlight is lighter.
@@ -328,6 +331,8 @@ _AGENT_HEX_COLORS_LIGHT: dict[str, str] = {
 # Base inactive pane background (from window-style setting)
 _BASE_INACTIVE_BG_DARK = "#202529"
 _BASE_INACTIVE_BG_LIGHT = "#e8e8e8"  # Light gray for light mode
+# Soft paper baseline for light mode fallbacks (friendlier than pure white).
+_LIGHT_MODE_PAPER_BG = "#fdf6e3"
 
 # Configurable haze percentages (0.0 to 1.0)
 # Inactive pane background: 6% agent color, 94% base color
@@ -337,7 +342,12 @@ _ACTIVE_HAZE_PERCENTAGE = 0.02
 # Status bar background: 5% agent color, 95% base color (subtle)
 _STATUS_HAZE_PERCENTAGE = 0.05
 # TUI pane inactive haze: subtle neutral dim/bright shift from terminal background.
-_TUI_INACTIVE_HAZE_PERCENTAGE = 0.06
+_TUI_INACTIVE_HAZE_PERCENTAGE = 0.08
+# Terminal background hint weight: keep TUI palette stable while honoring terminal tone.
+_TERMINAL_HINT_WEIGHT = 0.35
+# Guardrails to reject hints that conflict with the current mode.
+_DARK_HINT_MAX_LUMINANCE = 0.45
+_LIGHT_HINT_MIN_LUMINANCE = 0.55
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _terminal_bg_cache: str | None = None
@@ -363,6 +373,22 @@ def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
 def _is_hex_color(value: str) -> bool:
     """Return True when value is a #RRGGBB literal."""
     return bool(_HEX_COLOR_RE.match(value or ""))
+
+
+def _relative_luminance(hex_color: str) -> float:
+    """Return relative luminance (0.0=black, 1.0=white) for a #RRGGBB color."""
+    r8, g8, b8 = _hex_to_rgb(hex_color)
+
+    def _srgb_to_linear(v: int) -> float:
+        c = v / 255.0
+        if c <= 0.04045:
+            return c / 12.92
+        return ((c + 0.055) / 1.055) ** 2.4
+
+    r = _srgb_to_linear(r8)
+    g = _srgb_to_linear(g8)
+    b = _srgb_to_linear(b8)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 
 def _read_terminal_bg_from_appearance() -> str | None:
@@ -517,7 +543,7 @@ def get_agent_highlight_color(agent: str) -> int:
 def get_terminal_background() -> str:
     """Get the terminal's actual default background color.
 
-    Returns black for dark mode, white for light mode (pure terminal defaults).
+    Uses a mode-safe baseline and optionally blends with a terminal hint.
 
     Returns:
         Hex color string for terminal background
@@ -527,20 +553,19 @@ def get_terminal_background() -> str:
     if _terminal_bg_cache:
         return _terminal_bg_cache
 
-    env_bg = (os.environ.get("TERMINAL_BG") or "").strip()
-    if _is_hex_color(env_bg):
-        _terminal_bg_cache = env_bg
-        return env_bg
+    mode_default_bg = "#000000" if _is_dark_mode else _LIGHT_MODE_PAPER_BG
+    hint_bg = _read_terminal_bg_from_appearance()
 
-    detected_bg = _read_terminal_bg_from_appearance()
-    if detected_bg:
-        _terminal_bg_cache = detected_bg
-        return detected_bg
+    if hint_bg:
+        hint_luminance = _relative_luminance(hint_bg)
+        hint_matches_mode = (_is_dark_mode and hint_luminance <= _DARK_HINT_MAX_LUMINANCE) or (
+            not _is_dark_mode and hint_luminance >= _LIGHT_HINT_MIN_LUMINANCE
+        )
+        if hint_matches_mode:
+            _terminal_bg_cache = blend_colors(mode_default_bg, hint_bg, _TERMINAL_HINT_WEIGHT)
+            return _terminal_bg_cache
 
-    if _is_dark_mode:
-        _terminal_bg_cache = "#000000"  # Pure black fallback for dark mode
-        return _terminal_bg_cache
-    _terminal_bg_cache = "#ffffff"  # Pure white fallback for light mode
+    _terminal_bg_cache = mode_default_bg
     return _terminal_bg_cache
 
 

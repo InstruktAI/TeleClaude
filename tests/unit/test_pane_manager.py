@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
+from teleclaude.cli.tui import theme
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 
 
@@ -70,3 +71,25 @@ def test_hide_sessions_kills_existing_panes_and_clears_state():
     assert manager.state.parent_session is None
     # Verify kill-pane command issued for parent pane
     assert mock_run.call_args_list[0].args == ("kill-pane", "-t", "%10")
+
+
+def test_set_pane_background_uses_highlight_fg_for_active_style():
+    """Active pane foreground should always use agent highlight color."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    mock_run = Mock(return_value="")
+    with (
+        patch.object(manager, "_run_tmux", mock_run),
+        patch.object(theme, "get_agent_pane_background", return_value="#101010"),
+        patch.object(theme, "get_agent_normal_color", return_value=111),
+        patch.object(theme, "get_agent_highlight_color", return_value=222),
+        patch.object(theme, "get_current_mode", return_value=True),
+        patch.object(theme, "get_terminal_background", return_value="#000000"),
+    ):
+        manager._set_pane_background("%9", "tc_test", "claude")
+
+    style_calls = [call.args for call in mock_run.call_args_list if call.args[:4] == ("set", "-p", "-t", "%9")]
+    assert ("set", "-p", "-t", "%9", "window-style", "fg=colour111,bg=#101010") in style_calls
+    assert ("set", "-p", "-t", "%9", "window-active-style", "fg=colour222,bg=#000000") in style_calls
