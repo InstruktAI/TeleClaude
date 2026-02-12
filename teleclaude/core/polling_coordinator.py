@@ -35,12 +35,13 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Codex input detection - simple marker-based approach
-# Detect text after "› " prompt, emit when agent marker appears
-CODEX_INPUT_MAX_CHARS = 70  # Field size for last_input
+# Codex input detection - marker-pair approach
+# Capture input block after "›" prompt and emit when submit boundary marker appears.
+CODEX_INPUT_MAX_CHARS = 4000
 
 # Codex TUI markers
 CODEX_PROMPT_MARKER = "›"  # User input prompt line
+CODEX_PROMPT_LIVE_DISTANCE = 4  # Prompt marker must be close to bottom unless submit boundary is found
 # Agent "thinking/working" markers - Codex uses animated symbols
 # These indicate agent has started responding (user input complete)
 CODEX_AGENT_MARKERS = frozenset(
@@ -94,47 +95,76 @@ class CodexInputState:
 _codex_input_state: dict[str, CodexInputState] = {}
 
 
-def _find_prompt_input(output: str) -> str:
-    """Find user input text after the › prompt marker.
+def _extract_prompt_block(output: str) -> tuple[str, bool]:
+    """Extract prompt block and whether a submit boundary marker is present below it.
 
-    Returns empty string if:
-    - No › line found
-    - Text after › is suggestion-styled (dim/italic)
-    - No text after ›
+    Returns:
+        (prompt_text, has_submit_boundary)
     """
     lines = output.rstrip().split("\n")
     if not lines:
-        return ""
+        return "", False
 
-    # Search from end to find the most recent live prompt line.
-    # Ignore older scrollback prompts that are no longer at the active bottom region.
-    start_index = max(0, len(lines) - 30)
+    # Find the most recent prompt marker near the live bottom region.
+    start_index = max(0, len(lines) - 60)
+    prompt_idx = -1
     for idx in range(len(lines) - 1, start_index - 1, -1):
         line = lines[idx]
         clean_line = _strip_ansi(line.strip())
         if clean_line.startswith(CODEX_PROMPT_MARKER):
-            if idx < len(lines) - 3:
-                continue
-            # Get raw text after marker (preserves ANSI for styling check)
-            marker_pos = line.find(CODEX_PROMPT_MARKER)
-            if marker_pos == -1:
-                continue
-            raw_after = line[marker_pos + len(CODEX_PROMPT_MARKER) :]
+            prompt_idx = idx
+            break
 
-            # Skip if suggestion-styled (dim/italic)
-            if _is_suggestion_styled(raw_after):
-                logger.debug(
-                    "[CODEX] Skipping suggestion-styled text: %r",
-                    _strip_ansi(raw_after).strip()[:30],
-                )
-                continue
+    if prompt_idx < 0:
+        return "", False
 
-            # Extract clean text
-            text = _strip_ansi(raw_after).strip()
-            if text:
-                return text[:CODEX_INPUT_MAX_CHARS]
+    prompt_line = lines[prompt_idx]
+    marker_pos = prompt_line.find(CODEX_PROMPT_MARKER)
+    if marker_pos == -1:
+        return "", False
 
-    return ""
+    raw_after = prompt_line[marker_pos + len(CODEX_PROMPT_MARKER) :]
+    if _is_suggestion_styled(raw_after):
+        logger.debug(
+            "[CODEX] Skipping suggestion-styled text: %r",
+            _strip_ansi(raw_after).strip()[:30],
+        )
+        return "", False
+
+    parts: list[str] = []
+    first = _strip_ansi(raw_after).strip()
+    if first:
+        parts.append(first)
+
+    has_submit_boundary = False
+    for line in lines[prompt_idx + 1 :]:
+        clean_line = _strip_ansi(line)
+        stripped = clean_line.strip()
+        if stripped and stripped[0] in CODEX_AGENT_MARKERS:
+            has_submit_boundary = True
+            break
+        if stripped.startswith(CODEX_PROMPT_MARKER):
+            # New prompt marker means previous block ended.
+            break
+        if _is_suggestion_styled(line):
+            continue
+        parts.append(clean_line.rstrip())
+
+    # Ignore stale scrollback prompt markers that are too far above live bottom
+    # unless we already detected a submit boundary marker below this prompt block.
+    if not has_submit_boundary and (len(lines) - 1 - prompt_idx) >= CODEX_PROMPT_LIVE_DISTANCE:
+        return "", False
+
+    text = "\n".join(parts).strip()
+    if not text:
+        return "", has_submit_boundary
+    return text[:CODEX_INPUT_MAX_CHARS], has_submit_boundary
+
+
+def _find_prompt_input(output: str) -> str:
+    """Backward-compatible helper for tests/callers expecting prompt text only."""
+    text, _ = _extract_prompt_block(output)
+    return text
 
 
 def _has_agent_marker(output: str) -> bool:
@@ -176,8 +206,8 @@ async def _maybe_emit_codex_input(
 
     current_time = time.time()
 
-    # Find current prompt input (text after ›)
-    current_input = _find_prompt_input(current_output)
+    # Capture current prompt block and whether a submit boundary marker appeared below it.
+    current_input, has_submit_boundary = _extract_prompt_block(current_output)
 
     # Check if agent is responding
     agent_responding = _has_agent_marker(current_output)
@@ -216,8 +246,11 @@ async def _maybe_emit_codex_input(
 
     if agent_responding:
         # Marker alone is not enough; stale markers exist in history.
-        # Emit only after prompt input is no longer visible.
-        if current_input:
+        # Emit only when prompt block has a submit boundary marker below it.
+        if current_input and has_submit_boundary:
+            state.last_prompt_input = current_input
+            await _emit_captured_input("codex_output_polling")
+        elif current_input:
             if current_input != state.last_prompt_input:
                 logger.debug("[CODEX %s] Tracking input: %r", session_id[:8], current_input[:50])
             state.last_prompt_input = current_input

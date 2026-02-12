@@ -323,37 +323,37 @@ class TestPollAndSendOutput:
 @pytest.mark.asyncio
 class TestCodexSyntheticPromptDetection:
     async def test_marker_visible_during_typing_emits_only_after_prompt_clears(self):
-        """Marker visibility while typing must not emit partial prompts."""
+        """Stale marker above prompt while typing must not emit partial prompts."""
         session_id = "codex-partial-1"
         emit = AsyncMock()
         polling_coordinator._cleanup_codex_input_state(session_id)
 
         try:
-            # First keystroke appears while stale marker is visible.
+            # First keystroke appears while stale marker is visible above prompt.
             await polling_coordinator._maybe_emit_codex_input(
                 session_id=session_id,
                 active_agent="codex",
-                current_output="› c\n• Working...",
+                current_output="• Working...\n› c",
                 output_changed=True,
                 emit_agent_event=emit,
             )
             emit.assert_not_awaited()
 
-            # User continues typing on prompt line.
+            # User continues typing multiline prompt.
             await polling_coordinator._maybe_emit_codex_input(
                 session_id=session_id,
                 active_agent="codex",
-                current_output="› commit all\n• Working...",
+                current_output="• Working...\n› commit all\nasdsd",
                 output_changed=True,
                 emit_agent_event=emit,
             )
             emit.assert_not_awaited()
 
-            # Prompt clears only after submit; now emit full input.
+            # Submit boundary marker appears below prompt block -> emit full buffered prompt.
             await polling_coordinator._maybe_emit_codex_input(
                 session_id=session_id,
                 active_agent="codex",
-                current_output="• Working...",
+                current_output="› commit all\nasdsd\n• Working...",
                 output_changed=True,
                 emit_agent_event=emit,
             )
@@ -362,13 +362,13 @@ class TestCodexSyntheticPromptDetection:
             context = emit.await_args.args[0]
             payload = context.data
             assert isinstance(payload, UserPromptSubmitPayload)
-            assert payload.prompt == "commit all"
+            assert payload.prompt == "commit all\nasdsd"
             assert payload.raw.get("source") == "codex_output_polling"
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
     async def test_does_not_emit_while_prompt_text_is_still_visible(self):
-        """Stale marker glyphs should not trigger synthetic submit during typing."""
+        """Stale marker glyphs above prompt should not trigger synthetic submit."""
         session_id = "codex-visible-1"
         emit = AsyncMock()
         polling_coordinator._cleanup_codex_input_state(session_id)
@@ -381,7 +381,7 @@ class TestCodexSyntheticPromptDetection:
             await polling_coordinator._maybe_emit_codex_input(
                 session_id=session_id,
                 active_agent="codex",
-                current_output="› hello world\n• Working...",
+                current_output="• Working...\n› hello world",
                 output_changed=True,
                 emit_agent_event=emit,
             )
