@@ -165,6 +165,14 @@ def is_dark_mode() -> bool:
     if system_mode:
         return system_mode == ThemeMode.DARK.value
 
+    # On macOS, avoid tmux fallback when system mode probe is unavailable.
+    # tmux @appearance_mode can flap when external watchers mis-detect mode.
+    if sys.platform == "darwin":
+        cached = globals().get("_is_dark_mode")
+        if isinstance(cached, bool):
+            return cached
+        return True
+
     tmux_mode = _get_tmux_appearance_mode()
     if tmux_mode:
         return tmux_mode == ThemeMode.DARK.value
@@ -385,14 +393,15 @@ _BASE_INACTIVE_BG_LIGHT = "#e8e8e8"  # Light gray for light mode
 _LIGHT_MODE_PAPER_BG = "#fdf6e3"
 
 # Configurable haze percentages (0.0 to 1.0)
-# Inactive pane background: 6% agent color, 94% base color
-_HAZE_PERCENTAGE = 0.06
-# Active pane background: 2% agent color, 98% base color (most subtle)
-_ACTIVE_HAZE_PERCENTAGE = 0.02
+# Restored tuned values used before recent regressions.
+# Inactive pane background: 12% agent color, 88% base color
+_HAZE_PERCENTAGE = 0.12
+# Active pane background: no haze
+_ACTIVE_HAZE_PERCENTAGE = 0.0
 # Status bar background: 5% agent color, 95% base color (subtle)
 _STATUS_HAZE_PERCENTAGE = 0.05
-# TUI pane inactive haze: keep exact legacy percentage.
-_TUI_INACTIVE_HAZE_PERCENTAGE = _HAZE_PERCENTAGE
+# TUI pane inactive haze.
+_TUI_INACTIVE_HAZE_PERCENTAGE = 0.12
 # Terminal background hint weight: keep TUI palette stable while honoring terminal tone.
 _TERMINAL_HINT_WEIGHT = 0.35
 # Guardrails to reject hints that conflict with the current mode.
