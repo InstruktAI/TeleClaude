@@ -13,6 +13,12 @@
 
 - `teleclaude/mcp/role_tools.py:1` — Module docstring still says filtering applies only when `role == worker`, but filtering now also depends on human-role/session context. Update comments to match behavior to prevent future review confusion.
 
+## Fixes Applied
+
+- Issue: `teleclaude/core/command_handlers.py:380` dropped `human_email` and `human_role` while building `SessionSummary`.
+  Fix: Forwarded `s.human_email` and `s.human_role` in `list_sessions()`, and extended `tests/unit/test_command_handlers.py` list-sessions unit coverage to assert identity fields are preserved.
+  Commit: `febc489d`
+
 ## Verdict
 
 REQUEST CHANGES
