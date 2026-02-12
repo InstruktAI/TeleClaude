@@ -67,6 +67,9 @@ teleclaude.db-shm
 
 AGENTS.md
 CLAUDE.md
+
+# Generated diagrams (regenerated via `make diagrams`)
+docs/diagrams/
 # Local AI config artifacts
 .claude/
 .codex/

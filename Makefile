@@ -1,4 +1,4 @@
-.PHONY: help install init link certs format lint test-unit test-e2e test-all test coverage coverage-html coverage-report clean dev start stop restart kill status
+.PHONY: help install init link certs format lint test-unit test-e2e test-all test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status
 
 # Default target
 help:
@@ -105,6 +105,17 @@ coverage-html:
 coverage-report: coverage-html
 	@echo "Opening coverage report in browser..."
 	@open coverage/html/index.html || xdg-open coverage/html/index.html || echo "Please open coverage/html/index.html manually"
+
+diagrams:
+	@echo "Generating architecture diagrams..."
+	@mkdir -p docs/diagrams
+	@python scripts/diagrams/extract_state_machines.py
+	@python scripts/diagrams/extract_events.py
+	@python scripts/diagrams/extract_data_model.py
+	@python scripts/diagrams/extract_modules.py
+	@python scripts/diagrams/extract_commands.py
+	@python scripts/diagrams/extract_runtime_matrix.py
+	@echo "✓ Architecture diagrams generated in docs/diagrams/"
 
 clean:
 	@echo "Cleaning generated files..."
