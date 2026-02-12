@@ -53,6 +53,8 @@ class Session(SQLModel, table=True):
     last_checkpoint_at: Optional[datetime] = None
     working_slug: Optional[str] = None
     lifecycle_status: Optional[str] = "active"
+    human_email: Optional[str] = None
+    human_role: Optional[str] = None
 
 
 class VoiceAssignment(SQLModel, table=True):

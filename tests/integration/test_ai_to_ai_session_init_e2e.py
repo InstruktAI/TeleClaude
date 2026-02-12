@@ -104,8 +104,8 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_ai_to_ai_session_without_project_path_rejected(daemon_with_mocked_telegram):
-    """Test AI-to-AI session initialization without project directory is rejected."""
+async def test_ai_to_ai_session_without_project_path_is_jailed(daemon_with_mocked_telegram):
+    """Test unknown sessions without project_path are redirected to help-desk."""
     daemon = daemon_with_mocked_telegram
 
     redis_transport = daemon.client.adapters.get("redis")
@@ -141,16 +141,27 @@ async def test_ai_to_ai_session_without_project_path_rejected(daemon_with_mocked
 
         await redis_transport._handle_incoming_message(request_id, message_data)
 
-        await asyncio.sleep(0.01)
+        for _ in range(50):
+            if response_sent is not None:
+                break
+            await asyncio.sleep(0.02)
 
-    # Verify no session was created
-    sessions = await daemon.db.list_sessions()
-    assert len(sessions) == 0, "Should not create session without project_path"
+    # Verify the session was jailed into help-desk
+    sessions = []
+    for _ in range(50):
+        sessions = await daemon.db.list_sessions()
+        if sessions:
+            break
+        await asyncio.sleep(0.02)
+    assert len(sessions) == 1, "Should create jailed session without project_path"
+    assert sessions[0].project_path is not None
+    assert sessions[0].project_path.endswith("/help-desk")
+    assert sessions[0].human_role is None
 
     # Verify response was sent
     assert response_sent is not None
     envelope = json.loads(response_sent["data"])
-    assert envelope["status"] == "error", f"Response should have error status, got: {envelope}"
+    assert envelope["status"] == "success", f"Response should have success status, got: {envelope}"
 
 
 if __name__ == MAIN_MODULE:

@@ -12,7 +12,7 @@ def _fake_config() -> dict[str, AgentConfig]:
     return {
         "claude": AgentConfig(
             binary="claude",
-            flags='--dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\'',
+            profiles={"default": '--dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\''},
             session_dir="~/.claude/sessions",
             log_pattern="*.jsonl",
             model_flags={"fast": "-m haiku", "med": "-m sonnet", "slow": "-m opus"},
@@ -24,7 +24,7 @@ def _fake_config() -> dict[str, AgentConfig]:
         ),
         "gemini": AgentConfig(
             binary="gemini",
-            flags="--yolo",
+            profiles={"default": "--yolo"},
             session_dir="~/.gemini/sessions",
             log_pattern="*.jsonl",
             model_flags={
@@ -40,7 +40,7 @@ def _fake_config() -> dict[str, AgentConfig]:
         ),
         "codex": AgentConfig(
             binary="codex",
-            flags="--dangerously-bypass-approvals-and-sandbox --search",
+            profiles={"default": "--dangerously-bypass-approvals-and-sandbox --search"},
             session_dir="~/.codex/sessions",
             log_pattern="*.jsonl",
             model_flags={

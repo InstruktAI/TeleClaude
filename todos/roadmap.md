@@ -14,7 +14,7 @@
 
 ## Help Desk Platform
 
-- [.] help-desk
+- [>] help-desk
 
 Universal entry point for external interactions with built-in identity resolution. IdentityResolver maps adapter metadata (telegram user_id, web email, etc.) against people config to determine admin/member/unauthorized. Unauthorized users get jailed to help-desk project with restricted agent profile. Dual-profile agent configuration (`default` vs `restricted`). Filesystem jailing via settings.json denial rules. Human role tool gating parallel to AI role gating.
 

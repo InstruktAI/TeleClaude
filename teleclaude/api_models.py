@@ -100,6 +100,8 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
     tmux_session_name: str | None = None
     initiator_session_id: str | None = None
     computer: str | None = None
+    human_email: str | None = None
+    human_role: str | None = None
 
     @classmethod
     def from_core(cls, summary: "SessionSummary", computer: str | None = None) -> "SessionSummaryDTO":
@@ -124,6 +126,8 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
             tmux_session_name=summary.tmux_session_name,
             initiator_session_id=summary.initiator_session_id,
             computer=computer,
+            human_email=summary.human_email,
+            human_role=summary.human_role,
         )
 
 

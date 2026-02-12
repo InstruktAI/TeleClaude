@@ -17,7 +17,7 @@ from typing import Awaitable, Callable, Optional, TypedDict, TypeVar, cast
 import psutil
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config import WORKING_DIR, config
 from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName, get_agent_command
@@ -26,6 +26,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import ErrorEventContext, FileEventContext, TeleClaudeEvents, VoiceEventContext
 from teleclaude.core.feedback import get_last_feedback
 from teleclaude.core.file_handler import handle_file as handle_file_upload
+from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import (
     AgentResumeArgs,
     AgentStartArgs,
@@ -271,9 +272,37 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             Optional[str], cmd.channel_metadata.get("initiator_session_id")
         )
 
-    project_path = cmd.project_path
-    if not project_path:
-        raise ValueError("project_path is required for session creation")
+    # Prefer parent origin for AI-to-AI sessions
+    last_input_origin = origin
+    parent_session = None
+    if initiator_session_id:
+        parent_session = await db.get_session(initiator_session_id)
+        if parent_session and parent_session.last_input_origin:
+            last_input_origin = parent_session.last_input_origin
+
+    # Resolve identity
+    identity = get_identity_resolver().resolve(origin, cmd.channel_metadata or {})
+    human_email = identity.person_email if identity else None
+    human_role = identity.person_role if identity else None
+
+    # Handle parent session identity inheritance
+    if parent_session:
+        if not human_email and parent_session.human_email:
+            human_email = parent_session.human_email
+        if not human_role and parent_session.human_role:
+            human_role = parent_session.human_role
+
+    # Enforce Jail for unauthorized users
+    if not human_role:
+        logger.info("Unauthorized session attempt from origin=%s. Jailing to help-desk.", origin)
+        project_path = os.path.join(WORKING_DIR, "help-desk")
+        Path(project_path).mkdir(parents=True, exist_ok=True)
+        subfolder = None
+        working_slug = None
+    else:
+        project_path = cmd.project_path
+        if not project_path:
+            raise ValueError("project_path is required for session creation")
     project_path = os.path.expanduser(os.path.expandvars(project_path))
 
     # tmux silently falls back to its own cwd if -c points at a non-existent directory.
@@ -307,13 +336,6 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     # using build_display_title() when displaying to users
     title = cmd.title or "Untitled"
 
-    # Prefer parent origin for AI-to-AI sessions
-    last_input_origin = origin
-    if initiator_session_id:
-        parent_session = await db.get_session(initiator_session_id)
-        if parent_session and parent_session.last_input_origin:
-            last_input_origin = parent_session.last_input_origin
-
     # Create session in database first
     session = await db.create_session(
         computer_name=computer_name,
@@ -325,6 +347,8 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         session_id=session_id,
         working_slug=working_slug,
         initiator_session_id=initiator_session_id,
+        human_email=human_email,
+        human_role=human_role,
         lifecycle_status="initializing",
     )
     if cmd.launch_intent and cmd.launch_intent.thinking_mode:
@@ -374,6 +398,8 @@ async def list_sessions() -> list[SessionSummary]:
                 tmux_session_name=s.tmux_session_name,
                 initiator_session_id=s.initiator_session_id,
                 computer=local_name,
+                human_email=s.human_email,
+                human_role=s.human_role,
             )
         )
 
@@ -1392,6 +1418,13 @@ async def end_session(
     }
 
 
+def _get_session_profile(session: Session) -> str:
+    """Determine agent profile based on human role."""
+    if session.human_role:
+        return "default"
+    return "restricted"
+
+
 @with_session
 async def start_agent(
     session: Session,
@@ -1469,6 +1502,7 @@ async def start_agent(
         start_args.agent_name,
         thinking_mode=start_args.thinking_mode.value,
         interactive=has_prompt,
+        profile=_get_session_profile(session),
     )
 
     cmd_parts = [base_cmd]
@@ -1562,6 +1596,7 @@ async def resume_agent(
         exec=False,
         resume=not resume_args.native_session_id,
         native_session_id=resume_args.native_session_id,
+        profile=_get_session_profile(session),
     )
 
     if resume_args.native_session_id:
@@ -1710,6 +1745,7 @@ async def agent_restart(
         thinking_mode=(session.thinking_mode if session.thinking_mode else "slow"),
         exec=False,
         native_session_id=native_session_id,
+        profile=_get_session_profile(session),
     )
 
     await execute_terminal_command(session.session_id, restart_cmd, None, True)

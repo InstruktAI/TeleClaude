@@ -217,7 +217,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             "agents": {
                 "claude": config_module.AgentConfig(
                     binary="mock_claude_command",
-                    flags="--arg",
+                    profiles={"default": "--arg"},
                     session_dir="~/.claude/sessions",
                     log_pattern="*.jsonl",
                     model_flags={"fast": "-m haiku", "med": "-m sonnet", "slow": "-m opus"},
@@ -229,7 +229,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
                 ),
                 "gemini": config_module.AgentConfig(
                     binary="mock_gemini_command",
-                    flags="--arg",
+                    profiles={"default": "--arg"},
                     session_dir="~/.gemini/sessions",
                     log_pattern="*.jsonl",
                     model_flags={
@@ -245,7 +245,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
                 ),
                 "codex": config_module.AgentConfig(
                     binary="mock_codex_command",
-                    flags="--arg",
+                    profiles={"default": "--arg"},
                     session_dir="~/.codex/sessions",
                     log_pattern="*.jsonl",
                     model_flags={

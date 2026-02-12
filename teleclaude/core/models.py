@@ -358,6 +358,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
     last_tool_use_at: Optional[datetime] = None
     last_checkpoint_at: Optional[datetime] = None
     working_slug: Optional[str] = None
+    human_email: Optional[str] = None
+    human_role: Optional[str] = None
     lifecycle_status: str = "active"
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict - Serialization output
@@ -488,6 +490,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
             last_feedback_summary=_get_optional_str("last_feedback_summary"),
             last_output_digest=_get_optional_str("last_output_digest"),
             working_slug=_get_optional_str("working_slug"),
+            human_email=_get_optional_str("human_email"),
+            human_role=_get_optional_str("human_role"),
             lifecycle_status=str(data.get("lifecycle_status") or "active"),
         )
 
@@ -671,6 +675,8 @@ class SessionSummary:
     tmux_session_name: Optional[str] = None
     initiator_session_id: Optional[str] = None
     computer: Optional[str] = None
+    human_email: Optional[str] = None
+    human_role: Optional[str] = None
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict - Serialization output
         return {
@@ -693,6 +699,8 @@ class SessionSummary:
             "tmux_session_name": self.tmux_session_name,
             "initiator_session_id": self.initiator_session_id,
             "computer": self.computer,
+            "human_email": self.human_email,
+            "human_role": self.human_role,
         }
 
     @classmethod
@@ -720,6 +728,8 @@ class SessionSummary:
             tmux_session_name=session.tmux_session_name,
             initiator_session_id=session.initiator_session_id,
             computer=computer,
+            human_email=session.human_email,
+            human_role=session.human_role,
         )
 
     @classmethod
@@ -753,6 +763,8 @@ class SessionSummary:
             tmux_session_name=str(data.get("tmux_session_name")) if data.get("tmux_session_name") else None,
             initiator_session_id=str(data.get("initiator_session_id")) if data.get("initiator_session_id") else None,
             computer=str(data.get("computer")) if data.get("computer") else None,
+            human_email=str(data.get("human_email")) if data.get("human_email") else None,
+            human_role=str(data.get("human_role")) if data.get("human_role") else None,
         )
 
 

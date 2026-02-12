@@ -1,73 +1,144 @@
-"""Identity management and resolution for multi-person deployments."""
-
-from __future__ import annotations
+"""Identity resolution for TeleClaude sessions."""
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from pathlib import Path
+from typing import Mapping, Optional
 
-from teleclaude.config.loader import load_global_config
+from instrukt_ai_logging import get_logger
 
-if TYPE_CHECKING:
-    from teleclaude.config.schema import PersonEntry
+from teleclaude.config.loader import load_global_config, load_person_config
+from teleclaude.config.schema import PersonEntry
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
+
+logger = get_logger(__name__)
 
 
-@dataclass(frozen=True)
+@dataclass
 class IdentityContext:
-    """Normalized identity result with resolution source."""
+    """Resolved identity for a human interacting with the system."""
 
-    email: str
-    role: str
-    username: Optional[str] = None
-    resolution_source: str = "unknown"  # "email", "username", "header", "token"
+    person_name: Optional[str] = None
+    person_email: Optional[str] = None
+    person_role: Optional[str] = None
+    platform: Optional[str] = None
+    platform_user_id: Optional[str] = None
 
 
 class IdentityResolver:
-    """Multi-signal identity resolver (email primary, username secondary)."""
+    """Resolves human identity from channel metadata."""
 
-    def __init__(self, people: list[PersonEntry]) -> None:
-        """Initialize resolver with configured people.
+    def __init__(self) -> None:
+        self._by_email: dict[str, PersonEntry] = {}
+        self._by_username: dict[str, PersonEntry] = {}
+        self._by_telegram_user_id: dict[int, PersonEntry] = {}
+        self._load_config()
+
+    @staticmethod
+    def _normalize_key(value: str) -> str:
+        """Normalize person keys for tolerant directory matching."""
+        return "".join(ch for ch in value.lower() if ch.isalnum())
+
+    @staticmethod
+    def _normalize_role(role: str) -> str:
+        """Normalize known configured roles to runtime access roles."""
+        if role == HUMAN_ROLE_ADMIN:
+            return HUMAN_ROLE_ADMIN
+        return HUMAN_ROLE_MEMBER
+
+    def _load_config(self) -> None:
+        """Load global and per-person configuration to build lookup maps."""
+        try:
+            global_config = load_global_config()
+        except Exception as e:
+            logger.error("Failed to load global config for identity resolution: %s", e)
+            return
+
+        people_by_key: dict[str, PersonEntry] = {}
+        for person in global_config.people:
+            if person.email:
+                self._by_email[person.email.lower()] = person
+            if person.username:
+                self._by_username[person.username.lower()] = person
+            people_by_key[self._normalize_key(person.name)] = person
+            if person.username:
+                people_by_key[self._normalize_key(person.username)] = person
+
+        people_dir = Path("~/.teleclaude/people").expanduser()
+        for person_config_path in sorted(people_dir.glob("*/teleclaude.yml")):
+            person_key = self._normalize_key(person_config_path.parent.name)
+            person = people_by_key.get(person_key)
+            if not person:
+                continue
+            try:
+                person_conf = load_person_config(person_config_path)
+            except Exception as e:
+                logger.warning("Failed to load person config for %s: %s", person.name, e)
+                continue
+
+            telegram_creds = getattr(person_conf.creds, "telegram", None) if person_conf.creds else None
+            if telegram_creds:
+                self._by_telegram_user_id[telegram_creds.user_id] = person
+
+    def resolve(self, origin: str, channel_metadata: Mapping[str, object]) -> Optional[IdentityContext]:
+        """Resolve identity from origin and metadata.
 
         Args:
-            people: List of PersonEntry from global config.
+            origin: Source of the session (e.g. 'telegram', 'web', 'tui').
+            channel_metadata: Dictionary of metadata from the channel.
+
+        Returns:
+            IdentityContext if resolved, None if unauthorized/unknown.
         """
-        self._by_email: dict[str, PersonEntry] = {p.email.lower(): p for p in people}
-        self._by_username: dict[str, PersonEntry] = {p.username.lower(): p for p in people if p.username}
+        if origin == "tui":
+            return IdentityContext(
+                person_name="Local Admin",
+                person_role=HUMAN_ROLE_ADMIN,
+                platform="tui",
+                platform_user_id="local",
+            )
 
-    def resolve_by_email(self, email: str) -> Optional[IdentityContext]:
-        """Resolve identity by email (primary signal)."""
-        entry = self._by_email.get(email.lower())
-        if not entry:
+        if origin == "mcp":
             return None
 
-        return IdentityContext(
-            email=entry.email,
-            role=entry.role,
-            username=entry.username,
-            resolution_source="email",
-        )
+        if origin == "telegram":
+            user_id = channel_metadata.get("user_id")
+            if user_id:
+                try:
+                    uid_int = int(user_id)
+                    person = self._by_telegram_user_id.get(uid_int)
+                    if person:
+                        return IdentityContext(
+                            person_name=person.name,
+                            person_email=person.email,
+                            person_role=self._normalize_role(person.role),
+                            platform="telegram",
+                            platform_user_id=str(uid_int),
+                        )
+                except (ValueError, TypeError):
+                    pass
 
-    def resolve_by_username(self, username: str) -> Optional[IdentityContext]:
-        """Resolve identity by username (secondary signal)."""
-        entry = self._by_username.get(username.lower())
-        if not entry:
-            return None
+        if origin == "web":
+            email = channel_metadata.get("email")
+            if isinstance(email, str):
+                person = self._by_email.get(email.lower())
+                if person:
+                    return IdentityContext(
+                        person_name=person.name,
+                        person_email=person.email,
+                        person_role=self._normalize_role(person.role),
+                        platform="web",
+                        platform_user_id=email,
+                    )
 
-        return IdentityContext(
-            email=entry.email,
-            role=entry.role,
-            username=entry.username,
-            resolution_source="username",
-        )
+        return None
 
 
-# Singleton resolver instance
-_resolver: Optional[IdentityResolver] = None
+_resolver_instance: Optional[IdentityResolver] = None
 
 
 def get_identity_resolver() -> IdentityResolver:
-    """Get the configured identity resolver (bootstrap on first call)."""
-    global _resolver
-    if _resolver is None:
-        global_config = load_global_config()
-        _resolver = IdentityResolver(global_config.people)
-    return _resolver
+    """Get the singleton IdentityResolver instance."""
+    global _resolver_instance
+    if _resolver_instance is None:
+        _resolver_instance = IdentityResolver()
+    return _resolver_instance

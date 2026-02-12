@@ -203,6 +203,41 @@ def _read_role_marker() -> str | None:
     return value or None
 
 
+_HUMAN_ROLE_CACHE: str | None = None
+_HUMAN_ROLE_FETCHED = False
+
+
+def _read_human_role() -> str | None:
+    """Read human role from session record (via DB)."""
+    global _HUMAN_ROLE_CACHE, _HUMAN_ROLE_FETCHED
+    if _HUMAN_ROLE_FETCHED:
+        return _HUMAN_ROLE_CACHE
+
+    session_id = _read_session_id_marker()
+    if not session_id:
+        return None
+
+    try:
+        from teleclaude.config import config
+        from teleclaude.core.db import get_session_field_sync
+
+        role = get_session_field_sync(config.database.path, session_id, "human_role")
+        if isinstance(role, str):
+            _HUMAN_ROLE_CACHE = role
+        _HUMAN_ROLE_FETCHED = True
+        return _HUMAN_ROLE_CACHE
+    except Exception as e:
+        logger.warning("Failed to read human role: %s", e)
+        return None
+
+
+def _should_filter_tools(role: str | None, human_role: str | None) -> bool:
+    """Return True when this wrapper invocation is session-scoped."""
+    if role is not None or human_role is not None:
+        return True
+    return _read_session_id_marker() is not None
+
+
 def _get_session_tmp_basedir() -> Path:
     override = os.environ.get("TELECLAUDE_SESSION_TMPDIR_BASE")
     if override:
@@ -371,19 +406,20 @@ def refresh_tool_cache_if_needed(force: bool = False) -> None:
 
 
 def _build_initialize_response(request_id: object) -> bytes:
-    from teleclaude.constants import ROLE_WORKER
     from teleclaude.mcp.role_tools import filter_tool_names
 
     # Read role marker and filter tools only for worker sessions.
     role = _read_role_marker()
+    human_role = _read_human_role()
     tool_names = _tool_names_from_cache(TOOL_LIST_CACHE)
-    if tool_names and role == ROLE_WORKER:
+    if tool_names and _should_filter_tools(role, human_role):
         before_count = len(tool_names)
-        tool_names = filter_tool_names(role, tool_names)
+        tool_names = filter_tool_names(role, tool_names, human_role)
         if before_count != len(tool_names):
             logger.info(
                 "mcp_wrapper: filtered initialize tools",
                 role=role,
+                human_role=human_role,
                 before=before_count,
                 after=len(tool_names),
             )
@@ -813,7 +849,6 @@ class MCPProxy:
 
     async def _send_tools_list_cached(self, request_id: object) -> None:
         """Send cached tools/list response without touching the backend."""
-        from teleclaude.constants import ROLE_WORKER
         from teleclaude.mcp.role_tools import filter_tool_specs
 
         tools_list = TOOL_LIST_CACHE
@@ -826,13 +861,15 @@ class MCPProxy:
 
         # Filter tools based on role
         role = _read_role_marker()
-        if role == ROLE_WORKER:
+        human_role = _read_human_role()
+        if _should_filter_tools(role, human_role):
             before_count = len(tools_list)
-            tools_list = filter_tool_specs(role, tools_list)
+            tools_list = filter_tool_specs(role, tools_list, human_role)
             if before_count != len(tools_list):
                 logger.info(
                     "mcp_wrapper: filtered cached tools list",
                     role=role,
+                    human_role=human_role,
                     before=before_count,
                     after=len(tools_list),
                 )
@@ -959,15 +996,17 @@ class MCPProxy:
                     from teleclaude.mcp.role_tools import is_tool_allowed
 
                     role = _read_role_marker()
-                    if role is not None and not is_tool_allowed(role, tool_name):
+                    human_role = _read_human_role()
+                    if _should_filter_tools(role, human_role) and not is_tool_allowed(role, tool_name, human_role):
                         logger.error(
                             "mcp_wrapper: tool call blocked",
                             role=role,
+                            human_role=human_role,
                             tool_name=tool_name,
                         )
                         await self._send_error(
                             request_id,
-                            f"Tool '{tool_name}' is not available for role '{role}'",
+                            f"Tool '{tool_name}' is not available for role '{role}'/'{human_role}'",
                         )
                         continue
 
@@ -1240,7 +1279,6 @@ class MCPProxy:
                             and isinstance(msg[RESULT_KEY].get("tools"), list)
                         ):
                             # Cache tools/list response for startup fallbacks.
-                            from teleclaude.constants import ROLE_WORKER
                             from teleclaude.mcp.role_tools import filter_tool_specs
 
                             tools = msg[RESULT_KEY]["tools"]
@@ -1249,13 +1287,15 @@ class MCPProxy:
                                 if updated is not None:
                                     # Filter tools based on role
                                     role = _read_role_marker()
-                                    if role == ROLE_WORKER:
+                                    human_role = _read_human_role()
+                                    if _should_filter_tools(role, human_role):
                                         before_count = len(updated)
-                                        updated = filter_tool_specs(role, updated)
+                                        updated = filter_tool_specs(role, updated, human_role)
                                         if before_count != len(updated):
                                             logger.info(
                                                 "mcp_wrapper: filtered backend tools list",
                                                 role=role,
+                                                human_role=human_role,
                                                 before=before_count,
                                                 after=len(updated),
                                             )
