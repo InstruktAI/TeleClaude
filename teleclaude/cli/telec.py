@@ -316,6 +316,7 @@ def _run_tui() -> None:
     app = TelecApp(api)
 
     try:
+        _ensure_tmux_status_hidden_for_tui()
         _ensure_tmux_mouse_on()
         loop.run_until_complete(app.initialize())
         curses.wrapper(app.run)
@@ -401,6 +402,29 @@ def _ensure_tmux_mouse_on() -> None:
     try:
         subprocess.run(
             [tmux, "set-option", "-w", "mouse", "on"],
+            check=False,
+            capture_output=True,
+        )
+    except OSError:
+        return
+
+
+def _ensure_tmux_status_hidden_for_tui() -> None:
+    """Hide tmux status bar for the dedicated tc_tui session."""
+    if not os.environ.get(TMUX_ENV_KEY):
+        return
+    tmux = config.computer.tmux_binary
+    try:
+        current = subprocess.run(
+            [tmux, "display-message", "-p", "#S"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if current.stdout.strip() != TUI_SESSION_NAME:
+            return
+        subprocess.run(
+            [tmux, "set-option", "-t", TUI_SESSION_NAME, "status", "off"],
             check=False,
             capture_output=True,
         )
