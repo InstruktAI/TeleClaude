@@ -57,6 +57,7 @@ flowchart LR
 - `collapsed`: set of collapsed session ids
 - `focus`: computer/project focus stack
 - `scroll`: scroll offset and window bounds
+- `output_working`: set of session ids that must render `out: Working...` until authoritative turn completion (`agent_stop`)
 
 ## Primary flows
 
@@ -151,6 +152,8 @@ flowchart TD
 - `v` on file: `ViewFile(file_id)`
 - `e` on file: `EditFile(file_id)`
 - `+`/`-`: `ExpandAll()` / `CollapseAll()`
+- Expanded todo file list is derived from all non-hidden files under `todos/{slug}` (including nested paths), sorted alphabetically.
+- Todo rows render roadmap status plus compact phase tags (`B`, `R`, `DOR`, `DEF`, `F`) from todo metadata.
 
 ### Navigation, modals, and edge cases
 

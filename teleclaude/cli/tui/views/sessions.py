@@ -1552,12 +1552,16 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         last_output = self.state.sessions.last_summary.get(session_id, "")
         has_input_highlight = session_id in self.state.sessions.input_highlights
         has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
+        has_working_output = session_id in self.state.sessions.output_working
         activity_time = _format_time(session.last_activity)
         if has_temp_output_highlight:
             tool_name = self.state.sessions.active_tool.get(session_id)
             line4 = f"{detail_indent}[{activity_time}] out: {_temp_output_placeholder_text(session.active_agent, tool_name)}"
             lines.append(line4[:width])
         elif has_input_highlight:
+            line4 = f"{detail_indent}[{activity_time}] out: {_working_placeholder_text()}"
+            lines.append(line4[:width])
+        elif has_working_output:
             line4 = f"{detail_indent}[{activity_time}] out: {_working_placeholder_text()}"
             lines.append(line4[:width])
         elif last_output:
@@ -1851,6 +1855,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Line 4: Last output — driven by activity events, not session record
         last_output = self.state.sessions.last_summary.get(session_id, "")
         activity_time = _format_time(session.last_activity)
+        has_working_output = session_id in self.state.sessions.output_working
         if has_temp_output_highlight:
             italic_attr = getattr(curses, "A_ITALIC", 0)
             prefix_text = f"{detail_indent}[{activity_time}] out: "
@@ -1868,6 +1873,21 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 _safe_addstr(row + lines_used, f"{prefix_text}{placeholder_text}", output_attr)
             lines_used += 1
         elif has_input_highlight:
+            italic_attr = getattr(curses, "A_ITALIC", 0)
+            prefix_text = f"{detail_indent}[{activity_time}] out: "
+            placeholder_text = _working_placeholder_text()
+            if italic_attr:
+                _safe_addstr_with_italic_suffix(
+                    row + lines_used,
+                    prefix_text,
+                    placeholder_text,
+                    prefix_attr=output_attr,
+                    suffix_attr=output_attr | italic_attr,
+                )
+            else:
+                _safe_addstr(row + lines_used, f"{prefix_text}{placeholder_text}", output_attr)
+            lines_used += 1
+        elif has_working_output:
             italic_attr = getattr(curses, "A_ITALIC", 0)
             prefix_text = f"{detail_indent}[{activity_time}] out: "
             placeholder_text = _working_placeholder_text()

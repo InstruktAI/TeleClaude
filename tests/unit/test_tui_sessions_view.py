@@ -474,6 +474,21 @@ class TestSessionsViewLogic:
         assert "[17:43:21] out: **Working" in output
         assert "final answer text" not in output
 
+    def test_working_flag_shows_working_placeholder_without_input_or_temp(self, sessions_view, monkeypatch):
+        """Persisted working state should render out: Working... even after temp clears."""
+        monkeypatch.setattr("teleclaude.cli.tui.views.sessions._format_time", lambda _ts: "17:43:21")
+        monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
+
+        session = self._make_session_node(session_id="s-persist-working")
+        sessions_view.state.sessions.last_summary["s-persist-working"] = "old summary"
+        sessions_view.state.sessions.output_working.add("s-persist-working")
+        sessions_view.flat_items = [session]
+
+        output = "\n".join(sessions_view.get_render_lines(120, 10))
+
+        assert "[17:43:21] out: **Working" in output
+        assert "old summary" not in output
+
     def test_double_clicking_session_id_row_toggles_sticky_parent_only(self, mock_focus):
         """Double-clicking the ID row toggles sticky with parent-only mode (no child)."""
 
