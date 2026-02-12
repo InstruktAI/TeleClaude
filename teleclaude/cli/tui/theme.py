@@ -400,8 +400,8 @@ _HAZE_PERCENTAGE = 0.12
 _ACTIVE_HAZE_PERCENTAGE = 0.0
 # Status bar background: 5% agent color, 95% base color (subtle)
 _STATUS_HAZE_PERCENTAGE = 0.05
-# TUI pane inactive haze.
-_TUI_INACTIVE_HAZE_PERCENTAGE = 0.12
+# TUI pane inactive haze uses the same percentage as all other pane haze.
+_TUI_INACTIVE_HAZE_PERCENTAGE = _HAZE_PERCENTAGE
 # Terminal background hint weight: keep TUI palette stable while honoring terminal tone.
 _TERMINAL_HINT_WEIGHT = 0.35
 # Guardrails to reject hints that conflict with the current mode.
