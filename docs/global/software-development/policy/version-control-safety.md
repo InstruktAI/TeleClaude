@@ -11,11 +11,10 @@ description: 'Safety rules for git operations and handling uncommitted work.'
 
 - Never use `git checkout`, `git restore`, `git reset`, `git clean`, or delete files unless explicitly instructed by the user.
 - Never use `git stash`, `git stash pop`, `git stash apply`, or `git stash drop` in agent workflows.
-- If a file has uncommitted changes and you must edit it, ask first.
+- Dirty `main` is allowed. Agents may continue work in files required by the active task.
 - Only modify files required by the request.
-- Keep worktree context switches commit-based:
-  - commit in-scope changes on the current branch, or
-  - create/use a dedicated worktree for parallel changes.
+- Complete task changes in a commit before reporting done.
+- Avoid surgical staging by default; prefer straightforward task-scoped commits.
 
 ## Rationale
 
@@ -29,7 +28,6 @@ description: 'Safety rules for git operations and handling uncommitted work.'
 
 ## Enforcement
 
-- Stop and ask before touching files with uncommitted changes.
 - Never discard or overwrite uncommitted work unless told to.
 - Agent instruction artifacts must not include stash workflows.
 - Lint guardrails fail when `git stash*` commands appear in `agents/` or `.agents/`.
