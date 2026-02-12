@@ -33,7 +33,7 @@ Ownership:
 - [x] Review verdict is APPROVE
 - [x] Build gates all checked
 - [x] Review gates all checked
-- [ ] Merge to main complete
-- [ ] Delivery logged in `todos/delivered.md`
-- [ ] Roadmap updated
+- [x] Merge to main complete
+- [x] Delivery logged in `todos/delivered.md`
+- [x] Roadmap updated
 - [x] Todo/worktree cleanup complete (orchestrator-owned; not worker-executed here)
