@@ -598,6 +598,8 @@ class AdapterClient:
         adapter_type: str,
         adapter: UiAdapter,
         task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
+        *,
+        ensure_channel: bool = True,
     ) -> object | None:
         # Build display title for UI adapters (DB stores only description)
         display_title = await get_display_title_for_session(session)
@@ -608,21 +610,22 @@ class AdapterClient:
             display_title,
         )
         lane_session = session
-        try:
-            lane_session = await adapter.ensure_channel(lane_session, display_title)
-            logger.debug(
-                "[UI_LANE] ensure_channel succeeded for %s session %s",
-                adapter_type,
-                session.session_id[:8],
-            )
-        except Exception as exc:
-            logger.error(
-                "[UI_LANE] Failed to ensure UI channel for %s session %s: %s (BLOCKING OUTPUT)",
-                adapter_type,
-                session.session_id[:8],
-                exc,
-            )
-            return None
+        if ensure_channel:
+            try:
+                lane_session = await adapter.ensure_channel(lane_session, display_title)
+                logger.debug(
+                    "[UI_LANE] ensure_channel succeeded for %s session %s",
+                    adapter_type,
+                    session.session_id[:8],
+                )
+            except Exception as exc:
+                logger.error(
+                    "[UI_LANE] Failed to ensure UI channel for %s session %s: %s (BLOCKING OUTPUT)",
+                    adapter_type,
+                    session.session_id[:8],
+                    exc,
+                )
+                return None
 
         try:
             result = await task_factory(adapter, lane_session)
@@ -679,8 +682,66 @@ class AdapterClient:
         Returns:
             True if origin deletion succeeded
         """
-        result = await self._route_to_ui(session, "delete_channel")
-        return bool(result)
+        origin_ui = self._origin_ui_adapter(session)
+
+        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            return cast(Awaitable[object], adapter.delete_channel(lane_session))
+
+        # During teardown, never create missing channels just to delete them.
+        if not origin_ui:
+            ui_adapters = self._ui_adapters()
+            if not ui_adapters:
+                logger.warning("No UI adapters available for delete_channel (session %s)", session.session_id[:8])
+                return False
+
+            results = await asyncio.gather(
+                *[
+                    self._run_ui_lane(session, adapter_type, adapter, make_task, ensure_channel=False)
+                    for adapter_type, adapter in ui_adapters
+                ],
+                return_exceptions=True,
+            )
+            for result in results:
+                if isinstance(result, Exception):
+                    continue
+                if result:
+                    return True
+            return False
+
+        origin_type = session.last_input_origin or "unknown"
+        origin_result = await self._run_ui_lane(
+            session,
+            origin_type,
+            origin_ui,
+            make_task,
+            ensure_channel=False,
+        )
+        success = bool(origin_result)
+        if not success:
+            logger.warning(
+                "delete_channel origin failed or skipped for session %s (origin=%s)",
+                session.session_id[:8],
+                origin_type,
+            )
+
+        if success:
+            observer_tasks: list[Awaitable[object | None]] = []
+            for adapter_type, adapter in self._ui_adapters():
+                if adapter_type == origin_type:
+                    continue
+                observer_tasks.append(
+                    self._run_ui_lane(
+                        session,
+                        adapter_type,
+                        adapter,
+                        make_task,
+                        ensure_channel=False,
+                    )
+                )
+            if observer_tasks:
+                await asyncio.gather(*observer_tasks, return_exceptions=True)
+
+        return success
 
     async def discover_peers(
         self, redis_enabled: bool | None = None
