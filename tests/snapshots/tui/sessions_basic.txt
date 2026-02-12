@@ -3,3 +3,4 @@
 [1] ▼ claude/slow  "Bootstrap"
     [] sess-1 / -
     [] in: ls
+    [] out: ok

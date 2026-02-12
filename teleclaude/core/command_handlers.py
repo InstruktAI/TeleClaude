@@ -318,7 +318,14 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     else:
         project_path = cmd.project_path
         if not project_path:
-            raise ValueError("project_path is required for session creation")
+            logger.info(
+                "Session creation missing project_path from origin=%s; defaulting to help-desk.",
+                origin,
+            )
+            project_path = os.path.join(WORKING_DIR, "help-desk")
+            Path(project_path).mkdir(parents=True, exist_ok=True)
+            subfolder = None
+            working_slug = None
     project_path = os.path.expanduser(os.path.expandvars(project_path))
 
     # tmux silently falls back to its own cwd if -c points at a non-existent directory.
@@ -643,9 +650,6 @@ async def get_session_data(
                 reason,
                 exc,
             )
-            return None
-
-        if not pane_output:
             return None
 
         tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000

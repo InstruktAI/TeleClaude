@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 from instrukt_ai_logging import get_logger
 
@@ -12,6 +12,9 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents
 from teleclaude.hooks.checkpoint_flags import is_checkpoint_disabled
+
+if TYPE_CHECKING:
+    from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
 
@@ -31,7 +34,7 @@ async def inject_checkpoint_if_needed(
     route: str,
     include_elapsed_since_turn_start: bool,
     default_agent: AgentName = AgentName.CLAUDE,
-    get_session_cb: Callable[[str], Awaitable[object | None]] | None = None,
+    get_session_cb: Callable[[str], Awaitable[Session | None]] | None = None,
     update_session_cb: Callable[..., Awaitable[object]] | None = None,
 ) -> bool:
     """Inject a checkpoint message for daemon-managed agents when needed.

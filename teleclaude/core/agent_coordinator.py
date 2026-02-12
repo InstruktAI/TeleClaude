@@ -878,9 +878,12 @@ class AgentCoordinator:
         if not session:
             return
 
-        await inject_checkpoint_if_needed(
-            session_id,
-            route="codex_tmux",
-            include_elapsed_since_turn_start=True,
-            default_agent=AgentName.CLAUDE,
-        )
+        try:
+            await inject_checkpoint_if_needed(
+                session_id,
+                route="codex_tmux",
+                include_elapsed_since_turn_start=True,
+                default_agent=AgentName.CLAUDE,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Checkpoint injection failed for session %s: %s", session_id[:8], exc)

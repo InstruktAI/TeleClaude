@@ -81,6 +81,7 @@ class TestGetAllTrustedDirs:
             role="dev",
             timezone="UTC",
             default_working_dir="/home/teleclaude",
+            help_desk_dir="/home/teleclaude/help",
             is_master=False,
             trusted_dirs=[
                 TrustedDir(name="projects", desc="my projects", path="/home/projects"),
@@ -103,6 +104,7 @@ class TestGetAllTrustedDirs:
             role="dev",
             timezone="UTC",
             default_working_dir="/home/teleclaude",
+            help_desk_dir="/home/teleclaude/help",
             is_master=False,
             trusted_dirs=[
                 TrustedDir(name="teleclaude_dup", desc="duplicate", path="/home/teleclaude"),
@@ -126,6 +128,7 @@ class TestGetAllTrustedDirs:
             role="dev",
             timezone="UTC",
             default_working_dir="/home/teleclaude",
+            help_desk_dir="/home/teleclaude/help",
             is_master=False,
             trusted_dirs=[],
             host=None,
@@ -146,6 +149,7 @@ class TestGetAllTrustedDirs:
             role="dev",
             timezone="UTC",
             default_working_dir="/home/teleclaude",
+            help_desk_dir="/home/teleclaude/help",
             is_master=False,
             trusted_dirs=[
                 TrustedDir(name="a", desc="first", path="/a"),

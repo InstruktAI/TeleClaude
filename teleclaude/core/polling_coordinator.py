@@ -206,8 +206,9 @@ async def _maybe_emit_codex_input(
 
     current_time = time.time()
 
-    # Capture current prompt block and whether a submit boundary marker appeared below it.
-    current_input, has_submit_boundary = _extract_prompt_block(current_output)
+    # Capture current prompt text through the compatibility helper and boundary marker from full extraction.
+    current_input = _find_prompt_input(current_output)
+    _, has_submit_boundary = _extract_prompt_block(current_output)
 
     # Check if agent is responding
     agent_responding = _has_agent_marker(current_output)

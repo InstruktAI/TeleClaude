@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable, Optional, cast
 
 from instrukt_ai_logging import get_logger
-from redis.asyncio import BlockingConnectionPool, Redis
+from redis.asyncio import Redis
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
@@ -499,17 +499,16 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
     def _create_redis_client(self) -> Redis:
         """Create a Redis client with the configured settings."""
-        # Create blocking pool explicitly to avoid argument passing issues with from_url
-        pool = BlockingConnectionPool.from_url(
-            self.redis_url,
-            password=self.redis_password,
-            max_connections=self.max_connections,
-            socket_timeout=self.socket_timeout,
-            health_check_interval=10,
-            decode_responses=False,
-            ssl_cert_reqs=ssl.CERT_NONE,
-        )
-        return Redis(connection_pool=pool)
+        kwargs: dict[str, object] = {
+            "password": self.redis_password,
+            "max_connections": self.max_connections,
+            "socket_timeout": self.socket_timeout,
+            "health_check_interval": 10,
+            "decode_responses": False,
+        }
+        if self.redis_url.startswith("rediss://"):
+            kwargs["ssl_cert_reqs"] = ssl.CERT_NONE
+        return Redis.from_url(self.redis_url, **kwargs)
 
     async def _await_redis_ready(self) -> None:
         """Wait until Redis connection is ready or transport stops."""

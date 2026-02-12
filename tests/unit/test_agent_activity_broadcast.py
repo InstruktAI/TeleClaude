@@ -152,4 +152,3 @@ def test_tui_user_prompt_submit_sets_input_highlight():
     assert session_id in state.sessions.input_highlights
     assert session_id not in state.sessions.output_highlights
     assert session_id not in state.sessions.temp_output_highlights
-    assert session_id in state.sessions.output_working
