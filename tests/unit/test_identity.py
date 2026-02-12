@@ -96,15 +96,12 @@ def test_unknown_signals_return_none(mock_load_global_config, mock_glob) -> None
 
 @patch("teleclaude.core.identity.Path.glob")
 @patch("teleclaude.core.identity.load_global_config")
-def test_tui_is_admin(mock_load_global_config, mock_glob) -> None:
-    """Local TUI sessions are admin by default."""
+def test_tui_origin_requires_boundary_identity(mock_load_global_config, mock_glob) -> None:
+    """TUI-local trust must be injected at boundary metadata, not inferred in resolver."""
     mock_load_global_config.return_value = _make_global_config([])
     mock_glob.return_value = []
 
     resolver = IdentityResolver()
     ctx = resolver.resolve("tui", {})
 
-    assert ctx is not None
-    assert ctx.person_role == "admin"
-    assert ctx.platform == "tui"
-    assert ctx.platform_user_id == "local"
+    assert ctx is None

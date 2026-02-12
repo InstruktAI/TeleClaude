@@ -19,9 +19,6 @@ from teleclaude.core.cache import DaemonCache
 
 logger = get_logger(__name__)
 
-# Files that trigger a todo refresh when changed
-_WATCHED_NAMES = {"roadmap.md", "state.json", "requirements.md", "implementation-plan.md"}
-
 # Temp file suffixes to ignore
 _IGNORED_SUFFIXES = {".swp", ".tmp", ".bak", "~"}
 
@@ -34,6 +31,10 @@ def _is_relevant(path: str) -> bool:
     p = Path(path)
     name = p.name
 
+    # Ignore hidden paths inside todo trees.
+    if any(part.startswith(".") for part in p.parts):
+        return False
+
     # Ignore temp/editor files
     if any(name.endswith(suf) for suf in _IGNORED_SUFFIXES):
         return False
@@ -42,8 +43,8 @@ def _is_relevant(path: str) -> bool:
     if p.is_dir() or not p.suffix:
         return True
 
-    # Only specific files trigger refresh
-    return name in _WATCHED_NAMES
+    # Any non-hidden file under todos/ can affect preparation metadata.
+    return True
 
 
 def _classify_event(event: FileSystemEvent) -> str:

@@ -38,3 +38,4 @@ You are working with me: Maurice Faber <maurice@instrukt.ai> aka Morriz aka Mo. 
 - So, USE THE FORCE!
 - What did I say about using THE FORCE? USE IT TO YOUR ADVANTAGE!
 - When the user intends a full commit, first inspect the entire change set, then commit the full working tree as-is (no selective scoping) with a clear, meaningful intent-based commit message.
+- Never edit AGENTS.md directly; it is generated—edit source artifacts and regenerate.

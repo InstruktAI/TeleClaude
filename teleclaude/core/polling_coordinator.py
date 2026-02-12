@@ -87,6 +87,7 @@ class CodexInputState:
     """
 
     last_prompt_input: str = ""  # Last seen text after › prompt
+    last_emitted_prompt: str = ""  # Last emitted synthetic prompt (duplicate guard)
     last_output_change_time: float = 0.0  # For idle detection
     fast_poll_task: "asyncio.Task[None] | None" = None  # Running fast-poll task
 
@@ -110,11 +111,18 @@ def _find_prompt_input(output: str) -> str:
     - No text after ›
     """
     lines = output.rstrip().split("\n")
+    if not lines:
+        return ""
 
-    # Search from end to find the most recent prompt line
-    for line in reversed(lines[-20:]):
+    # Search from end to find the most recent live prompt line.
+    # Ignore older scrollback prompts that are no longer at the active bottom region.
+    start_index = max(0, len(lines) - 30)
+    for idx in range(len(lines) - 1, start_index - 1, -1):
+        line = lines[idx]
         clean_line = _strip_ansi(line.strip())
         if clean_line.startswith(CODEX_PROMPT_MARKER):
+            if idx < len(lines) - 3:
+                continue
             # Get raw text after marker (preserves ANSI for styling check)
             marker_pos = line.find(CODEX_PROMPT_MARKER)
             if marker_pos == -1:
@@ -255,6 +263,14 @@ async def _maybe_emit_codex_input(
     async def _emit_captured_input(source: str) -> bool:
         if not state.last_prompt_input:
             return False
+        if state.last_prompt_input == state.last_emitted_prompt:
+            logger.debug(
+                "[CODEX %s] Skipping duplicate synthetic input emission: %r",
+                session_id[:8],
+                state.last_prompt_input[:50],
+            )
+            state.last_prompt_input = ""
+            return False
         logger.info(
             "Emitting synthetic user_prompt_submit for Codex session %s: %d chars: %r",
             session_id[:8],
@@ -272,6 +288,7 @@ async def _maybe_emit_codex_input(
             data=payload,
         )
         await emit_agent_event(context)
+        state.last_emitted_prompt = state.last_prompt_input
         state.last_prompt_input = ""
         if state.fast_poll_task and not state.fast_poll_task.done():
             state.fast_poll_task.cancel()

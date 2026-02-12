@@ -126,6 +126,13 @@ class MaintenanceService:
                 logger.warning("No last_activity for session %s", session.session_id[:8])
                 continue
 
+            if session.closed_at:
+                # Historical rows can have closed_at set but lifecycle_status still "active".
+                # Normalize once and skip repeated cleanup/deletion attempts.
+                if session.lifecycle_status != "closed":
+                    await db.update_session(session.session_id, lifecycle_status="closed")
+                continue
+
             if session.last_activity < cutoff_time:
                 logger.info(
                     "Cleaning up inactive session %s (inactive for %s)",

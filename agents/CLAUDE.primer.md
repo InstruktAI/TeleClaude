@@ -38,7 +38,7 @@ If you catch yourself writing to `MEMORY.md`, stop and ask: "Would this help onl
 - Comments describe the present, never the past. No "removed X", "used to do Y", "added for Z". Git is the history.
 - When removing code, remove it completely. No `_unused` renames, no `// removed` comments, no re-exports for backward compatibility unless explicitly required.
 
-# Special Git Commit Addendum
+## Special Git Commit Addendum
 
 You are Claude, and you will have your OWN signature for git commits. Use the following format:
 
@@ -47,3 +47,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 Commit behavior is governed by `@/Users/Morriz/.teleclaude/docs/software-development/policy/commits.md`.
+
+## IMPORTANT
+
+- Never edit or create CLAUDE.md directly; it is generated—edit source artifacts and regenerate.

@@ -878,6 +878,36 @@ def test_all_clear_message_is_minimal():
     assert "Docs check" in msg
 
 
+def test_get_checkpoint_content_suppresses_all_clear_payload(monkeypatch):
+    """All-clear checkpoints should be silent in runtime delivery paths."""
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._is_checkpoint_project_supported",
+        lambda _project="": True,  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint._get_uncommitted_files",
+        lambda _project="": ["teleclaude/core/foo.py"],  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
+        lambda _path="", _agent="", **_kw: _timeline_with(  # noqa: ARG005  # type: ignore[arg-type]
+            _read_record("teleclaude/core/foo.py"),
+            _edit_record("teleclaude/core/foo.py"),
+            _bash_record("make restart"),
+            _bash_record("make status"),
+            _bash_record("instrukt-ai-logs teleclaude --since 2m"),
+            _bash_record("pytest tests/unit/test_daemon.py"),
+        ),
+    )
+
+    msg = get_checkpoint_content(
+        transcript_path="/tmp/fake.jsonl",
+        agent_name=AgentName.CLAUDE,
+        project_path="/repo",
+    )
+    assert msg is None
+
+
 def test_message_has_required_actions():
     msg = build_checkpoint_message(
         ["teleclaude/core/foo.py"],

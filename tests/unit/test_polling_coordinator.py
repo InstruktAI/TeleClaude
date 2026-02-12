@@ -374,3 +374,40 @@ class TestCodexSyntheticPromptDetection:
             assert payload.raw.get("source") == "codex_prompt_cleared"
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_find_prompt_input_ignores_stale_scrollback_prompt(self):
+        """Older prompt lines in scrollback must not be treated as current user input."""
+        stale_output = "\n".join(
+            [
+                "header",
+                "› old input that should not be reused",
+                "line a",
+                "line b",
+                "line c",
+                "line d",
+            ]
+        )
+        assert polling_coordinator._find_prompt_input(stale_output) == ""
+
+    async def test_duplicate_prompt_not_re_emitted(self):
+        """Same synthetic prompt should not be emitted repeatedly."""
+        session_id = "codex-dup-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+        polling_coordinator._codex_input_state[session_id] = polling_coordinator.CodexInputState(
+            last_prompt_input="repeat me",
+            last_emitted_prompt="repeat me",
+            last_output_change_time=0.0,
+        )
+
+        try:
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="some changed pane output",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            emit.assert_not_awaited()
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)

@@ -18,7 +18,7 @@ Codex uses **profiles** to define behavior. You can switch profiles at runtime o
 | :---------- | :--------- | :------------------ | :------- | :------------------------------------------ |
 | `safe`      | **Yes**    | **Always**          | No       | Maximum security. Asks for everything.      |
 | `default`   | **Yes**    | **Modifications**   | Yes      | Asks for writes/exec. Reads are silent.     |
-| `full_auto` | **Yes**    | **Never**           | No       | Autonomous. Restricted to CWD. No internet. |
+| `full-auto` | **Yes**    | **Never**           | No       | Autonomous. Restricted to CWD. No internet. |
 | `danger`    | **No**     | **Never**           | Yes      | **Unrestricted.** No sandbox, no approvals. |
 
 ### Configuration Example (`config.toml`)

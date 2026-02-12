@@ -195,7 +195,7 @@ def format_tool_call(
         # Substitute {args} and {next_call} placeholders
         post_completion = post_completion.format(args=completion_value, next_call=next_call_display)
 
-    result = f"""IMPORTANT: This output is an execution script. Follow it verbatim. If you've already read that command file, do not re-read it.
+    result = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 Execute these steps in order (FOLLOW TO THE LETTER!):
 
@@ -1526,7 +1526,8 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                         f"Preparing: {resolved_slug}. Requirements and implementation plan exist, "
                         "but DOR is not pass yet. Complete DOR assessment, update "
                         f"todos/{resolved_slug}/dor-report.md and todos/{resolved_slug}/state.json.dor "
-                        'with status "pass". Then run /next-prepare-gate (separate worker) and call teleclaude__next_prepare again.'
+                        f'with status "pass". Then run /next-prepare-gate {resolved_slug} (separate worker) '
+                        f'and call teleclaude__next_prepare(slug="{resolved_slug}") again.'
                     )
 
                 agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)

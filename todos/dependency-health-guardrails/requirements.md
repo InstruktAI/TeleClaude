@@ -1,87 +1,83 @@
 # Requirements: Dependency Health Guardrails
 
-## Goal
+## Intent
 
-Introduce circuit-breaking and health-gated behavior for critical dependencies (API socket + Redis transport) so that timeouts and outages never trigger destructive operations like session termination or topic deletion.
+Prevent dependency outages (API socket and Redis transport) from triggering destructive operations, while preserving operator visibility and automatic recovery behavior.
 
-## Problem Statement
+## Why
 
-Two critical dependencies (API socket and Redis transport) experience intermittent failures. When failures or timeouts cascade, they trigger destructive cleanup operations (session termination, topic deletion) that worsen the situation. The system needs explicit health tracking and safety gates.
+Current timeout/failure cascades can incorrectly drive cleanup paths (session termination, channel/topic deletion). This causes avoidable data/session loss and amplifies incidents.
 
-## Scope
+## In Scope
 
-### In scope
+1. Dependency health model for API socket and Redis transport (`healthy`, `degraded`, `unhealthy`).
+2. Circuit-breaker behavior for dependency-facing calls (closed/open/half-open).
+3. Standard unhealthy-dependency error payload with retry timing.
+4. Safety gate that blocks destructive operations while critical dependencies are unhealthy.
+5. Recovery probing with exponential backoff + jitter.
+6. Operator/client visibility for health transitions and retry expectations.
 
-1. **Health registry** — per-dependency health state tracking (healthy/degraded/unhealthy).
-2. **Circuit breaker wrapper** — states (Closed/Open/HalfOpen), exponential backoff with jitter, single-flight probes.
-3. **Standard error payload** — `DependencyUnhealthy` exception with retry_after and health state.
-4. **Global safety gate** — block destructive operations when any critical dependency is unhealthy.
-5. **Auto-healing probes** — background health checks per dependency with backoff.
-6. **Backpressure** — reduce load during degraded states (pause cache refresh, reduce polling).
-7. **Operator visibility** — log health transitions and retry timing, surface to UI/CLI.
+## Out of Scope
 
-### Out of scope
-
-- Adding new dependencies or transports.
-- Replacing Redis or API socket architecture.
-- External monitoring integration (Datadog, etc.).
+1. Replacing Redis or socket transport architecture.
+2. New external observability vendors or alerting platforms.
+3. Non-critical dependency hardening unrelated to API socket/Redis.
 
 ## Functional Requirements
 
-### FR1: Health registry
+### FR1: Dependency Health State
 
-- `DependencyState` enum: `healthy`, `degraded`, `unhealthy`.
-- `DependencyHealth` record: `last_error`, `last_success`, `open_until`, `backoff_s`.
-- `HealthRegistry` class: `set_state()`, `get_state()`, `record_success()`, `record_failure()`.
-- Aggregate health to overall system health.
+1. The system MUST track per-dependency health for `api_socket` and `redis_transport`.
+2. The system MUST expose aggregate critical-dependency health.
+3. State transitions MUST capture timestamp + causal error context.
 
-### FR2: Circuit breaker
+### FR2: Circuit Breaking
 
-- States: Closed (normal), Open (blocking), HalfOpen (probe only).
-- Exponential backoff with jitter, cap at 60s (configurable).
-- Single-flight probes during HalfOpen.
-- API: `await breaker.call(dep_name, coro, probe_coro=None)`.
-- On Open: raise `DependencyUnhealthy(retry_after=...)`.
+1. Dependency-facing calls MUST pass through a breaker decision path.
+2. Open breaker MUST fail fast with explicit retry timing.
+3. Half-open mode MUST allow controlled probe traffic only.
+4. Backoff MUST use exponential growth with jitter and configurable max interval.
 
-### FR3: Safety gate
+### FR3: Safety Gate for Destructive Operations
 
-- Guard in destructive paths: terminate_session, close_session/end_session, channel/topic deletion.
-- If any critical dependency unhealthy → deny with error.
-- Surface to clients: "System unhealthy; retry in Xs".
+1. Destructive operations MUST be blocked when any critical dependency is `unhealthy`.
+2. At minimum, guards MUST cover session termination/cleanup and channel/topic deletion paths.
+3. Guard denials MUST return actionable errors (dependency + retry guidance), not silent drops.
 
-### FR4: Error propagation
+### FR4: Error Contract
 
-- `DependencyUnhealthy` exception with `dependency`, `retry_after`, `health_state`.
-- Adapters/CLI receive human-readable message with retry timing.
+1. Unhealthy dependency errors MUST include: dependency identifier, health state, retry-after seconds.
+2. Adapter/API/MCP surfaces MUST preserve this context for user-visible messaging.
 
-### FR5: Auto-healing probes
+### FR5: Recovery Probes
 
-- Background probe loop per dependency.
-- Lightweight health checks only.
-- Exponential backoff with jitter.
-- Transition Open → HalfOpen → Closed on success.
+1. System MUST attempt auto-recovery probes after breaker open events.
+2. Probe cadence MUST honor breaker backoff policy.
+3. Success path MUST transition to healthy/closed state and log transition.
 
-### FR6: Backpressure
+## Verification Requirements
 
-- When unhealthy: drop/skip heavy reads, pause cache refresh loops, reduce polling frequency.
+1. Timeout/failure scenarios MUST demonstrate no destructive cleanup triggered by dependency errors.
+2. Breaker open/half-open/closed transitions MUST be test-covered.
+3. Destructive command paths MUST have explicit tests for blocked behavior under unhealthy state.
+4. Logs MUST include health transitions and retry timing.
+5. User-facing error responses MUST include retry timing and dependency identifier.
 
-## Non-functional Requirements
+## Edge Cases (Required or Deferred)
 
-1. Circuit breaker must not add measurable latency to healthy-path calls.
-2. Health state transitions must be logged at INFO level.
-3. Probe overhead must be minimal (lightweight checks only).
+1. Simultaneous degradation of both dependencies.
+2. Flapping dependency (repeated open/close transitions).
+3. Manual session-end requests while system is unhealthy.
+4. Partial recovery where one dependency returns while another remains unhealthy.
 
-## Acceptance Criteria
+## Constraints and Assumptions
 
-1. Timeouts on API/Redis never trigger session termination.
-2. Circuit breaker opens after configurable failure threshold.
-3. HalfOpen state allows single probe, closes on success.
-4. Destructive operations blocked when dependency unhealthy.
-5. Error messages include retry_after timing.
-6. Health state logged on every transition.
-7. Auto-healing probes restore Closed state after recovery.
-8. Existing tests pass with health infrastructure in place.
+1. Existing timeout handling and error propagation plumbing remains the base path.
+2. Guardrails are additive and must not break healthy-path latency materially.
+3. No new third-party dependency is expected for this scope.
 
-## Dependencies
+## Open Questions
 
-None — standalone infrastructure work.
+1. Should user-confirmed explicit session termination bypass the safety gate, or always block while unhealthy?
+2. Which operations are classified as destructive beyond current known paths (final authoritative list needed)?
+3. What degraded-state behavior is acceptable for cache refresh and polling (pause vs reduced frequency per subsystem)?

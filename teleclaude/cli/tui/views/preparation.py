@@ -280,6 +280,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                     build_status=todo.build_status,
                     review_status=todo.review_status,
                     dor_status=todo.dor_status,
+                    dor_score=todo.dor_score,
                     deferrals_status=todo.deferrals_status,
                     findings_count=todo.findings_count,
                     files=todo.files,
@@ -1114,45 +1115,78 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         line = f"{indent}{index}. {display_name}"
         return [line[:width]]
 
+    @staticmethod
+    def _normalize_phase_value(value: object) -> str:
+        if value is None:
+            return ""
+        return str(value).strip().lower()
+
+    def _is_build_started(self, todo: TodoItem) -> bool:
+        build_value = self._normalize_phase_value(todo.build_status)
+        return bool(build_value and build_value not in {"pending", "not_started", "-"})
+
+    def _is_review_started(self, todo: TodoItem) -> bool:
+        review_value = self._normalize_phase_value(todo.review_status)
+        return bool(review_value and review_value not in {"pending", "missing", "not_started", "-"})
+
+    def _is_build_active(self, todo: TodoItem) -> bool:
+        build_value = self._normalize_phase_value(todo.build_status)
+        if not build_value:
+            return False
+        # Hide completed/passed build states to reduce clutter.
+        return build_value not in {"pending", "not_started", "-", "complete", "completed", "approved", "done", "pass"}
+
+    def _dor_display(self, todo: TodoItem) -> tuple[str, bool]:
+        """Return DOR display value and whether it should be highlighted as below threshold."""
+        expected_min_score = 8
+        if todo.dor_score is not None:
+            value = str(todo.dor_score)
+            return value, todo.dor_score < expected_min_score
+
+        dor_value = self._format_enum_value(todo.dor_status) if todo.dor_status else "-"
+        normalized = self._normalize_phase_value(dor_value)
+        return dor_value, normalized in {"needs_work", "needs_decision", "fail", "failed"}
+
+    def _status_fields(self, todo: TodoItem, roadmap_status: str) -> list[tuple[str, str, bool]]:
+        """Return phase-aware status fields as (prefix, value, is_error_value)."""
+        fields: list[tuple[str, str, bool]] = [("status:", roadmap_status, False)]
+
+        review_started = self._is_review_started(todo)
+        build_started = self._is_build_started(todo)
+
+        if review_started:
+            review_value = self._format_enum_value(todo.review_status) if todo.review_status else "-"
+            fields.append(("r:", review_value, False))
+            def_value = self._format_enum_value(todo.deferrals_status) if todo.deferrals_status else "-"
+            fields.append(("def:", def_value, False))
+            findings = str(todo.findings_count) if todo.findings_count >= 0 else "-"
+            fields.append(("f:", findings, False))
+            return fields
+
+        if self._is_build_active(todo):
+            build_value = self._format_enum_value(todo.build_status) if todo.build_status else "-"
+            fields.append(("b:", build_value, False))
+            return fields
+
+        if not build_started:
+            dor_value, dor_below_expected = self._dor_display(todo)
+            fields.append(("dor:", dor_value, dor_below_expected))
+
+        return fields
+
     def _build_status_block(self, todo: TodoItem, roadmap_status: str) -> str:
-        """Build compact status tags for todo rows."""
-        # TODO: Render status tags in fixed columns/right-aligned grid for improved scanability.
-        build_value = self._format_enum_value(todo.build_status) if todo.build_status else "-"
-        review_value = self._format_enum_value(todo.review_status) if todo.review_status else "-"
-        dor_value = self._format_enum_value(todo.dor_status) if todo.dor_status else "-"
-        def_value = self._format_enum_value(todo.deferrals_status) if todo.deferrals_status else "-"
-        findings = str(todo.findings_count) if todo.findings_count >= 0 else "-"
-        return f"{roadmap_status} b:{build_value} r:{review_value} dor:{dor_value} def:{def_value} f:{findings}"
+        """Build compact, phase-aware status tags for todo rows."""
+        return " ".join(f"{prefix}{value}" for prefix, value, _ in self._status_fields(todo, roadmap_status))
 
-    def _status_parts(self, todo: TodoItem, roadmap_status: str) -> list[tuple[str, bool]]:
-        """Return status block parts with value-only bolding (no placeholder bold)."""
-        build_value = self._format_enum_value(todo.build_status) if todo.build_status else "-"
-        review_value = self._format_enum_value(todo.review_status) if todo.review_status else "-"
-        dor_value = self._format_enum_value(todo.dor_status) if todo.dor_status else "-"
-        def_value = self._format_enum_value(todo.deferrals_status) if todo.deferrals_status else "-"
-        findings = str(todo.findings_count) if todo.findings_count >= 0 else "-"
-
-        def _value_part(value: str) -> tuple[str, bool]:
-            return (value, value != "-")
-
-        return [
-            (roadmap_status, True),
-            (" ", False),
-            ("b:", False),
-            _value_part(build_value),
-            (" ", False),
-            ("r:", False),
-            _value_part(review_value),
-            (" ", False),
-            ("dor:", False),
-            _value_part(dor_value),
-            (" ", False),
-            ("def:", False),
-            _value_part(def_value),
-            (" ", False),
-            ("f:", False),
-            _value_part(findings),
-        ]
+    def _status_parts(self, todo: TodoItem, roadmap_status: str) -> list[tuple[str, bool, bool]]:
+        """Return render parts as (text, bold, error_color)."""
+        parts: list[tuple[str, bool, bool]] = []
+        for idx, (prefix, value, is_error_value) in enumerate(self._status_fields(todo, roadmap_status)):
+            if idx > 0:
+                parts.append((" ", False, False))
+            parts.append((prefix, False, False))
+            parts.append((value, value != "-", is_error_value and value != "-"))
+        return parts
 
     def render(self, stdscr: CursesWindow, start_row: int, height: int, width: int) -> None:
         """Render view content with scrolling support.
@@ -1291,11 +1325,14 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             stdscr.addstr(row, col, prefix[:width], attr)  # type: ignore[attr-defined]
             col += len(prefix)
             remaining = max(0, width - col - len(suffix))
-            for part, is_bold in status_parts:
+            for part, is_bold, is_error in status_parts:
                 if remaining <= 0:
                     break
                 chunk = part[:remaining]
                 part_attr = attr | (curses.A_BOLD if is_bold else 0)
+                if is_error:
+                    # Error-highlighted grading should always remain visually strong.
+                    part_attr |= curses.color_pair(1) | curses.A_BOLD
                 stdscr.addstr(row, col, chunk, part_attr)  # type: ignore[attr-defined]
                 col += len(chunk)
                 remaining -= len(chunk)

@@ -887,6 +887,41 @@ async def test_cleanup_terminates_sessions_inactive_72h():
 
 
 @pytest.mark.asyncio
+async def test_cleanup_skips_already_closed_inactive_sessions_and_normalizes_status():
+    service = MaintenanceService(client=MagicMock(), output_poller=MagicMock(), poller_watch_interval_s=1.0)
+
+    fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
+    old_time = fixed_now - timedelta(hours=73)
+    closed_session = Session(
+        session_id="closed-123",
+        computer_name="TestMac",
+        tmux_session_name="closed-tmux",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Closed",
+        last_activity=old_time,
+        closed_at=fixed_now - timedelta(days=1),
+        lifecycle_status="active",
+    )
+
+    with (
+        patch("teleclaude.services.maintenance_service.datetime") as mock_datetime,
+        patch("teleclaude.services.maintenance_service.db") as mock_db,
+        patch(
+            "teleclaude.services.maintenance_service.session_cleanup.terminate_session",
+            new_callable=AsyncMock,
+        ) as terminate_session,
+    ):
+        mock_datetime.now.return_value = fixed_now
+        mock_db.list_sessions = AsyncMock(return_value=[closed_session])
+        mock_db.update_session = AsyncMock()
+
+        await service._cleanup_inactive_sessions()
+
+        terminate_session.assert_not_called()
+        mock_db.update_session.assert_awaited_once_with("closed-123", lifecycle_status="closed")
+
+
+@pytest.mark.asyncio
 async def test_ensure_tmux_session_recreates_when_missing():
     service = MaintenanceService(client=MagicMock(), output_poller=MagicMock(), poller_watch_interval_s=1.0)
 

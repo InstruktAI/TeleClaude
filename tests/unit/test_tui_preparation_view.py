@@ -67,6 +67,10 @@ class TestPreparationViewLogic:
         has_impl_plan: bool = False,
         build_status: str | None = None,
         review_status: str | None = None,
+        dor_status: str | None = None,
+        dor_score: int | None = None,
+        deferrals_status: str | None = None,
+        findings_count: int = 0,
         depth: int = 0,
     ) -> PrepTodoNode:
         todo = TodoItem(
@@ -77,6 +81,10 @@ class TestPreparationViewLogic:
             has_impl_plan=has_impl_plan,
             build_status=build_status,
             review_status=review_status,
+            dor_status=dor_status,
+            dor_score=dor_score,
+            deferrals_status=deferrals_status,
+            findings_count=findings_count,
         )
         return PrepTodoNode(
             type="todo",
@@ -180,22 +188,67 @@ class TestPreparationViewLogic:
 
         assert "[>]" in output or "in_progress" in output.lower()
 
-    def test_build_review_status_shown(self, prep_view):
-        """Build and review status are shown if available."""
+    def test_prebuild_shows_status_and_dor_only(self, prep_view):
+        """Before build starts, show only status + dor."""
         todo = self._make_todo_node(
             slug="test-todo",
-            status="in_progress",
-            build_status="complete",
+            status="pending",
+            build_status="pending",
             review_status="pending",
+            dor_score=8,
         )
         prep_view.flat_items = [todo]
         lines = prep_view.get_render_lines(80, 24)
 
-        # Should have 2 lines: title + status line
-        assert len(lines) == 2
+        assert len(lines) == 1
         output = "\n".join(lines)
-        assert "Build: complete" in output
-        assert "Review: pending" in output
+        assert "status:pending" in output
+        assert "dor:8" in output
+        assert "b:" not in output
+        assert " r:" not in output
+        assert "def:" not in output
+        assert "f:" not in output
+
+    def test_build_active_shows_status_and_build_only(self, prep_view):
+        """During active build, hide dor/review/findings/deferrals."""
+        todo = self._make_todo_node(
+            slug="test-todo",
+            status="in_progress",
+            build_status="in_progress",
+            review_status="pending",
+            dor_score=8,
+            findings_count=3,
+            deferrals_status="pending",
+        )
+        prep_view.flat_items = [todo]
+        output = "\n".join(prep_view.get_render_lines(80, 24))
+
+        assert "status:in_progress" in output
+        assert "b:in_progress" in output
+        assert "dor:" not in output
+        assert "r:" not in output
+        assert "def:" not in output
+        assert "f:" not in output
+
+    def test_review_started_shows_review_findings_and_deferrals(self, prep_view):
+        """Findings/deferrals are visible only once review has started."""
+        todo = self._make_todo_node(
+            slug="test-todo",
+            status="in_progress",
+            build_status="complete",
+            review_status="changes_requested",
+            findings_count=2,
+            deferrals_status="pending",
+        )
+        prep_view.flat_items = [todo]
+        output = "\n".join(prep_view.get_render_lines(80, 24))
+
+        assert "status:in_progress" in output
+        assert "r:changes_requested" in output
+        assert "f:2" in output
+        assert "def:pending" in output
+        assert "dor:" not in output
+        assert "b:" not in output
 
     def test_computer_node_renders(self, prep_view):
         """Computer nodes render correctly."""

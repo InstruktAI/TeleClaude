@@ -17,6 +17,7 @@ class TodoItem:
     build_status: str | None = None
     review_status: str | None = None
     dor_status: str | None = None
+    dor_score: int | None = None
     deferrals_status: str | None = None
     findings_count: int = 0
     files: list[str] = field(default_factory=list)

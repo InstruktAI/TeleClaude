@@ -83,20 +83,12 @@ class IdentityResolver:
         """Resolve identity from origin and metadata.
 
         Args:
-            origin: Source of the session (e.g. 'telegram', 'web', 'tui').
+            origin: Source of the session (e.g. 'telegram', 'web', 'api').
             channel_metadata: Dictionary of metadata from the channel.
 
         Returns:
             IdentityContext if resolved, None if unauthorized/unknown.
         """
-        if origin == "tui":
-            return IdentityContext(
-                person_name="Local Admin",
-                person_role=HUMAN_ROLE_ADMIN,
-                platform="tui",
-                platform_user_id="local",
-            )
-
         if origin == "mcp":
             return None
 

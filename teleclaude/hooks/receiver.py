@@ -30,7 +30,6 @@ from teleclaude.hooks.checkpoint_flags import (  # noqa: E402
     CHECKPOINT_RECHECK_FLAG,
     consume_checkpoint_flag,
     is_checkpoint_disabled,
-    session_tmp_base_dir,
     set_checkpoint_flag,
 )
 
@@ -405,35 +404,6 @@ def _extract_native_identity(agent: str, data: dict[str, object]) -> tuple[str |
     return native_session_id, native_log_file
 
 
-def _get_env_session_id() -> str | None:
-    return None
-
-
-def _get_legacy_tmux_session_id() -> str | None:
-    # Legacy tmux session id file (compat + tests), but only when TMPDIR is
-    # TeleClaude-managed per-session temp space. This avoids stale global TMPDIR
-    # markers hijacking native->TeleClaude mapping for standalone sessions.
-    tmpdir = os.getenv("TMPDIR")
-    if not tmpdir:
-        return None
-    try:
-        tmpdir_path = Path(tmpdir).expanduser().resolve()
-    except OSError:
-        return None
-    base_dir = session_tmp_base_dir()
-    if base_dir not in tmpdir_path.parents:
-        return None
-    legacy_path = tmpdir_path / "teleclaude_session_id"
-    if legacy_path.exists():
-        try:
-            contents = legacy_path.read_text(encoding="utf-8").strip()
-        except OSError:
-            contents = ""
-        if contents:
-            return contents
-    return None
-
-
 def _get_session_map_path() -> Path:
     return Path(os.path.expanduser("~/.teleclaude/session_map.json"))
 
@@ -482,6 +452,37 @@ def _get_cached_session_id(agent: str, native_session_id: str | None) -> str | N
         hit=bool(cached),
     )
     return cached
+
+
+def _get_env_session_id() -> str | None:
+    """Read TeleClaude session ID from process environment context."""
+    direct = os.getenv("TELECLAUDE_SESSION_ID")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+
+    tmpdir = os.getenv("TMPDIR")
+    if not isinstance(tmpdir, str) or not tmpdir.strip():
+        return None
+    marker = Path(tmpdir).expanduser() / "teleclaude_session_id"
+    try:
+        value = marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return value or None
+
+
+def _is_active_session(session_id: str | None) -> bool:
+    """Return True when session_id exists in DB and is not closed."""
+    if not session_id:
+        return False
+    from sqlmodel import Session as SqlSession
+
+    try:
+        with SqlSession(_create_sync_engine()) as session:
+            row = session.get(db_models.Session, session_id)
+    except Exception:
+        return False
+    return bool(row and not row.closed_at)
 
 
 def _resolve_or_refresh_session_id(
@@ -535,15 +536,23 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
         return None
     from sqlmodel import Session as SqlSession, select
 
-    with SqlSession(_create_sync_engine()) as session:
-        statement = (
-            select(db_models.Session)
-            .where(db_models.Session.native_session_id == native_session_id)
-            .where(db_models.Session.closed_at.is_(None))  # type: ignore[union-attr]
-            .order_by(db_models.Session.created_at.desc())  # type: ignore[union-attr]
-            .limit(1)
+    try:
+        with SqlSession(_create_sync_engine()) as session:
+            statement = (
+                select(db_models.Session)
+                .where(db_models.Session.native_session_id == native_session_id)
+                .where(db_models.Session.closed_at.is_(None))  # type: ignore[union-attr]
+                .order_by(db_models.Session.created_at.desc())  # type: ignore[union-attr]
+                .limit(1)
+            )
+            row = session.exec(statement).first()
+    except Exception as exc:  # noqa: BLE001 - fail-open in test fixtures / partial DB states
+        logger.debug(
+            "Native session lookup skipped (db unavailable)",
+            native_session_id=native_session_id[:8],
+            error=str(exc),
         )
-        row = session.exec(statement).first()
+        return None
     if not row:
         return None
     return row.session_id
@@ -578,6 +587,54 @@ def _persist_session_map(agent: str, native_session_id: str | None, session_id: 
         logger.warning("Failed to persist session map: %s", exc)
 
 
+def _resolve_hook_session_id(
+    *,
+    agent: str,
+    event_type: str,
+    native_session_id: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    """Resolve TeleClaude session ID from the canonical native identity map path.
+
+    Returns `(resolved_session_id, cached_session_id, existing_session_id)` where:
+    - `cached_session_id` is map lookup (`agent:native_session_id -> teleclaude_session_id`)
+    - `existing_session_id` is DB lookup (`sessions.native_session_id == native_session_id`)
+    """
+    cached_session_id = _get_cached_session_id(agent, native_session_id)
+    resolved_session_id = _resolve_or_refresh_session_id(cached_session_id, native_session_id, agent=agent)
+    existing_session_id = None
+    env_session_id = _get_env_session_id()
+
+    # For session_start, prefer the explicit TeleClaude session context from TMPDIR/env.
+    # This binds agent-native IDs to the already-created interactive session instead of minting
+    # a second headless session when map/native lookup is not yet populated.
+    if (
+        event_type == AgentHookEvents.AGENT_SESSION_START
+        and env_session_id
+        and _is_active_session(env_session_id)
+        and resolved_session_id != env_session_id
+    ):
+        resolved_session_id = env_session_id
+
+    if not resolved_session_id and native_session_id:
+        existing_session_id = _find_session_id_by_native(native_session_id)
+
+    if not resolved_session_id and existing_session_id:
+        resolved_session_id = existing_session_id
+
+    if (
+        not resolved_session_id
+        and event_type == AgentHookEvents.AGENT_SESSION_START
+        and isinstance(native_session_id, str)
+        and native_session_id
+    ):
+        resolved_session_id = str(uuid.uuid4())
+
+    if resolved_session_id and native_session_id:
+        _persist_session_map(agent, native_session_id, resolved_session_id)
+
+    return resolved_session_id, cached_session_id, existing_session_id
+
+
 def _emit_receiver_error_best_effort(
     *,
     agent: str,
@@ -601,9 +658,7 @@ def _emit_receiver_error_best_effort(
         raw_native_session_id = None
         if raw_data is not None:
             raw_native_session_id, _ = _extract_native_identity(agent, raw_data)
-        session_id = _get_legacy_tmux_session_id()
-        if not session_id:
-            session_id = _get_cached_session_id(agent, raw_native_session_id)
+        session_id = _get_cached_session_id(agent, raw_native_session_id)
         if not session_id:
             session_id = _find_session_id_by_native(raw_native_session_id)
         if not session_id:
@@ -640,7 +695,7 @@ def main() -> None:
         argv=sys.argv,
         cwd=os.getcwd(),
         stdin_tty=sys.stdin.isatty(),
-        has_session_id=bool(_get_env_session_id()),
+        has_event_arg=bool(args.event_type),
         agent=args.agent,
     )
 
@@ -728,53 +783,23 @@ def main() -> None:
 
     raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, raw_data)
 
-    env_session_id = _get_legacy_tmux_session_id()
-    cached_session_id = _get_cached_session_id(args.agent, raw_native_session_id)
-    if env_session_id:
-        teleclaude_session_id = env_session_id
-    elif raw_native_session_id:
-        teleclaude_session_id = cached_session_id
-    else:
-        teleclaude_session_id = cached_session_id
-
-    # Keep precedence order (env > cached), but still validate candidate against DB/native identity.
-    # This heals stale env markers that point to closed/reused sessions.
-    teleclaude_session_id = _resolve_or_refresh_session_id(
-        teleclaude_session_id,
-        raw_native_session_id,
+    teleclaude_session_id, cached_session_id, existing_id = _resolve_hook_session_id(
         agent=args.agent,
+        event_type=event_type,
+        native_session_id=raw_native_session_id,
     )
     logger.debug(
         "Hook session resolution",
         agent=args.agent,
         event_type=event_type,
-        env_session_id=(env_session_id or "")[:8],
         cached_session_id=(cached_session_id or "")[:8],
+        existing_session_id=(existing_id or "")[:8],
         resolved_session_id=(teleclaude_session_id or "")[:8],
         native_session_id=(raw_native_session_id or "")[:8],
     )
     if not teleclaude_session_id:
-        # Try to reuse an existing session for this native session id before minting a new one.
-        existing_id = _find_session_id_by_native(raw_native_session_id)
-        if existing_id:
-            teleclaude_session_id = existing_id
-            if not env_session_id:
-                _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
-        else:
-            # No TeleClaude session yet — mint an ID and let core create the headless session.
-            # Requires a native session ID to anchor later resolution.
-            if not raw_native_session_id:
-                sys.exit(0)
-            teleclaude_session_id = str(uuid.uuid4())
-            if not env_session_id:
-                _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
-    else:
-        # Always persist the latest native->TeleClaude mapping, even when the
-        # resolved session came from the legacy tmux marker. Without this,
-        # hooks that include a new native_session_id while env_session_id is set
-        # can repeatedly resolve correctly in-process but leave session_map stale
-        # for subsequent hooks that rely on the map.
-        _persist_session_map(args.agent, raw_native_session_id, teleclaude_session_id)
+        # Registration is only allowed on session_start. Other events require an existing mapping.
+        sys.exit(0)
 
     data = dict(raw_data)
 

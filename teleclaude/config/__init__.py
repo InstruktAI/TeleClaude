@@ -85,6 +85,7 @@ class ComputerConfig:
     role: str
     timezone: str
     default_working_dir: str
+    help_desk_dir: str
     is_master: bool
     trusted_dirs: list[TrustedDir]
     host: str | None = None  # Optional hostname/IP for SSH remote execution
@@ -311,6 +312,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "role": "general",
         "timezone": "Europe/Amsterdam",
         "default_working_dir": "~",
+        "help_desk_dir": "${HOME}/.teleclaude/help-desk",
         "is_master": False,
         "trusted_dirs": [],
         "host": None,
@@ -594,6 +596,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             role=str(comp_raw["role"]),  # type: ignore[index,misc]
             timezone=str(comp_raw["timezone"]),  # type: ignore[index,misc]
             default_working_dir=str(comp_raw["default_working_dir"]),  # type: ignore[index,misc]
+            help_desk_dir=str(comp_raw["help_desk_dir"]),  # type: ignore[index,misc]
             is_master=bool(comp_raw["is_master"]),  # type: ignore[index,misc]
             trusted_dirs=_parse_trusted_dirs(list(comp_raw["trusted_dirs"])),  # type: ignore[index,misc]
             host=str(comp_raw["host"]) if comp_raw["host"] else None,  # type: ignore[index,misc]

@@ -96,6 +96,7 @@ FIELD_COMMAND = "command"
 CHECKPOINT_PREFIX = "[TeleClaude Checkpoint] - "
 CHECKPOINT_MESSAGE = (
     f"{CHECKPOINT_PREFIX}Continue or validate your work if needed. "
+    "Perform checkpoint housekeeping silently, then send a short user-relevant debrief without mentioning checkpoint chores. "
     "Any truly interesting memories to be created that meet our criteria? "
     "(DON'T abuse it as work log!) If everything that is expected of you is done, do not respond."
 )
@@ -115,6 +116,7 @@ class FileCategory:
     exclude_patterns: list[str] = field(default_factory=list)
     instruction: str = ""
     evidence_substrings: list[str] = field(default_factory=list)
+    evidence_must_follow_last_mutation: bool = False
     precedence: int = 0  # Lower = earlier in required actions
 
 
@@ -170,6 +172,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
         include_patterns=["teleclaude/cli/tui/**"],
         instruction="Run `pkill -SIGUSR2 -f -- '-m teleclaude.cli.telec$'`",
         evidence_substrings=["pkill -SIGUSR2", "kill -USR2"],
+        evidence_must_follow_last_mutation=True,
         precedence=40,
     ),
     FileCategory(

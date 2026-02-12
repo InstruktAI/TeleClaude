@@ -5,12 +5,6 @@ Reviewed periodically — promote back to [roadmap.md](./roadmap.md) when priori
 
 ---
 
-## Rolling Session Titles
-
-- rolling-session-titles
-
-Re-summarize session titles based on the last 3 user inputs instead of only the first. Use a dedicated rolling prompt that captures session direction. Reset the output message on any title change so the topic floats to the top in Telegram.
-
 ## Repo Cleanup (Stale Scope)
 
 - repo-cleanup

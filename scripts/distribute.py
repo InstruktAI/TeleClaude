@@ -48,6 +48,10 @@ from teleclaude.resource_validation import (
 Transform = Callable[[Post], str]
 
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
+CODEX_NEXT_COMMAND_RE = re.compile(
+    r"(^|[\s`'\"(\[])\/(next-[a-z0-9-]+)(?=$|[\s`'\"),.:;!?])",
+    re.MULTILINE,
+)
 
 
 class StableYAMLHandler(YAMLHandler):
@@ -149,6 +153,21 @@ def _format_markdown(paths: list[str]) -> None:
     subprocess.run(["npx", "--yes", "prettier", "--write", *md_files], check=False)
 
 
+def _rewrite_codex_next_prompt_tokens(content: str) -> str:
+    """Rewrite executable /next-* command tokens for Codex custom prompts.
+
+    This intentionally rewrites command tokens only and avoids touching path-like
+    references such as /Users/.../next-prepare.md.
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        prefix = match.group(1)
+        command = match.group(2)
+        return f"{prefix}/prompts:{command}"
+
+    return CODEX_NEXT_COMMAND_RE.sub(_replace, content)
+
+
 ArtifactFrontmatter = TypedDict(
     "ArtifactFrontmatter",
     {
@@ -193,7 +212,8 @@ def transform_to_codex(post: Post) -> str:
     # Codex uses Markdown with YAML frontmatter. Force explicit scalar quotes as
     # a compatibility workaround for intermittent frontmatter false positives.
     # TODO: GitHub issue openai/codex#11495 — remove when fixed upstream.
-    return _normalize_frontmatter_single_quotes_for_codex(dump_frontmatter(post))
+    content = _normalize_frontmatter_single_quotes_for_codex(dump_frontmatter(post))
+    return _rewrite_codex_next_prompt_tokens(content)
 
 
 def transform_to_gemini(post: Post) -> str:
@@ -221,7 +241,8 @@ def transform_skill_to_codex(post: Post, name: str) -> str:
     metadata["name"] = name
     metadata["description"] = metadata.get("description", "")
     transformed_post = Post(post.content, **metadata)
-    return _normalize_frontmatter_single_quotes_for_codex(dump_frontmatter(transformed_post))
+    content = _normalize_frontmatter_single_quotes_for_codex(dump_frontmatter(transformed_post))
+    return _rewrite_codex_next_prompt_tokens(content)
 
 
 def transform_skill_to_gemini(post: Post, name: str) -> str:
@@ -753,6 +774,8 @@ def main() -> None:
                 combined_agents_content = expanded_body
             if combined_agents_content:
                 combined_agents_content = combined_agents_content.rstrip() + primer_suffix
+            if combined_agents_content and agent_name == "codex":
+                combined_agents_content = _rewrite_codex_next_prompt_tokens(combined_agents_content)
             if combined_agents_content:
                 master_dest_dir = os.path.dirname(master_dest_path)
                 if master_dest_dir:

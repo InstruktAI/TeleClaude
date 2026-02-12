@@ -257,6 +257,34 @@ class TestSendKeys:
                 text_arg = send_keys_call[0][0][-1]
                 assert text_arg == "Hello! World!"
 
+    @pytest.mark.asyncio
+    async def test_unwraps_bracketed_paste_and_uses_literal_send(self):
+        """Bracketed-paste markers should be stripped before tmux send-keys -l."""
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_process = MagicMock()
+            mock_process.returncode = 0
+            mock_process.communicate = AsyncMock(return_value=(b"", b""))
+            mock_exec.return_value = mock_process
+
+            with (
+                patch.object(tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
+                patch("asyncio.sleep", new=AsyncMock()),
+            ):
+                success = await tmux_bridge.send_keys(
+                    session_name="test-session",
+                    text="\x1b[200~hello world\x1b[201~",
+                    send_enter=False,
+                )
+
+                assert success is True
+
+                call_args_list = mock_exec.call_args_list
+                send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
+                assert len(send_keys_call) > 0
+                args = send_keys_call[0][0]
+                assert args[:6] == ("tmux", "send-keys", "-t", "test-session", "-l", "--")
+                assert args[6] == "hello world"
+
 
 class TestSendKeysExistingTmux:
     """Tests for send_keys_existing_tmux() function."""

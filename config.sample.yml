@@ -5,6 +5,7 @@ computer:
   bot_username: teleclaude_mac_bot # Bot username for computer registry (must match TELEGRAM_BOT_USERNAME)
   is_master: false # Master computer advertises full command list in Telegram autocomplete. Set to true on ONE computer only to avoid duplicates. All computers still handle all commands.
   default_working_dir: ${WORKING_DIR}
+  help_desk_dir: ${HOME}/.teleclaude/help-desk # Jailed-session working directory for unauthorized/missing-role requests
   timezone: Europe/Amsterdam # Timezone for timestamps (default: Europe/Amsterdam)
   host: null # Optional hostname/IP for SSH remote execution (null = local computer)
   # tmux binary is resolved internally by platform policy:

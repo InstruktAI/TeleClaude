@@ -43,6 +43,11 @@ Receiver-added payload fields:
 
 Important: native identity fields are **optional**, not required.
 
+Identity gating rule:
+
+- For events other than `session_start`, receiver forwards only when a native mapping already resolves to a TeleClaude session id.
+- Unmapped non-`session_start` events are intentionally dropped.
+
 ## Allowed values
 
 Forwarding status:
@@ -63,5 +68,6 @@ Ordering model:
 ## Known caveats
 
 - A normalized event can still be dropped if it is not in forwarding allowlist.
+- Even forwarded event types can be dropped when no session identity is resolved.
 - Mapping changes in code must be reflected here immediately.
 - Delivery is at-least-once; handlers must stay idempotent.

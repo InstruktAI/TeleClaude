@@ -76,6 +76,8 @@ Both paths call the same `get_checkpoint_content()` entry point, ensuring parity
 
 15. **Dynamic log-check window**: The required `instrukt-ai-logs teleclaude --since <window>` action is derived from elapsed time since the turn start (`max(last_message_sent_at, last_checkpoint_at)`), rounded up to minutes with a minimum of `2m`.
 
+16. **Silent housekeeping + short debrief policy**: Checkpoint payloads instruct agents to execute checkpoint-required housekeeping silently, then provide a short user-relevant debrief (1-3 sentences) focused on task outcome, blocker, or decision request. Checkpoint chore details are omitted from user-facing messages.
+
 ## Primary flows
 
 ### 0. Context-aware checkpoint builder

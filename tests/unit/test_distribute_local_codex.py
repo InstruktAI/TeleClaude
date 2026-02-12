@@ -86,3 +86,26 @@ def test_transform_skill_to_codex_preserves_nested_metadata(tmp_path: Path) -> N
     assert "name: 'youtube'" in rendered
     assert "description: 'desc'" in rendered
     assert "\nhooks:\n" in rendered
+
+
+def test_transform_to_codex_rewrites_next_commands_to_prompts() -> None:
+    """Codex transform should rewrite /next-* command tokens for prompt execution."""
+    distribute = _load_distribute_module()
+    post = Post("Run `/next-prepare-draft my-slug` then `/next-prepare-gate my-slug`.", description="desc")
+
+    rendered = distribute.transform_to_codex(post)
+
+    assert "/prompts:next-prepare-draft my-slug" in rendered
+    assert "/prompts:next-prepare-gate my-slug" in rendered
+    assert "/next-prepare-draft my-slug" not in rendered
+
+
+def test_transform_to_codex_does_not_rewrite_path_like_next_refs() -> None:
+    """Codex transform should not rewrite filesystem path fragments containing /next-*."""
+    distribute = _load_distribute_module()
+    post = Post("Read @/Users/me/docs/next-prepare.md before review.", description="desc")
+
+    rendered = distribute.transform_to_codex(post)
+
+    assert "@/Users/me/docs/next-prepare.md" in rendered
+    assert "/prompts:next-prepare.md" not in rendered

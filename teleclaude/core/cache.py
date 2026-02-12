@@ -488,6 +488,11 @@ class DaemonCache:
                             "1" if todo.has_impl_plan else "0",
                             todo.build_status or "",
                             todo.review_status or "",
+                            todo.dor_status or "",
+                            str(todo.dor_score) if todo.dor_score is not None else "",
+                            todo.deferrals_status or "",
+                            str(todo.findings_count),
+                            ",".join(todo.files),
                         ]
                     )
                 )

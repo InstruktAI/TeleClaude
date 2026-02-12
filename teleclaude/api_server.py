@@ -324,10 +324,19 @@ class APIServer:
             """
             # Normalize request into internal command.
 
+            channel_metadata: dict[str, object] | None = None
+            if request.human_email or request.human_role:
+                channel_metadata = {}
+                if request.human_email:
+                    channel_metadata["human_email"] = request.human_email
+                if request.human_role:
+                    channel_metadata["human_role"] = request.human_role
+
             metadata = self._metadata(
                 title=request.title or "Untitled",
                 project_path=request.project_path,
                 subdir=request.subdir,
+                channel_metadata=channel_metadata,
                 # launch_intent and auto_command logic will be simplified or moved
             )
 
@@ -817,6 +826,11 @@ class APIServer:
                                 has_impl_plan=t.has_impl_plan,
                                 build_status=t.build_status,
                                 review_status=t.review_status,
+                                dor_status=t.dor_status,
+                                dor_score=t.dor_score,
+                                deferrals_status=t.deferrals_status,
+                                findings_count=t.findings_count,
+                                files=t.files,
                             )
                             for t in raw_todos
                         ]
@@ -844,6 +858,11 @@ class APIServer:
                                 has_impl_plan=todo.has_impl_plan,
                                 build_status=todo.build_status,
                                 review_status=todo.review_status,
+                                dor_status=todo.dor_status,
+                                dor_score=todo.dor_score,
+                                deferrals_status=todo.deferrals_status,
+                                findings_count=todo.findings_count,
+                                files=todo.files,
                             )
                         )
                 self._refresh_stale_todos(stale_remote_computers)

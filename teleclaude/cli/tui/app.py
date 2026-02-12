@@ -562,6 +562,8 @@ class TelecApp:
                         },
                     )
                 )
+                if event.type == "agent_stop" and event.summary:
+                    save_sticky_state(self.state)
 
             elif isinstance(event, SessionClosedEvent):
                 if self._loop:

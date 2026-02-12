@@ -48,6 +48,14 @@ def load_sticky_state(state: TuiState) -> None:
         if isinstance(output_highlights, list):
             state.sessions.output_highlights = set(str(item) for item in output_highlights)
 
+        last_summary = data.get("last_summary", {})
+        if isinstance(last_summary, dict):
+            state.sessions.last_summary = {
+                str(session_id): str(summary)
+                for session_id, summary in last_summary.items()
+                if isinstance(session_id, str) and isinstance(summary, str)
+            }
+
         collapsed_sessions = data.get("collapsed_sessions", [])
         if isinstance(collapsed_sessions, list):
             state.sessions.collapsed_sessions = set(str(item) for item in collapsed_sessions)
@@ -57,11 +65,12 @@ def load_sticky_state(state: TuiState) -> None:
             state.sessions.preview = PreviewState(session_id=preview_data["session_id"])
 
         logger.info(
-            "Loaded TUI state: %d sticky, %d docs, %d in_hl, %d out_hl, %d collapsed, preview=%s",
+            "Loaded TUI state: %d sticky, %d docs, %d in_hl, %d out_hl, %d summaries, %d collapsed, preview=%s",
             len(state.sessions.sticky_sessions),
             len(state.preparation.sticky_previews),
             len(state.sessions.input_highlights),
             len(state.sessions.output_highlights),
+            len(state.sessions.last_summary),
             len(state.sessions.collapsed_sessions),
             state.sessions.preview.session_id[:8] if state.sessions.preview else None,
         )
@@ -88,6 +97,7 @@ def save_sticky_state(state: TuiState) -> None:
             "expanded_todos": sorted(state.preparation.expanded_todos),
             "input_highlights": sorted(state.sessions.input_highlights),
             "output_highlights": sorted(state.sessions.output_highlights),
+            "last_summary": dict(sorted(state.sessions.last_summary.items())),
             "collapsed_sessions": sorted(state.sessions.collapsed_sessions),
             "preview": {"session_id": preview.session_id} if preview else None,
         }

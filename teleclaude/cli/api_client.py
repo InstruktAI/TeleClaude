@@ -401,6 +401,8 @@ class TelecAPIClient:
         title: str | None = None,
         message: str | None = None,
         auto_command: str | None = None,
+        human_email: str | None = None,
+        human_role: str | None = "admin",
     ) -> CreateSessionResult:
         """Create a new session.
 
@@ -422,6 +424,8 @@ class TelecAPIClient:
             "title": title,
             "message": message,
             "auto_command": auto_command,
+            "human_email": human_email,
+            "human_role": human_role,
         }
         if subdir is not None:
             payload["subdir"] = subdir

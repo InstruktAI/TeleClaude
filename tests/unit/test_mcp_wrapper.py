@@ -472,6 +472,16 @@ async def test_tools_list_uses_cached_response(monkeypatch: pytest.MonkeyPatch, 
     assert response["result"]["tools"] == wrapper._impl.TOOL_LIST_CACHE
 
 
+def test_should_filter_tools_requires_explicit_role_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No explicit role state means no tool filtering."""
+    wrapper = _load_wrapper_module(monkeypatch)
+
+    monkeypatch.setattr(wrapper._impl, "_read_session_id_marker", lambda: "sess-123")
+    assert wrapper._impl._should_filter_tools(None, None) is False
+    assert wrapper._impl._should_filter_tools("worker", None) is True
+    assert wrapper._impl._should_filter_tools(None, "admin") is True
+
+
 @pytest.mark.asyncio
 async def test_tools_list_errors_without_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Paranoid test that tools list errors without cache still holds when everything is on fire."""

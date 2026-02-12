@@ -589,20 +589,18 @@ async def _send_keys_tmux(
 
     # Check if text contains bracketed paste markers
     has_bracketed_paste = "\x1b[200~" in send_text or "\x1b[201~" in send_text
+    if has_bracketed_paste:
+        # tmux send-keys without -l can fail with "not in a mode" when ESC sequences
+        # are present. Unwrap markers and always send text via literal mode.
+        send_text = send_text.replace("\x1b[200~", "").replace("\x1b[201~", "")
 
     # Send command (no pipes - don't leak file descriptors)
     # UPDATE: We must capture stderr to debug failures. send-keys is ephemeral and doesn't
     # start a long-lived process that would inherit the pipe, so this is safe.
-    # NOTE: Use -l (literal) flag EXCEPT when text has bracketed paste markers.
-    # Bracketed paste markers are ANSI escape sequences that need shell interpretation.
-    # The -l flag sends text literally (char-by-char), stripping escape sequences.
+    # Always send with -l for literal interpretation (prevents shell/key-name expansion).
+    cmd_text = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-l", "--", send_text]
     if has_bracketed_paste:
-        # Send without -l to allow shell to interpret bracketed paste sequences
-        cmd_text = [config.computer.tmux_binary, "send-keys", "-t", session_name, send_text]
-        logger.debug("Sending with bracketed paste markers (no -l flag): %s", send_text[:80])
-    else:
-        # Send with -l for literal interpretation (prevents unwanted shell expansion)
-        cmd_text = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-l", "--", send_text]
+        logger.debug("Unwrapped bracketed paste markers for literal tmux send: %s", send_text[:80])
     result = await asyncio.create_subprocess_exec(
         *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )

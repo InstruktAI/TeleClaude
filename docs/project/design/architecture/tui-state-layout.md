@@ -48,6 +48,7 @@ flowchart LR
 - **No View-Local Pane Calls**: Views emit intents only; layout is applied centrally.
 - **Sticky Is Authoritative**: Sticky panes persist until explicitly removed.
 - **Local-Only State**: TUI state is local UI state; core session state remains owned by the daemon.
+- **Pane Style Transition Contract**: Session pane foreground remains constant across focus changes; focus/inactive transitions are represented by background only (terminal default for active, computed haze for inactive).
 
 ### State model
 

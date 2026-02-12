@@ -35,6 +35,13 @@ This spec must define:
 - what happens when identifiers disagree,
 - restart/recovery behavior.
 
+Current runtime rule:
+
+- Hook receiver resolves session identity from native mapping (`agent:native_session_id`) plus DB native lookup.
+- Receiver does not use per-session TMP marker files for hook routing.
+- New mapping registration happens only on `session_start`.
+- Non-`session_start` events without an existing mapping are dropped.
+
 Fields that must be explained:
 
 - TeleClaude session id,
@@ -51,17 +58,16 @@ Route type:
 
 Authority mode:
 
-- `managed-marker-authoritative`
 - `native-mapping-authoritative`
 
 Recovery outcome:
 
 - `reassociate-existing`
 - `mint-new`
-- `fail-with-diagnostic`
+- `drop-unmapped-non-session-start`
 
 ## Known caveats
 
-- Legacy compatibility logic can create silent identity conflicts if authority order is unclear.
+- Legacy marker-based routing is intentionally removed from hook identity resolution.
 - Native fields may be missing in some events; logic must handle that safely.
 - This file is only useful if kept in sync with receiver + mapping code behavior.

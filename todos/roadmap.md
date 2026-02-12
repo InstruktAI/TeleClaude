@@ -12,6 +12,12 @@
 
 ---
 
+## Rolling Session Titles
+
+- [ ] rolling-session-titles
+
+Re-summarize session titles based on the last 3 user inputs instead of only the first. Use a dedicated rolling prompt that captures session direction. Reset the output message on any title change so the topic floats to the top in Telegram.
+
 ## Help Desk Platform
 
 - [.] help-desk-clients (after: help-desk, agent-activity-events)
@@ -48,3 +54,15 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 Notification routing subsystem that sends job outputs, reports, and alerts to people based on their role and channel subscriptions in per-person teleclaude.yml. Generalizes the existing personal Telegram script into a multi-person delivery layer.
 
 ## Maintenance
+
+- [ ] tdd-enforcement-single-test-contract
+
+Enforce strict TDD with one unified test-contract mechanism: tests are authored and approved up front, then locked; builders/fixers are code-only and cannot modify tests. Enforce through Next Machine gates, worker command contracts, CI/pre-commit guards, and explicit reviewer checks.
+
+- [ ] agent-file-locking-heartbeat
+
+Agent-level file locking to prevent same-file collisions on `main` with deterministic contention behavior: heartbeat on contention, retry after 3 minutes, then halt with precise blocker report if still locked. Commit ownership remains with agent.
+
+- [ ] project-aware-bug-routing
+
+Introduce prefix-based bug routing (`bug-*`) with an atomic per-bug loop (fix -> independent review -> retry/needs_human), while keeping bug intake low-friction (no mandatory project-name argument, explicit TeleClaude override available) and enforcing landing safety gates.

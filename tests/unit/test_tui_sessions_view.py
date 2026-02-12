@@ -384,6 +384,40 @@ class TestSessionsViewLogic:
         selected = sessions_view.flat_items[sessions_view.selected_index]
         assert selected.data.session.session_id == "sess-2"
 
+    @pytest.mark.asyncio
+    async def test_refresh_backfills_last_summary_from_session_data(self, sessions_view):
+        """Refresh should repopulate last_summary from persisted session summaries."""
+        computers = [
+            ComputerInfo(
+                name="test-computer",
+                status="online",
+                user="testuser",
+                host="test.local",
+                is_local=True,
+                tmux_binary="tmux",
+            )
+        ]
+        projects = [
+            ProjectWithTodosInfo(
+                computer="test-computer",
+                name="Test Project",
+                path="/test/project",
+                description="",
+                todos=[],
+            )
+        ]
+        sessions = [
+            self._make_session_info(
+                session_id="sess-summary",
+                tmux_session_name="tmux-summary",
+                last_output_summary="persisted summary text",
+            )
+        ]
+
+        await sessions_view.refresh(computers, projects, sessions)
+
+        assert sessions_view.state.sessions.last_summary["sess-summary"] == "persisted summary text"
+
     def test_depth_indentation(self, sessions_view):
         """Items are not indented in the simplified render output."""
         root = self._make_computer_node(name="test-computer", session_count=0, depth=0)
@@ -488,6 +522,36 @@ class TestSessionsViewLogic:
 
         assert "[17:43:21] out: **Working" in output
         assert "old summary" not in output
+
+    def test_codex_input_highlight_preserves_last_output(self, sessions_view, monkeypatch):
+        """Codex sessions should keep showing last output while waiting for next result."""
+        monkeypatch.setattr("teleclaude.cli.tui.views.sessions._format_time", lambda _ts: "17:43:21")
+        monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
+
+        session = self._make_session_node(session_id="s-codex-input", active_agent="codex")
+        sessions_view.state.sessions.last_summary["s-codex-input"] = "latest codex answer"
+        sessions_view.state.sessions.input_highlights.add("s-codex-input")
+        sessions_view.flat_items = [session]
+
+        output = "\n".join(sessions_view.get_render_lines(120, 10))
+
+        assert "[17:43:21] out: latest codex answer" in output
+        assert "[17:43:21] out: **Working" not in output
+
+    def test_codex_working_flag_preserves_last_output(self, sessions_view, monkeypatch):
+        """Codex output_working should not mask persisted last output text."""
+        monkeypatch.setattr("teleclaude.cli.tui.views.sessions._format_time", lambda _ts: "17:43:21")
+        monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
+
+        session = self._make_session_node(session_id="s-codex-working", active_agent="codex")
+        sessions_view.state.sessions.last_summary["s-codex-working"] = "final codex message"
+        sessions_view.state.sessions.output_working.add("s-codex-working")
+        sessions_view.flat_items = [session]
+
+        output = "\n".join(sessions_view.get_render_lines(120, 10))
+
+        assert "[17:43:21] out: final codex message" in output
+        assert "[17:43:21] out: **Working" not in output
 
     def test_double_clicking_session_id_row_toggles_sticky_parent_only(self, mock_focus):
         """Double-clicking the ID row toggles sticky with parent-only mode (no child)."""

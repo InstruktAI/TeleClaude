@@ -143,6 +143,11 @@ def _temp_output_placeholder_text(active_agent: str | None, tool_name: str | Non
     return _thinking_placeholder_text()
 
 
+def _preserve_last_output_while_working(active_agent: str | None, last_output: str) -> bool:
+    """Return whether an active session should keep showing previous output text."""
+    return (active_agent or "").lower() == "codex" and bool(last_output.strip())
+
+
 class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     """View 1: Sessions - project-centric tree with AI-to-AI nesting."""
 
@@ -293,6 +298,12 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_data_counts["sessions"] = len(sessions)
         self.controller.update_sessions(sessions)
         self.controller.dispatch(Intent(IntentType.SYNC_SESSIONS, {"session_ids": [s.session_id for s in sessions]}))
+        # Keep render summary state aligned with persisted session summaries.
+        # This prevents losing "out:" content after TUI reload/reconnect.
+        for session in sessions:
+            summary = (session.last_output_summary or "").strip()
+            if summary:
+                self.state.sessions.last_summary[session.session_id] = summary
         # Store computers for SSH connection lookup
         self._computers = computers
 
@@ -1554,14 +1565,15 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
         has_working_output = session_id in self.state.sessions.output_working
         activity_time = _format_time(session.last_activity)
+        preserve_last_output = _preserve_last_output_while_working(session.active_agent, last_output)
         if has_temp_output_highlight:
             tool_name = self.state.sessions.active_tool.get(session_id)
             line4 = f"{detail_indent}[{activity_time}] out: {_temp_output_placeholder_text(session.active_agent, tool_name)}"
             lines.append(line4[:width])
-        elif has_input_highlight:
+        elif has_input_highlight and not preserve_last_output:
             line4 = f"{detail_indent}[{activity_time}] out: {_working_placeholder_text()}"
             lines.append(line4[:width])
-        elif has_working_output:
+        elif has_working_output and not preserve_last_output:
             line4 = f"{detail_indent}[{activity_time}] out: {_working_placeholder_text()}"
             lines.append(line4[:width])
         elif last_output:
@@ -1790,9 +1802,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             idx_text = f"[{idx}]"
             idx_attr = header_attr
 
-        # Headless sessions render header lines in muted color until adopted.
-        # Do not apply reverse selection styling for headless headers.
-        title_attr = header_attr if is_headless else (curses.A_REVERSE if selected else header_attr)
+        # Keep headless rows muted when unselected, but show explicit keyboard focus
+        # like every other row when selected.
+        selected_header_attr = curses.A_REVERSE | header_attr
+        title_attr = selected_header_attr if selected else header_attr
 
         # Collapse indicator
         collapse_indicator = "▶" if is_collapsed else "▼"
@@ -1805,7 +1818,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if child_indent:
                 stdscr.addstr(row, col, child_indent, header_attr)  # type: ignore[attr-defined]
                 col += len(child_indent)
-            selected_idx_attr = header_attr if is_headless else curses.A_REVERSE
+            selected_idx_attr = selected_header_attr
             stdscr.addstr(row, col, idx_text, idx_attr if not selected else selected_idx_attr)  # type: ignore[attr-defined]
             col += len(idx_text)
             rest = f' {collapse_indicator} {agent}/{mode}  "{title}"'
@@ -1856,6 +1869,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         last_output = self.state.sessions.last_summary.get(session_id, "")
         activity_time = _format_time(session.last_activity)
         has_working_output = session_id in self.state.sessions.output_working
+        preserve_last_output = _preserve_last_output_while_working(session.active_agent, last_output)
         if has_temp_output_highlight:
             italic_attr = getattr(curses, "A_ITALIC", 0)
             prefix_text = f"{detail_indent}[{activity_time}] out: "
@@ -1872,7 +1886,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             else:
                 _safe_addstr(row + lines_used, f"{prefix_text}{placeholder_text}", output_attr)
             lines_used += 1
-        elif has_input_highlight:
+        elif has_input_highlight and not preserve_last_output:
             italic_attr = getattr(curses, "A_ITALIC", 0)
             prefix_text = f"{detail_indent}[{activity_time}] out: "
             placeholder_text = _working_placeholder_text()
@@ -1887,7 +1901,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             else:
                 _safe_addstr(row + lines_used, f"{prefix_text}{placeholder_text}", output_attr)
             lines_used += 1
-        elif has_working_output:
+        elif has_working_output and not preserve_last_output:
             italic_attr = getattr(curses, "A_ITALIC", 0)
             prefix_text = f"{detail_indent}[{activity_time}] out: "
             placeholder_text = _working_placeholder_text()

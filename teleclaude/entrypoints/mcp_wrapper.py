@@ -232,10 +232,8 @@ def _read_human_role() -> str | None:
 
 
 def _should_filter_tools(role: str | None, human_role: str | None) -> bool:
-    """Return True when this wrapper invocation is session-scoped."""
-    if role is not None or human_role is not None:
-        return True
-    return _read_session_id_marker() is not None
+    """Return True when explicit role state is present."""
+    return role is not None or human_role is not None
 
 
 def _get_session_tmp_basedir() -> Path:

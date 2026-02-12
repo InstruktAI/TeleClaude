@@ -934,6 +934,11 @@ def build_checkpoint_message(
 
 def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str:
     """Compose checkpoint text from precomputed heuristic output."""
+    response_policy = (
+        "Response policy: perform checkpoint-required housekeeping silently. "
+        "End with a short user-relevant debrief (1-3 sentences) about actual task outcome, blocker, or decision needed. "
+        "Do not mention checkpoint chores."
+    )
     escape_hatch = (
         "Escape hatch (last resort only, and only when there is no actionable information left): "
         'run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to disable checkpoints for this session. '
@@ -944,7 +949,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     if not git_files or _is_docs_only(git_files):
         return (
             f"{CHECKPOINT_PREFIX}No code changes detected this turn. Did you run `telec sync`?\n"
-            f"Commit if ready.\n\n{escape_hatch}"
+            f"Commit if ready.\n\n{response_policy}\n\n{escape_hatch}"
         )
 
     # Special case: all clear
@@ -952,7 +957,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         return (
             f"{CHECKPOINT_PREFIX}All expected validations were observed. "
             "Docs check: if relevant, update existing docs or add a new doc. "
-            f"Commit if ready.\n\n{escape_hatch}"
+            f"Commit if ready.\n\n{response_policy}\n\n{escape_hatch}"
         )
 
     lines: list[str] = [f"{CHECKPOINT_PREFIX}Context-aware checkpoint"]
@@ -983,6 +988,8 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     # Capture reminder
     lines.append("")
     lines.append('Finish the steps above. Then capture "aha moment" memories if needed.')
+    lines.append("")
+    lines.append(response_policy)
     lines.append("")
     lines.append(escape_hatch)
 
@@ -1073,6 +1080,25 @@ def get_checkpoint_content(
                     "required_actions": len(result.required_actions),
                     "observations": len(result.observations),
                     "mode": "silent_no_changes",
+                    "message_len": 0,
+                    "used_session_fallback": used_session_fallback,
+                },
+            )
+            return None
+
+        if result.is_all_clear:
+            logger.info(
+                "Checkpoint payload skipped (all checks already satisfied)",
+                extra={
+                    **base_extra,
+                    "timeline_has_data": timeline.has_data,
+                    "timeline_records": len(timeline.tool_calls),
+                    "dirty_files": len(git_files),
+                    "changed_files": len(effective_git_files),
+                    "categories": result.categories,
+                    "required_actions": len(result.required_actions),
+                    "observations": len(result.observations),
+                    "mode": "silent_all_clear",
                     "message_len": 0,
                     "used_session_fallback": used_session_fallback,
                 },

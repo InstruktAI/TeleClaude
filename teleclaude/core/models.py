@@ -838,10 +838,22 @@ class TodoInfo:
     has_impl_plan: bool = False
     build_status: Optional[str] = None
     review_status: Optional[str] = None
+    dor_status: Optional[str] = None
+    dor_score: Optional[int] = None
+    deferrals_status: Optional[str] = None
+    findings_count: int = 0
+    files: List[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: Dict[str, object]) -> "TodoInfo":  # guard: loose-dict
         """Create from dict with field mapping."""
+        dor_score_raw = data.get("dor_score")
+        dor_score: Optional[int]
+        try:
+            dor_score = int(dor_score_raw) if dor_score_raw is not None else None
+        except (TypeError, ValueError):
+            dor_score = None
+
         return cls(
             slug=str(data.get("slug", "")),
             status=str(data.get("status", "pending")),
@@ -850,6 +862,11 @@ class TodoInfo:
             has_impl_plan=bool(data.get("has_impl_plan", False)),
             build_status=cast(Optional[str], data.get("build_status")),
             review_status=cast(Optional[str], data.get("review_status")),
+            dor_status=cast(Optional[str], data.get("dor_status")),
+            dor_score=dor_score,
+            deferrals_status=cast(Optional[str], data.get("deferrals_status")),
+            findings_count=int(data.get("findings_count", 0) or 0),
+            files=[str(f) for f in cast(List[object], data.get("files", []))],
         )
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict

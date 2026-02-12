@@ -20,7 +20,7 @@ echo "Running ruff format (check)"
 uv run --quiet ruff format --check $dirs
 
 echo "Running ruff check"
-uv run --quiet ruff check $dirs
+uv run --quiet python "${REPO_ROOT}/tools/lint/ruff_safe.py" $dirs
 
 echo "Running pyright"
 uv run --quiet pyright

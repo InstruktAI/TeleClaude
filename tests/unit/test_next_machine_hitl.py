@@ -462,7 +462,7 @@ def test_is_review_changes_requested_true():
 
 
 def test_format_tool_call_codex_uses_normalized_command():
-    """format_tool_call emits normalized /next-* command for codex."""
+    """format_tool_call keeps transport command payload stable for codex."""
     result = format_tool_call(
         command="next-build",
         args="test-slug",
@@ -474,12 +474,11 @@ def test_format_tool_call_codex_uses_normalized_command():
     )
     assert 'command="/next-build"' in result
     assert "/prompts:" not in result
-    assert "execution script" in result
-    assert "do not re-read" in result
+    assert "teleclaude__run_agent_command(" in result
 
 
 def test_format_tool_call_claude_no_prefix():
-    """format_tool_call does not add prefix for claude agent."""
+    """format_tool_call does not rewrite command prefix for claude."""
     result = format_tool_call(
         command="next-build",
         args="test-slug",
@@ -491,8 +490,7 @@ def test_format_tool_call_claude_no_prefix():
     )
     assert 'command="/next-build"' in result
     assert "/prompts:" not in result
-    assert "execution script" in result
-    assert "do not re-read" in result
+    assert "teleclaude__run_agent_command(" in result
 
 
 def test_format_tool_call_gemini_no_prefix():
