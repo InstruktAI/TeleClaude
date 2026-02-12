@@ -103,6 +103,8 @@ class Db:
             last_feedback_summary=row.last_feedback_summary,
             last_output_digest=row.last_output_digest,
             working_slug=row.working_slug,
+            human_email=row.human_email,
+            human_role=row.human_role,
             lifecycle_status=row.lifecycle_status or "active",
         )
 
@@ -266,6 +268,8 @@ class Db:
         session_id: Optional[str] = None,
         working_slug: Optional[str] = None,
         initiator_session_id: Optional[str] = None,
+        human_email: Optional[str] = None,
+        human_role: Optional[str] = None,
         lifecycle_status: str = "active",
     ) -> Session:
         """Create a new session.
@@ -282,6 +286,8 @@ class Db:
             session_id: Optional explicit session ID (for AI-to-AI cross-computer sessions)
             working_slug: Optional slug of work item this session is working on
             initiator_session_id: Session ID of the AI that created this session (for AI-to-AI nesting)
+            human_email: Optional email of the human user
+            human_role: Optional role of the human user
 
         Returns:
             Created Session object
@@ -303,6 +309,8 @@ class Db:
             description=description,
             working_slug=working_slug,
             initiator_session_id=initiator_session_id,
+            human_email=human_email,
+            human_role=human_role,
             lifecycle_status=lifecycle_status,
         )
 
@@ -320,6 +328,8 @@ class Db:
             description=session.description,
             working_slug=session.working_slug,
             initiator_session_id=session.initiator_session_id,
+            human_email=session.human_email,
+            human_role=session.human_role,
             lifecycle_status=session.lifecycle_status,
         )
         async with self._session() as db_session:
@@ -1338,6 +1348,39 @@ def get_session_id_by_field_sync(db_path: str, field: str, value: object) -> str
 def get_session_id_by_tmux_name_sync(db_path: str, tmux_name: str) -> str | None:
     """Sync helper to find session_id by tmux session name."""
     return _fetch_session_id_sync(db_path, "tmux_session_name", tmux_name)
+
+
+def get_session_field_sync(db_path: str, session_id: str, field: str) -> object | None:
+    """Sync helper to fetch a single field from a session by ID."""
+    from sqlalchemy import create_engine, text  # noqa: raw-sql
+    from sqlalchemy.exc import OperationalError
+    from sqlmodel import Session as SqlSession
+    from sqlmodel import select
+
+    # Validate field against Session model attributes
+    model_fields = getattr(db_models.Session, "model_fields", None)
+    if isinstance(model_fields, dict):
+        valid_fields = set(model_fields.keys())
+    else:
+        fields_fallback = getattr(db_models.Session, "__fields__", {})
+        valid_fields = set(fields_fallback.keys()) if isinstance(fields_fallback, dict) else set()
+    if field not in valid_fields:
+        raise ValueError(f"Invalid field '{field}' for Session lookup. Valid fields: {sorted(valid_fields)}")
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with SqlSession(engine) as session:
+        session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
+        session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
+        column = getattr(db_models.Session, field, None)
+        if column is None:
+            raise ValueError(f"Invalid field '{field}'")
+        stmt = select(column).where(db_models.Session.session_id == session_id)
+        try:
+            return session.exec(stmt).first()
+        except OperationalError as exc:
+            if "no such table" in str(exc).lower():
+                return None
+            raise
 
 
 # Module-level singleton instance (initialized on first import)

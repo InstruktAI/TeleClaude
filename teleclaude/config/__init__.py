@@ -123,7 +123,7 @@ class AgentConfig:
     """Configuration for a specific AI agent."""
 
     binary: str  # Resolved by runtime policy (not user-configurable)
-    flags: str  # System-controlled flags, from AGENT_PROTOCOL
+    profiles: dict[str, str]  # System-controlled profiles, from AGENT_PROTOCOL
     session_dir: str
     log_pattern: str
     model_flags: dict[str, str]
@@ -133,10 +133,18 @@ class AgentConfig:
     resume_template: str
     continue_template: str = ""
 
+    def get_command(self, profile: str = "default") -> str:
+        """Assembled base command: binary + profile flags."""
+        flags = self.profiles.get(profile)
+        if flags is None:
+            # Fallback to default if profile not found
+            flags = self.profiles.get("default", "")
+        return f"{self.binary} {flags}".strip()
+
     @property
     def command(self) -> str:
-        """Assembled base command: binary + system flags."""
-        return f"{self.binary} {self.flags}".strip()
+        """Assembled base command: binary + default flags."""
+        return self.get_command("default")
 
 
 @dataclass
@@ -545,7 +553,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     for name, protocol in AGENT_PROTOCOL.items():
         agents_registry[name] = AgentConfig(
             binary=resolve_agent_binary(name),
-            flags=str(protocol["flags"]),
+            profiles=dict(protocol["profiles"]),  # type: ignore[arg-type]
             session_dir=str(protocol["session_dir"]),
             log_pattern=str(protocol["log_pattern"]),
             model_flags=dict(protocol["model_flags"]),  # type: ignore[arg-type]

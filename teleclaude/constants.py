@@ -301,7 +301,10 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
     "claude": {
         "session_dir": "~/.claude/sessions",
         "log_pattern": "*.jsonl",
-        "flags": '--dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\'',
+        "profiles": {
+            "default": '--dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\'',
+            "restricted": '--settings \'{"forceLoginMethod": "claudeai"}\' --add-dir ~/.teleclaude/docs',
+        },
         "model_flags": {
             "fast": "--model haiku",
             "med": "--model sonnet",
@@ -316,7 +319,10 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
     "gemini": {
         "session_dir": "~/.gemini/tmp",
         "log_pattern": "**/chats/*.json",
-        "flags": "--yolo",
+        "profiles": {
+            "default": "--yolo",
+            "restricted": "--sandbox --include-directories ~/.teleclaude/docs",
+        },
         "model_flags": {
             "fast": "-m gemini-2.5-flash-lite",
             "med": "-m gemini-3-flash-preview",
@@ -331,7 +337,10 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
     "codex": {
         "session_dir": "~/.codex/sessions",
         "log_pattern": "*.jsonl",
-        "flags": "--dangerously-bypass-approvals-and-sandbox --search",
+        "profiles": {
+            "default": "--dangerously-bypass-approvals-and-sandbox --search",
+            "restricted": "--profile full_auto --search",
+        },
         "model_flags": {
             "fast": "-m gpt-5.3-codex --config model_reasoning_effort='low'",
             "med": "-m gpt-5.3-codex --config model_reasoning_effort='medium'",

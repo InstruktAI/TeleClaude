@@ -56,6 +56,7 @@ def get_agent_command(
     resume: bool = False,
     native_session_id: Optional[str] = None,
     interactive: bool = False,
+    profile: str = "default",
 ) -> str:
     """
     Build agent command string.
@@ -71,6 +72,7 @@ def get_agent_command(
         resume: If True and no native_session_id, uses continue_template when available (agent-specific "continue latest")
         native_session_id: If provided, uses resume_template with this session ID (ignores resume flag)
         interactive: If True, include interactive_flag at the end (right before prompt)
+        profile: Security profile ('default', 'restricted'). Default 'default'.
 
     Returns:
         Assembled command string, ready for prompt to be appended.
@@ -93,7 +95,7 @@ def get_agent_command(
         'gemini --yolo -m gemini-3-flash-preview -i'
     """
     agent_cfg = _get_agent_config(agent)
-    base_cmd = agent_cfg.command.strip()
+    base_cmd = agent_cfg.get_command(profile).strip()
 
     if native_session_id:
         # Include model flag when resuming with explicit session ID (unless omitted)

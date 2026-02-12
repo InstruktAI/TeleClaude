@@ -12,6 +12,7 @@ import pytest
 from teleclaude.config import AgentConfig
 from teleclaude.core import command_handlers
 from teleclaude.core.db import Db
+from teleclaude.core.identity import IdentityContext
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
@@ -27,6 +28,21 @@ from teleclaude.types.commands import (
 )
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+
+
+@pytest.fixture(autouse=True)
+def mock_identity_resolver():
+    """Default command handler tests to an authorized human identity."""
+    with patch("teleclaude.core.command_handlers.get_identity_resolver") as mock_get_resolver:
+        resolver = MagicMock()
+        resolver.resolve.return_value = IdentityContext(
+            person_name="Test User",
+            person_role="admin",
+            platform="telegram",
+            platform_user_id="123",
+        )
+        mock_get_resolver.return_value = resolver
+        yield resolver
 
 
 @pytest.fixture
@@ -700,7 +716,7 @@ async def test_handle_agent_start_executes_command_with_args(mock_initialized_db
 
     mock_agent_config = AgentConfig(
         binary="claude",
-        flags="",
+        profiles={"default": ""},
         session_dir="~/.claude/sessions",
         log_pattern="*.jsonl",
         model_flags={"fast": "-m haiku", "med": "-m sonnet", "slow": "-m opus"},
@@ -750,7 +766,7 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
 
     mock_agent_config = AgentConfig(
         binary="codex",
-        flags="--dangerously-bypass-approvals-and-sandbox --search",
+        profiles={"default": "--dangerously-bypass-approvals-and-sandbox --search"},
         session_dir="~/.codex/sessions",
         log_pattern="*.jsonl",
         model_flags={"fast": "-m gpt-5.1-codex-mini", "med": "-m gpt-5.1-codex", "slow": "-m gpt-5.3"},
@@ -840,7 +856,10 @@ async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
 
     assert len(mock_execute_calls) == 1
     # "deep" is parsed as thinking_mode, so user_args is empty -> interactive=False
-    assert mock_get_agent_command.call_args == (("codex",), {"thinking_mode": "deep", "interactive": False})
+    assert mock_get_agent_command.call_args == (
+        ("codex",),
+        {"thinking_mode": "deep", "interactive": False, "profile": "default"},
+    )
     command = mock_execute_calls[0][0][1]
     assert "codex -m deep" in command
 
@@ -904,7 +923,7 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
 
     mock_agent_config = AgentConfig(
         binary="gemini",
-        flags="--yolo",
+        profiles={"default": "--yolo"},
         session_dir="~/.gemini/sessions",
         log_pattern="*.jsonl",
         model_flags={
@@ -959,7 +978,7 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
 
     mock_agent_config = AgentConfig(
         binary="claude",
-        flags="--dangerously-skip-permissions",
+        profiles={"default": "--dangerously-skip-permissions"},
         session_dir="~/.claude/sessions",
         log_pattern="*.jsonl",
         model_flags={"fast": "-m haiku", "med": "-m sonnet", "slow": "-m opus"},
@@ -1011,7 +1030,7 @@ async def test_handle_agent_resume_uses_override_session_id_from_args(mock_initi
 
     mock_agent_config = AgentConfig(
         binary="codex",
-        flags="--yolo",
+        profiles={"default": "--yolo"},
         session_dir="~/.codex/sessions",
         log_pattern="*.jsonl",
         model_flags={},
