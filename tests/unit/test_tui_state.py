@@ -21,7 +21,6 @@ def test_tool_done_clears_input_and_sets_temp_output_highlight() -> None:
     assert session_id not in state.sessions.input_highlights
     assert session_id not in state.sessions.output_highlights
     assert session_id in state.sessions.temp_output_highlights
-    assert session_id in state.sessions.output_working
 
 
 def test_agent_stopped_sets_permanent_output_highlight() -> None:
@@ -30,7 +29,6 @@ def test_agent_stopped_sets_permanent_output_highlight() -> None:
     session_id = "sess-2"
     state.sessions.input_highlights.add(session_id)
     state.sessions.temp_output_highlights.add(session_id)
-    state.sessions.output_working.add(session_id)
 
     reduce_state(
         state,
@@ -42,7 +40,6 @@ def test_agent_stopped_sets_permanent_output_highlight() -> None:
 
     assert session_id not in state.sessions.input_highlights
     assert session_id not in state.sessions.temp_output_highlights
-    assert session_id not in state.sessions.output_working
     assert session_id in state.sessions.output_highlights
 
 
@@ -62,7 +59,6 @@ def test_agent_activity_tool_use_signals_timer_reset() -> None:
 
     assert session_id not in state.sessions.input_highlights
     assert session_id in state.sessions.temp_output_highlights
-    assert session_id in state.sessions.output_working
     assert session_id in state.sessions.activity_timer_reset
     assert state.sessions.active_tool[session_id] == "Edit"
 
@@ -84,7 +80,6 @@ def test_agent_activity_tool_done_signals_timer_reset() -> None:
 
     assert session_id not in state.sessions.input_highlights
     assert session_id in state.sessions.temp_output_highlights
-    assert session_id in state.sessions.output_working
     assert session_id in state.sessions.activity_timer_reset
     assert session_id not in state.sessions.active_tool
 
@@ -94,7 +89,6 @@ def test_agent_activity_agent_stop_clears_temp_and_sets_output() -> None:
     state = TuiState()
     session_id = "sess-activity-3"
     state.sessions.temp_output_highlights.add(session_id)
-    state.sessions.output_working.add(session_id)
     state.sessions.active_tool[session_id] = "Read"
 
     reduce_state(
@@ -106,7 +100,6 @@ def test_agent_activity_agent_stop_clears_temp_and_sets_output() -> None:
     )
 
     assert session_id not in state.sessions.temp_output_highlights
-    assert session_id not in state.sessions.output_working
     assert session_id not in state.sessions.active_tool
     assert session_id in state.sessions.output_highlights
 
@@ -129,16 +122,13 @@ def test_user_input_clears_any_output_highlight_and_sets_input() -> None:
     assert session_id in state.sessions.input_highlights
     assert session_id not in state.sessions.output_highlights
     assert session_id not in state.sessions.temp_output_highlights
-    assert session_id in state.sessions.output_working
 
 
-def test_clear_temp_highlight_keeps_working_output() -> None:
+def test_clear_temp_highlight_only_clears_temp_state() -> None:
     state = TuiState()
     session_id = "sess-temp-clear"
     state.sessions.temp_output_highlights.add(session_id)
-    state.sessions.output_working.add(session_id)
 
     reduce_state(state, Intent(IntentType.CLEAR_TEMP_HIGHLIGHT, {"session_id": session_id}))
 
     assert session_id not in state.sessions.temp_output_highlights
-    assert session_id in state.sessions.output_working
