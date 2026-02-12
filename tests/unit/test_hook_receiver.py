@@ -121,6 +121,27 @@ def test_receiver_emits_error_on_deprecated_event_name(monkeypatch, tmp_path):
     assert sent == []
 
 
+def test_receiver_unhandled_event_exits_nonzero(monkeypatch, tmp_path):
+    """Unhandled hook event types should fail fast with non-zero exit."""
+    sent = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="after_model", cwd=None)
+    )
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path.resolve()))
+
+    with pytest.raises(SystemExit) as exc:
+        receiver.main()
+
+    assert exc.value.code == 1
+    assert sent == []
+
+
 def test_receiver_recovers_from_native_session_map(monkeypatch, tmp_path):
     """Native session map should resolve the TeleClaude session for non-session_start hooks."""
     sent = []

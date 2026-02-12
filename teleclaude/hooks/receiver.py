@@ -777,9 +777,8 @@ def main() -> None:
                 raw_data=raw_data,
             )
             sys.exit(1)
-        logger.trace("Hook receiver skipped: unhandled event", event_type=event_type, raw_event_type=raw_event_type)
-        logger.debug("Dropped unhandled hook event: %s (raw: %s)", event_type, raw_event_type)
-        sys.exit(0)
+        logger.error("Unhandled hook event: %s (raw: %s)", event_type, raw_event_type)
+        sys.exit(1)
 
     raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, raw_data)
 
