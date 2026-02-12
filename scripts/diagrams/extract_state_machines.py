@@ -5,6 +5,7 @@ import ast
 import re
 import sys
 from pathlib import Path
+from typing import cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CORE_PATH = PROJECT_ROOT / "teleclaude" / "core" / "next_machine" / "core.py"
@@ -93,10 +94,10 @@ def parse_phase_transitions(
 ) -> list[tuple[str, str, str]]:
     """Derive phase transitions from POST_COMPLETION mark_phase instructions."""
     status_updates: dict[str, list[tuple[str, str]]] = {}
-    update_re = re.compile(r'mark_phase\(slug="\{args\}", phase="([a-z]+)", status="([a-z_]+)"\)')
+    update_re: re.Pattern[str] = re.compile(r'mark_phase\(slug="\{args\}", phase="([a-z]+)", status="([a-z_]+)"\)')
 
     for command, body in post_completion.items():
-        for phase, status in update_re.findall(body):
+        for phase, status in cast(list[tuple[str, str]], update_re.findall(body)):
             status_updates.setdefault(phase, []).append((status, command))
 
     transitions: list[tuple[str, str, str]] = []

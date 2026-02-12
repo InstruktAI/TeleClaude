@@ -5,6 +5,7 @@ import ast
 import re
 import sys
 from pathlib import Path
+from typing import cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 COMMANDS_DIR = PROJECT_ROOT / "agents" / "commands"
@@ -30,12 +31,16 @@ COMMAND_ROLES: dict[str, str] = {
 def parse_command_frontmatter(path: Path) -> dict[str, str]:
     """Parse YAML frontmatter from a command markdown file."""
     content = path.read_text(encoding="utf-8")
-    match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-    if not match:
+    if not content.startswith("---\n"):
         return {}
 
+    end_idx = content.find("\n---", 4)
+    if end_idx == -1:
+        return {}
+
+    frontmatter_text = content[4:end_idx]
     frontmatter: dict[str, str] = {}
-    for line in match.group(1).splitlines():
+    for line in frontmatter_text.splitlines():
         if ":" not in line:
             continue
         key, _, raw_value = line.partition(":")
@@ -104,6 +109,7 @@ def _extract_keyword_str(call: ast.Call, keyword_name: str) -> str | None:
 def parse_post_completion_next_calls(tree: ast.Module) -> list[tuple[str, str, str]]:
     """Extract command-to-command re-entry edges from POST_COMPLETION next-call instructions."""
     edges: list[tuple[str, str, str]] = []
+    tool_call_re: re.Pattern[str] = re.compile(r"teleclaude__([a-z_]+)")
 
     post_completion: dict[str, str] = {}
     for node in ast.walk(tree):
@@ -121,7 +127,8 @@ def parse_post_completion_next_calls(tree: ast.Module) -> list[tuple[str, str, s
                 post_completion[key_node.value] = value_node.value
 
     for src_command, body in post_completion.items():
-        for tool_name in re.findall(r"teleclaude__([a-z_]+)", body):
+        found = cast(list[str], tool_call_re.findall(body))
+        for tool_name in found:
             dst_command = tool_name.replace("_", "-")
             if dst_command.startswith("next-"):
                 edges.append((src_command, dst_command, "post-completion"))
