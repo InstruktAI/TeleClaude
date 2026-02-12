@@ -40,7 +40,10 @@ def _fake_config() -> dict[str, AgentConfig]:
         ),
         "codex": AgentConfig(
             binary="codex",
-            profiles={"default": "--dangerously-bypass-approvals-and-sandbox --search"},
+            profiles={
+                "default": "--dangerously-bypass-approvals-and-sandbox --search",
+                "restricted": "--full-auto --search",
+            },
             session_dir="~/.codex/sessions",
             log_pattern="*.jsonl",
             model_flags={
@@ -140,3 +143,10 @@ def test_get_agent_command_interactive_flag_skipped_when_empty():
     cmd = agents.get_agent_command("codex", thinking_mode="fast", interactive=True)
     # Codex has empty interactive_flag, so command should just have model flag at end
     assert cmd.endswith("-m gpt-5.1-codex-mini")
+
+
+def test_get_agent_command_codex_restricted_profile_uses_full_auto():
+    """Restricted Codex profile should use --full-auto (not missing config profile names)."""
+    cmd = agents.get_agent_command("codex", thinking_mode="med", profile="restricted")
+    assert "--full-auto" in cmd
+    assert "--profile full_auto" not in cmd

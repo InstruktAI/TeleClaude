@@ -339,7 +339,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "log_pattern": "*.jsonl",
         "profiles": {
             "default": "--dangerously-bypass-approvals-and-sandbox --search",
-            "restricted": "--profile full_auto --search",
+            "restricted": "--full-auto --search",
         },
         "model_flags": {
             "fast": "-m gpt-5.3-codex --config model_reasoning_effort='low'",
