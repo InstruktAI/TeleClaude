@@ -201,3 +201,26 @@ def test_build_tree_orphaned_session():
     # Orphaned session should appear as a root session
     project_node = tree[0].children[0]
     assert len(project_node.children) == 1
+
+
+def test_build_tree_infers_missing_computer_from_sessions():
+    """Sessions should render even when their computer is not in computers list."""
+    computers = [make_computer(name="local")]
+    sessions = [
+        make_session(
+            "sess-headless",
+            computer="remote-x",
+            project_path="/remote/project",
+            title="Headless Session",
+        )
+    ]
+
+    tree = build_tree(computers, [], sessions)
+
+    assert len(tree) == 2
+    inferred_computer = tree[1]
+    assert inferred_computer.data.computer.name == "remote-x"
+    assert len(inferred_computer.children) == 1
+    assert inferred_computer.children[0].type == "project"
+    assert len(inferred_computer.children[0].children) == 1
+    assert inferred_computer.children[0].children[0].data.session.session_id == "sess-headless"

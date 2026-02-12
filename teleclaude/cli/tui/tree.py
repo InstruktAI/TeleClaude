@@ -88,6 +88,31 @@ def build_tree(
     """
     tree: list[TreeNode] = []
 
+    # Build a stable computer list for rendering. Some session feeds can contain
+    # sessions for computers that are temporarily missing from the computers
+    # list (e.g. stale heartbeat windows). Those sessions should still render.
+    all_computers = list(computers)
+    known_computers = {entry.computer.name for entry in computers}
+    for session in sessions:
+        computer_name = (session.computer or "").strip()
+        if not computer_name or computer_name in known_computers:
+            continue
+        known_computers.add(computer_name)
+        all_computers.append(
+            ComputerDisplayInfo(
+                computer=ComputerInfo(
+                    name=computer_name,
+                    status="offline",
+                    user=None,
+                    host=None,
+                    is_local=(computer_name == "local"),
+                    tmux_binary=None,
+                ),
+                session_count=0,
+                recent_activity=False,
+            )
+        )
+
     # Index sessions by initiator for AI-to-AI nesting
     sessions_by_initiator: dict[str, list[SessionInfo]] = {}
     root_sessions: list[SessionInfo] = []
@@ -100,7 +125,7 @@ def build_tree(
         else:
             root_sessions.append(session)
 
-    for computer in computers:
+    for computer in all_computers:
         comp_node = ComputerNode(
             type=NodeType.COMPUTER,
             data=computer,
