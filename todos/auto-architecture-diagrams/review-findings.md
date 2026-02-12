@@ -20,3 +20,25 @@
 - Add a targeted CI check that runs `make diagrams` and validates key expected nodes/edges from current source (behavioral assertions, not prose locking).
 
 Verdict: REQUEST CHANGES
+
+## Fixes Applied
+
+- Issue: [R1-F1]
+  Fix: Reworked runtime matrix extraction to use runtime hook sources (`teleclaude/hooks/adapters/*.py`, `AgentHookEvents.HOOK_EVENT_MAP`, `AGENT_PROTOCOL`, checkpoint blocking path) and emit per-agent feature edges directly from parsed code.
+  Commit: `1bf5a2b9`
+
+- Issue: [R1-F2]
+  Fix: Reworked event-flow extraction to derive `event -> handler` links from real `AgentCoordinator.handle_event` dispatch branches and resolved internal event values from `AgentHookEvents` constants, removing hardcoded handler wiring.
+  Commit: `c68955d6`
+
+- Issue: [R1-F3]
+  Fix: Removed hardcoded lifecycle/command transitions and now parse roadmap/phase transitions plus dispatch/post-completion edges from `teleclaude/core/next_machine/core.py`.
+  Commit: `11062dc1`
+
+- Issue: [R1-F4]
+  Fix: Extended enforced type-check scope to include `scripts/diagrams` in `pyrightconfig.json` and fixed strict typing issues in extractor scripts so `pyright`/`mypy` pass.
+  Commit: `22497835`
+
+- Issue: [R1-F5]
+  Fix: Added automated regression coverage for all six extractor scripts with behavior assertions on parsed edges/nodes to catch AST/flow drift.
+  Commit: `35a74d25`
