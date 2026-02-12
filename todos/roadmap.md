@@ -66,10 +66,6 @@ Harden Telegram routing and fallback behavior by enforcing one delivery funnel, 
 
 Cross-cutting fail-fast contract hardening sourced from the Telegram fallback audit and follow-up core findings. Removes sentinel coercion for required inputs, removes the erroneous non-role-based `help-desk` reroute while preserving explicit non-admin jailing behavior, makes `get_session_data` availability explicit, and hardens parse-entities/footer + invalid-topic suppression behavior.
 
-- [.] auto-architecture-diagrams
-
-`make diagrams` target that generates 6 Mermaid architecture diagrams from code using AST parsing. State machines, event flow, data model ERD, module layers, command dispatch, and runtime feature matrix. Zero external deps, stdlib only. No maintenance — regenerated from source on every run.
-
 - [ ] project-aware-bug-routing
 
 Introduce prefix-based bug routing (`bug-*`) with an atomic per-bug loop (fix -> independent review -> retry/needs_human), while keeping bug intake low-friction (no mandatory project-name argument, explicit TeleClaude override available) and enforcing landing safety gates.
