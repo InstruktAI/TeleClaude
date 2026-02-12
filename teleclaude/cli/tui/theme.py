@@ -394,14 +394,14 @@ _LIGHT_MODE_PAPER_BG = "#fdf6e3"
 
 # Configurable haze percentages (0.0 to 1.0)
 # Restored tuned values used before recent regressions.
-# Inactive pane background: 12% agent color, 88% base color
-_HAZE_PERCENTAGE = 0.12
+# Inactive session/preview pane background: 20% agent color, 80% base color
+_HAZE_PERCENTAGE = 0.20
 # Active pane background: no haze
 _ACTIVE_HAZE_PERCENTAGE = 0.0
 # Status bar background: 5% agent color, 95% base color (subtle)
 _STATUS_HAZE_PERCENTAGE = 0.05
-# TUI pane inactive haze uses the same percentage as all other pane haze.
-_TUI_INACTIVE_HAZE_PERCENTAGE = _HAZE_PERCENTAGE
+# TUI pane inactive haze kept softer than session/preview pane haze.
+_TUI_INACTIVE_HAZE_PERCENTAGE = 0.12
 # Terminal background hint weight: keep TUI palette stable while honoring terminal tone.
 _TERMINAL_HINT_WEIGHT = 0.35
 # Guardrails to reject hints that conflict with the current mode.
