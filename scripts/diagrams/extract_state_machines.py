@@ -38,14 +38,16 @@ def parse_default_phase_state(tree: ast.Module) -> dict[str, str]:
     defaults: dict[str, str] = {}
 
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(isinstance(target, ast.Name) and target.id == "DEFAULT_STATE" for target in node.targets):
-            continue
-        if not isinstance(node.value, ast.Dict):
+        value: ast.expr | None = None
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "DEFAULT_STATE":
+            value = node.value
+        elif isinstance(node, ast.Assign):
+            if any(isinstance(target, ast.Name) and target.id == "DEFAULT_STATE" for target in node.targets):
+                value = node.value
+        if not isinstance(value, ast.Dict):
             continue
 
-        for key_node, value_node in zip(node.value.keys, node.value.values):
+        for key_node, value_node in zip(value.keys, value.values):
             phase = _extract_enum_value_name(key_node, "PhaseName")
             status = _extract_enum_value_name(value_node, "PhaseStatus")
             if phase and status:
@@ -72,14 +74,20 @@ def parse_post_completion_text(tree: ast.Module) -> dict[str, str]:
     result: dict[str, str] = {}
 
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(isinstance(target, ast.Name) and target.id == "POST_COMPLETION" for target in node.targets):
-            continue
-        if not isinstance(node.value, ast.Dict):
+        value: ast.expr | None = None
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "POST_COMPLETION"
+        ):
+            value = node.value
+        elif isinstance(node, ast.Assign):
+            if any(isinstance(target, ast.Name) and target.id == "POST_COMPLETION" for target in node.targets):
+                value = node.value
+        if not isinstance(value, ast.Dict):
             continue
 
-        for key_node, value_node in zip(node.value.keys, node.value.values):
+        for key_node, value_node in zip(value.keys, value.values):
             if not (isinstance(key_node, ast.Constant) and isinstance(key_node.value, str)):
                 continue
             if isinstance(value_node, ast.Constant) and isinstance(value_node.value, str):
@@ -94,7 +102,9 @@ def parse_phase_transitions(
 ) -> list[tuple[str, str, str]]:
     """Derive phase transitions from POST_COMPLETION mark_phase instructions."""
     status_updates: dict[str, list[tuple[str, str]]] = {}
-    update_re: re.Pattern[str] = re.compile(r'mark_phase\(slug="\{args\}", phase="([a-z]+)", status="([a-z_]+)"\)')
+    update_re: re.Pattern[str] = re.compile(
+        r'teleclaude__mark_phase\(slug="\{args\}", phase="([a-z]+)", status="([a-z_]+)"\)'
+    )
 
     for command, body in post_completion.items():
         for phase, status in cast(list[tuple[str, str]], update_re.findall(body)):

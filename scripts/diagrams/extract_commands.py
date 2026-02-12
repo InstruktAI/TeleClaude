@@ -97,41 +97,51 @@ def parse_dispatch_edges(tree: ast.Module) -> list[tuple[str, str, str]]:
 
 def _extract_keyword_str(call: ast.Call, keyword_name: str) -> str | None:
     for keyword in call.keywords:
-        if (
-            keyword.arg == keyword_name
-            and isinstance(keyword.value, ast.Constant)
-            and isinstance(keyword.value.value, str)
-        ):
+        if keyword.arg != keyword_name:
+            continue
+        if isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):
             return keyword.value.value
+        if isinstance(keyword.value, ast.JoinedStr):
+            parts: list[str] = []
+            for value in keyword.value.values:
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    parts.append(value.value)
+                elif isinstance(value, ast.FormattedValue):
+                    parts.append("{expr}")
+            return "".join(parts)
     return None
 
 
 def parse_post_completion_next_calls(tree: ast.Module) -> list[tuple[str, str, str]]:
-    """Extract command-to-command re-entry edges from POST_COMPLETION next-call instructions."""
+    """Extract command-to-command re-entry edges from format_tool_call next_call values."""
     edges: list[tuple[str, str, str]] = []
     tool_call_re: re.Pattern[str] = re.compile(r"teleclaude__([a-z_]+)")
 
-    post_completion: dict[str, str] = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        if not any(isinstance(target, ast.Name) and target.id == "POST_COMPLETION" for target in node.targets):
-            continue
-        if not isinstance(node.value, ast.Dict):
+        if not node.name.startswith("next_"):
             continue
 
-        for key_node, value_node in zip(node.value.keys, node.value.values):
-            if not (isinstance(key_node, ast.Constant) and isinstance(key_node.value, str)):
+        for call in ast.walk(node):
+            if not isinstance(call, ast.Call):
                 continue
-            if isinstance(value_node, ast.Constant) and isinstance(value_node.value, str):
-                post_completion[key_node.value] = value_node.value
+            if not isinstance(call.func, ast.Name) or call.func.id != "format_tool_call":
+                continue
 
-    for src_command, body in post_completion.items():
-        found = cast(list[str], tool_call_re.findall(body))
-        for tool_name in found:
-            dst_command = tool_name.replace("_", "-")
-            if dst_command.startswith("next-"):
-                edges.append((src_command, dst_command, "post-completion"))
+            command_value = _extract_keyword_str(call, "command")
+            if not command_value:
+                continue
+
+            next_call_value = _extract_keyword_str(call, "next_call")
+            if not next_call_value:
+                continue
+
+            found = cast(list[str], tool_call_re.findall(next_call_value))
+            for tool_name in found:
+                dst_command = tool_name.replace("_", "-")
+                if dst_command.startswith("next-"):
+                    edges.append((command_value, dst_command, "post-completion"))
 
     return _dedupe_edges(edges)
 
