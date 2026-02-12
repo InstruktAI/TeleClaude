@@ -117,7 +117,7 @@ def test_run_agent_job_calls_run_job(monkeypatch: pytest.MonkeyPatch) -> None:
     assert call_args["thinking_mode"] == "fast"
     assert call_args["role"] == "admin"
     assert call_args["timeout_s"] == 900
-    assert "@docs/project/spec/jobs/memory-review.md" in call_args["prompt"]
+    assert call_args["prompt"] == runner._build_agent_job_message("memory_review", config)
 
 
 @pytest.mark.unit

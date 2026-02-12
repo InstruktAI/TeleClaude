@@ -62,11 +62,16 @@ Verify the implementation against requirements and standards, and deliver a bina
    - Reject temporary debug probes (e.g., `print("DEBUG: ...")`, one-off file/line probes).
    - Require structured logger usage per logging policy.
    - Escalate violations as at least Important findings.
+10. Test quality hygiene check (required):
 
-10. Write findings to `todos/{slug}/review-findings.md`.
-11. Set `todos/{slug}/state.json` field `review` to `approved` or `changes_requested`.
-12. Commit the review findings.
-13. Report summary and verdict to the caller.
+- Reject tests that lock narrative documentation wording or style.
+- Allow exact-string assertions only for execution-significant tokens/contracts.
+- Prefer behavior/structure assertions (parsed outputs, references, idempotence, emitted actions).
+
+11. Write findings to `todos/{slug}/review-findings.md`.
+12. Set `todos/{slug}/state.json` field `review` to `approved` or `changes_requested`.
+13. Commit the review findings.
+14. Report summary and verdict to the caller.
 
 ## Report format
 

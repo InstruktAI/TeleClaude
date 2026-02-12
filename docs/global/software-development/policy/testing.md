@@ -17,6 +17,14 @@ type: 'policy'
 1. **Use pre-commit hooks as the primary verification path**
 2. **Do not run full suites by default** - Run targeted tests only when developing, debugging, or when hooks fail
 3. Never commit code with failing hooks, lint violations, or type errors
+4. **Test behavioral contracts, not documentation prose**
+5. **Literal documentation string assertions are forbidden unless they are execution-significant**
+
+### Documentation Assertion Guardrail
+
+- Allowed: exact-string assertions for execution-significant text (for example parser markers, schema keys, command tokens, required reference prefixes) when runtime behavior depends on exact text.
+- Forbidden: exact-string assertions for narrative wording, copy style, or editorial phrasing in docs/agent artifacts.
+- Preferred: assert parsed structure, extracted references, idempotence, emitted behavior, or contract outcomes.
 
 ### Test Levels (Required Strategy)
 
@@ -71,12 +79,13 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 11. **Mega tests** - one test that validates many behaviors
 12. **No assertions** - tests that execute code but don't verify outcomes
 13. **Commented-out tests** - either fix or delete them
+14. **Prose-lock tests** - tests that fail only because human-facing wording changed while behavior stayed the same
 
-14. All tests run on every commit
-15. Tests must pass before merging to main branch
-16. Linting, type checking, and unit tests run automatically
-17. No commits with `--no-verify` to bypass hooks unless explicitly approved
-18. Keep test suite fast (< 10s for unit tests)
+15. All tests run on every commit
+16. Tests must pass before merging to main branch
+17. Linting, type checking, and unit tests run automatically
+18. No commits with `--no-verify` to bypass hooks unless explicitly approved
+19. Keep test suite fast (< 10s for unit tests)
 
 ## Rationale
 

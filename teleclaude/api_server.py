@@ -324,7 +324,7 @@ class APIServer:
             """
             # Normalize request into internal command.
 
-            channel_metadata: dict[str, object] | None = None
+            channel_metadata: dict[str, str] | None = None
             if request.human_email or request.human_role:
                 channel_metadata = {}
                 if request.human_email:

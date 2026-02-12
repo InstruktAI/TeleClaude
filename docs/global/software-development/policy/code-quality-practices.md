@@ -35,6 +35,8 @@ type: 'policy'
 - Name for semantics, not origin. Names must make sense to someone who never saw the feature request or ticket that motivated the change.
 - Comments describe the present, never the past. No "removed X", "used to do Y", "added for Z". Git is the history; comments explain what is here now.
 - When removing code, remove it completely. No `_unused` renames, no `// removed` comments, no re-exports for backward compatibility unless explicitly required.
+- In tests, assert observable behavior and contracts, not narrative documentation wording.
+- Exact-string test assertions are acceptable only when runtime behavior depends on exact tokens (protocol markers, schema keys, command literals, or reference prefixes).
 
 ## Rationale
 

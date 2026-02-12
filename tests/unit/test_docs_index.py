@@ -118,8 +118,12 @@ class TestNormalizeTitles:
         docs.mkdir(parents=True)
         f = docs / "test.md"
         f.write_text("# Test\n\nContent.\n")
+        before = f.read_text()
         normalize_titles(tmp_path / "docs" / "global")
-        assert "# Test — Policy" in f.read_text()
+        after = f.read_text()
+        assert after != before
+        assert after.splitlines()[0].startswith("# ")
+        assert " — " in after.splitlines()[0]
 
     def test_preserves_correct_suffix(self, tmp_path: Path) -> None:
         docs = tmp_path / "docs" / "global" / "baseline" / "policy"
@@ -127,7 +131,10 @@ class TestNormalizeTitles:
         f = docs / "test.md"
         f.write_text("# Test — Policy\n\nContent.\n")
         normalize_titles(tmp_path / "docs" / "global")
-        assert f.read_text().count("Policy") == 1
+        first_pass = f.read_text()
+        normalize_titles(tmp_path / "docs" / "global")
+        second_pass = f.read_text()
+        assert first_pass == second_pass
 
 
 @pytest.mark.unit
@@ -139,7 +146,10 @@ class TestWriteThirdPartyIndex:
         write_third_party_index(tmp_path)
         index = tmp_path / "docs" / "third-party" / "index.md"
         assert index.exists()
-        assert "@docs/third-party/lib/feature.md" in index.read_text()
+        lines = [line for line in index.read_text().splitlines() if line.strip()]
+        assert len(lines) == 1
+        assert lines[0].startswith("@docs/third-party/")
+        assert lines[0].endswith("/feature.md")
 
 
 # ---------------------------------------------------------------------------

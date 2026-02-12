@@ -144,6 +144,22 @@ tts:
           voice_id: af_sarah
         - name: sky
           voice_id: af_sky
+        - name: alice
+          voice_id: bf_alice
+        - name: emma
+          voice_id: bf_emma
+        - name: isabella
+          voice_id: bf_isabella
+        - name: lily
+          voice_id: bf_lily
+        - name: daniel
+          voice_id: bm_daniel
+        - name: fable
+          voice_id: bm_fable
+        - name: george
+          voice_id: bm_george
+        - name: lewis
+          voice_id: bm_lewis
     qwen3:
       enabled: true
       model: mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
