@@ -5,32 +5,26 @@ Reviewed periodically — promote back to [roadmap.md](./roadmap.md) when priori
 
 ---
 
-## Repo Cleanup (Stale Scope)
+## Agent File Locking Heartbeat
 
-- repo-cleanup
-
-Legacy broad cleanup item with unclear boundaries. Parked until split into concrete, testable sub-tasks.
+Agent-level file locking to prevent same-file collisions on `main` with deterministic contention behavior: heartbeat on contention, retry after 3 minutes, then halt with precise blocker report if still locked. Commit ownership remains with agent.
 
 ## Code Context Annotations
-
-- code-context-annotations
 
 Code annotation extraction and doc snippet integration work. Parked behind core identity/streaming/web delivery.
 
 ## Code Context Auditor
 
-- code-context-auditor
-
 Drift-auditing layer for context annotations. Depends on code-context-annotations and is parked with it.
 
 ## Bidirectional Agent Links
-
-- bidirectional-agent-links
 
 Agent-to-agent chat/link system. Nice-to-have, not on the near-term product path.
 
 ## GitHub Maintenance Runner
 
-- github-maintenance-runner
-
 Periodic GitHub bug triage and automated bugfix PR flow in a dedicated maintenance worktree. Useful operational automation, but postponed behind current core product delivery priorities.
+
+## TDD Enforcement (Single Test Contract)
+
+Strict TDD enforcement initiative (upfront approved test contract + builder/fixer test immutability) is parked to avoid workflow disruption right now. Revisit when bandwidth is available for process hardening.

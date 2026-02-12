@@ -396,7 +396,14 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         session_id = p.get("session_id")
         if session_id:
             state.sessions.temp_output_highlights.discard(session_id)
-            logger.debug("temp_output_highlight CLEARED for %s (timer expired)", session_id[:8])
+            # Safety-net completion when agent_stop is missed:
+            # clear stale tool placeholder and keep output highlighted.
+            state.sessions.active_tool.pop(session_id, None)
+            state.sessions.output_highlights.add(session_id)
+            logger.debug(
+                "temp_output_highlight CLEARED + output_highlight ADDED for %s (timer expired fallback)",
+                session_id[:8],
+            )
         return
 
     if t is IntentType.SYNC_SESSIONS:

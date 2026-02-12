@@ -1,5 +1,10 @@
 # Telegram Fallback Audit (2026-02-12)
 
+Follow-up execution todo:
+
+- `todos/telegram-adapter-hardening/`
+- `todos/fallback-fail-fast-hardening/` (cross-cutting contract/fail-fast cleanup)
+
 Scope audited:
 
 - teleclaude/adapters/telegram_adapter.py

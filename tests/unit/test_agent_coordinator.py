@@ -249,6 +249,38 @@ async def test_user_prompt_submit_persists_non_checkpoint_codex_synthetic_prompt
 
 
 @pytest.mark.asyncio
+async def test_user_prompt_submit_ignores_tiny_codex_synthetic_prompt(coordinator):
+    session = Session(
+        session_id="sess-1",
+        computer_name="macbook",
+        tmux_session_name="tmux-1",
+        title="Untitled",
+        active_agent="codex",
+    )
+    payload = UserPromptSubmitPayload(
+        prompt="r",
+        session_id="sess-1",
+        raw={"synthetic": True, "source": "codex_output_polling"},
+    )
+    context = AgentEventContext(
+        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+        session_id="sess-1",
+        data=payload,
+    )
+
+    with patch("teleclaude.core.agent_coordinator.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.set_notification_flag = AsyncMock()
+        mock_db.update_session = AsyncMock()
+        with patch.object(coordinator, "_emit_activity_event") as mock_emit:
+            await coordinator.handle_user_prompt_submit(context)
+
+        mock_db.set_notification_flag.assert_not_called()
+        mock_db.update_session.assert_not_called()
+        mock_emit.assert_called_once_with("sess-1", AgentHookEvents.TOOL_USE)
+
+
+@pytest.mark.asyncio
 async def test_user_prompt_submit_skips_title_summary_for_pasted_content_placeholder(coordinator):
     session = Session(
         session_id="sess-3",

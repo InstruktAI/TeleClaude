@@ -408,6 +408,13 @@ snippets:
   scope: domain
   path: docs/software-development/principle/architecture-boundary-purity.md
   source_project: TeleClaude
+- id: software-development/principle/design-fundamentals
+  description: Named design principles for structural decisions. SRP, DIP, DRY, KISS,
+    YAGNI, coupling, cohesion, composition, encapsulation, Demeter, fail fast, immutability.
+  type: principle
+  scope: domain
+  path: docs/software-development/principle/design-fundamentals.md
+  source_project: TeleClaude
 - id: software-development/principle/failure-modes
   description: Five AI pitfalls to guard against. Trust code over comments, verify
     before concluding, hunt bugs actively, slow down, trace actual values not patterns.

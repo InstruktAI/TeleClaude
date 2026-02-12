@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from teleclaude.core import polling_coordinator
-from teleclaude.core.events import AgentHookEvents, UserPromptSubmitPayload
+from teleclaude.core.events import AgentHookEvents, AgentOutputPayload, AgentStopPayload, UserPromptSubmitPayload
 from teleclaude.core.models import Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, ProcessExited
@@ -367,6 +367,39 @@ class TestCodexSyntheticPromptDetection:
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
+    async def test_stale_bullet_below_prompt_does_not_trigger_submit_boundary(self):
+        """Assistant bullet text below prompt must not count as submit boundary."""
+        session_id = "codex-stale-bullet-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            # Stale assistant bullet appears below prompt; should not emit partial prompt.
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› say hi\n• I am applying the change now",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            emit.assert_not_awaited()
+
+            # Live status marker below prompt is the real submit boundary.
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› say hi\n• Working...",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            payload = context.data
+            assert isinstance(payload, UserPromptSubmitPayload)
+            assert payload.prompt == "say hi"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
     async def test_does_not_emit_while_prompt_text_is_still_visible(self):
         """Stale marker glyphs above prompt should not trigger synthetic submit."""
         session_id = "codex-visible-1"
@@ -450,5 +483,226 @@ class TestCodexSyntheticPromptDetection:
                 emit_agent_event=emit,
             )
             emit.assert_not_awaited()
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_has_live_prompt_marker_with_footer_hint(self):
+        output = "final text\n› Write tests for @filename\n\n? for shortcuts"
+        assert polling_coordinator._has_live_prompt_marker(output) is True
+
+
+@pytest.mark.asyncio
+class TestCodexSyntheticTurnEvents:
+    async def test_emits_tool_use_from_visible_bold_action_line(self):
+        session_id = "codex-turn-tool-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            output = "\x1b[2m• \x1b[0m\x1b[1mRan\x1b[0m rg -n foo"
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=output,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            assert context.event_type == AgentHookEvents.TOOL_USE
+            assert isinstance(context.data, AgentOutputPayload)
+            assert context.data.raw.get("synthetic") is True
+            assert context.data.raw.get("tool_name") == "Ran"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_emits_tool_done_and_agent_stop_when_prompt_returns(self):
+        session_id = "codex-turn-stop-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            active_output = "\x1b[2m• \x1b[0m\x1b[1mExplored\x1b[0m\n\x1b[2m│\x1b[0m details"
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=active_output,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+
+            stop_output = "final assistant text\n\n› "
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=stop_output,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+
+            event_types = [call.args[0].event_type for call in emit.await_args_list]
+            assert event_types == [AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE, AgentHookEvents.AGENT_STOP]
+            assert isinstance(emit.await_args_list[-1].args[0].data, AgentStopPayload)
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_prompt_visible_ignores_stale_tool_action_lines(self):
+        session_id = "codex-turn-stale-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            active_output = "\x1b[2m• \x1b[0m\x1b[1mRan\x1b[0m rg -n foo"
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=active_output,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+
+            # Prompt is back, but stale action line still visible in recent output.
+            stop_output_with_stale_action = "assistant summary\n\x1b[2m• \x1b[0m\x1b[1mRan\x1b[0m rg -n foo\n› "
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=stop_output_with_stale_action,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+
+            event_types = [call.args[0].event_type for call in emit.await_args_list]
+            assert event_types == [AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE, AgentHookEvents.AGENT_STOP]
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_skips_when_synthetic_turn_events_disabled(self):
+        session_id = "codex-turn-disabled-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            output = "\x1b[2m• \x1b[0m\x1b[1mRead\x1b[0m teleclaude/core/polling_coordinator.py"
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=output,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=False,
+            )
+            emit.assert_not_awaited()
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_emits_agent_stop_for_text_only_turn_when_prompt_returns(self):
+        session_id = "codex-turn-text-only-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+        polling_coordinator._codex_turn_state[session_id] = polling_coordinator.CodexTurnState(
+            turn_active=True,
+            in_tool=False,
+        )
+
+        try:
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="assistant response text\n› ",
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            assert context.event_type == AgentHookEvents.AGENT_STOP
+            assert isinstance(context.data, AgentStopPayload)
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_emits_agent_stop_when_prompt_has_footer_hint(self):
+        session_id = "codex-turn-footer-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+        polling_coordinator._codex_turn_state[session_id] = polling_coordinator.CodexTurnState(
+            turn_active=True,
+            in_tool=False,
+        )
+
+        try:
+            output = "assistant text\n› Write tests for @filename\n? for shortcuts"
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=output,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+            emit.assert_awaited_once()
+            assert emit.await_args.args[0].event_type == AgentHookEvents.AGENT_STOP
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_prompt_transition_emits_stop_even_if_turn_state_missing(self):
+        session_id = "codex-turn-transition-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            # Prompt not visible: stale action line marks active response context.
+            active_output = "\x1b[2m• \x1b[0m\x1b[1mExplored\x1b[0m files"
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=active_output,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+
+            # Simulate lost turn state after daemon reconnect/restart.
+            polling_coordinator._codex_turn_state[session_id] = polling_coordinator.CodexTurnState(
+                turn_active=False,
+                in_tool=False,
+                prompt_visible_last=False,
+            )
+
+            # Prompt transition should still emit one stop.
+            stop_output = (
+                "assistant text\n"
+                "\x1b[2m• \x1b[0m\x1b[1mExplored\x1b[0m files\n"
+                "› Write tests for @filename\n"
+                "? for shortcuts"
+            )
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=stop_output,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+
+            event_types = [call.args[0].event_type for call in emit.await_args_list]
+            assert event_types[-1] == AgentHookEvents.AGENT_STOP
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+
+@pytest.mark.asyncio
+class TestCodexTurnActivationFromPromptSubmit:
+    async def test_prompt_submit_marks_turn_active(self):
+        session_id = "codex-submit-turn-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› explain this bug\n• Working...",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+
+            state = polling_coordinator._codex_turn_state.get(session_id)
+            assert state is not None
+            assert state.turn_active is True
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)

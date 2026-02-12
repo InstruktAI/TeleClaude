@@ -19,6 +19,8 @@ from teleclaude.core.db import db
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
+    AgentOutputPayload,
+    AgentStopPayload,
     UserPromptSubmitPayload,
 )
 from teleclaude.core.output_poller import (
@@ -65,6 +67,28 @@ CODEX_AGENT_MARKERS = frozenset(
 
 _ANSI_DIM_RE = re.compile(r"\x1b\[2m")  # Dim text
 _ANSI_ITALIC_RE = re.compile(r"\x1b\[3m")  # Italic text
+_ANSI_BOLD_TOKEN_RE = re.compile(r"\x1b\[[0-9;]*1m([A-Za-z][A-Za-z_-]{1,40})\x1b\[[0-9;]*m")
+_ACTION_WORD_RE = re.compile(r"^([A-Za-z][A-Za-z_-]{1,40})")
+
+# Visible Codex action verbs in tmux output (bold in UI) that imply tool usage.
+_CODEX_TOOL_ACTION_WORDS = frozenset(
+    {
+        "Applied",
+        "Called",
+        "Created",
+        "Deleted",
+        "Edited",
+        "Explored",
+        "Listed",
+        "Moved",
+        "Opened",
+        "Ran",
+        "Read",
+        "Searched",
+        "Updated",
+        "Wrote",
+    }
+)
 
 
 def _strip_ansi(text: str) -> str:
@@ -91,8 +115,27 @@ class CodexInputState:
     last_output_change_time: float = 0.0
 
 
+@dataclass
+class CodexTurnState:
+    """Per-session state for synthetic codex turn/tool events."""
+
+    turn_active: bool = False
+    in_tool: bool = False
+    prompt_visible_last: bool = False
+
+
 # Per-session Codex input tracking state
 _codex_input_state: dict[str, CodexInputState] = {}
+_codex_turn_state: dict[str, CodexTurnState] = {}
+
+
+def _mark_codex_turn_started(session_id: str) -> None:
+    """Mark a Codex turn as active when user submit is inferred."""
+    state = _codex_turn_state.get(session_id)
+    if state is None:
+        state = CodexTurnState()
+        _codex_turn_state[session_id] = state
+    state.turn_active = True
 
 
 def _extract_prompt_block(output: str) -> tuple[str, bool]:
@@ -140,7 +183,8 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:
     for line in lines[prompt_idx + 1 :]:
         clean_line = _strip_ansi(line)
         stripped = clean_line.strip()
-        if stripped and stripped[0] in CODEX_AGENT_MARKERS:
+        # Submit boundary must be a live status/spinner marker, not stale assistant bullet text.
+        if _is_live_agent_marker_line(line):
             has_submit_boundary = True
             break
         if stripped.startswith(CODEX_PROMPT_MARKER):
@@ -175,6 +219,167 @@ def _has_agent_marker(output: str) -> bool:
         if clean_line and clean_line[0] in CODEX_AGENT_MARKERS:
             return True
     return False
+
+
+def _has_live_prompt_marker(output: str) -> bool:
+    """Return True when a live prompt marker is visible at the pane bottom."""
+    lines = output.rstrip().split("\n")
+    for line in reversed(lines[-10:]):
+        clean_line = _strip_ansi(line).strip()
+        if not clean_line:
+            continue
+        if clean_line.startswith(CODEX_PROMPT_MARKER):
+            return True
+        # Codex UI footer hints can appear below the prompt and should be ignored.
+        if clean_line.startswith("?") and "shortcut" in clean_line.lower():
+            continue
+        if clean_line[0] in CODEX_AGENT_MARKERS:
+            return False
+    return False
+
+
+def _is_live_agent_marker_line(line: str) -> bool:
+    """Return True for short spinner/status lines, not full assistant bullet text."""
+    clean_line = _strip_ansi(line).strip()
+    if not clean_line or clean_line[0] not in CODEX_AGENT_MARKERS:
+        return False
+    tail = clean_line[1:].strip()
+    if not tail:
+        return True
+    normalized = tail.lower()
+    if normalized.startswith(("working", "thinking", "sublimating", "planning", "analyzing")):
+        return True
+    return len(tail) <= 20 and " " not in tail
+
+
+def _find_recent_tool_action(output: str) -> str | None:
+    """Find recent visible tool action word from the bottom of the pane."""
+    lines = output.rstrip().split("\n")
+    for raw_line in reversed(lines[-12:]):
+        clean_line = _strip_ansi(raw_line).strip()
+        if not clean_line or clean_line[0] not in CODEX_AGENT_MARKERS:
+            continue
+        tail = clean_line[1:].strip()
+        if not tail:
+            continue
+        match = _ACTION_WORD_RE.match(tail)
+        action_word = match.group(1) if match else None
+        bold_match = _ANSI_BOLD_TOKEN_RE.search(raw_line)
+        bold_word = bold_match.group(1) if bold_match else None
+        if action_word in _CODEX_TOOL_ACTION_WORDS:
+            return action_word
+        if bold_word and (bold_word in _CODEX_TOOL_ACTION_WORDS or bold_word == action_word):
+            return bold_word
+    return None
+
+
+def _is_live_agent_responding(output: str) -> bool:
+    """Return True when visible pane effects indicate the agent is actively responding."""
+    lines = output.rstrip().split("\n")
+    if any(_is_live_agent_marker_line(line) for line in lines[-10:]):
+        return True
+    return _find_recent_tool_action(output) is not None
+
+
+async def _emit_synthetic_codex_event(
+    session_id: str,
+    event_type: str,
+    emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
+    *,
+    tool_name: str | None = None,
+) -> None:
+    """Emit a synthetic Codex event through the regular agent event handler."""
+    raw = {
+        "synthetic": True,
+        "source": "codex_output_effects",
+    }
+    if tool_name:
+        raw["tool_name"] = tool_name
+
+    if event_type == AgentHookEvents.TOOL_USE:
+        payload = AgentOutputPayload(raw=raw)
+    elif event_type == AgentHookEvents.TOOL_DONE:
+        payload = AgentOutputPayload(raw=raw)
+    elif event_type == AgentHookEvents.AGENT_STOP:
+        payload = AgentStopPayload(raw=raw)
+    else:
+        return
+
+    await emit_agent_event(
+        AgentEventContext(
+            session_id=session_id,
+            event_type=event_type,
+            data=payload,
+        )
+    )
+
+
+async def _maybe_emit_codex_turn_events(
+    session_id: str,
+    active_agent: str | None,
+    current_output: str,
+    emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
+    *,
+    enable_synthetic_turn_events: bool,
+) -> None:
+    """Infer synthetic tool/stop events from visible Codex terminal effects."""
+    if active_agent != "codex" or not enable_synthetic_turn_events:
+        return
+
+    state = _codex_turn_state.get(session_id)
+    if state is None:
+        state = CodexTurnState()
+        _codex_turn_state[session_id] = state
+
+    tool_action = _find_recent_tool_action(current_output)
+    prompt_visible = _has_live_prompt_marker(current_output)
+    responding = _is_live_agent_responding(current_output)
+
+    # Prompt visibility at pane bottom is authoritative: prior turn has ended.
+    # Ignore stale action/marker lines that remain in recent scrollback.
+    if prompt_visible:
+        should_emit_stop = (not state.prompt_visible_last) and (
+            state.turn_active or state.in_tool or tool_action is not None or responding
+        )
+        if should_emit_stop:
+            if state.in_tool:
+                await _emit_synthetic_codex_event(
+                    session_id,
+                    AgentHookEvents.TOOL_DONE,
+                    emit_agent_event,
+                )
+            await _emit_synthetic_codex_event(
+                session_id,
+                AgentHookEvents.AGENT_STOP,
+                emit_agent_event,
+            )
+        state.turn_active = False
+        state.in_tool = False
+        state.prompt_visible_last = True
+        return
+    state.prompt_visible_last = False
+
+    if tool_action:
+        state.turn_active = True
+        if not state.in_tool:
+            await _emit_synthetic_codex_event(
+                session_id,
+                AgentHookEvents.TOOL_USE,
+                emit_agent_event,
+                tool_name=tool_action,
+            )
+            state.in_tool = True
+    elif state.in_tool:
+        await _emit_synthetic_codex_event(
+            session_id,
+            AgentHookEvents.TOOL_DONE,
+            emit_agent_event,
+        )
+        state.in_tool = False
+
+    if responding:
+        state.turn_active = True
+        return
 
 
 async def _maybe_emit_codex_input(
@@ -241,6 +446,7 @@ async def _maybe_emit_codex_input(
             data=payload,
         )
         await emit_agent_event(context)
+        _mark_codex_turn_started(session_id)
         state.last_emitted_prompt = state.last_prompt_input
         state.last_prompt_input = ""
         return True
@@ -281,6 +487,7 @@ async def _maybe_emit_codex_input(
 def _cleanup_codex_input_state(session_id: str) -> None:
     """Clean up Codex input tracking state when session ends."""
     _codex_input_state.pop(session_id, None)
+    _codex_turn_state.pop(session_id, None)
 
 
 _active_pollers: set[str] = set()
@@ -401,6 +608,18 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                 emit_handler = adapter_client.agent_event_handler
                 if emit_handler:
                     try:
+                        # Missing native session bindings can drop Codex hooks after daemon reconnects.
+                        # For those sessions, infer turn lifecycle from visible terminal effects.
+                        synth_turn_events_enabled = (session.active_agent or "").lower() == "codex" and not bool(
+                            session.native_session_id
+                        )
+                        await _maybe_emit_codex_turn_events(
+                            session_id=event.session_id,
+                            active_agent=session.active_agent,
+                            current_output=clean_output,
+                            emit_agent_event=emit_handler,
+                            enable_synthetic_turn_events=synth_turn_events_enabled,
+                        )
                         await _maybe_emit_codex_input(
                             session_id=event.session_id,
                             active_agent=session.active_agent,

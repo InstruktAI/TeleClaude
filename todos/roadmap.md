@@ -12,12 +12,6 @@
 
 ---
 
-## Rolling Session Titles
-
-- [ ] rolling-session-titles
-
-Re-summarize session titles based on the last 3 user inputs instead of only the first. Use a dedicated rolling prompt that captures session direction. Reset the output message on any title change so the topic floats to the top in Telegram.
-
 ## Help Desk Platform
 
 - [.] help-desk-clients (after: help-desk, agent-activity-events)
@@ -47,6 +41,12 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 - [ ] web-interface-3 (after: web-interface-2) — Chat Interface & Part Rendering
 - [ ] web-interface-4 (after: web-interface-3) — Session Management & Role-Based Access
 
+## Rolling Session Titles
+
+- [ ] rolling-session-titles
+
+Re-summarize session titles based on the last 3 user inputs instead of only the first. Use a dedicated rolling prompt that captures session direction. Reset the output message on any title change so the telegram title feedback (native client behavior) floats to the top in Telegram.
+
 ## Role-Based Notifications
 
 - [.] role-based-notifications
@@ -55,13 +55,20 @@ Notification routing subsystem that sends job outputs, reports, and alerts to pe
 
 ## Maintenance
 
-- [ ] tdd-enforcement-single-test-contract
+- [ ] telegram-adapter-hardening — **BROKEN DOWN**
 
-Enforce strict TDD with one unified test-contract mechanism: tests are authored and approved up front, then locked; builders/fixers are code-only and cannot modify tests. Enforce through Next Machine gates, worker command contracts, CI/pre-commit guards, and explicit reviewer checks.
+Harden Telegram routing and fallback behavior by enforcing one delivery funnel, explicit result contracts, bounded invalid-topic cleanup, and stronger delete ownership checks.
 
-- [ ] agent-file-locking-heartbeat
+- [.] telegram-routing-contract-hardening
+- [ ] telegram-topic-cleanup-guards (after: telegram-routing-contract-hardening)
+- [ ] telegram-ownership-layering-cleanup (after: telegram-topic-cleanup-guards)
+- [ ] fallback-fail-fast-hardening (after: telegram-routing-contract-hardening)
 
-Agent-level file locking to prevent same-file collisions on `main` with deterministic contention behavior: heartbeat on contention, retry after 3 minutes, then halt with precise blocker report if still locked. Commit ownership remains with agent.
+Cross-cutting fail-fast contract hardening sourced from the Telegram fallback audit and follow-up core findings. Removes sentinel coercion for required inputs, removes the erroneous non-role-based `help-desk` reroute while preserving explicit non-admin jailing behavior, makes `get_session_data` availability explicit, and hardens parse-entities/footer + invalid-topic suppression behavior.
+
+- [.] auto-architecture-diagrams
+
+`make diagrams` target that generates 6 Mermaid architecture diagrams from code using AST parsing. State machines, event flow, data model ERD, module layers, command dispatch, and runtime feature matrix. Zero external deps, stdlib only. No maintenance — regenerated from source on every run.
 
 - [ ] project-aware-bug-routing
 

@@ -17,6 +17,15 @@
   "role-based-notifications": [
     "person-identity-auth"
   ],
+  "telegram-ownership-layering-cleanup": [
+    "telegram-topic-cleanup-guards"
+  ],
+  "fallback-fail-fast-hardening": [
+    "telegram-routing-contract-hardening"
+  ],
+  "telegram-topic-cleanup-guards": [
+    "telegram-routing-contract-hardening"
+  ],
   "web-interface": [
     "person-identity-auth",
     "agent-activity-events"

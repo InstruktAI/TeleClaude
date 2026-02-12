@@ -297,6 +297,18 @@ class AgentCoordinator:
             logger.debug("Empty prompt detected, skipping user input persistence for session %s", session_id[:8])
             return
 
+        is_codex_synthetic = _is_codex_synthetic_prompt_event(payload.raw)
+        # Guard against occasional single-character Codex polling artifacts (e.g. "r")
+        # that would overwrite the real last input and cause misleading TUI state.
+        if is_codex_synthetic and len(prompt_text.strip()) <= 1:
+            logger.debug(
+                "Ignoring tiny synthetic Codex prompt for session %s: %r",
+                session_id[:8],
+                prompt_text,
+            )
+            self._emit_activity_event(session_id, AgentHookEvents.TOOL_USE)
+            return
+
         # System-injected checkpoint — not real user input, skip entirely
         if _is_checkpoint_prompt(prompt_text, raw_payload=payload.raw):
             logger.debug("Checkpoint prompt detected, skipping user input persistence for session %s", session_id[:8])
@@ -316,9 +328,7 @@ class AgentCoordinator:
         }
 
         # Title update is non-critical and must not block hook ordering.
-        if session.title == "Untitled" and not (
-            _is_codex_synthetic_prompt_event(payload.raw) and _is_pasted_content_placeholder(prompt_text)
-        ):
+        if session.title == "Untitled" and not (is_codex_synthetic and _is_pasted_content_placeholder(prompt_text)):
             self._queue_background_task(
                 self._update_session_title_async(session_id, prompt_text),
                 f"title-summary:{session_id[:8]}",
@@ -335,7 +345,7 @@ class AgentCoordinator:
         # Emit activity event for UI updates.
         # Codex synthetic prompts arrive only after output activity is already visible
         # (e.g. "out: Working..."), so treat them as output-start in the TUI state.
-        if _is_codex_synthetic_prompt_event(payload.raw):
+        if is_codex_synthetic:
             self._emit_activity_event(session_id, AgentHookEvents.TOOL_USE)
         else:
             self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)

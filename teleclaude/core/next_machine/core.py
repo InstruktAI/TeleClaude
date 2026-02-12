@@ -80,19 +80,19 @@ PREPARE_FALLBACK: dict[str, list[tuple[str, str]]] = {
 
 WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
     "build": [
-        (AgentName.CLAUDE.value, ThinkingMode.SLOW.value),
         (AgentName.GEMINI.value, ThinkingMode.SLOW.value),
+        (AgentName.CLAUDE.value, ThinkingMode.SLOW.value),
         (AgentName.CODEX.value, ThinkingMode.MED.value),
     ],
     "review": [
-        (AgentName.CODEX.value, ThinkingMode.SLOW.value),
         (AgentName.CLAUDE.value, ThinkingMode.SLOW.value),
         (AgentName.GEMINI.value, ThinkingMode.SLOW.value),
+        (AgentName.CODEX.value, ThinkingMode.SLOW.value),
     ],
     "fix": [
+        (AgentName.GEMINI.value, ThinkingMode.MED.value),
         (AgentName.CODEX.value, ThinkingMode.MED.value),
         (AgentName.CLAUDE.value, ThinkingMode.MED.value),
-        (AgentName.GEMINI.value, ThinkingMode.MED.value),
     ],
     "finalize": [
         (AgentName.CODEX.value, ThinkingMode.MED.value),
