@@ -39,17 +39,7 @@ logger = get_logger("teleclaude.hooks.receiver")
 # Only these events are forwarded to MCP. All others are silently dropped.
 # This prevents zombie mcp-wrapper processes from intermediate hooks.
 # Only events with actual handlers in the daemon - infrastructure events are dropped.
-_HANDLED_EVENTS: frozenset[AgentHookEventType] = frozenset(
-    {
-        AgentHookEvents.AGENT_SESSION_START,
-        AgentHookEvents.USER_PROMPT_SUBMIT,
-        AgentHookEvents.TOOL_DONE,
-        AgentHookEvents.TOOL_USE,
-        AgentHookEvents.AGENT_STOP,
-        AgentHookEvents.AGENT_NOTIFICATION,
-        AgentHookEvents.AGENT_ERROR,
-    }
-)
+_HANDLED_EVENTS: frozenset[AgentHookEventType] = AgentHookEvents.RECEIVER_HANDLED
 
 
 def _create_sync_engine() -> object:

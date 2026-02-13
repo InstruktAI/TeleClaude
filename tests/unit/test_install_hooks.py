@@ -45,6 +45,8 @@ def test_configure_claude_writes_hook_file(tmp_path, monkeypatch):
 
     data = json.loads(claude_config.read_text())
     assert "hooks" in data
+    assert "PreCompact" not in data["hooks"]
+    assert "SessionEnd" not in data["hooks"]
     assert "SessionStart" in data["hooks"]
     hooks_block = data["hooks"]["SessionStart"][0]
     assert hooks_block["matcher"] == "*"
@@ -60,7 +62,7 @@ def test_configure_claude_writes_hook_file(tmp_path, monkeypatch):
 
 
 def test_configure_gemini_writes_only_required_hook_events(tmp_path, monkeypatch):
-    """Gemini hook configuration should only install start/user_prompt_submit/agent_stop events."""
+    """Gemini hook configuration should only install receiver-handled events."""
     monkeypatch.setenv("HOME", str(tmp_path))
     hook_python = tmp_path / "python"
     hook_python.write_text("#!/usr/bin/env python3\n")
@@ -79,14 +81,10 @@ def test_configure_gemini_writes_only_required_hook_events(tmp_path, monkeypatch
         "SessionStart",
         "BeforeAgent",
         "AfterAgent",
-        "BeforeModel",
         "AfterModel",
-        "BeforeToolSelection",
         "BeforeTool",
         "AfterTool",
-        "PreCompress",
         "Notification",
-        "SessionEnd",
     }
     assert hooks["enabled"] == ["*"]
 
@@ -113,6 +111,41 @@ def test_configure_gemini_writes_only_required_hook_events(tmp_path, monkeypatch
     else:
         after_tool_command_text = after_tool_command
     assert 'receiver.py --agent gemini --cwd "$PWD" tool_done' in after_tool_command_text
+
+
+def test_configure_gemini_drops_stale_unhandled_hook_keys(tmp_path, monkeypatch):
+    """Gemini installer removes stale unhandled hook keys left from old configs."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    hook_python = tmp_path / "python"
+    hook_python.write_text("#!/usr/bin/env python3\n")
+    monkeypatch.setenv("TELECLAUDE_HOOK_PYTHON", str(hook_python))
+    repo_root = Path(__file__).resolve().parents[2]
+
+    gemini_dir = tmp_path / ".gemini"
+    gemini_dir.mkdir(parents=True)
+    gemini_config = gemini_dir / "settings.json"
+    gemini_config.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "enabled": ["*"],
+                    "BeforeModel": None,
+                    "BeforeToolSelection": None,
+                    "PreCompress": None,
+                    "SessionEnd": None,
+                }
+            }
+        )
+    )
+
+    install_hooks.configure_gemini(repo_root)
+
+    data = json.loads(gemini_config.read_text())
+    hooks = data["hooks"]
+    assert "BeforeModel" not in hooks
+    assert "BeforeToolSelection" not in hooks
+    assert "PreCompress" not in hooks
+    assert "SessionEnd" not in hooks
 
 
 def test_configure_codex_writes_notify_hook(tmp_path, monkeypatch):

@@ -127,6 +127,17 @@ class AgentHookEvents:
         "set[AgentHookEventType]",
         {v for agent_map in HOOK_EVENT_MAP.values() for v in agent_map.values()} | {AGENT_ERROR},
     )
+    RECEIVER_HANDLED: frozenset[AgentHookEventType] = frozenset(
+        {
+            AGENT_SESSION_START,
+            USER_PROMPT_SUBMIT,
+            TOOL_DONE,
+            TOOL_USE,
+            AGENT_STOP,
+            AGENT_NOTIFICATION,
+            AGENT_ERROR,
+        }
+    )
 
 
 @dataclass(frozen=True)

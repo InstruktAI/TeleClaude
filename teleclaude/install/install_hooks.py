@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, Mapping
 
 from teleclaude.constants import MAIN_MODULE
-from teleclaude.core.events import AgentHookEvents
+from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
 
@@ -51,6 +51,9 @@ NOTIFY_KEY = "notify"
 AGENT_FLAG = "--agent"
 CODEX_AGENT = "codex"
 CODEX_NOTIFY_SUFFIX = [AGENT_FLAG, CODEX_AGENT]
+KNOWN_NATIVE_HOOK_EVENTS = {
+    event_name for agent_map in AgentHookEvents.HOOK_EVENT_MAP.values() for event_name in agent_map.keys()
+}
 
 
 def _load_json_settings(
@@ -167,7 +170,7 @@ def _build_hook_map(
     python_exe: Path,
     receiver_script: Path,
     agent: str,
-    event_args: Mapping[str, str],
+    event_args: Mapping[str, AgentHookEventType],
     include_metadata: bool = False,
 ) -> Dict[str, Dict[str, Any]]:
     """Build hook definitions for an agent.
@@ -194,9 +197,25 @@ def _build_hook_map(
     return hooks
 
 
+def _filter_receiver_handled_events(
+    event_args: Mapping[str, AgentHookEventType],
+) -> Dict[str, AgentHookEventType]:
+    """Filter to event mappings that receiver forwards by contract."""
+    return {
+        event_name: event_arg
+        for event_name, event_arg in event_args.items()
+        if event_arg in AgentHookEvents.RECEIVER_HANDLED
+    }
+
+
 def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
     """Return TeleClaude hook definitions for Claude Code."""
-    return _build_hook_map(python_exe, receiver_script, "claude", AgentHookEvents.HOOK_EVENT_MAP["claude"])
+    return _build_hook_map(
+        python_exe,
+        receiver_script,
+        "claude",
+        _filter_receiver_handled_events(AgentHookEvents.HOOK_EVENT_MAP["claude"]),
+    )
 
 
 def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
@@ -206,7 +225,13 @@ def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
     gemini_events = dict(AgentHookEvents.HOOK_EVENT_MAP["gemini"])
     gemini_events["BeforeTool"] = AgentHookEvents.TOOL_USE
     gemini_events["AfterTool"] = AgentHookEvents.TOOL_DONE
-    return _build_hook_map(python_exe, receiver_script, "gemini", gemini_events, include_metadata=True)
+    return _build_hook_map(
+        python_exe,
+        receiver_script,
+        "gemini",
+        _filter_receiver_handled_events(gemini_events),
+        include_metadata=True,
+    )
 
 
 def _prune_agent_hooks(existing_hooks: Dict[str, Any], allowed_events: set[str]) -> Dict[str, Any]:
@@ -219,7 +244,10 @@ def _prune_agent_hooks(existing_hooks: Dict[str, Any], allowed_events: set[str])
 
     for event, blocks in existing_hooks.items():
         if not isinstance(blocks, list):
-            pruned[event] = blocks
+            # Drop malformed known hook-event entries (e.g. stale null values).
+            # Preserve unknown non-event config keys under hooks.
+            if event not in KNOWN_NATIVE_HOOK_EVENTS:
+                pruned[event] = blocks
             continue
 
         new_blocks = []
@@ -261,7 +289,6 @@ def _configure_json_agent_hooks(
     repo_root: Path,
     agent: str,
     settings_path: Path,
-    allowed_events: set[str],
     hook_map_builder: Any,
     enable_hooks_flag: bool = False,
 ) -> None:
@@ -271,7 +298,6 @@ def _configure_json_agent_hooks(
         repo_root: Project root
         agent: Agent name (claude, gemini)
         settings_path: Path to settings.json
-        allowed_events: Events to keep TeleClaude hooks for
         hook_map_builder: Function that returns hook map
         enable_hooks_flag: If True, set tools.enableHooks = True (for Gemini)
     """
@@ -289,6 +315,7 @@ def _configure_json_agent_hooks(
 
     python_exe = _resolve_hook_python(repo_root)
     hooks_map = hook_map_builder(python_exe, receiver_script)
+    allowed_events = set(hooks_map.keys())
 
     existing_hooks = settings.get("hooks", {})
     settings["hooks"] = _prune_agent_hooks(existing_hooks, allowed_events)
@@ -328,7 +355,6 @@ def configure_claude(repo_root: Path) -> None:
         repo_root,
         "claude",
         Path.home() / ".claude" / "settings.json",
-        set(AgentHookEvents.HOOK_EVENT_MAP["claude"].keys()),
         _claude_hook_map,
     )
 
@@ -339,7 +365,6 @@ def configure_gemini(repo_root: Path) -> None:
         repo_root,
         "gemini",
         Path.home() / ".gemini" / "settings.json",
-        set(AgentHookEvents.HOOK_EVENT_MAP["gemini"].keys()),
         _gemini_hook_map,
         enable_hooks_flag=True,
     )
