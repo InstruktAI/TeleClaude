@@ -98,6 +98,22 @@ def test_configure_gemini_writes_only_required_hook_events(tmp_path, monkeypatch
         command_text = command
     assert 'receiver.py --agent gemini --cwd "$PWD" user_prompt_submit' in command_text
 
+    before_tool_hook = hooks["BeforeTool"][0]["hooks"][0]
+    before_tool_command = before_tool_hook["command"]
+    if isinstance(before_tool_command, list):
+        before_tool_command_text = " ".join(before_tool_command)
+    else:
+        before_tool_command_text = before_tool_command
+    assert 'receiver.py --agent gemini --cwd "$PWD" tool_use' in before_tool_command_text
+
+    after_tool_hook = hooks["AfterTool"][0]["hooks"][0]
+    after_tool_command = after_tool_hook["command"]
+    if isinstance(after_tool_command, list):
+        after_tool_command_text = " ".join(after_tool_command)
+    else:
+        after_tool_command_text = after_tool_command
+    assert 'receiver.py --agent gemini --cwd "$PWD" tool_done' in after_tool_command_text
+
 
 def test_configure_codex_writes_notify_hook(tmp_path, monkeypatch):
     """Codex hook configuration writes notify array to ~/.codex/config.toml."""

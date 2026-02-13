@@ -201,9 +201,12 @@ def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
 
 def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
     """Return TeleClaude hook definitions for Gemini CLI."""
-    return _build_hook_map(
-        python_exe, receiver_script, "gemini", AgentHookEvents.HOOK_EVENT_MAP["gemini"], include_metadata=True
-    )
+    # Installer contract: Gemini tool lifecycle hooks must emit normalized
+    # internal activity event names directly.
+    gemini_events = dict(AgentHookEvents.HOOK_EVENT_MAP["gemini"])
+    gemini_events["BeforeTool"] = AgentHookEvents.TOOL_USE
+    gemini_events["AfterTool"] = AgentHookEvents.TOOL_DONE
+    return _build_hook_map(python_exe, receiver_script, "gemini", gemini_events, include_metadata=True)
 
 
 def _prune_agent_hooks(existing_hooks: Dict[str, Any], allowed_events: set[str]) -> Dict[str, Any]:

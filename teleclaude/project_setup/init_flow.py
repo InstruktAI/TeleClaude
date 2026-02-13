@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from teleclaude.install.install_hooks import main as install_agent_hooks
 from teleclaude.project_setup.git_filters import setup_git_filters
 from teleclaude.project_setup.git_repo import ensure_git_repo
 from teleclaude.project_setup.gitattributes import update_gitattributes
@@ -15,8 +16,10 @@ from teleclaude.project_setup.sync import install_docs_watch, sync_project_artif
 def init_project(project_root: Path) -> None:
     """Initialize a project for TeleClaude.
 
-    Sets up git filters, pre-commit hooks, syncs artifacts, and installs watchers.
+    Sets up agent hooks, git filters, pre-commit hooks, syncs artifacts, and
+    installs watchers.
     """
+    install_agent_hooks()
     ensure_git_repo(project_root)
     setup_git_filters(project_root)
     update_gitattributes(project_root)
