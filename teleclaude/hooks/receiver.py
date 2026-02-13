@@ -446,30 +446,33 @@ def _get_cached_session_id(agent: str, native_session_id: str | None) -> str | N
     return cached
 
 
-def _get_env_session_id() -> str | None:
+def _get_tmux_contract_session_id() -> str:
+    """Resolve TeleClaude session id from TMUX contract marker file.
+
+    Contract (non-headless):
+    - TMUX env var is present
+    - TMPDIR is present
+    - TMPDIR/teleclaude_session_id exists and is non-empty
+    """
     tmpdir = os.getenv("TMPDIR")
     if not isinstance(tmpdir, str) or not tmpdir.strip():
-        return None
+        raise ValueError("TMUX hook contract violated: TMPDIR is missing")
+
     marker = Path(tmpdir).expanduser() / "teleclaude_session_id"
     try:
         value = marker.read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-    return value or None
+    except OSError as exc:
+        raise ValueError(f"TMUX hook contract violated: missing session marker at {marker}") from exc
+
+    if not value:
+        raise ValueError(f"TMUX hook contract violated: empty session marker at {marker}")
+
+    return value
 
 
-def _is_active_session(session_id: str | None) -> bool:
-    """Return True when session_id exists in DB and is not closed."""
-    if not session_id:
-        return False
-    from sqlmodel import Session as SqlSession
-
-    try:
-        with SqlSession(_create_sync_engine()) as session:
-            row = session.get(db_models.Session, session_id)
-    except Exception:
-        return False
-    return bool(row and not row.closed_at)
+def _is_headless_route() -> bool:
+    """Determine route class for this hook invocation."""
+    return not bool(os.getenv("TMUX"))
 
 
 def _resolve_or_refresh_session_id(
@@ -478,11 +481,7 @@ def _resolve_or_refresh_session_id(
     *,
     agent: str,
 ) -> str | None:
-    """Ensure a native session maps to the correct TeleClaude session id.
-
-    If the cached teleclaude_session_id points at a different native session,
-    mint a new TeleClaude session id and persist it for subsequent hooks.
-    """
+    """Validate cached session id against current DB state for headless routing."""
     if not candidate_session_id or not raw_native_session_id:
         return candidate_session_id
 
@@ -500,19 +499,41 @@ def _resolve_or_refresh_session_id(
         )
         return candidate_session_id
     if not row:
-        return candidate_session_id
+        logger.debug(
+            "Invalidating cached session mapping: session row not found",
+            agent=agent,
+            session_id=candidate_session_id[:8],
+            native_session_id=raw_native_session_id[:8],
+        )
+        return None
 
     if row.closed_at:
-        new_session_id = str(uuid.uuid4())
-        _persist_session_map(agent, raw_native_session_id, new_session_id)
-        return new_session_id
+        logger.debug(
+            "Invalidating cached session mapping: session closed",
+            agent=agent,
+            session_id=candidate_session_id[:8],
+            native_session_id=raw_native_session_id[:8],
+        )
+        return None
     if row.lifecycle_status != "headless":
-        return candidate_session_id
+        logger.debug(
+            "Invalidating cached session mapping: non-headless lifecycle",
+            agent=agent,
+            session_id=candidate_session_id[:8],
+            native_session_id=raw_native_session_id[:8],
+            lifecycle_status=row.lifecycle_status,
+        )
+        return None
 
     if row.native_session_id and row.native_session_id != raw_native_session_id:
-        new_session_id = str(uuid.uuid4())
-        _persist_session_map(agent, raw_native_session_id, new_session_id)
-        return new_session_id
+        logger.debug(
+            "Invalidating cached session mapping: native session mismatch",
+            agent=agent,
+            session_id=candidate_session_id[:8],
+            cached_native_session_id=(row.native_session_id or "")[:8],
+            incoming_native_session_id=raw_native_session_id[:8],
+        )
+        return None
 
     return candidate_session_id
 
@@ -579,6 +600,7 @@ def _resolve_hook_session_id(
     agent: str,
     event_type: str,
     native_session_id: str | None,
+    headless: bool,
 ) -> tuple[str | None, str | None, str | None]:
     """Resolve TeleClaude session ID from the canonical native identity map path.
 
@@ -586,19 +608,18 @@ def _resolve_hook_session_id(
     - `cached_session_id` is map lookup (`agent:native_session_id -> teleclaude_session_id`)
     - `existing_session_id` is DB lookup (`sessions.native_session_id == native_session_id`)
     """
+    # Non-headless route (TMUX): contract file is authoritative.
+    # No map/DB lookup on this route.
+    if not headless:
+        resolved_session_id = _get_tmux_contract_session_id()
+        if resolved_session_id and native_session_id:
+            _persist_session_map(agent, native_session_id, resolved_session_id)
+        return resolved_session_id, None, None
+
+    # Headless route: canonical native map/DB resolution.
     cached_session_id = _get_cached_session_id(agent, native_session_id)
     resolved_session_id = _resolve_or_refresh_session_id(cached_session_id, native_session_id, agent=agent)
     existing_session_id = None
-    env_session_id = _get_env_session_id()
-
-    # Contract-first binding: TMPDIR marker is authoritative live session context.
-    # For session_start it overrides stale map values; for all other events it fills
-    # missing map/native bindings so hooks never get silently dropped.
-    if env_session_id and _is_active_session(env_session_id):
-        if event_type == AgentHookEvents.AGENT_SESSION_START and resolved_session_id != env_session_id:
-            resolved_session_id = env_session_id
-        elif not resolved_session_id:
-            resolved_session_id = env_session_id
 
     if not resolved_session_id and native_session_id:
         existing_session_id = _find_session_id_by_native(native_session_id)
@@ -606,12 +627,16 @@ def _resolve_hook_session_id(
     if not resolved_session_id and existing_session_id:
         resolved_session_id = existing_session_id
 
-    if (
-        not resolved_session_id
-        and event_type == AgentHookEvents.AGENT_SESSION_START
-        and isinstance(native_session_id, str)
-        and native_session_id
-    ):
+    should_mint_headless = (
+        isinstance(native_session_id, str)
+        and bool(native_session_id)
+        and (
+            event_type == AgentHookEvents.AGENT_SESSION_START
+            or (agent == AgentName.CODEX.value and event_type == AgentHookEvents.AGENT_STOP)
+        )
+    )
+
+    if not resolved_session_id and should_mint_headless:
         resolved_session_id = str(uuid.uuid4())
 
     if resolved_session_id and native_session_id:
@@ -754,16 +779,30 @@ def main() -> None:
         )
         sys.exit(0)
 
+    headless_route = _is_headless_route()
+
     raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, raw_data)
 
-    teleclaude_session_id, cached_session_id, existing_id = _resolve_hook_session_id(
-        agent=args.agent,
-        event_type=event_type,
-        native_session_id=raw_native_session_id,
-    )
+    try:
+        teleclaude_session_id, cached_session_id, existing_id = _resolve_hook_session_id(
+            agent=args.agent,
+            event_type=event_type,
+            native_session_id=raw_native_session_id,
+            headless=headless_route,
+        )
+    except ValueError as exc:
+        logger.error(
+            "Hook receiver contract violation",
+            agent=args.agent,
+            event_type=event_type,
+            headless=headless_route,
+            error=str(exc),
+        )
+        sys.exit(1)
     logger.debug(
         "Hook session resolution",
         agent=args.agent,
+        headless=headless_route,
         event_type=event_type,
         cached_session_id=(cached_session_id or "")[:8],
         existing_session_id=(existing_id or "")[:8],
@@ -771,16 +810,17 @@ def main() -> None:
         native_session_id=(raw_native_session_id or "")[:8],
     )
     if not teleclaude_session_id:
-        logger.debug(
-            "Dropped unresolved hook event",
+        logger.error(
+            "Hook session resolution failed (contract violation)",
             agent=args.agent,
+            headless=headless_route,
             event_type=event_type,
             raw_event_type=raw_event_type,
             native_session_id=(raw_native_session_id or "")[:8],
             cached_session_id=(cached_session_id or "")[:8],
             existing_session_id=(existing_id or "")[:8],
         )
-        sys.exit(0)
+        sys.exit(1)
 
     data = dict(raw_data)
 

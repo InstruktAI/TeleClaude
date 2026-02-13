@@ -45,12 +45,16 @@ Important: native identity fields are **optional**, not required.
 
 Identity gating rule:
 
-- Receiver resolves session id in this order:
-  1. native mapping (`agent:native_session_id`)
-  2. DB lookup by `native_session_id`
-  3. TMPDIR `teleclaude_session_id` marker when active
-  4. mint new id only for `session_start`
-- Events are dropped when no route yields a session id.
+- Non-headless (TMUX) route:
+  - `TMPDIR/teleclaude_session_id` is authoritative.
+  - map/DB lookup is not used.
+  - missing/empty marker is a contract violation.
+- Headless route:
+  - resolve via native mapping (`agent:native_session_id`) then DB lookup by `native_session_id`.
+  - mint new id only at explicit adoption points:
+    - `session_start` (all agents),
+    - `agent_stop` (Codex only).
+  - if a handled event cannot resolve session id, fail fast as contract violation.
 
 ## Allowed values
 
@@ -72,6 +76,6 @@ Ordering model:
 ## Known caveats
 
 - A normalized event can still be dropped if it is not in forwarding allowlist.
-- Even forwarded event types can be dropped when no session identity is resolved.
+- Forwarded event types are not silently dropped on identity failure; receiver exits nonzero for contract violations.
 - Mapping changes in code must be reflected here immediately.
 - Delivery is at-least-once; handlers must stay idempotent.

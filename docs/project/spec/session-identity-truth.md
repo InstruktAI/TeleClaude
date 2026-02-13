@@ -37,12 +37,16 @@ This spec must define:
 
 Current runtime rule:
 
-- Hook receiver resolves session identity in this order:
-  1. native mapping (`agent:native_session_id`)
-  2. DB lookup by `native_session_id`
-  3. TMPDIR `teleclaude_session_id` marker when active
-- New mapping registration happens only on `session_start`.
-- If no route resolves a session id, the event is dropped.
+- Non-headless (TMUX) route:
+  - session id comes directly from `TMPDIR/teleclaude_session_id`.
+  - no map/DB lookup on this route.
+  - missing/empty marker is a contract violation.
+- Headless route:
+  - resolve via native mapping (`agent:native_session_id`) then DB native lookup.
+  - new mapping registration happens at explicit adoption points:
+    - `session_start` (all agents),
+    - `agent_stop` (Codex only).
+  - if a handled event cannot resolve a session id, it is a contract violation.
 
 Fields that must be explained:
 
@@ -66,10 +70,11 @@ Recovery outcome:
 
 - `reassociate-existing`
 - `mint-new`
-- `drop-unresolved`
+- `tmux-contract-violation`
+- `identity-contract-violation`
 
 ## Known caveats
 
-- TMPDIR marker routing is fallback-only and ignored when the marker target is not active.
+- TMUX route trusts marker content by contract; it does not validate DB session existence.
 - Native fields may be missing in some events; logic must handle that safely.
 - This file is only useful if kept in sync with receiver + mapping code behavior.
