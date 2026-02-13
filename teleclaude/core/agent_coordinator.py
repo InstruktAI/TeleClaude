@@ -827,8 +827,8 @@ class AgentCoordinator:
         if not session:
             return
 
-        redis_meta = session.adapter_metadata.redis
-        if not redis_meta or not redis_meta.target_computer:
+        redis_meta = session.get_metadata().get_transport().get_redis()
+        if not redis_meta.target_computer:
             return
 
         initiator_computer = redis_meta.target_computer
@@ -857,8 +857,8 @@ class AgentCoordinator:
         if not session:
             return
 
-        redis_meta = session.adapter_metadata.redis
-        if not redis_meta or not redis_meta.target_computer:
+        redis_meta = session.get_metadata().get_transport().get_redis()
+        if not redis_meta.target_computer:
             return
 
         initiator_computer = redis_meta.target_computer

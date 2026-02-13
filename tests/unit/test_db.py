@@ -330,8 +330,7 @@ class TestUpdateSession:
         await test_db.update_session(session.session_id, adapter_metadata=new_metadata)
 
         updated = await test_db.get_session(session.session_id)
-        assert updated.adapter_metadata.telegram is not None
-        assert updated.adapter_metadata.telegram.topic_id == 456
+        assert updated.get_metadata().get_ui().get_telegram().topic_id == 456
 
     @pytest.mark.asyncio
     async def test_digest_only_update_does_not_emit_session_updated(self, test_db):

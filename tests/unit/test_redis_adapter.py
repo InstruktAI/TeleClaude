@@ -266,6 +266,7 @@ async def test_send_message_adds_to_stream():
         RedisTransportMetadata,
         Session,
         SessionAdapterMetadata,
+        TransportAdapterMetadata,
     )
     from teleclaude.transport.redis_transport import RedisTransport
 
@@ -292,9 +293,9 @@ async def test_send_message_adds_to_stream():
         last_input_origin=InputOrigin.API.value,
         title="Test Session",
     )
-    # Set up adapter_metadata with redis channel info
+    # Set up adapter_metadata with redis channel info using proper encapsulation
     session.adapter_metadata = SessionAdapterMetadata(
-        redis=RedisTransportMetadata(channel_id="session:test-session-123:output")
+        _transport=TransportAdapterMetadata(_redis=RedisTransportMetadata(channel_id="session:test-session-123:output"))
     )
 
     # Send message

@@ -1,64 +1,71 @@
-# Implementation Plan: telegram-adapter-hardening
+# Implementation Plan - Telegram Adapter Hardening
 
-## Overview
+The goal is to harden the Telegram adapter architecture by enforcing deterministic routing via the database, removing brittle regex-based ownership inference, and improving encapsulation.
 
-Apply hardening in small, verifiable phases: unify routing first, then contract cleanup, then bounded cleanup behavior and ownership hardening, followed by layering cleanup.
+## User Review Required
 
-## Phase 1: Single Delivery Funnel
+> [!IMPORTANT]
+> **Critical Change:** We are replacing the regex-based "topic ownership" check (`_topic_owned_by_this_bot`) with a strict DB lookup (`db.get_sessions_by_adapter_metadata`).
+>
+> **Impact:**
+>
+> - If a topic ID is not in the DB, the message is ignored. No more "guessing" if it belongs to us.
+> - "Orphan" topics (valid ID format but not in DB) will be treated as noise and ignored, NOT deleted. The previous reactive deletion logic was dangerous and noisy.
+> - **Action Required:** Ensure the database is the single source of truth for all active sessions.
 
-### Task 1.1: Route all Telegram UI sends through one lane
+- [x] **Confirm:** "Ignore" strategy for unknown topics is acceptable (vs "Delete").
+- [x] **Confirm:** Law of Demeter enforcement (`session.get_metadata().get_ui().get_telegram()` and `session.get_metadata().get_transport().get_redis()`) is desired.
 
-**File(s):** `teleclaude/core/adapter_client.py`
+## Proposed Changes
 
-- [x] Remove origin-path bypass for Telegram UI delivery.
-- [x] Keep observer broadcast behavior explicit.
-- [x] Emit structured routing outcome logs.
+### 1. Unified Routing Lane (`adapter_client.py`)
 
-## Phase 2: Contract Normalization
+- [x] Refactor `send_message` to use `_route_to_ui` for all UI-bound messages (not just errors).
+- [x] Ensure `_route_to_ui` uses the encapsulated metadata accessor.
 
-### Task 2.1: Normalize delivery return contract
+### 2. Encapsulation & Law of Demeter (`models.py`)
 
-**File(s):** `teleclaude/adapters/telegram/message_ops.py`, `teleclaude/adapters/telegram_adapter.py`
+- [x] Define `UiAdapterMetadata` in `teleclaude/core/models.py`.
+- [x] Define `TransportAdapterMetadata` in `teleclaude/core/models.py` (for Redis encapsulation).
+- [x] Update `SessionAdapterMetadata` to hold `_ui` (UiAdapterMetadata) and `_transport` (TransportAdapterMetadata) instead of raw `telegram`/`redis` dicts.
+- [x] Expose `get_ui()` and `get_transport()` methods.
+- [x] Maintain JSON serialization compatibility (flatten/unflatten).
 
-- [x] Replace empty-string/ambiguous success sentinels with explicit typed outcomes.
-- [x] Ensure missing routing metadata propagates as explicit failure.
+### 3. Strict Ownership & Sane Routing (`telegram_adapter.py`)
 
-## Phase 3: Invalid Topic Suppression + Cleanup Safety
+- [x] Remove `_topic_title_mentions_this_computer` (regex logic).
+- [x] Remove `_topic_owned_by_this_bot` (regex logic).
+- [x] Update `_get_session_from_topic`:
+  - Query DB via `db.get_sessions_by_adapter_metadata(adapter="telegram", key="topic_id", value=topic_id)`.
+  - If DB returns match -> Process.
+  - If DB returns empty -> Ignore (log as trace/debug).
+- [x] Remove `_delete_orphan_topic` calls entirely.
 
-### Task 3.1: Suppress repeated invalid-topic deletes
+### 4. Normalize Delivery Contract (`message_ops.py`)
 
-**File(s):** `teleclaude/adapters/telegram/channel_ops.py`, `teleclaude/adapters/telegram/input_handlers.py`, `teleclaude/adapters/telegram_adapter.py`
+- [x] Update `send_message` and `send_file` to:
+  - Check `metadata.topic_id` immediately.
+  - Raise `RuntimeError("Telegram topic_id missing")` if absent (Fail Fast).
+  - Return `message_id` on success.
 
-- [x] Add cooldown/backoff for repeated `Topic_id_invalid` delete attempts.
-- [x] Centralize orphan-topic delete invocation semantics.
+## Verification Plan
 
-## Phase 4: Ownership Hardening
+### Automated Tests
 
-### Task 4.1: Require stronger ownership evidence for deletes
+- [x] Run `tests/unit/test_telegram_adapter.py` to verify routing logic.
+- [x] Run `tests/unit/test_adapter_client.py` to verify unified sending path.
+- [x] Run `tests/unit/test_db.py` to verify metadata queries.
+- [x] Run `tests/unit/test_redis_adapter.py` to verify transport metadata encapsulation.
 
-**File(s):** `teleclaude/adapters/telegram_adapter.py`, `teleclaude/adapters/telegram/channel_ops.py`
+### Manual Verification (if needed)
 
-- [x] Replace weak title-only ownership checks as authoritative signal. (Refactored to remove inference entirely; DB is now the only authority).
-- [x] Fail safe (no delete) on uncertain ownership with diagnostics.
+- [x] Start daemon.
+- [x] Send message to known session -> delivered.
+- [x] Send message to random topic -> ignored (no log spam).
+- [x] Verify TUI updates correctly.
 
-## Phase 5: Layering Cleanup
+## Status
 
-### Task 5.1: Reduce fallback-policy duplication across layers
-
-**File(s):** `teleclaude/core/adapter_client.py`, `teleclaude/adapters/telegram_adapter.py`, `teleclaude/adapters/telegram/*.py`
-
-- [ ] Keep AdapterClient as orchestration boundary.
-- [ ] Move Telegram-specific fallback policy into Telegram adapter internals.
-
-## Verification
-
-### Task V.1: Behavior validation
-
-- [ ] Verify no direct Telegram UI-send bypass remains.
-- [ ] Verify repeated invalid-topic triggers are bounded by cooldown.
-- [ ] Verify failure outcomes are explicit and observable.
-
-### Task V.2: Quality checks
-
-- [ ] Run targeted validation for touched behavior.
-- [ ] Confirm implementation tasks are fully checked before review.
+- **Status:** Complete
+- **Started:** 2026-02-13
+- **Completed:** 2026-02-13

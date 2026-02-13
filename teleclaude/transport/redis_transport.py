@@ -44,7 +44,6 @@ from teleclaude.core.models import (
     PeerInfo,
     ProjectInfo,
     RedisInboundMessage,
-    RedisTransportMetadata,
     Session,
     SessionLaunchIntent,
     SessionSummary,
@@ -99,9 +98,9 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         if not isinstance(adapter_metadata, SessionAdapterMetadata):
             return
-        if not adapter_metadata.redis:
-            adapter_metadata.redis = RedisTransportMetadata()
-        adapter_metadata.redis.channel_id = channel_id
+
+        redis_meta = adapter_metadata.get_transport().get_redis()
+        redis_meta.channel_id = channel_id
 
     def __init__(self, adapter_client: "AdapterClient", task_registry: "TaskRegistry | None" = None):
         """Initialize Redis transport.
@@ -725,10 +724,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
         """Record transport metadata for AI-to-AI sessions (no Redis output streams)."""
 
-        redis_meta = session.adapter_metadata.redis
-        if not redis_meta:
-            redis_meta = RedisTransportMetadata()
-            session.adapter_metadata.redis = redis_meta
+        redis_meta = session.get_metadata().get_transport().get_redis()
 
         if metadata.target_computer:
             redis_meta.target_computer = metadata.target_computer

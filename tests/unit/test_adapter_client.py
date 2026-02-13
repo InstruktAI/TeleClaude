@@ -593,8 +593,9 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
 
     assert len(sent_sessions) == 1
     sent_session = sent_sessions[0]
-    assert sent_session.adapter_metadata.telegram
-    assert sent_session.adapter_metadata.telegram.topic_id == 999
+    telegram_meta = sent_session.get_metadata().get_ui().get_telegram()
+    assert telegram_meta
+    assert telegram_meta.topic_id == 999
 
 
 @pytest.mark.asyncio

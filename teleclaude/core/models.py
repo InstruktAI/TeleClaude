@@ -165,44 +165,66 @@ class RedisTransportMetadata:  # pylint: disable=too-many-instance-attributes
 
 
 @dataclass
+class TransportAdapterMetadata:
+    """Metadata container for Transport adapters."""
+
+    _redis: Optional[RedisTransportMetadata] = None
+
+    def get_redis(self) -> RedisTransportMetadata:
+        """Get Redis metadata, initializing if missing."""
+        if self._redis is None:
+            self._redis = RedisTransportMetadata()
+        return self._redis
+
+
+@dataclass
 class SessionAdapterMetadata:
     """Typed metadata container for all adapters."""
 
     _ui: UiAdapterMetadata = field(default_factory=UiAdapterMetadata)
-    redis: Optional[RedisTransportMetadata] = None
+    _transport: TransportAdapterMetadata = field(default_factory=TransportAdapterMetadata)
 
     def __init__(
         self,
         telegram: Optional[TelegramAdapterMetadata] = None,
         redis: Optional[RedisTransportMetadata] = None,
         _ui: Optional[UiAdapterMetadata] = None,
+        _transport: Optional[TransportAdapterMetadata] = None,
     ) -> None:
-        """Initialize with backward compatibility for 'telegram' arg."""
+        """Initialize with backward compatibility for 'telegram' and 'redis' args."""
         if _ui is not None:
             self._ui = _ui
         else:
             self._ui = UiAdapterMetadata(_telegram=telegram)
-        self.redis = redis
+
+        if _transport is not None:
+            self._transport = _transport
+        else:
+            self._transport = TransportAdapterMetadata(_redis=redis)
 
     def get_ui(self) -> UiAdapterMetadata:
         """Get UI adapter metadata container."""
         return self._ui
 
+    def get_transport(self) -> TransportAdapterMetadata:
+        """Get Transport adapter metadata container."""
+        return self._transport
+
     def to_json(self) -> str:
         """Serialize to JSON string, excluding None fields.
 
-        Flattens UI adapters back to root keys for backward compatibility.
+        Flattens adapters back to root keys for backward compatibility.
         """
-        # manual dict construction to preserve "telegram" at root
+        # manual dict construction to preserve root keys
         data: Dict[str, JsonValue] = {}
 
         # UI Adapters (flattened)
         if self._ui._telegram:
             data["telegram"] = asdict_exclude_none(self._ui._telegram)
 
-        # Transport Adapters
-        if self.redis:
-            data["redis"] = asdict_exclude_none(self.redis)
+        # Transport Adapters (flattened)
+        if self._transport._redis:
+            data["redis"] = asdict_exclude_none(self._transport._redis)
 
         return json.dumps(data)
 
@@ -267,7 +289,8 @@ class SessionAdapterMetadata:
 
         # Reconstruct hierarchy
         ui_metadata = UiAdapterMetadata(_telegram=telegram_metadata)
-        return cls(_ui=ui_metadata, redis=redis_metadata)
+        transport_metadata = TransportAdapterMetadata(_redis=redis_metadata)
+        return cls(_ui=ui_metadata, _transport=transport_metadata)
 
 
 @dataclass
