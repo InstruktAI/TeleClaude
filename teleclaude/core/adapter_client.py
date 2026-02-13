@@ -269,6 +269,7 @@ class AdapterClient:
             return cast(Awaitable[object], getattr(adapter, method)(lane_session, *args, **kwargs))
 
         if not origin_ui:
+            logger.info("[ROUTING] Broadcast (no origin): session=%s method=%s", session.session_id[:8], method)
             results = await self._broadcast_to_ui_adapters(session, method, make_task)
             for _, result in results:
                 if isinstance(result, Exception):
@@ -279,6 +280,13 @@ class AdapterClient:
 
         # Route origin through _run_ui_lane for ensure_channel resilience
         origin_type = session.last_input_origin or "unknown"
+        logger.debug(
+            "[ROUTING] Direct lane: session=%s method=%s origin=%s broadcast=%s",
+            session.session_id[:8],
+            method,
+            origin_type,
+            broadcast,
+        )
         result = await self._run_ui_lane(session, origin_type, origin_ui, make_task)
 
         # Broadcast to observers (best-effort) unless disabled
@@ -352,29 +360,21 @@ class AdapterClient:
 
         # Fetch fresh last_input_origin from DB (session object may be stale after origin update)
         fresh_session = await db.get_session(session.session_id)
-        last_input_origin = fresh_session.last_input_origin if fresh_session else session.last_input_origin
+        # Use fresh session for routing to ensure we have the latest last_input_origin
+        session_to_use = fresh_session or session
 
-        if last_input_origin:
-            target = self.adapters.get(last_input_origin)
-            if isinstance(target, UiAdapter):
-                result = await target.send_message(session, text, metadata=metadata, multi_message=multi_message)
-            else:
-                logger.debug(
-                    "Session %s last_input_origin=%s not available; broadcasting to all UI adapters",
-                    session.session_id[:8],
-                    last_input_origin,
-                )
-                result = await self._route_to_ui(
-                    session, "send_message", text, broadcast=True, metadata=metadata, multi_message=multi_message
-                )
-        else:
-            logger.debug(
-                "Session %s missing last_input_origin; broadcasting to all UI adapters",
-                session.session_id[:8],
-            )
-            result = await self._route_to_ui(
-                session, "send_message", text, broadcast=True, metadata=metadata, multi_message=multi_message
-            )
+        # Route through unified path to ensure lane resilience (ensure_channel)
+        # Broadcast only if not feedback (ephemeral status updates)
+        should_broadcast = not feedback
+
+        result = await self._route_to_ui(
+            session_to_use,
+            "send_message",
+            text,
+            broadcast=should_broadcast,
+            metadata=metadata,
+            multi_message=multi_message,
+        )
         message_id = str(result) if result else None
 
         # Track for deletion if ephemeral

@@ -593,8 +593,9 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
 
     assert len(sent_sessions) == 1
     sent_session = sent_sessions[0]
-    assert sent_session.adapter_metadata.telegram
-    assert sent_session.adapter_metadata.telegram.topic_id == 999
+    telegram_meta = sent_session.get_metadata().get_ui().get_telegram()
+    assert telegram_meta
+    assert telegram_meta.topic_id == 999
 
 
 @pytest.mark.asyncio
@@ -734,8 +735,8 @@ async def test_send_message_notice_broadcasts_when_missing_origin():
 
 
 @pytest.mark.asyncio
-async def test_send_message_notice_targets_last_input_origin():
-    """Notices go only to last_input_origin."""
+async def test_send_message_notice_does_not_broadcast_to_observers():
+    """Notices should NOT broadcast to observers (noise reduction)."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -757,7 +758,7 @@ async def test_send_message_notice_targets_last_input_origin():
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id == "slack-feedback"
-    assert telegram_adapter.sent_messages == []
+    assert telegram_adapter.sent_messages == []  # No broadcast for notice
     assert slack_adapter.sent_messages == ["hello"]
 
 

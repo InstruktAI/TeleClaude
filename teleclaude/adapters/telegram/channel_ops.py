@@ -13,7 +13,7 @@ from telegram import ForumTopic
 from telegram.error import TelegramError
 
 from teleclaude.core.db import db
-from teleclaude.core.models import ChannelMetadata, Session, TelegramAdapterMetadata
+from teleclaude.core.models import ChannelMetadata, Session
 from teleclaude.utils import command_retry
 
 from ..base_adapter import AdapterError
@@ -76,8 +76,8 @@ class ChannelOperationsMixin:
             # Check if session already has a topic_id (from a previous successful call)
             # Re-fetch session inside lock to get latest metadata
             fresh_session = await db.get_session(session_id)
-            if fresh_session and fresh_session.adapter_metadata and fresh_session.adapter_metadata.telegram:
-                existing_topic_id = fresh_session.adapter_metadata.telegram.topic_id
+            if fresh_session:
+                existing_topic_id = fresh_session.get_metadata().get_ui().get_telegram().topic_id
                 if existing_topic_id:
                     logger.warning(
                         "Session %s already has topic_id %s, returning existing (prevented duplicate)",
@@ -99,11 +99,9 @@ class ChannelOperationsMixin:
             # Persist topic_id inside the lock so concurrent callers see it.
             updated_session = await db.get_session(session_id)
             if updated_session:
-                adapter_meta = updated_session.adapter_metadata.telegram
-                if not adapter_meta:
-                    adapter_meta = TelegramAdapterMetadata()
-                    updated_session.adapter_metadata.telegram = adapter_meta
-                adapter_meta.topic_id = int(topic_id)
+                # Use new accessor chain to set topic_id
+                telegram_meta = updated_session.get_metadata().get_ui().get_telegram()
+                telegram_meta.topic_id = int(topic_id)
                 await db.update_session(session_id, adapter_metadata=updated_session.adapter_metadata)
 
             return str(topic_id)
@@ -142,11 +140,9 @@ class ChannelOperationsMixin:
         """Update topic title."""
         self._ensure_started()
 
-        # Trust contract: metadata exists
-        if not session.adapter_metadata or not session.adapter_metadata.telegram:
-            raise AdapterError("Session missing telegram metadata")
-        topic_id = session.adapter_metadata.telegram.topic_id
-        assert isinstance(topic_id, int), "topic_id must be int"
+        topic_id = session.get_metadata().get_ui().get_telegram().topic_id
+        if topic_id is None:
+            raise AdapterError("Session missing telegram topic_id")
 
         try:
             await self._edit_forum_topic_with_retry(topic_id, title)
@@ -164,11 +160,9 @@ class ChannelOperationsMixin:
         """Soft-close forum topic (can be reopened)."""
         self._ensure_started()
 
-        # Trust contract: metadata exists
-        if not session.adapter_metadata or not session.adapter_metadata.telegram:
-            raise AdapterError("Session missing telegram metadata")
-        topic_id = session.adapter_metadata.telegram.topic_id
-        assert isinstance(topic_id, int), "topic_id must be int"
+        topic_id = session.get_metadata().get_ui().get_telegram().topic_id
+        if topic_id is None:
+            raise AdapterError("Session missing telegram topic_id")
 
         try:
             await self._close_forum_topic_with_retry(topic_id)
@@ -187,11 +181,9 @@ class ChannelOperationsMixin:
         """Reopen a closed forum topic."""
         self._ensure_started()
 
-        # Trust contract: metadata exists
-        if not session.adapter_metadata or not session.adapter_metadata.telegram:
-            raise AdapterError("Session missing telegram metadata")
-        topic_id = session.adapter_metadata.telegram.topic_id
-        assert isinstance(topic_id, int), "topic_id must be int"
+        topic_id = session.get_metadata().get_ui().get_telegram().topic_id
+        if topic_id is None:
+            raise AdapterError("Session missing telegram topic_id")
 
         try:
             await self._reopen_forum_topic_with_retry(topic_id)
@@ -210,11 +202,9 @@ class ChannelOperationsMixin:
         """Delete forum topic (permanent)."""
         self._ensure_started()
 
-        # Trust contract: metadata exists
-        if not session.adapter_metadata or not session.adapter_metadata.telegram:
-            raise AdapterError("Session missing telegram metadata")
-        topic_id = session.adapter_metadata.telegram.topic_id
-        assert isinstance(topic_id, int), "topic_id must be int"
+        topic_id = session.get_metadata().get_ui().get_telegram().topic_id
+        if topic_id is None:
+            raise AdapterError("Session missing telegram topic_id")
 
         try:
             await self._delete_forum_topic_with_retry(topic_id)
@@ -228,11 +218,3 @@ class ChannelOperationsMixin:
     async def _delete_forum_topic_with_retry(self, topic_id: int) -> None:
         """Internal method with retry logic for deleting forum topics."""
         await self.bot.delete_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
-
-    async def _delete_orphan_topic(self, topic_id: int) -> None:
-        """Delete a topic that no longer maps to a session."""
-        try:
-            await self._delete_forum_topic_with_retry(topic_id)
-            logger.info("Deleted orphan topic %s (no session)", topic_id)
-        except TelegramError as e:
-            logger.warning("Failed to delete orphan topic %s: %s", topic_id, e)

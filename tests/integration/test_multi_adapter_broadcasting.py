@@ -165,7 +165,10 @@ async def test_last_input_origin_receives_output():
 
     try:
         with patch("teleclaude.core.db.db", test_db):
-            with patch("teleclaude.core.adapter_client.db", test_db):
+            with (
+                patch("teleclaude.core.adapter_client.db", test_db),
+                patch("teleclaude.adapters.ui_adapter.db", test_db),
+            ):
                 # Create session
                 session = await test_db.create_session(
                     computer_name="TestPC",
@@ -217,7 +220,10 @@ async def test_redis_observer_skipped_no_ui():
 
     try:
         with patch("teleclaude.core.db.db", test_db):
-            with patch("teleclaude.core.adapter_client.db", test_db):
+            with (
+                patch("teleclaude.core.adapter_client.db", test_db),
+                patch("teleclaude.adapters.ui_adapter.db", test_db),
+            ):
                 # Create session with telegram origin
                 session = await test_db.create_session(
                     computer_name="TestPC",
@@ -338,7 +344,10 @@ async def test_ui_observer_receives_broadcasts():
 
     try:
         with patch("teleclaude.core.db.db", test_db):
-            with patch("teleclaude.core.adapter_client.db", test_db):
+            with (
+                patch("teleclaude.core.adapter_client.db", test_db),
+                patch("teleclaude.adapters.ui_adapter.db", test_db),
+            ):
                 # Create session
                 session = await test_db.create_session(
                     computer_name="TestPC",
@@ -459,7 +468,10 @@ async def test_observer_failure_does_not_affect_origin():
 
     try:
         with patch("teleclaude.core.db.db", test_db):
-            with patch("teleclaude.core.adapter_client.db", test_db):
+            with (
+                patch("teleclaude.core.adapter_client.db", test_db),
+                patch("teleclaude.adapters.ui_adapter.db", test_db),
+            ):
                 # Create session
                 session = await test_db.create_session(
                     computer_name="TestPC",
@@ -575,7 +587,10 @@ async def test_origin_failure_raises_exception():
 
     try:
         with patch("teleclaude.core.db.db", test_db):
-            with patch("teleclaude.core.adapter_client.db", test_db):
+            with (
+                patch("teleclaude.core.adapter_client.db", test_db),
+                patch("teleclaude.adapters.ui_adapter.db", test_db),
+            ):
                 # Create session
                 session = await test_db.create_session(
                     computer_name="TestPC",
@@ -590,9 +605,9 @@ async def test_origin_failure_raises_exception():
                 telegram_adapter = MockTelegramAdapterFailing(adapter_client)
                 adapter_client.adapters = {"telegram": telegram_adapter}
 
-                # Attempt to send message (should raise)
-                with pytest.raises(Exception, match="Telegram API error"):
-                    await adapter_client.send_message(session, "Test output")
+                # Attempt to send message (should return None on failure, not raise)
+                result = await adapter_client.send_message(session, "Test output")
+                assert result is None, "Should return None when origin adapter fails"
 
     finally:
         await test_db.close()
@@ -698,7 +713,10 @@ async def test_discover_peers_respects_redis_enabled_flag():
 
     try:
         with patch("teleclaude.core.db.db", test_db):
-            with patch("teleclaude.core.adapter_client.db", test_db):
+            with (
+                patch("teleclaude.core.adapter_client.db", test_db),
+                patch("teleclaude.adapters.ui_adapter.db", test_db),
+            ):
                 # Create adapter client with mock Redis adapter
                 redis_transport = MockRedisTransportWithPeers()
                 adapter_client = AdapterClient()

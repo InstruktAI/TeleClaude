@@ -122,8 +122,8 @@ class TestSession:
 
         session = Session.from_dict(data)
 
-        assert session.adapter_metadata.telegram is not None
-        assert session.adapter_metadata.telegram.topic_id == 123
+        assert session.get_metadata().get_ui().get_telegram() is not None
+        assert session.get_metadata().get_ui().get_telegram().topic_id == 123
 
     def test_session_from_dict_parses_footer_message_id(self):
         """Footer message id should hydrate from adapter metadata."""
@@ -139,8 +139,8 @@ class TestSession:
         }
 
         session = Session.from_dict(data)
-        assert session.adapter_metadata.telegram is not None
-        assert session.adapter_metadata.telegram.footer_message_id == "84"
+        assert session.get_metadata().get_ui().get_telegram() is not None
+        assert session.get_metadata().get_ui().get_telegram().footer_message_id == "84"
 
     def test_session_from_dict_parses_legacy_threaded_footer_message_id(self):
         """Legacy threaded_footer_message_id should map to footer_message_id."""
@@ -154,8 +154,8 @@ class TestSession:
         }
 
         session = Session.from_dict(data)
-        assert session.adapter_metadata.telegram is not None
-        assert session.adapter_metadata.telegram.footer_message_id == "99"
+        assert session.get_metadata().get_ui().get_telegram() is not None
+        assert session.get_metadata().get_ui().get_telegram().footer_message_id == "99"
 
 
 class TestRecording:

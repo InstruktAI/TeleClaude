@@ -437,6 +437,82 @@ class TestMessaging:
             ]
         )
 
+    @pytest.mark.asyncio
+    async def test_send_message_raises_when_topic_missing(self, telegram_adapter):
+        """send_message should raise RuntimeError if topic_id is missing/None."""
+        telegram_adapter._ensure_started = MagicMock()
+
+        session = Session(
+            session_id="session-no-topic",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=None),  # No telegram metadata
+        )
+
+        with pytest.raises(RuntimeError, match="Telegram topic_id missing"):
+            await telegram_adapter.send_message(session, "hello")
+
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(topic_id=None)  # Metadata present but topic_id None
+        with pytest.raises(RuntimeError, match="Telegram topic_id missing"):
+            await telegram_adapter.send_message(session, "hello")
+
+    @pytest.mark.asyncio
+    async def test_send_file_raises_when_topic_missing(self, telegram_adapter):
+        """send_file should raise RuntimeError if topic_id is missing/None."""
+        telegram_adapter._ensure_started = MagicMock()
+
+        session = Session(
+            session_id="session-no-topic",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=None),
+        )
+
+        with pytest.raises(RuntimeError, match="Telegram topic_id missing"):
+            await telegram_adapter.send_file(session, "/tmp/foo.txt")
+
+
+class TestRecovery:
+    """Tests for error recovery."""
+
+    @pytest.mark.asyncio
+    async def test_recover_lane_error_handles_missing_topic_exception(self, telegram_adapter):
+        """recover_lane_error should catch RuntimeError('Telegram topic_id missing')."""
+        session = Session(
+            session_id="session-recovery",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=None)),
+        )
+
+        # Mock ensure_channel to simulate successful recovery
+        telegram_adapter.ensure_channel = AsyncMock(return_value=session)
+
+        async def task_factory(adapter, session):
+            return "success"
+
+        # Mock db calls inside recover_lane_error
+        with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+            mock_db.set_output_message_id = AsyncMock()
+
+            result = await telegram_adapter.recover_lane_error(
+                session,
+                RuntimeError("Telegram topic_id missing (no metadata)"),
+                task_factory,
+                "Title",
+            )
+
+        assert result == "success"
+        telegram_adapter.ensure_channel.assert_awaited_once()
+
     def test_truncate_for_platform_keeps_markdownv2_balanced(self, telegram_adapter):
         """MarkdownV2 truncation should respect Telegram limit and avoid dangling escapes."""
         long_text = telegramify_markdown("Line one.\n" * 2000)
@@ -857,31 +933,3 @@ class TestMessageNotModified:
         # Should return False (message was deleted)
         assert result is False
         assert len(calls) == 1  # No retry for BadRequest
-
-
-class TestTopicOwnership:
-    """Tests for topic ownership heuristics."""
-
-    def test_topic_title_mentions_this_computer(self, telegram_adapter):
-        """Test that titles containing this computer name are flagged as owned."""
-        telegram_adapter.computer_name = "test_computer"
-        assert telegram_adapter._topic_title_mentions_this_computer("TeleClaude: Codex-slow@test_computer - resume abc")
-        assert telegram_adapter._topic_title_mentions_this_computer("TeleClaude: $test_computer - Untitled")
-        assert not telegram_adapter._topic_title_mentions_this_computer(
-            "TeleClaude: Codex-slow@other_computer - resume abc"
-        )
-
-    def test_topic_owned_by_this_bot_from_reply_title(self, telegram_adapter):
-        """Test that reply-to message titles establish topic ownership."""
-        telegram_adapter.computer_name = "test_computer"
-        update = MagicMock()
-        message = MagicMock()
-        reply = MagicMock()
-        forum_created = MagicMock()
-        forum_created.name = "TeleClaude: Codex-slow@test_computer - resume abc"
-        reply.forum_topic_created = forum_created
-        message.reply_to_message = reply
-        message.forum_topic_created = None
-        update.effective_message = message
-
-        assert telegram_adapter._topic_owned_by_this_bot(update, topic_id=123) is True

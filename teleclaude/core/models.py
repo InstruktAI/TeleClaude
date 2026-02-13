@@ -138,6 +138,19 @@ class TelegramAdapterMetadata:
 
 
 @dataclass
+class UiAdapterMetadata:
+    """Metadata container for UI adapters."""
+
+    _telegram: Optional[TelegramAdapterMetadata] = None
+
+    def get_telegram(self) -> TelegramAdapterMetadata:
+        """Get Telegram metadata, initializing if missing."""
+        if self._telegram is None:
+            self._telegram = TelegramAdapterMetadata()
+        return self._telegram
+
+
+@dataclass
 class RedisTransportMetadata:  # pylint: disable=too-many-instance-attributes
     """Redis-specific adapter metadata."""
 
@@ -152,15 +165,68 @@ class RedisTransportMetadata:  # pylint: disable=too-many-instance-attributes
 
 
 @dataclass
+class TransportAdapterMetadata:
+    """Metadata container for Transport adapters."""
+
+    _redis: Optional[RedisTransportMetadata] = None
+
+    def get_redis(self) -> RedisTransportMetadata:
+        """Get Redis metadata, initializing if missing."""
+        if self._redis is None:
+            self._redis = RedisTransportMetadata()
+        return self._redis
+
+
+@dataclass
 class SessionAdapterMetadata:
     """Typed metadata container for all adapters."""
 
-    telegram: Optional[TelegramAdapterMetadata] = None
-    redis: Optional[RedisTransportMetadata] = None
+    _ui: UiAdapterMetadata = field(default_factory=UiAdapterMetadata)
+    _transport: TransportAdapterMetadata = field(default_factory=TransportAdapterMetadata)
+
+    def __init__(
+        self,
+        telegram: Optional[TelegramAdapterMetadata] = None,
+        redis: Optional[RedisTransportMetadata] = None,
+        _ui: Optional[UiAdapterMetadata] = None,
+        _transport: Optional[TransportAdapterMetadata] = None,
+    ) -> None:
+        """Initialize with backward compatibility for 'telegram' and 'redis' args."""
+        if _ui is not None:
+            self._ui = _ui
+        else:
+            self._ui = UiAdapterMetadata(_telegram=telegram)
+
+        if _transport is not None:
+            self._transport = _transport
+        else:
+            self._transport = TransportAdapterMetadata(_redis=redis)
+
+    def get_ui(self) -> UiAdapterMetadata:
+        """Get UI adapter metadata container."""
+        return self._ui
+
+    def get_transport(self) -> TransportAdapterMetadata:
+        """Get Transport adapter metadata container."""
+        return self._transport
 
     def to_json(self) -> str:
-        """Serialize to JSON string, excluding None fields."""
-        return json.dumps(asdict_exclude_none(self))
+        """Serialize to JSON string, excluding None fields.
+
+        Flattens adapters back to root keys for backward compatibility.
+        """
+        # manual dict construction to preserve root keys
+        data: Dict[str, JsonValue] = {}
+
+        # UI Adapters (flattened)
+        if self._ui._telegram:
+            data["telegram"] = asdict_exclude_none(self._ui._telegram)
+
+        # Transport Adapters (flattened)
+        if self._transport._redis:
+            data["redis"] = asdict_exclude_none(self._transport._redis)
+
+        return json.dumps(data)
 
     @classmethod
     def from_json(cls, raw: str) -> "SessionAdapterMetadata":
@@ -221,7 +287,10 @@ class SessionAdapterMetadata:
                     channel_metadata=channel_meta_str,
                 )
 
-        return cls(telegram=telegram_metadata, redis=redis_metadata)
+        # Reconstruct hierarchy
+        ui_metadata = UiAdapterMetadata(_telegram=telegram_metadata)
+        transport_metadata = TransportAdapterMetadata(_redis=redis_metadata)
+        return cls(_ui=ui_metadata, _transport=transport_metadata)
 
 
 @dataclass
@@ -361,6 +430,10 @@ class Session:  # pylint: disable=too-many-instance-attributes
     human_email: Optional[str] = None
     human_role: Optional[str] = None
     lifecycle_status: str = "active"
+
+    def get_metadata(self) -> SessionAdapterMetadata:
+        """Get session adapter metadata."""
+        return self.adapter_metadata
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict - Serialization output
         """Convert session to dictionary for JSON serialization."""

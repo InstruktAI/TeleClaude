@@ -1,92 +1,71 @@
-# Implementation Plan: telegram-adapter-hardening
+# Implementation Plan - Telegram Adapter Hardening
 
-## Overview
+The goal is to harden the Telegram adapter architecture by enforcing deterministic routing via the database, removing brittle regex-based ownership inference, and improving encapsulation.
 
-Serial execution by concern. Each phase is independently verifiable and produces an atomic commit.
+## User Review Required
 
-## Phase 1: Ingress Contract Tightening
+> [!IMPORTANT]
+> **Critical Change:** We are replacing the regex-based "topic ownership" check (`_topic_owned_by_this_bot`) with a strict DB lookup (`db.get_sessions_by_adapter_metadata`).
+>
+> **Impact:**
+>
+> - If a topic ID is not in the DB, the message is ignored. No more "guessing" if it belongs to us.
+> - "Orphan" topics (valid ID format but not in DB) will be treated as noise and ignored, NOT deleted. The previous reactive deletion logic was dangerous and noisy.
+> - **Action Required:** Ensure the database is the single source of truth for all active sessions.
 
-### Task 1.1: Remove sentinel coercion for `project_path`
+- [x] **Confirm:** "Ignore" strategy for unknown topics is acceptable (vs "Delete").
+- [x] **Confirm:** Law of Demeter enforcement (`session.get_metadata().get_ui().get_telegram()` and `session.get_metadata().get_transport().get_redis()`) is desired.
 
-**File(s):** `teleclaude/core/command_mapper.py`
+## Proposed Changes
 
-- [ ] Lines 60, 177, 241: replace `project_path=metadata.project_path or ""` with explicit pass-through of `None`.
-- [ ] Update `CreateSessionCommand` to accept `Optional[str]` for `project_path` if not already.
+### 1. Unified Routing Lane (`adapter_client.py`)
 
-### Task 1.2: Restrict help-desk routing to role-based jail only
+- [x] Refactor `send_message` to use `_route_to_ui` for all UI-bound messages (not just errors).
+- [x] Ensure `_route_to_ui` uses the encapsulated metadata accessor.
 
-**File(s):** `teleclaude/core/command_handlers.py`
+### 2. Encapsulation & Law of Demeter (`models.py`)
 
-- [ ] Lines 321-329: remove the `if not project_path` block that defaults to `help-desk`.
-- [ ] When `project_path` is missing and no role-based jail applies, return explicit failure to caller.
-- [ ] Preserve lines 307-319 (explicit non-admin role jail) unchanged.
+- [x] Define `UiAdapterMetadata` in `teleclaude/core/models.py`.
+- [x] Define `TransportAdapterMetadata` in `teleclaude/core/models.py` (for Redis encapsulation).
+- [x] Update `SessionAdapterMetadata` to hold `_ui` (UiAdapterMetadata) and `_transport` (TransportAdapterMetadata) instead of raw `telegram`/`redis` dicts.
+- [x] Expose `get_ui()` and `get_transport()` methods.
+- [x] Maintain JSON serialization compatibility (flatten/unflatten).
 
-### Task 1.3: Align callers to new contract
+### 3. Strict Ownership & Sane Routing (`telegram_adapter.py`)
 
-- [ ] Grep callers of `CreateSessionCommand` and verify they handle `None` / failure correctly.
-- [ ] Update tests for `create_session` to cover: valid path, role-jailed, missing path (error).
+- [x] Remove `_topic_title_mentions_this_computer` (regex logic).
+- [x] Remove `_topic_owned_by_this_bot` (regex logic).
+- [x] Update `_get_session_from_topic`:
+  - Query DB via `db.get_sessions_by_adapter_metadata(adapter="telegram", key="topic_id", value=topic_id)`.
+  - If DB returns match -> Process.
+  - If DB returns empty -> Ignore (log as trace/debug).
+- [x] Remove `_delete_orphan_topic` calls entirely.
 
-## Phase 2: Session Data Contract
+### 4. Normalize Delivery Contract (`message_ops.py`)
 
-### Task 2.1: Add explicit source field to `SessionDataPayload`
+- [x] Update `send_message` and `send_file` to:
+  - Check `metadata.topic_id` immediately.
+  - Raise `RuntimeError("Telegram topic_id missing")` if absent (Fail Fast).
+  - Return `message_id` on success.
 
-**File(s):** `teleclaude/core/command_handlers.py`
+## Verification Plan
 
-- [ ] Add `source: str` to `SessionDataPayload` TypedDict with values: `"transcript"`, `"tmux_fallback"`, `"pending"`.
-- [ ] `_tmux_fallback_payload`: set `source="tmux_fallback"`.
-- [ ] `_pending_transcript_payload`: set `source="pending"`.
-- [ ] Normal transcript return: set `source="transcript"`.
+### Automated Tests
 
-### Task 2.2: Align MCP callers
+- [x] Run `tests/unit/test_telegram_adapter.py` to verify routing logic.
+- [x] Run `tests/unit/test_adapter_client.py` to verify unified sending path.
+- [x] Run `tests/unit/test_db.py` to verify metadata queries.
+- [x] Run `tests/unit/test_redis_adapter.py` to verify transport metadata encapsulation.
 
-- [ ] Check `get_session_data` tool handler for any `messages == ""` checks; replace with `source` field branching.
+### Manual Verification (if needed)
 
-## Phase 3: Telegram Delivery Contract
+- [x] Start daemon.
+- [x] Send message to known session -> delivered.
+- [x] Send message to random topic -> ignored (no log spam).
+- [x] Verify TUI updates correctly.
 
-### Task 3.1: Fix send_message return contract
+## Status
 
-**File(s):** `teleclaude/adapters/telegram/message_ops.py`
-
-- [ ] Line 130: return `None` instead of `""` when `topic_id` is not ready.
-- [ ] Update return type annotation from `str` to `str | None` if needed.
-- [ ] Check callers for truthy checks on return value (should already handle `None`).
-
-## Phase 4: Orphan Topic Cleanup Suppression
-
-### Task 4.1: Add cooldown-based suppression for repeated invalid-topic deletes
-
-**File(s):** `teleclaude/adapters/telegram/channel_ops.py`, `teleclaude/adapters/telegram_adapter.py`
-
-- [ ] Add `_delete_suppression: dict[int, float]` tracking `topic_id → last_attempt_timestamp`.
-- [ ] In `_delete_orphan_topic`, skip if `topic_id` was attempted within cooldown window (60s).
-- [ ] Log skipped attempts at debug level with reason.
-- [ ] Prune stale entries from suppression dict periodically (e.g., on each call, drop entries older than 5min).
-
-## Phase 5: Ownership Check Hardening
-
-### Task 5.1: Cross-reference DB for delete ownership
-
-**File(s):** `teleclaude/adapters/telegram_adapter.py`
-
-- [ ] In `_topic_owned_by_this_bot` (line 883): query `db.get_sessions_by_adapter_metadata("telegram", "topic_id", topic_id)` as primary ownership signal.
-- [ ] If DB returns a session for this topic, it's owned. If no session but title matches, log warning and still consider owned (backward compat).
-- [ ] If neither DB nor title match, return `False`.
-- [ ] Make `_topic_owned_by_this_bot` async (callers already in async context).
-
-## Phase 6: Parse-Entities Error Hardening
-
-### Task 6.1: Make parse-entities fallback explicit
-
-**File(s):** `teleclaude/adapters/telegram/message_ops.py`
-
-- [ ] Line 302: after `can't parse entities` detection, add explicit fallback action (retry without parse_mode, or skip edit with structured log).
-- [ ] Emit structured log with fields: `session_id`, `message_id`, `parse_mode`, `action_taken`.
-- [ ] Ensure no duplicate footer/message emission on parse failure path.
-
-## Verification
-
-- [ ] `make lint` passes.
-- [ ] `make test` passes.
-- [ ] Manual smoke: create session without project_path from MCP → expect explicit error.
-- [ ] Manual smoke: close orphan topic twice rapidly → second attempt suppressed.
-- [ ] Manual smoke: `get_session_data` on active session → response includes `source` field.
+- **Status:** Complete
+- **Started:** 2026-02-13
+- **Completed:** 2026-02-13

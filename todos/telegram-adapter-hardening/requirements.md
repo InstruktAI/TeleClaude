@@ -2,45 +2,42 @@
 
 ## Goal
 
-Harden Telegram message routing, delivery contracts, cleanup behavior, and ownership checks so that failures are explicit, cleanup is bounded, and cross-layer responsibility is clear.
+Enforce Law of Demeter boundaries across session metadata and hook/session identity flow, while replacing implicit fallbacks with explicit fail-fast behavior.
 
 ## In Scope
 
-1. **Sentinel coercion removal** — `CommandMapper` coerces missing `project_path` to `""` in three places. Missing required values must fail at ingress, not silently become empty strings.
-2. **Help-desk fallback restriction** — `create_session` defaults missing `project_path` to `help-desk` even for unrestricted callers. Remove this non-role-based reroute; preserve the explicit non-admin jail.
-3. **Session data contract clarity** — `get_session_data` returns ambiguous payloads where `messages` can be tmux output, pending notice, or parsed transcript. Callers cannot distinguish state without string inspection.
-4. **Send-message return contract** — `MessageOperationsMixin.send_message` returns `""` when `topic_id` is not ready. This sentinel is indistinguishable from a failure to callers.
-5. **Orphan topic cleanup suppression** — `_delete_orphan_topic` can be called repeatedly for the same invalid topic from `_handle_text_message`, `_handle_topic_closed`, and `_require_session_from_topic` with no backoff or cooldown.
-6. **Ownership check hardening** — `_topic_owned_by_this_bot` relies solely on title string matching (`@computer` or `$computer`). This heuristic can produce false positives when topic titles are reused or stale.
-7. **Parse-entities error handling** — `can't parse entities` errors in `edit_message` are logged but the fallback path is implicit. Make the retry/skip behavior explicit and observable.
+1. **Metadata access encapsulation** - remove broad direct access (`session.adapter_metadata.telegram` / `.redis`) from runtime codepaths and route through typed accessors.
+2. **Adapter metadata layering** - represent metadata as UI/transport containers and keep serialized storage backward-compatible (`telegram` and `redis` keys unchanged on disk).
+3. **Fail-fast Telegram send contracts** - when `topic_id` is missing, raise explicit errors for send/edit paths instead of silently returning sentinel values.
+4. **Hook routing contract hardening** - enforce strict TMUX marker contract for non-headless hooks; keep headless resolution map/DB-driven and explicit.
+5. **Orphan ownership heuristic removal** - remove brittle title-based topic ownership inference and related opportunistic delete path.
+6. **Routing consistency** - route UI send paths through the same lane-recovery flow so channel recreation behavior is consistent.
 
 ## Out of Scope
 
-1. Redesign of the adapter model or UiAdapter base class.
-2. Non-Telegram adapter behavior.
-3. TUI/visual changes.
-4. Full identity/authorization redesign.
+1. Full auth/identity redesign beyond hook route contract validation.
+2. New adapter types or non-Telegram transport redesign.
+3. TUI visual redesign.
+4. Broad functional feature additions outside hardening/refactor scope.
 
 ## Success Criteria
 
-- [ ] `CommandMapper` raises or returns explicit error when `project_path` is missing and required.
-- [ ] Session creation for unrestricted callers without `project_path` fails explicitly instead of silently routing to help-desk.
-- [ ] Non-admin role jail to help-desk remains functional and unchanged.
-- [ ] `get_session_data` response includes an explicit `source` field distinguishing transcript, tmux fallback, and pending states.
-- [ ] `send_message` returns `None` (not `""`) when delivery is skipped, or raises on unrecoverable failure.
-- [ ] Repeated orphan topic deletes for the same `topic_id` are suppressed within a cooldown window (e.g., 60s).
-- [ ] `_topic_owned_by_this_bot` cross-references DB session records, not just title strings, before authorizing delete.
-- [ ] Parse-entities failures emit a structured log with reason code and the fallback action taken is explicit.
-- [ ] All changes pass `make lint` and `make test`.
+- [x] Runtime codepaths use accessor chains (`get_metadata().get_ui().get_telegram()` / `get_transport().get_redis()`) instead of direct adapter metadata attribute access.
+- [x] Session metadata JSON format remains backward-compatible for existing rows.
+- [x] Telegram send/file behavior fails explicitly when no topic is available.
+- [x] Hook receiver exits non-zero on contract violations instead of silently dropping handled events.
+- [x] Title-based ownership heuristic helpers are removed from Telegram adapter.
+- [x] Targeted tests covering adapter client, hooks, metadata model, Telegram adapter, UI adapter, and multi-adapter broadcast pass.
+- [x] `make lint` passes for the worktree.
 
 ## Constraints
 
-1. Preserve existing user-facing functional behavior where safe.
-2. Keep changes incremental with atomic commits per concern.
-3. Do not introduce new fallback paths that hide failures.
+1. Preserve existing persisted metadata shape for `telegram`/`redis`.
+2. Keep refactor incremental with test coverage for behavior changes.
+3. Prefer explicit contract failures over implicit fallbacks in critical routing paths.
 
 ## Risks
 
-1. Tightening `project_path` contracts may surface latent callers that rely on the empty-string sentinel.
-2. Suppression logic tuned too aggressively may hide legitimate one-off cleanup recovery.
-3. Ownership check changes may leave some orphan topics uncleaned if the DB record is already deleted.
+1. Stricter hook contract validation can surface latent environment misconfiguration.
+2. Fail-fast topic contracts may reveal previously masked ordering/race issues in callers.
+3. Removing heuristic ownership cleanup can leave orphan threads that previously relied on best-effort deletion.
