@@ -21,9 +21,29 @@ Implement the Admin Telegram mirroring and intervention logic. Establish the "Ad
 
 ## Release Automation
 
-- release-automation
+- release-manifests
 
-A fully automated release pipeline where a dedicated AI inspector analyzes diffs on every main push, decides whether to release (patch/minor) based on contract manifests, and creates releases automatically with generated notes. Features a dual-lane pipeline (Claude Code + Codex CLI) and a consensus arbiter.
+Define public surface contract manifests (CLI, MCP, Events, API) and add contract tests that assert runtime alignment.
+
+- release-workflow-foundation (after: release-manifests)
+
+Establish baseline GitHub Actions for lint/test and the skeleton release workflow that triggers on main pushes.
+
+- release-lane-claude (after: release-workflow-foundation)
+
+Implement the Claude Code release inspector lane using `anthropics/claude-code-action`.
+
+- release-lane-codex (after: release-workflow-foundation)
+
+Implement the Codex CLI release inspector lane using `openai/codex-action`.
+
+- release-lane-gemini (after: release-workflow-foundation)
+
+Implement the Gemini release inspector lane using a dedicated Gemini action or API call.
+
+- release-arbiter (after: release-lane-claude, release-lane-codex, release-lane-gemini)
+
+Implement the consensus arbiter that consumes lane reports (Claude, Codex, Gemini) and authorizes tagging/releases based on JSON decision output.
 
 ## Session Messages API
 

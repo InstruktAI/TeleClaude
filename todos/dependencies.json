@@ -27,6 +27,23 @@
   "person-identity-auth-3": [
     "person-identity-auth-2"
   ],
+  "release-arbiter": [
+    "release-lane-claude",
+    "release-lane-codex",
+    "release-lane-gemini"
+  ],
+  "release-lane-claude": [
+    "release-workflow-foundation"
+  ],
+  "release-lane-codex": [
+    "release-workflow-foundation"
+  ],
+  "release-lane-gemini": [
+    "release-workflow-foundation"
+  ],
+  "release-workflow-foundation": [
+    "release-manifests"
+  ],
   "role-based-notifications": [
     "person-identity-auth"
   ],

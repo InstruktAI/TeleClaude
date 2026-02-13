@@ -81,10 +81,13 @@ The `script` field is the discriminator. Its presence determines the execution m
 agent is involved. Use for simple, deterministic jobs that need no AI reasoning.
 
 **Agent jobs** (`script` absent, `job` required) — The runner spawns a subprocess
-via `run_job()`. The agent has full tool access (bash, read, write, glob, grep,
+via `run_job()`. This utilizes the standardized `teleclaude/helpers/agent_cli.py`
+library (Elevated mode). The agent has full tool access (bash, read, write, glob, grep,
 etc.) and MCP access when the daemon is running. The agent reads its spec doc
 (`docs/project/spec/jobs/<job>.md`), runs whatever scripts and tools the spec
 describes, fixes forward within scope, writes a run report, and stops.
+
+See: [Agent Invocation Modes](@general/concept/agent-invocation-modes)
 
 Agent jobs are daemon-independent: they run as direct subprocesses, not as daemon
 API calls. If the daemon is down, the agent still spawns and executes — it just

@@ -424,6 +424,50 @@ async def test_handle_agent_stop_codex_does_not_clobber_last_message_sent_at_wit
 
 
 @pytest.mark.asyncio
+async def test_handle_agent_stop_codex_skips_backfill_when_submit_already_recorded_this_turn(coordinator):
+    session_id = "sess-1"
+    now = datetime(2026, 2, 13, 19, 31, 27, tzinfo=timezone.utc)
+    payload = AgentStopPayload(
+        session_id="native-1",
+        transcript_path="/tmp/transcript.jsonl",
+        source_computer="local",
+        raw={"agent_name": "codex"},
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.AGENT_STOP, session_id=session_id, data=payload)
+    session = Session(
+        session_id=session_id,
+        computer_name="local",
+        tmux_session_name="tmux-1",
+        title="Test",
+        active_agent="codex",
+        native_log_file="/tmp/transcript.jsonl",
+        last_message_sent="test, say hi",
+        last_message_sent_at=now,
+        last_feedback_received_at=now - timedelta(seconds=2),
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch.object(coordinator, "_extract_user_input_for_codex", new=AsyncMock(return_value=("test, say hi", now))),
+        patch.object(coordinator, "_extract_agent_output", new=AsyncMock(return_value=None)),
+        patch.object(coordinator, "_maybe_send_incremental_output", new=AsyncMock()),
+        patch.object(coordinator, "_maybe_send_headless_snapshot", new=AsyncMock()),
+        patch.object(coordinator, "_notify_session_listener", new=AsyncMock()),
+        patch.object(coordinator, "_forward_stop_to_initiator", new=AsyncMock()),
+        patch.object(coordinator, "_maybe_inject_checkpoint", new=AsyncMock()),
+        patch.object(coordinator, "_emit_activity_event") as mock_emit,
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+
+        await coordinator.handle_agent_stop(context)
+
+        emitted_types = [call.args[1] for call in mock_emit.call_args_list]
+        assert AgentHookEvents.USER_PROMPT_SUBMIT not in emitted_types
+        assert AgentHookEvents.AGENT_STOP in emitted_types
+
+
+@pytest.mark.asyncio
 async def test_handle_agent_stop_skips_whitespace_only_agent_output(coordinator):
     session_id = "sess-empty-output"
     payload = AgentStopPayload(

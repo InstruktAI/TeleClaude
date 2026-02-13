@@ -1,6 +1,13 @@
 project_root: ~/.teleclaude
 snippets_root: ~/.teleclaude/docs
 snippets:
+- id: general/concept/agent-invocation-modes
+  description: Standardized invocation patterns for AI agent CLIs, separating structured
+    extraction from autonomous execution.
+  type: concept
+  scope: global
+  path: docs/general/concept/agent-invocation-modes.md
+  source_project: TeleClaude
 - id: general/concept/documentation-snippets
   description: Modular documentation system for selective context delivery to AI agents.
   type: concept

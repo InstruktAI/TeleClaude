@@ -43,6 +43,7 @@ CODEX_INPUT_MAX_CHARS = 4000
 # Codex TUI markers
 CODEX_PROMPT_MARKER = "›"  # User input prompt line
 CODEX_PROMPT_LIVE_DISTANCE = 4  # Prompt marker must be close to bottom unless submit boundary is found
+CODEX_TOOL_ACTION_LOOKBACK_LINES = 120
 # Agent "thinking/working" markers - Codex uses animated symbols
 # These indicate agent has started responding (user input complete)
 CODEX_AGENT_MARKERS = frozenset(
@@ -64,8 +65,7 @@ CODEX_AGENT_MARKERS = frozenset(
     }
 )
 
-_ANSI_DIM_RE = re.compile(r"\x1b\[2m")  # Dim text
-_ANSI_ITALIC_RE = re.compile(r"\x1b\[3m")  # Italic text
+_ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
 _ANSI_BOLD_TOKEN_RE = re.compile(r"\x1b\[[0-9;]*1m([A-Za-z][A-Za-z_-]{1,40})\x1b\[[0-9;]*m")
 _ACTION_WORD_RE = re.compile(r"^([A-Za-z][A-Za-z_-]{1,40})")
 
@@ -95,9 +95,48 @@ def _strip_ansi(text: str) -> str:
     return strip_ansi_codes(text)
 
 
+def _has_sgr_param(text: str, target: str) -> bool:
+    """Return True when any SGR sequence contains the exact parameter."""
+    for match in _ANSI_SGR_RE.finditer(text):
+        params = [p for p in match.group(1).split(";") if p]
+        if target in params:
+            return True
+    return False
+
+
 def _is_suggestion_styled(text: str) -> bool:
-    """Check if text contains dim or italic ANSI styling (indicates a suggestion)."""
-    return bool(_ANSI_DIM_RE.search(text) or _ANSI_ITALIC_RE.search(text))
+    """Check if text contains dim or italic SGR styling (indicates a suggestion)."""
+    return _has_sgr_param(text, "2") or _has_sgr_param(text, "3")
+
+
+def _strip_suggestion_segments(text: str) -> str:
+    """Remove only dim/italic-styled text segments (autocomplete suggestions)."""
+    if "\x1b[" not in text:
+        return text
+
+    out: list[str] = []
+    active_suggestion_style = False
+    idx = 0
+    while idx < len(text):
+        if text[idx] == "\x1b":
+            match = _ANSI_SGR_RE.match(text, idx)
+            if match:
+                params = [p for p in match.group(1).split(";") if p]
+                if not params or "0" in params:
+                    active_suggestion_style = False
+                else:
+                    if "22" in params and "2" not in params:
+                        active_suggestion_style = False
+                    if "23" in params and "3" not in params:
+                        active_suggestion_style = False
+                    if "2" in params or "3" in params:
+                        active_suggestion_style = True
+                idx = match.end()
+                continue
+        if not active_suggestion_style:
+            out.append(text[idx])
+        idx += 1
+    return "".join(out)
 
 
 @dataclass
@@ -122,6 +161,8 @@ class CodexTurnState:
     turn_active: bool = False
     in_tool: bool = False
     prompt_visible_last: bool = False
+    initialized: bool = False
+    last_tool_signature: str = ""
 
 
 # Per-session Codex input tracking state
@@ -167,7 +208,8 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:
         return "", False
 
     raw_after = prompt_line[marker_pos + len(CODEX_PROMPT_MARKER) :]
-    if _is_suggestion_styled(raw_after):
+    raw_after_without_suggestion = _strip_suggestion_segments(raw_after)
+    if _is_suggestion_styled(raw_after) and not _strip_ansi(raw_after_without_suggestion).strip():
         logger.debug(
             "[CODEX] Skipping suggestion-styled text: %r",
             _strip_ansi(raw_after).strip()[:30],
@@ -175,7 +217,7 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:
         return "", False
 
     parts: list[str] = []
-    first = _strip_ansi(raw_after).strip()
+    first = _strip_ansi(raw_after_without_suggestion).strip()
     if first:
         parts.append(first)
 
@@ -193,9 +235,10 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:
         if stripped.startswith(CODEX_PROMPT_MARKER):
             # New prompt marker means previous block ended.
             break
-        if _is_suggestion_styled(line):
+        line_without_suggestion = _strip_suggestion_segments(line)
+        if _is_suggestion_styled(line) and not _strip_ansi(line_without_suggestion).strip():
             continue
-        parts.append(clean_line.rstrip())
+        parts.append(_strip_ansi(line_without_suggestion).rstrip())
 
     # Ignore stale scrollback prompt markers that are too far above live bottom
     # unless we already detected a submit boundary marker below this prompt block.
@@ -255,10 +298,10 @@ def _is_live_agent_marker_line(line: str) -> bool:
     return len(tail) <= 20 and " " not in tail
 
 
-def _find_recent_tool_action(output: str) -> str | None:
-    """Find recent visible tool action word from the bottom of the pane."""
+def _find_recent_tool_action(output: str) -> tuple[str, str] | None:
+    """Find recent visible tool action and return (action_word, normalized_line)."""
     lines = output.rstrip().split("\n")
-    for raw_line in reversed(lines[-12:]):
+    for raw_line in reversed(lines[-CODEX_TOOL_ACTION_LOOKBACK_LINES:]):
         clean_line = _strip_ansi(raw_line).strip()
         if not clean_line or clean_line[0] not in CODEX_AGENT_MARKERS:
             continue
@@ -270,9 +313,9 @@ def _find_recent_tool_action(output: str) -> str | None:
         bold_match = _ANSI_BOLD_TOKEN_RE.search(raw_line)
         bold_word = bold_match.group(1) if bold_match else None
         if action_word in _CODEX_TOOL_ACTION_WORDS:
-            return action_word
+            return action_word, clean_line
         if bold_word and (bold_word in _CODEX_TOOL_ACTION_WORDS or bold_word == action_word):
-            return bold_word
+            return bold_word, clean_line
     return None
 
 
@@ -332,13 +375,27 @@ async def _maybe_emit_codex_turn_events(
 
     prompt_visible = _has_live_prompt_marker(current_output)
     responding = _is_live_agent_responding(current_output)
-    raw_tool_action = _find_recent_tool_action(current_output)
-    # When prompt is visible, action lines in nearby scrollback are often stale.
-    # Ignore them for turn-state transitions.
-    tool_action = None if prompt_visible else raw_tool_action
+    tool_match = _find_recent_tool_action(current_output)
+    raw_tool_action = tool_match[0] if tool_match else None
+    raw_tool_signature = tool_match[1] if tool_match else ""
+    if not state.initialized:
+        state.initialized = True
+        state.prompt_visible_last = prompt_visible
+        if prompt_visible and raw_tool_signature:
+            # Baseline stale scrollback on first sight to avoid startup false positives.
+            state.last_tool_signature = raw_tool_signature
+
+    is_new_tool_signature = bool(raw_tool_signature and raw_tool_signature != state.last_tool_signature)
+    # Prompt-visible snapshots are common; ignore known stale signatures but allow new ones.
+    if prompt_visible and not is_new_tool_signature:
+        tool_action = None
+    else:
+        tool_action = raw_tool_action
 
     # Track tool lane transitions while prompt is not visible.
     if tool_action:
+        if is_new_tool_signature:
+            state.last_tool_signature = raw_tool_signature
         state.turn_active = True
         if not state.in_tool:
             await _emit_synthetic_codex_event(
@@ -421,7 +478,8 @@ async def _maybe_emit_codex_input(
     # Check if agent is responding using live status markers only.
     # Fallback to live tool action lines when prompt is no longer visible.
     prompt_visible = _has_live_prompt_marker(current_output)
-    recent_tool_action = _find_recent_tool_action(current_output)
+    recent_tool_action_match = _find_recent_tool_action(current_output)
+    recent_tool_action = recent_tool_action_match[0] if recent_tool_action_match else None
     agent_responding = _is_live_agent_responding(current_output) or (
         recent_tool_action is not None and not prompt_visible
     )

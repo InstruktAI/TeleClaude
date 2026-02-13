@@ -418,11 +418,11 @@ snippets:
   scope: project
   path: docs/project/spec/command-surface.md
   source_project: TeleClaude
-- id: project/spec/event-types
-  description: TeleClaude event names used between adapters, daemon, and clients.
+- id: project/spec/event-vocabulary
+  description: Authoritative vocabulary for TeleClaude internal and external events.
   type: spec
   scope: project
-  path: docs/project/spec/event-types.md
+  path: docs/project/spec/event-vocabulary.md
   source_project: TeleClaude
 - id: project/spec/git-docs-filter
   description: Git filter that expands tilde paths for agents and normalizes them
@@ -480,6 +480,12 @@ snippets:
   scope: project
   path: docs/project/spec/jobs/youtube-sync-subscriptions.md
   source_project: TeleClaude
+- id: project/spec/mcp-tool-surface
+  description: Authoritative surface for Model Context Protocol (MCP) tools.
+  type: spec
+  scope: project
+  path: docs/project/spec/mcp-tool-surface.md
+  source_project: TeleClaude
 - id: project/spec/runtime-operations-truth
   description: Practical contract for documenting daemon background operations and
     their real user impact.
@@ -493,4 +499,17 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/session-identity-truth.md
+  source_project: TeleClaude
+- id: project/spec/telec-cli-surface
+  description: Authoritative surface for the telec command-line tool.
+  type: spec
+  scope: project
+  path: docs/project/spec/telec-cli-surface.md
+  source_project: TeleClaude
+- id: project/spec/teleclaude-config
+  description: Authoritative surface for TeleClaude YAML configuration and environment
+    variables.
+  type: spec
+  scope: project
+  path: docs/project/spec/teleclaude-config.md
   source_project: TeleClaude

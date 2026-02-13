@@ -152,7 +152,6 @@ def _to_utc(ts: datetime) -> datetime:
 def _is_codex_input_already_recorded(
     session: "Session | None",
     prompt_text: str,
-    prompt_timestamp: datetime | None,
 ) -> bool:
     """Return True when session state already reflects this Codex prompt turn."""
     if not session:
@@ -162,16 +161,21 @@ def _is_codex_input_already_recorded(
     candidate_prompt = (prompt_text or "").strip()
     if not existing_prompt or not candidate_prompt:
         return False
-    if existing_prompt != candidate_prompt:
-        return False
-    if not isinstance(prompt_timestamp, datetime):
+    prompts_match = (
+        existing_prompt == candidate_prompt
+        or existing_prompt.startswith(candidate_prompt)
+        or candidate_prompt.startswith(existing_prompt)
+    )
+    if not prompts_match:
         return False
     if not isinstance(session.last_message_sent_at, datetime):
         return False
 
-    existing_at = _to_utc(session.last_message_sent_at)
-    candidate_at = _to_utc(prompt_timestamp)
-    return abs((existing_at - candidate_at).total_seconds()) <= 2.0
+    message_at = _to_utc(session.last_message_sent_at)
+    if not isinstance(session.last_feedback_received_at, datetime):
+        return True
+    feedback_at = _to_utc(session.last_feedback_received_at)
+    return message_at > feedback_at
 
 
 class AgentCoordinator:
@@ -486,7 +490,7 @@ class AgentCoordinator:
             )
             if input_timestamp:
                 input_update_kwargs["last_message_sent_at"] = input_timestamp.isoformat()
-            if input_text.strip() and not _is_codex_input_already_recorded(session, input_text, input_timestamp):
+            if input_text.strip() and not _is_codex_input_already_recorded(session, input_text):
                 emit_codex_submit_backfill = True
         elif codex_input:
             logger.debug(

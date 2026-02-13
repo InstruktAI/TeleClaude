@@ -193,7 +193,11 @@ async def test_agent_coordinator_handle_agent_stop_strips_ansi(monkeypatch):
 @pytest.mark.asyncio
 async def test_polling_coordinator_detects_styled_suggestions():
     """Verify that polling_coordinator detects dim/italic suggestions."""
-    from teleclaude.core.polling_coordinator import _find_prompt_input, _is_suggestion_styled
+    from teleclaude.core.polling_coordinator import (
+        _find_prompt_input,
+        _is_suggestion_styled,
+        _strip_suggestion_segments,
+    )
 
     # Dim styled suggestion
     dim_output = "\x1b[2mSuggestion\x1b[0m"
@@ -202,6 +206,14 @@ async def test_polling_coordinator_detects_styled_suggestions():
     # Italic styled suggestion
     italic_output = "\x1b[3mSuggestion\x1b[0m"
     assert _is_suggestion_styled(italic_output) is True
+
+    # Combined SGR (bold+dim) should still count as suggestion styling
+    bold_dim_output = "\x1b[1;2mSuggestion\x1b[0m"
+    assert _is_suggestion_styled(bold_dim_output) is True
+
+    # Combined SGR (italic+bold) should still count as suggestion styling
+    italic_bold_output = "\x1b[3;1mSuggestion\x1b[0m"
+    assert _is_suggestion_styled(italic_bold_output) is True
 
     # Normal output
     normal_output = "Normal Text"
@@ -214,6 +226,15 @@ async def test_polling_coordinator_detects_styled_suggestions():
     # Test _find_prompt_input captures normal input
     codex_real_input = "› Real Input"
     assert _find_prompt_input(codex_real_input) == "Real Input"
+
+    # Combined SGR on prompt text should still be filtered as suggestion
+    codex_bold_dim_suggestion = "› \x1b[1;2mCaptured Suggestion\x1b[0m"
+    assert _find_prompt_input(codex_bold_dim_suggestion) == ""
+
+    # Mixed line: suggestion prefix + real typed text should preserve typed text
+    mixed_line = "› \x1b[2mWrite tests for @filename\x1b[0m say hi"
+    assert _find_prompt_input(mixed_line) == "say hi"
+    assert _strip_suggestion_segments("\x1b[2mHint\x1b[0m typed") == " typed"
 
 
 @pytest.mark.asyncio

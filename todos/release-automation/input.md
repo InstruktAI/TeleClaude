@@ -48,9 +48,9 @@ A fully automated release pipeline where:
    - If all pass → release (patch or minor based on surface changes)
    - If any fail/unknown → skip release (no action)
 
-### Dual-Lane Pipeline (Claude Code + Codex CLI)
+### Triple-Lane Pipeline (Claude Code + Codex CLI + Gemini)
 
-Two parallel workflows, nearly identical, dispatching to different AI agents:
+Three parallel workflows, nearly identical, dispatching to different AI agents:
 
 1. **Claude Code Lane**
    - Uses `anthropics/claude-code-action@v1`
@@ -63,8 +63,13 @@ Two parallel workflows, nearly identical, dispatching to different AI agents:
    - Runs the same release inspector prompt
    - Uses `sandbox: read-only` for analysis
 
-3. **Consensus Arbiter (Third AI pass)**
-   - Consumes both lane reports (Claude + Codex)
+3. **Gemini Lane**
+   - Uses `google-github-actions/gemini-action@v1` (or similar)
+   - Authenticates via `GOOGLE_API_KEY`
+   - Runs the same release inspector prompt
+
+4. **Consensus Arbiter (Consolidated pass)**
+   - Consumes all lane reports (Claude + Codex + Gemini)
    - Chooses the most convincing/complete report
    - Emits a JSON decision payload used by the release automation
    - Produces its own short audit note explaining the selection

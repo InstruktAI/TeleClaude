@@ -715,6 +715,28 @@ class TestCodexSyntheticTurnEvents:
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
+    async def test_emits_tool_use_when_action_line_is_not_in_short_tail(self):
+        session_id = "codex-turn-tool-lookback-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            filler = "\n".join(f"line {i}" for i in range(30))
+            output = f"\x1b[2m• \x1b[0m\x1b[1mRan\x1b[0m rg -n foo\n{filler}"
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=output,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            assert context.event_type == AgentHookEvents.TOOL_USE
+            assert context.data.raw.get("tool_name") == "Ran"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
     async def test_emits_tool_done_when_prompt_returns(self):
         session_id = "codex-turn-stop-1"
         emit = AsyncMock()
@@ -772,6 +794,48 @@ class TestCodexSyntheticTurnEvents:
 
             event_types = [call.args[0].event_type for call in emit.await_args_list]
             assert event_types == [AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE]
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_prompt_visible_emits_tool_use_once_for_new_action_signature(self):
+        session_id = "codex-turn-signature-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            # First prompt-visible frame establishes stale baseline, no emit.
+            baseline = "older text\n\x1b[2m• \x1b[0m\x1b[1mRan\x1b[0m rg -n old\n› "
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=baseline,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+            emit.assert_not_awaited()
+
+            # New action signature while prompt is still visible should emit once.
+            updated = "older text\n\x1b[2m• \x1b[0m\x1b[1mRan\x1b[0m rg -n new\n› "
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=updated,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+            assert emit.await_count == 2
+            event_types = [call.args[0].event_type for call in emit.await_args_list]
+            assert event_types == [AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE]
+
+            # Same signature should not emit again.
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=updated,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+            assert emit.await_count == 2
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
