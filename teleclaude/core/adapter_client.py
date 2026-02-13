@@ -364,11 +364,14 @@ class AdapterClient:
         session_to_use = fresh_session or session
 
         # Route through unified path to ensure lane resilience (ensure_channel)
+        # Broadcast only if not feedback (ephemeral status updates)
+        should_broadcast = not feedback
+
         result = await self._route_to_ui(
             session_to_use,
             "send_message",
             text,
-            broadcast=True,
+            broadcast=should_broadcast,
             metadata=metadata,
             multi_message=multi_message,
         )

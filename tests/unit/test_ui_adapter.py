@@ -303,7 +303,9 @@ class TestSendOutputUpdate:
         )
         if not session.adapter_metadata:
             session.adapter_metadata = SessionAdapterMetadata()
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(footer_message_id="old-footer")
+        session.adapter_metadata = SessionAdapterMetadata(
+            telegram=TelegramAdapterMetadata(footer_message_id="old-footer")
+        )
         await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
@@ -326,7 +328,7 @@ class TestSendOutputUpdate:
         )
         if not session.adapter_metadata:
             session.adapter_metadata = SessionAdapterMetadata()
-        session.adapter_metadata.telegram = TelegramAdapterMetadata()
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata())
         await test_db.update_session(
             session.session_id, adapter_metadata=session.adapter_metadata, active_agent="codex"
         )
@@ -343,8 +345,8 @@ class TestSendOutputUpdate:
         # Output + footer = at least 2 sends
         assert len(adapter._send_calls) >= 2
         latest = await test_db.get_session(session.session_id)
-        assert latest.adapter_metadata.telegram is not None
-        assert latest.adapter_metadata.telegram.footer_message_id is not None
+        assert latest.get_metadata().get_ui().get_telegram() is not None
+        assert latest.get_metadata().get_ui().get_telegram().footer_message_id is not None
 
     async def test_standard_output_wraps_in_code_block(self, test_db):
         """Standard output is wrapped in code fences by base format_message."""
@@ -473,7 +475,7 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata.telegram = TelegramAdapterMetadata()
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata())
         await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
@@ -537,7 +539,7 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(char_offset=10)
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(char_offset=10))
         await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         await test_db.set_output_message_id(session.session_id, "msg-existing")
         session = await test_db.get_session(session.session_id)
@@ -557,7 +559,7 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(char_offset=1000)
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(char_offset=1000))
         await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
@@ -566,7 +568,7 @@ class TestSendThreadedOutput:
         assert result == "msg-123"
         # Offset should have been reset
         refreshed = await test_db.get_session(session.session_id)
-        assert refreshed.adapter_metadata.telegram.char_offset == 0
+        assert refreshed.get_metadata().get_ui().get_telegram().char_offset == 0
 
     async def test_continuity_marker_when_offset_nonzero(self, test_db):
         """Text with nonzero char_offset → adds "..." prefix."""
@@ -577,7 +579,7 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata.telegram = TelegramAdapterMetadata(char_offset=5)
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(char_offset=5))
         await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
@@ -600,7 +602,7 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata.telegram = TelegramAdapterMetadata()
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata())
         await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
@@ -615,7 +617,7 @@ class TestSendThreadedOutput:
 
         # Verify char_offset was advanced in DB
         refreshed = await test_db.get_session(session.session_id)
-        assert refreshed.adapter_metadata.telegram.char_offset > 0
+        assert refreshed.get_metadata().get_ui().get_telegram().char_offset > 0
 
     async def test_overflow_preserves_markdown_escape_boundaries(self, test_db):
         """Telegram threaded overflow should not split between backslash and escaped char."""
@@ -628,7 +630,7 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata.telegram = TelegramAdapterMetadata()
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata())
         await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
@@ -656,7 +658,7 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata.telegram = TelegramAdapterMetadata()
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata())
         await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
@@ -701,7 +703,7 @@ class TestSendOutputUpdateSuppression:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata.telegram = TelegramAdapterMetadata()  # No output_message_id
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata())  # No output_message_id
         await test_db.update_session(
             session.session_id, adapter_metadata=session.adapter_metadata, active_agent="gemini"
         )

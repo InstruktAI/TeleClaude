@@ -100,7 +100,9 @@ async def test_terminal_origin_send_message_skips_ui():
     session = _make_session(InputOrigin.API.value)
 
     # Mock db.add_pending_deletion since send_message auto-tracks ephemeral messages
-    with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
+    mock_db = AsyncMock()
+    mock_db.get_session.return_value = None  # Force use of input session
+    with patch("teleclaude.core.adapter_client.db", mock_db):
         message_id = await client.send_message(session, "hello")
 
     assert message_id == "msg-1"
@@ -116,6 +118,7 @@ async def test_terminal_origin_send_message_ephemeral_tracks_deletion():
     session = _make_session("telegram")
 
     mock_db = AsyncMock()
+    mock_db.get_session.return_value = None  # Force use of input session
     with patch("teleclaude.core.adapter_client.db", mock_db):
         await client.send_message(session, "ephemeral message")
 
