@@ -55,17 +55,14 @@ Notification routing subsystem that sends job outputs, reports, and alerts to pe
 
 ## Maintenance
 
-- [ ] telegram-adapter-hardening — **BROKEN DOWN**
+- [.] telegram-adapter-hardening
 
-Harden Telegram routing and fallback behavior by enforcing one delivery funnel, explicit result contracts, bounded invalid-topic cleanup, and stronger delete ownership checks.
-
-- [.] telegram-routing-contract-hardening
-- [ ] telegram-topic-cleanup-guards (after: telegram-routing-contract-hardening)
-- [ ] telegram-ownership-layering-cleanup (after: telegram-topic-cleanup-guards)
-- [ ] fallback-fail-fast-hardening (after: telegram-routing-contract-hardening)
-
-Cross-cutting fail-fast contract hardening sourced from the Telegram fallback audit and follow-up core findings. Removes sentinel coercion for required inputs, removes the erroneous non-role-based `help-desk` reroute while preserving explicit non-admin jailing behavior, makes `get_session_data` availability explicit, and hardens parse-entities/footer + invalid-topic suppression behavior.
+Harden Telegram routing, delivery contracts, cleanup behavior, and ownership checks. Removes sentinel coercion for required inputs, restricts help-desk routing to role-based jail only, adds explicit source field to session data responses, bounds orphan topic cleanup with cooldown suppression, cross-references DB for delete ownership instead of title-only heuristics, and makes parse-entities fallback behavior explicit.
 
 - [ ] project-aware-bug-routing
+
+- [ ] test-suite-ownership-reset
+
+Freeze non-emergency feature changes and reset test ownership to a deterministic one-to-one model (`source file -> owning unit test`) with path-based test gating. Keep functional/integration tests active as the behavior safety net while rewriting brittle unit tests.
 
 Introduce prefix-based bug routing (`bug-*`) with an atomic per-bug loop (fix -> independent review -> retry/needs_human), while keeping bug intake low-friction (no mandatory project-name argument, explicit TeleClaude override available) and enforcing landing safety gates.

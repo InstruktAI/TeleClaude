@@ -25,6 +25,7 @@ from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.agents import AgentName
 from teleclaude.core.cache import DaemonCache
+from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_registry import init_command_service
 from teleclaude.core.command_service import CommandService
 from teleclaude.core.db import db
@@ -732,6 +733,28 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         transcript_path = data.get("transcript_path")
         native_session_id = data.get("native_session_id")
         native_log_file = data.get("native_log_file")
+        raw_agent_name = data.get("agent_name")
+        normalized_agent_name = raw_agent_name.strip().lower() if isinstance(raw_agent_name, str) else ""
+
+        has_transcript_path = isinstance(transcript_path, str) and bool(transcript_path)
+        has_native_log = isinstance(native_log_file, str) and bool(native_log_file)
+        if (
+            not has_transcript_path
+            and not has_native_log
+            and normalized_agent_name == AgentName.CODEX.value
+            and isinstance(native_session_id, str)
+            and native_session_id
+        ):
+            discovered_path = discover_codex_transcript_path(native_session_id)
+            if discovered_path:
+                native_log_file = discovered_path
+                data["native_log_file"] = discovered_path
+                logger.debug(
+                    "Resolved Codex transcript in hook worker",
+                    session_id=session_id[:8],
+                    native_session_id=native_session_id[:8],
+                    path=discovered_path,
+                )
 
         update_kwargs = {}
         if isinstance(transcript_path, str) and transcript_path:

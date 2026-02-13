@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from teleclaude.core import polling_coordinator
-from teleclaude.core.events import AgentHookEvents, AgentOutputPayload, AgentStopPayload, UserPromptSubmitPayload
+from teleclaude.core.events import AgentHookEvents, AgentOutputPayload, UserPromptSubmitPayload
 from teleclaude.core.models import Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, ProcessExited
@@ -400,6 +400,78 @@ class TestCodexSyntheticPromptDetection:
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
+    async def test_emits_on_prompt_to_agent_transition_without_overlap_frame(self):
+        """Emit submit when prompt disappears and first visible agent line is a tool action."""
+        session_id = "codex-transition-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            # Prompt visible while user is composing - no submit yet.
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› say hi",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            emit.assert_not_awaited()
+
+            # Next frame: prompt gone, response starts with a tool-action line.
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="• Ran rg -n foo",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            payload = context.data
+            assert isinstance(payload, UserPromptSubmitPayload)
+            assert payload.prompt == "say hi"
+            assert payload.raw.get("source") == "codex_marker_transition"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_emits_when_prompt_visibility_helper_misses_prompt_frame(self):
+        """Submit must still emit if prompt text is captured while prompt-visible helper returns false."""
+        session_id = "codex-transition-gap-2"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            with patch(
+                "teleclaude.core.polling_coordinator._has_live_prompt_marker",
+                side_effect=[False, False],
+            ):
+                await polling_coordinator._maybe_emit_codex_input(
+                    session_id=session_id,
+                    active_agent="codex",
+                    current_output="› hidden-prompt case",
+                    output_changed=True,
+                    emit_agent_event=emit,
+                )
+                emit.assert_not_awaited()
+
+                await polling_coordinator._maybe_emit_codex_input(
+                    session_id=session_id,
+                    active_agent="codex",
+                    current_output="• Working...",
+                    output_changed=True,
+                    emit_agent_event=emit,
+                )
+
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            payload = context.data
+            assert isinstance(payload, UserPromptSubmitPayload)
+            assert payload.prompt == "hidden-prompt case"
+            assert payload.raw.get("source") == "codex_marker_transition"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
     async def test_does_not_emit_while_prompt_text_is_still_visible(self):
         """Stale marker glyphs above prompt should not trigger synthetic submit."""
         session_id = "codex-visible-1"
@@ -486,6 +558,55 @@ class TestCodexSyntheticPromptDetection:
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
+    async def test_same_prompt_can_emit_again_on_new_turn(self):
+        """Identical prompt text should emit once per turn, not once per session."""
+        session_id = "codex-repeat-turn-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            # Turn 1 submit.
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› say hi\n• Working...",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            assert emit.await_count == 1
+
+            # Same boundary frame should not re-emit during the same response phase.
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› say hi\n• Working...",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            assert emit.await_count == 1
+
+            # Response ended; prompt visible again starts a new turn.
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="assistant done\n› say hi",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            assert emit.await_count == 1
+
+            # Turn 2 submit with identical prompt should emit again.
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› say hi\n• Working...",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            assert emit.await_count == 2
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
     async def test_has_live_prompt_marker_with_footer_hint(self):
         output = "final text\n› Write tests for @filename\n\n? for shortcuts"
         assert polling_coordinator._has_live_prompt_marker(output) is True
@@ -516,7 +637,7 @@ class TestCodexSyntheticTurnEvents:
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
-    async def test_emits_tool_done_and_agent_stop_when_prompt_returns(self):
+    async def test_emits_tool_done_when_prompt_returns(self):
         session_id = "codex-turn-stop-1"
         emit = AsyncMock()
         polling_coordinator._cleanup_codex_input_state(session_id)
@@ -541,8 +662,8 @@ class TestCodexSyntheticTurnEvents:
             )
 
             event_types = [call.args[0].event_type for call in emit.await_args_list]
-            assert event_types == [AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE, AgentHookEvents.AGENT_STOP]
-            assert isinstance(emit.await_args_list[-1].args[0].data, AgentStopPayload)
+            assert event_types == [AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE]
+            assert isinstance(emit.await_args_list[-1].args[0].data, AgentOutputPayload)
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
@@ -572,7 +693,7 @@ class TestCodexSyntheticTurnEvents:
             )
 
             event_types = [call.args[0].event_type for call in emit.await_args_list]
-            assert event_types == [AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE, AgentHookEvents.AGENT_STOP]
+            assert event_types == [AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE]
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
@@ -594,7 +715,7 @@ class TestCodexSyntheticTurnEvents:
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
-    async def test_emits_agent_stop_for_text_only_turn_when_prompt_returns(self):
+    async def test_prompt_return_without_tool_emits_no_synthetic_stop(self):
         session_id = "codex-turn-text-only-1"
         emit = AsyncMock()
         polling_coordinator._cleanup_codex_input_state(session_id)
@@ -611,14 +732,11 @@ class TestCodexSyntheticTurnEvents:
                 emit_agent_event=emit,
                 enable_synthetic_turn_events=True,
             )
-            emit.assert_awaited_once()
-            context = emit.await_args.args[0]
-            assert context.event_type == AgentHookEvents.AGENT_STOP
-            assert isinstance(context.data, AgentStopPayload)
+            emit.assert_not_awaited()
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
-    async def test_emits_agent_stop_when_prompt_has_footer_hint(self):
+    async def test_prompt_footer_hint_emits_no_synthetic_stop(self):
         session_id = "codex-turn-footer-1"
         emit = AsyncMock()
         polling_coordinator._cleanup_codex_input_state(session_id)
@@ -636,12 +754,11 @@ class TestCodexSyntheticTurnEvents:
                 emit_agent_event=emit,
                 enable_synthetic_turn_events=True,
             )
-            emit.assert_awaited_once()
-            assert emit.await_args.args[0].event_type == AgentHookEvents.AGENT_STOP
+            emit.assert_not_awaited()
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
-    async def test_prompt_transition_emits_stop_even_if_turn_state_missing(self):
+    async def test_prompt_transition_without_tool_emits_no_synthetic_stop(self):
         session_id = "codex-turn-transition-1"
         emit = AsyncMock()
         polling_coordinator._cleanup_codex_input_state(session_id)
@@ -664,7 +781,7 @@ class TestCodexSyntheticTurnEvents:
                 prompt_visible_last=False,
             )
 
-            # Prompt transition should still emit one stop.
+            # Prompt transition should not emit synthetic stop.
             stop_output = (
                 "assistant text\n"
                 "\x1b[2m• \x1b[0m\x1b[1mExplored\x1b[0m files\n"
@@ -680,7 +797,7 @@ class TestCodexSyntheticTurnEvents:
             )
 
             event_types = [call.args[0].event_type for call in emit.await_args_list]
-            assert event_types[-1] == AgentHookEvents.AGENT_STOP
+            assert event_types == [AgentHookEvents.TOOL_USE]
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 

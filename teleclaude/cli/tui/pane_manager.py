@@ -716,9 +716,9 @@ class TmuxPaneManager:
         self._run_tmux("set", "-t", tmux_session_name, "status", "off")
 
         # Override color 236 (message box backgrounds) for specific agents
-        if agent == "codex" and theme.get_current_mode():  # dark mode
-            # Use color 237 (slightly lighter gray) for Codex message boxes
-            self._run_tmux("set", "-p", "-t", pane_id, "pane-colours[236]", "#3a3a3a")
+        # if agent == "codex" and theme.get_current_mode():  # dark mode
+        #     # Use color 237 (slightly lighter gray) for Codex message boxes
+        #     self._run_tmux("set", "-p", "-t", pane_id, "pane-colours[236]", "#3a3a3a")
 
     def _set_tui_pane_background(self) -> None:
         """Apply subtle inactive haze styling to the TUI pane only."""

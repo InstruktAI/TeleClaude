@@ -6,6 +6,7 @@ All handlers are stateless functions with explicit dependencies.
 
 import asyncio
 import functools
+import json
 import os
 import re
 import shlex
@@ -22,6 +23,7 @@ from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName, get_agent_command
+from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import ErrorEventContext, FileEventContext, TeleClaudeEvents, VoiceEventContext
@@ -525,6 +527,40 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
             has_requirements = (todos_dir / "requirements.md").exists()
             has_impl_plan = (todos_dir / "implementation-plan.md").exists()
 
+            # Read state.json for enrichment fields
+            build_status = None
+            review_status = None
+            dor_status = None
+            dor_score = None
+            deferrals_status = None
+            findings_count = 0
+            files: list[str] = []
+
+            state_path = todos_dir / "state.json"
+            if state_path.exists():
+                try:
+                    state = json.loads(state_path.read_text())
+                    build_status = state.get("build") if isinstance(state.get("build"), str) else None
+                    review_status = state.get("review") if isinstance(state.get("review"), str) else None
+                    dor = state.get("dor")
+                    if isinstance(dor, dict):
+                        dor_status = dor.get("status") if isinstance(dor.get("status"), str) else None
+                        raw_score = dor.get("score")
+                        if isinstance(raw_score, int):
+                            dor_score = raw_score
+                    deferrals_processed = state.get("deferrals_processed")
+                    if deferrals_processed is True:
+                        deferrals_status = "processed"
+                    unresolved = state.get("unresolved_findings")
+                    if isinstance(unresolved, list):
+                        findings_count = len(unresolved)
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+            # Discover files in todo directory
+            if todos_dir.is_dir():
+                files = sorted(f.name for f in todos_dir.iterdir() if f.is_file() and not f.name.startswith("."))
+
             todos.append(
                 TodoInfo(
                     slug=slug,
@@ -532,6 +568,13 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
                     description=description.strip() or None,
                     has_requirements=has_requirements,
                     has_impl_plan=has_impl_plan,
+                    build_status=build_status,
+                    review_status=review_status,
+                    dor_status=dor_status,
+                    dor_score=dor_score,
+                    deferrals_status=deferrals_status,
+                    findings_count=findings_count,
+                    files=files,
                 )
             )
 
@@ -686,9 +729,7 @@ async def get_session_data(
             session_id[:8],
             session.native_session_id,
         )
-        from teleclaude.hooks.adapters.codex import _discover_transcript_path
-
-        discovered_path = _discover_transcript_path(session.native_session_id)
+        discovered_path = discover_codex_transcript_path(session.native_session_id)
         if discovered_path:
             native_log_file_str = discovered_path
             logger.info(

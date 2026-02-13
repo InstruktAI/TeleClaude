@@ -735,6 +735,51 @@ async def test_process_agent_stop_sets_native_session_id_from_payload(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_dispatch_hook_event_discovers_codex_transcript_in_worker():
+    """Hook worker should resolve Codex transcript path (not receiver boundary)."""
+
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon._ensure_output_polling = AsyncMock()
+    mock_coordinator = MagicMock()
+    mock_coordinator.handle_event = AsyncMock()
+    daemon.agent_coordinator = mock_coordinator
+
+    session = Session(
+        session_id="tele-123",
+        computer_name="TestMac",
+        tmux_session_name="tmux-123",
+        last_input_origin=InputOrigin.API.value,
+        title="Test session",
+    )
+
+    updates: list[tuple[str, dict[str, object]]] = []  # guard: loose-dict - capture update payloads
+
+    async def record_update(session_id: str, **kwargs):
+        updates.append((session_id, kwargs))
+
+    with (
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.discover_codex_transcript_path", return_value="/tmp/codex.jsonl") as mock_discover,
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock(side_effect=record_update)
+
+        await daemon._dispatch_hook_event(
+            session_id="tele-123",
+            event_type="agent_stop",
+            data={"agent_name": "codex", "native_session_id": "native-123"},
+        )
+
+    assert mock_discover.call_count == 1
+    transcript_call_found = any(
+        session_id == "tele-123" and kwargs.get("native_log_file") == "/tmp/codex.jsonl"
+        for session_id, kwargs in updates
+    )
+    assert transcript_call_found, f"Expected native_log_file update call, got: {updates}"
+
+
+@pytest.mark.asyncio
 async def test_process_agent_stop_sets_active_agent_from_payload(tmp_path):
     """Agent stop extraction should use payload agent_name when session is missing it."""
     from teleclaude.core.agents import AgentName

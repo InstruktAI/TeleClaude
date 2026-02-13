@@ -386,22 +386,20 @@ _AGENT_HEX_COLORS_LIGHT: dict[str, str] = {
     "codex": "#5f8787",  # 67: darker steel blue
 }
 
-# Base inactive pane background (from window-style setting)
-_BASE_INACTIVE_BG_DARK = "#202529"
-_BASE_INACTIVE_BG_LIGHT = "#e8e8e8"  # Light gray for light mode
 # Soft paper baseline for light mode fallbacks (friendlier than pure white).
 _LIGHT_MODE_PAPER_BG = "#fdf6e3"
 
 # Configurable haze percentages (0.0 to 1.0)
 # Restored tuned values used before recent regressions.
 # Inactive session/preview pane background: 20% agent color, 80% base color
-_HAZE_PERCENTAGE = 0.20
+_HAZE_PERCENTAGE = 0.06
 # Active pane background: no haze
 _ACTIVE_HAZE_PERCENTAGE = 0.0
+
 # Status bar background: 5% agent color, 95% base color (subtle)
 _STATUS_HAZE_PERCENTAGE = 0.05
 # TUI pane inactive haze kept softer than session/preview pane haze.
-_TUI_INACTIVE_HAZE_PERCENTAGE = 0.12
+_TUI_INACTIVE_HAZE_PERCENTAGE = 0.06
 # Terminal background hint weight: keep TUI palette stable while honoring terminal tone.
 _TERMINAL_HINT_WEIGHT = 0.35
 # Guardrails to reject hints that conflict with the current mode.
@@ -530,7 +528,7 @@ def get_agent_pane_background(agent: str) -> str:
         # Unknown agent: return base background
         return base_bg
 
-    return blend_colors(base_bg, agent_color, _HAZE_PERCENTAGE)
+    return blend_colors(base_bg, agent_color, _HAZE_PERCENTAGE * 3 if _is_dark_mode else _HAZE_PERCENTAGE)
 
 
 def get_agent_active_pane_background(agent: str) -> str:
@@ -556,7 +554,7 @@ def get_agent_active_pane_background(agent: str) -> str:
         # Unknown agent: return base background
         return base_bg
 
-    return blend_colors(base_bg, agent_color, _ACTIVE_HAZE_PERCENTAGE)
+    return blend_colors(base_bg, agent_color, _ACTIVE_HAZE_PERCENTAGE * 3 if _is_dark_mode else _ACTIVE_HAZE_PERCENTAGE)
 
 
 def get_agent_status_background(agent: str) -> str:
@@ -582,7 +580,7 @@ def get_agent_status_background(agent: str) -> str:
         # Unknown agent: return base background
         return base_bg
 
-    return blend_colors(base_bg, agent_color, _STATUS_HAZE_PERCENTAGE)
+    return blend_colors(base_bg, agent_color, _STATUS_HAZE_PERCENTAGE * 3 if _is_dark_mode else _STATUS_HAZE_PERCENTAGE)
 
 
 def get_agent_highlight_color(agent: str) -> int:
@@ -632,7 +630,9 @@ def get_tui_inactive_background() -> str:
     """Get subtle inactive haze for the TUI pane from terminal background."""
     base_bg = get_terminal_background()
     blend_target = "#ffffff" if _is_dark_mode else "#000000"
-    return blend_colors(base_bg, blend_target, _TUI_INACTIVE_HAZE_PERCENTAGE)
+    return blend_colors(
+        base_bg, blend_target, _TUI_INACTIVE_HAZE_PERCENTAGE * 3 if _is_dark_mode else _TUI_INACTIVE_HAZE_PERCENTAGE
+    )
 
 
 def get_agent_muted_color(agent: str) -> int:

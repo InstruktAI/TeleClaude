@@ -20,7 +20,6 @@ from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
     AgentOutputPayload,
-    AgentStopPayload,
     UserPromptSubmitPayload,
 )
 from teleclaude.core.output_poller import (
@@ -113,6 +112,7 @@ class CodexInputState:
     last_prompt_input: str = ""  # Last seen text after › prompt
     last_emitted_prompt: str = ""  # Last emitted synthetic prompt (duplicate guard)
     last_output_change_time: float = 0.0
+    submitted_for_current_response: bool = False  # Prevent duplicate emits during same response phase
 
 
 @dataclass
@@ -187,6 +187,9 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:
         if _is_live_agent_marker_line(line):
             has_submit_boundary = True
             break
+        # Ignore stale assistant marker lines below prompt (do not treat as prompt body).
+        if stripped and stripped[0] in CODEX_AGENT_MARKERS:
+            continue
         if stripped.startswith(CODEX_PROMPT_MARKER):
             # New prompt marker means previous block ended.
             break
@@ -205,13 +208,13 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:
     return text[:CODEX_INPUT_MAX_CHARS], has_submit_boundary
 
 
-def _find_prompt_input(output: str) -> str:
+def _find_prompt_input(output: str) -> str:  # pyright: ignore[reportUnusedFunction]  # used in tests
     """Backward-compatible helper for tests/callers expecting prompt text only."""
     text, _ = _extract_prompt_block(output)
     return text
 
 
-def _has_agent_marker(output: str) -> bool:
+def _has_agent_marker(output: str) -> bool:  # pyright: ignore[reportUnusedFunction]  # used in tests
     """Check if agent is responding (agent marker in recent lines)."""
     lines = output.rstrip().split("\n")
     for line in lines[-10:]:
@@ -276,9 +279,7 @@ def _find_recent_tool_action(output: str) -> str | None:
 def _is_live_agent_responding(output: str) -> bool:
     """Return True when visible pane effects indicate the agent is actively responding."""
     lines = output.rstrip().split("\n")
-    if any(_is_live_agent_marker_line(line) for line in lines[-10:]):
-        return True
-    return _find_recent_tool_action(output) is not None
+    return any(_is_live_agent_marker_line(line) for line in lines[-10:])
 
 
 async def _emit_synthetic_codex_event(
@@ -300,8 +301,6 @@ async def _emit_synthetic_codex_event(
         payload = AgentOutputPayload(raw=raw)
     elif event_type == AgentHookEvents.TOOL_DONE:
         payload = AgentOutputPayload(raw=raw)
-    elif event_type == AgentHookEvents.AGENT_STOP:
-        payload = AgentStopPayload(raw=raw)
     else:
         return
 
@@ -322,7 +321,7 @@ async def _maybe_emit_codex_turn_events(
     *,
     enable_synthetic_turn_events: bool,
 ) -> None:
-    """Infer synthetic tool/stop events from visible Codex terminal effects."""
+    """Infer synthetic tool events from visible Codex terminal effects."""
     if active_agent != "codex" or not enable_synthetic_turn_events:
         return
 
@@ -331,34 +330,14 @@ async def _maybe_emit_codex_turn_events(
         state = CodexTurnState()
         _codex_turn_state[session_id] = state
 
-    tool_action = _find_recent_tool_action(current_output)
     prompt_visible = _has_live_prompt_marker(current_output)
     responding = _is_live_agent_responding(current_output)
+    raw_tool_action = _find_recent_tool_action(current_output)
+    # When prompt is visible, action lines in nearby scrollback are often stale.
+    # Ignore them for turn-state transitions.
+    tool_action = None if prompt_visible else raw_tool_action
 
-    # Prompt visibility at pane bottom is authoritative: prior turn has ended.
-    # Ignore stale action/marker lines that remain in recent scrollback.
-    if prompt_visible:
-        should_emit_stop = (not state.prompt_visible_last) and (
-            state.turn_active or state.in_tool or tool_action is not None or responding
-        )
-        if should_emit_stop:
-            if state.in_tool:
-                await _emit_synthetic_codex_event(
-                    session_id,
-                    AgentHookEvents.TOOL_DONE,
-                    emit_agent_event,
-                )
-            await _emit_synthetic_codex_event(
-                session_id,
-                AgentHookEvents.AGENT_STOP,
-                emit_agent_event,
-            )
-        state.turn_active = False
-        state.in_tool = False
-        state.prompt_visible_last = True
-        return
-    state.prompt_visible_last = False
-
+    # Track tool lane transitions while prompt is not visible.
     if tool_action:
         state.turn_active = True
         if not state.in_tool:
@@ -377,7 +356,32 @@ async def _maybe_emit_codex_turn_events(
         )
         state.in_tool = False
 
+    # Any live spinner/status marker means turn is still active.
     if responding:
+        state.turn_active = True
+        state.prompt_visible_last = False
+        return
+
+    # Prompt visible + not responding => authoritative tool-lane end.
+    # Do NOT emit synthetic agent_stop; Codex stop is hook-authoritative.
+    if prompt_visible:
+        should_finalize_tool_lane = (
+            state.turn_active or state.in_tool or ((not state.prompt_visible_last) and raw_tool_action is not None)
+        )
+        if should_finalize_tool_lane:
+            if state.in_tool:
+                await _emit_synthetic_codex_event(
+                    session_id,
+                    AgentHookEvents.TOOL_DONE,
+                    emit_agent_event,
+                )
+        state.turn_active = False
+        state.in_tool = False
+        state.prompt_visible_last = True
+        return
+
+    state.prompt_visible_last = False
+    if tool_action:
         state.turn_active = True
         return
 
@@ -411,23 +415,19 @@ async def _maybe_emit_codex_input(
 
     current_time = time.time()
 
-    # Capture current prompt text through the compatibility helper and boundary marker from full extraction.
-    current_input = _find_prompt_input(current_output)
-    _, has_submit_boundary = _extract_prompt_block(current_output)
+    # Contract: prompt submit comes only from strict marker boundaries inside output.
+    current_input, has_submit_boundary = _extract_prompt_block(current_output)
 
-    # Check if agent is responding
-    agent_responding = _has_agent_marker(current_output)
+    # Check if agent is responding using live status markers only.
+    # Fallback to live tool action lines when prompt is no longer visible.
+    prompt_visible = _has_live_prompt_marker(current_output)
+    recent_tool_action = _find_recent_tool_action(current_output)
+    agent_responding = _is_live_agent_responding(current_output) or (
+        recent_tool_action is not None and not prompt_visible
+    )
 
     async def _emit_captured_input(source: str) -> bool:
         if not state.last_prompt_input:
-            return False
-        if state.last_prompt_input == state.last_emitted_prompt:
-            logger.debug(
-                "[CODEX %s] Skipping duplicate synthetic input emission: %r",
-                session_id[:8],
-                state.last_prompt_input[:50],
-            )
-            state.last_prompt_input = ""
             return False
         logger.info(
             "Emitting synthetic user_prompt_submit for Codex session %s: %d chars: %r",
@@ -451,37 +451,40 @@ async def _maybe_emit_codex_input(
         state.last_prompt_input = ""
         return True
 
-    if agent_responding:
-        # Marker alone is not enough; stale markers exist in history.
-        # Emit only when prompt block has a submit boundary marker below it.
-        if current_input and has_submit_boundary:
-            state.last_prompt_input = current_input
-            await _emit_captured_input("codex_output_polling")
-        elif current_input:
-            if current_input != state.last_prompt_input:
-                logger.debug("[CODEX %s] Tracking input: %r", session_id[:8], current_input[:50])
-            state.last_prompt_input = current_input
-        elif not await _emit_captured_input("codex_output_polling"):
+    if current_input and current_input != state.last_prompt_input:
+        logger.debug(
+            "[CODEX %s] Tracking input: %r",
+            session_id[:8],
+            current_input[:50],
+        )
+    if current_input:
+        state.last_prompt_input = current_input
+    elif not agent_responding and prompt_visible:
+        # Empty prompt line means composer is reset; clear stale buffered text.
+        state.last_prompt_input = ""
+
+    strict_boundary = bool(current_input and has_submit_boundary)
+    transition_boundary = (
+        agent_responding and not prompt_visible and not current_input and bool(state.last_prompt_input)
+    )
+    if agent_responding and not state.submitted_for_current_response:
+        emitted = False
+        if strict_boundary:
+            emitted = await _emit_captured_input("codex_output_polling")
+        elif transition_boundary:
+            emitted = await _emit_captured_input("codex_marker_transition")
+        elif not current_input:
             logger.debug("[CODEX %s] Agent marker found but no input to emit", session_id[:8])
 
-        if output_changed:
-            state.last_output_change_time = current_time
-    else:
-        # No agent marker - track current input only.
-        # Do not emit on prompt-clear fallback; this caused premature submits
-        # for multiline inputs (e.g., first line emitted before full message).
-        if current_input:
-            if current_input != state.last_prompt_input:
-                logger.debug(
-                    "[CODEX %s] Tracking input: %r",
-                    session_id[:8],
-                    current_input[:50],
-                )
-            state.last_prompt_input = current_input
+        if emitted:
+            state.submitted_for_current_response = True
 
-        # Update last change time only when output actually changed
-        if output_changed:
-            state.last_output_change_time = current_time
+    if not agent_responding:
+        state.submitted_for_current_response = False
+
+    # Update last change time only when output actually changed
+    if output_changed:
+        state.last_output_change_time = current_time
 
 
 def _cleanup_codex_input_state(session_id: str) -> None:
@@ -608,11 +611,9 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                 emit_handler = adapter_client.agent_event_handler
                 if emit_handler:
                     try:
-                        # Missing native session bindings can drop Codex hooks after daemon reconnects.
-                        # For those sessions, infer turn lifecycle from visible terminal effects.
-                        synth_turn_events_enabled = (session.active_agent or "").lower() == "codex" and not bool(
-                            session.native_session_id
-                        )
+                        # Codex synthetic tool events come from visible terminal effects
+                        # regardless of native session bindings.
+                        synth_turn_events_enabled = (session.active_agent or "").lower() == "codex"
                         await _maybe_emit_codex_turn_events(
                             session_id=event.session_id,
                             active_agent=session.active_agent,

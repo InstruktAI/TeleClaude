@@ -306,7 +306,6 @@ class AgentCoordinator:
                 session_id[:8],
                 prompt_text,
             )
-            self._emit_activity_event(session_id, AgentHookEvents.TOOL_USE)
             return
 
         # System-injected checkpoint — not real user input, skip entirely
@@ -321,11 +320,38 @@ class AgentCoordinator:
         await db.update_session(session_id, last_checkpoint_at=None, last_tool_use_at=None)
 
         # Prepare batched update
+        now = datetime.now(timezone.utc)
+        should_update_last_message = True
+        if is_codex_synthetic:
+            existing_input = (session.last_message_sent or "").strip()
+            incoming_input = prompt_text.strip()
+            existing_at = session.last_message_sent_at
+            recent_existing = isinstance(existing_at, datetime) and (now - existing_at).total_seconds() <= 300
+            if (
+                recent_existing
+                and existing_input
+                and incoming_input
+                and len(existing_input) > len(incoming_input)
+                and existing_input.startswith(incoming_input)
+            ):
+                should_update_last_message = False
+                logger.debug(
+                    "Skipping synthetic Codex prompt overwrite for session %s (existing=%r incoming=%r)",
+                    session_id[:8],
+                    existing_input[:50],
+                    incoming_input[:50],
+                )
+
         update_kwargs: dict[str, object] = {  # guard: loose-dict - Dynamic session updates
-            "last_message_sent": prompt_text[:200],
-            "last_message_sent_at": datetime.now(timezone.utc).isoformat(),
             "last_input_origin": InputOrigin.HOOK.value,
         }
+        if should_update_last_message:
+            update_kwargs.update(
+                {
+                    "last_message_sent": prompt_text[:200],
+                    "last_message_sent_at": now.isoformat(),
+                }
+            )
 
         # Title update is non-critical and must not block hook ordering.
         if session.title == "Untitled" and not (is_codex_synthetic and _is_pasted_content_placeholder(prompt_text)):
@@ -343,12 +369,8 @@ class AgentCoordinator:
         )
 
         # Emit activity event for UI updates.
-        # Codex synthetic prompts arrive only after output activity is already visible
-        # (e.g. "out: Working..."), so treat them as output-start in the TUI state.
-        if is_codex_synthetic:
-            self._emit_activity_event(session_id, AgentHookEvents.TOOL_USE)
-        else:
-            self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
+        # Synthetic Codex prompts are still real input events.
+        self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
         # Non-headless: DB write done above, no further routing needed
         # (the agent already received the input directly)

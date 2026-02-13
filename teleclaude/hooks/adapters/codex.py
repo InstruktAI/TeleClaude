@@ -2,84 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from pathlib import Path
-
 from teleclaude.hooks.adapters.models import NormalizedHookPayload
 from teleclaude.hooks.utils.parse_helpers import get_str
-
-
-def _discover_transcript_path(session_id: str) -> str:
-    """Discover Codex transcript path from session ID.
-
-    Codex stores transcripts at:
-    ~/.codex/sessions/YYYY/MM/DD/rollout-{timestamp}-{session_id}.jsonl
-
-    Args:
-        session_id: Codex native session ID (thread-id from notify payload)
-
-    Returns:
-        Path to transcript file if found, empty string otherwise
-    """
-    from instrukt_ai_logging import get_logger
-
-    logger = get_logger(__name__)
-
-    sessions_dir = Path.home() / ".codex" / "sessions"
-    if not sessions_dir.exists():
-        logger.debug(
-            "Codex sessions directory not found",
-            sessions_dir=str(sessions_dir),
-        )
-        return ""
-
-    # Search for session file matching session_id suffix
-    # Start from today and work backwards (most likely to find recent sessions)
-    today = datetime.now()
-    for days_back in range(7):  # Search last 7 days
-        try:
-            check_date = today - timedelta(days=days_back) if days_back > 0 else today
-            date_dir = sessions_dir / f"{check_date.year}" / f"{check_date.month:02d}" / f"{check_date.day:02d}"
-            if date_dir.exists():
-                for session_file in date_dir.glob(f"rollout-*-{session_id}.jsonl"):
-                    logger.debug(
-                        "Codex transcript discovered",
-                        session_id=session_id,
-                        path=str(session_file),
-                    )
-                    return str(session_file)
-        except (ValueError, OSError) as e:
-            logger.debug(
-                "Error searching Codex date directory",
-                days_back=days_back,
-                error=str(e),
-            )
-            continue
-
-    # Fallback: search all directories
-    logger.debug("Falling back to recursive Codex search", session_id=session_id)
-    for session_file in sessions_dir.rglob(f"rollout-*-{session_id}.jsonl"):
-        logger.debug(
-            "Codex transcript discovered (recursive)",
-            session_id=session_id,
-            path=str(session_file),
-        )
-        return str(session_file)
-
-    logger.warning(
-        "Codex transcript not found",
-        session_id=session_id,
-        search_dirs=[
-            str(
-                sessions_dir
-                / f"{(today - timedelta(days=i)).year}"
-                / f"{(today - timedelta(days=i)).month:02d}"
-                / f"{(today - timedelta(days=i)).day:02d}"
-            )
-            for i in range(7)
-        ],
-    )
-    return ""
 
 
 # guard: loose-dict-func - External hook payload is dynamic JSON from agent CLI.
@@ -114,11 +38,11 @@ def normalize_payload(event_type: str, data: dict[str, object]) -> NormalizedHoo
         prompt = raw_prompt
 
     # Codex prompt is a list of messages; take the last one as the current turn's prompt
-    # 2. Enrich: discover transcript_path from session_id
-    transcript_path = _discover_transcript_path(session_id) if session_id else ""
+    # Contract boundary: only trust payload fields here.
+    transcript_path = get_str(data, "transcript_path")
 
     return NormalizedHookPayload(
         session_id=session_id,
-        transcript_path=transcript_path or None,
+        transcript_path=transcript_path,
         prompt=prompt,
     )

@@ -242,7 +242,7 @@ async def test_user_prompt_submit_persists_non_checkpoint_codex_synthetic_prompt
             ) as mock_summarize:
                 mock_summarize.return_value = "Output regression follow-up"
                 await coordinator.handle_user_prompt_submit(context)
-            mock_emit.assert_called_once_with("sess-1", AgentHookEvents.TOOL_USE)
+            mock_emit.assert_called_once_with("sess-1", AgentHookEvents.USER_PROMPT_SUBMIT)
 
         mock_db.set_notification_flag.assert_called_once_with("sess-1", False)
         assert mock_db.update_session.await_count >= 1
@@ -277,7 +277,7 @@ async def test_user_prompt_submit_ignores_tiny_codex_synthetic_prompt(coordinato
 
         mock_db.set_notification_flag.assert_not_called()
         mock_db.update_session.assert_not_called()
-        mock_emit.assert_called_once_with("sess-1", AgentHookEvents.TOOL_USE)
+        mock_emit.assert_not_called()
 
 
 @pytest.mark.asyncio

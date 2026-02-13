@@ -636,7 +636,7 @@ async def test_handle_get_session_data_codex_pending_is_case_insensitive():
 
     with (
         patch.object(command_handlers, "db") as mock_db,
-        patch("teleclaude.hooks.adapters.codex._discover_transcript_path", return_value=None),
+        patch("teleclaude.core.command_handlers.discover_codex_transcript_path", return_value=None),
     ):
         mock_db.get_session = AsyncMock(return_value=mock_session)
         mock_db.update_session = AsyncMock()

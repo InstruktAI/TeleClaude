@@ -1548,8 +1548,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         collapse_indicator = "▶" if is_collapsed else "▼"
 
         # Title line uses child indentation
+        subdir_part = f"  {session.subdir.removeprefix('trees/')}" if session.subdir else ""
         lines: list[str] = []
-        line1 = f'{child_indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"'
+        line1 = f'{child_indent}[{idx}] {collapse_indicator} {agent}/{mode}{subdir_part}  "{title}"'
         lines.append(line1[:width])
 
         # If collapsed, only show title line
@@ -1819,8 +1820,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Collapse indicator
         collapse_indicator = "▶" if is_collapsed else "▼"
 
-        # Line 1: [idx] ▶/▼ agent/mode "title"
+        # Line 1: [idx] ▶/▼ agent/mode  [subdir]  "title"
         # Render child indent + [idx] with special attr if sticky, then rest with title_attr
+        # Subdir (if present) uses normal fg to stand out from agent-colored text
         try:
             col = 0
             # Render child indent first
@@ -1830,8 +1832,18 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             selected_idx_attr = selected_header_attr
             stdscr.addstr(row, col, idx_text, idx_attr if not selected else selected_idx_attr)  # type: ignore[attr-defined]
             col += len(idx_text)
-            rest = f' {collapse_indicator} {agent}/{mode}  "{title}"'
-            stdscr.addstr(row, col, rest[: width - col], title_attr)  # type: ignore[attr-defined]
+            agent_part = f" {collapse_indicator} {agent}/{mode}"
+            stdscr.addstr(row, col, agent_part[: width - col], title_attr)  # type: ignore[attr-defined]
+            col += len(agent_part)
+            if session.subdir and col < width:
+                subdir_display = session.subdir.removeprefix("trees/")
+                subdir_text = f"  {subdir_display}"
+                subdir_attr = curses.A_REVERSE if selected else 0
+                stdscr.addstr(row, col, subdir_text[: width - col], subdir_attr)  # type: ignore[attr-defined]
+                col += len(subdir_text)
+            if col < width:
+                title_text = f'  "{title}"'
+                stdscr.addstr(row, col, title_text[: width - col], title_attr)  # type: ignore[attr-defined]
         except curses.error:
             pass  # Ignore if line doesn't fit
 

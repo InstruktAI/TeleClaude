@@ -628,12 +628,12 @@ class TestSessionsViewLogic:
 
         assert lines_used == 2
 
-        # Rendering uses two calls for line 1 and one for line 2
-        assert len(screen.calls) == 3
+        # Rendering uses three calls for line 1 (idx, agent/mode, title) and one for line 2
+        assert len(screen.calls) == 4
 
         # Line 1 does not guarantee full width padding
         line1_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(line1_calls) == 2
+        assert len(line1_calls) == 3
 
         # Line 2 (ID line) should still be full width
         line2_calls = [call for call in screen.calls if call[0] == 1]
@@ -666,11 +666,12 @@ class TestSessionsViewLogic:
 
         assert lines_used == 3
 
-        # Header/title line (row 0): both [idx] and title should be muted for headless.
+        # Header/title line (row 0): [idx], agent/mode, and title should be muted for headless.
         row0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(row0_calls) == 2
+        assert len(row0_calls) == 3
         assert row0_calls[0][3] == curses.A_DIM
         assert row0_calls[1][3] == curses.A_DIM
+        assert row0_calls[2][3] == curses.A_DIM
 
         # Line 2 ID row is also muted for headless.
         row1_calls = [call for call in screen.calls if call[0] == 1]
@@ -706,10 +707,11 @@ class TestSessionsViewLogic:
 
         assert lines_used == 2
         row0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(row0_calls) == 2
+        assert len(row0_calls) == 3
         focused_headless_attr = curses.A_REVERSE | curses.A_DIM
         assert row0_calls[0][3] == focused_headless_attr
         assert row0_calls[1][3] == focused_headless_attr
+        assert row0_calls[2][3] == focused_headless_attr
 
     def test_headless_status_is_normalized_for_header_muting(self, sessions_view, monkeypatch):
         """Status normalization should treat whitespace/case headless values as headless."""
@@ -736,9 +738,10 @@ class TestSessionsViewLogic:
 
         assert lines_used == 2
         row0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(row0_calls) == 2
+        assert len(row0_calls) == 3
         assert row0_calls[0][3] == 1  # claude muted pair
         assert row0_calls[1][3] == 1  # claude muted pair
+        assert row0_calls[2][3] == 1  # claude muted pair
 
     def test_temp_output_highlight_uses_italic_attr_when_available(self, sessions_view, monkeypatch):
         """When italics are supported, only placeholder text is italicized."""

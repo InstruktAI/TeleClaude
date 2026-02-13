@@ -2,39 +2,45 @@
 
 ## Goal
 
-Make Telegram message routing and cleanup deterministic, observable, and safe by removing ambiguous fallback behavior and enforcing one delivery path.
+Harden Telegram message routing, delivery contracts, cleanup behavior, and ownership checks so that failures are explicit, cleanup is bounded, and cross-layer responsibility is clear.
 
 ## In Scope
 
-1. Route Telegram-bound UI sends through a single lane/funnel.
-2. Normalize delivery result contracts for message/file paths.
-3. Add bounded suppression/backoff for repeated invalid-topic delete attempts.
-4. Centralize orphan-topic delete entrypoint semantics.
-5. Harden ownership checks for destructive topic cleanup.
-6. Reduce cross-layer coupling between `AdapterClient` and Telegram internals where fallback policy is duplicated.
+1. **Sentinel coercion removal** — `CommandMapper` coerces missing `project_path` to `""` in three places. Missing required values must fail at ingress, not silently become empty strings.
+2. **Help-desk fallback restriction** — `create_session` defaults missing `project_path` to `help-desk` even for unrestricted callers. Remove this non-role-based reroute; preserve the explicit non-admin jail.
+3. **Session data contract clarity** — `get_session_data` returns ambiguous payloads where `messages` can be tmux output, pending notice, or parsed transcript. Callers cannot distinguish state without string inspection.
+4. **Send-message return contract** — `MessageOperationsMixin.send_message` returns `""` when `topic_id` is not ready. This sentinel is indistinguishable from a failure to callers.
+5. **Orphan topic cleanup suppression** — `_delete_orphan_topic` can be called repeatedly for the same invalid topic from `_handle_text_message`, `_handle_topic_closed`, and `_require_session_from_topic` with no backoff or cooldown.
+6. **Ownership check hardening** — `_topic_owned_by_this_bot` relies solely on title string matching (`@computer` or `$computer`). This heuristic can produce false positives when topic titles are reused or stale.
+7. **Parse-entities error handling** — `can't parse entities` errors in `edit_message` are logged but the fallback path is implicit. Make the retry/skip behavior explicit and observable.
 
 ## Out of Scope
 
-1. Broad redesign of unrelated adapters.
-2. UX/visual behavior changes in TUI.
-3. Non-Telegram routing behavior except where shared delivery contracts require alignment.
+1. Redesign of the adapter model or UiAdapter base class.
+2. Non-Telegram adapter behavior.
+3. TUI/visual changes.
+4. Full identity/authorization redesign.
 
 ## Success Criteria
 
-- [ ] Telegram UI delivery uses one lane path consistently.
-- [ ] Missing/invalid routing does not return success-like sentinel values.
-- [ ] Repeated `Topic_id_invalid` attempts are suppressed within a cooldown window.
-- [ ] Topic deletion is not executed on weak ownership heuristics alone.
-- [ ] Logs/events clearly distinguish route, recovery, and final delivery outcomes.
+- [ ] `CommandMapper` raises or returns explicit error when `project_path` is missing and required.
+- [ ] Session creation for unrestricted callers without `project_path` fails explicitly instead of silently routing to help-desk.
+- [ ] Non-admin role jail to help-desk remains functional and unchanged.
+- [ ] `get_session_data` response includes an explicit `source` field distinguishing transcript, tmux fallback, and pending states.
+- [ ] `send_message` returns `None` (not `""`) when delivery is skipped, or raises on unrecoverable failure.
+- [ ] Repeated orphan topic deletes for the same `topic_id` are suppressed within a cooldown window (e.g., 60s).
+- [ ] `_topic_owned_by_this_bot` cross-references DB session records, not just title strings, before authorizing delete.
+- [ ] Parse-entities failures emit a structured log with reason code and the fallback action taken is explicit.
+- [ ] All changes pass `make lint` and `make test`.
 
 ## Constraints
 
 1. Preserve existing user-facing functional behavior where safe.
-2. Keep changes incremental and merge-safe.
-3. Avoid introducing new fallback paths that hide delivery failures.
+2. Keep changes incremental with atomic commits per concern.
+3. Do not introduce new fallback paths that hide failures.
 
 ## Risks
 
-1. Tightening contracts may surface latent caller assumptions.
-2. Suppression logic may hide legitimate one-off recovery if tuned incorrectly.
-3. Refactoring cross-layer responsibilities can introduce regressions without careful sequencing.
+1. Tightening `project_path` contracts may surface latent callers that rely on the empty-string sentinel.
+2. Suppression logic tuned too aggressively may hide legitimate one-off cleanup recovery.
+3. Ownership check changes may leave some orphan topics uncleaned if the DB record is already deleted.
