@@ -55,10 +55,6 @@ Notification routing subsystem that sends job outputs, reports, and alerts to pe
 
 ## Maintenance
 
-- [.] telegram-adapter-hardening
-
-Harden Telegram routing, delivery contracts, cleanup behavior, and ownership checks. Removes sentinel coercion for required inputs, restricts help-desk routing to role-based jail only, adds explicit source field to session data responses, bounds orphan topic cleanup with cooldown suppression, cross-references DB for delete ownership instead of title-only heuristics, and makes parse-entities fallback behavior explicit.
-
 - [ ] project-aware-bug-routing
 
 - [ ] test-suite-ownership-reset

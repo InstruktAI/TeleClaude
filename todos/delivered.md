@@ -47,3 +47,4 @@
 | 2026-02-12 | tts-fallback-saturation         | Fix TTS fallback logic to respect voice saturation                                                            | DELIVERED | fd8d5cd2                                 |
 | 2026-02-12 | help-desk                       | Help Desk Platform                                                                                            | DELIVERED | 20f3602f                                 |
 | 2026-02-13 | auto-architecture-diagrams      | Code-generated architecture diagrams via `make diagrams` (6 Mermaid outputs)                                  | DELIVERED | 5c0540ac                                 |
+| 2026-02-13 | telegram-adapter-hardening      | Telegram routing hardening with Law of Demeter metadata boundaries and fail-fast contracts                    | DELIVERED | 26798a9f                                 |
