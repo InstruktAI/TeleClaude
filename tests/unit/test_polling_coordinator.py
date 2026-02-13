@@ -400,6 +400,29 @@ class TestCodexSyntheticPromptDetection:
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
+    async def test_compact_dimmed_bullet_below_prompt_triggers_submit_boundary(self):
+        """Compact dimmed agent bullet should count as submit boundary on fast turns."""
+        session_id = "codex-compact-bullet-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› say hi\n\x1b[2m• \x1b[0mhi",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            payload = context.data
+            assert isinstance(payload, UserPromptSubmitPayload)
+            assert payload.prompt == "say hi"
+            assert payload.raw.get("source") == "codex_output_polling"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
     async def test_emits_on_prompt_to_agent_transition_without_overlap_frame(self):
         """Emit submit when prompt disappears and first visible agent line is a tool action."""
         session_id = "codex-transition-1"
@@ -688,6 +711,10 @@ class TestCodexSyntheticPromptDetection:
     async def test_has_live_prompt_marker_with_footer_hint(self):
         output = "final text\n› Write tests for @filename\n\n? for shortcuts"
         assert polling_coordinator._has_live_prompt_marker(output) is True
+
+    async def test_live_marker_helper_excludes_plain_assistant_bullet_text(self):
+        assert polling_coordinator._is_live_agent_marker_line("• hi") is False
+        assert polling_coordinator._is_live_agent_marker_line("• Working...") is True
 
 
 @pytest.mark.asyncio

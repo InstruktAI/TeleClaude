@@ -28,8 +28,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
-      # Placeholder jobs for future implementation phases
-      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Gemini CLI
+        run: npm install -g @google/gemini-cli
+
       - name: Claude Code Release Lane
         run: echo "Claude Code analysis will run here in release-lane-claude phase"
         env:
@@ -41,9 +47,46 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       - name: Gemini Release Lane
-        run: echo "Gemini analysis will run here in release-lane-gemini phase"
+        run: |
+          # 1. Get last release tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "Last tag: $LAST_TAG"
+          
+          # 2. Generate Diff
+          if [ -n "$LAST_TAG" ]; then
+            git diff $LAST_TAG..HEAD > release-diff.txt
+          else
+            # First release: use current tree as "new content"
+            git ls-files > release-diff.txt
+          fi
+          
+          # 3. Assemble Context
+          PROMPT=$(cat docs/project/spec/release-inspector-prompt.md)
+          MANIFESTS_CLI=$(cat docs/project/spec/telec-cli-surface.md)
+          MANIFESTS_MCP=$(cat docs/project/spec/mcp-tool-surface.md)
+          MANIFESTS_EVENTS=$(cat docs/project/spec/event-vocabulary.md)
+          MANIFESTS_CONFIG=$(cat docs/project/spec/teleclaude-config.md)
+          DIFF=$(cat release-diff.txt)
+          
+          # 4. Run Gemini Inspector (Restricted Mode)
+          gemini --yolo --allowed-mcp-server-names=[] -p "$PROMPT
+
+          MANIFESTS:
+          CLI: $MANIFESTS_CLI
+          MCP: $MANIFESTS_MCP
+          Events: $MANIFESTS_EVENTS
+          Config: $MANIFESTS_CONFIG
+
+          DIFF:
+          $DIFF" > gemini-report.json
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+
+      - name: Upload Gemini Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini-report
+          path: gemini-report.json
 
       - name: Consensus Arbiter
         run: echo "Consensus arbitration and authorized tagging will run here in release-arbiter phase"

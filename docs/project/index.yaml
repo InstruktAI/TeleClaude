@@ -486,6 +486,18 @@ snippets:
   scope: project
   path: docs/project/spec/mcp-tool-surface.md
   source_project: TeleClaude
+- id: project/spec/release-inspector-prompt
+  description: Canonical prompt for AI release inspectors.
+  type: spec
+  scope: project
+  path: docs/project/spec/release-inspector-prompt.md
+  source_project: TeleClaude
+- id: project/spec/release-report-schema
+  description: Standardized JSON schema for AI release inspector reports.
+  type: spec
+  scope: project
+  path: docs/project/spec/release-report-schema.md
+  source_project: TeleClaude
 - id: project/spec/runtime-operations-truth
   description: Practical contract for documenting daemon background operations and
     their real user impact.

@@ -225,11 +225,16 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:
     for line in lines[prompt_idx + 1 :]:
         clean_line = _strip_ansi(line)
         stripped = clean_line.strip()
-        # Submit boundary must be a live status/spinner marker, not stale assistant bullet text.
+        # Live status/spinner marker is an authoritative submit boundary.
         if _is_live_agent_marker_line(line):
             has_submit_boundary = True
             break
-        # Ignore stale assistant marker lines below prompt (do not treat as prompt body).
+        # Some fast turns skip spinner/status and go straight to a compact assistant
+        # marker line (e.g. "• hi"). Treat those as boundaries when marker is dimmed.
+        if _is_compact_dimmed_agent_boundary_line(line):
+            has_submit_boundary = True
+            break
+        # Other marker lines below prompt are treated as stale scrollback.
         if stripped and stripped[0] in CODEX_AGENT_MARKERS:
             continue
         if stripped.startswith(CODEX_PROMPT_MARKER):
@@ -295,7 +300,30 @@ def _is_live_agent_marker_line(line: str) -> bool:
     normalized = tail.lower()
     if normalized.startswith(("working", "thinking", "sublimating", "planning", "analyzing")):
         return True
-    return len(tail) <= 20 and " " not in tail
+    return False
+
+
+def _is_compact_dimmed_agent_boundary_line(line: str) -> bool:
+    """Return True for compact assistant lines that reliably mark response start."""
+    clean_line = _strip_ansi(line).strip()
+    if not clean_line or clean_line[0] not in CODEX_AGENT_MARKERS:
+        return False
+
+    marker = clean_line[0]
+    marker_pos = line.find(marker)
+    if marker_pos < 0:
+        return False
+    prefix = line[:marker_pos]
+    # Codex renders agent marker glyphs dimmed. Require that signature to avoid
+    # treating stale/plain scrollback bullets as submit boundaries.
+    if not _has_sgr_param(prefix, "2"):
+        return False
+
+    tail = clean_line[1:].strip()
+    if not tail:
+        return True
+    # Accept concise assistant openings (e.g. "• hi", "• done", "• Ran ...").
+    return len(tail) <= 24 and len(tail.split()) <= 4
 
 
 def _find_recent_tool_action(output: str) -> tuple[str, str] | None:
@@ -520,11 +548,13 @@ async def _maybe_emit_codex_input(
 
     strict_boundary = bool(current_input and has_submit_boundary)
     transition_boundary = agent_responding and not current_input and bool(state.last_prompt_input)
-    if agent_responding and not state.submitted_for_current_response:
+    if strict_boundary and not state.submitted_for_current_response:
+        emitted = await _emit_captured_input("codex_output_polling")
+        if emitted:
+            state.submitted_for_current_response = True
+    elif agent_responding and not state.submitted_for_current_response:
         emitted = False
-        if strict_boundary:
-            emitted = await _emit_captured_input("codex_output_polling")
-        elif transition_boundary:
+        if transition_boundary:
             emitted = await _emit_captured_input("codex_marker_transition")
         elif not current_input:
             logger.debug("[CODEX %s] Agent marker found but no input to emit", session_id[:8])
@@ -532,7 +562,7 @@ async def _maybe_emit_codex_input(
         if emitted:
             state.submitted_for_current_response = True
 
-    if not agent_responding:
+    if not agent_responding and not strict_boundary:
         state.submitted_for_current_response = False
 
     # Update last change time only when output actually changed
