@@ -38,8 +38,8 @@ Apply hardening in small, verifiable phases: unify routing first, then contract 
 
 **File(s):** `teleclaude/adapters/telegram_adapter.py`, `teleclaude/adapters/telegram/channel_ops.py`
 
-- [ ] Replace weak title-only ownership checks as authoritative signal.
-- [ ] Fail safe (no delete) on uncertain ownership with diagnostics.
+- [x] Replace weak title-only ownership checks as authoritative signal. (Refactored to remove inference entirely; DB is now the only authority).
+- [x] Fail safe (no delete) on uncertain ownership with diagnostics.
 
 ## Phase 5: Layering Cleanup
 

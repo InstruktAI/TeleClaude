@@ -1,5 +1,5 @@
-project_root: ~/Workspace/InstruktAI/TeleClaude
-snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
+project_root: ~/Workspace/InstruktAI/TeleClaude/trees/telegram-adapter-hardening
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/trees/telegram-adapter-hardening/docs/project
 snippets:
 - id: project/concept/ai-worker
   description: The role of an AI agent session in the TeleClaude network.

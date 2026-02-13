@@ -1,4 +1,4 @@
-snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/third-party
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/trees/telegram-adapter-hardening/docs/third-party
 snippets:
 - id: third-party/claude-code/commands
   description: Claude Code Commands

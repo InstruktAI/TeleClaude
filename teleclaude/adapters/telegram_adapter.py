@@ -163,7 +163,6 @@ class TelegramAdapter(
         self._topic_creation_locks: dict[str, asyncio.Lock] = {}  # Prevent duplicate topic creation per session_id
         self._topic_ready_events: dict[int, asyncio.Event] = {}  # topic_id -> readiness event
         self._topic_ready_cache: set[int] = set()  # topic_ids confirmed via forum_topic_created
-        self._failed_delete_attempts: dict[int, float] = {}  # topic_id -> timestamp of last failed delete
 
         # Register simple command handlers dynamically
         self._register_simple_command_handlers()
@@ -838,54 +837,10 @@ class TelegramAdapter(
         sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", thread_id)
 
         if not sessions:
-            title = self._extract_topic_title(message)
-            if title and self._topic_title_mentions_this_computer(title):
-                candidates = await db.get_active_sessions()
-                matched = [sess for sess in candidates if sess.title == title]
-                if matched:
-                    session = matched[0]
-                    telegram_meta = session.get_metadata().get_ui().get_telegram()
-                    telegram_meta.topic_id = int(thread_id)
-                    await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-                    logger.info(
-                        "_get_session_from_topic: registered topic_id %s for session %s",
-                        thread_id,
-                        session.session_id[:8],
-                    )
-                    return session
             logger.debug("_get_session_from_topic: no session found for topic_id %s", thread_id)
             return None
 
         return sessions[0]
-
-    def _extract_topic_title(self, message: Message | None) -> Optional[str]:
-        """Extract topic title from a Telegram message or its reply chain."""
-        if not message:
-            return None
-
-        forum_created = message.forum_topic_created
-        title = forum_created.name if forum_created else None
-        if title:
-            return str(title)
-
-        reply = message.reply_to_message
-        forum_created = reply.forum_topic_created if reply else None
-        title = forum_created.name if forum_created else None
-        if title:
-            return str(title)
-
-        return None
-
-    def _topic_title_mentions_this_computer(self, title: str) -> bool:
-        """Return True if the topic title includes this computer's identifier."""
-        return f"@{self.computer_name}" in title or f"${self.computer_name}" in title
-
-    def _topic_owned_by_this_bot(self, update: Update, topic_id: Optional[int]) -> bool:
-        """Best-effort ownership check to avoid cross-bot deletions."""
-        title = self._extract_topic_title(update.effective_message)
-        if not title:
-            return False
-        return self._topic_title_mentions_this_computer(title)
 
     async def _require_session_from_topic(self, update: Update) -> Optional[Session]:
         """Get session from topic, with error feedback if not found.
@@ -918,13 +873,6 @@ class TelegramAdapter(
             # Session not found for this topic
             error_msg = "❌ No session found for this topic. The session may have ended."
             logger.warning("No session found for topic_id %s", thread_id)
-
-        if thread_id and update.effective_user and update.effective_user.id in self.user_whitelist:
-            if self._topic_owned_by_this_bot(update, thread_id):
-                await self._delete_orphan_topic(thread_id)
-            else:
-                logger.info("Skipping orphan topic delete for topic %s (not owned by this bot)", thread_id)
-            return None
 
         try:
             await self._send_general_message_with_retry(
