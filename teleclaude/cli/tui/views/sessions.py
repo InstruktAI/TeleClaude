@@ -1548,9 +1548,12 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         collapse_indicator = "▶" if is_collapsed else "▼"
 
         # Title line uses child indentation
-        subdir_part = f"  {session.subdir.removeprefix('trees/')}" if session.subdir else ""
+        if session.subdir:
+            subdir_part = f" {session.subdir.removeprefix('trees/')} "
+            line1 = f'{child_indent}[{idx}] {collapse_indicator} {agent}/{mode}{subdir_part}"{title}"'
+        else:
+            line1 = f'{child_indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"'
         lines: list[str] = []
-        line1 = f'{child_indent}[{idx}] {collapse_indicator} {agent}/{mode}{subdir_part}  "{title}"'
         lines.append(line1[:width])
 
         # If collapsed, only show title line
@@ -1837,12 +1840,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             col += len(agent_part)
             if session.subdir and col < width:
                 subdir_display = session.subdir.removeprefix("trees/")
-                subdir_text = f"  {subdir_display}"
+                subdir_text = f" {subdir_display} "
                 subdir_attr = curses.A_REVERSE if selected else 0
                 stdscr.addstr(row, col, subdir_text[: width - col], subdir_attr)  # type: ignore[attr-defined]
                 col += len(subdir_text)
-            if col < width:
+                title_text = f'"{title}"'
+            else:
                 title_text = f'  "{title}"'
+            if col < width:
                 stdscr.addstr(row, col, title_text[: width - col], title_attr)  # type: ignore[attr-defined]
         except curses.error:
             pass  # Ignore if line doesn't fit
