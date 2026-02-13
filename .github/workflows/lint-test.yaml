@@ -1,37 +1,39 @@
-name: Test
+name: Lint and Test
 
 on:
   push:
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 jobs:
-  test:
+  lint-test:
     runs-on: ubuntu-latest
-    env:
-      TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
-      TELECLAUDE_ENV_PATH: tests/integration/.env
-
+    
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version: "3.12"
 
       - name: Install tmux
         run: sudo apt-get update && sudo apt-get install -y tmux
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v2
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
       - name: Install dependencies
-        run: |
-          uv sync --extra test
+        run: uv sync --all-extras --dev
 
-      - name: Run checks
-        run: |
-          bin/lint.sh
-          bin/test.sh
+      - name: Run lint
+        run: ./tools/lint.sh
+
+      - name: Run tests
+        run: ./tools/test.sh
         env:
           TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
+          TELECLAUDE_ENV_PATH: tests/integration/.env
