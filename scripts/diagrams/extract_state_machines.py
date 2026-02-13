@@ -12,10 +12,9 @@ CORE_PATH = PROJECT_ROOT / "teleclaude" / "core" / "next_machine" / "core.py"
 OUTPUT_PATH = PROJECT_ROOT / "docs" / "diagrams" / "state-machines.mmd"
 
 MARKER_LABELS: dict[str, str] = {
-    "PENDING": "Pending [ ]",
-    "READY": "Ready [.]",
-    "IN_PROGRESS": "In Progress [>]",
-    "DONE": "Done [x]",
+    "PENDING": "Pending",
+    "IN_PROGRESS": "In Progress",
+    "DONE": "Done",
 }
 
 
@@ -140,29 +139,28 @@ def parse_phase_transitions(
 
 
 def parse_roadmap_transitions(source: str) -> list[tuple[str, str, str]]:
-    """Derive roadmap marker transitions from update_roadmap_state call sites."""
+    """Derive item phase transitions from set_item_phase call sites."""
     lines = source.splitlines()
     transitions: list[tuple[str, str, str]] = []
 
-    marker_by_symbol = {
-        " ": "PENDING",
-        ".": "READY",
-        ">": "IN_PROGRESS",
-        "x": "DONE",
+    phase_by_value = {
+        "pending": "PENDING",
+        "in_progress": "IN_PROGRESS",
+        "done": "DONE",
     }
 
     for idx, line in enumerate(lines):
-        if "update_roadmap_state" not in line:
+        if "set_item_phase" not in line:
             continue
 
         dst: str | None = None
-        enum_match = re.search(r"RoadmapMarker\.([A-Z_]+)\.value", line)
+        enum_match = re.search(r"ItemPhase\.([A-Z_]+)\.value", line)
         if enum_match:
             dst = enum_match.group(1)
         else:
-            symbol_match = re.search(r'update_roadmap_state,\s*[^,]+,\s*[^,]+,\s*"([ .>x])"\)', line)
-            if symbol_match:
-                dst = marker_by_symbol.get(symbol_match.group(1))
+            value_match = re.search(r'set_item_phase\([^,]+,\s*[^,]+,\s*"([a-z_]+)"\)', line)
+            if value_match:
+                dst = phase_by_value.get(value_match.group(1))
 
         if not dst:
             continue
@@ -171,16 +169,18 @@ def parse_roadmap_transitions(source: str) -> list[tuple[str, str, str]]:
         window_start = max(0, idx - 10)
         for prev in range(idx - 1, window_start - 1, -1):
             prev_line = lines[prev]
-            src_match = re.search(r"current_state\s*==\s*RoadmapMarker\.([A-Z_]+)\.value", prev_line)
+            src_match = re.search(r"current_phase\s*==\s*ItemPhase\.([A-Z_]+)\.value", prev_line)
+            if not src_match:
+                src_match = re.search(r"get_item_phase\s*==\s*ItemPhase\.([A-Z_]+)\.value", prev_line)
             if src_match:
                 src = src_match.group(1)
                 break
-            if 'if f"[.]' in prev_line:
-                src = "READY"
+            if "ItemPhase.PENDING.value" in prev_line:
+                src = "PENDING"
                 break
 
         if src:
-            transitions.append((src, dst, "update_roadmap_state"))
+            transitions.append((src, dst, "set_item_phase"))
 
     # Deduplicate
     deduped: list[tuple[str, str, str]] = []
@@ -248,7 +248,7 @@ def main() -> None:
     tree = ast.parse(source, filename=str(CORE_PATH))
 
     phase_statuses = parse_enum_members(tree, "PhaseStatus")
-    roadmap_markers = parse_enum_members(tree, "RoadmapMarker")
+    roadmap_markers = parse_enum_members(tree, "ItemPhase")
     defaults = parse_default_phase_state(tree)
     post_completion = parse_post_completion_text(tree)
 
@@ -258,7 +258,7 @@ def main() -> None:
     if not phase_statuses:
         print("WARNING: No PhaseStatus members found", file=sys.stderr)
     if not roadmap_markers:
-        print("WARNING: No RoadmapMarker members found", file=sys.stderr)
+        print("WARNING: No ItemPhase members found", file=sys.stderr)
 
     mermaid = generate_mermaid(
         phase_statuses=phase_statuses,

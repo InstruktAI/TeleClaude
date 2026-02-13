@@ -91,9 +91,9 @@ async def test_next_prepare_hitl_both_exist():
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
         patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
         patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=None),
-        patch("teleclaude.core.next_machine.core.get_roadmap_state", return_value=" "),
-        patch("teleclaude.core.next_machine.core.read_phase_state", return_value={"dor": {"status": "pass"}}),
-        patch("teleclaude.core.next_machine.core.update_roadmap_state"),
+        patch("teleclaude.core.next_machine.core.get_item_phase", return_value="pending"),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value={"dor": {"score": 8}}),
+        patch("teleclaude.core.next_machine.core.sync_main_to_worktree"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"PREPARED: todos/{slug} is ready for work." in result

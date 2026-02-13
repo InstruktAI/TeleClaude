@@ -76,9 +76,10 @@ stores on demand:
 - **Library** — the full documentation snippet collection, retrieved via
   `get_context`. The reference shelf the agent consults when baseline
   knowledge is insufficient.
-- **Journal** — external observation records (claude-mem), searchable
-  impressions of past sessions captured by an observer. Third-person memory.
-- **Archive** — raw session transcripts, searchable via `history.py`.
+- **Journal** — observation records stored with the `Memory Management API Tool`,
+  searchable memories captured by you to remember contrast-rich moments
+  that arise while interacting with the user.
+- **Archive** — raw session transcripts, searchable via `History Search Tool`.
   The unprocessed record of what was said and done. Expensive to search,
   rich when found.
 - **Human memory** — the user's own recall, aided by tools like Limitless.
@@ -104,8 +105,8 @@ The memory tiers are not a feature of the system. They are the system.
 Every policy, every tool, every procedure maps to a tier. Understanding the
 tiers is understanding why the pieces fit.
 
-## See also
+## See Also
 
-- general/principle/evolution
-- general/policy/heartbeat
-- general/concept/documentation-snippets
+- ~/.teleclaude/docs/general/principle/evolution.md
+- ~/.teleclaude/docs/general/policy/heartbeat.md
+- ~/.teleclaude/docs/general/concept/documentation-snippets.md

@@ -118,7 +118,7 @@ def _expected_from_global(parts: tuple[str, ...], path: Path, domains: Iterable[
     if len(parts) < 3:
         return None, "missing_global_scope"
     scope_segment = parts[2]
-    if scope_segment == "baseline.md" and path.name == "baseline.md":
+    if path.name.startswith("baseline") and path.name.endswith(".md") and path.parent.name == "global":
         return None, None
     if scope_segment == "baseline":
         if path.name == "index.md" and len(parts) == 4:
@@ -149,7 +149,7 @@ def _expected_from_global(parts: tuple[str, ...], path: Path, domains: Iterable[
 def _expected_from_project(parts: tuple[str, ...], path: Path) -> tuple[str | None, str | None]:
     if len(parts) < 3:
         return None, "missing_taxonomy"
-    if parts[2] == "baseline.md" and path.name == "baseline.md":
+    if path.name.startswith("baseline") and path.name.endswith(".md") and path.parent.name == "project":
         return None, None
     if parts[2] == "baseline":
         if path.name == "index.md" and len(parts) == 4:

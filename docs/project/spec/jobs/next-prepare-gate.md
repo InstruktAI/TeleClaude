@@ -32,7 +32,6 @@ Per processed slug:
 - Updated `state.json.dor` with final gate status and score
 - Optional minimal refinements to requirements/plan when needed for accuracy
 
-## Roadmap contract
+## Phase contract
 
-- Gate is the only phase that may authorize pending `[ ]` to ready `[.]`,
-  and only when DOR status is `pass`.
+- Gate sets `dor.score` in `state.json`; readiness is derived from `dor.score >= 8`.

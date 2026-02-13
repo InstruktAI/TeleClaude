@@ -8,10 +8,13 @@
     "score": 8,
     "status": "needs_work",
     "schema_version": 1,
-    "blockers": ["web-interface-1"],
+    "blockers": [
+      "web-interface-1"
+    ],
     "actions_taken": {
       "requirements_updated": true,
       "implementation_plan_updated": true
     }
-  }
+  },
+  "phase": "pending"
 }

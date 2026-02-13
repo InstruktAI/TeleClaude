@@ -48,6 +48,7 @@ _H2_LINE = re.compile(r"^##\s+")
 _INLINE_REF_LINE = re.compile(r"^\s*(?:-\s*)?@\S+")
 _CODE_FENCE_LINE = re.compile(r"^```")
 _INLINE_CODE_SPAN = re.compile(r"`[^`]*`")
+_SEE_ALSO_LIST_LINE = re.compile(r"^\s*-\s+(.+)$")
 
 _SCHEMA_PATH = Path(__file__).resolve().parents[1] / "scripts" / "snippet_schema.yaml"
 
@@ -306,7 +307,7 @@ def _infer_type_from_path(file_path: Path) -> str | None:
 def validate_snippet(path: Path, content: str, project_root: Path, *, domains: set[str]) -> None:
     """Validate a single doc snippet. Collects warnings via ``_warn``."""
     if (path.name == "index.md" and "baseline" in path.parts) or (
-        path.name == "baseline.md" and path.parent.name in ("global", "project")
+        path.name.startswith("baseline") and path.name.endswith(".md") and path.parent.name in ("global", "project")
     ):
         _validate_baseline_index(path, content, project_root, domains=domains)
         return
@@ -415,6 +416,73 @@ def _validate_snippet_structure(
             _warn("snippet_sources_header_level", path=str(path))
 
 
+def _is_global_doc(path: Path) -> bool:
+    return "global" in path.parts
+
+
+def _resolve_see_also_ref(ref: str, project_root: Path) -> Path | None:
+    """Resolve a See Also soft reference to an absolute path for existence check.
+
+    See Also refs are NOT ``@`` refs.  They use one of two prefixes:
+
+    * ``docs/...`` — project-relative, resolved against *project_root*.
+    * ``~/.teleclaude/docs/...`` — global, mapped back to source at
+      ``docs/global/`` in the repo for validation (the deploy target may be
+      stale or empty).
+    """
+    if ref.startswith("~"):
+        expanded = str(Path(ref).expanduser())
+        home_prefix = str(Path.home() / ".teleclaude" / "docs") + "/"
+        if expanded.startswith(home_prefix):
+            tail = expanded[len(home_prefix) :]
+            return (project_root / "docs" / "global" / tail).resolve()
+        return Path(expanded).resolve()
+    if ref.startswith("docs/"):
+        return (project_root / ref).resolve()
+    return None
+
+
+def _validate_see_also_ref(ref_line: str, path: Path, project_root: Path) -> None:
+    """Validate a single list item inside a ``## See Also`` section."""
+    raw = ref_line.split("\u2014")[0].split(" -- ")[0].strip()
+    if not raw:
+        return
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return
+
+    is_global = _is_global_doc(path)
+
+    if is_global:
+        if not raw.startswith("~/.teleclaude/docs/"):
+            _warn(
+                "snippet_see_also_bad_prefix",
+                path=str(path),
+                ref=raw,
+                expected="~/.teleclaude/docs/...",
+            )
+            return
+    else:
+        if not raw.startswith("docs/") and not raw.startswith("~/.teleclaude/docs/"):
+            _warn(
+                "snippet_see_also_bad_prefix",
+                path=str(path),
+                ref=raw,
+                expected="docs/... or ~/.teleclaude/docs/...",
+            )
+            return
+
+    if not raw.endswith(".md"):
+        _warn("snippet_see_also_missing_extension", path=str(path), ref=raw)
+        return
+
+    resolved = _resolve_see_also_ref(raw, project_root)
+    if resolved is None:
+        _warn("snippet_see_also_unresolvable", path=str(path), ref=raw)
+        return
+    if not resolved.exists():
+        _warn("snippet_see_also_missing", path=str(path), ref=raw, resolved=str(resolved))
+
+
 def _validate_snippet_refs(path: Path, lines: list[str], project_root: Path, *, domains: set[str]) -> None:
     in_required_reads = False
     in_see_also = False
@@ -436,12 +504,17 @@ def _validate_snippet_refs(path: Path, lines: list[str], project_root: Path, *, 
         if _H2_LINE.match(line):
             in_required_reads = False
             in_see_also = False
+            continue
         line_without_inline = _INLINE_CODE_SPAN.sub("", line)
         if "@" in line_without_inline:
             if in_see_also:
                 _warn("snippet_see_also_inline_ref", path=str(path), line=line.strip())
             elif not in_required_reads:
                 _warn("snippet_required_reads_outside_section", path=str(path), line=line.strip())
+        if in_see_also:
+            m = _SEE_ALSO_LIST_LINE.match(line)
+            if m:
+                _validate_see_also_ref(m.group(1), path, project_root)
 
     for error in collect_inline_ref_errors(project_root, path, lines, domains=domains):
         _warn(error["code"], **{k: v for k, v in error.items() if k != "code"})

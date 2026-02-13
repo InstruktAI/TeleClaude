@@ -42,15 +42,14 @@ This phase is critical and evidence-driven. It is not a drafting phase.
    - `actions_taken`
    - `last_assessed_at`
 5. Update `dor-report.md` with gate verdict and exact unresolved blockers.
-6. Roadmap promotion policy:
-   - only gate phase may permit pending `[ ]` to ready `[.]`,
-   - only when both required files exist and `state.json.dor.status == "pass"`.
+6. Phase promotion policy:
+   - gate sets `dor.score` in `state.json`; readiness is derived from `dor.score >= 8`.
 
 ## Outputs
 
 1. Finalized `state.json.dor` gate verdict.
 2. Updated `dor-report.md` reflecting gate decision.
-3. Ready transition eligibility for roadmap updates.
+3. Ready transition eligibility for phase updates in `state.json`.
 
 ## Recovery
 

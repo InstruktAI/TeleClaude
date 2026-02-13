@@ -936,7 +936,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     """Compose checkpoint text from precomputed heuristic output."""
     response_policy = (
         "Response policy: perform checkpoint-required housekeeping silently. "
-        "End with a short user-relevant debrief (1-3 sentences) about actual task outcome, blocker, or decision needed. "
+        "End with a short user-relevant debrief about actual task outcome, blocker, or decision needed. "
         "Do not mention checkpoint chores."
     )
     escape_hatch = (

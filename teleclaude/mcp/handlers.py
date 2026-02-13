@@ -1087,7 +1087,7 @@ class MCPHandlersMixin:
             return "ERROR: NO_ROADMAP\ntodos/roadmap.md not found."
 
         content = roadmap_path.read_text(encoding="utf-8")
-        roadmap_slug_pattern = re.compile(r"^-\s+\[[. >x]\].*?([a-z0-9-]+)", re.MULTILINE)
+        roadmap_slug_pattern = re.compile(r"^-\s+([a-z0-9-]+)", re.MULTILINE)
         roadmap_slugs = set(roadmap_slug_pattern.findall(content))
 
         if slug not in roadmap_slugs:

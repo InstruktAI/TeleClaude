@@ -308,6 +308,47 @@ def process_file(content: str, agent_prefix: str, agent_name: str) -> str:
     return content
 
 
+def _render_progressive_index(
+    ref_file: Path,
+    *,
+    project_root: Path,
+    warn_only: bool = False,
+) -> str:
+    """Render a baseline-progressive.md file as a compact index block.
+
+    Instead of inlining full snippet content, reads each referenced file's
+    frontmatter to extract snippet ID and description, then renders a scannable
+    bullet list that agents can use with ``get_context``.
+    """
+    content = ref_file.read_text(encoding="utf-8")
+    entries: list[str] = []
+
+    for match in INLINE_REF_RE.finditer(content):
+        ref = match.group(1)
+        resolved = resolve_ref_path(ref, root_path=project_root, current_path=ref_file)
+        if not resolved or not resolved.exists():
+            if warn_only:
+                print(f"WARNING: Progressive index ref not found: {ref}")
+                continue
+            raise ValueError(f"Progressive index ref not found: {ref}")
+
+        raw = resolved.read_text(encoding="utf-8")
+        post = frontmatter.loads(raw)
+        snippet_id = post.metadata.get("id", "")
+        description = post.metadata.get("description", "")
+
+        if snippet_id and description:
+            entries.append(f"- `{snippet_id}` — {description}")
+        elif snippet_id:
+            entries.append(f"- `{snippet_id}`")
+
+    if not entries:
+        return ""
+
+    header = "## Baseline index — load via get_context when relevant\n\n"
+    return header + "\n".join(entries)
+
+
 def expand_inline_refs(content: str, *, project_root: Path, current_path: Path, warn_only: bool = False) -> str:
     """Inline @path.md references into the content (Codex speedup)."""
     seen: set[Path] = set()
@@ -330,6 +371,18 @@ def expand_inline_refs(content: str, *, project_root: Path, current_path: Path, 
             if resolved in seen:
                 continue
             seen.add(resolved)
+
+            # Progressive baseline: render as index instead of inlining
+            if resolved.name.startswith("baseline-progressive"):
+                index_block = _render_progressive_index(
+                    resolved,
+                    project_root=project_root,
+                    warn_only=warn_only,
+                )
+                if index_block:
+                    required_sections.append(index_block)
+                continue
+
             raw = resolved.read_text(encoding="utf-8")
             post = frontmatter.loads(raw)
             body = post.content
@@ -347,6 +400,16 @@ def expand_inline_refs(content: str, *, project_root: Path, current_path: Path, 
             if resolved in seen:
                 return ""
             seen.add(resolved)
+
+            # Progressive baseline: render as index instead of inlining
+            if resolved.name.startswith("baseline-progressive"):
+                index_block = _render_progressive_index(
+                    resolved,
+                    project_root=project_root,
+                    warn_only=warn_only,
+                )
+                return f"{index_block}\n" if index_block else ""
+
             raw = resolved.read_text(encoding="utf-8")
             post = frontmatter.loads(raw)
             body = post.content

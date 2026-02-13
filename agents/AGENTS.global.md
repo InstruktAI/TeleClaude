@@ -29,6 +29,7 @@ You are working with me: Maurice Faber <maurice@instrukt.ai> aka Morriz aka Mo. 
 ## Required Reads
 
 - @docs/global/baseline.md
+- @docs/global/baseline-progressive.md
 
 ## REMINDERS
 

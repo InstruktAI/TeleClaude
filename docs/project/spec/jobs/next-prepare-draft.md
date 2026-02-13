@@ -33,7 +33,7 @@ Per processed slug:
 - `dor-report.md` (draft analysis)
 - `state.json.dor` (draft metadata)
 
-## Roadmap contract
+## Phase contract
 
-- Must not transition roadmap `[ ]` to `[.]`.
+- Must not transition item phase from `pending` to `ready` in `state.json`.
 - Leaves final readiness decision to `next-prepare-gate`.

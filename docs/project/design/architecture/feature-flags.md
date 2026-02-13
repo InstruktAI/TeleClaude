@@ -23,9 +23,9 @@ To allow safe deployment of new features by toggling them on or off without code
 
 - **Boolean Status**: `True` if the feature is enabled for the requested context, `False` otherwise.
 
-## See also
+## See Also
 
-- @docs/project/policy/feature-flag-usage.md — Rules for when to use (and not use) feature flags
+- docs/project/policy/feature-flag-usage.md — Rules for when to use (and not use) feature flags
 
 ## Invariants
 

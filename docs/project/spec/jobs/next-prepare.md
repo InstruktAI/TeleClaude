@@ -78,11 +78,11 @@ Threshold constants:
 - Target quality: `8`
 - Decision required: `< 7`
 
-## Roadmap state contract
+## Phase transition contract
 
 For slug-targeted prepare, when both `requirements.md` and `implementation-plan.md`
-exist, roadmap state is pending `[ ]`, and `state.json.dor.status == "pass"`,
-transition to ready `[.]`.
+exist, item phase is `pending` in `state.json`, and `state.json.dor.status == "pass"`,
+transition phase to `ready`.
 
 Only `next-prepare-gate` may authorize this transition.
 

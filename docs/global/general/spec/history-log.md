@@ -9,6 +9,8 @@ description: 'Standard format for history.md logs that record request/response e
 
 ## What it is
 
+Mostly used to capture activity over time, as when revisiting research tasks with new insights or hunches.
+
 Defines the required format for `history.md` files that capture request/response
 entries over time so agents can reuse prior work instead of redoing it.
 

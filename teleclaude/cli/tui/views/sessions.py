@@ -55,7 +55,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _THINKING_BASE_TEXT = "Thinking..."
-_WORKING_BASE_TEXT = "Working..."
+_STARTING_BASE_TEXT = "..."
 _STREAMING_SAFETY_TIMEOUT = 30.0  # Safety net; agent_stop is the authoritative clear signal
 _WATCHED_OUTPUT_HIGHLIGHT_TIMEOUT = 3.0
 
@@ -130,8 +130,8 @@ def _thinking_placeholder_text(tool_name: str | None = None) -> str:
 def _working_placeholder_text() -> str:
     """Return placeholder text shown after temp highlight while agent is still working."""
     if getattr(curses, "A_ITALIC", 0):
-        return _WORKING_BASE_TEXT
-    return f"**{_WORKING_BASE_TEXT}**"
+        return _STARTING_BASE_TEXT
+    return f"**{_STARTING_BASE_TEXT}**"
 
 
 def _temp_output_placeholder_text(active_agent: str | None, tool_name: str | None = None) -> str:

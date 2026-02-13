@@ -34,6 +34,6 @@ Build and distribute agent artifacts in this repository.
 - If outputs are wrong, fix the source artifacts and rerun distribution.
 - Do not edit generated files directly.
 
-## See also
+## See Also
 
 - docs/project/spec/agent-artifact-automation.md

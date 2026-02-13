@@ -281,6 +281,10 @@ def init_colors() -> None:
 
         # Tab lines (muted)
         curses.init_pair(_TAB_LINE_PAIR_ID, 240, -1)
+
+        # Preparation view status colors
+        curses.init_pair(25, 71, -1)  # Green (ready)
+        curses.init_pair(26, 178, -1)  # Yellow (active)
     else:
         curses.init_pair(14, -1, 252)  # z=0 selection
         curses.init_pair(15, -1, 251)  # z=1 selection
@@ -302,6 +306,10 @@ def init_colors() -> None:
 
         # Tab lines (default for light mode)
         curses.init_pair(_TAB_LINE_PAIR_ID, 244, -1)
+
+        # Preparation view status colors
+        curses.init_pair(25, 28, -1)  # Green (ready)
+        curses.init_pair(26, 136, -1)  # Yellow (active)
 
 
 def get_layer_attr(z_index: int) -> int:
@@ -505,8 +513,8 @@ def blend_colors(base_hex: str, agent_hex: str, percentage: float) -> str:
     return _rgb_to_hex(blended_r, blended_g, blended_b)
 
 
-def get_agent_pane_background(agent: str) -> str:
-    """Get background color for an agent's pane with configurable haze.
+def get_agent_pane_inactive_background(agent: str) -> str:
+    """Get background color for an agent's inactive pane with configurable haze.
 
     Blends the agent's color with the base inactive background color
     to create a subtle haze effect.
@@ -529,32 +537,6 @@ def get_agent_pane_background(agent: str) -> str:
         return base_bg
 
     return blend_colors(base_bg, agent_color, _HAZE_PERCENTAGE * 3 if _is_dark_mode else _HAZE_PERCENTAGE)
-
-
-def get_agent_active_pane_background(agent: str) -> str:
-    """Get background color for an agent's active pane with very subtle haze.
-
-    Blends the agent's color with the base inactive background color
-    using the most subtle percentage for active panes.
-
-    Args:
-        agent: Agent name ("claude", "gemini", "codex", or unknown)
-
-    Returns:
-        Hex color string for tmux window-active-style background
-    """
-    if _is_dark_mode:
-        agent_colors = _AGENT_HEX_COLORS_DARK
-    else:
-        agent_colors = _AGENT_HEX_COLORS_LIGHT
-    base_bg = get_terminal_background()
-
-    agent_color = agent_colors.get(agent)
-    if not agent_color:
-        # Unknown agent: return base background
-        return base_bg
-
-    return blend_colors(base_bg, agent_color, _ACTIVE_HAZE_PERCENTAGE * 3 if _is_dark_mode else _ACTIVE_HAZE_PERCENTAGE)
 
 
 def get_agent_status_background(agent: str) -> str:
@@ -580,7 +562,7 @@ def get_agent_status_background(agent: str) -> str:
         # Unknown agent: return base background
         return base_bg
 
-    return blend_colors(base_bg, agent_color, _STATUS_HAZE_PERCENTAGE * 3 if _is_dark_mode else _STATUS_HAZE_PERCENTAGE)
+    return blend_colors(base_bg, agent_color, _STATUS_HAZE_PERCENTAGE * 2 if _is_dark_mode else _STATUS_HAZE_PERCENTAGE)
 
 
 def get_agent_highlight_color(agent: str) -> int:
@@ -631,7 +613,7 @@ def get_tui_inactive_background() -> str:
     base_bg = get_terminal_background()
     blend_target = "#ffffff" if _is_dark_mode else "#000000"
     return blend_colors(
-        base_bg, blend_target, _TUI_INACTIVE_HAZE_PERCENTAGE * 3 if _is_dark_mode else _TUI_INACTIVE_HAZE_PERCENTAGE
+        base_bg, blend_target, _TUI_INACTIVE_HAZE_PERCENTAGE * 2 if _is_dark_mode else _TUI_INACTIVE_HAZE_PERCENTAGE
     )
 
 

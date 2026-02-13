@@ -49,6 +49,18 @@ class TodoStatus(str, Enum):
     READY = "ready"
     IN_PROGRESS = "in_progress"
 
+    @property
+    def display_label(self) -> str:
+        """Human-friendly label for TUI display."""
+        return _TODO_STATUS_LABELS[self]
+
+
+_TODO_STATUS_LABELS: dict[TodoStatus, str] = {
+    TodoStatus.PENDING: "draft",
+    TodoStatus.READY: "ready",
+    TodoStatus.IN_PROGRESS: "active",
+}
+
 
 class TodoFileFlag(str, Enum):
     """Todo file availability flags."""

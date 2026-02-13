@@ -76,7 +76,7 @@ the H1 title, ordered from general to concrete: concept → principle → policy
 
 - `## Limitations` — only when real constraints exist.
 - `## Examples` — only when concrete usage is needed.
-- `## See also` — soft references only; no inline `@` references.
+- `## See Also` — soft references only; no inline `@` references.
 
 Avoid generic `Notes` sections. If content does not fit the mandatory sections
 or the optional sections above, it should not be included.

@@ -1,6 +1,6 @@
-"""Migrate data from external claude-mem database to TeleClaude's memory tables.
+"""Migrate data from external memory-management-api database to TeleClaude's memory tables.
 
-The old claude-mem DB uses different table names and has extra columns:
+The old memory-management-api DB uses different table names and has extra columns:
   - observations → memory_observations (extra 'text' column, old type enum)
   - session_summaries → memory_summaries (extra files_read/files_edited/notes/prompt_number/discovery_tokens)
   - sdk_sessions → memory_manual_sessions (different column set)
@@ -37,7 +37,7 @@ def _map_type(old_type: str) -> str:
 
 
 def migrate(source_db: str, target_db: str) -> dict[str, int]:
-    """Migrate observations + summaries from claude-mem to teleclaude.db.
+    """Migrate observations + summaries from memory-management-api to teleclaude.db.
 
     Transaction-wrapped, re-run safe (INSERT OR IGNORE).
     Returns: {"observations": N, "summaries": N, "sessions": N}
@@ -158,11 +158,11 @@ def migrate(source_db: str, target_db: str) -> dict[str, int]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Migrate claude-mem data to TeleClaude")
+    parser = argparse.ArgumentParser(description="Migrate memory-management-api data to TeleClaude")
     parser.add_argument(
         "--source",
-        default=str(Path.home() / ".claude-mem" / "claude-mem.db"),
-        help="Source claude-mem database path",
+        default=str(Path.home() / ".memory-management-api" / "memory-management-api.db"),
+        help="Source memory-management-api database path",
     )
     parser.add_argument(
         "--target",

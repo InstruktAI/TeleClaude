@@ -472,6 +472,84 @@ class TestCodexSyntheticPromptDetection:
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
+    async def test_keeps_buffered_prompt_across_empty_prompt_frame_before_emit(self):
+        """Do not drop buffered prompt when an empty `› ` frame appears before agent response."""
+        session_id = "codex-empty-prompt-gap-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› keep me",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            emit.assert_not_awaited()
+
+            # Transitional empty prompt frame (previously cleared buffered prompt).
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› ",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            emit.assert_not_awaited()
+
+            # First agent-active frame should emit buffered prompt.
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="• Working...",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            payload = context.data
+            assert isinstance(payload, UserPromptSubmitPayload)
+            assert payload.prompt == "keep me"
+            assert payload.raw.get("source") == "codex_marker_transition"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_transition_emit_when_prompt_visible_and_agent_already_active(self):
+        """Emit submit even when prompt-visible helper is true on the transition frame."""
+        session_id = "codex-transition-visible-prompt-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› go",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            emit.assert_not_awaited()
+
+            # Agent marker visible while prompt line still visible below it.
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="• Working...\n› ",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            payload = context.data
+            assert isinstance(payload, UserPromptSubmitPayload)
+            assert payload.prompt == "go"
+            assert payload.raw.get("source") == "codex_marker_transition"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
     async def test_does_not_emit_while_prompt_text_is_still_visible(self):
         """Stale marker glyphs above prompt should not trigger synthetic submit."""
         session_id = "codex-visible-1"

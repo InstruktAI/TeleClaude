@@ -911,7 +911,6 @@ class TodoInfo:
     has_impl_plan: bool = False
     build_status: Optional[str] = None
     review_status: Optional[str] = None
-    dor_status: Optional[str] = None
     dor_score: Optional[int] = None
     deferrals_status: Optional[str] = None
     findings_count: int = 0
@@ -935,7 +934,6 @@ class TodoInfo:
             has_impl_plan=bool(data.get("has_impl_plan", False)),
             build_status=cast(Optional[str], data.get("build_status")),
             review_status=cast(Optional[str], data.get("review_status")),
-            dor_status=cast(Optional[str], data.get("dor_status")),
             dor_score=dor_score,
             deferrals_status=cast(Optional[str], data.get("deferrals_status")),
             findings_count=int(data.get("findings_count", 0) or 0),

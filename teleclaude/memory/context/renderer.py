@@ -9,7 +9,7 @@ from teleclaude.memory.context.compiler import TimelineEntry
 
 
 def render_context(entries: list[TimelineEntry]) -> str:
-    """Render timeline entries to markdown matching claude-mem output format."""
+    """Render timeline entries to markdown matching memory-management-api output format."""
     if not entries:
         return ""
 

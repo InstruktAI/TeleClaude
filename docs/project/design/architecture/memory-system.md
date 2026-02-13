@@ -11,7 +11,7 @@ description: 'Persistent memory subsystem for storing, searching, and injecting 
 
 Give AI agents persistent memory across sessions by storing relationship-centric observations in the daemon's SQLite database. Observations are typed, searchable via FTS5, and injected into agent sessions at startup via the hook receiver.
 
-Replaces the external `claude-mem` dependency (TypeScript/Bun on port 37777) with a fully integrated Python implementation: single database, single package, full ownership.
+Replaces the external `memory-management-api` dependency (TypeScript/Bun on port 37777) with a fully integrated Python implementation: single database, single package, full ownership.
 
 ## Inputs/Outputs
 
@@ -19,7 +19,7 @@ Replaces the external `claude-mem` dependency (TypeScript/Bun on port 37777) wit
 
 - HTTP API requests from agents (`POST /api/memory/save`, `GET /api/memory/search`)
 - Hook receiver `SessionStart` event (triggers context injection)
-- Migration script for one-time import from legacy `claude-mem` database
+- Migration script for one-time import from legacy `memory-management-api` database
 
 **Outputs:**
 
@@ -36,7 +36,7 @@ teleclaude/memory/
 ├── store.py             # MemoryStore: save/retrieve observations (async + sync)
 ├── search.py            # MemorySearch: FTS5/LIKE search, timeline, batch fetch
 ├── api_routes.py        # FastAPI router: /api/memory/* endpoints
-├── migrate_from_claude_mem.py  # One-time migration from legacy claude-mem DB
+├── migrate_from_claude_mem.py  # One-time migration from legacy memory-management-api DB
 └── context/
     ├── __init__.py      # Exports: generate_context, generate_context_sync
     ├── builder.py       # Entry points: fetch observations + summaries, compile, render
@@ -212,18 +212,18 @@ sequenceDiagram
 
 ## Failure Modes
 
-| Scenario                          | Behavior                                    | Recovery                                               |
-| --------------------------------- | ------------------------------------------- | ------------------------------------------------------ |
-| FTS5 unavailable                  | Search falls back to LIKE queries           | Automatic; slightly slower search                      |
-| Context generation fails          | Empty string returned; no injection         | Agent starts without memory context; logged as warning |
-| Invalid observation type          | 422 response with allowed values            | Agent adjusts payload; no data corruption              |
-| Database locked during save       | SQLAlchemy retries via busy_timeout (5s)    | Automatic for short locks; longer locks fail and log   |
-| Migration from claude-mem fails   | INSERT OR IGNORE; partial migration is safe | Re-run migration; idempotent by design                 |
-| Hook receiver DB connection fails | Empty context returned                      | Agent starts without memory; daemon continues normally |
+| Scenario                                   | Behavior                                    | Recovery                                               |
+| ------------------------------------------ | ------------------------------------------- | ------------------------------------------------------ |
+| FTS5 unavailable                           | Search falls back to LIKE queries           | Automatic; slightly slower search                      |
+| Context generation fails                   | Empty string returned; no injection         | Agent starts without memory context; logged as warning |
+| Invalid observation type                   | 422 response with allowed values            | Agent adjusts payload; no data corruption              |
+| Database locked during save                | SQLAlchemy retries via busy_timeout (5s)    | Automatic for short locks; longer locks fail and log   |
+| Migration from memory-management-api fails | INSERT OR IGNORE; partial migration is safe | Re-run migration; idempotent by design                 |
+| Hook receiver DB connection fails          | Empty context returned                      | Agent starts without memory; daemon continues normally |
 
-## See also
+## See Also
 
-- general/spec/tools/memory-management-api — HTTP API spec for agents
-- general/procedure/memory-management — What to store and the Gem standard
-- general/concept/memory-tiers — Where memory fits in the agent knowledge gradient
-- project/design/architecture/database — Parent database architecture
+- ~/.teleclaude/docs/general/spec/tools/memory-management-api.md — HTTP API spec for agents
+- ~/.teleclaude/docs/general/procedure/memory-management.md — What to store and the Gem standard
+- ~/.teleclaude/docs/general/concept/memory-tiers.md — Where memory fits in the agent knowledge gradient
+- docs/project/design/architecture/database.md — Parent database architecture

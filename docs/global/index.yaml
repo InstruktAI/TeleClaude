@@ -215,12 +215,6 @@ snippets:
   scope: global
   path: docs/general/spec/tools/agent-restart.md
   source_project: TeleClaude
-- id: general/spec/tools/baseline
-  description: Progressive-disclosure entrypoint for the global tool cabinet.
-  type: spec
-  scope: global
-  path: docs/general/spec/tools/baseline.md
-  source_project: TeleClaude
 - id: general/spec/tools/history-search
   description: Canonical usage of history.py for recovering prior conversations with
     progressive narrowing.

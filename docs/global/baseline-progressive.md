@@ -1,0 +1,12 @@
+@~/.teleclaude/docs/general/principle/autonomy.md
+@~/.teleclaude/docs/general/principle/evolution.md
+@~/.teleclaude/docs/general/principle/explicit-inference.md
+@~/.teleclaude/docs/general/principle/continuity.md
+@~/.teleclaude/docs/general/principle/parallel-work.md
+@~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
+@~/.teleclaude/docs/general/procedure/agent-artifact-authoring.md
+@~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
+@~/.teleclaude/docs/general/procedure/memory-management.md
+@~/.teleclaude/docs/general/spec/agent-artifacts.md
+@~/.teleclaude/docs/general/spec/snippet-authoring-schema.md
+@~/.teleclaude/docs/general/spec/third-party-docs.md

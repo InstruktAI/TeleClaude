@@ -81,5 +81,3 @@ sections:
     required:
       - What it is
       - Canonical fields
-      - Allowed values
-      - Known caveats

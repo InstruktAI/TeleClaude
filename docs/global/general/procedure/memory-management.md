@@ -9,20 +9,20 @@ description: 'Guidelines for saving high-signal memories to the long-term databa
 
 ## Goal
 
-Curate the **User-Agent Relationship** by saving _only_ high-signal, durable context that improves future partnership. Distinguish "Memory" (relationship context) from "Documentation" (system rules) and "Bugs" (defects).
+Curate the **User-Agent Relationship** by saving _only_ high-signal, durable context that improves future partnership. Distinguish "Memory" (relationship context) from your own "internal memory" (AGENTS.md, CLAUDE.md, GEMINI.md, CODEX.md etc), "Documentation" (system rules) and "Bugs" (defects).
 
 ## The Filter: What goes where?
 
 Before saving anything, route the information to its proper home.
 
-| Item Type                 | Destination       | Why?                                                                    |
-| :------------------------ | :---------------- | :---------------------------------------------------------------------- |
-| **Defect / Error**        | **Fix inline**    | Fix it now, right where you are. If too large, promote to `todos/`.     |
-| **Work Item / Task**      | `todos/`          | It's a unit of work to be executed.                                     |
-| **System Rule / How-To**  | **Documentation** | It's a formal instruction for _all_ agents. (Update doc snippet).       |
-| **User Preference**       | **Memory**        | It's a fact about the user (e.g., "Don't use filler words").            |
-| **Project Context**       | **Memory**        | It's a verbal constraint or goal (e.g., "We prioritize speed here").    |
-| **Relationship Friction** | **Memory**        | It's a lesson on how to work better together (e.g., "User dislikes X"). |
+| Item Type                 | Destination       | Why?                                                                          |
+| :------------------------ | :---------------- | :---------------------------------------------------------------------------- |
+| **Defect / Error**        | **Fix inline**    | Fix it now, right where you are. If too large, promote to `todos/`.           |
+| **Work Item / Task**      | `todos/`          | It's a unit of work to be executed.                                           |
+| **System Rule / How-To**  | **Documentation** | It's a formal instruction for _all_ agents. Update global doc snippet(s).     |
+| **Project Context**       | **Documentation** | It's a formal instruction for project agents. Update project doc snippets(s). |
+| **User Preference**       | **Memory**        | It's a fact about the user (e.g., "Don't use filler words").                  |
+| **Relationship Friction** | **Memory**        | It's a lesson on how to work better together (e.g., "User dislikes X").       |
 
 ## The "Gem" Standard for Memory
 
@@ -32,7 +32,7 @@ Memory is **sacred ground**. Do not pollute it with gravel. Save only "Gems".
 
 1.  **User-Centric:** It is about _us_ (the user and agent), not just the code.
 2.  **Durable:** It will still be true and useful next month.
-3.  **Painful to Rediscover:** "If I forget this, I will annoy the user or make the same mistake."
+3.  **Painful to Rediscover:** "If I forget this, we will run into this again."
 
 **Gravel (DO NOT SAVE):**
 
@@ -76,7 +76,7 @@ Each memory observation is classified by type for progressive disclosure:
 - If you are unsure where something goes, do not store it as memory. Promote concrete work to `todos/` and discard vague notes.
 - If you accidentally save "gravel" (noise), it dilutes the database. Be stricter next time.
 
-## See also
+## See Also
 
-- ../spec/tools/memory-management-api.md
-- ../concept/memory-tiers.md
+- ~/.teleclaude/docs/general/spec/tools/memory-management-api.md
+- ~/.teleclaude/docs/general/concept/memory-tiers.md

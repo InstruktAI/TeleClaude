@@ -26,18 +26,18 @@ Document structure:
 - `## Required reads` — immediately after H1, with inline `@` references for hard dependencies. These are expanded (inlined) at build time.
 - Required H2 sections per taxonomy (see table below).
 - `## Sources` — required for third-party docs, with web links or Context7 snippet IDs.
-- `## See also` — optional soft references (not inlined at build time).
+- `## See Also` — optional soft references (not inlined at build time).
 
 ### Required H2 sections per taxonomy
 
-| Taxonomy  | Required sections                                                 |
-| --------- | ----------------------------------------------------------------- |
-| principle | Principle, Rationale, Implications, Tensions                      |
-| concept   | What, Why                                                         |
-| policy    | Rules, Rationale, Scope, Enforcement, Exceptions                  |
-| procedure | Goal, Preconditions, Steps, Outputs, Recovery                     |
-| design    | Purpose, Inputs/Outputs, Invariants, Primary flows, Failure modes |
-| spec      | What it is, Canonical fields, Allowed values, Known caveats       |
+| Taxonomy  | Required sections                                                      |
+| --------- | ---------------------------------------------------------------------- |
+| principle | Principle, Rationale, Implications, Tensions                           |
+| concept   | What, Why                                                              |
+| policy    | Rules, Rationale, Scope, Enforcement, Exceptions                       |
+| procedure | Goal, Preconditions, Steps, Outputs, Recovery                          |
+| design    | Purpose, Inputs/Outputs, Invariants, Primary flows, Failure modes      |
+| spec      | What it is, Canonical fields (optional: Allowed values, Known caveats) |
 
 Procedure sections may also include optional: `Pre-completion checklist`, `Report format`.
 

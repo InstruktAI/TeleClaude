@@ -44,7 +44,7 @@ planning, or review work.
    - for each candidate in deterministic order, merge `slug` branch into `main`,
    - stop immediately on first conflict.
 4. On each successful merge:
-   - update roadmap marker for the slug to done (`[x]`),
+   - set item phase to `done` in `state.json` for the slug,
    - append delivery record to `todos/delivered.md`,
    - persist any merge report artifacts defined by project process.
 5. Release the merge lock.

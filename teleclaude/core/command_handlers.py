@@ -494,22 +494,14 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
     content = roadmap_path.read_text()
     todos: list[TodoInfo] = []
 
-    # Pattern for todo line: - [ ] slug-name or - [.] slug-name or - [>] slug-name
-    pattern = re.compile(r"^-\s+\[([ .>])\]\s+(\S+)", re.MULTILINE)
-
-    # Status marker mapping
-    status_map = {
-        " ": "pending",
-        ".": "ready",
-        ">": "in_progress",
-    }
+    # Pattern for todo line: - slug-name (plain slug list, no markers)
+    pattern = re.compile(r"^-\s+(\S+)", re.MULTILINE)
 
     lines = content.split("\n")
     for i, line in enumerate(lines):
         match = pattern.match(line)
         if match:
-            status_char = match.group(1)
-            slug = match.group(2)
+            slug = match.group(1)
 
             # Extract description (next indented lines)
             description = ""
@@ -527,24 +519,36 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
             has_requirements = (todos_dir / "requirements.md").exists()
             has_impl_plan = (todos_dir / "implementation-plan.md").exists()
 
-            # Read state.json for enrichment fields
+            # Read state.json for enrichment fields (including phase)
             build_status = None
             review_status = None
-            dor_status = None
             dor_score = None
             deferrals_status = None
             findings_count = 0
+            phase_status = "pending"
             files: list[str] = []
 
             state_path = todos_dir / "state.json"
             if state_path.exists():
                 try:
                     state = json.loads(state_path.read_text())
+                    # Derive status from phase field
+                    raw_phase = state.get("phase")
+                    if raw_phase == "ready":
+                        # Migration: normalize persisted "ready" to "pending"
+                        phase_status = "pending"
+                    elif isinstance(raw_phase, str) and raw_phase in ("pending", "in_progress", "done"):
+                        phase_status = raw_phase
+                    else:
+                        # Migration: derive phase from existing fields
+                        build_val = state.get("build")
+                        if isinstance(build_val, str) and build_val != "pending":
+                            phase_status = "in_progress"
+
                     build_status = state.get("build") if isinstance(state.get("build"), str) else None
                     review_status = state.get("review") if isinstance(state.get("review"), str) else None
                     dor = state.get("dor")
                     if isinstance(dor, dict):
-                        dor_status = dor.get("status") if isinstance(dor.get("status"), str) else None
                         raw_score = dor.get("score")
                         if isinstance(raw_score, int):
                             dor_score = raw_score
@@ -554,6 +558,10 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
                     unresolved = state.get("unresolved_findings")
                     if isinstance(unresolved, list):
                         findings_count = len(unresolved)
+
+                    # Derive display status: pending + dor_score >= 8 shows as "ready"
+                    if phase_status == "pending" and isinstance(dor_score, int) and dor_score >= 8:
+                        phase_status = "ready"
                 except (json.JSONDecodeError, OSError):
                     pass
 
@@ -564,13 +572,12 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
             todos.append(
                 TodoInfo(
                     slug=slug,
-                    status=status_map.get(status_char, "pending"),
+                    status=phase_status,
                     description=description.strip() or None,
                     has_requirements=has_requirements,
                     has_impl_plan=has_impl_plan,
                     build_status=build_status,
                     review_status=review_status,
-                    dor_status=dor_status,
                     dor_score=dor_score,
                     deferrals_status=deferrals_status,
                     findings_count=findings_count,

@@ -38,6 +38,6 @@ Create or update agent artifacts that follow the schema and compile correctly fo
 
 - If `telec sync` fails, fix the issue and rerun it.
 
-## See also
+## See Also
 
-- general/spec/tools/agent-restart — reload synced artifacts in an active session.
+- ~/.teleclaude/docs/general/spec/tools/agent-restart.md

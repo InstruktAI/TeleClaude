@@ -78,7 +78,7 @@ Both paths call the same `get_checkpoint_content()` entry point, ensuring parity
 
 16. **Commit-neutral checkpoint policy**: Checkpoints are verification and safety prompts, not commit triggers. They must not require commits at `agent_stop`; commit decisions belong to task-completion flow.
 
-17. **Silent housekeeping + short debrief policy**: Checkpoint payloads instruct agents to execute checkpoint-required housekeeping silently, then provide a short user-relevant debrief (1-3 sentences) focused on task outcome, blocker, or decision request. Checkpoint chore details are omitted from user-facing messages.
+17. **Silent housekeeping + short debrief policy**: Checkpoint payloads instruct agents to execute checkpoint-required housekeeping silently, then provide a short user-relevant debrief focused on task outcome, blocker, or decision request. Checkpoint chore details are omitted from user-facing messages.
 
 ## Primary flows
 
@@ -216,6 +216,6 @@ sequenceDiagram
 | Large transcript (>512KB JSONL)                               | Extraction reads full file via `_get_entries_for_agent()`       | Performance acceptable for checkpoint frequency     |
 | False suppression (evidence substring in unrelated command)   | Action incorrectly suppressed                                   | Acceptable: false suppression > false negative (R8) |
 
-## See also
+## See Also
 
-- project/spec/event-types — Canonical event type definitions including `tool_use`
+- docs/project/spec/event-types.md — Canonical event type definitions including `tool_use`

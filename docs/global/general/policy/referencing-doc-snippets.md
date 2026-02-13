@@ -37,6 +37,6 @@ description: 'Policy for referencing documentation snippets in AI agent prompts.
 
 - None.
 
-## See also
+## See Also
 
-- docs/global/general/procedure/agent-artifact-authoring.md
+- ~/.teleclaude/docs/general/procedure/agent-artifact-authoring.md

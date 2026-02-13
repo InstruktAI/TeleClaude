@@ -9,22 +9,11 @@ description: 'Canonical AI-safe telec commands: project init, docs sync, and tod
 
 ## What it is
 
-Defines the minimal `telec` commands that AI workers should use during normal project work.
+AI-safe `telec` commands for project work. Run `telec --help` for full options.
 
 ## Canonical fields
 
-- Binary: `telec`
-- Project root behavior: defaults to current working directory unless `--project-root` is provided.
-
-### Project setup and docs operations
-
-- Initialize project hooks, watchers, and docs sync:
-
-```bash
-telec init
-```
-
-- Validate/build/sync docs artifacts:
+### Docs sync
 
 ```bash
 telec sync
@@ -33,45 +22,20 @@ telec sync --warn-only
 telec sync --project-root /path/to/project
 ```
 
-### Todo scaffolding commands (`telec todo`)
-
-- Create todo skeleton:
+### Todo scaffolding
 
 ```bash
 telec todo create config-schema-validation
-```
-
-- Create in another project root:
-
-```bash
+telec todo create auth-hardening --after config-schema-validation,job-contract-refinements
 telec todo create auth-hardening --project-root /path/to/project
 ```
 
-- Create with dependencies:
+Creates: `todos/{slug}/requirements.md`, `implementation-plan.md`, `quality-checklist.md`, `state.json`.
+
+### Project init
 
 ```bash
-telec todo create auth-hardening --after config-schema-validation,job-contract-refinements
+telec init
 ```
 
-- Files created by `telec todo create <slug>`:
-  - `todos/{slug}/requirements.md`
-  - `todos/{slug}/implementation-plan.md`
-  - `todos/{slug}/quality-checklist.md`
-  - `todos/{slug}/state.json`
-
-- Behavior contract:
-  - Fails if `todos/{slug}` already exists.
-  - Does not modify `todos/roadmap.md`.
-  - `input.md` is optional and is not scaffolded by default.
-
-## Allowed values
-
-- Todo command: `telec todo create <slug> [--project-root PATH] [--after dep1,dep2]`.
-- Sync command: `telec sync [--warn-only] [--validate-only] [--project-root PATH]`.
-- Init command: `telec init`.
-
-## Known caveats
-
-- `telec sync` regenerates snippet indexes; do not hand-edit generated index files.
-- `telec todo create` scaffolds files only; it does not insert roadmap entries or determine roadmap order.
-- `telec init` should be rerun after hook/watcher artifact changes so runtime setup stays aligned.
+Rerun after hook/watcher artifact changes.

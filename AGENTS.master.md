@@ -7,6 +7,7 @@ This file provides guidance to agents when working with code in this repository.
 ## Required reads
 
 - @docs/project/baseline.md
+- @docs/project/baseline-progressive.md
 
 ## TUI work
 

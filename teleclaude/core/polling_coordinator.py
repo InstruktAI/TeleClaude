@@ -459,14 +459,9 @@ async def _maybe_emit_codex_input(
         )
     if current_input:
         state.last_prompt_input = current_input
-    elif not agent_responding and prompt_visible:
-        # Empty prompt line means composer is reset; clear stale buffered text.
-        state.last_prompt_input = ""
 
     strict_boundary = bool(current_input and has_submit_boundary)
-    transition_boundary = (
-        agent_responding and not prompt_visible and not current_input and bool(state.last_prompt_input)
-    )
+    transition_boundary = agent_responding and not current_input and bool(state.last_prompt_input)
     if agent_responding and not state.submitted_for_current_response:
         emitted = False
         if strict_boundary:

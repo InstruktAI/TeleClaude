@@ -30,5 +30,5 @@ Create or improve prep artifacts for a todo without making final readiness decis
 
 1. Create or update `requirements.md`, `implementation-plan.md`, and `dor-report.md`.
 2. Update draft assessment fields in `state.json.dor`.
-3. Do not mark roadmap entries ready (`[.]`) in this mode.
+3. Do not set item phase to `ready` in `state.json` in this mode.
 4. Do not perform formal DOR pass/fail gating in this mode.

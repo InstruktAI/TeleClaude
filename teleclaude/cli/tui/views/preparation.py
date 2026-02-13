@@ -148,12 +148,6 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
     Files can be selected for view/edit actions.
     """
 
-    STATUS_MARKERS: dict[TodoStatus, str] = {
-        TodoStatus.PENDING: "[ ]",
-        TodoStatus.READY: "[.]",
-        TodoStatus.IN_PROGRESS: "[>]",
-    }
-
     def __init__(
         self,
         api: "TelecAPIClient",
@@ -279,7 +273,6 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                     has_impl_plan=todo.has_impl_plan,
                     build_status=todo.build_status,
                     review_status=todo.review_status,
-                    dor_status=todo.dor_status,
                     dor_score=todo.dor_score,
                     deferrals_status=todo.deferrals_status,
                     findings_count=todo.findings_count,
@@ -1087,16 +1080,14 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         # Collapse indicator
         indicator = "v" if is_expanded else ">"
 
-        # Status marker and label
+        # Status label (display-friendly)
         status_enum = self._coerce_todo_status(item.data.todo.status)
-        if status_enum is None:
-            marker = "[ ]"
-        else:
-            marker = self.STATUS_MARKERS.get(status_enum, "[ ]")
-        status_label = status_enum.value if status_enum is not None else self._format_enum_value(item.data.todo.status)
+        status_label = (
+            status_enum.display_label if status_enum is not None else self._format_enum_value(item.data.todo.status)
+        )
 
         status_block = self._build_status_block(item.data.todo, status_label)
-        line = f"{indent}{marker} {indicator} {slug}  [{status_block}]"
+        line = f"{indent}{indicator} {slug}  [{status_block}]"
         return [line[:width]]
 
     def _format_file(self, item: PrepFileNode, width: int, index: int) -> list[str]:
@@ -1138,18 +1129,13 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
 
     def _dor_display(self, todo: TodoItem) -> tuple[str, bool]:
         """Return DOR display value and whether it should be highlighted as below threshold."""
-        expected_min_score = 8
         if todo.dor_score is not None:
-            value = str(todo.dor_score)
-            return value, todo.dor_score < expected_min_score
-
-        dor_value = self._format_enum_value(todo.dor_status) if todo.dor_status else "-"
-        normalized = self._normalize_phase_value(dor_value)
-        return dor_value, normalized in {"needs_work", "needs_decision", "fail", "failed"}
+            return str(todo.dor_score), todo.dor_score < 8
+        return "-", False
 
     def _status_fields(self, todo: TodoItem, roadmap_status: str) -> list[tuple[str, str, bool]]:
         """Return phase-aware status fields as (prefix, value, is_error_value)."""
-        fields: list[tuple[str, str, bool]] = [("status:", roadmap_status, False)]
+        fields: list[tuple[str, str, bool]] = [("", roadmap_status, False)]
 
         review_started = self._is_review_started(todo)
         build_started = self._is_build_started(todo)
@@ -1169,8 +1155,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             return fields
 
         if not build_started:
-            dor_value, dor_below_expected = self._dor_display(todo)
-            fields.append(("dor:", dor_value, dor_below_expected))
+            dor_value, _dor_below_expected = self._dor_display(todo)
+            fields.append(("dor:", dor_value, False))
 
         return fields
 
@@ -1309,30 +1295,37 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         # Collapse indicator
         indicator = "v" if is_expanded else ">"
 
-        # Status marker and label
+        # Status label (display-friendly)
         status_enum = self._coerce_todo_status(item.data.todo.status)
-        if status_enum is None:
-            marker = "[ ]"
-        else:
-            marker = self.STATUS_MARKERS.get(status_enum, "[ ]")
-        status_label = status_enum.value if status_enum is not None else self._format_enum_value(item.data.todo.status)
+        status_label = (
+            status_enum.display_label if status_enum is not None else self._format_enum_value(item.data.todo.status)
+        )
+
+        # Determine color for status word
+        status_color_pair = 0
+        if status_enum == TodoStatus.READY:
+            status_color_pair = 25  # green
+        elif status_enum == TodoStatus.IN_PROGRESS:
+            status_color_pair = 26  # yellow
 
         status_parts = self._status_parts(item.data.todo, status_label)
-        prefix = f"{indent}{marker} {indicator} {slug}  ["
+        prefix = f"{indent}{indicator} {slug}  ["
         suffix = "]"
         col = 0
         try:
             stdscr.addstr(row, col, prefix[:width], attr)  # type: ignore[attr-defined]
             col += len(prefix)
             remaining = max(0, width - col - len(suffix))
-            for part, is_bold, is_error in status_parts:
+            is_first_value = True
+            for part, _is_bold, _is_error in status_parts:
                 if remaining <= 0:
                     break
                 chunk = part[:remaining]
-                part_attr = attr | (curses.A_BOLD if is_bold else 0)
-                if is_error:
-                    # Error-highlighted grading should always remain visually strong.
-                    part_attr |= curses.color_pair(1) | curses.A_BOLD
+                part_attr = attr
+                # Color only the status word (first non-empty value)
+                if is_first_value and part.strip():
+                    part_attr |= curses.color_pair(status_color_pair)
+                    is_first_value = False
                 stdscr.addstr(row, col, chunk, part_attr)  # type: ignore[attr-defined]
                 col += len(chunk)
                 remaining -= len(chunk)

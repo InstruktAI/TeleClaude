@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS hook_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_hook_outbox_pending ON hook_outbox(delivered_at, next_attempt_at);
 
--- Memory observations (ported from claude-mem)
+-- Memory observations (ported from memory-management-api)
 CREATE TABLE IF NOT EXISTS memory_observations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     memory_session_id TEXT NOT NULL,

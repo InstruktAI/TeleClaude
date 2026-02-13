@@ -8,10 +8,14 @@
     "score": 8,
     "status": "pass",
     "schema_version": 1,
-    "blockers": ["session-messages-api", "person-identity-auth"],
+    "blockers": [
+      "session-messages-api",
+      "person-identity-auth"
+    ],
     "actions_taken": {
       "requirements_updated": true,
       "implementation_plan_updated": true
     }
-  }
+  },
+  "phase": "pending"
 }

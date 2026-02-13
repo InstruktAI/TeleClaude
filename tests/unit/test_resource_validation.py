@@ -261,6 +261,151 @@ class TestValidateJobsConfig:
 
 
 # ---------------------------------------------------------------------------
+# See Also validation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSeeAlsoValidation:
+    """Validate soft references inside ``## See Also`` sections."""
+
+    def _make_snippet(self, tmp_path: Path, scope: str, see_also_lines: list[str]) -> tuple[Path, str]:
+        """Create a minimal snippet with a See Also section."""
+        if scope == "global":
+            snippet = tmp_path / "docs" / "global" / "general" / "policy" / "test.md"
+        else:
+            snippet = tmp_path / "docs" / "project" / "policy" / "test.md"
+        snippet.parent.mkdir(parents=True)
+        body_lines = [
+            "---",
+            "id: test/policy/test",
+            "type: policy",
+            "scope: project",
+            "description: Test",
+            "---",
+            "",
+            "# Test — Policy",
+            "",
+            "## Rules",
+            "",
+            "- Do the thing.",
+            "",
+            "## Rationale",
+            "",
+            "- Because.",
+            "",
+            "## Scope",
+            "",
+            "- Here.",
+            "",
+            "## Enforcement",
+            "",
+            "- Check it.",
+            "",
+            "## Exceptions",
+            "",
+            "- None.",
+            "",
+            "## See Also",
+            "",
+        ]
+        body_lines.extend(see_also_lines)
+        content = "\n".join(body_lines) + "\n"
+        snippet.write_text(content)
+        return snippet, content
+
+    def test_global_doc_valid_ref(self, tmp_path: Path) -> None:
+        target = tmp_path / "docs" / "global" / "general" / "principle" / "continuity.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("# stub")
+        snippet, content = self._make_snippet(
+            tmp_path, "global", ["- ~/.teleclaude/docs/general/principle/continuity.md"]
+        )
+        validate_snippet(snippet, content, tmp_path, domains={"software-development"})
+        codes = [w["code"] for w in get_warnings()]
+        assert "snippet_see_also_bad_prefix" not in codes
+        assert "snippet_see_also_missing" not in codes
+        assert "snippet_see_also_missing_extension" not in codes
+
+    def test_global_doc_bad_prefix_warns(self, tmp_path: Path) -> None:
+        snippet, content = self._make_snippet(tmp_path, "global", ["- docs/project/policy/some.md"])
+        validate_snippet(snippet, content, tmp_path, domains={"software-development"})
+        codes = [w["code"] for w in get_warnings()]
+        assert "snippet_see_also_bad_prefix" in codes
+
+    def test_global_doc_shorthand_warns(self, tmp_path: Path) -> None:
+        snippet, content = self._make_snippet(tmp_path, "global", ["- general/principle/continuity"])
+        validate_snippet(snippet, content, tmp_path, domains={"software-development"})
+        codes = [w["code"] for w in get_warnings()]
+        assert "snippet_see_also_bad_prefix" in codes
+
+    def test_project_doc_valid_docs_ref(self, tmp_path: Path) -> None:
+        target = tmp_path / "docs" / "project" / "spec" / "thing.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("# stub")
+        snippet, content = self._make_snippet(tmp_path, "project", ["- docs/project/spec/thing.md"])
+        validate_snippet(snippet, content, tmp_path, domains={"software-development"})
+        codes = [w["code"] for w in get_warnings()]
+        assert "snippet_see_also_bad_prefix" not in codes
+        assert "snippet_see_also_missing" not in codes
+
+    def test_project_doc_valid_global_ref(self, tmp_path: Path) -> None:
+        target = tmp_path / "docs" / "global" / "general" / "principle" / "continuity.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("# stub")
+        snippet, content = self._make_snippet(
+            tmp_path, "project", ["- ~/.teleclaude/docs/general/principle/continuity.md"]
+        )
+        validate_snippet(snippet, content, tmp_path, domains={"software-development"})
+        codes = [w["code"] for w in get_warnings()]
+        assert "snippet_see_also_bad_prefix" not in codes
+        assert "snippet_see_also_missing" not in codes
+
+    def test_project_doc_shorthand_warns(self, tmp_path: Path) -> None:
+        snippet, content = self._make_snippet(tmp_path, "project", ["- project/spec/thing"])
+        validate_snippet(snippet, content, tmp_path, domains={"software-development"})
+        codes = [w["code"] for w in get_warnings()]
+        assert "snippet_see_also_bad_prefix" in codes
+
+    def test_missing_extension_warns(self, tmp_path: Path) -> None:
+        snippet, content = self._make_snippet(tmp_path, "project", ["- docs/project/spec/thing"])
+        validate_snippet(snippet, content, tmp_path, domains={"software-development"})
+        codes = [w["code"] for w in get_warnings()]
+        assert "snippet_see_also_missing_extension" in codes
+
+    def test_unresolvable_ref_warns(self, tmp_path: Path) -> None:
+        snippet, content = self._make_snippet(tmp_path, "project", ["- docs/project/spec/nonexistent.md"])
+        validate_snippet(snippet, content, tmp_path, domains={"software-development"})
+        codes = [w["code"] for w in get_warnings()]
+        assert "snippet_see_also_missing" in codes
+
+    def test_description_suffix_stripped(self, tmp_path: Path) -> None:
+        target = tmp_path / "docs" / "project" / "spec" / "thing.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("# stub")
+        snippet, content = self._make_snippet(
+            tmp_path, "project", ["- docs/project/spec/thing.md \u2014 Some description here"]
+        )
+        validate_snippet(snippet, content, tmp_path, domains={"software-development"})
+        codes = [w["code"] for w in get_warnings()]
+        assert "snippet_see_also_bad_prefix" not in codes
+        assert "snippet_see_also_missing" not in codes
+
+    def test_at_ref_in_see_also_warns(self, tmp_path: Path) -> None:
+        snippet, content = self._make_snippet(tmp_path, "project", ["- @docs/project/policy/thing.md"])
+        validate_snippet(snippet, content, tmp_path, domains={"software-development"})
+        codes = [w["code"] for w in get_warnings()]
+        assert "snippet_see_also_inline_ref" in codes
+
+    def test_url_in_see_also_skipped(self, tmp_path: Path) -> None:
+        snippet, content = self._make_snippet(tmp_path, "project", ["- https://example.com/docs"])
+        validate_snippet(snippet, content, tmp_path, domains={"software-development"})
+        codes = [w["code"] for w in get_warnings()]
+        assert "snippet_see_also_bad_prefix" not in codes
+        assert "snippet_see_also_missing" not in codes
+
+
+# ---------------------------------------------------------------------------
 # Third-party validation
 # ---------------------------------------------------------------------------
 

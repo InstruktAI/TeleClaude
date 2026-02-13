@@ -13,7 +13,7 @@ them because they're not in the doc system's namespace.
 
 - `vercel/ai` — cloned to `~/Workspace/public-repos/` but scraper artifact is EMPTY
   (directory exists at `~/.teleclaude/git/github.com/vercel/ai/` but no files)
-- `openai/codex`, `Eriz1818/xCodex`, `thedotmack/claude-mem` — properly indexed by
+- `openai/codex`, `Eriz1818/xCodex`, `thedotmack/memory-management-api` — properly indexed by
   scraper but NOT promoted to third-party docs
 
 ## What's Needed

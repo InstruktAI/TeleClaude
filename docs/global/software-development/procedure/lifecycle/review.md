@@ -26,7 +26,7 @@ Verify the implementation against requirements and standards, and deliver a bina
 
 ## Steps
 
-1. If no slug provided, select the first `[>]` item in `todos/roadmap.md` that lacks `review-findings.md`.
+1. If no slug provided, select the first item with phase `active` in `state.json` that lacks `review-findings.md`.
 2. Read:
    - `todos/{slug}/requirements.md`
    - `todos/{slug}/implementation-plan.md`

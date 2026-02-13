@@ -83,7 +83,7 @@ def test_set_pane_background_keeps_constant_fg_across_focus():
     mock_run = Mock(return_value="")
     with (
         patch.object(manager, "_run_tmux", mock_run),
-        patch.object(theme, "get_agent_pane_background", return_value="#101010"),
+        patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
         patch.object(theme, "get_agent_normal_color", return_value=111),
         patch.object(theme, "get_current_mode", return_value=True),
         patch.object(theme, "get_terminal_background", return_value="#000000"),

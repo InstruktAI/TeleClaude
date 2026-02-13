@@ -75,13 +75,14 @@ async def test_next_work_dispatches_defer():
         # Setup roadmap
         roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
         roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text(f"# Roadmap\n\n- [.] {slug}\n")
+        roadmap_path.write_text(f"# Roadmap\n\n- {slug}\n")
 
         # Setup item files
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Req")
         (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         # Setup worktree state (Build complete, Review approved, Deferrals pending)
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -116,13 +117,14 @@ async def test_next_work_skips_defer_if_processed():
         # Setup roadmap
         roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
         roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text(f"# Roadmap\n\n- [.] {slug}\n")
+        roadmap_path.write_text(f"# Roadmap\n\n- {slug}\n")
 
         # Setup item files
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Req")
         (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         # Setup worktree state (Build complete, Review approved, Deferrals PROCESSED)
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug

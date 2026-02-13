@@ -67,7 +67,6 @@ class TestPreparationViewLogic:
         has_impl_plan: bool = False,
         build_status: str | None = None,
         review_status: str | None = None,
-        dor_status: str | None = None,
         dor_score: int | None = None,
         deferrals_status: str | None = None,
         findings_count: int = 0,
@@ -81,7 +80,6 @@ class TestPreparationViewLogic:
             has_impl_plan=has_impl_plan,
             build_status=build_status,
             review_status=review_status,
-            dor_status=dor_status,
             dor_score=dor_score,
             deferrals_status=deferrals_status,
             findings_count=findings_count,
@@ -170,23 +168,23 @@ class TestPreparationViewLogic:
         prep_view.flat_items = [todo]
         output = "\n".join(prep_view.get_render_lines(80, 24))
 
-        assert "[.]" in output or "ready" in output.lower()
+        assert "ready" in output.lower()
 
-    def test_pending_status_shown(self, prep_view):
-        """Pending status indicator is shown."""
+    def test_pending_status_shown_as_draft(self, prep_view):
+        """Pending status displays as 'draft'."""
         todo = self._make_todo_node(slug="test-todo", status="pending")
         prep_view.flat_items = [todo]
         output = "\n".join(prep_view.get_render_lines(80, 24))
 
-        assert "[ ]" in output or "pending" in output.lower()
+        assert "draft" in output.lower()
 
-    def test_in_progress_status_shown(self, prep_view):
-        """In-progress status indicator is shown."""
+    def test_in_progress_status_shown_as_active(self, prep_view):
+        """In-progress status displays as 'active'."""
         todo = self._make_todo_node(slug="test-todo", status="in_progress", has_requirements=True, has_impl_plan=True)
         prep_view.flat_items = [todo]
         output = "\n".join(prep_view.get_render_lines(80, 24))
 
-        assert "[>]" in output or "in_progress" in output.lower()
+        assert "active" in output.lower()
 
     def test_prebuild_shows_status_and_dor_only(self, prep_view):
         """Before build starts, show only status + dor."""
@@ -202,7 +200,7 @@ class TestPreparationViewLogic:
 
         assert len(lines) == 1
         output = "\n".join(lines)
-        assert "status:pending" in output
+        assert "draft" in output
         assert "dor:8" in output
         assert "b:" not in output
         assert " r:" not in output
@@ -223,7 +221,7 @@ class TestPreparationViewLogic:
         prep_view.flat_items = [todo]
         output = "\n".join(prep_view.get_render_lines(80, 24))
 
-        assert "status:in_progress" in output
+        assert "active" in output
         assert "b:in_progress" in output
         assert "dor:" not in output
         assert "r:" not in output
@@ -243,7 +241,7 @@ class TestPreparationViewLogic:
         prep_view.flat_items = [todo]
         output = "\n".join(prep_view.get_render_lines(80, 24))
 
-        assert "status:in_progress" in output
+        assert "active" in output
         assert "r:changes_requested" in output
         assert "f:2" in output
         assert "def:pending" in output

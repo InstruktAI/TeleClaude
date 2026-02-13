@@ -43,18 +43,13 @@ class PhaseStatus(str, Enum):
     CHANGES_REQUESTED = "changes_requested"
 
 
-class RoadmapMarker(str, Enum):
-    PENDING = " "
-    READY = "."
-    IN_PROGRESS = ">"
-    DONE = "x"
+class ItemPhase(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
 
 
-class RoadmapBox(str, Enum):
-    PENDING = "[ ]"
-    READY = "[.]"
-    IN_PROGRESS = "[>]"
-    DONE = "[x]"
+DOR_READY_THRESHOLD = 8
 
 
 class WorktreeScript(str, Enum):
@@ -309,23 +304,28 @@ def format_hitl_guidance(context: str) -> str:
 def _find_next_prepare_slug(cwd: str) -> str | None:
     """Find the next active slug that still needs preparation work.
 
-    Active slugs are roadmap entries with [ ], [.], or [>] state.
+    Scans roadmap.md for slugs, then checks state.json phase for each.
+    Active slugs have phase pending, ready, or in_progress.
     Returns the first slug that still needs action:
     - breakdown assessment pending for input.md
     - requirements.md missing
     - implementation-plan.md missing
-    - roadmap state still pending [ ] (needs promotion to [.])
+    - phase still pending (needs promotion to ready)
     """
     roadmap_path = Path(cwd) / "todos" / "roadmap.md"
     if not roadmap_path.exists():
         return None
 
     content = read_text_sync(roadmap_path)
-    pattern = re.compile(r"^-\s+\[([ .>])\]\s+(\S+)", re.MULTILINE)
+    pattern = re.compile(r"^-\s+(\S+)", re.MULTILINE)
 
     for match in pattern.finditer(content):
-        state = match.group(1)
-        slug = match.group(2)
+        slug = match.group(1)
+        phase = get_item_phase(cwd, slug)
+
+        # Skip done items
+        if phase == ItemPhase.DONE.value:
+            continue
 
         has_input = check_file_exists(cwd, f"todos/{slug}/input.md")
         if has_input:
@@ -338,7 +338,7 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
         if not has_requirements or not has_impl_plan:
             return slug
 
-        if state == RoadmapMarker.PENDING.value:
+        if phase == ItemPhase.PENDING.value:
             return slug
 
     return None
@@ -351,6 +351,7 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
 
 # Valid phases and statuses for state.json
 DEFAULT_STATE: dict[str, StateValue] = {
+    "phase": ItemPhase.PENDING.value,
     PhaseName.BUILD.value: PhaseStatus.PENDING.value,
     PhaseName.REVIEW.value: PhaseStatus.PENDING.value,
     "deferrals_processed": False,
@@ -372,6 +373,7 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Read state.json from worktree.
 
     Returns default state if file doesn't exist.
+    Migrates missing 'phase' field from existing build/dor state.
     """
     state_path = get_state_path(cwd, slug)
     if not state_path.exists():
@@ -380,7 +382,20 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     content = read_text_sync(state_path)
     state: dict[str, StateValue] = json.loads(content)
     # Merge with defaults for any missing keys
-    return {**DEFAULT_STATE, **state}
+    merged = {**DEFAULT_STATE, **state}
+
+    # Migration: derive phase from existing fields when missing from persisted state
+    if "phase" not in state:
+        build = state.get(PhaseName.BUILD.value)
+        if isinstance(build, str) and build != PhaseStatus.PENDING.value:
+            merged["phase"] = ItemPhase.IN_PROGRESS.value
+        else:
+            merged["phase"] = ItemPhase.PENDING.value
+    elif state.get("phase") == "ready":
+        # Migration: normalize persisted "ready" phase to "pending" (readiness is now derived from dor.score)
+        merged["phase"] = ItemPhase.PENDING.value
+
+    return merged
 
 
 def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
@@ -560,23 +575,23 @@ def resolve_slug(
 ) -> tuple[str | None, bool, str]:
     """Resolve slug from argument or roadmap.
 
-    Roadmap format expected:
-        - [ ] my-slug   (pending - not prepared)
-        - [.] my-slug   (ready - prepared, available for work)
-        - [>] my-slug   (in progress - claimed by worker)
+    Roadmap format expected (plain slug list, no markers):
+        - my-slug
         Description of the work item.
+
+    Phase is derived from state.json for each slug.
 
     Args:
         cwd: Current working directory (project root)
         slug: Optional explicit slug
-        ready_only: If True, only match [.] items (for next_work)
+        ready_only: If True, only match items with phase "ready" (for next_work)
         dependencies: Optional dependency graph for dependency gating (R6).
                      If provided with ready_only=True, only returns slugs with satisfied dependencies.
 
     Returns:
         Tuple of (slug, is_ready_or_in_progress, description).
         If slug provided, returns (slug, True, "").
-        If found in roadmap, returns (slug, True if [.] or [>], False if [ ], description).
+        If found in roadmap, returns (slug, True if ready/in_progress, False if pending, description).
         If nothing found, returns (None, False, "").
     """
     if slug:
@@ -587,23 +602,21 @@ def resolve_slug(
         return None, False, ""
 
     content = read_text_sync(roadmap_path)
-
-    if ready_only:
-        # Only match [.] items for next_work
-        pattern = re.compile(r"^-\s+\[\.]\s+(\S+)", re.MULTILINE)
-    else:
-        # Match [ ], [.], or [>] for next_prepare
-        pattern = re.compile(r"^-\s+\[([ .>])\]\s+(\S+)", re.MULTILINE)
+    pattern = re.compile(r"^-\s+(\S+)", re.MULTILINE)
 
     for match in pattern.finditer(content):
+        found_slug = match.group(1)
+        phase = get_item_phase(cwd, found_slug)
+
         if ready_only:
-            found_slug = match.group(1)
-            # For ready_only, we know it's [.] so it's "ready"
-            is_ready = True
+            if not is_ready_for_work(cwd, found_slug):
+                continue
         else:
-            status = match.group(1)
-            found_slug = match.group(2)
-            is_ready = status in (".", ">")
+            # Skip done items for next_prepare
+            if phase == ItemPhase.DONE.value:
+                continue
+
+        is_ready = phase == ItemPhase.IN_PROGRESS.value or is_ready_for_work(cwd, found_slug)
 
         # R6: Enforce dependency gating when ready_only=True and dependencies provided
         if ready_only and dependencies is not None:
@@ -612,7 +625,7 @@ def resolve_slug(
 
         # Extract description: everything after the slug line until next item or section
         start_pos = match.end()
-        next_item = re.search(r"^-\s+\[", content[start_pos:], re.MULTILINE)
+        next_item = re.search(r"^-\s+\S", content[start_pos:], re.MULTILINE)
         next_section = re.search(r"^##", content[start_pos:], re.MULTILINE)
 
         end_pos = len(content)
@@ -649,69 +662,54 @@ def slug_in_roadmap(cwd: str, slug: str) -> bool:
         return False
 
     content = read_text_sync(roadmap_path)
-    pattern = re.compile(rf"^-\s+\[[ .>x]\]\s+{re.escape(slug)}(\s|$)", re.MULTILINE)
+    pattern = re.compile(rf"^-\s+{re.escape(slug)}(\s|$)", re.MULTILINE)
     return bool(pattern.search(content))
 
 
 # =============================================================================
-# Roadmap State Management (R3, R7)
+# Item Phase Management (state.json is the single source of truth)
 # =============================================================================
 
 
-def get_roadmap_state(cwd: str, slug: str) -> str | None:
-    """Get current checkbox state for slug in roadmap.md.
+def get_item_phase(cwd: str, slug: str) -> str:
+    """Get current phase for a work item from state.json.
 
     Args:
         cwd: Project root directory
         slug: Work item slug to query
 
     Returns:
-        One of " " (pending), "." (ready), ">" (in-progress), "x" (done)
-        or None if slug not found in roadmap
+        One of "pending", "in_progress", "done"
     """
-    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
-    if not roadmap_path.exists():
-        return None
-
-    content = read_text_sync(roadmap_path)
-
-    # Pattern: - [STATE] slug where STATE is space, ., >, or x
-    pattern = re.compile(rf"^- \[([ .>x])\] {re.escape(slug)}(\s|$)", re.MULTILINE)
-    match = pattern.search(content)
-
-    return match.group(1) if match else None
+    state = read_phase_state(cwd, slug)
+    phase = state.get("phase")
+    return phase if isinstance(phase, str) else ItemPhase.PENDING.value
 
 
-def update_roadmap_state(cwd: str, slug: str, new_state: str) -> bool:
-    """Update checkbox state for slug in roadmap.md.
+def is_ready_for_work(cwd: str, slug: str) -> bool:
+    """Check if item is ready for work: pending phase + DOR score >= threshold."""
+    state = read_phase_state(cwd, slug)
+    phase = state.get("phase")
+    if phase != ItemPhase.PENDING.value:
+        return False
+    dor = state.get("dor")
+    if not isinstance(dor, dict):
+        return False
+    score = dor.get("score")
+    return isinstance(score, int) and score >= DOR_READY_THRESHOLD
+
+
+def set_item_phase(cwd: str, slug: str, phase: str) -> None:
+    """Set phase for a work item in state.json.
 
     Args:
         cwd: Project root directory
         slug: Work item slug to update
-        new_state: One of " " (space), ".", ">", "x"
-
-    Returns:
-        True if slug found and updated, False if slug not found
-
-    Side effects:
-        - Modifies todos/roadmap.md in place
+        phase: One of "pending", "in_progress", "done"
     """
-    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
-    if not roadmap_path.exists():
-        return False
-
-    content = read_text_sync(roadmap_path)
-
-    # Pattern: - [STATE] slug where STATE is space, ., >, or x
-    pattern = re.compile(rf"^(- \[)[ .>x](\] {re.escape(slug)})(\s|$)", re.MULTILINE)
-    new_content, count = pattern.subn(rf"\g<1>{new_state}\g<2>\g<3>", content)
-
-    if count == 0:
-        return False
-
-    write_text_sync(roadmap_path, new_content)
-
-    return True
+    state = read_phase_state(cwd, slug)
+    state["phase"] = phase
+    write_phase_state(cwd, slug, state)
 
 
 # =============================================================================
@@ -761,7 +759,7 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
     """Check if all dependencies for a slug are satisfied.
 
     A dependency is satisfied if:
-    - It is marked [x] in roadmap.md, OR
+    - Its phase is "done" in state.json, OR
     - It is not present in roadmap.md (assumed completed/removed)
 
     Args:
@@ -776,27 +774,13 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
     if not item_deps:
         return True
 
-    # Get all slugs currently in roadmap with their states
-    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
-    if not roadmap_path.exists():
-        return True  # No roadmap = no blocking
-
-    content = read_text_sync(roadmap_path)
-    pattern = re.compile(r"^- \[([x.> ])\] ([a-z0-9-]+)", re.MULTILINE)
-
-    roadmap_items: dict[str, str] = {}
-    for match in pattern.finditer(content):
-        state, item_slug = match.groups()
-        roadmap_items[item_slug] = state
-
     for dep in item_deps:
-        if dep not in roadmap_items:
+        if not slug_in_roadmap(cwd, dep):
             # Not in roadmap - treat as satisfied (completed and cleaned up)
             continue
 
-        dep_state = roadmap_items[dep]
-        if dep_state != RoadmapMarker.DONE.value:
-            # Dependency exists but not completed
+        dep_phase = get_item_phase(cwd, dep)
+        if dep_phase != ItemPhase.DONE.value:
             return False
 
     return True
@@ -1510,23 +1494,21 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 next_call="teleclaude__next_prepare",
             )
 
-        # 4. Both exist - mark as ready only after DOR pass (avoid downgrading [>] or [x])
-        current_state = await asyncio.to_thread(get_roadmap_state, cwd, resolved_slug)
-        if current_state == RoadmapMarker.PENDING.value:  # Only transition pending -> ready
+        # 4. Both exist - check DOR readiness (no phase mutation; readiness is derived)
+        current_phase = await asyncio.to_thread(get_item_phase, cwd, resolved_slug)
+        if current_phase == ItemPhase.PENDING.value:
             phase_state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
             dor = phase_state.get("dor")
-            dor_status = dor.get("status") if isinstance(dor, dict) else None
-            dor_status_str = dor_status if isinstance(dor_status, str) else None
-            if dor_status_str == "pass":
-                await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, RoadmapMarker.READY.value)
+            dor_score = dor.get("score") if isinstance(dor, dict) else None
+            if isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD:
                 await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
             else:
                 if hitl:
                     return format_hitl_guidance(
                         f"Preparing: {resolved_slug}. Requirements and implementation plan exist, "
-                        "but DOR is not pass yet. Complete DOR assessment, update "
+                        f"but DOR score is below threshold ({DOR_READY_THRESHOLD}). Complete DOR assessment, update "
                         f"todos/{resolved_slug}/dor-report.md and todos/{resolved_slug}/state.json.dor "
-                        f'with status "pass". Then run /next-prepare-gate {resolved_slug} (separate worker) '
+                        f"with score >= {DOR_READY_THRESHOLD}. Then run /next-prepare-gate {resolved_slug} (separate worker) "
                         f'and call teleclaude__next_prepare(slug="{resolved_slug}") again.'
                     )
 
@@ -1539,12 +1521,12 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                     thinking_mode=mode,
                     subfolder="",
                     note=(
-                        f"Requirements/plan exist for {resolved_slug}, but DOR status is not pass. "
-                        "Complete DOR assessment and set state.json.dor.status to pass."
+                        f"Requirements/plan exist for {resolved_slug}, but DOR score is below threshold. "
+                        f"Complete DOR assessment and set state.json.dor.score >= {DOR_READY_THRESHOLD}."
                     ),
                     next_call="teleclaude__next_prepare",
                 )
-        # else: already [.], [>], or [x] - no state change needed
+        # else: already in_progress or done - no state change needed
         return format_prepared(resolved_slug)
     except RuntimeError as exc:
         task_type = _extract_no_selectable_task_type(str(exc))
@@ -1557,7 +1539,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     """Phase B state machine for deterministic builder work.
 
     Executes the build/review/fix/finalize cycle on prepared work items.
-    Only considers [.] items (ready) with satisfied dependencies.
+    Only considers items with phase "ready" and satisfied dependencies.
 
     Args:
         db: Database instance
@@ -1589,45 +1571,26 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
 
     resolved_slug: str
     if slug:
-        # Explicit slug provided - verify it's in ready state and dependencies satisfied
-        # Read roadmap to check state
-        roadmap_root = Path(cwd)
-        maybe_worktree = Path(cwd) / "trees" / slug
-        if (maybe_worktree / "todos" / "roadmap.md").exists():
-            roadmap_root = maybe_worktree
-        roadmap_path = roadmap_root / "todos" / "roadmap.md"
-        if not roadmap_path.exists():
-            return format_error(
-                "NOT_PREPARED",
-                f"Item '{slug}' not found: roadmap doesn't exist.",
-                next_call="Call teleclaude__next_prepare() to create roadmap first.",
-            )
-
-        content = await read_text_async(roadmap_path)
-        # Match the slug and extract its state
-        pattern = re.compile(rf"^-\s+\[([ .>x])\]\s+{re.escape(slug)}\b", re.MULTILINE)
-        match = pattern.search(content)
-
-        if not match:
+        # Explicit slug provided - verify it's in roadmap, ready, and dependencies satisfied
+        if not await asyncio.to_thread(slug_in_roadmap, cwd, slug):
             return format_error(
                 "NOT_PREPARED",
                 f"Item '{slug}' not found in roadmap.",
                 next_call="Check todos/roadmap.md or call teleclaude__next_prepare().",
             )
 
-        state: str = match.group(1)
-        if state == RoadmapMarker.PENDING.value:
-            # Item is [ ] (pending) - not prepared yet
+        phase = await asyncio.to_thread(get_item_phase, cwd, slug)
+        if phase == ItemPhase.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
             return format_error(
                 "ITEM_NOT_READY",
-                f"Item '{slug}' is [ ] (pending). Must be [.] (ready) to start work.",
+                f"Item '{slug}' is pending and DOR score is below threshold. Must be ready to start work.",
                 next_call=f"Call teleclaude__next_prepare(slug='{slug}') to prepare it first.",
             )
-        if state == RoadmapMarker.DONE.value:
-            return f"COMPLETE: Item '{slug}' is already marked [x] in {roadmap_path.relative_to(roadmap_root)}."
+        if phase == ItemPhase.DONE.value:
+            return f"COMPLETE: Item '{slug}' is already done."
 
-        # Item is [.] or [>] - check dependencies
-        if not await asyncio.to_thread(check_dependencies_satisfied, str(roadmap_root), slug, deps):
+        # Item is ready or in_progress - check dependencies
+        if not await asyncio.to_thread(check_dependencies_satisfied, cwd, slug, deps):
             return format_error(
                 "DEPS_UNSATISFIED",
                 f"Item '{slug}' has unsatisfied dependencies.",
@@ -1639,7 +1602,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         found_slug, _, _ = await resolve_slug_async(cwd, None, True, deps)
 
         if not found_slug:
-            # Check if there are [.] items (without dependency gating) to provide better error
+            # Check if there are ready items (without dependency gating) to provide better error
             has_ready_items, _, _ = await resolve_slug_async(cwd, None, True)
 
             if has_ready_items:
@@ -1650,7 +1613,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 )
             return format_error(
                 "NO_READY_ITEMS",
-                "No [.] (ready) items found in roadmap.",
+                "No ready items found in roadmap.",
                 next_call="Call teleclaude__next_prepare() to prepare items first.",
             )
         resolved_slug = found_slug
@@ -1701,13 +1664,11 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)
 
-    # 6. Mark as in-progress in worktree BEFORE dispatching (claim the item)
-    # Only mark if currently [.] (not already [>]) in worktree roadmap.
-    roadmap_path = Path(worktree_cwd) / "todos" / "roadmap.md"
-    if roadmap_path.exists():
-        content = await read_text_async(roadmap_path)
-        if f"[.] {resolved_slug}" in content:
-            await asyncio.to_thread(update_roadmap_state, worktree_cwd, resolved_slug, ">")
+    # 6. Mark as in-progress BEFORE dispatching (claim the item)
+    # Only transition pending (ready) -> in_progress (don't re-mark if already in_progress).
+    current_phase = await asyncio.to_thread(get_item_phase, worktree_cwd, resolved_slug)
+    if current_phase == ItemPhase.PENDING.value:
+        await asyncio.to_thread(set_item_phase, worktree_cwd, resolved_slug, ItemPhase.IN_PROGRESS.value)
 
     # 7. Check build status (from state.json in worktree)
     if not await asyncio.to_thread(is_build_complete, worktree_cwd, resolved_slug):

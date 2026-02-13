@@ -696,7 +696,7 @@ class TmuxPaneManager:
             agent: Agent name for color calculation
         """
         # Inactive pane should communicate state through background haze only.
-        bg_color = theme.get_agent_pane_background(agent)
+        bg_color = theme.get_agent_pane_inactive_background(agent)
         pane_fg_color_code = theme.get_agent_normal_color(agent)
         self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg=colour{pane_fg_color_code},bg={bg_color}")
 

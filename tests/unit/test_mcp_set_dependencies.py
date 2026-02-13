@@ -104,7 +104,7 @@ async def test_mcp_set_dependencies_invalid_slug_format() -> None:
         todos_dir = cwd / "todos"
         todos_dir.mkdir()
         roadmap = todos_dir / "roadmap.md"
-        roadmap.write_text("- [ ] valid-slug\n- [ ] another-slug\n")
+        roadmap.write_text("- valid-slug\n- another-slug\n")
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
@@ -135,7 +135,7 @@ async def test_mcp_set_dependencies_slug_not_in_roadmap() -> None:
         todos_dir = cwd / "todos"
         todos_dir.mkdir()
         roadmap = todos_dir / "roadmap.md"
-        roadmap.write_text("- [ ] existing-slug\n- [.] another-slug\n")
+        roadmap.write_text("- existing-slug\n- another-slug\n")
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
@@ -158,7 +158,7 @@ async def test_mcp_set_dependencies_dependency_not_in_roadmap() -> None:
         todos_dir = cwd / "todos"
         todos_dir.mkdir()
         roadmap = todos_dir / "roadmap.md"
-        roadmap.write_text("- [ ] item-a\n- [ ] item-b\n")
+        roadmap.write_text("- item-a\n- item-b\n")
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
@@ -181,7 +181,7 @@ async def test_mcp_set_dependencies_self_reference_via_tool() -> None:
         todos_dir = cwd / "todos"
         todos_dir.mkdir()
         roadmap = todos_dir / "roadmap.md"
-        roadmap.write_text("- [ ] item-a\n")
+        roadmap.write_text("- item-a\n")
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
@@ -204,7 +204,7 @@ async def test_mcp_set_dependencies_circular_via_tool() -> None:
         todos_dir = cwd / "todos"
         todos_dir.mkdir()
         roadmap = todos_dir / "roadmap.md"
-        roadmap.write_text("- [ ] item-a\n- [ ] item-b\n- [ ] item-c\n")
+        roadmap.write_text("- item-a\n- item-b\n- item-c\n")
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()

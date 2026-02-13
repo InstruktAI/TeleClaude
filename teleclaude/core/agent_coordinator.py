@@ -142,6 +142,38 @@ def _is_pasted_content_placeholder(prompt: str) -> bool:
     return bool(_PASTED_CONTENT_PLACEHOLDER_RE.fullmatch((prompt or "").strip()))
 
 
+def _to_utc(ts: datetime) -> datetime:
+    """Normalize naive datetimes to UTC for stable comparisons."""
+    if ts.tzinfo is None:
+        return ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(timezone.utc)
+
+
+def _is_codex_input_already_recorded(
+    session: "Session | None",
+    prompt_text: str,
+    prompt_timestamp: datetime | None,
+) -> bool:
+    """Return True when session state already reflects this Codex prompt turn."""
+    if not session:
+        return False
+
+    existing_prompt = (session.last_message_sent or "").strip()
+    candidate_prompt = (prompt_text or "").strip()
+    if not existing_prompt or not candidate_prompt:
+        return False
+    if existing_prompt != candidate_prompt:
+        return False
+    if not isinstance(prompt_timestamp, datetime):
+        return False
+    if not isinstance(session.last_message_sent_at, datetime):
+        return False
+
+    existing_at = _to_utc(session.last_message_sent_at)
+    candidate_at = _to_utc(prompt_timestamp)
+    return abs((existing_at - candidate_at).total_seconds()) <= 2.0
+
+
 class AgentCoordinator:
     """Coordinator for agent events and inter-agent communication."""
 
@@ -438,25 +470,38 @@ class AgentCoordinator:
         active_agent = (session.active_agent if session else None) or (
             payload.raw.get("agent_name") if payload.raw else None
         )
-        update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
+        input_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
+        feedback_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
+        emit_codex_submit_backfill = False
 
         # For Codex: recover last user input from transcript (no native prompt hook).
         codex_input = await self._extract_user_input_for_codex(session_id, payload)
         if isinstance(codex_input, tuple) and len(codex_input) == 2:
             input_text, input_timestamp = codex_input
-            update_kwargs.update(
+            input_update_kwargs.update(
                 {
                     "last_message_sent": input_text[:200],
                     "last_input_origin": InputOrigin.HOOK.value,
                 }
             )
             if input_timestamp:
-                update_kwargs["last_message_sent_at"] = input_timestamp.isoformat()
+                input_update_kwargs["last_message_sent_at"] = input_timestamp.isoformat()
+            if input_text.strip() and not _is_codex_input_already_recorded(session, input_text, input_timestamp):
+                emit_codex_submit_backfill = True
         elif codex_input:
             logger.debug(
                 "Ignoring malformed codex input tuple for session %s",
                 session_id[:8],
             )
+
+        if input_update_kwargs:
+            await db.update_session(session_id, **input_update_kwargs)
+        if emit_codex_submit_backfill:
+            logger.info(
+                "Backfilling missing user_prompt_submit from codex agent_stop for session %s",
+                session_id[:8],
+            )
+            self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
         raw_output = await self._extract_agent_output(session_id, payload)
         if raw_output:
@@ -469,7 +514,7 @@ class AgentCoordinator:
         summary: str | None = None
         if raw_output:
             summary = await self._summarize_output(session_id, raw_output)
-            update_kwargs.update(
+            feedback_update_kwargs.update(
                 {
                     "last_feedback_received": raw_output,
                     "last_feedback_summary": summary,
@@ -489,8 +534,8 @@ class AgentCoordinator:
                     logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
 
         # Persist feedback and status to DB (activity events are emitted separately).
-        if update_kwargs:
-            await db.update_session(session_id, **update_kwargs)
+        if feedback_update_kwargs:
+            await db.update_session(session_id, **feedback_update_kwargs)
 
         # Emit activity event for UI updates (summary flows to TUI via event, not DB)
         self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
