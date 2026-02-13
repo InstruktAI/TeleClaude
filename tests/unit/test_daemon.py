@@ -735,6 +735,78 @@ async def test_process_agent_stop_sets_native_session_id_from_payload(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_dispatch_hook_event_bootstraps_headless_codex_session_on_agent_stop():
+    """Codex agent_stop events should materialize a missing headless session."""
+
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon._ensure_output_polling = AsyncMock()
+    daemon._handle_agent_event = AsyncMock()
+
+    created_session = Session(
+        session_id="tele-booted",
+        computer_name="TestMac",
+        tmux_session_name="",
+        last_input_origin=InputOrigin.HOOK.value,
+        title="Standalone",
+        active_agent="codex",
+    )
+
+    with (
+        patch.object(daemon, "_ensure_headless_session", AsyncMock(return_value=created_session)) as mock_ensure,
+        patch("teleclaude.daemon.db") as mock_db,
+    ):
+        mock_db.get_session = AsyncMock(return_value=None)
+        mock_db.update_session = AsyncMock()
+
+        await daemon._dispatch_hook_event(
+            session_id="tele-booted",
+            event_type=AgentHookEvents.AGENT_STOP,
+            data={
+                "agent_name": "codex",
+                "native_session_id": "native-123",
+                "transcript_path": "/tmp/native.json",
+            },
+        )
+
+    mock_ensure.assert_awaited_once_with(
+        "tele-booted",
+        {
+            "agent_name": "codex",
+            "native_session_id": "native-123",
+            "transcript_path": "/tmp/native.json",
+        },
+    )
+    assert daemon._handle_agent_event.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_dispatch_hook_event_ignores_unknown_non_codex_session():
+    """Only codex agent_stop is allowed to bootstrap missing headless sessions."""
+
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon._ensure_output_polling = AsyncMock()
+    daemon._handle_agent_event = AsyncMock()
+
+    with (
+        patch.object(daemon, "_ensure_headless_session", AsyncMock()) as mock_ensure,
+        patch("teleclaude.daemon.db") as mock_db,
+    ):
+        mock_db.get_session = AsyncMock(return_value=None)
+        mock_db.update_session = AsyncMock()
+
+        await daemon._dispatch_hook_event(
+            session_id="tele-unknown",
+            event_type=AgentHookEvents.AGENT_STOP,
+            data={"agent_name": "claude", "native_session_id": "native-123"},
+        )
+
+    mock_ensure.assert_not_awaited()
+    assert daemon._handle_agent_event.await_count == 0
+
+
+@pytest.mark.asyncio
 async def test_dispatch_hook_event_discovers_codex_transcript_in_worker():
     """Hook worker should resolve Codex transcript path (not receiver boundary)."""
 

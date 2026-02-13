@@ -20,7 +20,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import WORKING_DIR, config
 from teleclaude.constants import HUMAN_ROLE_ADMIN
-from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
+from teleclaude.core import polling_coordinator, tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
@@ -968,6 +968,9 @@ async def process_message(
         logger.error("Failed to send command to session %s", session_id[:8])
         await client.send_message(session, "Failed to send command to tmux", metadata=MessageMetadata())
         return
+
+    if (active_agent or "").lower() == "codex":
+        polling_coordinator.seed_codex_prompt_from_message(session_id, message_text)
 
     await db.update_last_activity(session_id)
     await start_polling(session_id, session.tmux_session_name)

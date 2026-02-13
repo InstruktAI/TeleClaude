@@ -29,6 +29,7 @@ from teleclaude.core.output_poller import (
     ProcessExited,
 )
 from teleclaude.core.session_utils import split_project_path_and_subdir
+from teleclaude.core.tool_activity import truncate_tool_preview
 from teleclaude.utils import strip_ansi_codes
 
 if TYPE_CHECKING:
@@ -180,6 +181,36 @@ def _mark_codex_turn_started(session_id: str) -> None:
     state.turn_active = True
 
 
+def seed_codex_prompt_from_message(session_id: str, prompt_text: str) -> None:
+    """Seed Codex prompt buffer from authoritative user message dispatch.
+
+    This hardens synthetic submit detection when prompt text is not visible in
+    captured tmux snapshots (e.g. fast transitions), while emission still
+    requires marker-based response boundaries.
+    """
+    text = prompt_text.strip()
+    if not text:
+        return
+
+    state = _codex_input_state.get(session_id)
+    if state is None:
+        state = CodexInputState()
+        state.last_output_change_time = time.time()
+        _codex_input_state[session_id] = state
+
+    clipped = text[:CODEX_INPUT_MAX_CHARS]
+    if clipped != state.last_prompt_input:
+        logger.debug(
+            "[CODEX %s] Seeded prompt from dispatch: %r",
+            session_id[:8],
+            clipped[:50],
+        )
+
+    state.last_prompt_input = clipped
+    # New dispatched message starts a fresh turn-candidate.
+    state.submitted_for_current_response = False
+
+
 def _extract_prompt_block(output: str) -> tuple[str, bool]:
     """Extract prompt block and whether a submit boundary marker is present below it.
 
@@ -329,8 +360,8 @@ def _is_compact_dimmed_agent_boundary_line(line: str) -> bool:
     return len(tail) <= 24 and len(tail.split()) <= 4
 
 
-def _find_recent_tool_action(output: str) -> tuple[str, str] | None:
-    """Find recent visible tool action and return (action_word, normalized_line)."""
+def _find_recent_tool_action(output: str) -> tuple[str, str, str] | None:
+    """Find recent visible tool action and return (action_word, signature, preview)."""
     lines = output.rstrip().split("\n")
     for raw_line in reversed(lines[-CODEX_TOOL_ACTION_LOOKBACK_LINES:]):
         clean_line = _strip_ansi(raw_line).strip()
@@ -344,9 +375,9 @@ def _find_recent_tool_action(output: str) -> tuple[str, str] | None:
         bold_match = _ANSI_BOLD_TOKEN_RE.search(raw_line)
         bold_word = bold_match.group(1) if bold_match else None
         if action_word in _CODEX_TOOL_ACTION_WORDS:
-            return action_word, clean_line
+            return action_word, clean_line, tail
         if bold_word and (bold_word in _CODEX_TOOL_ACTION_WORDS or bold_word == action_word):
-            return bold_word, clean_line
+            return bold_word, clean_line, tail
     return None
 
 
@@ -362,6 +393,7 @@ async def _emit_synthetic_codex_event(
     emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
     *,
     tool_name: str | None = None,
+    tool_preview: str | None = None,
 ) -> None:
     """Emit a synthetic Codex event through the regular agent event handler."""
     raw = {
@@ -370,6 +402,8 @@ async def _emit_synthetic_codex_event(
     }
     if tool_name:
         raw["tool_name"] = tool_name
+    if tool_preview:
+        raw["tool_preview"] = truncate_tool_preview(tool_preview)
 
     if event_type == AgentHookEvents.TOOL_USE:
         payload = AgentOutputPayload(raw=raw)
@@ -409,6 +443,7 @@ async def _maybe_emit_codex_turn_events(
     tool_match = _find_recent_tool_action(current_output)
     raw_tool_action = tool_match[0] if tool_match else None
     raw_tool_signature = tool_match[1] if tool_match else ""
+    raw_tool_preview = tool_match[2] if tool_match else ""
     if not state.initialized:
         state.initialized = True
         state.prompt_visible_last = prompt_visible
@@ -434,6 +469,7 @@ async def _maybe_emit_codex_turn_events(
                 AgentHookEvents.TOOL_USE,
                 emit_agent_event,
                 tool_name=tool_action,
+                tool_preview=raw_tool_preview,
             )
             state.in_tool = True
     elif state.in_tool:

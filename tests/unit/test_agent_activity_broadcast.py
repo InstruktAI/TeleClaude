@@ -22,6 +22,7 @@ async def test_api_server_broadcasts_activity_event():
         session_id="sess-1",
         event_type="tool_use",
         tool_name="Read",
+        tool_preview="Read teleclaude/core/events.py",
         timestamp="2024-01-01T00:00:00+00:00",
     )
 
@@ -34,6 +35,7 @@ async def test_api_server_broadcasts_activity_event():
     assert payload["session_id"] == "sess-1"
     assert payload["type"] == "tool_use"
     assert payload["tool_name"] == "Read"
+    assert payload["tool_preview"] == "Read teleclaude/core/events.py"
     assert payload["event"] == "agent_activity"
 
 
@@ -55,6 +57,7 @@ async def test_api_server_broadcasts_tool_done():
     payload = handler._broadcast_payload.call_args[0][1]
     assert payload["type"] == "tool_done"
     assert "tool_name" not in payload  # excluded by exclude_none
+    assert "tool_preview" not in payload  # excluded by exclude_none
 
 
 @pytest.mark.asyncio
@@ -96,6 +99,27 @@ def test_tui_tool_use_clears_input_sets_temp_highlight():
     assert session_id in state.sessions.temp_output_highlights
     assert session_id in state.sessions.activity_timer_reset
     assert state.sessions.active_tool[session_id] == "Edit"
+
+
+def test_tui_tool_use_prefers_tool_preview():
+    """tool_use should store tool_preview when it is available."""
+    state = TuiState()
+    session_id = "sess-tui-preview"
+
+    reduce_state(
+        state,
+        Intent(
+            IntentType.AGENT_ACTIVITY,
+            {
+                "session_id": session_id,
+                "event_type": "tool_use",
+                "tool_name": "Bash",
+                "tool_preview": "Bash git status --short",
+            },
+        ),
+    )
+
+    assert state.sessions.active_tool[session_id] == "Bash git status --short"
 
 
 def test_tui_tool_done_clears_tool_keeps_temp_highlight():

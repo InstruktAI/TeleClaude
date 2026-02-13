@@ -71,6 +71,7 @@ async def test_handle_tool_use_emits_activity_event(coordinator):
         assert event.session_id == session_id
         assert event.event_type == "tool_use"
         assert event.tool_name == "Read"
+        assert event.tool_preview == "Read"
         assert event.timestamp is not None
 
 
@@ -140,6 +141,7 @@ async def test_handle_tool_done_emits_activity_event(coordinator):
         assert event.session_id == session_id
         assert event.event_type == "tool_done"
         assert event.tool_name is None
+        assert event.tool_preview is None
 
 
 @pytest.mark.asyncio
@@ -217,6 +219,39 @@ async def test_activity_event_fields_are_populated(coordinator):
         assert event.session_id == session_id
         assert event.event_type in ("tool_use", "tool_done", "agent_stop", "user_prompt_submit")
         assert event.tool_name == "Bash"
+        assert event.tool_preview == "Bash"
         assert event.timestamp is not None
         # timestamp should be ISO format
         assert "T" in event.timestamp
+
+
+@pytest.mark.asyncio
+async def test_handle_tool_use_builds_preview_from_command(coordinator):
+    """tool_use preview should include tool name + command when command exists."""
+    session_id = "sess-preview-cmd"
+    payload = AgentOutputPayload(
+        session_id="native-1",
+        transcript_path="/tmp/transcript.jsonl",
+        raw=MappingProxyType(
+            {
+                "tool_name": "run_shell_command",
+                "tool_input": {"command": "git status --short"},
+            }
+        ),
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.TOOL_USE, session_id=session_id, data=payload)
+
+    session = MagicMock()
+    session.last_tool_use_at = None
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch("teleclaude.core.agent_coordinator.event_bus") as mock_event_bus,
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+        await coordinator.handle_tool_use(context)
+
+        event: AgentActivityEvent = mock_event_bus.emit.call_args[0][1]
+        assert event.tool_name == "run_shell_command"
+        assert event.tool_preview == "run_shell_command git status --short"

@@ -81,7 +81,6 @@ def test_configure_gemini_writes_only_required_hook_events(tmp_path, monkeypatch
         "SessionStart",
         "BeforeAgent",
         "AfterAgent",
-        "AfterModel",
         "BeforeTool",
         "AfterTool",
         "Notification",

@@ -111,14 +111,14 @@ def _shorten_path(path: str) -> str:
     return path
 
 
-def _thinking_placeholder_text(tool_name: str | None = None) -> str:
+def _thinking_placeholder_text(tool_preview: str | None = None) -> str:
     """Return placeholder text shown during temporary streaming highlight.
 
     Args:
-        tool_name: If set, shows "Using [tool_name]..." instead of "thinking..."
+        tool_preview: If set, shows a compact tool activity line instead of "thinking..."
     """
-    if tool_name:
-        text = f"Using {tool_name}..."
+    if tool_preview:
+        text = tool_preview
     else:
         text = _THINKING_BASE_TEXT
 
@@ -134,10 +134,10 @@ def _working_placeholder_text() -> str:
     return f"**{_STARTING_BASE_TEXT}**"
 
 
-def _temp_output_placeholder_text(active_agent: str | None, tool_name: str | None = None) -> str:
+def _temp_output_placeholder_text(active_agent: str | None, tool_preview: str | None = None) -> str:
     """Return placeholder text for temporary output highlight."""
-    if tool_name:
-        return _thinking_placeholder_text(tool_name)
+    if tool_preview:
+        return _thinking_placeholder_text(tool_preview)
     if (active_agent or "").lower() == "codex":
         return _working_placeholder_text()
     return _thinking_placeholder_text()
@@ -1584,8 +1584,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
         activity_time = _format_time(session.last_activity)
         if has_temp_output_highlight:
-            tool_name = self.state.sessions.active_tool.get(session_id)
-            line4 = f"{detail_indent}[{activity_time}] out: {_temp_output_placeholder_text(session.active_agent, tool_name)}"
+            tool_preview = self.state.sessions.active_tool.get(session_id)
+            line4 = (
+                f"{detail_indent}[{activity_time}] out: "
+                f"{_temp_output_placeholder_text(session.active_agent, tool_preview)}"
+            )
             lines.append(line4[:width])
         elif has_input_highlight:
             line4 = f"{detail_indent}[{activity_time}] out: {_working_placeholder_text()}"
@@ -1897,8 +1900,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if has_temp_output_highlight:
             italic_attr = getattr(curses, "A_ITALIC", 0)
             prefix_text = f"{detail_indent}[{activity_time}] out: "
-            tool_name = self.state.sessions.active_tool.get(session_id)
-            placeholder_text = _temp_output_placeholder_text(session.active_agent, tool_name)
+            tool_preview = self.state.sessions.active_tool.get(session_id)
+            placeholder_text = _temp_output_placeholder_text(session.active_agent, tool_preview)
             if italic_attr:
                 _safe_addstr_with_italic_suffix(
                     row + lines_used,

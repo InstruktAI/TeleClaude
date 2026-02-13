@@ -211,6 +211,7 @@ class APIServer:
             session_id=context.session_id,
             type=context.event_type,
             tool_name=context.tool_name,
+            tool_preview=context.tool_preview,
             summary=context.summary,
         )
         self._broadcast_payload("agent_activity", dto.model_dump(exclude_none=True))

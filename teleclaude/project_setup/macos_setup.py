@@ -19,7 +19,7 @@ def is_macos() -> bool:
     return sys.platform == "darwin"
 
 
-def install_launchers(project_root: Path) -> None:
+def install_launchers(project_root: Path, skip_build: bool = False) -> None:
     """Install launcher bundles into ``~/Applications`` on macOS.
 
     Idempotent: existing target bundles are replaced.
@@ -30,20 +30,23 @@ def install_launchers(project_root: Path) -> None:
     applications_dir = Path.home() / "Applications"
     applications_dir.mkdir(parents=True, exist_ok=True)
 
-    tmux_builder = project_root / "src" / "TmuxLauncher" / "build.sh"
-    if tmux_builder.exists():
-        build_result = subprocess.run(
-            [str(tmux_builder)],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-            env=os.environ.copy(),
-        )
-        if build_result.returncode == 0:
-            print("telec init: built TmuxLauncher.app")
-        else:
-            print("telec init: failed to build TmuxLauncher.app; using existing bundle")
+    if not skip_build:
+        tmux_builder = project_root / "src" / "TmuxLauncher" / "build.sh"
+        if tmux_builder.exists():
+            build_result = subprocess.run(
+                [str(tmux_builder)],
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                check=False,
+                env=os.environ.copy(),
+            )
+            if build_result.returncode == 0:
+                print("telec init: built TmuxLauncher.app")
+            else:
+                print("telec init: failed to build TmuxLauncher.app; using existing bundle")
+    else:
+        print("telec init: skipping launcher build; using committed bundles")
 
     launcher_apps = (
         "TmuxLauncher.app",

@@ -330,6 +330,7 @@ class AgentActivityEventDTO(BaseModel):  # type: ignore[explicit-any]
     session_id: str
     type: str
     tool_name: str | None = None
+    tool_preview: str | None = None
     summary: str | None = None
 
 

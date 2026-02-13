@@ -59,7 +59,7 @@ class SessionViewState:
     input_highlights: set[str] = field(default_factory=set)
     output_highlights: set[str] = field(default_factory=set)
     temp_output_highlights: set[str] = field(default_factory=set)  # For streaming safety timer
-    active_tool: dict[str, str] = field(default_factory=dict)  # session_id -> tool_name
+    active_tool: dict[str, str] = field(default_factory=dict)  # session_id -> tool preview text
     activity_timer_reset: set[str] = field(default_factory=set)  # Sessions needing timer reset
     last_summary: dict[str, str] = field(default_factory=dict)  # session_id -> output summary from agent_stop
 
@@ -139,6 +139,7 @@ class IntentPayload(TypedDict, total=False):
     reason: str  # Legacy field, no longer populated - use event_type in AGENT_ACTIVITY intents instead
     event_type: str  # AgentHookEventType: "user_prompt_submit", "tool_use", "tool_done", "agent_stop"
     tool_name: str | None  # Tool name for tool_use events
+    tool_preview: str | None  # Optional tool preview text for tool_use events
     summary: str | None  # Output summary from agent_stop events
 
 
@@ -353,6 +354,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         session_id = p.get("session_id")
         event_type = p.get("event_type")
         tool_name = p.get("tool_name")
+        tool_preview = p.get("tool_preview")
         if not session_id or not event_type:
             return
         if event_type == "user_prompt_submit":
@@ -366,12 +368,17 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.input_highlights.discard(session_id)
             state.sessions.temp_output_highlights.add(session_id)
             state.sessions.activity_timer_reset.add(session_id)
-            if tool_name:
-                state.sessions.active_tool[session_id] = tool_name
+            tool_label = None
+            if isinstance(tool_preview, str) and tool_preview:
+                tool_label = tool_preview
+            elif isinstance(tool_name, str) and tool_name:
+                tool_label = tool_name
+            if tool_label:
+                state.sessions.active_tool[session_id] = tool_label
             logger.debug(
                 "input CLEARED, temp_output + active_tool ADDED for %s (event=tool_use, tool=%s)",
                 session_id[:8],
-                tool_name,
+                tool_label,
             )
         elif event_type == "tool_done":
             # Tool finished: clear input highlight, keep temp highlight, clear tool name, reset timer

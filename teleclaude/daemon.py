@@ -702,6 +702,26 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             subdir=subdir,
         )
 
+    def _is_codex_headless_bootstrap_event(
+        self,
+        event_type: str,
+        data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
+    ) -> bool:
+        """Return True when a missing session should still be materialized for Codex headless hooks.
+
+        TODO(codex-headless): remove this special-case path once Codex emits a stable
+        session_start-equivalent event that can be used to create the headless session.
+        """
+        if event_type != AgentHookEvents.AGENT_STOP:
+            return False
+
+        raw_agent_name = data.get("agent_name")
+        if not isinstance(raw_agent_name, str) or raw_agent_name.strip().lower() != AgentName.CODEX.value:
+            return False
+
+        raw_native_session_id = data.get("native_session_id")
+        return isinstance(raw_native_session_id, str) and bool(raw_native_session_id.strip())
+
     async def _dispatch_hook_event(
         self,
         session_id: str,
@@ -711,7 +731,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Dispatch a hook event directly global Event Bus."""
         session = await db.get_session(session_id)
         if not session:
-            if event_type != AgentHookEvents.AGENT_SESSION_START:
+            if event_type != AgentHookEvents.AGENT_SESSION_START and not self._is_codex_headless_bootstrap_event(
+                event_type, data
+            ):
                 logger.debug(
                     "Ignoring hook event for unknown session (not session_start)",
                     session_id=session_id[:8],

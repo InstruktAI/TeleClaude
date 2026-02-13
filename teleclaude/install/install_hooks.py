@@ -220,9 +220,11 @@ def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
 
 def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
     """Return TeleClaude hook definitions for Gemini CLI."""
-    # Installer contract: Gemini tool lifecycle hooks must emit normalized
-    # internal activity event names directly.
+    # Installer contract:
+    # - Tool lane comes only from BeforeTool/AfterTool.
+    # - AfterModel is reasoning-only and must not be mapped to tool_use.
     gemini_events = dict(AgentHookEvents.HOOK_EVENT_MAP["gemini"])
+    gemini_events.pop("AfterModel", None)
     gemini_events["BeforeTool"] = AgentHookEvents.TOOL_USE
     gemini_events["AfterTool"] = AgentHookEvents.TOOL_DONE
     return _build_hook_map(

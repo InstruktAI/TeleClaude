@@ -490,7 +490,7 @@ class TestSessionsViewLogic:
 
         output = "\n".join(sessions_view.get_render_lines(120, 10))
 
-        assert "[17:43:21] out: **Working" in output
+        assert "[17:43:21] out: **...**" in output
         assert "final answer text" not in output
 
     def test_input_highlight_shows_working_placeholder_after_temp_window(self, sessions_view, monkeypatch):
@@ -505,7 +505,7 @@ class TestSessionsViewLogic:
 
         output = "\n".join(sessions_view.get_render_lines(120, 10))
 
-        assert "[17:43:21] out: **Working" in output
+        assert "[17:43:21] out: **...**" in output
         assert "final answer text" not in output
 
     def test_codex_input_highlight_preserves_last_output(self, sessions_view, monkeypatch):
@@ -520,7 +520,7 @@ class TestSessionsViewLogic:
 
         output = "\n".join(sessions_view.get_render_lines(120, 10))
 
-        assert "[17:43:21] out: **Working" in output
+        assert "[17:43:21] out: **...**" in output
         assert "latest codex answer" not in output
 
     def test_double_clicking_session_id_row_toggles_sticky_parent_only(self, mock_focus):
@@ -802,7 +802,7 @@ class TestSessionsViewLogic:
         assert "out:" in output_row_calls[0][2]
         assert output_row_calls[0][3] == 2  # claude normal pair
         # Placeholder overlay keeps agent color + italic
-        assert "Working" in output_row_calls[1][2]
+        assert "..." in output_row_calls[1][2]
         assert output_row_calls[1][3] == (2 | curses.A_ITALIC)
 
     def test_real_output_wins_when_no_highlights(self, sessions_view, monkeypatch):

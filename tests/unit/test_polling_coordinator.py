@@ -606,6 +606,32 @@ class TestCodexSyntheticPromptDetection:
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
+    async def test_emits_from_dispatch_seed_when_prompt_not_visible(self):
+        """Dispatch-seeded prompt should emit on marker transition without prompt frame."""
+        session_id = "codex-dispatch-seed-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            polling_coordinator.seed_codex_prompt_from_message(session_id, "seeded prompt")
+
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="◦ Planning next steps (2s • esc to interrupt)",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            payload = context.data
+            assert isinstance(payload, UserPromptSubmitPayload)
+            assert payload.prompt == "seeded prompt"
+            assert payload.raw.get("source") == "codex_marker_transition"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
     async def test_does_not_emit_while_prompt_text_is_still_visible(self):
         """Stale marker glyphs above prompt should not trigger synthetic submit."""
         session_id = "codex-visible-1"
@@ -776,6 +802,7 @@ class TestCodexSyntheticTurnEvents:
             assert isinstance(context.data, AgentOutputPayload)
             assert context.data.raw.get("synthetic") is True
             assert context.data.raw.get("tool_name") == "Ran"
+            assert context.data.raw.get("tool_preview") == "Ran rg -n foo"
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
@@ -798,6 +825,7 @@ class TestCodexSyntheticTurnEvents:
             context = emit.await_args.args[0]
             assert context.event_type == AgentHookEvents.TOOL_USE
             assert context.data.raw.get("tool_name") == "Ran"
+            assert context.data.raw.get("tool_preview") == "Ran rg -n foo"
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 

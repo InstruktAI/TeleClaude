@@ -8,19 +8,35 @@ on:
       - completed
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  release-analysis:
+    name: AI Release Analysis (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Need full history for diffing against last tag
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y tmux jq
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install tmux jq
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -35,50 +51,89 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
 
-      - name: Gemini Release Lane
+      - name: Prepare Analysis Context
         run: |
-          # 1. Get last release tag
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          echo "Last tag: $LAST_TAG"
-          
-          # 2. Generate Diff
+          echo "LAST_TAG=$LAST_TAG" >> $GITHUB_ENV
           if [ -n "$LAST_TAG" ]; then
             git diff $LAST_TAG..HEAD > release-diff.txt
           else
             git ls-files > release-diff.txt
           fi
-          
-          # 3. Assemble Context
-          PROMPT=$(cat docs/project/spec/release-inspector-prompt.md)
-          MANIFESTS_CLI=$(cat docs/project/spec/telec-cli-surface.md)
-          MANIFESTS_MCP=$(cat docs/project/spec/mcp-tool-surface.md)
-          MANIFESTS_EVENTS=$(cat docs/project/spec/event-vocabulary.md)
-          MANIFESTS_CONFIG=$(cat docs/project/spec/teleclaude-config.md)
-          DIFF=$(cat release-diff.txt)
-          
-          # 4. Run Gemini Inspector (using our standardized agent_cli helper)
-          ./.venv/bin/python -m teleclaude.helpers.agent_cli \
-            --agent gemini \
-            --thinking-mode slow \
-            --prompt "$PROMPT
 
+      - name: Claude Release Lane
+        run: |
+          ./.venv/bin/python -m teleclaude.helpers.agent_cli \
+            --agent claude --thinking-mode slow \
+            --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
+          
           MANIFESTS:
-          CLI: $MANIFESTS_CLI
-          MCP: $MANIFESTS_MCP
-          Events: $MANIFESTS_EVENTS
-          Config: $MANIFESTS_CONFIG
+          CLI: $(cat docs/project/spec/telec-cli-surface.md)
+          MCP: $(cat docs/project/spec/mcp-tool-surface.md)
+          Events: $(cat docs/project/spec/event-vocabulary.md)
+          Config: $(cat docs/project/spec/teleclaude-config.md)
 
           DIFF:
-          $DIFF" \
-            --schema-file docs/project/spec/release-report-schema.md > gemini-report.json
+          $(cat release-diff.txt)" \
+            --schema-file docs/project/spec/release-report-schema.md > claude-report-${{ matrix.os }}.json
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Codex Release Lane
+        run: |
+          ./.venv/bin/python -m teleclaude.helpers.agent_cli \
+            --agent codex --thinking-mode slow \
+            --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
+          
+          MANIFESTS:
+          CLI: $(cat docs/project/spec/telec-cli-surface.md)
+          MCP: $(cat docs/project/spec/mcp-tool-surface.md)
+          Events: $(cat docs/project/spec/event-vocabulary.md)
+          Config: $(cat docs/project/spec/teleclaude-config.md)
+
+          DIFF:
+          $(cat release-diff.txt)" \
+            --schema-file docs/project/spec/release-report-schema.md > codex-report-${{ matrix.os }}.json
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Gemini Release Lane
+        run: |
+          ./.venv/bin/python -m teleclaude.helpers.agent_cli \
+            --agent gemini --thinking-mode slow \
+            --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
+          
+          MANIFESTS:
+          CLI: $(cat docs/project/spec/telec-cli-surface.md)
+          MCP: $(cat docs/project/spec/mcp-tool-surface.md)
+          Events: $(cat docs/project/spec/event-vocabulary.md)
+          Config: $(cat docs/project/spec/teleclaude-config.md)
+
+          DIFF:
+          $(cat release-diff.txt)" \
+            --schema-file docs/project/spec/release-report-schema.md > gemini-report-${{ matrix.os }}.json
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
 
-      - name: Upload Gemini Report
+      - name: Upload Reports
         uses: actions/upload-artifact@v4
         with:
-          name: gemini-report
-          path: gemini-report.json
+          name: ai-release-reports-${{ matrix.os }}
+          path: |
+            claude-report-${{ matrix.os }}.json
+            codex-report-${{ matrix.os }}.json
+            gemini-report-${{ matrix.os }}.json
 
-      - name: Consensus Arbiter
-        run: echo "Consensus arbitration and authorized tagging will run here in release-arbiter phase"
+  release-arbitration:
+    name: Consensus Arbiter
+    needs: release-analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ai-release-reports-*
+          merge-multiple: true
+      - name: Arbiter pass
+        run: echo "Arbiter will consolidate reports from both OS matrix runs here."

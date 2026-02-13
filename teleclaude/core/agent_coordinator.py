@@ -44,6 +44,7 @@ from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import notify_input_request, notify_stop
 from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input_title
+from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
@@ -228,6 +229,7 @@ class AgentCoordinator:
         session_id: str,
         event_type: str,
         tool_name: str | None = None,
+        tool_preview: str | None = None,
         summary: str | None = None,
     ) -> None:
         """Emit agent activity event with error handling.
@@ -236,6 +238,7 @@ class AgentCoordinator:
             session_id: Session identifier
             event_type: AgentHookEventType value
             tool_name: Optional tool name for tool_use events
+            tool_preview: Optional UI preview text for tool_use events
             summary: Optional output summary (agent_stop only)
         """
         try:
@@ -245,6 +248,7 @@ class AgentCoordinator:
                     session_id=session_id,
                     event_type=event_type,
                     tool_name=tool_name,
+                    tool_preview=tool_preview,
                     summary=summary,
                     timestamp=datetime.now(timezone.utc).isoformat(),
                 ),
@@ -581,14 +585,16 @@ class AgentCoordinator:
         session_id = context.session_id
         payload = cast(AgentOutputPayload, context.data)
 
-        # Extract tool name from raw payload if available
-        tool_name = None
-        if payload.raw:
-            raw_tool = payload.raw.get("tool_name") or payload.raw.get("toolName")
-            tool_name = str(raw_tool) if raw_tool else None
+        tool_name = extract_tool_name(payload.raw)
+        tool_preview = build_tool_preview(tool_name=tool_name, raw_payload=payload.raw)
 
         # Always emit activity event for UI updates (every tool call)
-        self._emit_activity_event(session_id, AgentHookEvents.TOOL_USE, tool_name)
+        self._emit_activity_event(
+            session_id,
+            AgentHookEvents.TOOL_USE,
+            tool_name,
+            tool_preview=tool_preview,
+        )
 
         # DB write is deduped: only record the FIRST tool_use per turn for checkpoint timing
         session = await db.get_session(session_id)
