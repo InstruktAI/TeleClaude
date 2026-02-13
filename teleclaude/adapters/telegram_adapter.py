@@ -163,6 +163,7 @@ class TelegramAdapter(
         self._topic_creation_locks: dict[str, asyncio.Lock] = {}  # Prevent duplicate topic creation per session_id
         self._topic_ready_events: dict[int, asyncio.Event] = {}  # topic_id -> readiness event
         self._topic_ready_cache: set[int] = set()  # topic_ids confirmed via forum_topic_created
+        self._failed_delete_attempts: dict[int, float] = {}  # topic_id -> timestamp of last failed delete
 
         # Register simple command handlers dynamically
         self._register_simple_command_handlers()

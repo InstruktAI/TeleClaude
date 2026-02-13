@@ -29,8 +29,8 @@ Apply hardening in small, verifiable phases: unify routing first, then contract 
 
 **File(s):** `teleclaude/adapters/telegram/channel_ops.py`, `teleclaude/adapters/telegram/input_handlers.py`, `teleclaude/adapters/telegram_adapter.py`
 
-- [ ] Add cooldown/backoff for repeated `Topic_id_invalid` delete attempts.
-- [ ] Centralize orphan-topic delete invocation semantics.
+- [x] Add cooldown/backoff for repeated `Topic_id_invalid` delete attempts.
+- [x] Centralize orphan-topic delete invocation semantics.
 
 ## Phase 4: Ownership Hardening
 

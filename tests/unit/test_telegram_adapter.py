@@ -961,3 +961,35 @@ class TestTopicOwnership:
         update.effective_message = message
 
         assert telegram_adapter._topic_owned_by_this_bot(update, topic_id=123) is True
+
+
+class TestOrphanTopicSuppression:
+    """Tests for orphan topic deletion suppression."""
+
+    @pytest.mark.asyncio
+    async def test_delete_orphan_topic_suppresses_repeated_failures(self, telegram_adapter):
+        """Should suppress deletion if last attempt failed recently."""
+        topic_id = 999
+        telegram_adapter._failed_delete_attempts.clear()
+
+        # Mock delete to fail
+        telegram_adapter._delete_forum_topic_with_retry = AsyncMock(side_effect=BadRequest("Topic_id_invalid"))
+
+        # First call: should try to delete
+        with patch("teleclaude.adapters.telegram.channel_ops.time.time", return_value=1000.0):
+            await telegram_adapter._delete_orphan_topic(topic_id)
+
+        assert telegram_adapter._delete_forum_topic_with_retry.await_count == 1
+        assert telegram_adapter._failed_delete_attempts[topic_id] == 1000.0
+
+        # Second call immediately after: should be suppressed
+        with patch("teleclaude.adapters.telegram.channel_ops.time.time", return_value=1001.0):
+            await telegram_adapter._delete_orphan_topic(topic_id)
+
+        assert telegram_adapter._delete_forum_topic_with_retry.await_count == 1  # Still 1
+
+        # Third call after cooldown: should retry
+        with patch("teleclaude.adapters.telegram.channel_ops.time.time", return_value=1301.0):  # 300s + 1
+            await telegram_adapter._delete_orphan_topic(topic_id)
+
+        assert telegram_adapter._delete_forum_topic_with_retry.await_count == 2

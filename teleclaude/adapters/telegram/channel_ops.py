@@ -6,6 +6,7 @@ Handles forum topic creation, updating, closing, reopening, and deletion.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -49,6 +50,7 @@ class ChannelOperationsMixin:
     _topic_creation_locks: dict[str, asyncio.Lock]
     _topic_ready_events: dict[int, asyncio.Event]
     _topic_ready_cache: set[int]
+    _failed_delete_attempts: dict[int, float]
 
     def _ensure_started(self) -> None:
         """Ensure the adapter is started before operations."""
@@ -220,9 +222,34 @@ class ChannelOperationsMixin:
         await self.bot.delete_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
 
     async def _delete_orphan_topic(self, topic_id: int) -> None:
-        """Delete a topic that no longer maps to a session."""
+        """Delete a topic that no longer maps to a session.
+
+        Suppresses repeated attempts for invalid topics to prevent API storms.
+        """
+        # Check suppression
+        now = time.time()
+        last_attempt = self._failed_delete_attempts.get(topic_id, 0.0)
+        # 5 minute cooldown for failed deletes
+        if now - last_attempt < 300:
+            logger.debug("Suppressing delete for invalid/failed topic %s (cooldown active)", topic_id)
+            return
+
         try:
             await self._delete_forum_topic_with_retry(topic_id)
             logger.info("Deleted orphan topic %s (no session)", topic_id)
+            # Success - clear any failure record
+            self._failed_delete_attempts.pop(topic_id, None)
         except TelegramError as e:
-            logger.warning("Failed to delete orphan topic %s: %s", topic_id, e)
+            # Mark as failed to suppress immediate retries
+            self._failed_delete_attempts[topic_id] = now
+
+            # Special handling for "invalid" or "not found" which implies it's already gone
+            msg = str(e).lower()
+            if "topic_id_invalid" in msg or "topic not found" in msg:
+                logger.info(
+                    "Orphan topic %s already invalid/gone; suppressing future deletes for 5m: %s",
+                    topic_id,
+                    e,
+                )
+            else:
+                logger.warning("Failed to delete orphan topic %s: %s", topic_id, e)
