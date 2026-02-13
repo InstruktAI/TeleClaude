@@ -10,9 +10,9 @@ Apply hardening in small, verifiable phases: unify routing first, then contract 
 
 **File(s):** `teleclaude/core/adapter_client.py`
 
-- [ ] Remove origin-path bypass for Telegram UI delivery.
-- [ ] Keep observer broadcast behavior explicit.
-- [ ] Emit structured routing outcome logs.
+- [x] Remove origin-path bypass for Telegram UI delivery.
+- [x] Keep observer broadcast behavior explicit.
+- [x] Emit structured routing outcome logs.
 
 ## Phase 2: Contract Normalization
 

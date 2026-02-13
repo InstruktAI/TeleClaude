@@ -734,8 +734,8 @@ async def test_send_message_notice_broadcasts_when_missing_origin():
 
 
 @pytest.mark.asyncio
-async def test_send_message_notice_targets_last_input_origin():
-    """Notices go only to last_input_origin."""
+async def test_send_message_notice_broadcasts_to_observers():
+    """Notices should broadcast to observers (mirroring)."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -757,7 +757,7 @@ async def test_send_message_notice_targets_last_input_origin():
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id == "slack-feedback"
-    assert telegram_adapter.sent_messages == []
+    assert telegram_adapter.sent_messages == ["hello"]  # Broadcast to observer
     assert slack_adapter.sent_messages == ["hello"]
 
 
