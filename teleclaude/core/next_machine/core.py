@@ -110,14 +110,14 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
 # These tell the orchestrator what to do AFTER a worker completes
 POST_COMPLETION: dict[str, str] = {
     "next-build": """WHEN WORKER COMPLETES:
-1. MANDATORY VERIFICATION - Never trust worker self-reports, so FROM WITHIN WORKTREE:
-     - Run linter
-     - Run tests
+1. MANDATORY VERIFICATION - Never trust worker self-reports:
+     - Run linter and tests using absolute paths (e.g. make -C trees/{args} lint test)
+     - Do NOT cd into the worktree — the orchestrator must stay in the main repo
      - Commits with --no-verify indicate incomplete work
      - If checks fail, work is NOT done
 2a. If verification FAILS:
     - Keep session alive and guide worker to resolution
-    - Only mark phase when YOUR verification passes    
+    - Only mark phase when YOUR verification passes
 2b. If success:
    - teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
    - teleclaude__end_session(computer="local", session_id="<session_id>")

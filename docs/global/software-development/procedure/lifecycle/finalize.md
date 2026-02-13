@@ -33,23 +33,24 @@ Merge approved work to main, log delivery, and clean up.
 3. Update only the Finalize section in `quality-checklist.md`.
    - Do not edit Build or Review sections.
 4. Use commit hooks for verification (lint + unit tests).
-5. Merge to main:
+5. Merge to main (from within the worktree, use `git -C` to operate on the main repo):
 
    ```bash
-   git fetch origin main
-   git checkout main
-   git pull --ff-only origin main
-   git merge {slug} --no-edit
+   MAIN_REPO="$(git rev-parse --git-common-dir)/.."
+   git -C "$MAIN_REPO" fetch origin main
+   git -C "$MAIN_REPO" checkout main
+   git -C "$MAIN_REPO" pull --ff-only origin main
+   git -C "$MAIN_REPO" merge {slug} --no-edit
    ```
 
 6. Resolve conflicts if needed, then re-run verification.
 7. Push main:
 
    ```bash
-   git push origin main
+   git -C "$MAIN_REPO" push origin main
    ```
 
-8. Append to `todos/delivered.md`:
+8. Append to `todos/delivered.md` (use `$MAIN_REPO/todos/` paths):
 
    ```
    | {date} | {slug} | {title} | DELIVERED | {commit-hash} |
