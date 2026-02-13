@@ -7,9 +7,17 @@
 
 ## Help Desk Platform
 
-- help-desk-clients (after: help-desk, agent-activity-events)
+- help-desk-whatsapp (after: help-desk)
 
-Connect external messaging platforms (WhatsApp, Discord) to the Help Desk lobby. Implements "Admin Supergroup" observability where all customer sessions are mirrored to a Telegram Control Room for real-time monitoring and intervention. Updates AdapterClient for multi-destination routing.
+Implement the WhatsApp adapter and webhook handling, mapping incoming phone numbers to Customer identities and routing them to the Help Desk lobby.
+
+- help-desk-discord (after: help-desk)
+
+Implement the Discord adapter and bot client using discord.py. Leverage Forum Channels (Type 15) to map each customer session to a dedicated thread, mirroring the Telegram "Control Room" model. Map Discord user IDs to Customer identities.
+
+- help-desk-control-room (after: help-desk-whatsapp, help-desk-discord, agent-activity-events)
+
+Implement the Admin Telegram mirroring and intervention logic. Establish the "Admin Supergroup" where Help Desk sessions are mirrored as topics, allowing Admins to monitor and intervene in customer chats.
 
 ## Release Automation
 

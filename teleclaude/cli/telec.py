@@ -93,6 +93,7 @@ _DOMAINS = [
 ]
 _TODO_SUBCOMMANDS = [
     ("create", "Create todo skeleton files for a slug"),
+    ("validate", "Validate todo files and state.json schema"),
 ]
 _TODO_FLAGS = [
     (None, "--project-root", "Project root directory"),
@@ -736,6 +737,8 @@ def _usage() -> str:
         "  telec docs [OPTIONS] [IDS...]  # Query documentation snippets (use --help for details)\n"
         "  telec todo create <slug> [--project-root PATH] [--after dep1,dep2]\n"
         "                                 # Scaffold todo files without modifying roadmap\n"
+        "  telec todo validate [slug] [--project-root PATH]\n"
+        "                                 # Validate todo files and state.json schema\n"
     )
 
 
@@ -757,12 +760,61 @@ def _handle_todo(args: list[str]) -> None:
         return
 
     subcommand = args[0]
-    if subcommand != "create":
+    if subcommand == "create":
+        _handle_todo_create(args[1:])
+    elif subcommand == "validate":
+        _handle_todo_validate(args[1:])
+    else:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_todo_usage())
         raise SystemExit(1)
 
-    _handle_todo_create(args[1:])
+
+def _handle_todo_validate(args: list[str]) -> None:
+    """Handle telec todo validate."""
+    if args and args[0] in ("--help", "-h"):
+        print(_todo_usage())
+        return
+
+    from teleclaude.resource_validation import validate_all_todos, validate_todo
+
+    slug: str | None = None
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_todo_usage())
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed for validation.")
+                print(_todo_usage())
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    errors = []
+    if slug:
+        errors = validate_todo(slug, project_root)
+    else:
+        errors = validate_all_todos(project_root)
+
+    if errors:
+        print("Todo validation failed:")
+        for error in errors:
+            print(f"  - {error}")
+        raise SystemExit(1)
+
+    if slug:
+        print(f"✓ Todo {slug} is valid")
+    else:
+        print("✓ All active todos are valid")
 
 
 def _handle_todo_create(args: list[str]) -> None:
@@ -817,13 +869,12 @@ def _todo_usage() -> str:
     return (
         "Usage:\n"
         "  telec todo create <slug> [--project-root PATH] [--after dep1,dep2]\n"
+        "  telec todo validate [slug] [--project-root PATH]\n"
         "\n"
         "Notes:\n"
-        "  - Creates todos/{slug}/requirements.md\n"
-        "  - Creates todos/{slug}/implementation-plan.md\n"
-        "  - Creates todos/{slug}/quality-checklist.md\n"
-        "  - Creates todos/{slug}/state.json\n"
-        "  - Fails if todos/{slug} already exists\n"
+        "  - create: Scaffolds todos/{slug}/requirements.md, implementation-plan.md, etc.\n"
+        "  - validate: Checks state.json schema and required files for 'Ready' status.\n"
+        "  - If slug is omitted for validate, all active todos are checked.\n"
         "  - Does NOT modify todos/roadmap.md\n"
     )
 

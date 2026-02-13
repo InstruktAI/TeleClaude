@@ -1,4 +1,4 @@
-# Quality Checklist: help-desk-clients
+# Quality Checklist: help-desk-control-room
 
 This checklist is the execution projection of `definition-of-done.md` for this todo.
 

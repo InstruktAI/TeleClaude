@@ -11,6 +11,7 @@ Called by ``telec sync`` and pre-commit hooks. Read-only — never modifies file
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -21,6 +22,8 @@ from typing import Mapping, TypedDict
 
 import frontmatter
 import yaml
+
+from teleclaude.types.todos import TodoState
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -1025,3 +1028,74 @@ def _iter_snippet_roots(project_root: Path) -> list[Path]:
         if files:
             roots.append(candidate)
     return roots
+
+
+def validate_todo(slug: str, project_root: Path) -> list[str]:
+    """Validate a todo directory structure and state.json schema."""
+    todos_root = project_root / "todos"
+    todo_dir = todos_root / slug
+    if not todo_dir.is_dir():
+        return [f"Todo directory missing: {todo_dir}"]
+
+    errors = []
+
+    # 1. state.json schema validation
+    state_path = todo_dir / "state.json"
+    if not state_path.exists():
+        errors.append(f"{slug}: missing state.json")
+    else:
+        try:
+            content = state_path.read_text(encoding="utf-8")
+            data = json.loads(content)
+            TodoState.model_validate(data)
+        except Exception as exc:
+            errors.append(f"{slug}: state.json schema violation: {exc}")
+
+    # 2. Required files for Ready state
+    # If phase is pending and score >= 8, requirements and implementation plan MUST exist
+    if state_path.exists():
+        try:
+            state = TodoState.model_validate(json.loads(state_path.read_text(encoding="utf-8")))
+            if state.phase == "pending" and state.dor and state.dor.score >= 8:
+                if not (todo_dir / "requirements.md").exists():
+                    errors.append(f"{slug}: marked as Ready (score {state.dor.score}) but missing requirements.md")
+                if not (todo_dir / "implementation-plan.md").exists():
+                    errors.append(
+                        f"{slug}: marked as Ready (score {state.dor.score}) but missing implementation-plan.md"
+                    )
+        except Exception:
+            pass  # already reported in schema check
+
+    return errors
+
+
+def validate_all_todos(project_root: Path) -> list[str]:
+    """Enumerate and validate all active todos."""
+    todos_root = project_root / "todos"
+    if not todos_root.is_dir():
+        return []
+
+    # Exclude delivered and icebox
+    delivered = set()
+    delivered_path = todos_root / "delivered.md"
+    if delivered_path.exists():
+        # simple regex to extract slugs from markdown table
+        delivered = set(re.findall(r"\|\s*([a-z0-9-]+)\s*\|", delivered_path.read_text(encoding="utf-8")))
+
+    icebox = set()
+    icebox_path = todos_root / "icebox.md"
+    if icebox_path.exists():
+        icebox = set(re.findall(r"\|\s*([a-z0-9-]+)\s*\|", icebox_path.read_text(encoding="utf-8")))
+
+    errors = []
+    if not todos_root.exists():
+        return []
+
+    for entry in todos_root.iterdir():
+        if entry.is_dir() and entry.name not in delivered and entry.name not in icebox:
+            # Skip hidden dirs or __pycache__
+            if entry.name.startswith(".") or entry.name == "__pycache__":
+                continue
+            errors.extend(validate_todo(entry.name, project_root))
+
+    return errors

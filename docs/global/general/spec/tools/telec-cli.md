@@ -28,9 +28,11 @@ telec sync --project-root /path/to/project
 telec todo create config-schema-validation
 telec todo create auth-hardening --after config-schema-validation,job-contract-refinements
 telec todo create auth-hardening --project-root /path/to/project
+telec todo validate [slug]
 ```
 
 Creates: `todos/{slug}/requirements.md`, `implementation-plan.md`, `quality-checklist.md`, `state.json`.
+Validation: checks `state.json` schema and requires files for "Ready" status (score >= 8).
 
 ### Project init
 

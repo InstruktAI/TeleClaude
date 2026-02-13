@@ -40,6 +40,10 @@ snippets:
   description: Codex CLI Sub-Agents
   scope: project
   path: codex-cli/sub-agents.md
+- id: third-party/discord/bot-api
+  description: Discord Bot API - Help Desk Integration
+  scope: project
+  path: discord/bot-api.md
 - id: third-party/gemini-cli/commands
   description: Gemini CLI Commands
   scope: project
@@ -60,3 +64,7 @@ snippets:
   description: Gemini CLI Sub-Agents
   scope: project
   path: gemini-cli/sub-agents.md
+- id: third-party/whatsapp/cloud-api
+  description: WhatsApp Business Cloud API
+  scope: project
+  path: whatsapp/cloud-api.md

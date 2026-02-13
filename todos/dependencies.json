@@ -8,6 +8,19 @@
   "code-context-auditor": [
     "code-context-annotations"
   ],
+  "fallback-fail-fast-hardening": [
+    "telegram-routing-contract-hardening"
+  ],
+  "help-desk-control-room": [
+    "help-desk-whatsapp",
+    "help-desk-discord"
+  ],
+  "help-desk-discord": [
+    "help-desk-research"
+  ],
+  "help-desk-whatsapp": [
+    "help-desk-research"
+  ],
   "person-identity-auth-2": [
     "person-identity-auth-1"
   ],
@@ -19,9 +32,6 @@
   ],
   "telegram-ownership-layering-cleanup": [
     "telegram-topic-cleanup-guards"
-  ],
-  "fallback-fail-fast-hardening": [
-    "telegram-routing-contract-hardening"
   ],
   "telegram-topic-cleanup-guards": [
     "telegram-routing-contract-hardening"

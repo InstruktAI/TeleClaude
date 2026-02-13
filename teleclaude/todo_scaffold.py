@@ -5,39 +5,25 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import TypedDict
+
+from teleclaude.types.todos import BreakdownState, DorState, TodoState
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
-class BreakdownState(TypedDict):
-    assessed: bool
-    todos: list[str]
-
-
-class TodoState(TypedDict):
-    build: str
-    review: str
-    deferrals_processed: bool
-    breakdown: BreakdownState
-    review_round: int
-    max_review_rounds: int
-    review_baseline_commit: str
-    unresolved_findings: list[str]
-    resolved_findings: list[str]
-
-
-_DEFAULT_STATE: TodoState = {
-    "build": "pending",
-    "review": "pending",
-    "deferrals_processed": False,
-    "breakdown": {"assessed": False, "todos": []},
-    "review_round": 0,
-    "max_review_rounds": 3,
-    "review_baseline_commit": "",
-    "unresolved_findings": [],
-    "resolved_findings": [],
-}
+_DEFAULT_STATE = TodoState(
+    phase="pending",
+    build="pending",
+    review="pending",
+    deferrals_processed=False,
+    breakdown=BreakdownState(assessed=False, todos=[]),
+    dor=DorState(status="needs_work", score=0),
+    review_round=0,
+    max_review_rounds=3,
+    review_baseline_commit="",
+    unresolved_findings=[],
+    resolved_findings=[],
+).model_dump()
 
 
 def _templates_root() -> Path:
