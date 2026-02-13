@@ -37,10 +37,12 @@ This spec must define:
 
 Current runtime rule:
 
-- Hook receiver resolves session identity from native mapping (`agent:native_session_id`) plus DB native lookup.
-- Receiver does not use per-session TMP marker files for hook routing.
+- Hook receiver resolves session identity in this order:
+  1. native mapping (`agent:native_session_id`)
+  2. DB lookup by `native_session_id`
+  3. TMPDIR `teleclaude_session_id` marker when active
 - New mapping registration happens only on `session_start`.
-- Non-`session_start` events without an existing mapping are dropped.
+- If no route resolves a session id, the event is dropped.
 
 Fields that must be explained:
 
@@ -64,10 +66,10 @@ Recovery outcome:
 
 - `reassociate-existing`
 - `mint-new`
-- `drop-unmapped-non-session-start`
+- `drop-unresolved`
 
 ## Known caveats
 
-- Legacy marker-based routing is intentionally removed from hook identity resolution.
+- TMPDIR marker routing is fallback-only and ignored when the marker target is not active.
 - Native fields may be missing in some events; logic must handle that safely.
 - This file is only useful if kept in sync with receiver + mapping code behavior.

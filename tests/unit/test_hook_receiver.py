@@ -36,7 +36,7 @@ def test_receiver_emits_error_on_invalid_stdin_json(monkeypatch, tmp_path):
 
 
 def test_receiver_exits_cleanly_without_session(monkeypatch):
-    """Standalone sessions (not started via TeleClaude) should exit cleanly."""
+    """Unresolved hook sessions should be silently dropped."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -53,12 +53,12 @@ def test_receiver_exits_cleanly_without_session(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 0  # Clean exit for standalone sessions
+    assert exc.value.code == 0
     assert not sent
 
 
 def test_receiver_exits_cleanly_when_tmux_recovery_fails(monkeypatch):
-    """When tmux recovery fails, exit cleanly (standalone session)."""
+    """When session resolution fails, receiver should drop cleanly."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -74,12 +74,12 @@ def test_receiver_exits_cleanly_when_tmux_recovery_fails(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 0  # Clean exit for standalone sessions
+    assert exc.value.code == 0
     assert not sent
 
 
 def test_receiver_exits_cleanly_when_session_not_in_db(monkeypatch):
-    """When env session ID doesn't exist in DB and recovery fails, exit cleanly."""
+    """When env session ID doesn't resolve, receiver should drop cleanly."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -95,12 +95,12 @@ def test_receiver_exits_cleanly_when_session_not_in_db(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 0  # Clean exit for standalone sessions
+    assert exc.value.code == 0
     assert not sent
 
 
 def test_receiver_emits_error_on_deprecated_event_name(monkeypatch, tmp_path):
-    """Legacy prompt/stop event names should produce a precise error event."""
+    """Unknown event names should be dropped silently."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -117,12 +117,12 @@ def test_receiver_emits_error_on_deprecated_event_name(monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 1
+    assert exc.value.code == 0
     assert sent == []
 
 
-def test_receiver_unhandled_event_exits_nonzero(monkeypatch, tmp_path):
-    """Unhandled hook event types should fail fast with non-zero exit."""
+def test_receiver_unhandled_event_drops_cleanly(monkeypatch, tmp_path):
+    """Unhandled hook event types should be dropped cleanly."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -138,7 +138,7 @@ def test_receiver_unhandled_event_exits_nonzero(monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 1
+    assert exc.value.code == 0
     assert sent == []
 
 
@@ -719,7 +719,7 @@ def test_receiver_uses_session_map_for_agent_stop(monkeypatch, tmp_path):
 
 
 def test_receiver_drops_agent_stop_without_existing_mapping(monkeypatch, tmp_path):
-    """Agent stop must not mint new mapping; only session_start can register."""
+    """Agent stop with unresolved mapping should be dropped cleanly."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):

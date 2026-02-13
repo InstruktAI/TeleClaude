@@ -45,8 +45,12 @@ Important: native identity fields are **optional**, not required.
 
 Identity gating rule:
 
-- For events other than `session_start`, receiver forwards only when a native mapping already resolves to a TeleClaude session id.
-- Unmapped non-`session_start` events are intentionally dropped.
+- Receiver resolves session id in this order:
+  1. native mapping (`agent:native_session_id`)
+  2. DB lookup by `native_session_id`
+  3. TMPDIR `teleclaude_session_id` marker when active
+  4. mint new id only for `session_start`
+- Events are dropped when no route yields a session id.
 
 ## Allowed values
 

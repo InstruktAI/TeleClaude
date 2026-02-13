@@ -393,14 +393,6 @@ def _extract_native_identity(agent: str, data: dict[str, object]) -> tuple[str |
     if isinstance(raw_log, str):
         native_log_file = raw_log
 
-    # Codex payloads lack transcript_path; discover from filesystem.
-    if not native_log_file and agent == AgentName.CODEX.value and native_session_id:
-        from teleclaude.hooks.adapters.codex import _discover_transcript_path
-
-        discovered = _discover_transcript_path(native_session_id)
-        if discovered:
-            native_log_file = discovered
-
     return native_session_id, native_log_file
 
 
@@ -455,11 +447,6 @@ def _get_cached_session_id(agent: str, native_session_id: str | None) -> str | N
 
 
 def _get_env_session_id() -> str | None:
-    """Read TeleClaude session ID from process environment context."""
-    direct = os.getenv("TELECLAUDE_SESSION_ID")
-    if isinstance(direct, str) and direct.strip():
-        return direct.strip()
-
     tmpdir = os.getenv("TMPDIR")
     if not isinstance(tmpdir, str) or not tmpdir.strip():
         return None
@@ -604,16 +591,14 @@ def _resolve_hook_session_id(
     existing_session_id = None
     env_session_id = _get_env_session_id()
 
-    # For session_start, prefer the explicit TeleClaude session context from TMPDIR/env.
-    # This binds agent-native IDs to the already-created interactive session instead of minting
-    # a second headless session when map/native lookup is not yet populated.
-    if (
-        event_type == AgentHookEvents.AGENT_SESSION_START
-        and env_session_id
-        and _is_active_session(env_session_id)
-        and resolved_session_id != env_session_id
-    ):
-        resolved_session_id = env_session_id
+    # Contract-first binding: TMPDIR marker is authoritative live session context.
+    # For session_start it overrides stale map values; for all other events it fills
+    # missing map/native bindings so hooks never get silently dropped.
+    if env_session_id and _is_active_session(env_session_id):
+        if event_type == AgentHookEvents.AGENT_SESSION_START and resolved_session_id != env_session_id:
+            resolved_session_id = env_session_id
+        elif not resolved_session_id:
+            resolved_session_id = env_session_id
 
     if not resolved_session_id and native_session_id:
         existing_session_id = _find_session_id_by_native(native_session_id)
@@ -754,31 +739,20 @@ def main() -> None:
     raw_event_type = event_type
     agent_map = AgentHookEvents.HOOK_EVENT_MAP.get(args.agent, {})
 
-    # Try direct match, then try title-cased match (e.g., 'tool_use' -> 'ToolUse')
-    # Use replace('_', '') to handle snake_case to PascalCase mapping if needed.
-    pascal_event_type = raw_event_type.replace("_", " ").title().replace(" ", "") if raw_event_type else None
-
-    mapped_event_type = agent_map.get(raw_event_type) or agent_map.get(pascal_event_type)
+    # Contract boundary: event names are trusted; only exact mapping is allowed.
+    mapped_event_type = agent_map.get(raw_event_type)
 
     # Use mapped event if found, otherwise keep original (for direct events like 'tool_done')
     if mapped_event_type:
         event_type = mapped_event_type
-        logger.debug("Mapped hook event: %s (pascal: %s) -> %s", raw_event_type, pascal_event_type, event_type)
+        logger.debug("Mapped hook event: %s -> %s", raw_event_type, event_type)
 
-    # Early exit for unhandled events - don't spawn mcp-wrapper
-    # Note: We check against AgentHookEvents.ALL which contains internal types like TOOL_DONE
+    # Event types outside the handled contract are ignored by design.
     if event_type not in _HANDLED_EVENTS:
-        if event_type in {"prompt", "stop"}:
-            _emit_receiver_error_best_effort(
-                agent=args.agent,
-                event_type=event_type,
-                message="Deprecated hook event type; expected user_prompt_submit or agent_stop",
-                code="HOOK_EVENT_DEPRECATED",
-                raw_data=raw_data,
-            )
-            sys.exit(1)
-        logger.error("Unhandled hook event: %s (raw: %s)", event_type, raw_event_type)
-        sys.exit(1)
+        logger.debug(
+            "Dropped unhandled hook event", event_type=event_type, raw_event_type=raw_event_type, agent=args.agent
+        )
+        sys.exit(0)
 
     raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, raw_data)
 
@@ -797,7 +771,15 @@ def main() -> None:
         native_session_id=(raw_native_session_id or "")[:8],
     )
     if not teleclaude_session_id:
-        # Registration is only allowed on session_start. Other events require an existing mapping.
+        logger.debug(
+            "Dropped unresolved hook event",
+            agent=args.agent,
+            event_type=event_type,
+            raw_event_type=raw_event_type,
+            native_session_id=(raw_native_session_id or "")[:8],
+            cached_session_id=(cached_session_id or "")[:8],
+            existing_session_id=(existing_id or "")[:8],
+        )
         sys.exit(0)
 
     data = dict(raw_data)
