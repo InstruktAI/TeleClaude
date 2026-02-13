@@ -29,7 +29,6 @@ from teleclaude.core.models import (
     CleanupTrigger,
     MessageMetadata,
     SessionField,
-    TelegramAdapterMetadata,
 )
 from teleclaude.core.session_utils import get_display_title_for_session, get_output_file
 from teleclaude.core.voice_message_handler import handle_voice
@@ -130,35 +129,30 @@ class UiAdapter(BaseAdapter):
 
     async def _get_footer_message_id(self, session: "Session") -> Optional[str]:
         """Get threaded footer message id from adapter namespace."""
-        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
-        if not metadata:
-            return None
-        return metadata.footer_message_id
+        if self.ADAPTER_KEY == "telegram":
+            metadata = session.get_metadata().get_ui().get_telegram()
+            return metadata.footer_message_id
+        return None
 
     async def _store_footer_message_id(self, session: "Session", message_id: str) -> None:
         """Store threaded footer message id in adapter namespace."""
-        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
-        if not metadata:
-            metadata = TelegramAdapterMetadata()
-            setattr(session.adapter_metadata, self.ADAPTER_KEY, metadata)
-        typed_metadata: TelegramAdapterMetadata = metadata
-        typed_metadata.footer_message_id = message_id
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-        logger.debug(
-            "Stored footer_message_id: session=%s message_id=%s",
-            session.session_id[:8],
-            message_id,
-        )
+        if self.ADAPTER_KEY == "telegram":
+            metadata = session.get_metadata().get_ui().get_telegram()
+            metadata.footer_message_id = message_id
+            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+            logger.debug(
+                "Stored footer_message_id: session=%s message_id=%s",
+                session.session_id[:8],
+                message_id,
+            )
 
     async def _clear_footer_message_id(self, session: "Session") -> None:
         """Clear threaded footer message id from adapter namespace."""
-        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
-        if not metadata:
-            return
-        typed_metadata: TelegramAdapterMetadata = metadata
-        typed_metadata.footer_message_id = None
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-        logger.debug("Cleared footer_message_id: session=%s", session.session_id[:8])
+        if self.ADAPTER_KEY == "telegram":
+            metadata = session.get_metadata().get_ui().get_telegram()
+            metadata.footer_message_id = None
+            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+            logger.debug("Cleared footer_message_id: session=%s", session.session_id[:8])
 
     async def _cleanup_footer_if_present(self, session: "Session") -> None:
         """Delete and clear any tracked threaded footer message."""
@@ -394,10 +388,7 @@ class UiAdapter(BaseAdapter):
         with "..." continuity markers.
         """
         # 1. Get current offset and ID
-        telegram_meta = session.adapter_metadata.telegram
-        if not telegram_meta:
-            telegram_meta = TelegramAdapterMetadata()
-            session.adapter_metadata.telegram = telegram_meta
+        telegram_meta = session.get_metadata().get_ui().get_telegram()
 
         char_offset = telegram_meta.char_offset
         output_message_id = session.output_message_id

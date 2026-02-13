@@ -121,13 +121,11 @@ class MessageOperationsMixin:
         metadata = metadata or MessageMetadata()
 
         # Gracefully skip if channel not ready yet (fire-and-forget channel creation)
-        if not session.adapter_metadata or not session.adapter_metadata.telegram:
-            logger.debug("send_message: skipping, telegram metadata not ready for session %s", session.session_id[:8])
-            return ""
-        topic_id = session.adapter_metadata.telegram.topic_id
+        telegram_meta = session.get_metadata().get_ui().get_telegram()
+        topic_id = telegram_meta.topic_id
         if not topic_id:
             logger.debug("send_message: skipping, topic_id not ready for session %s", session.session_id[:8])
-            return ""
+            raise RuntimeError("Telegram topic_id missing (topic_id=None)")
 
         # Extract reply_markup and parse_mode from metadata
         reply_markup = metadata.reply_markup
@@ -395,13 +393,11 @@ class MessageOperationsMixin:
         self._ensure_started()
 
         # Gracefully skip if channel not ready yet (fire-and-forget channel creation)
-        if not session.adapter_metadata or not session.adapter_metadata.telegram:
-            logger.debug("send_file: skipping, telegram metadata not ready for session %s", session.session_id[:8])
-            return ""
-        topic_id = session.adapter_metadata.telegram.topic_id
+        telegram_meta = session.get_metadata().get_ui().get_telegram()
+        topic_id = telegram_meta.topic_id
         if not topic_id:
             logger.debug("send_file: skipping, topic_id not ready for session %s", session.session_id[:8])
-            return ""
+            raise RuntimeError("Telegram topic_id missing (topic_id=None)")
 
         message = await self._send_document_with_retry(
             self.supergroup_id,

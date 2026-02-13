@@ -82,12 +82,8 @@ class MaintenanceService:
                 continue
 
             if session.last_input_origin == InputOrigin.TELEGRAM.value:
-                if (
-                    not session.adapter_metadata
-                    or not session.adapter_metadata.telegram
-                    or not session.adapter_metadata.telegram.topic_id
-                    or not session.output_message_id
-                ):
+                telegram_meta = session.get_metadata().get_ui().get_telegram()
+                if not telegram_meta.topic_id or not session.output_message_id:
                     try:
                         display_title = await get_display_title_for_session(session)
                         await self._client.ensure_ui_channels(session, display_title)

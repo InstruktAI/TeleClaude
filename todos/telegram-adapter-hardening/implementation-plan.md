@@ -20,8 +20,8 @@ Apply hardening in small, verifiable phases: unify routing first, then contract 
 
 **File(s):** `teleclaude/adapters/telegram/message_ops.py`, `teleclaude/adapters/telegram_adapter.py`
 
-- [ ] Replace empty-string/ambiguous success sentinels with explicit typed outcomes.
-- [ ] Ensure missing routing metadata propagates as explicit failure.
+- [x] Replace empty-string/ambiguous success sentinels with explicit typed outcomes.
+- [x] Ensure missing routing metadata propagates as explicit failure.
 
 ## Phase 3: Invalid Topic Suppression + Cleanup Safety
 

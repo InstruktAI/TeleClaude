@@ -48,7 +48,6 @@ from teleclaude.core.models import (
     MessageMetadata,
     PeerInfo,
     Session,
-    TelegramAdapterMetadata,
 )
 from teleclaude.types.commands import CloseSessionCommand, KeysCommand
 
@@ -169,14 +168,13 @@ class TelegramAdapter(
         self._register_simple_command_handlers()
 
     async def ensure_channel(self, session: Session, title: str) -> Session:
-        telegram_meta = session.adapter_metadata.telegram
+        telegram_meta = session.get_metadata().get_ui().get_telegram()
         logger.debug(
-            "[TG_ENSURE] session=%s telegram_meta=%s topic_id=%s",
+            "[TG_ENSURE] session=%s telegram_meta=present topic_id=%s",
             session.session_id[:8],
-            "present" if telegram_meta else "MISSING",
-            telegram_meta.topic_id if telegram_meta else "N/A",
+            telegram_meta.topic_id if telegram_meta.topic_id else "N/A",
         )
-        if telegram_meta and telegram_meta.topic_id:
+        if telegram_meta.topic_id:
             logger.debug("[TG_ENSURE] Topic exists, returning session %s", session.session_id[:8])
             return session
 
@@ -195,8 +193,9 @@ class TelegramAdapter(
                 exc,
             )
             current = await db.get_session(session.session_id)
-            if current and current.adapter_metadata and current.adapter_metadata.telegram:
-                current.adapter_metadata.telegram.topic_id = None
+            if current:
+                current_meta = current.get_metadata().get_ui().get_telegram()
+                current_meta.topic_id = None
                 await db.update_session(current.session_id, adapter_metadata=current.adapter_metadata)
                 # Clear output_message_id via dedicated column (not adapter_metadata blob)
                 await db.set_output_message_id(current.session_id, None)
@@ -215,22 +214,26 @@ class TelegramAdapter(
     ) -> object | None:
         """Recover from missing Telegram thread by resetting topic metadata and retrying."""
         message = str(error).lower()
-        if "message thread not found" not in message and "topic_deleted" not in message:
+        if (
+            "message thread not found" not in message
+            and "topic_deleted" not in message
+            and "telegram topic_id missing" not in message
+        ):
             raise error
 
         logger.warning(
-            "[TG_RECOVER] Missing thread detected for session %s; resetting channel metadata",
+            "[TG_RECOVER] Missing thread detected for session %s (error=%s); resetting channel metadata",
             session.session_id[:8],
+            error,
         )
         refreshed = await db.get_session(session.session_id)
         recovery_session = refreshed or session
 
-        if not recovery_session.adapter_metadata.telegram:
-            recovery_session.adapter_metadata.telegram = TelegramAdapterMetadata()
-        recovery_session.adapter_metadata.telegram.topic_id = None
-        recovery_session.adapter_metadata.telegram.output_message_id = None
-        recovery_session.adapter_metadata.telegram.footer_message_id = None
-        recovery_session.adapter_metadata.telegram.char_offset = 0
+        telegram_meta = recovery_session.get_metadata().get_ui().get_telegram()
+        telegram_meta.topic_id = None
+        telegram_meta.output_message_id = None
+        telegram_meta.footer_message_id = None
+        telegram_meta.char_offset = 0
 
         await db.update_session(
             recovery_session.session_id,
@@ -262,9 +265,9 @@ class TelegramAdapter(
 
         if not isinstance(adapter_metadata, SessionAdapterMetadata):
             return
-        if not adapter_metadata.telegram:
-            adapter_metadata.telegram = TelegramAdapterMetadata()
-        adapter_metadata.telegram.topic_id = int(channel_id)
+
+        telegram_meta = adapter_metadata.get_ui().get_telegram()
+        telegram_meta.topic_id = int(channel_id)
 
     def _register_simple_command_handlers(self) -> None:
         """Create handler methods for simple commands dynamically.
@@ -840,19 +843,15 @@ class TelegramAdapter(
                 matched = [sess for sess in candidates if sess.title == title]
                 if matched:
                     session = matched[0]
-                    if session.adapter_metadata:
-                        telegram_meta = session.adapter_metadata.telegram
-                        if not telegram_meta:
-                            telegram_meta = TelegramAdapterMetadata()
-                            session.adapter_metadata.telegram = telegram_meta
-                        telegram_meta.topic_id = int(thread_id)
-                        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-                        logger.info(
-                            "_get_session_from_topic: registered topic_id %s for session %s",
-                            thread_id,
-                            session.session_id[:8],
-                        )
-                        return session
+                    telegram_meta = session.get_metadata().get_ui().get_telegram()
+                    telegram_meta.topic_id = int(thread_id)
+                    await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+                    logger.info(
+                        "_get_session_from_topic: registered topic_id %s for session %s",
+                        thread_id,
+                        session.session_id[:8],
+                    )
+                    return session
             logger.debug("_get_session_from_topic: no session found for topic_id %s", thread_id)
             return None
 
