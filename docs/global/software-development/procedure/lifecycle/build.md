@@ -44,10 +44,11 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 3. Lint passes: `make lint`.
 4. Working tree is clean: `git status`.
    - If not clean, commit remaining build-phase changes following the commits policy.
-   - Treat orchestrator-synced planning drift as non-blocking when it is pre-existing and out of build scope:
+   - Treat pre-existing out-of-scope drift as non-blocking.
+   - Orchestrator-synced planning drift is a common non-blocking case:
      - `todos/roadmap.md`
      - `todos/dependencies.json`
-   - If only the files above are dirty, continue; do not force-commit them during build unless the task explicitly requires editing them.
+   - If dirty files do not overlap this slug's build scope, continue; do not force-commit unrelated files during build unless the task explicitly requires editing them.
 5. Verify commits exist: `git log --oneline -10`.
 6. Build section in `quality-checklist.md` is fully checked.
 

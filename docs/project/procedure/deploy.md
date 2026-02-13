@@ -14,7 +14,7 @@ Deploy project changes to TeleClaude computers safely and verify health.
 ## Preconditions
 
 - You are in the TeleClaude repository.
-- Working tree is clean.
+- Working tree has no unresolved in-scope deploy changes.
 - Remote access to target computers is configured.
 
 ## Steps
@@ -25,7 +25,10 @@ Deploy project changes to TeleClaude computers safely and verify health.
    git status --porcelain
    ```
 
-   If the working tree is dirty, stop and report. Do not auto-commit.
+   If the working tree is dirty, assess scope:
+   - If dirty files overlap deploy intent (release/deploy/config changes), stop and report.
+   - If dirty files are unrelated, continue deployment and report that unrelated drift was ignored.
+   - Do not auto-commit unrelated files.
 
 2. Pull updates safely:
 
