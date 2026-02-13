@@ -14,6 +14,12 @@ from teleclaude.hooks import receiver
 from teleclaude.hooks.checkpoint_flags import CHECKPOINT_CLEAR_FLAG, CHECKPOINT_RECHECK_FLAG, checkpoint_flag_path
 
 
+@pytest.fixture(autouse=True)
+def _default_headless_route(monkeypatch):
+    """Default tests run without TMUX contract route unless explicitly enabled."""
+    monkeypatch.delenv("TMUX", raising=False)
+
+
 def test_receiver_emits_error_on_invalid_stdin_json(monkeypatch, tmp_path):
     """Invalid hook JSON should emit an error event and exit nonzero."""
     sent = []
@@ -35,8 +41,8 @@ def test_receiver_emits_error_on_invalid_stdin_json(monkeypatch, tmp_path):
     assert sent == []
 
 
-def test_receiver_exits_cleanly_without_session(monkeypatch):
-    """Unresolved hook sessions should be silently dropped."""
+def test_receiver_fails_fast_without_session(monkeypatch):
+    """Unresolved handled hook sessions should fail fast."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -53,12 +59,12 @@ def test_receiver_exits_cleanly_without_session(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 0
+    assert exc.value.code == 1
     assert not sent
 
 
-def test_receiver_exits_cleanly_when_tmux_recovery_fails(monkeypatch):
-    """When session resolution fails, receiver should drop cleanly."""
+def test_receiver_fails_fast_when_tmux_recovery_fails(monkeypatch):
+    """When handled session resolution fails, receiver should fail fast."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -74,12 +80,12 @@ def test_receiver_exits_cleanly_when_tmux_recovery_fails(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 0
+    assert exc.value.code == 1
     assert not sent
 
 
-def test_receiver_exits_cleanly_when_session_not_in_db(monkeypatch):
-    """When env session ID doesn't resolve, receiver should drop cleanly."""
+def test_receiver_fails_fast_when_session_not_in_db(monkeypatch):
+    """When handled session ID cannot resolve, receiver should fail fast."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -95,7 +101,7 @@ def test_receiver_exits_cleanly_when_session_not_in_db(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 0
+    assert exc.value.code == 1
     assert not sent
 
 
@@ -241,7 +247,14 @@ def test_receiver_persists_native_fields_to_db(monkeypatch, tmp_path):
     engine = create_engine(f"sqlite:///{db_path}")
     SQLModel.metadata.create_all(engine)
     with SqlSession(engine) as session:
-        session.add(_models.Session(session_id="sess-1", computer_name="test"))
+        session.add(
+            _models.Session(
+                session_id="sess-1",
+                computer_name="test",
+                lifecycle_status="headless",
+                native_session_id="native-1",
+            )
+        )
         session.commit()
 
     monkeypatch.setenv("TELECLAUDE_DB_PATH", str(db_path))
@@ -685,7 +698,7 @@ def test_receiver_includes_agent_name_in_payload(monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 0
+    assert exc.value.code == 1
     assert sent == []
 
 
@@ -718,8 +731,8 @@ def test_receiver_uses_session_map_for_agent_stop(monkeypatch, tmp_path):
     assert persisted == [("claude", "native-1", "cached-1")]
 
 
-def test_receiver_drops_agent_stop_without_existing_mapping(monkeypatch, tmp_path):
-    """Agent stop with unresolved mapping should be dropped cleanly."""
+def test_receiver_fails_fast_agent_stop_without_existing_mapping(monkeypatch, tmp_path):
+    """Agent stop with unresolved mapping should fail fast."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -737,7 +750,7 @@ def test_receiver_drops_agent_stop_without_existing_mapping(monkeypatch, tmp_pat
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 0
+    assert exc.value.code == 1
     assert sent == []
 
 
@@ -773,7 +786,7 @@ def test_receiver_mints_session_on_session_start_when_unmapped(monkeypatch, tmp_
 
 
 def test_receiver_session_start_uses_env_session_id_over_mint(monkeypatch, tmp_path):
-    """session_start should bind to existing TeleClaude session from TMPDIR marker."""
+    """TMUX route should bind directly from TMPDIR marker file."""
     sent = []
     persisted = []
     session_tmp = tmp_path / "session-1"
@@ -788,14 +801,22 @@ def test_receiver_session_start_uses_env_session_id_over_mint(monkeypatch, tmp_p
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_persist_session_map", fake_persist)
-    monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: None)
-    monkeypatch.setattr(receiver, "_find_session_id_by_native", lambda _native: None)
-    monkeypatch.setattr(receiver, "_is_active_session", lambda session_id: session_id == "env-sess-1")
+    monkeypatch.setattr(
+        receiver,
+        "_get_cached_session_id",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("TMUX route must not use map lookup")),
+    )
+    monkeypatch.setattr(
+        receiver,
+        "_find_session_id_by_native",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("TMUX route must not use DB native lookup")),
+    )
     monkeypatch.setattr(receiver.uuid, "uuid4", lambda: "minted-should-not-be-used")
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ('{"session_id": "native-5"}', {"session_id": "native-5"}))
     monkeypatch.setattr(
         receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="session_start", cwd=None)
     )
+    monkeypatch.setenv("TMUX", "tmux-contract")
     monkeypatch.setenv("TMPDIR", str(session_tmp.resolve()))
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path.resolve()))
 
@@ -809,7 +830,7 @@ def test_receiver_session_start_uses_env_session_id_over_mint(monkeypatch, tmp_p
 
 
 def test_receiver_session_start_env_overrides_stale_cached_mapping(monkeypatch, tmp_path):
-    """session_start should prefer env session id even when map has stale value."""
+    """TMUX route ignores stale map and uses marker file directly."""
     sent = []
     persisted = []
     session_tmp = tmp_path / "session-2"
@@ -824,13 +845,21 @@ def test_receiver_session_start_env_overrides_stale_cached_mapping(monkeypatch, 
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_persist_session_map", fake_persist)
-    monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: "stale-sess")
-    monkeypatch.setattr(receiver, "_resolve_or_refresh_session_id", lambda candidate, _native, agent: candidate)
-    monkeypatch.setattr(receiver, "_is_active_session", lambda session_id: session_id == "env-sess-2")
+    monkeypatch.setattr(
+        receiver,
+        "_get_cached_session_id",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("TMUX route must not use map lookup")),
+    )
+    monkeypatch.setattr(
+        receiver,
+        "_resolve_or_refresh_session_id",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("TMUX route must not use DB refresh")),
+    )
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ('{"session_id": "native-6"}', {"session_id": "native-6"}))
     monkeypatch.setattr(
         receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="session_start", cwd=None)
     )
+    monkeypatch.setenv("TMUX", "tmux-contract")
     monkeypatch.setenv("TMPDIR", str(session_tmp.resolve()))
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path.resolve()))
 
@@ -841,6 +870,31 @@ def test_receiver_session_start_env_overrides_stale_cached_mapping(monkeypatch, 
     assert session_id == "env-sess-2"
     assert event_type == "session_start"
     assert persisted == [("gemini", "native-6", "env-sess-2")]
+
+
+def test_receiver_tmux_contract_missing_marker_fails_fast(monkeypatch, tmp_path):
+    """TMUX route must fail with exit 1 when session marker file is missing."""
+    sent = []
+    session_tmp = tmp_path / "session-missing"
+    session_tmp.mkdir(parents=True, exist_ok=True)
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="agent_stop", cwd=None)
+    )
+    monkeypatch.setenv("TMUX", "tmux-contract")
+    monkeypatch.setenv("TMPDIR", str(session_tmp.resolve()))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path.resolve()))
+
+    with pytest.raises(SystemExit) as exc:
+        receiver.main()
+
+    assert exc.value.code == 1
+    assert sent == []
 
 
 def test_receiver_uses_db_native_lookup_when_map_misses(monkeypatch, tmp_path):
@@ -871,3 +925,35 @@ def test_receiver_uses_db_native_lookup_when_map_misses(monkeypatch, tmp_path):
     assert session_id == "db-1"
     assert event_type == "agent_stop"
     assert persisted == [("claude", "native-4", "db-1")]
+
+
+def test_receiver_codex_headless_agent_stop_mints_when_unmapped(monkeypatch, tmp_path):
+    """Headless codex may adopt on agent_stop when mapping does not yet exist."""
+    sent = []
+    persisted = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    def fake_persist(agent, native_session_id, session_id):
+        persisted.append((agent, native_session_id, session_id))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: None)
+    monkeypatch.setattr(receiver, "_find_session_id_by_native", lambda _native: None)
+    monkeypatch.setattr(receiver, "_persist_session_map", fake_persist)
+    monkeypatch.setattr(
+        receiver,
+        "_parse_args",
+        lambda: argparse.Namespace(agent="codex", event_type='{"thread-id": "native-codex-1"}', cwd=None),
+    )
+    monkeypatch.setattr(receiver.uuid, "uuid4", lambda: "minted-codex-1")
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path.resolve()))
+
+    receiver.main()
+
+    assert sent
+    session_id, event_type, _data = sent[0]
+    assert session_id == "minted-codex-1"
+    assert event_type == "agent_stop"
+    assert persisted == [("codex", "native-codex-1", "minted-codex-1")]
