@@ -25,26 +25,15 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Install dependencies
-        run: uv sync --all-extras --dev
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Gemini CLI
-        run: npm install -g @google/gemini-cli
-
-      - name: Claude Code Release Lane
-        run: echo "Claude Code analysis will run here in release-lane-claude phase"
+      - name: Full TeleClaude Bootstrap
+        run: make bootstrap-ci
         env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
+          TELEGRAM_SUPERGROUP_ID: ${{ secrets.TELEGRAM_SUPERGROUP_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-      - name: Codex CLI Release Lane
-        run: echo "Codex CLI analysis will run here in release-lane-codex phase"
-        env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
 
       - name: Gemini Release Lane
         run: |
@@ -56,7 +45,6 @@ jobs:
           if [ -n "$LAST_TAG" ]; then
             git diff $LAST_TAG..HEAD > release-diff.txt
           else
-            # First release: use current tree as "new content"
             git ls-files > release-diff.txt
           fi
           
@@ -68,8 +56,11 @@ jobs:
           MANIFESTS_CONFIG=$(cat docs/project/spec/teleclaude-config.md)
           DIFF=$(cat release-diff.txt)
           
-          # 4. Run Gemini Inspector (Restricted Mode)
-          gemini --yolo --allowed-mcp-server-names=[] -p "$PROMPT
+          # 4. Run Gemini Inspector (using our standardized agent_cli helper)
+          ./.venv/bin/python -m teleclaude.helpers.agent_cli \
+            --agent gemini \
+            --thinking-mode slow \
+            --prompt "$PROMPT
 
           MANIFESTS:
           CLI: $MANIFESTS_CLI
@@ -78,7 +69,8 @@ jobs:
           Config: $MANIFESTS_CONFIG
 
           DIFF:
-          $DIFF" > gemini-report.json
+          $DIFF" \
+            --schema-file docs/project/spec/release-report-schema.md > gemini-report.json
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
 

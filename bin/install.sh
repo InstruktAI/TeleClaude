@@ -37,6 +37,28 @@ LOG_FILE="${INSTALL_DIR}/install.log"
 
 PYTHON_MIN_VERSION="3.11"
 
+NON_INTERACTIVE=false
+CI_MODE=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -y|--yes)
+            NON_INTERACTIVE=true
+            shift
+            ;;
+        --ci)
+            CI_MODE=true
+            NON_INTERACTIVE=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
 # Logging function
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
@@ -87,6 +109,10 @@ EOF
 confirm() {
     local prompt_text="$1"
     local default="${2:-n}"
+
+    if [ "$NON_INTERACTIVE" = true ]; then
+        return 0 # Always assume yes in non-interactive mode
+    fi
 
     local response
     read -p "$prompt_text (y/n) [$default]: " response
@@ -204,14 +230,6 @@ install_system_deps() {
         install_package tmux
     fi
 
-    # ffmpeg (for voice transcription)
-    if command -v ffmpeg &> /dev/null; then
-        print_success "ffmpeg already installed"
-    else
-        print_info "Installing ffmpeg..."
-        install_package ffmpeg
-    fi
-
     # jq (for JSON manipulation)
     if command -v jq &> /dev/null; then
         print_success "jq already installed"
@@ -220,16 +238,26 @@ install_system_deps() {
         install_package jq
     fi
 
-    # socat (for MCP socket bridge)
-    if command -v socat &> /dev/null; then
-        print_success "socat already installed"
-    else
-        print_info "Installing socat..."
-        install_package socat
-    fi
+    if [ "$CI_MODE" = false ]; then
+        # ffmpeg (for voice transcription)
+        if command -v ffmpeg &> /dev/null; then
+            print_success "ffmpeg already installed"
+        else
+            print_info "Installing ffmpeg..."
+            install_package ffmpeg
+        fi
 
-    # glow (for pretty markdown rendering in TUI)
-    install_glow
+        # socat (for MCP socket bridge)
+        if command -v socat &> /dev/null; then
+            print_success "socat already installed"
+        else
+            print_info "Installing socat..."
+            install_package socat
+        fi
+
+        # glow (for pretty markdown rendering in TUI)
+        install_glow
+    fi
 
     # Claude Code
     install_claude_code
@@ -380,6 +408,9 @@ PY
 
 # Provision log directory
 provision_logs() {
+    if [ "$CI_MODE" = true ]; then
+        return 0
+    fi
     print_info "Provisioning log directory..."
     "$INSTALL_DIR/bin/provision-logs.sh" teleclaude
     print_success "Log directory provisioned"
@@ -387,6 +418,9 @@ provision_logs() {
 
 # Install global telec CLI symlink
 install_global_cli() {
+    if [ "$CI_MODE" = true ]; then
+        return 0
+    fi
     print_header "Installing Global CLI (telec)"
 
     local target_dir=""
@@ -427,9 +461,11 @@ main() {
     print_header "Install Complete"
     print_success "Binaries and Python dependencies installed"
     echo ""
-    print_info "Running init for first-time setup..."
-    echo ""
-    "$INSTALL_DIR/bin/init.sh" --yes
+    init_args="--yes"
+    if [ "$CI_MODE" = true ]; then
+        init_args="--ci"
+    fi
+    "$INSTALL_DIR/bin/init.sh" $init_args
 
     log "Install completed"
 }

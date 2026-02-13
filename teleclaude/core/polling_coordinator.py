@@ -49,6 +49,7 @@ CODEX_TOOL_ACTION_LOOKBACK_LINES = 120
 CODEX_AGENT_MARKERS = frozenset(
     {
         "•",  # Bullet - "Working"
+        "◦",  # White bullet - "Planning/Diagnosing ... (esc to interrupt)"
         "✶",  # Six-pointed star - "Sublimating"
         "✦",  # Black four-pointed star
         "✧",  # White four-pointed star
@@ -298,6 +299,8 @@ def _is_live_agent_marker_line(line: str) -> bool:
     if not tail:
         return True
     normalized = tail.lower()
+    if "esc to interrupt" in normalized:
+        return True
     if normalized.startswith(("working", "thinking", "sublimating", "planning", "analyzing")):
         return True
     return False

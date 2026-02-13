@@ -8,6 +8,9 @@ help:
 	@echo "Setup:"
 	@echo "  make install      Install binaries and Python dependencies"
 	@echo "  make init         Run first-time setup wizard (ARGS=-y for unattended)"
+	@echo "  make bootstrap    Non-interactive install AND init (for CI)"
+	@echo "  make bootstrap-ci Lean non-interactive bootstrap for CI environments"
+	@echo "  make build-artifacts  Generate and deploy agent artifacts (docs, skills, prompts)"
 	@echo "  make link         Link shared scripts/docs into ~/.teleclaude"
 	@echo "  make certs        Generate SSL certificates for REST API"
 	@echo ""
@@ -149,3 +152,13 @@ kill:
 
 status:
 	@./bin/daemon-control.sh status
+
+bootstrap:
+	@./bin/install.sh --yes
+
+bootstrap-ci:
+	@./bin/install.sh --ci
+	@$(MAKE) build-artifacts
+
+build-artifacts:
+	@uv run -m teleclaude.cli.telec sync --warn-only

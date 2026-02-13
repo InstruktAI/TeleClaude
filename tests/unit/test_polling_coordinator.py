@@ -573,6 +573,39 @@ class TestCodexSyntheticPromptDetection:
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
+    async def test_emits_on_round_dot_interrupt_status_transition(self):
+        """Round-dot interrupt status line should trigger transition submit emission."""
+        session_id = "codex-transition-round-dot-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› say hi",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            emit.assert_not_awaited()
+
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="◦ Planning next steps (2s • esc to interrupt)",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            payload = context.data
+            assert isinstance(payload, UserPromptSubmitPayload)
+            assert payload.prompt == "say hi"
+            assert payload.raw.get("source") == "codex_marker_transition"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
     async def test_does_not_emit_while_prompt_text_is_still_visible(self):
         """Stale marker glyphs above prompt should not trigger synthetic submit."""
         session_id = "codex-visible-1"
@@ -715,6 +748,10 @@ class TestCodexSyntheticPromptDetection:
     async def test_live_marker_helper_excludes_plain_assistant_bullet_text(self):
         assert polling_coordinator._is_live_agent_marker_line("• hi") is False
         assert polling_coordinator._is_live_agent_marker_line("• Working...") is True
+        assert (
+            polling_coordinator._is_live_agent_marker_line("◦ Planning encoding cleanup (2m 17s • esc to interrupt)")
+            is True
+        )
 
 
 @pytest.mark.asyncio

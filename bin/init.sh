@@ -37,11 +37,17 @@ LOG_FILE="${INSTALL_DIR}/install.log"
 DAEMON_LOG_FILE="/var/log/instrukt-ai/teleclaude/teleclaude.log"
 
 NON_INTERACTIVE=false
+CI_MODE=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         -y|--yes)
+            NON_INTERACTIVE=true
+            shift
+            ;;
+        --ci)
+            CI_MODE=true
             NON_INTERACTIVE=true
             shift
             ;;
@@ -565,35 +571,44 @@ main() {
     detect_os
     check_prerequisites
 
-    install_macos_launchers
+    if [ "$CI_MODE" = false ]; then
+        install_macos_launchers
+    fi
+    
     setup_config
-    setup_log_file
-    install_service
-    [ "$OS" = "macos" ] && install_launchd_cron
+    
+    if [ "$CI_MODE" = false ]; then
+        setup_log_file
+        install_service
+        [ "$OS" = "macos" ] && install_launchd_cron
+    fi
+    
     setup_mcp_config
     setup_agent_hooks
     link_shared_scripts
 
     print_header "Init Complete!"
+    
+    if [ "$CI_MODE" = false ]; then
+        echo ""
+        print_success "TeleClaude has been initialized successfully!"
+        echo ""
+        print_info "Next steps:"
+        echo "  1. Go to your Telegram supergroup"
+        echo "  2. Send: /new_session"
+        echo "  3. Start sending commands!"
+        echo ""
+        print_info "The daemon is running as a system service and will:"
+        echo "  - Start automatically on boot"
+        echo "  - Restart automatically if it crashes"
+        echo "  - Log to: $DAEMON_LOG_FILE"
+        echo ""
+        print_warning "IMPORTANT: Do NOT manually start the daemon!"
+        print_warning "The service manages the daemon automatically."
+        echo ""
 
-    echo ""
-    print_success "TeleClaude has been initialized successfully!"
-    echo ""
-    print_info "Next steps:"
-    echo "  1. Go to your Telegram supergroup"
-    echo "  2. Send: /new_session"
-    echo "  3. Start sending commands!"
-    echo ""
-    print_info "The daemon is running as a system service and will:"
-    echo "  - Start automatically on boot"
-    echo "  - Restart automatically if it crashes"
-    echo "  - Log to: $DAEMON_LOG_FILE"
-    echo ""
-    print_warning "IMPORTANT: Do NOT manually start the daemon!"
-    print_warning "The service manages the daemon automatically."
-    echo ""
-
-    run_macos_permissions_probe
+        run_macos_permissions_probe
+    fi
 
     log "Init completed successfully"
 }

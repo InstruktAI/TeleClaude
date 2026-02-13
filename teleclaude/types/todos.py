@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DorActions(BaseModel):
     """Actions taken during DOR assessment."""
 
+    model_config = ConfigDict(extra="allow")
     requirements_updated: bool = False
     implementation_plan_updated: bool = False
 
@@ -22,7 +23,7 @@ class DorState(BaseModel):
     status: str = "needs_work"  # pass, needs_work, needs_decision
     schema_version: int = 1
     blockers: list[str] = Field(default_factory=list)
-    actions_taken: DorActions = Field(default_factory=DorActions)
+    actions_taken: Union[DorActions, list[str]] = Field(default_factory=DorActions)
 
 
 class BreakdownState(BaseModel):
