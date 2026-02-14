@@ -34,12 +34,21 @@ class NotificationRouter:
             return []
 
         for recipient in subscribers:
-            row_id = await self.db.enqueue_notification(
-                channel=channel,
-                recipient_email=recipient.email,
-                content=content,
-                file_path=file,
-            )
+            try:
+                row_id = await self.db.enqueue_notification(
+                    channel=channel,
+                    recipient_email=recipient.email,
+                    content=content,
+                    file_path=file,
+                )
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.error(
+                    "failed to enqueue notification for recipient",
+                    channel=channel,
+                    email=recipient.email,
+                    error=str(exc),
+                )
+                continue
             recipient_rows.append(row_id)
 
         logger.info(
