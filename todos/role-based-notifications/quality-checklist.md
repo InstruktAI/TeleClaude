@@ -18,3 +18,16 @@ Ownership:
 - [x] Code committed
 - [x] Working tree clean (excluding allowed roadmap/state drift)
 - [x] Comments/docstrings updated where behavior changed
+
+## Review Gates (Reviewer)
+
+- [x] Requirements coverage verified against acceptance criteria
+- [x] Implementation-plan tasks all checked
+- [x] Build gates fully checked
+- [ ] No critical findings remain — 2 critical issues found (C1, C2)
+- [ ] Error handling adequate at boundaries — 5 error handling issues (I1-I5)
+- [ ] Test coverage sufficient — `send_telegram_dm` untested (I6)
+- [ ] Type design correct — nullability mismatches (I7)
+- [x] No unjustified deferrals
+- [x] Commit hygiene verified
+- [x] Code follows project patterns and conventions
