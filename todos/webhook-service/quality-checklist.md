@@ -15,8 +15,8 @@
 ## Review Gates (Reviewer)
 
 - [x] Code follows existing codebase conventions
-- [ ] No security vulnerabilities (HMAC signing, input validation) — C4: secret exposure in API responses
-- [ ] Error handling is appropriate — C1,C3,I1-I6: delivery status, unbounded retries, crash resilience
+- [x] No security vulnerabilities (HMAC signing, input validation) — C4 fixed: secrets redacted in API responses
+- [x] Error handling is appropriate — all R1 findings fixed: delivery status (rejected/dead_letter), retry cap (10 attempts), crash resilience (daemon, delivery loop, cache swap)
 - [x] No unnecessary abstractions or over-engineering
 - [x] DB migrations are safe (additive schema only)
 
