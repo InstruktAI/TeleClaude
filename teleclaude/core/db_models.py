@@ -123,6 +123,26 @@ class HookOutbox(SQLModel, table=True):
     locked_at: Optional[str] = None
 
 
+class NotificationOutbox(SQLModel, table=True):
+    """notification_outbox table."""
+
+    __tablename__ = "notification_outbox"
+    __table_args__ = {"extend_existing": True}
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    channel: str
+    recipient_email: str
+    content: str
+    file_path: Optional[str] = None
+    status: str = "pending"
+    created_at: Optional[str] = None
+    delivered_at: Optional[str] = None
+    attempt_count: Optional[int] = 0
+    next_attempt_at: Optional[str] = None
+    last_error: Optional[str] = None
+    locked_at: Optional[str] = None
+
+
 class MemoryObservation(SQLModel, table=True):
     """memory_observations table."""
 

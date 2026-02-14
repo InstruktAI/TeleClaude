@@ -68,6 +68,10 @@ creds:
     user_id: 12345
 notifications:
   telegram: true
+  telegram_chat_id: "123456"
+  channels:
+    - idea-miner-reports
+    - maintenance-alerts
 interests: ["ai", "rust"]
 """,
         encoding="utf-8",
@@ -75,6 +79,8 @@ interests: ["ai", "rust"]
     config = load_person_config(config_path)
     assert config.creds.telegram.user_name == "alice"
     assert config.notifications.telegram is True
+    assert config.notifications.telegram_chat_id == "123456"
+    assert config.notifications.channels == ["idea-miner-reports", "maintenance-alerts"]
     assert "ai" in config.interests
 
 

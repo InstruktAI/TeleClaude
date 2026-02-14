@@ -58,6 +58,7 @@ from teleclaude.core.todo_watcher import TodoWatcher
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
+from teleclaude.notifications import NotificationOutboxWorker
 from teleclaude.services.deploy_service import DeployService
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.services.maintenance_service import MaintenanceService
@@ -116,6 +117,13 @@ HOOK_OUTBOX_LOCK_TTL_S: float = float(os.getenv("HOOK_OUTBOX_LOCK_TTL_S", "30"))
 HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S", "1"))
 HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
 HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S: float = float(os.getenv("HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S", "5"))
+
+# Notification outbox worker
+NOTIFICATION_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("NOTIFICATION_OUTBOX_POLL_INTERVAL_S", "1"))
+NOTIFICATION_OUTBOX_BATCH_SIZE: int = int(os.getenv("NOTIFICATION_OUTBOX_BATCH_SIZE", "25"))
+NOTIFICATION_OUTBOX_LOCK_TTL_S: float = float(os.getenv("NOTIFICATION_OUTBOX_LOCK_TTL_S", "30"))
+NOTIFICATION_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("NOTIFICATION_OUTBOX_BASE_BACKOFF_S", "1"))
+NOTIFICATION_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("NOTIFICATION_OUTBOX_MAX_BACKOFF_S", "60"))
 
 
 # Agent auto-command startup detection
@@ -294,6 +302,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._last_mcp_probe_ok: bool | None = None
         self._last_mcp_restart_at = 0.0
         self.hook_outbox_task: asyncio.Task[object] | None = None
+        self.notification_outbox_task: asyncio.Task[object] | None = None
         self.todo_watcher_task: asyncio.Task[object] | None = None
 
         self.lifecycle = DaemonLifecycle(
@@ -1536,6 +1545,20 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
             logger.info("Hook outbox worker started")
 
+            self.notification_outbox_task = asyncio.create_task(
+                NotificationOutboxWorker(
+                    db=db,
+                    shutdown_event=self.shutdown_event,
+                    poll_interval_s=NOTIFICATION_OUTBOX_POLL_INTERVAL_S,
+                    batch_size=NOTIFICATION_OUTBOX_BATCH_SIZE,
+                    lock_ttl_s=NOTIFICATION_OUTBOX_LOCK_TTL_S,
+                    base_backoff_s=NOTIFICATION_OUTBOX_BASE_BACKOFF_S,
+                    max_backoff_s=NOTIFICATION_OUTBOX_MAX_BACKOFF_S,
+                ).run()
+            )
+            self.notification_outbox_task.add_done_callback(self._log_background_task_exception("notification_outbox"))
+            logger.info("Notification outbox worker started")
+
             self.resource_monitor_task = asyncio.create_task(self.monitoring_service.resource_monitor_loop())
             self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
             logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
@@ -1592,6 +1615,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Hook outbox worker stopped")
+
+        if self.notification_outbox_task:
+            self.notification_outbox_task.cancel()
+            try:
+                await self.notification_outbox_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Notification outbox worker stopped")
 
         if self._session_outbox_workers:
             workers = list(self._session_outbox_workers.values())
