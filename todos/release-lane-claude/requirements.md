@@ -6,14 +6,14 @@ Implement the Claude Code release inspector lane. This AI-driven workflow analyz
 
 ## Success Criteria
 
-- [ ] Claude correctly identifies changes to public surfaces (CLI, MCP, Events, Config) by comparing the codebase to `docs/manifests/`.
-- [ ] Claude produces a structured report (JSON) containing:
+- [x] Claude correctly identifies changes to public surfaces (CLI, MCP, Events, Config) by comparing the codebase to `docs/manifests/`.
+- [x] Claude produces a structured report (JSON) containing:
   - `classification`: "patch" | "minor" | "none"
   - `rationale`: Descriptive text explaining the decision.
   - `contract_changes`: List of modified/added/removed surface items.
   - `release_notes`: Draft notes for the GitHub Release.
-- [ ] Integration with `anthropics/claude-code-action@v1` in `.github/workflows/release.yaml`.
-- [ ] The workflow successfully authenticates using `ANTHROPIC_API_KEY`.
+- [x] Integration with `anthropics/claude-code-action@v1` in `.github/workflows/release.yaml`.
+- [x] The workflow successfully authenticates using `ANTHROPIC_API_KEY`.
 
 ## Constraints
 
