@@ -15,17 +15,17 @@ Implement the Claude lane by configuring the `anthropics/claude-code-action@v1` 
 
 ### 2. GitHub Action Configuration
 
-- [ ] Update `.github/workflows/release.yaml`.
-- [ ] Configure `claude-lane` job:
-  - Step 1: Checkout HEAD and last tag.
-  - Step 2: Install dependencies (uv).
-  - Step 3: Run `claude` CLI via Action with the Inspector Prompt.
+- [x] Update `.github/workflows/release.yaml`.
+- [x] Configure `claude-lane` job:
+  - Step 1: Checkout with full history and prepare diff.
+  - Step 2: Run `anthropics/claude-code-action@v1` with inspector prompt.
+  - Step 3: Validate JSON output with `jq`.
   - Step 4: Upload the resulting report as a workflow artifact.
 
 ## Task Sequence
 
 1. [x] Draft the common `release-inspector.md` prompt.
-2. [ ] Add the `claude-lane` job to the skeleton `release.yaml`.
+2. [x] Add the `claude-lane` job to the skeleton `release.yaml`.
 3. [ ] Test the lane by triggering a push to a test branch.
 4. [ ] Verify the JSON output matches the required schema for the arbiter.
 

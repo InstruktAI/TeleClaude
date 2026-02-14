@@ -8,6 +8,68 @@ on:
       - completed
 
 jobs:
+  claude-lane:
+    name: Claude Release Lane
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare Analysis Context
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "LAST_TAG=$LAST_TAG" >> $GITHUB_ENV
+          if [ -n "$LAST_TAG" ]; then
+            git diff "$LAST_TAG"..HEAD > release-diff.txt
+          else
+            git ls-files > release-diff.txt
+          fi
+
+      - name: Run Claude Inspector
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are a Meticulous Release Inspector for the TeleClaude project.
+
+            Read the following files to understand your task:
+            1. docs/project/spec/release-inspector-prompt.md — your full instructions
+            2. docs/project/spec/release-report-schema.md — the JSON schema your output must match
+
+            Read the public surface manifests:
+            3. docs/project/spec/telec-cli-surface.md
+            4. docs/project/spec/mcp-tool-surface.md
+            5. docs/project/spec/event-vocabulary.md
+            6. docs/project/spec/teleclaude-config.md
+
+            Read the diff to analyze:
+            7. release-diff.txt
+
+            Follow the release inspector prompt instructions exactly.
+            Classify the changes as "patch", "minor", or "none" per Semver 0.x policy.
+            Write ONLY valid JSON (no markdown fences, no extra text) to claude-report.json.
+            The JSON must match the release-report-schema.
+          claude_args: "--max-turns 10"
+
+      - name: Validate Report
+        run: |
+          if [ ! -f claude-report.json ]; then
+            echo "ERROR: claude-report.json was not created"
+            exit 1
+          fi
+          jq empty claude-report.json
+          echo "Report is valid JSON"
+          jq . claude-report.json
+
+      - name: Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-report
+          path: claude-report.json
+
   release-analysis:
     name: AI Release Analysis (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -16,7 +78,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,7 +109,6 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
           TELEGRAM_SUPERGROUP_ID: ${{ secrets.TELEGRAM_SUPERGROUP_ID }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
 
@@ -61,30 +122,12 @@ jobs:
             git ls-files > release-diff.txt
           fi
 
-      - name: Claude Release Lane
-        run: |
-          ./.venv/bin/python -m teleclaude.helpers.agent_cli \
-            --agent claude --thinking-mode slow \
-            --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
-          
-          MANIFESTS:
-          CLI: $(cat docs/project/spec/telec-cli-surface.md)
-          MCP: $(cat docs/project/spec/mcp-tool-surface.md)
-          Events: $(cat docs/project/spec/event-vocabulary.md)
-          Config: $(cat docs/project/spec/teleclaude-config.md)
-
-          DIFF:
-          $(cat release-diff.txt)" \
-            --schema-file docs/project/spec/release-report-schema.md > claude-report-${{ matrix.os }}.json
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
       - name: Codex Release Lane
         run: |
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent codex --thinking-mode slow \
             --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
-          
+
           MANIFESTS:
           CLI: $(cat docs/project/spec/telec-cli-surface.md)
           MCP: $(cat docs/project/spec/mcp-tool-surface.md)
@@ -102,7 +145,7 @@ jobs:
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent gemini --thinking-mode slow \
             --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
-          
+
           MANIFESTS:
           CLI: $(cat docs/project/spec/telec-cli-surface.md)
           MCP: $(cat docs/project/spec/mcp-tool-surface.md)
@@ -120,20 +163,27 @@ jobs:
         with:
           name: ai-release-reports-${{ matrix.os }}
           path: |
-            claude-report-${{ matrix.os }}.json
             codex-report-${{ matrix.os }}.json
             gemini-report-${{ matrix.os }}.json
 
   release-arbitration:
     name: Consensus Arbiter
-    needs: release-analysis
+    needs: [claude-lane, release-analysis]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download all reports
+      - name: Download Claude report
+        uses: actions/download-artifact@v4
+        with:
+          name: claude-report
+      - name: Download other reports
         uses: actions/download-artifact@v4
         with:
           pattern: ai-release-reports-*
           merge-multiple: true
       - name: Arbiter pass
-        run: echo "Arbiter will consolidate reports from both OS matrix runs here."
+        run: |
+          echo "Reports collected for arbitration:"
+          ls -la *.json
+          echo "---"
+          echo "Arbiter will consolidate reports here."
