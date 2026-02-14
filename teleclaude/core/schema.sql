@@ -98,6 +98,24 @@ CREATE TABLE IF NOT EXISTS hook_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_hook_outbox_pending ON hook_outbox(delivered_at, next_attempt_at);
 
+CREATE TABLE IF NOT EXISTS notification_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel TEXT NOT NULL,
+    recipient_email TEXT NOT NULL,
+    content TEXT NOT NULL,
+    file_path TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    delivered_at TEXT,
+    attempt_count INTEGER DEFAULT 0,
+    next_attempt_at TEXT,
+    last_error TEXT,
+    locked_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_outbox_status ON notification_outbox(status);
+CREATE INDEX IF NOT EXISTS idx_notification_outbox_next_attempt_at ON notification_outbox(next_attempt_at);
+
 -- Memory observations (ported from memory-management-api)
 CREATE TABLE IF NOT EXISTS memory_observations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

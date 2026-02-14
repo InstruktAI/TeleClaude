@@ -4,7 +4,7 @@
 
 Build notification routing with outbox persistence and delivery worker, following the existing hook outbox pattern.
 
-## Task 1: Notification outbox table
+## [x] Task 1: Notification outbox table
 
 **Files:**
 
@@ -34,7 +34,7 @@ CREATE INDEX idx_notification_outbox_next_attempt ON notification_outbox(next_at
 
 **Verification:** Migration applies cleanly.
 
-## Task 2: Outbox DB methods
+## [x] Task 2: Outbox DB methods
 
 **File:** `teleclaude/core/db.py`
 
@@ -48,7 +48,7 @@ Follows existing `claim_hook_outbox` / `mark_hook_outbox_delivered` / `mark_hook
 
 **Verification:** Unit tests for all outbox operations.
 
-## Task 3: Notification router
+## [x] Task 3: Notification router
 
 **File:** `teleclaude/notifications/router.py` (new)
 
@@ -58,7 +58,7 @@ Follows existing `claim_hook_outbox` / `mark_hook_outbox_delivered` / `mark_hook
 
 **Verification:** Unit test — router enqueues correct rows for subscribed users.
 
-## Task 4: Delivery worker
+## [x] Task 4: Delivery worker
 
 **File:** `teleclaude/notifications/worker.py` (new)
 
@@ -70,7 +70,7 @@ Follows existing `claim_hook_outbox` / `mark_hook_outbox_delivered` / `mark_hook
 
 **Verification:** Integration test — worker delivers pending rows, retries failures.
 
-## Task 5: Telegram DM sender
+## [x] Task 5: Telegram DM sender
 
 **File:** `teleclaude/notifications/telegram.py` (new)
 
@@ -79,7 +79,7 @@ Follows existing `claim_hook_outbox` / `mark_hook_outbox_delivered` / `mark_hook
 
 **Verification:** Test with mock API call.
 
-## Task 6: Per-person config extension
+## [x] Task 6: Per-person config extension
 
 **File:** `teleclaude/config/schema.py`
 
@@ -87,7 +87,7 @@ Follows existing `claim_hook_outbox` / `mark_hook_outbox_delivered` / `mark_hook
 
 **Verification:** Config parsing test.
 
-## Task 7: Discovery extension
+## [x] Task 7: Discovery extension
 
 **File:** `teleclaude/notifications/discovery.py` (new)
 
@@ -97,7 +97,7 @@ Follows existing `claim_hook_outbox` / `mark_hook_outbox_delivered` / `mark_hook
 
 **Verification:** Discovery finds correct subscribers per channel.
 
-## Task 8: Job integration
+## [x] Task 8: Job integration
 
 Wire first consumers:
 
@@ -106,7 +106,7 @@ Wire first consumers:
 
 **Verification:** Job completion triggers outbox entry, worker delivers.
 
-## Task 9: Tests
+## [x] Task 9: Tests
 
 **File:** `tests/unit/test_notifications.py`
 

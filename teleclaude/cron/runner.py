@@ -17,6 +17,7 @@ Jobs that have never run execute immediately on first discovery.
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import importlib
 import os
@@ -26,13 +27,14 @@ import sys
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Awaitable
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import JobScheduleConfig
 from teleclaude.cron.state import CronState
+from teleclaude.notifications import NotificationRouter
 
 if TYPE_CHECKING:
     from jobs.base import Job
@@ -244,6 +246,100 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
         return False
 
 
+def _normalize_job_name_for_notifications(job_name: str) -> str:
+    """Normalize job names for deterministic notification mapping."""
+    return job_name.strip().lower().replace("-", "_")
+
+
+def _notification_channel_for_job(job_name: str) -> str | None:
+    """Resolve notification channel for a job name."""
+    mapping = {
+        "idea_miner": "idea-miner-reports",
+        "idea_miner_job": "idea-miner-reports",
+        "maintenance": "maintenance-alerts",
+        "maintenance_job": "maintenance-alerts",
+        "maintenance_alerts": "maintenance-alerts",
+        "github_maintenance_runner": "maintenance-alerts",
+    }
+    normalized = _normalize_job_name_for_notifications(job_name)
+    return mapping.get(normalized)
+
+
+def _notification_message_for_job_result(
+    job_name: str,
+    success: bool,
+    message: str,
+    items_processed: int = 0,
+) -> str:
+    """Build notification content for a job completion event."""
+    state = "succeeded" if success else "failed"
+    parts = [message]
+    if items_processed:
+        parts.append(f"items_processed={items_processed}")
+    details = "; ".join(parts)
+    if details:
+        return f"{job_name} job {state}: {details}"
+    return f"{job_name} job {state}"
+
+
+def _notification_file_for_job_result(job_result: object) -> str | None:
+    """Extract an optional report or artifact path from a job result."""
+    for attr in ("file_path", "report_path", "artifact_path"):
+        value = getattr(job_result, attr, None)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _run_coro_safely(coro: Awaitable[object]) -> None:
+    """Execute a coroutine, supporting both sync and async call sites."""
+
+    def _on_task_done(task: asyncio.Task[object]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            logger.error("fire-and-forget coroutine failed", error=str(exc))
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(coro)
+    else:
+        task = loop.create_task(coro)
+        task.add_done_callback(_on_task_done)
+
+
+def _notify_job_completion(
+    job_name: str,
+    *,
+    success: bool,
+    message: str,
+    items_processed: int = 0,
+    file_path: str | None = None,
+) -> None:
+    """Enqueue a notification for a job completion event."""
+    channel = _notification_channel_for_job(job_name)
+    if not channel:
+        return
+    payload = _notification_message_for_job_result(
+        job_name=job_name,
+        success=success,
+        message=message,
+        items_processed=items_processed,
+    )
+    try:
+        _run_coro_safely(
+            NotificationRouter().send_notification(
+                channel=channel,
+                content=payload,
+                file=file_path,
+            )
+        )
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.error("notification enqueue failed", job=job_name, error=str(exc))
+
+
 def discover_jobs(jobs_dir: Path | None = None) -> list[Job]:
     """
     Discover all job definitions from the jobs/ directory.
@@ -355,8 +451,10 @@ def run_due_jobs(
             success = _run_agent_job(job_name, schedule_config)  # type: ignore[arg-type]
             if success:
                 state.mark_success(job_name)
+                _notify_job_completion(job_name, success=True, message="agent job completed")
             else:
                 state.mark_failed(job_name, "agent session spawn failed")
+                _notify_job_completion(job_name, success=False, message="agent job failed")
             results[job_name] = success
         else:
             # Python job: find and execute the module
@@ -370,6 +468,13 @@ def run_due_jobs(
                 result = python_job.run()
                 if result.success:
                     state.mark_success(job_name)
+                    _notify_job_completion(
+                        job_name,
+                        success=True,
+                        message=result.message,
+                        items_processed=result.items_processed,
+                        file_path=_notification_file_for_job_result(result),
+                    )
                     logger.info(
                         "job completed",
                         name=job_name,
@@ -378,6 +483,13 @@ def run_due_jobs(
                     )
                 else:
                     state.mark_failed(job_name, result.message)
+                    _notify_job_completion(
+                        job_name,
+                        success=False,
+                        message=result.message,
+                        items_processed=result.items_processed,
+                        file_path=_notification_file_for_job_result(result),
+                    )
                     logger.error(
                         "job failed",
                         name=job_name,

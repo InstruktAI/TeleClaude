@@ -119,7 +119,9 @@ class CredsConfig(BaseModel):
 
 class NotificationsConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
+    telegram_chat_id: str | None = None
     telegram: bool = False
+    channels: list[str] = []
 
 
 class SubscriptionsConfig(BaseModel):
