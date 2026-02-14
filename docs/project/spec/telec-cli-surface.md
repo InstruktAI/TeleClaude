@@ -73,6 +73,26 @@ subcommands:
           - slug: 'string (optional)'
         flags:
           --project-root: 'Project root directory.'
+  config:
+    description: 'Interactive configuration (or get/patch/validate subcommands).'
+    subcommands:
+      get:
+        args:
+          - paths: 'string... (optional dot-separated config paths)'
+        flags:
+          -p, --project-root: 'Project root directory.'
+          -f, --format: 'Output format (yaml|json).'
+      patch:
+        flags:
+          -p, --project-root: 'Project root directory.'
+          -f, --format: 'Output format (yaml|json).'
+          --yaml: 'Inline YAML patch.'
+          --from-file: 'Path to YAML patch file.'
+      validate:
+        flags:
+          -p, --project-root: 'Project root directory.'
+  onboard:
+    description: 'Guided onboarding wizard for first-run setup.'
 ```
 
 ## Constraints
