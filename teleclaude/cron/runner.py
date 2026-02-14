@@ -293,12 +293,21 @@ def _notification_file_for_job_result(job_result: object) -> str | None:
 
 def _run_coro_safely(coro: Awaitable[object]) -> None:
     """Execute a coroutine, supporting both sync and async call sites."""
+
+    def _on_task_done(task: asyncio.Task[object]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            logger.error("fire-and-forget coroutine failed", error=str(exc))
+
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         asyncio.run(coro)
     else:
-        loop.create_task(coro)
+        task = loop.create_task(coro)
+        task.add_done_callback(_on_task_done)
 
 
 def _notify_job_completion(
@@ -319,13 +328,16 @@ def _notify_job_completion(
         message=message,
         items_processed=items_processed,
     )
-    _run_coro_safely(
-        NotificationRouter().send_notification(
-            channel=channel,
-            content=payload,
-            file=file_path,
+    try:
+        _run_coro_safely(
+            NotificationRouter().send_notification(
+                channel=channel,
+                content=payload,
+                file=file_path,
+            )
         )
-    )
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.error("notification enqueue failed", job=job_name, error=str(exc))
 
 
 def discover_jobs(jobs_dir: Path | None = None) -> list[Job]:
