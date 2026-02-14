@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
+from teleclaude.adapters.discord_adapter import DiscordAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
@@ -155,6 +156,13 @@ class AdapterClient:
             Exception: If adapter start() fails (daemon crashes - this is intentional)
             ValueError: If no adapters started
         """
+        # Discord adapter
+        if config.discord.enabled:
+            discord = DiscordAdapter(self, task_registry=self.task_registry)
+            await discord.start()  # Raises if fails -> daemon crashes
+            self.adapters["discord"] = discord  # Register ONLY after success
+            logger.info("Started discord adapter")
+
         # Telegram adapter
         # Check for env token presence (adapter authenticates from env)
         if os.getenv("TELEGRAM_BOT_TOKEN"):

@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.config import WORKING_DIR
+from teleclaude.config import WORKING_DIR, config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.models import SessionAdapterMetadata
@@ -51,9 +51,12 @@ class DiscordAdapter(UiAdapter):
         self.client = client
         self.task_registry = task_registry
         self._discord: ModuleType = importlib.import_module("discord")
-        self._token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
-        self._guild_id = self._parse_optional_int(os.getenv("DISCORD_GUILD_ID"))
-        self._help_desk_channel_id = self._parse_optional_int(os.getenv("DISCORD_HELP_DESK_CHANNEL_ID"))
+        configured_token = config.discord.token.strip() if config.discord.token else ""
+        self._token = configured_token or os.getenv("DISCORD_BOT_TOKEN", "").strip()
+        self._guild_id = config.discord.guild_id or self._parse_optional_int(os.getenv("DISCORD_GUILD_ID"))
+        self._help_desk_channel_id = config.discord.help_desk_channel_id or self._parse_optional_int(
+            os.getenv("DISCORD_HELP_DESK_CHANNEL_ID")
+        )
         self._gateway_task: asyncio.Task[object] | None = None
         self._ready_event = asyncio.Event()
         self._client: DiscordClientLike | None = None

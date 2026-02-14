@@ -168,6 +168,14 @@ class TelegramConfig:
 
 
 @dataclass
+class DiscordConfig:
+    enabled: bool
+    token: str | None
+    guild_id: int | None
+    help_desk_channel_id: int | None
+
+
+@dataclass
 class UIConfig:
     """TUI display settings."""
 
@@ -272,6 +280,7 @@ class Config:
     polling: PollingConfig
     redis: RedisConfig
     telegram: TelegramConfig
+    discord: DiscordConfig
     creds: CredsConfig
     agents: Dict[str, AgentConfig]
     ui: UIConfig
@@ -332,6 +341,12 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
     },
     "telegram": {
         "trusted_bots": [],
+    },
+    "discord": {
+        "enabled": False,
+        "token": None,
+        "guild_id": None,
+        "help_desk_channel_id": None,
     },
     "creds": {
         "telegram": None,
@@ -534,6 +549,17 @@ def _parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  #
     return STTConfig(enabled=stt_enabled, service_priority=service_priority, services=services)
 
 
+def _parse_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    if text.isdigit():
+        return int(text)
+    return None
+
+
 def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML deserialization input
     """Build typed Config from raw dict with proper type conversion."""
     db_raw = raw["database"]
@@ -541,6 +567,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     polling_raw = raw.get("polling", {"directory_check_interval": DIRECTORY_CHECK_INTERVAL})
     redis_raw = raw["redis"]
     tg_raw = raw["telegram"]
+    discord_raw = raw.get("discord", {})
     creds_raw = raw.get("creds", {})
     ui_raw = raw["ui"]
     terminal_raw = raw.get("terminal", {"strip_ansi": True})
@@ -617,6 +644,16 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
         ),
         telegram=TelegramConfig(
             trusted_bots=list(tg_raw["trusted_bots"]),  # type: ignore[index,misc]
+        ),
+        discord=DiscordConfig(
+            enabled=bool(discord_raw.get("enabled", False)) if isinstance(discord_raw, dict) else False,
+            token=(
+                str(discord_raw.get("token")) if isinstance(discord_raw, dict) and discord_raw.get("token") else None
+            ),
+            guild_id=(_parse_optional_int(discord_raw.get("guild_id")) if isinstance(discord_raw, dict) else None),
+            help_desk_channel_id=(
+                _parse_optional_int(discord_raw.get("help_desk_channel_id")) if isinstance(discord_raw, dict) else None
+            ),
         ),
         creds=CredsConfig(telegram=tg_creds),
         agents=agents_registry,
