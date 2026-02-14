@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from teleclaude.cli.config_handlers import get_adapter_env_vars, validate_all
 
@@ -99,29 +100,65 @@ def prompt_confirm(message: str, default: bool = True) -> bool:
 
 
 def show_adapter_env_vars(adapter_name: str) -> None:
-    """Show env var details for an adapter."""
+    """Prompt for adapter env vars and write to .env."""
     print_header(f"{adapter_name.capitalize()} Environment Variables")
     env_vars = get_adapter_env_vars(adapter_name)
 
     if not env_vars:
         print(f"  {DIM}No environment variables registered.{RESET}")
-        input("\n  Press Enter to continue...")
+        try:
+            input("\n  Press Enter to continue...")
+        except (EOFError, KeyboardInterrupt):
+            print()
         return
 
-    for var in env_vars:
-        is_set = bool(os.environ.get(var.name))
-        icon = status_icon(is_set)
-        status = "set" if is_set else "NOT SET"
-        print(f"\n  {icon} {BOLD}{var.name}{RESET}")
-        print(f"    Status: {status}")
-        print(f"    Description: {var.description}")
-        print(f"    Example: {var.example}")
+    env_file = Path(__file__).resolve().parent.parent.parent / ".env"
+    changed = False
 
-    print(f"\n  {DIM}Set missing variables in your .env file or shell environment.{RESET}")
+    for var in env_vars:
+        current = os.environ.get(var.name)
+        icon = status_icon(bool(current))
+        print(f"\n  {icon} {BOLD}{var.name}{RESET}")
+        print(f"    {var.description}")
+        if current:
+            masked = current[:8] + "..." if len(current) > 11 else current
+            print(f"    Current: {DIM}{masked}{RESET}")
+
+        new_val = prompt_value(var.name, current=current, required=False)
+        if new_val and new_val != current:
+            _set_env_var(env_file, var.name, new_val)
+            os.environ[var.name] = new_val
+            changed = True
+            print(f"    {GREEN}Saved to .env{RESET}")
+
+    if changed:
+        print(f"\n  {YELLOW}Restart the daemon (make restart) to pick up changes.{RESET}")
     try:
         input("\n  Press Enter to continue...")
     except (EOFError, KeyboardInterrupt):
         print()
+
+
+def _set_env_var(env_file: Path, name: str, value: str) -> None:
+    """Set or update a variable in the .env file."""
+    lines: list[str] = []
+    found = False
+
+    if env_file.exists():
+        lines = env_file.read_text().splitlines(keepends=True)
+        for i, line in enumerate(lines):
+            stripped = line.lstrip()
+            if stripped.startswith(f"{name}=") or stripped.startswith(f"export {name}="):
+                lines[i] = f"{name}={value}\n"
+                found = True
+                break
+
+    if not found:
+        if lines and not lines[-1].endswith("\n"):
+            lines.append("\n")
+        lines.append(f"{name}={value}\n")
+
+    env_file.write_text("".join(lines))
 
 
 def show_validation_results() -> None:
