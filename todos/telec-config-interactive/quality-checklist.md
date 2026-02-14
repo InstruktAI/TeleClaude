@@ -19,7 +19,8 @@
 
 ## Review Gates (Reviewer)
 
-- [ ] Code follows existing codebase patterns — BLOCKED: C1 (import policy), C4 (cross-module private imports), I1 (Literal type)
+- [x] Code follows existing codebase patterns — C1, C4, I1 resolved in fd9e0270; prompt_utils extraction clean
+- [ ] Display consistency — I1: show_validation_results missing pause (see review-findings round 2)
 - [x] No hardcoded menu entries for future platforms — schema-driven discovery confirmed
 - [x] Ctrl+C safety verified — KeyboardInterrupt caught at top level, atomic writes protect config
 - [x] Atomic writes prevent partial config — tmp+replace pattern with fcntl locking
