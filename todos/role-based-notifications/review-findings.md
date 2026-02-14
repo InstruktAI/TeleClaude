@@ -1,153 +1,152 @@
 # Review Findings: role-based-notifications
 
-**Review round:** 1
+**Review round:** 2
 **Reviewer:** Claude (Opus 4.6)
 **Date:** 2026-02-14
 **Verdict:** REQUEST CHANGES
 
 ---
 
+## Round 1 Resolution Status
+
+| Finding | Status             | Notes                                                            |
+| ------- | ------------------ | ---------------------------------------------------------------- |
+| C1      | Resolved           | Done-callback + try/except in `_notify_job_completion` — correct |
+| C2      | Partially resolved | No longer marked "delivered", but see C3 below                   |
+| I1      | Partially resolved | MAX_RETRIES added, but terminal state broken — see C3            |
+| I2      | Resolved           | try/except around `load_person_config` — correct                 |
+| I3      | Resolved           | Send/DB separated into independent try/except — correct          |
+| I4      | Resolved           | HTTP status check + JSON parse safety — correct                  |
+| I5      | Resolved           | Per-recipient try/except in router loop — correct                |
+| I6      | Resolved           | 8 tests added covering all telegram.py paths                     |
+| I7      | Resolved           | `attempt_count: int`, `created_at: str`, coercions removed       |
+| S2      | Resolved           | Dead `* 1` removed                                               |
+| S4      | Resolved           | Truncation warnings added                                        |
+
+---
+
 ## Critical
 
-### C1: `_run_coro_safely` discards task reference — silent error swallowing
+### C3: Permanently failed rows re-selected every poll cycle (infinite loop)
 
-**File:** `teleclaude/cron/runner.py:294-301`
+**Files:** `teleclaude/notifications/worker.py:118-123, 130-138`, `teleclaude/core/db.py:1344-1348`
 
-When a running event loop exists, `loop.create_task(coro)` discards the returned `Task`. Any exception from `NotificationRouter.send_notification()` is silently lost (Python emits a warning to stderr but it never reaches application logs). Additionally, `_notify_job_completion` (lines 304-328) has no try/except, so in the sync path (`asyncio.run`), notification errors crash the job runner after the job itself succeeded.
+Both the **undeliverable path** (no chat_id, line 118) and the **max-retry exceeded path** (line 137) call `mark_notification_failed(row_id, attempt, "", error)` with `next_attempt_at=""`. This sets `status="failed"` but leaves `delivered_at=NULL`.
 
-**Fix:** Store the task, attach a done-callback that logs exceptions. Wrap the `_run_coro_safely` call in `_notify_job_completion` with try/except so notification failures never crash the cron runner.
+The `fetch_notification_batch` query (db.py:1346-1348) selects rows where:
 
-### C2: Missing recipient marked "delivered" instead of "undeliverable"
+- `delivered_at IS NULL` — true (never set)
+- `status IN ('pending', 'failed')` — true
+- `next_attempt_at <= now_iso` — `"" <= "2026-..."` is always true in SQLite string comparison
 
-**File:** `teleclaude/notifications/worker.py:113-117`
+Result: the row is re-selected on every poll cycle (~1 second). The worker logs a warning/error and writes the same `mark_notification_failed` call, repeating forever. This produces unbounded log spam, wastes DB queries, and defeats both the C2 fix and the I1 fix.
 
-When a recipient has no configured `telegram_chat_id`, the row is marked `status="delivered"` with `delivered_at` set. The message was never sent, but the DB records it as successful delivery. Any monitoring counting `status="delivered"` gets inflated success counts.
+Trace for undeliverable row:
 
-**Fix:** Either introduce a distinct status (e.g., `"undeliverable"`) or use `mark_notification_failed` with a high attempt count and clear error message so the row is not retried but is correctly classified as failed.
+1. Poll N: row fetched, no chat_id → `mark_notification_failed(id, 10, "", "No telegram_chat_id...")` → returns
+2. Poll N+1: same row fetched again (status=failed, next_attempt_at="" <= now) → same call → infinite
+
+Trace for max-retry row:
+
+1. Poll N: attempt 10 >= MAX_RETRIES → `mark_notification_failed(id, 10, "", error)` → returns
+2. Poll N+1: row re-fetched, send attempted (real HTTP call), fails → attempt 11 >= 10 → same mark → infinite (with actual retried sends for transient failures that recovered)
+
+**Fix:** Add an `attempt_count` filter to `fetch_notification_batch`:
+
+```python
+.where(db_models.NotificationOutbox.attempt_count < MAX_RETRIES)
+```
+
+Or introduce a terminal status (e.g., `"dead_letter"`) that's excluded from the `IN` filter. The `attempt_count` filter is simplest and follows the existing query pattern.
 
 ---
 
 ## Important
 
-### I1: No maximum retry limit — unbounded retries
-
-**File:** `teleclaude/notifications/worker.py:122-132`
-
-The worker increments `attempt_count` and applies exponential backoff capped at 60s, but there is no maximum retry threshold. A permanently failing notification (blocked bot, invalid chat_id) is retried forever. The `fetch_notification_batch` query selects `status IN ('pending', 'failed')` with no attempt count filter.
-
-**Fix:** Add a max retry constant (e.g., 10). After exceeding it, mark the row as permanently failed with a distinct status or set `delivered_at` to prevent re-selection.
-
-### I2: One bad person config aborts all discovery
-
-**File:** `teleclaude/notifications/discovery.py:60-76`
-
-`_iter_person_configs` has no try/except around `load_person_config`. If any single person's `teleclaude.yml` has invalid YAML or fails Pydantic validation, the entire discovery process raises, preventing ALL notifications from routing for ALL channels.
-
-**Fix:** Wrap `load_person_config` in try/except, log the error, and continue to the next person.
-
-### I3: `_deliver_row` conflates send failure with DB update failure
-
-**File:** `teleclaude/notifications/worker.py:119-132`
-
-A single `except Exception` catches both `send_telegram_dm` errors (message NOT sent — retry is safe) and `mark_notification_delivered` errors (message WAS sent — retry causes duplicate). If the Telegram send succeeds but the DB update fails, the row is retried and the message re-sent as a duplicate.
-
-**Fix:** Separate the send and DB update into two try/except blocks. If the send succeeds but DB fails, log an error but do not schedule retry.
-
-### I4: `response.json()` crashes on non-JSON responses
-
-**File:** `teleclaude/notifications/telegram.py:60`
-
-HTTP 502/503 from a proxy returns HTML, not JSON. `response.json()` raises `JSONDecodeError` with an unhelpful error message. The HTTP status code is never checked before parsing.
-
-**Fix:** Check `response.status_code` first. Wrap `response.json()` in try/except for `JSONDecodeError` with a descriptive error message including the status code.
-
-### I5: Router DB error on one recipient skips remaining
-
-**File:** `teleclaude/notifications/router.py:36-43`
-
-If `enqueue_notification` fails mid-loop (DB error, constraint violation), the exception propagates and remaining recipients are skipped. Already-enqueued rows are committed but the caller gets an exception instead of a partial result.
-
-**Fix:** Catch per-recipient failures in the loop, log them, and continue enqueuing remaining recipients.
-
-### I6: `send_telegram_dm` completely untested
-
-**File:** `teleclaude/notifications/telegram.py` (all 67 lines)
-
-The only external I/O boundary in the pipeline has zero test coverage. Token validation, empty content validation, file handling, API error parsing, message truncation, and both HTTP paths (`sendMessage` vs `sendDocument`) are all untested.
-
-**Fix:** Add unit tests with mocked `httpx.AsyncClient` covering: successful text/document sends, missing token, empty content, file not found, Telegram API `ok: false` responses.
-
-### I7: Type annotations misrepresent nullability
-
-**File:** `teleclaude/core/db_models.py:138-140`
-
-- `attempt_count: Optional[int] = 0` — field is never None; forces defensive `or 0` coercion in `fetch_notification_batch` (db.py:1366).
-- `created_at: Optional[str] = None` — always set at enqueue time (db.py:1323); SQL schema says `NOT NULL`.
-
-**Fix:** Change to `attempt_count: int = 0` and `created_at: str = ""` (or use `Field(default_factory=...)`). Remove the `or 0` coercion in `fetch_notification_batch`.
+No new important findings. All round 1 important issues (I1-I7) are resolved or subsumed by C3.
 
 ---
 
 ## Suggestions
 
-### S1: `status: str` should use `Literal["pending", "delivered", "failed"]`
+### S1 (carried): `status: str` should use `Literal["pending", "delivered", "failed"]`
 
-**File:** `teleclaude/core/db_models.py:137`, `teleclaude/core/db.py:46`
+**File:** `teleclaude/core/db_models.py:137`
 
-Makes the state machine explicit and catches typos at type-check time.
+Not addressed in round 1 fixes. Still a minor improvement for type safety.
 
-### S2: No-op multiplication in `_backoff_seconds`
+### S3 (carried): Recipient cache never invalidates at runtime
 
-**File:** `teleclaude/notifications/worker.py:53`
+**File:** `teleclaude/notifications/worker.py:48-70`
 
-`float(base * 1)` — the `* 1` is dead code. Remove it.
+Not addressed in round 1 fixes. Config changes require daemon restart.
 
-### S3: Recipient cache never invalidates at runtime
-
-**File:** `teleclaude/notifications/worker.py:46-69`
-
-`_recipient_cache_dirty` is only `True` at init. Config changes require daemon restart. Consider TTL-based refresh.
-
-### S4: Silent message truncation
-
-**File:** `teleclaude/notifications/telegram.py:47, 55`
-
-Messages and captions are silently truncated to 4000/1024 chars. Log a warning when truncation occurs.
-
-### S5: Unrelated change in `extract_runtime_matrix.py`
+### S5 (carried): Unrelated change in `extract_runtime_matrix.py`
 
 **File:** `scripts/diagrams/extract_runtime_matrix.py`
 
-The `transcript_path=` pattern detection change is unrelated to notifications. Should be in a separate commit.
+Not addressed. Should be in a separate commit.
 
-### S6: `_notification_file_for_job_result(job_result: object)` — `object` is too broad
+### S6 (carried): `_notification_file_for_job_result(job_result: object)` — `object` is too broad
 
 **File:** `teleclaude/cron/runner.py:285`
 
-The function probes for `file_path`, `report_path`, `artifact_path` via `getattr`, but `JobResult` doesn't define any of these. The function always returns `None` for standard `JobResult`. Consider adding `file_path: str | None = None` to `JobResult` directly.
+Not addressed. The function probes for attributes that `JobResult` doesn't define.
+
+### S7 (new): `test_telegram_api_ok_false_raises` doesn't cover the `ok: false` code path
+
+**File:** `tests/unit/test_telegram.py:95-101`
+
+The test uses `_error_response("chat not found")` which returns HTTP 400. Since `telegram.py:66` checks `status_code >= 400` first, this test exercises the HTTP error branch (lines 66-72), not the `ok: false` branch (lines 79-81). To cover lines 79-81, add a test with HTTP 200 and `{"ok": false, "description": "..."}`.
 
 ---
 
 ## Acceptance Criteria Coverage
 
-| AC                                | Met?    | Evidence                                             |
-| --------------------------------- | ------- | ---------------------------------------------------- |
-| AC1: Router resolves subscribers  | Yes     | discovery.py + router.py + tests                     |
-| AC2: Router writes outbox rows    | Yes     | router.py enqueues, never delivers                   |
-| AC3: Worker delivers pending rows | Yes     | worker.py + test                                     |
-| AC4: Failed retried with backoff  | Partial | Backoff works, but no max retry cap (I1)             |
-| AC5: Telegram DM to chat_id       | Yes\*   | telegram.py works but is untested (I6)               |
-| AC6: Config channels parsed       | Yes     | schema.py + test_config_schema.py                    |
-| AC7: Unsubscribed get nothing     | Yes     | discovery + router + tests                           |
-| AC8: Failure isolation            | Partial | Row-level isolation works but send/DB conflated (I3) |
-| AC9: Existing adapter unaffected  | Yes     | New module, no changes to existing                   |
+| AC                                | Met?    | Evidence                                                          |
+| --------------------------------- | ------- | ----------------------------------------------------------------- |
+| AC1: Router resolves subscribers  | Yes     | discovery.py + router.py + tests                                  |
+| AC2: Router writes outbox rows    | Yes     | router.py enqueues, never delivers                                |
+| AC3: Worker delivers pending rows | Yes     | worker.py + test                                                  |
+| AC4: Failed retried with backoff  | Partial | Backoff works, MAX_RETRIES exists, but terminal state broken (C3) |
+| AC5: Telegram DM to chat_id       | Yes     | telegram.py + 8 unit tests                                        |
+| AC6: Config channels parsed       | Yes     | schema.py + test_config_schema.py                                 |
+| AC7: Unsubscribed get nothing     | Yes     | discovery + router + tests                                        |
+| AC8: Failure isolation            | Yes     | Row-level isolation, send/DB separated                            |
+| AC9: Existing adapter unaffected  | Yes     | New module, no changes to existing                                |
+
+---
+
+## Verification
+
+- Lint: ruff format, ruff check, pyright — all pass (0 errors)
+- Tests: 1477 passed, 0 failed
+- All implementation-plan tasks checked `[x]`
+- Build gates fully checked in quality-checklist.md
 
 ---
 
 ## Verdict: REQUEST CHANGES
 
-**Critical issues (must fix):** 2 — C1 (fire-and-forget error swallowing), C2 (delivered vs undeliverable)
-**Important issues:** 7 — I1-I7
-**Suggestions:** 6 — S1-S6
+**Critical issues (must fix):** 1 — C3 (permanently failed rows re-selected infinitely)
+**Suggestions (carry-forward):** 5 — S1, S3, S5, S6, S7
 
-The architecture is sound and follows existing patterns well. The outbox pipeline, discovery, routing, and daemon integration are all correctly structured. The critical issues are about error visibility and status correctness — both fixable with targeted changes.
+The round 1 fixes are well-executed — error handling, type correctness, test coverage, and failure isolation are all solid. The single remaining critical issue is that the terminal state mechanism for permanently failed rows doesn't remove them from the fetch query, causing an infinite poll loop. This is a targeted fix (one line in the fetch query or a terminal status change).
+
+---
+
+## Fixes Applied (Round 1)
+
+| Finding | Fix                                                                                                     | Commit     |
+| ------- | ------------------------------------------------------------------------------------------------------- | ---------- |
+| C1      | Attached done-callback to fire-and-forget tasks; wrapped `_notify_job_completion` in try/except         | `c59f1e09` |
+| C2      | Mark missing-chat_id rows as failed (not delivered) using `mark_notification_failed` with `MAX_RETRIES` | `bcef0aad` |
+| I1      | Added `MAX_RETRIES=10` constant; permanently fail rows exceeding cap                                    | `bcef0aad` |
+| I2      | Wrapped `load_person_config` in try/except; log error and continue to next person                       | `d07ce011` |
+| I3      | Separated `send_telegram_dm` and `mark_notification_delivered` into independent try/except blocks       | `bcef0aad` |
+| I4      | Check HTTP status before JSON parse; wrap `response.json()` in try/except with descriptive errors       | `10f7c2ed` |
+| I5      | Catch per-recipient failures in router enqueue loop; log and continue                                   | `888e85ae` |
+| I6      | Added 8 unit tests for `send_telegram_dm` covering all paths (text, document, errors, edge cases)       | `636310c3` |
+| I7      | Changed `attempt_count` to `int`, `created_at` to `str`; removed `or 0` coercion                        | `6e5e90f9` |
+| S2      | Removed dead `* 1` in `_backoff_seconds`                                                                | `bcef0aad` |
+| S4      | Added truncation warnings for message and caption                                                       | `10f7c2ed` |
