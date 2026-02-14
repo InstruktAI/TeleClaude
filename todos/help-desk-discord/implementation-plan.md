@@ -33,7 +33,7 @@ Implement the `DiscordAdapter` by subclassing `UiAdapter`. We will use `discord.
 
 1. [x] Scaffold `discord_adapter.py` with `discord.py` skeleton.
 2. [x] Implement gateway event handlers (`on_ready`, `on_message`).
-3. [ ] Implement `create_channel` using Discord Forum Threads (Type 15).
+3. [x] Implement `create_channel` using Discord Forum Threads (Type 15).
 4. [ ] Wire `DiscordAdapter` into `AdapterClient.start()`.
 5. [ ] Verify ingress/egress with a local mock Discord bot.
 
