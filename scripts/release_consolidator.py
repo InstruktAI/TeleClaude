@@ -91,8 +91,8 @@ def resolve_consensus(
         else:
             lane_summary[lane] = None
 
-    # Fail-safe: not enough valid reports
-    if len(valid_reports) < 2:
+    # Fail-safe: all three reports required per spec
+    if len(valid_reports) < 3:
         return _decision(
             authorized=False,
             version="none",
