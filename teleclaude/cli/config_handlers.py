@@ -286,6 +286,11 @@ def validate_all() -> list[ValidationResult]:
 # --- Environment ---
 
 
+def get_adapter_env_vars(adapter_name: str) -> list[EnvVarInfo]:
+    """Return registered env vars for a specific adapter, regardless of usage."""
+    return _ADAPTER_ENV_VARS.get(adapter_name, [])
+
+
 def get_required_env_vars() -> dict[str, list[EnvVarInfo]]:
     """Aggregate required env vars for adapters that are actually in use.
 

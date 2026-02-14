@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from teleclaude.cli.config_handlers import get_required_env_vars, validate_all
+from teleclaude.cli.config_handlers import get_adapter_env_vars, validate_all
 
 _BOLD = "\033[1m"
 _DIM = "\033[2m"
@@ -101,7 +101,7 @@ def prompt_confirm(message: str, default: bool = True) -> bool:
 def show_adapter_env_vars(adapter_name: str) -> None:
     """Show env var details for an adapter."""
     print_header(f"{adapter_name.capitalize()} Environment Variables")
-    env_vars = get_required_env_vars().get(adapter_name, [])
+    env_vars = get_adapter_env_vars(adapter_name)
 
     if not env_vars:
         print(f"  {DIM}No environment variables registered.{RESET}")
