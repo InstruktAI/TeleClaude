@@ -376,7 +376,9 @@ jobs:
         run: |
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
-          IFS='.' read -r major minor patch <<< "${LAST_TAG#v}"
+          CLEAN_VER="${LAST_TAG#v}"
+          CLEAN_VER="${CLEAN_VER%%-*}"
+          IFS='.' read -r major minor patch <<< "$CLEAN_VER"
           BUMP="${{ needs.release-arbitration.outputs.target_version }}"
           if [ "$BUMP" = "minor" ]; then
             minor=$((minor + 1))
