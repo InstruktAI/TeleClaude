@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+MAX_RETRIES = 10
+
 
 class NotificationOutboxWorker:
     """Background worker for draining notification outbox rows."""
@@ -50,7 +52,7 @@ class NotificationOutboxWorker:
     def _backoff_seconds(attempt: int) -> float:
         """Exponential backoff with upper cap."""
         base = 1 << max(0, attempt - 1)
-        delay = float(base * 1)
+        delay = float(base)
         return delay
 
     def _build_backoff(self, attempt: int) -> float:
@@ -112,15 +114,28 @@ class NotificationOutboxWorker:
 
         chat_id = self._recipient_for_email(email)
         if not chat_id:
-            logger.warning("No chat id for notification recipient", row_id=row_id, email=email)
-            await self.db.mark_notification_delivered(row_id, error="No telegram_chat_id configured for recipient")
+            logger.warning("undeliverable notification; no chat_id configured", row_id=row_id, email=email)
+            await self.db.mark_notification_failed(
+                row_id,
+                MAX_RETRIES,
+                "",
+                "No telegram_chat_id configured for recipient",
+            )
             return
 
         try:
             await send_telegram_dm(chat_id=chat_id, content=content, file=file_path_value)
-            await self.db.mark_notification_delivered(row_id)
         except Exception as exc:
             attempt = int(row.get("attempt_count", 0)) + 1
+            if attempt >= MAX_RETRIES:
+                logger.error(
+                    "notification permanently failed after max retries",
+                    row_id=row_id,
+                    attempt=attempt,
+                    error=str(exc),
+                )
+                await self.db.mark_notification_failed(row_id, attempt, "", str(exc))
+                return
             next_attempt = (datetime.now(timezone.utc) + timedelta(seconds=self._build_backoff(attempt))).isoformat()
             logger.warning(
                 "notification delivery failed; retrying",
@@ -130,6 +145,16 @@ class NotificationOutboxWorker:
                 next_attempt=next_attempt,
             )
             await self.db.mark_notification_failed(row_id, attempt, next_attempt, str(exc))
+            return
+
+        try:
+            await self.db.mark_notification_delivered(row_id)
+        except Exception as exc:
+            logger.error(
+                "notification sent but DB update failed; skipping retry to avoid duplicate",
+                row_id=row_id,
+                error=str(exc),
+            )
 
     async def _sleep(self, seconds: float) -> None:
         if seconds <= 0:
