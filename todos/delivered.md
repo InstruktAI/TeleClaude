@@ -53,3 +53,4 @@
 | 2026-02-14 | webhook-service                 | Webhook Service                                                                                                         | DELIVERED | 54b70773                                 |
 | 2026-02-14 | help-desk-discord               | Discord adapter for Help Desk forum-thread routing and customer identity mapping                                        | DELIVERED | 52cd5bd9c0a8203d1391a0b917fbecb838390a7f |
 | 2026-02-14 | release-manifests               | Public surface contract manifests and runtime alignment tests                                                           | DELIVERED | fba68258                                 |
+| 2026-02-14 | release-workflow-foundation     | Baseline GitHub Actions for lint/test and skeleton release workflow.                                                    | DELIVERED | d7eee9c0                                 |
