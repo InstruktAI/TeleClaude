@@ -6,10 +6,10 @@ Implement the Codex CLI release inspector lane. This AI-driven workflow analyzes
 
 ## Success Criteria
 
-- [ ] Codex correctly identifies changes to public surfaces (CLI, MCP, Events, Config) by comparing the codebase to `docs/manifests/`.
-- [ ] Codex produces a structured report (JSON) using the same schema as the Claude lane.
-- [ ] Integration with `openai/codex-action@v1` in `.github/workflows/release.yaml`.
-- [ ] The workflow successfully authenticates using `OPENAI_API_KEY`.
+- [x] Codex correctly identifies changes to public surfaces (CLI, MCP, Events, Config) by comparing the codebase to `docs/manifests/`.
+- [x] Codex produces a structured report (JSON) using the same schema as the Claude lane.
+- [x] Integration with `openai/codex-action@v1` in `.github/workflows/release.yaml`.
+- [x] The workflow successfully authenticates using `OPENAI_API_KEY`.
 
 ## Constraints
 
