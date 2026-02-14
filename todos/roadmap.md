@@ -28,10 +28,6 @@ Admin supergroup mirroring and intervention. Establish supergroups on Telegram a
 
 Establish baseline GitHub Actions for lint/test and the skeleton release workflow that triggers on main pushes.
 
-- release-lane-gemini (after: release-workflow-foundation)
-
-Implement the Gemini release inspector lane using a dedicated Gemini action or API call.
-
 - release-arbiter (after: release-lane-claude, release-lane-codex, release-lane-gemini)
 
 Implement the consensus arbiter that consumes lane reports (Claude, Codex, Gemini) and authorizes tagging/releases based on JSON decision output.
