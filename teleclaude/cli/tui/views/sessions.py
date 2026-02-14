@@ -2129,7 +2129,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             badge_attr = idx_attr | (curses.A_BOLD if selected else 0)
         else:
             idx_text = f"[{idx}]"
-            badge_attr = selected_header_attr if selected else (preview_title_attr if is_previewed else header_attr)
+            badge_attr = header_attr | (curses.A_BOLD if selected else 0)
 
         # Collapse indicator
         collapse_indicator = "▶" if is_collapsed else "▼"

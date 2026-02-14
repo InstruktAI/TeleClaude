@@ -1839,6 +1839,19 @@ class TestSessionsViewLogic:
             def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
                 self.calls.append((row, col, text, attr))
 
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
+            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+        )
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_bg_attr",
+            lambda _agent: 77,
+        )
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_focus_attr",
+            lambda _agent: 99,
+        )
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
         session = self._make_session_node(
             session_id="previewed",
             active_agent="claude",
@@ -1847,7 +1860,6 @@ class TestSessionsViewLogic:
         )
         sessions_view._preview = PreviewState(session_id="previewed")
         sessions_view.state.sessions.preview = PreviewState(session_id="previewed")
-        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
 
         screen = FakeScreen()
         screen_calls = screen.calls
@@ -1857,9 +1869,10 @@ class TestSessionsViewLogic:
         assert len(line0_calls) == 3
         # Previewed non-selected rows remain distinct via muted background,
         # without using focused selection color.
-        assert line0_calls[0][3] == 27
-        assert line0_calls[1][3] == 27
-        assert line0_calls[2][3] == 27
+        assert line0_calls[0][2] == "[1]"
+        assert line0_calls[0][3] == 12
+        assert line0_calls[1][3] == 77
+        assert line0_calls[2][3] == 77
         assert line0_calls[2][2].endswith(" ")
 
     def test_selected_preview_session_keeps_selection_highlight(self, sessions_view, monkeypatch):
@@ -1872,6 +1885,19 @@ class TestSessionsViewLogic:
             def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
                 self.calls.append((row, col, text, attr))
 
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
+            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+        )
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_bg_attr",
+            lambda _agent: 77,
+        )
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_focus_attr",
+            lambda _agent: 99,
+        )
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
         session = self._make_session_node(
             session_id="preview-selected",
             active_agent="claude",
@@ -1880,7 +1906,6 @@ class TestSessionsViewLogic:
         )
         sessions_view._preview = PreviewState(session_id="preview-selected")
         sessions_view.state.sessions.preview = PreviewState(session_id="preview-selected")
-        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
 
         screen = FakeScreen()
         session_calls = screen.calls
@@ -1888,9 +1913,10 @@ class TestSessionsViewLogic:
 
         line0_calls = [call for call in session_calls if call[0] == 0]
         assert len(line0_calls) == 3
-        assert line0_calls[0][3] == (37 | curses.A_BOLD)
-        assert line0_calls[1][3] == (37 | curses.A_BOLD)
-        assert line0_calls[2][3] == (37 | curses.A_BOLD)
+        assert line0_calls[0][2] == "[1]"
+        assert line0_calls[0][3] == (12 | curses.A_BOLD)
+        assert line0_calls[1][3] == (99 | curses.A_BOLD)
+        assert line0_calls[2][3] == (99 | curses.A_BOLD)
         assert line0_calls[2][2].endswith(" ")
 
     def test_selected_non_preview_session_uses_focus_muted_colors(self, sessions_view, monkeypatch):
@@ -1903,23 +1929,137 @@ class TestSessionsViewLogic:
             def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
                 self.calls.append((row, col, text, attr))
 
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
+            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+        )
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_focus_attr",
+            lambda _agent: 99,
+        )
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
         session = self._make_session_node(
             session_id="focused",
             active_agent="claude",
             thinking_mode="slow",
             tmux_session_name="tc-focused",
         )
-        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
 
         screen = FakeScreen()
         sessions_view._render_session(screen, 0, session, 80, True, 3)
 
         line0_calls = [call for call in screen.calls if call[0] == 0]
         assert len(line0_calls) == 3
-        assert line0_calls[0][3] == (37 | curses.A_BOLD)
-        assert line0_calls[1][3] == (37 | curses.A_BOLD)
-        assert line0_calls[2][3] == (37 | curses.A_BOLD)
+        assert line0_calls[0][2] == "[1]"
+        assert line0_calls[0][3] == (12 | curses.A_BOLD)
+        assert line0_calls[1][3] == (99 | curses.A_BOLD)
+        assert line0_calls[2][3] == (99 | curses.A_BOLD)
         assert line0_calls[2][2].endswith(" ")
+
+    @pytest.mark.parametrize("selected,previewed", [(False, False), (True, False), (False, True), (True, True)])
+    def test_badge_color_isolation_for_sticky_sessions(self, sessions_view, monkeypatch, selected, previewed):
+        """Sticky badges ignore row state and keep fixed colors with optional bold."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text, attr))
+
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.get_sticky_badge_attr",
+            lambda: 44,
+        )
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
+            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+        )
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_focus_attr",
+            lambda _agent: 99,
+        )
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
+
+        session = self._make_session_node(
+            session_id="sticky-matrix-session",
+            active_agent="claude",
+            thinking_mode="slow",
+            tmux_session_name="tc-matrix-sticky",
+        )
+        sessions_view.sticky_sessions = [StickySessionInfo(session_id="sticky-matrix-session")]
+        if previewed:
+            sessions_view._preview = PreviewState(session_id="sticky-matrix-session")
+            sessions_view.state.sessions.preview = PreviewState(session_id="sticky-matrix-session")
+        else:
+            sessions_view._preview = None
+            sessions_view.state.sessions.preview = None
+
+        screen = FakeScreen()
+        sessions_view._render_session(screen, 0, session, 80, selected, 3)
+
+        line0_calls = [call for call in screen.calls if call[0] == 0]
+        assert len(line0_calls) == 3
+
+        expected_badge_attr = (44 | curses.A_BOLD) if selected else 44
+        assert line0_calls[0][3] == expected_badge_attr
+        expected_title_attr = (99 | curses.A_BOLD) if selected else 12
+        assert line0_calls[1][3] == expected_title_attr
+        assert line0_calls[2][3] == expected_title_attr
+
+    @pytest.mark.parametrize("selected,previewed", [(False, False), (True, False), (False, True), (True, True)])
+    def test_badge_color_isolation_for_non_sticky_sessions(self, sessions_view, monkeypatch, selected, previewed):
+        """Non-sticky badge styling is independent from row selection/preview state."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text, attr))
+
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
+            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+        )
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_bg_attr",
+            lambda _agent: 77,
+        )
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_focus_attr",
+            lambda _agent: 99,
+        )
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
+
+        session = self._make_session_node(
+            session_id="matrix-session",
+            active_agent="claude",
+            thinking_mode="slow",
+            tmux_session_name="tc-matrix",
+        )
+        if previewed:
+            sessions_view._preview = PreviewState(session_id="matrix-session")
+            sessions_view.state.sessions.preview = PreviewState(session_id="matrix-session")
+        else:
+            sessions_view._preview = None
+            sessions_view.state.sessions.preview = None
+
+        screen = FakeScreen()
+        sessions_view._render_session(screen, 0, session, 80, selected, 3)
+
+        line0_calls = [call for call in screen.calls if call[0] == 0]
+        assert len(line0_calls) == 3
+
+        expected_badge_attr = (12 | curses.A_BOLD) if selected else 12
+        assert line0_calls[0][3] == expected_badge_attr
+
+        if selected:
+            expected_title_attr = 99 | curses.A_BOLD
+        else:
+            expected_title_attr = 77 if previewed else 12
+        assert line0_calls[1][3] == expected_title_attr
+        assert line0_calls[2][3] == expected_title_attr
 
     def test_selected_sticky_session_badge_is_bolded(self, sessions_view, monkeypatch):
         """Sticky row selection should bold only the index badge."""
