@@ -769,7 +769,6 @@ def main() -> None:
         prefix_root: str,
         dist_dir: str,
         deploy_root: str,
-        include_docs: bool,
         emit_repo_codex: bool,
         deploy_enabled: bool,
     ) -> None:
@@ -926,16 +925,6 @@ def main() -> None:
 
             built_agents.append(agent_name)
 
-        if include_docs and os.path.isdir(docs_source_dir):
-            docs_dist = os.path.join(dist_dir, "teleclaude", "docs")
-            if os.path.exists(docs_dist):
-                shutil.rmtree(docs_dist)
-            shutil.copytree(docs_source_dir, docs_dist)
-            rewrite_global_index(
-                os.path.join(docs_dist, "index.yaml"),
-                os.path.join(dist_dir, "teleclaude"),
-            )
-
         _format_markdown(markdown_outputs)
 
         print("\nTranspilation complete.")
@@ -953,52 +942,58 @@ def main() -> None:
                 dist_agent_root = os.path.join(dist_dir, agent_name)
                 shutil.copytree(dist_agent_root, target_root, dirs_exist_ok=True)
 
-            if include_docs and os.path.isdir(docs_source_dir):
-                deploy_docs_root = os.path.join(os.path.expanduser("~/.teleclaude"), "docs")
-                master_docs_real = os.path.realpath(docs_source_dir)
-                deploy_docs_real = os.path.realpath(deploy_docs_root)
-                if master_docs_real == deploy_docs_real:
-                    print(
-                        "Error: deploy docs target resolves to source docs/global. "
-                        "Refusing docs deploy to prevent self-deletion."
-                    )
-                else:
-                    os.makedirs(deploy_docs_root, exist_ok=True)
-
-                    # Symlink each entry from docs/global/ to ~/.teleclaude/docs/
-                    for entry in os.listdir(docs_source_dir):
-                        src_path = os.path.join(docs_source_dir, entry)
-                        dst_path = os.path.join(deploy_docs_root, entry)
-
-                        # Skip hidden files
-                        if entry.startswith("."):
-                            continue
-
-                        # Remove existing symlink at destination
-                        if os.path.islink(dst_path):
-                            os.unlink(dst_path)
-                        elif os.path.isdir(dst_path):
-                            # Only preserve third-party (for global research output)
-                            # All other directories get replaced with symlinks
-                            if entry == "third-party":
-                                continue
-                            shutil.rmtree(dst_path)
-                        elif os.path.isfile(dst_path):
-                            os.unlink(dst_path)
-
-                        # Create symlink for directories and selected root files
-                        if os.path.isdir(src_path) or entry in {"index.yaml", "baseline.md"}:
-                            os.symlink(src_path, dst_path)
-                            print(f"  Symlinked: {dst_path} -> {src_path}")
-
-                    # Generate index.yaml for global third-party docs
-                    global_third_party = Path(deploy_docs_root) / "third-party"
-                    if global_third_party.exists():
-                        third_party_index = write_third_party_index_yaml(global_third_party, scope="global")
-                        if third_party_index:
-                            print(f"  Generated: {third_party_index}")
-
             print("Deployment complete.")
+
+    def _deploy_documentation(source_dir: str, deploy_root: str) -> None:
+        """Robustly deploy documentation using atomic symlink replacement."""
+        if not os.path.isdir(source_dir):
+            return
+
+        print("\nDeploying documentation...")
+        deploy_docs_root = Path(deploy_root).expanduser() / ".teleclaude" / "docs"
+        source_docs_root = Path(source_dir).resolve()
+
+        if source_docs_root == deploy_docs_root.resolve():
+            print("Error: deploy docs target resolves to source docs/global. Refusing deploy.")
+            return
+
+        deploy_docs_root.mkdir(parents=True, exist_ok=True)
+
+        for entry in os.listdir(source_dir):
+            if entry.startswith("."):
+                continue
+
+            src_path = source_docs_root / entry
+            dst_path = deploy_docs_root / entry
+
+            # Skip creating links for things that shouldn't be linked (only dirs and selected files)
+            if not src_path.is_dir() and entry not in {"index.yaml", "baseline.md"}:
+                continue
+
+            # Robust cleanup using lexists (detects broken symlinks)
+            if os.path.lexists(dst_path):
+                if dst_path.is_dir() and not dst_path.is_symlink():
+                    if entry == "third-party":
+                        continue
+                    shutil.rmtree(dst_path)
+                else:
+                    dst_path.unlink(missing_ok=True)
+
+            try:
+                dst_path.symlink_to(src_path)
+                print(f"  Synced: {dst_path} -> {src_path}")
+            except Exception as e:
+                print(f"  Error syncing {entry}: {e}")
+
+        # Generate index.yaml for global third-party docs
+        global_third_party = deploy_docs_root / "third-party"
+        if global_third_party.exists():
+            third_party_index = write_third_party_index_yaml(global_third_party, scope="global")
+            if third_party_index:
+                print(f"  Generated: {third_party_index}")
+
+        # Rewrite global index to match deployed path (~/.teleclaude/docs)
+        rewrite_global_index(str(deploy_docs_root / "index.yaml"), str(deploy_docs_root.parent))
 
     if args.deploy:
         with tempfile.TemporaryDirectory(prefix="teleclaude-dist-global-") as global_dist:
@@ -1008,7 +1003,6 @@ def main() -> None:
                     prefix_root=agents_root,
                     dist_dir=global_dist,
                     deploy_root=os.path.expanduser("~"),
-                    include_docs=True,
                     emit_repo_codex=False,
                     deploy_enabled=True,
                 )
@@ -1019,10 +1013,12 @@ def main() -> None:
                     prefix_root=dot_agents_root,
                     dist_dir=local_dist,
                     deploy_root=project_root,
-                    include_docs=False,
                     emit_repo_codex=True,
                     deploy_enabled=True,
                 )
+
+        # Deploy docs exactly once after all agent transpilation
+        _deploy_documentation(docs_source_dir, os.path.expanduser("~"))
     else:
         if global_sources:
             _run_phase(
@@ -1030,7 +1026,6 @@ def main() -> None:
                 prefix_root=agents_root,
                 dist_dir=os.path.join(project_root, "dist", "global"),
                 deploy_root=os.path.expanduser("~"),
-                include_docs=True,
                 emit_repo_codex=False,
                 deploy_enabled=False,
             )
@@ -1041,7 +1036,6 @@ def main() -> None:
                 prefix_root=dot_agents_root,
                 dist_dir=os.path.join(project_root, "dist", "local"),
                 deploy_root=project_root,
-                include_docs=False,
                 emit_repo_codex=True,
                 deploy_enabled=False,
             )
