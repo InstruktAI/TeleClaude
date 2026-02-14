@@ -1241,7 +1241,7 @@ class Db:
                     session_id=row.session_id,
                     event_type=row.event_type,
                     payload=row.payload,
-                    attempt_count=row.attempt_count or 0,
+                    attempt_count=row.attempt_count,
                 )
                 for row in rows
             ]
@@ -1364,7 +1364,7 @@ class Db:
                     content=row.content,
                     file_path=row.file_path,
                     status=row.status,
-                    attempt_count=row.attempt_count or 0,
+                    attempt_count=row.attempt_count,
                 )
                 for row in rows
             ]

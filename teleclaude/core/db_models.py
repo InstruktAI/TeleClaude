@@ -135,9 +135,9 @@ class NotificationOutbox(SQLModel, table=True):
     content: str
     file_path: Optional[str] = None
     status: str = "pending"
-    created_at: Optional[str] = None
+    created_at: str = ""
     delivered_at: Optional[str] = None
-    attempt_count: Optional[int] = 0
+    attempt_count: int = 0
     next_attempt_at: Optional[str] = None
     last_error: Optional[str] = None
     locked_at: Optional[str] = None
