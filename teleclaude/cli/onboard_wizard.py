@@ -6,30 +6,56 @@ and skips completed sections with option to revisit.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
+
+from pydantic import ValidationError
 
 from teleclaude.cli.config_handlers import (
     add_person,
     check_env_vars,
     discover_config_areas,
     get_person_config,
+    get_required_env_vars,
     list_people,
     save_person_config,
 )
-from teleclaude.cli.config_menu import (
-    _BOLD,
-    _DIM,
-    _GREEN,
-    _RED,
-    _RESET,
-    _YELLOW,
-    _print_header,
-    _prompt_confirm,
-    _prompt_value,
-    _show_adapter_env_vars,
-    _show_validation_results,
-    _status_icon,
+from teleclaude.cli.prompt_utils import (
+    BOLD as _BOLD,
+)
+from teleclaude.cli.prompt_utils import (
+    DIM as _DIM,
+)
+from teleclaude.cli.prompt_utils import (
+    GREEN as _GREEN,
+)
+from teleclaude.cli.prompt_utils import (
+    RED as _RED,
+)
+from teleclaude.cli.prompt_utils import (
+    RESET as _RESET,
+)
+from teleclaude.cli.prompt_utils import (
+    YELLOW as _YELLOW,
+)
+from teleclaude.cli.prompt_utils import (
+    print_header as _print_header,
+)
+from teleclaude.cli.prompt_utils import (
+    prompt_confirm as _prompt_confirm,
+)
+from teleclaude.cli.prompt_utils import (
+    prompt_value as _prompt_value,
+)
+from teleclaude.cli.prompt_utils import (
+    show_adapter_env_vars as _show_adapter_env_vars,
+)
+from teleclaude.cli.prompt_utils import (
+    show_validation_results as _show_validation_results,
+)
+from teleclaude.cli.prompt_utils import (
+    status_icon as _status_icon,
 )
 from teleclaude.config.schema import PersonEntry
 
@@ -65,7 +91,7 @@ def detect_wizard_state() -> WizardState:
             if pc.notifications.telegram:
                 state.notifications_complete = True
                 break
-        except Exception:
+        except (ValueError, ValidationError):
             continue
 
     # Env vars: complete if all required vars are set
@@ -198,7 +224,7 @@ def _add_person_wizard() -> None:
         entry = PersonEntry(name=name, email=email, role=role)
         add_person(entry)
         print(f"  {_GREEN}Added '{name}' as {role}.{_RESET}")
-    except Exception as e:
+    except ValueError as e:
         print(f"  {_RED}Error: {e}{_RESET}")
 
 
@@ -216,7 +242,7 @@ def _step_notifications() -> None:
     for person in people:
         try:
             pc = get_person_config(person.name)
-        except Exception:
+        except (ValueError, ValidationError):
             print(f"  {_RED}Could not load config for {person.name}.{_RESET}")
             continue
 
@@ -233,17 +259,13 @@ def _step_notifications() -> None:
             try:
                 save_person_config(person.name, pc)
                 print(f"  {_GREEN}Updated.{_RESET}")
-            except Exception as e:
+            except (ValueError, OSError) as e:
                 print(f"  {_RED}Error: {e}{_RESET}")
 
 
 def _step_environment() -> None:
     """Environment variable check step."""
     _print_header("Step: Environment Check")
-
-    import os
-
-    from teleclaude.cli.config_handlers import get_required_env_vars
 
     all_vars = get_required_env_vars()
 

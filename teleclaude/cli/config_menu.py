@@ -6,6 +6,10 @@ user configs. No curses dependency — works in any terminal.
 
 from __future__ import annotations
 
+import os
+
+from pydantic import ValidationError
+
 from teleclaude.cli.config_handlers import (
     ConfigArea,
     add_person,
@@ -15,92 +19,47 @@ from teleclaude.cli.config_handlers import (
     get_required_env_vars,
     list_people,
     save_person_config,
-    validate_all,
+)
+from teleclaude.cli.prompt_utils import (
+    BOLD as _BOLD,
+)
+from teleclaude.cli.prompt_utils import (
+    DIM as _DIM,
+)
+from teleclaude.cli.prompt_utils import (
+    GREEN as _GREEN,
+)
+from teleclaude.cli.prompt_utils import (
+    RED as _RED,
+)
+from teleclaude.cli.prompt_utils import (
+    RESET as _RESET,
+)
+from teleclaude.cli.prompt_utils import (
+    YELLOW as _YELLOW,
+)
+from teleclaude.cli.prompt_utils import (
+    print_header as _print_header,
+)
+from teleclaude.cli.prompt_utils import (
+    prompt_choice as _prompt_choice,
+)
+from teleclaude.cli.prompt_utils import (
+    prompt_confirm as _prompt_confirm,
+)
+from teleclaude.cli.prompt_utils import (
+    prompt_value as _prompt_value,
+)
+from teleclaude.cli.prompt_utils import (
+    show_adapter_env_vars as _show_adapter_env_vars,
+)
+from teleclaude.cli.prompt_utils import (
+    show_validation_results as _show_validation_results,
+)
+from teleclaude.cli.prompt_utils import (
+    status_icon as _status_icon,
 )
 from teleclaude.config.schema import PersonConfig, PersonEntry
-
-# --- ANSI formatting ---
-
-_BOLD = "\033[1m"
-_DIM = "\033[2m"
-_GREEN = "\033[32m"
-_RED = "\033[31m"
-_YELLOW = "\033[33m"
-_CYAN = "\033[36m"
-_RESET = "\033[0m"
-
-
-def _status_icon(configured: bool) -> str:
-    return f"{_GREEN}\u2713{_RESET}" if configured else f"{_RED}\u2717{_RESET}"
-
-
-def _print_header(title: str) -> None:
-    print(f"\n{_BOLD}{_CYAN}{title}{_RESET}")
-    print(f"{_DIM}{'─' * len(title)}{_RESET}")
-
-
-def _prompt_choice(options: list[str], allow_back: bool = True, allow_quit: bool = False) -> str:
-    """Display numbered options and return user choice."""
-    print()
-    for i, opt in enumerate(options, 1):
-        print(f"  {i}. {opt}")
-    if allow_back:
-        print("  b. Back")
-    if allow_quit:
-        print("  q. Exit")
-    print()
-
-    while True:
-        try:
-            raw = input("Choice: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return "q" if allow_quit else "b"
-
-        if raw == "q" and allow_quit:
-            return "q"
-        if raw == "b" and allow_back:
-            return "b"
-        try:
-            idx = int(raw)
-            if 1 <= idx <= len(options):
-                return str(idx)
-        except ValueError:
-            pass
-        print(f"  Invalid choice. Enter 1-{len(options)}{', b' if allow_back else ''}{', or q' if allow_quit else ''}.")
-
-
-def _prompt_value(label: str, current: str | None = None, required: bool = True) -> str | None:
-    """Prompt user for a value, showing current if set."""
-    suffix = f" [{current}]" if current else ""
-    req = " (required)" if required and not current else ""
-    try:
-        raw = input(f"  {label}{req}{suffix}: ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return None
-
-    if not raw and current:
-        return current
-    if not raw and required:
-        print(f"  {_RED}Value is required.{_RESET}")
-        return _prompt_value(label, current, required)
-    return raw or None
-
-
-def _prompt_confirm(message: str, default: bool = True) -> bool:
-    """Yes/no confirmation prompt."""
-    hint = "[Y/n]" if default else "[y/N]"
-    try:
-        raw = input(f"  {message} {hint}: ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return default
-
-    if not raw:
-        return default
-    return raw in ("y", "yes")
-
 
 # --- Menu screens ---
 
@@ -193,8 +152,6 @@ def _show_adapter_detail(area: ConfigArea) -> None:
         if env_vars:
             print(f"\n  {_BOLD}Environment variables:{_RESET}")
             for var in env_vars:
-                import os
-
                 is_set = bool(os.environ.get(var.name))
                 icon = _status_icon(is_set)
                 print(f"    {icon} {var.name}: {var.description}")
@@ -210,34 +167,6 @@ def _show_adapter_detail(area: ConfigArea) -> None:
             return
         elif choice == "1":
             _show_adapter_env_vars(adapter_name)
-
-
-def _show_adapter_env_vars(adapter_name: str) -> None:
-    """Show env var details for an adapter."""
-    _print_header(f"{adapter_name.capitalize()} Environment Variables")
-    env_vars = get_required_env_vars().get(adapter_name, [])
-
-    if not env_vars:
-        print(f"  {_DIM}No environment variables registered.{_RESET}")
-        input("\n  Press Enter to continue...")
-        return
-
-    import os
-
-    for var in env_vars:
-        is_set = bool(os.environ.get(var.name))
-        icon = _status_icon(is_set)
-        status = "set" if is_set else "NOT SET"
-        print(f"\n  {icon} {_BOLD}{var.name}{_RESET}")
-        print(f"    Status: {status}")
-        print(f"    Description: {var.description}")
-        print(f"    Example: {var.example}")
-
-    print(f"\n  {_DIM}Set missing variables in your .env file or shell environment.{_RESET}")
-    try:
-        input("\n  Press Enter to continue...")
-    except (EOFError, KeyboardInterrupt):
-        print()
 
 
 def _show_people_menu() -> None:
@@ -288,7 +217,7 @@ def _add_person_flow() -> None:
         entry = PersonEntry(name=name, email=email, role=role)
         add_person(entry)
         print(f"\n  {_GREEN}Added person '{name}' as {role}.{_RESET}")
-    except Exception as e:
+    except ValueError as e:
         print(f"\n  {_RED}Error: {e}{_RESET}")
 
     try:
@@ -330,7 +259,7 @@ def _edit_person_detail(person: PersonEntry) -> None:
 
     try:
         pc = get_person_config(person.name)
-    except Exception as e:
+    except (ValueError, ValidationError) as e:
         print(f"  {_RED}Error loading config: {e}{_RESET}")
         try:
             input("\n  Press Enter to continue...")
@@ -369,7 +298,7 @@ def _edit_notifications_for_person(name: str, pc: PersonConfig) -> None:
     try:
         save_person_config(name, pc)
         print(f"\n  {_GREEN}Notifications updated.{_RESET}")
-    except Exception as e:
+    except (ValueError, OSError) as e:
         print(f"\n  {_RED}Error: {e}{_RESET}")
 
     try:
@@ -389,7 +318,7 @@ def _edit_interests_for_person(name: str, pc: PersonConfig) -> None:
         try:
             save_person_config(name, pc)
             print(f"\n  {_GREEN}Interests updated.{_RESET}")
-        except Exception as e:
+        except (ValueError, OSError) as e:
             print(f"\n  {_RED}Error: {e}{_RESET}")
 
     try:
@@ -415,7 +344,7 @@ def _list_people_detail() -> None:
                 has_tg = pc.creds.telegram is not None
                 print(f"    Telegram creds: {'yes' if has_tg else 'no'}")
                 print(f"    Notifications: telegram={pc.notifications.telegram}")
-            except Exception:
+            except (ValueError, ValidationError):
                 print(f"    {_DIM}(config not loaded){_RESET}")
 
     try:
@@ -443,7 +372,7 @@ def _show_notifications_menu() -> None:
                 pc = get_person_config(person.name)
                 tg_icon = _status_icon(pc.notifications.telegram)
                 print(f"  {person.name}: telegram {tg_icon}")
-            except Exception:
+            except (ValueError, ValidationError):
                 print(f"  {person.name}: {_DIM}(config error){_RESET}")
 
         options = [f"Edit {p.name}'s notifications" for p in people]
@@ -457,15 +386,13 @@ def _show_notifications_menu() -> None:
             person = people[idx]
             pc = get_person_config(person.name)
             _edit_notifications_for_person(person.name, pc)
-        except (ValueError, IndexError, Exception):
+        except (ValueError, IndexError, ValidationError):
             continue
 
 
 def _show_environment_menu() -> None:
     """Show environment variable status and examples."""
     _print_header("Environment Variables")
-
-    import os
 
     all_vars = get_required_env_vars()
 
@@ -492,35 +419,6 @@ def _show_environment_menu() -> None:
         print(f"\n  {_YELLOW}Add missing variables to your .env or shell environment.{_RESET}")
     else:
         print(f"\n  {_GREEN}All required environment variables are set.{_RESET}")
-
-    try:
-        input("\n  Press Enter to continue...")
-    except (EOFError, KeyboardInterrupt):
-        print()
-
-
-def _show_validation_results() -> None:
-    """Run and display full validation."""
-    _print_header("Full Validation")
-    print(f"  {_DIM}Running validation...{_RESET}")
-
-    results = validate_all()
-
-    all_passed = True
-    for r in results:
-        icon = _status_icon(r.passed)
-        print(f"\n  {icon} {_BOLD}{r.area}{_RESET}")
-        if not r.passed:
-            all_passed = False
-            for err in r.errors:
-                print(f"    {_RED}Error: {err}{_RESET}")
-            for sug in r.suggestions:
-                print(f"    {_YELLOW}Fix: {sug}{_RESET}")
-
-    if all_passed:
-        print(f"\n  {_GREEN}All checks passed.{_RESET}")
-    else:
-        print(f"\n  {_RED}Some checks failed. See above for details.{_RESET}")
 
     try:
         input("\n  Press Enter to continue...")

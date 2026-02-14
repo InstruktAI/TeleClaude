@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import fcntl
 import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ValidationError
@@ -43,9 +44,9 @@ class ConfigArea:
 
     name: str  # e.g. "adapters.telegram"
     label: str  # e.g. "Telegram"
-    category: str  # "adapter" | "people" | "notifications" | "environment"
+    category: Literal["adapter", "people", "notifications", "environment"]  # e.g. "adapter"
     configured: bool
-    model_class: type[BaseModel]
+    model_class: type[BaseModel] | None
 
 
 @dataclass
@@ -210,8 +211,6 @@ def remove_person(name: str, delete_directory: bool = False) -> None:
     if delete_directory:
         person_dir = _PEOPLE_DIR / name
         if person_dir.exists():
-            import shutil
-
             shutil.rmtree(person_dir)
             logger.info("Removed person directory for '%s'", name)
 
@@ -414,7 +413,7 @@ def discover_config_areas() -> list[ConfigArea]:
             label="Environment",
             category="environment",
             configured=all_set,
-            model_class=type(None),
+            model_class=None,
         )
     )
 
