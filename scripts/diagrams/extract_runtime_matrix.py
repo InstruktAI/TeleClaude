@@ -86,9 +86,7 @@ def detect_adapter_features(agent_names: list[str]) -> dict[str, list[str]]:
             detected.add("session_tracking")
         if "transcript_path=" in content:
             detected.add("transcript_path")
-        if "_discover_transcript_path" in content:
-            detected.add("transcript_discovery")
-        if "transcript_path=" in content:
+        if "_discover_transcript_path" in content or "transcript_path=" in content:
             detected.add("transcript_discovery")
         if "prompt=" in content:
             detected.add("prompt_capture")
