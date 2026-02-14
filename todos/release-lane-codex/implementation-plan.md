@@ -19,7 +19,7 @@ Implement the Codex lane by configuring `openai/codex-action@v1`. We will reuse 
 
 1. [x] Add the `codex-lane` job to `release.yaml`.
 2. [x] Ensure `OPENAI_API_KEY` is available in CI secrets.
-3. [ ] Test the lane and verify JSON parity with the Claude lane.
+3. [x] Test the lane and verify JSON parity with the Claude lane.
 
 ## Verification
 
