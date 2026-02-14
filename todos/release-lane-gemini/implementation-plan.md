@@ -19,7 +19,7 @@ Implement the Gemini lane by installing `@google/gemini-cli` via `npm` in the Gi
 ## Task Sequence
 
 1. [x] Add `gemini-lane` job to `release.yaml`.
-2. [ ] Ensure `GOOGLE_API_KEY` is available in CI secrets.
+2. [x] Ensure `GOOGLE_API_KEY` is available in CI secrets.
 3. [ ] Test the lane and verify JSON parity with other lanes.
 
 ## Verification
