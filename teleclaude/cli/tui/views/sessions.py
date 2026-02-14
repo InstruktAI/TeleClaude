@@ -1140,8 +1140,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         if interaction.kind == _SessionInputKind.TOGGLE_STICKY:
             self._mark_space_double_press_guard(session_id, interaction.now)
-            if is_sticky:
-                self._clear_active_preview()
             self._toggle_sticky(session_id, active_agent=session.active_agent)
             if not is_sticky:
                 self._enqueue_preview_request(
@@ -2150,7 +2148,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 badge_attr,
             )  # type: ignore[attr-defined]
             col += len(idx_text)
-            agent_part = f" {collapse_indicator} {agent}/{mode}"
+            agent_part = f"{' ' if not is_sticky else ''}{collapse_indicator} {agent}/{mode}"
             stdscr.addstr(row, col, agent_part[: width - col], title_attr)  # type: ignore[attr-defined]
             col += len(agent_part)
             if session.subdir and col < width:

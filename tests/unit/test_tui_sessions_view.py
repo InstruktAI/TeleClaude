@@ -1031,8 +1031,8 @@ class TestSessionsViewLogic:
         assert IntentType.SET_SELECTION in dispatched_intents
         assert view.selected_index == 0
 
-    def test_double_click_sticky_session_toggles_off_and_clears_preview(self, mock_focus):
-        """Double click on a sticky row should remove sticky state and keep preview cleared."""
+    def test_double_click_sticky_session_toggles_off_without_preview_side_effect(self, mock_focus):
+        """Double click on a sticky row should remove sticky state without touching preview."""
 
         class MockPaneManager:
             def __init__(self):
@@ -1099,8 +1099,8 @@ class TestSessionsViewLogic:
         controller.apply_pending_layout()
 
         assert len(view.sticky_sessions) == 0
-        assert view.state.sessions.preview is None
-        assert IntentType.CLEAR_PREVIEW in dispatched_intents
+        assert view.state.sessions.preview == PreviewState(session_id="previewed-other")
+        assert IntentType.CLEAR_PREVIEW not in dispatched_intents
         assert IntentType.TOGGLE_STICKY in dispatched_intents
         assert IntentType.SET_PREVIEW not in dispatched_intents
 
@@ -2001,6 +2001,9 @@ class TestSessionsViewLogic:
         line0_calls = [call for call in screen.calls if call[0] == 0]
         assert len(line0_calls) == 3
 
+        assert line0_calls[0][1] == 0
+        assert line0_calls[1][1] == len(line0_calls[0][2])
+        assert not line0_calls[1][2].startswith(" ")
         expected_badge_attr = (44 | curses.A_BOLD) if selected else 44
         assert line0_calls[0][3] == expected_badge_attr
         expected_title_attr = (99 | curses.A_BOLD) if selected else 12

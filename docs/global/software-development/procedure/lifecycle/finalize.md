@@ -17,12 +17,13 @@ Merge approved work to main, log delivery, and clean up.
 
 ## Preconditions
 
-- The Orchestrator has verified the approval state and clerical evidence.
-- `state.json` field `review` is `approved`.
+- `todos/{slug}/review-findings.md` exists with verdict APPROVE.
+- `todos/{slug}/quality-checklist.md` exists.
+- No unresolved deferrals.
 
 ## Steps
 
-1. Trust the handoff: The Orchestrator has confirmed the approval and clerical readiness.
+1. Read `trees/{slug}/todos/{slug}/review-findings.md` and confirm verdict APPROVE.
 2. Update only the Finalize section in `quality-checklist.md`.
    - Do not edit Build or Review sections.
 3. Use commit hooks for verification (lint + unit tests).

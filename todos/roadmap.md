@@ -28,10 +28,6 @@ Admin supergroup mirroring and intervention. Establish supergroups on Telegram a
 
 Establish baseline GitHub Actions for lint/test and the skeleton release workflow that triggers on main pushes.
 
-- release-arbiter (after: release-lane-claude, release-lane-codex, release-lane-gemini)
-
-Implement the consensus arbiter that consumes lane reports (Claude, Codex, Gemini) and authorizes tagging/releases based on JSON decision output.
-
 ## Session Messages API
 
 - session-messages-api — Structured messages endpoint from native session files
