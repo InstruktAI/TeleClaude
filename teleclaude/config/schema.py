@@ -96,7 +96,7 @@ class GitConfig(BaseModel):
 class PersonEntry(BaseModel):
     model_config = ConfigDict(extra="allow")
     name: str
-    email: str
+    email: Optional[str] = None
     username: Optional[str] = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
 
