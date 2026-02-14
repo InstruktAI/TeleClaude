@@ -24,7 +24,7 @@ Ownership:
 - [x] Requirements coverage verified against acceptance criteria
 - [x] Implementation-plan tasks all checked
 - [x] Build gates fully checked
-- [ ] No critical findings remain — C3: permanently failed rows re-selected infinitely
+- [x] No critical findings remain — C3 resolved in round 2 fix (`e9c344fa`)
 - [x] Error handling adequate at boundaries — round 1 issues (I1-I5) resolved
 - [x] Test coverage sufficient — 8 telegram.py tests added (round 1 I6 resolved)
 - [x] Type design correct — nullability fixed (round 1 I7 resolved)
