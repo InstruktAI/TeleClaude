@@ -122,3 +122,67 @@ Lines 26 and 88 correctly quote `"$LAST_TAG"` but line 250 does not. Pre-existin
 | Suggestion | 3     |
 
 The Python consolidator logic is well-structured with clean types and solid consensus algorithm. The critical issues are all in the workflow YAML: silent error masking (`|| true`), shell injection from AI-generated content, and fragile version parsing. These must be fixed before merge as they affect production safety.
+
+---
+
+## Fixes Applied
+
+| #   | Severity   | Issue                                         | Fix                                                                                  | Commit     |
+| --- | ---------- | --------------------------------------------- | ------------------------------------------------------------------------------------ | ---------- |
+| 1   | Critical   | `\|\| true` swallows fatal arbiter errors     | Replaced with `set +e` / explicit exit code check; exit 1 = fatal, exit 2 = continue | `2a48d5e3` |
+| 2   | Critical   | Shell injection via unquoted heredoc          | Build release notes with `jq`, pass via `--notes-file`                               | `f622cc3c` |
+| 3   | Critical   | Version parsing breaks on pre-release tags    | Strip pre-release suffix (`${CLEAN_VER%%-*}`) before `IFS='.' read`                  | `ce817258` |
+| 4   | Important  | Fail-safe threshold contradicts spec          | Changed threshold from `< 2` to `< 3` to match spec requirement                      | `d5bfe563` |
+| 5   | Important  | `argparse` import inside function body        | Moved to module-level imports, sorted alphabetically                                 | `5c620b00` |
+| 6   | Important  | Two-valid-report consensus paths untested     | Added tests: two agreeing + one None, two disagreeing + one None                     | `97e7b7dc` |
+| 7   | Important  | Conservative override only tested for `minor` | Added test: `patch` minority with contract changes triggers override                 | `97e7b7dc` |
+| 8   | Suggestion | `.get()` on required TypedDict fields         | Changed to direct key access (`report["contract_changes"]`)                          | `5c620b00` |
+| 9   | Suggestion | No tied non-zero counts test                  | Added test: all lanes with 2 contract changes returns None                           | `97e7b7dc` |
+| 10  | Suggestion | Unquoted `$LAST_TAG` on line 250              | Added quotes for consistency                                                         | `999dc278` |
+
+---
+
+## Round 2 Re-review
+
+**Reviewer:** Claude (Opus 4.6)
+**Round:** 2
+**Verdict:** APPROVE
+
+### Fix Verification
+
+All 10 round 1 findings verified as correctly resolved:
+
+| #   | Finding                                     | Verified | Commit     |
+| --- | ------------------------------------------- | -------- | ---------- |
+| 1   | `\|\| true` → explicit exit code handling   | OK       | `2a48d5e3` |
+| 2   | Heredoc shell injection → jq + --notes-file | OK       | `f622cc3c` |
+| 3   | Pre-release version parsing → strip suffix  | OK       | `ce817258` |
+| 4   | Fail-safe threshold < 2 → < 3               | OK       | `d5bfe563` |
+| 5   | argparse import → module level              | OK       | `5c620b00` |
+| 6   | Two-report fail-safe tests added            | OK       | `97e7b7dc` |
+| 7   | Patch override test added                   | OK       | `97e7b7dc` |
+| 8   | .get() → direct key access                  | OK       | `5c620b00` |
+| 9   | Tied non-zero counts test added             | OK       | `97e7b7dc` |
+| 10  | Unquoted $LAST_TAG → quoted                 | OK       | `999dc278` |
+
+### Quality Gates
+
+- **Tests:** All release_consolidator tests pass (2 pre-existing unrelated failures in `test_diagram_extractors` and `test_tui_sessions_view`)
+- **Lint:** Clean (ruff format, ruff check, pyright — 0 errors)
+- **Implementation plan:** All 4 tasks checked
+- **Build checklist:** Fully checked
+- **Deferrals:** None
+
+### New Findings (Round 2)
+
+None critical or important.
+
+#### Suggestions
+
+**11. Residual `.get()` on TypedDict field in `main()`**
+
+**File:** `scripts/release_consolidator.py:217`
+
+`decision.get("needs_human")` uses `.get()` on `ArbiterDecision` TypedDict field. Inconsistent with finding #8's fix that changed all `.get()` to direct key access. Not a bug — `needs_human` is always present.
+
+**Fix (optional):** `decision["needs_human"]`
