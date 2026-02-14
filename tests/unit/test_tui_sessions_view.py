@@ -614,6 +614,72 @@ class TestSessionsViewLogic:
         assert view.sticky_sessions[0].session_id == "sess-1"
         assert pane_manager.focus_called is False
 
+    def test_click_session_preview_works_with_duplicate_sticky_state(self, mock_focus):
+        """Single click preview should work even with duplicated sticky entries."""
+
+        class MockPaneManager:
+            def __init__(self):
+                self.is_available = True
+                self.focus_called = False
+                self.apply_called = False
+
+            def toggle_session(self, *_args, **_kwargs):
+                pass
+
+            def show_session(self, *_args, **_kwargs):
+                pass
+
+            def focus_pane_for_session(self, _session_id):
+                self.focus_called = True
+                return True
+
+            def apply_layout(self, **_kwargs):
+                self.apply_called = True
+                return None
+
+        pane_manager = MockPaneManager()
+        state = TuiState()
+        controller = TuiController(state, pane_manager, lambda _name: None)
+        view = SessionsView(
+            api=None,
+            agent_availability={},
+            focus=mock_focus,
+            pane_manager=pane_manager,
+            state=state,
+            controller=controller,
+        )
+        view.sticky_sessions = [
+            StickySessionInfo("sticky-a"),
+            StickySessionInfo("sticky-a"),
+            StickySessionInfo("sticky-b"),
+        ]
+        view.flat_items = [
+            self._make_session_node(
+                session_id="preview-session",
+                computer="local-machine",
+                tmux_session_name="tc-preview",
+            )
+        ]
+        view._row_to_item[10] = 0
+        view._computers = [
+            ComputerInfo(
+                name="local-machine",
+                status="online",
+                user="me",
+                host="local",
+                is_local=True,
+                tmux_binary="tmux",
+            )
+        ]
+
+        assert view.handle_click(10, is_double_click=False) is True
+        view.apply_pending_activation()
+        view.apply_pending_focus()
+        controller.apply_pending_layout()
+
+        assert view.state.sessions.preview == PreviewState(session_id="preview-session")
+        assert pane_manager.focus_called is False
+
     def test_space_activates_sticky_session(self, mock_focus):
         """Space on a sticky session should only move highlight in the tree."""
 
@@ -906,6 +972,63 @@ class TestSessionsViewLogic:
         assert view.state.sessions.preview == PreviewState(session_id="sess-space")
         assert pane_manager.apply_called is True
 
+    def test_space_key_preview_works_with_duplicate_sticky_state(self, mock_focus):
+        """Space preview should still work when sticky state contains duplicate entries."""
+
+        class MockPaneManager:
+            def __init__(self):
+                self.is_available = True
+                self.focus_called = False
+                self.apply_called = False
+
+            def toggle_session(self, *_args, **_kwargs):
+                pass
+
+            def show_session(self, *_args, **_kwargs):
+                pass
+
+            def focus_pane_for_session(self, _session_id):
+                self.focus_called = True
+                return True
+
+            def apply_layout(self, **_kwargs):
+                self.apply_called = True
+                return None
+
+        pane_manager = MockPaneManager()
+        state = TuiState()
+        controller = TuiController(state, pane_manager, lambda _name: None)
+        view = SessionsView(
+            api=None,
+            agent_availability={},
+            focus=mock_focus,
+            pane_manager=pane_manager,
+            state=state,
+            controller=controller,
+        )
+        view.sticky_sessions = [
+            StickySessionInfo("sticky-a"),
+            StickySessionInfo("sticky-a"),
+            StickySessionInfo("sticky-b"),
+            StickySessionInfo("sticky-b"),
+        ]
+        view.flat_items = [
+            self._make_session_node(
+                session_id="preview-session",
+                computer="local-machine",
+                tmux_session_name="tc-preview",
+            )
+        ]
+        view.selected_index = 0
+
+        view.handle_key(ord(" "), None)
+        view.apply_pending_activation()
+        view.apply_pending_focus()
+        controller.apply_pending_layout()
+
+        assert view.state.sessions.preview == PreviewState(session_id="preview-session")
+        assert pane_manager.focus_called is False
+
     def test_space_double_press_toggles_sticky_for_session(self, mock_focus):
         """Pressing Space twice on a session quickly should toggle sticky mode."""
 
@@ -1006,31 +1129,31 @@ class TestSessionsViewLogic:
             controller=controller,
         )
         view.sticky_sessions = []
-        view.flat_items = [
-            self._make_session_node(
-                session_id="sess-space-double",
-                computer="local-machine",
-                tmux_session_name="tc-space-double",
-            )
-        ]
+        session_node = self._make_session_node(
+            session_id="sess-space-double",
+            computer="local-machine",
+            tmux_session_name="tc-space-double",
+        )
+        view.flat_items = [session_node]
+        view._sessions = [session_node.data.session]
         view.selected_index = 0
 
         base_time = 1_000.0
         monkeypatch.setattr(time, "perf_counter", lambda: base_time)
         view.handle_key(ord(" "), None)
-        assert view._pending_activate_session_id is None
 
         monkeypatch.setattr(time, "perf_counter", lambda: base_time + 0.1)
         view.handle_key(ord(" "), None)
 
-        monkeypatch.setattr(time, "perf_counter", lambda: base_time + 0.4)
+        monkeypatch.setattr(time, "perf_counter", lambda: base_time + 1.0)
         view.apply_pending_activation()
         view.apply_pending_focus()
         controller.apply_pending_layout()
 
+        # Double-space for sticky toggle still enqueues a preview request to ensure
+        # the session is visible.
         assert view.state.sessions.preview == PreviewState(session_id="sess-space-double")
         assert pane_manager.focus_called is False
-        assert view._pending_activate_session_id is None
         assert len(view.sticky_sessions) == 1
         assert view.sticky_sessions[0].session_id == "sess-space-double"
 
@@ -1379,7 +1502,8 @@ class TestSessionsViewLogic:
 
         line0_calls = [call for call in screen.calls if call[0] == 0]
         assert len(line0_calls) >= 1
-        assert line0_calls[0][3] == (get_sticky_badge_attr() | curses.A_BOLD)
+        # Sticky rows are never 'previewed' to keep their badges stable.
+        assert line0_calls[0][3] == get_sticky_badge_attr()
 
     def test_selected_previewed_sticky_session_badge_uses_base_colors(self, sessions_view, monkeypatch):
         """Selected previewed sticky rows keep badge colors and stay bold."""

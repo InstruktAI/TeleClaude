@@ -2043,7 +2043,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         is_headless = status_normalized.startswith("headless") or not session.tmux_session_name
         header_attr = muted_attr if is_headless else normal_attr
 
-        is_previewed = bool(self._preview and self._preview.session_id == session_id)
+        is_previewed = bool(self._preview and self._preview.session_id == session_id and not is_sticky)
         preview_title_attr = highlight_attr if is_previewed else header_attr
         preview_bold_attr = curses.A_BOLD if is_previewed and not is_headless else 0
         if is_previewed:

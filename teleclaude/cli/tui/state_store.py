@@ -7,7 +7,13 @@ import os
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.tui.state import DocStickyInfo, PreviewState, TuiState
+from teleclaude.cli.tui.state import (
+    DocStickyInfo,
+    PreviewState,
+    TuiState,
+    _dedupe_sticky_docs,
+    _dedupe_sticky_sessions,
+)
 from teleclaude.cli.tui.types import StickySessionInfo
 from teleclaude.paths import TUI_STATE_PATH
 
@@ -25,17 +31,19 @@ def load_sticky_state(state: TuiState) -> None:
             data = json.load(f)
 
         sticky_data = data.get("sticky_sessions", [])
-        state.sessions.sticky_sessions = [StickySessionInfo(session_id=item["session_id"]) for item in sticky_data]
+        state.sessions.sticky_sessions = _dedupe_sticky_sessions(
+            [StickySessionInfo(session_id=item["session_id"]) for item in sticky_data]
+        )
 
         sticky_docs = data.get("sticky_docs", [])
-        state.preparation.sticky_previews = [
+        state.preparation.sticky_previews = _dedupe_sticky_docs(
             DocStickyInfo(
                 doc_id=item["doc_id"],
                 command=item["command"],
                 title=item.get("title", ""),
             )
             for item in sticky_docs
-        ]
+        )
         expanded_todos = data.get("expanded_todos", [])
         if isinstance(expanded_todos, list):
             state.preparation.expanded_todos = set(str(item) for item in expanded_todos)

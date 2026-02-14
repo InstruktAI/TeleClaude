@@ -50,3 +50,32 @@ def test_load_ignores_invalid_last_summary_entries(monkeypatch, tmp_path) -> Non
     state_store.load_sticky_state(loaded)
 
     assert loaded.sessions.last_summary == {"ok": "valid"}
+
+
+def test_load_deduplicates_sticky_entries(monkeypatch, tmp_path) -> None:
+    """Duplicate sticky session/doc entries should be collapsed on load."""
+    state_path = tmp_path / "tui_state.json"
+    monkeypatch.setattr(state_store, "TUI_STATE_PATH", state_path)
+
+    state_path.write_text(
+        json.dumps(
+            {
+                "sticky_sessions": [
+                    {"session_id": "sess-a"},
+                    {"session_id": "sess-a"},
+                    {"session_id": "sess-b"},
+                ],
+                "sticky_docs": [
+                    {"doc_id": "doc-1", "command": "cat", "title": "Doc"},
+                    {"doc_id": "doc-1", "command": "cat", "title": "Doc"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = TuiState()
+    state_store.load_sticky_state(loaded)
+
+    assert [s.session_id for s in loaded.sessions.sticky_sessions] == ["sess-a", "sess-b"]
+    assert [d.doc_id for d in loaded.preparation.sticky_previews] == ["doc-1"]
