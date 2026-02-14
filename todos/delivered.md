@@ -50,3 +50,4 @@
 | 2026-02-13 | auto-architecture-diagrams      | Code-generated architecture diagrams via `make diagrams` (6 Mermaid outputs)                                            | DELIVERED | 5c0540ac                                 |
 | 2026-02-13 | telegram-adapter-hardening      | Telegram routing hardening with Law of Demeter metadata boundaries and fail-fast contracts                              | DELIVERED | 26798a9f                                 |
 | 2026-02-14 | role-based-notifications        | Platform-agnostic notification routing subsystem with outbox persistence, PlatformSender protocol, and delivery worker. | DELIVERED | 27c4fbfd                                 |
+| 2026-02-14 | webhook-service                 | Webhook Service                                                                                                         | DELIVERED | 54b70773                                 |

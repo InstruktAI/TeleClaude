@@ -14,10 +14,6 @@
 > Admins additionally observe all sessions via supergroups. Notifications arrive through
 > the same bot identity as conversations (credential unity).
 
-- webhook-service
-
-Bidirectional webhook infrastructure. Outbound: subscribe to event bus events, deliver as HTTP POST callbacks with HMAC-SHA256 signatures, outbox persistence and retry. Inbound: dynamic endpoint registration (`/hooks/{endpoint_id}`), verification challenge support, handler routing. Solves external webhook reception for any platform (WhatsApp, GitHub, etc.) and enables internal event subscriptions without polling.
-
 - help-desk-discord (after: help-desk, role-based-notifications)
 
 Discord UI adapter using discord.py and DiscordSender (PlatformSender impl). Extends IdentityResolver for Snowflake resolution. Forum Threads (Type 15) for session threading. Two entry points: member server and customer server. Shares bot token between adapter and sender.
