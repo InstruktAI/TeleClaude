@@ -31,9 +31,6 @@
   "person-identity-auth-3": [
     "person-identity-auth-2"
   ],
-  "process-noise-reduction": [
-    "release-arbiter"
-  ],
   "release-arbiter": [
     "release-lane-claude",
     "release-lane-codex",
