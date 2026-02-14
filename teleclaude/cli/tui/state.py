@@ -51,7 +51,7 @@ class SessionViewState:
     last_selection_source: str = "system"  # "user" | "pane" | "system"
     last_selection_session_id: str | None = None
     scroll_offset: int = 0
-    selection_method: str = "arrow"  # "arrow" | "click"
+    selection_method: str = "arrow"  # "arrow" | "click" | "pane"
     collapsed_sessions: set[str] = field(default_factory=set)
     sticky_sessions: list[StickySessionInfo] = field(default_factory=list)
     preview: PreviewState | None = None
@@ -136,6 +136,7 @@ class IntentPayload(TypedDict, total=False):
     doc_id: str
     command: str
     title: str
+    focus_preview: bool
     reason: str  # Legacy field, no longer populated - use event_type in AGENT_ACTIVITY intents instead
     event_type: str  # AgentHookEventType: "user_prompt_submit", "tool_use", "tool_done", "agent_stop"
     tool_name: str | None  # Tool name for tool_use events
@@ -320,7 +321,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
 
     if t is IntentType.SET_SELECTION_METHOD:
         method = p.get("method")
-        if method in ("arrow", "click"):
+        if method in ("arrow", "click", "pane"):
             state.sessions.selection_method = method
         return
 

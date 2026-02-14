@@ -203,6 +203,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._space_double_press_guard_until: float | None = None
         self._pending_select_session_id: str | None = None
         self._pending_select_source: str | None = None
+        self._pending_activate_request: Intent | None = None
         self._pending_activate_session_id: str | None = None
         self._pending_activate_at: float | None = None
         self._pending_activate_clear_preview: bool = False
@@ -437,9 +438,12 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                         },
                     )
                 )
+                if source == "pane":
+                    self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "pane"}))
                 if activate:
                     self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
-                    self._schedule_activate_session(item, clear_preview=False)
+                    self._enqueue_preview_request(item, request_focus=True, clear_preview=False)
+                self.controller.apply_layout(focus=False)
                 logger.debug("Selected new session %s at index %d", session_id[:8], idx)
                 return True
         return False
@@ -836,12 +840,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         super().move_up()
         self._sync_selected_session_id(source="user")
         self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "arrow"}))
+        self.controller.apply_layout(focus=False)
 
     def move_down(self) -> None:
         """Move selection down (arrow key navigation)."""
         super().move_down()
         self._sync_selected_session_id(source="user")
         self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "arrow"}))
+        self.controller.apply_layout(focus=False)
 
     def _focus_selected_pane(self) -> None:
         """Focus the pane for currently selected session."""
@@ -962,7 +968,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             self._start_session_for_project(stdscr, item.data)
         elif is_session_node(item):
             # Activate session (same behavior as clicking)
-            self._schedule_activate_session(item)
+            self._enqueue_preview_request(item, request_focus=True)
             logger.trace(
                 "sessions_enter",
                 item_type="session",
@@ -1020,15 +1026,56 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         )
         logger.info("Toggled sticky: %s (total=%d)", session_id[:8], len(self.sticky_sessions))
 
-    def _activate_session(self, item: SessionNode, *, clear_preview: bool = False) -> None:
+    def _preview_activation_request(
+        self,
+        session: SessionInfo,
+        *,
+        request_focus: bool,
+        clear_preview: bool,
+    ) -> Intent:
+        """Create a preview request intent with explicit focus semantics."""
+        return Intent(
+            IntentType.SET_PREVIEW,
+            {
+                "session_id": session.session_id,
+                "active_agent": session.active_agent,
+                "focus_preview": request_focus,
+                "clear_preview": clear_preview,
+            },
+        )
+
+    def _enqueue_preview_request(
+        self,
+        item: SessionNode,
+        *,
+        request_focus: bool,
+        clear_preview: bool = False,
+        min_delay: float = 0.0,
+    ) -> None:
+        """Enqueue a session preview request with explicit focus intent."""
+        self._schedule_activate_session(
+            item,
+            clear_preview=clear_preview,
+            request_focus=request_focus,
+            min_delay=min_delay,
+        )
+
+    def _activate_session(
+        self,
+        item: SessionNode,
+        *,
+        clear_preview: bool = False,
+        request_focus: bool = True,
+    ) -> None:
         """Activate a single session (single-click or Enter from arrows).
 
         Shows the session in preview mode without affecting sticky panes.
-        If session is already sticky, hides the active pane entirely.
+        If session is already sticky and focus is requested, hide the active pane.
 
         Args:
             item: Session node to activate
             clear_preview: Whether to clear preview before activating
+            request_focus: Whether focus/foregrounding is intended for this activation.
         """
         session = item.data.session
         session_id = session.session_id
@@ -1049,7 +1096,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # If session is already sticky, hide active pane (no duplication)
         is_already_sticky = any(sticky.session_id == session_id for sticky in self.sticky_sessions)
-        if is_already_sticky:
+        if is_already_sticky and request_focus:
             logger.info(
                 "_activate_session: session %s ALREADY STICKY, hiding active pane",
                 session_id[:8],
@@ -1061,9 +1108,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if clear_preview and self._preview:
             self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
         self.controller.dispatch(
-            Intent(
-                IntentType.SET_PREVIEW,
-                {"session_id": session_id, "active_agent": session.active_agent},
+            self._preview_activation_request(
+                session,
+                request_focus=request_focus,
+                clear_preview=clear_preview,
             ),
             defer_layout=True,
         )
@@ -1083,6 +1131,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         """Defer activation so selection is rendered immediately."""
         session = item.data.session
         session_id = session.session_id
+        self._pending_activate_request = self._preview_activation_request(
+            session,
+            request_focus=request_focus,
+            clear_preview=clear_preview,
+        )
+        self._pending_activate_session_id = session_id
+        self._pending_activate_clear_preview = clear_preview
+        self._pending_activate_focus = request_focus
         is_headless = session.status == "headless" or not session.tmux_session_name
         # Headless sessions bypass readiness check - _activate_session handles revival
         if not is_headless and not self._is_session_ready_for_preview(session):
@@ -1090,22 +1146,27 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 if self.notify:
                     self.notify("Spawning new session...", NotificationLevel.INFO)
                 self._pending_ready_session_id = session_id
+            self._pending_activate_at = None
             return
         if is_headless and self.notify:
             self.notify("Adopting headless session...", NotificationLevel.INFO)
         if self._pending_ready_session_id == session_id:
             self._pending_ready_session_id = None
-        self._pending_activate_focus = request_focus
-        self._pending_activate_session_id = session_id
-        self._pending_activate_clear_preview = clear_preview
         self._pending_activate_at = time.perf_counter() + max(0.0, min_delay)
 
     def _clear_pending_activation(self) -> None:
-        """Clear deferred activation state."""
+        """Clear deferred activation and focus intents.
+
+        This keeps tree interactions like click or space as non-activating:
+        they should only update selection/preview state, not steal input focus.
+        """
         self._pending_activate_session_id = None
+        self._pending_activate_request = None
         self._pending_activate_clear_preview = False
         self._pending_activate_focus = True
         self._pending_activate_at = None
+        self._pending_focus_session_id = None
+        self._pending_ready_session_id = None
 
     def _is_space_double_press_guarded(self, session_id: str, now: float) -> bool:
         """Return True if a recent double-space guard blocks repeated immediate activation."""
@@ -1125,23 +1186,90 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._space_double_press_guard_session_id = session_id
         self._space_double_press_guard_until = now + self._space_double_press_threshold
 
+    def _handle_space_preview_input(self, selected: SessionNode, *, now: float | None = None) -> None:
+        """Handle a Space-like activation gesture on a selected session.
+
+        Single call schedules non-focusing preview.
+        Back-to-back calls within threshold toggle sticky state.
+        """
+        if now is None:
+            now = time.perf_counter()
+        session_id = selected.data.session.session_id
+        if self._is_space_double_press_guarded(session_id, now):
+            logger.debug("handle_space_preview_input: guard active for %s", session_id[:8])
+            return
+        if (
+            self._last_space_session_id == session_id
+            and self._last_space_press_time is not None
+            and now - self._last_space_press_time < self._space_double_press_threshold
+        ):
+            logger.debug(
+                "handle_space_preview_input: double-press detected, toggling sticky for %s",
+                session_id[:8],
+            )
+            self._last_space_session_id = None
+            self._last_space_press_time = None
+            self._mark_space_double_press_guard(session_id, now)
+            self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
+            self._toggle_sticky(
+                session_id,
+                active_agent=selected.data.session.active_agent,
+                clear_preview=False,
+            )
+            # Keep preview active while entering sticky mode so click/double-space
+            # behavior and space-space behavior are aligned.
+            self._enqueue_preview_request(
+                selected,
+                request_focus=False,
+                clear_preview=False,
+                min_delay=0.0,
+            )
+            return
+
+        self._last_space_press_time = now
+        self._last_space_session_id = session_id
+        self._clear_pending_activation()
+        self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
+        self._enqueue_preview_request(
+            selected,
+            request_focus=False,
+            clear_preview=False,
+            min_delay=0.0,
+        )
+
     def apply_pending_activation(self) -> None:
         """Apply any deferred activation once per loop tick."""
-        target = self._pending_activate_session_id
+        request = self._pending_activate_request
+        if not request:
+            return
+        target = request.payload.get("session_id")
+        if not target:
+            self._clear_pending_activation()
+            return
+        request_focus = bool(request.payload.get("focus_preview", self._pending_activate_focus))
+        clear_preview = bool(request.payload.get("clear_preview", self._pending_activate_clear_preview))
+        target = str(target)
         if not target:
             return
+        if self._pending_ready_session_id == target:
+            selected_session = next((s for s in self._sessions if s.session_id == target), None)
+            if not selected_session or not self._is_session_ready_for_preview(selected_session):
+                return
         if self._pending_activate_at is not None and time.perf_counter() < self._pending_activate_at:
             return
-        request_focus = self._pending_activate_focus
-        clear_preview = self._pending_activate_clear_preview
         self._pending_activate_session_id = None
+        self._pending_activate_request = None
         self._pending_activate_clear_preview = False
         self._pending_activate_focus = True
         self._pending_activate_at = None
 
         for item in self.flat_items:
             if is_session_node(item) and item.data.session.session_id == target:
-                self._activate_session(item, clear_preview=clear_preview)
+                self._activate_session(
+                    item,
+                    clear_preview=clear_preview,
+                    request_focus=request_focus,
+                )
                 if request_focus:
                     self._queue_focus_session(target)
                 return
@@ -1166,12 +1294,22 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return
         if self.state.sessions.selected_session_id != session_id:
             return
+        request_focus = self._pending_activate_focus
+        clear_preview = self._pending_activate_clear_preview
+        request = self._pending_activate_request
+        if request and request.payload.get("session_id") == session_id:
+            request_focus = bool(request.payload.get("focus_preview", request_focus))
+            clear_preview = bool(request.payload.get("clear_preview", clear_preview))
         session = next((s for s in self._sessions if s.session_id == session_id), None)
         if not session or not self._is_session_ready_for_preview(session):
             return
         for item in self.flat_items:
             if is_session_node(item) and item.data.session.session_id == session_id:
-                self._schedule_activate_session(item, clear_preview=False)
+                self._enqueue_preview_request(
+                    item,
+                    clear_preview=clear_preview,
+                    request_focus=request_focus,
+                )
                 return
 
     def _toggle_session_pane(self, item: SessionNode) -> None:
@@ -1408,50 +1546,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # A second quick Space toggles sticky for that session.
             if is_session_node(selected):
                 logger.debug("handle_key: space preview for session")
-                now = time.perf_counter()
-                session_id = selected.data.session.session_id
-                if self._is_space_double_press_guarded(session_id, now):
-                    logger.debug("handle_key: space guard active for %s", session_id[:8])
-                    return
-                if (
-                    self._last_space_session_id == session_id
-                    and self._last_space_press_time is not None
-                    and now - self._last_space_press_time < self._space_double_press_threshold
-                ):
-                    logger.debug(
-                        "handle_key: space double-press detected, toggling sticky for %s",
-                        session_id[:8],
-                    )
-                    self._last_space_session_id = None
-                    self._last_space_press_time = None
-                    self._clear_pending_activation()
-                    if self._pending_ready_session_id == session_id:
-                        self._pending_ready_session_id = None
-                    self._mark_space_double_press_guard(session_id, now)
-                    self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
-                    self._toggle_sticky(session_id, active_agent=selected.data.session.active_agent, clear_preview=True)
-                    return
-
-                self._last_space_press_time = now
-                self._last_space_session_id = session_id
-                self._clear_pending_activation()
-                is_sticky = any(
-                    sticky.session_id == selected.data.session.session_id for sticky in self.sticky_sessions
-                )
-                if is_sticky:
-                    # Avoid layout churn with sticky sessions; keep visible state unchanged.
-                    logger.debug(
-                        "handle_key: skip preview for sticky session (%s) via space",
-                        selected.data.session.session_id[:8],
-                    )
-                    return
-                self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
-                self._schedule_activate_session(
-                    selected,
-                    clear_preview=False,
-                    request_focus=False,
-                    min_delay=self._space_double_press_threshold,
-                )
+                self._handle_space_preview_input(selected, now=time.perf_counter())
             else:
                 logger.debug("handle_key: ' ' ignored, not on a session")
             return
@@ -1500,9 +1595,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     def handle_click(self, screen_row: int, is_double_click: bool = False) -> bool:
         """Handle mouse click at screen row.
 
-        Single click: Select and activate session
-        Double click on title: Toggle sticky with parent + child
-        Double click on ID line: Toggle sticky with parent only
+        Single click: Select session row and update preview context without focus shift.
+        Double click on title: Toggle sticky with parent + child.
+        Double click on ID line: Toggle sticky with parent only.
 
         Args:
             screen_row: The screen row that was clicked
@@ -1527,7 +1622,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if is_double_click and is_session_node(item):
             self._clear_pending_activation()
             session_id = item.data.session.session_id
-            self._toggle_sticky(session_id, active_agent=item.data.session.active_agent, clear_preview=True)
             logger.debug("Double-click: toggled sticky for %s", session_id[:8])
 
             logger.trace(
@@ -1539,22 +1633,22 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # Select the item but don't activate (sticky toggle is the action)
             self._select_index(item_idx, source="user")
             self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
+            self.controller.apply_layout(focus=False)
+            now = time.perf_counter()
+            self._handle_space_preview_input(item, now=now)
+            self._handle_space_preview_input(item, now=now)
             return True
 
-        # SINGLE CLICK - select and activate (preview lane) or highlight sticky (sticky lane)
+        # SINGLE CLICK - select and update preview context only.
         self._select_index(item_idx, source="user")
         self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
         self._clear_pending_activation()
+        self.controller.apply_layout(focus=False)
 
         # Keep click in tree-only mode; activation/focus remains explicit (Enter/space).
         if is_session_node(item):
-            # Don't trigger preview activation on click; maintain selection highlight only.
-            # Keep focus in the tree after click; preview updates are reflected
-            # by re-rendering the selected row instead.
-            # Don't clear preview here — the layout change causes a visible
-            # screen jump.  The preview pane will be replaced naturally on
-            # the next non-sticky activation.
-            pass
+            now = time.perf_counter()
+            self._handle_space_preview_input(item, now=now)
 
         logger.trace(
             "sessions_click",
@@ -1956,7 +2050,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if child_indent:
                 stdscr.addstr(row, col, child_indent, header_attr)  # type: ignore[attr-defined]
                 col += len(child_indent)
-            selected_idx_attr = selected_header_attr
+            selected_idx_attr = (
+                curses.A_REVERSE | selected_header_attr
+                if selected and is_sticky and sticky_position is not None
+                else selected_header_attr
+            )
             stdscr.addstr(row, col, idx_text, idx_attr if not selected else selected_idx_attr)  # type: ignore[attr-defined]
             col += len(idx_text)
             agent_part = f" {collapse_indicator} {agent}/{mode}"

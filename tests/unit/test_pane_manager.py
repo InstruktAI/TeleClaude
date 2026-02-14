@@ -84,15 +84,34 @@ def test_set_pane_background_keeps_constant_fg_across_focus():
     with (
         patch.object(manager, "_run_tmux", mock_run),
         patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
+        patch.object(theme, "get_agent_pane_active_background", return_value="#000000"),
         patch.object(theme, "get_agent_highlight_color", return_value=222),
-        patch.object(theme, "get_current_mode", return_value=True),
-        patch.object(theme, "get_terminal_background", return_value="#000000"),
     ):
         manager._set_pane_background("%9", "tc_test", "claude")
 
     style_calls = [call.args for call in mock_run.call_args_list if call.args[:4] == ("set", "-p", "-t", "%9")]
     assert ("set", "-p", "-t", "%9", "window-style", "fg=colour222,bg=#101010") in style_calls
     assert ("set", "-p", "-t", "%9", "window-active-style", "fg=colour222,bg=#000000") in style_calls
+
+
+def test_set_pane_background_uses_selected_haze_for_tree_selection():
+    """Selected tree sessions should use the lighter tree selection haze."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    mock_run = Mock(return_value="")
+    with (
+        patch.object(manager, "_run_tmux", mock_run),
+        patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
+        patch.object(theme, "get_agent_pane_selected_background", return_value="#060606") as get_selected,
+        patch.object(theme, "get_agent_highlight_color", return_value=222),
+    ):
+        manager._set_pane_background("%9", "tc_test", "claude", is_tree_selected=True)
+
+    style_calls = [call.args for call in mock_run.call_args_list if call.args[:4] == ("set", "-p", "-t", "%9")]
+    assert ("set", "-p", "-t", "%9", "window-style", "fg=colour222,bg=#060606") in style_calls
+    assert get_selected.call_count == 1
 
 
 def test_doc_pane_background_is_applied_for_non_session_specs():
@@ -134,7 +153,7 @@ def test_reapply_agent_colors_fallback_styles_tracked_session_panes():
     ):
         manager.reapply_agent_colors()
 
-    set_session_bg.assert_called_once_with("%77", "tc_sid-1", "claude")
+    set_session_bg.assert_called_once_with("%77", "tc_sid-1", "claude", is_tree_selected=False)
 
 
 def test_set_tui_pane_background_sets_neutral_window_border_styles():
@@ -156,3 +175,51 @@ def test_set_tui_pane_background_sets_neutral_window_border_styles():
     assert ("set", "-p", "-t", "%1", "window-active-style", "fg=default,bg=#fdf6e3") in calls
     assert ("set", "-w", "-t", "%1", "pane-border-style", "fg=#e8e2d0,bg=#e8e2d0") in calls
     assert ("set", "-w", "-t", "%1", "pane-active-border-style", "fg=#e8e2d0,bg=#e8e2d0") in calls
+
+
+def test_render_layout_split_windows_do_not_capture_focus_with_d_flag():
+    """Pane splits used for layout updates should keep focus in the TUI pane."""
+
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    manager._session_catalog = {
+        "sess-active": SimpleNamespace(
+            session_id="sess-active", tmux_session_name="tc-active", active_agent="claude", computer="local"
+        ),
+        "sess-sticky": SimpleNamespace(
+            session_id="sess-sticky", tmux_session_name="tc-sticky", active_agent="gpt-4", computer="local"
+        ),
+    }
+
+    split_calls = 0
+
+    def run_tmux_with_ids(*args):
+        nonlocal split_calls
+        if args and args[0] == "split-window":
+            split_calls += 1
+            return f"%{split_calls + 9}"
+        return ""
+
+    mock_run = Mock(side_effect=run_tmux_with_ids)
+    with (
+        patch.object(manager, "_run_tmux", mock_run),
+        patch.object(manager, "_get_pane_exists", return_value=True),
+        patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
+        patch.object(theme, "get_agent_pane_active_background", return_value="#000000"),
+        patch.object(theme, "get_agent_highlight_color", return_value=15),
+        patch.object(theme, "get_tui_inactive_background", return_value="#e8e2d0"),
+        patch.object(theme, "get_terminal_background", return_value="#fbf8f1"),
+    ):
+        manager.apply_layout(
+            active_session_id="sess-active",
+            sticky_session_ids=["sess-sticky"],
+            get_computer_info=lambda _computer: None,
+            selected_session_id="sess-active",
+            tree_node_has_focus=True,
+        )
+
+    split_windows = [call.args for call in mock_run.call_args_list if call.args and call.args[0] == "split-window"]
+    assert split_windows, "expected layout to split at least one window"
+    assert all("-d" in args for args in split_windows)

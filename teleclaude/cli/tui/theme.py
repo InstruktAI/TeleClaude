@@ -427,17 +427,18 @@ _AGENT_HEX_COLORS_LIGHT: dict[str, str] = {
 # Soft paper baseline for light mode fallbacks (friendlier than pure white).
 _LIGHT_MODE_PAPER_BG = "#fdf6e3"
 
-# Configurable haze percentages (0.0 to 1.0)
-# Tuned values for muted visual layering.
-# Inactive session/preview pane background: 6% agent color, 94% base color.
-_HAZE_PERCENTAGE = 0.06
-# Active pane background: no haze
-_ACTIVE_HAZE_PERCENTAGE = 0.0
+# Configurable haze percentages (0.0 to 1.0) per UI state.
+# Agent preview pane states:
+_AGENT_PANE_INACTIVE_HAZE_PERCENTAGE = 0.12
+_AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE = 0.06
+_AGENT_PANE_ACTIVE_HAZE_PERCENTAGE = 0.0
 
-# Status-like background accents when used: 6% agent color, 94% base color (subtle)
-_STATUS_HAZE_PERCENTAGE = 0.06
-# TUI pane inactive haze kept softer than session/preview pane haze.
-_TUI_INACTIVE_HAZE_PERCENTAGE = 0.06
+# Status-like background accents:
+_AGENT_STATUS_HAZE_PERCENTAGE = 0.06
+
+# TUI pane inactive haze, split out for mode-specific tuning.
+_TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT = 0.06
+_TUI_INACTIVE_HAZE_PERCENTAGE_DARK = 0.12
 # Terminal background hint weight: keep TUI palette stable while honoring terminal tone.
 _TERMINAL_HINT_WEIGHT = 0.35
 # Guardrails to reject hints that conflict with the current mode.
@@ -543,7 +544,7 @@ def blend_colors(base_hex: str, agent_hex: str, percentage: float) -> str:
     return _rgb_to_hex(blended_r, blended_g, blended_b)
 
 
-def get_agent_pane_inactive_background(agent: str) -> str:
+def get_agent_pane_inactive_background(agent: str, haze_percentage: float | None = None) -> str:
     """Get background color for an agent's inactive pane with configurable haze.
 
     Blends the agent's color with the base inactive background color
@@ -552,8 +553,10 @@ def get_agent_pane_inactive_background(agent: str) -> str:
     Args:
         agent: Agent name ("claude", "gemini", "codex", or unknown)
 
+    haze_percentage: Blend percentage (0.0–1.0); defaults to inactive haze.
+
     Returns:
-        Hex color string for tmux window-style background
+        Hex color string for tmux window-style background.
     """
     if _is_dark_mode:
         agent_colors = _AGENT_HEX_COLORS_DARK
@@ -562,7 +565,26 @@ def get_agent_pane_inactive_background(agent: str) -> str:
     base_bg = get_terminal_background()
 
     agent_color = agent_colors[agent]
-    return blend_colors(base_bg, agent_color, _HAZE_PERCENTAGE)
+    percentage = _AGENT_PANE_INACTIVE_HAZE_PERCENTAGE if haze_percentage is None else haze_percentage
+    return blend_colors(base_bg, agent_color, percentage)
+
+
+def get_agent_pane_selected_background(agent: str) -> str:
+    """Get background color for a selected tree row without focus.
+
+    Uses a lighter haze to preserve strong contrast with neighboring inactive
+    panes while staying in the muted preview palette.
+    """
+    return get_agent_pane_inactive_background(agent, haze_percentage=_AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE)
+
+
+def get_agent_pane_active_background(agent: str) -> str:
+    """Get background color for an active pane (no haze).
+
+    Uses a 0% haze blend for terminal-accurate active styling so foreground
+    remains independent from inactive/selected preview treatment.
+    """
+    return get_agent_pane_inactive_background(agent, haze_percentage=_AGENT_PANE_ACTIVE_HAZE_PERCENTAGE)
 
 
 def get_agent_status_background(agent: str) -> str:
@@ -584,7 +606,7 @@ def get_agent_status_background(agent: str) -> str:
     base_bg = get_terminal_background()
 
     agent_color = agent_colors[agent]
-    return blend_colors(base_bg, agent_color, _STATUS_HAZE_PERCENTAGE)
+    return blend_colors(base_bg, agent_color, _AGENT_STATUS_HAZE_PERCENTAGE)
 
 
 def get_agent_highlight_color(agent: str) -> int:
@@ -664,7 +686,9 @@ def get_tui_inactive_background() -> str:
     base_bg = get_terminal_background()
     blend_target = "#ffffff" if _is_dark_mode else "#000000"
     return blend_colors(
-        base_bg, blend_target, _TUI_INACTIVE_HAZE_PERCENTAGE * 2 if _is_dark_mode else _TUI_INACTIVE_HAZE_PERCENTAGE
+        base_bg,
+        blend_target,
+        _TUI_INACTIVE_HAZE_PERCENTAGE_DARK if _is_dark_mode else _TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT,
     )
 
 

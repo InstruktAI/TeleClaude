@@ -27,6 +27,8 @@ class LayoutState:
     sticky_session_ids: list[str]
     active_doc_preview: DocPreviewState | None
     sticky_doc_previews: list[DocStickyInfo]
+    selected_session_id: str | None
+    tree_node_has_focus: bool
 
 
 class TuiController:
@@ -111,6 +113,8 @@ class TuiController:
             get_computer_info=self._get_computer_info,
             active_doc_preview=layout.active_doc_preview,
             sticky_doc_previews=layout.sticky_doc_previews,
+            selected_session_id=layout.selected_session_id,
+            tree_node_has_focus=layout.tree_node_has_focus,
             focus=focus,
         )
 
@@ -128,9 +132,13 @@ class TuiController:
         sticky_session_ids = [s.session_id for s in self.state.sessions.sticky_sessions]
         active_doc_preview = self.state.preparation.preview
         sticky_doc_previews = list(self.state.preparation.sticky_previews)
+        selection_method = self.state.sessions.selection_method
+        tree_node_has_focus = selection_method in ("arrow", "click")
         return LayoutState(
             active_session_id=active_session_id,
             sticky_session_ids=sticky_session_ids,
             active_doc_preview=active_doc_preview,
             sticky_doc_previews=sticky_doc_previews,
+            selected_session_id=self.state.sessions.selected_session_id,
+            tree_node_has_focus=tree_node_has_focus,
         )

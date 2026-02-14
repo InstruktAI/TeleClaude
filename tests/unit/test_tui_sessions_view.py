@@ -592,12 +592,13 @@ class TestSessionsViewLogic:
         view.flat_items = [session]
 
         view._row_to_item[10] = 0
-        # First click - single click selects only (no sticky activation).
+        # First click should select and preview, while keeping focus in the tree.
         assert view.handle_click(10, is_double_click=False) is True
         view.apply_pending_activation()
         controller.apply_pending_layout()
         assert view.selected_index == 0
-        assert pane_manager.show_session_called is False
+        assert view.state.sessions.preview is not None
+        assert view.state.sessions.preview.session_id == "sess-1"
         assert pane_manager.focus_called is False
 
         # Second click as double-click
@@ -723,6 +724,8 @@ class TestSessionsViewLogic:
         assert view.selected_index == 0
         assert pane_manager.focus_called is False
         assert pane_manager.toggle_called is False
+        assert view.state.sessions.preview is not None
+        assert view.state.sessions.preview.session_id == "sess-space"
         assert pane_manager.apply_called is True
 
     def test_space_double_press_toggles_sticky_for_session(self, mock_focus):
@@ -775,19 +778,22 @@ class TestSessionsViewLogic:
         # Simulate a fast second press like a double-click.
         view._last_space_press_time = time.perf_counter() - 0.1
         view.handle_key(ord(" "), None)
+        view.apply_pending_activation()
+        view.apply_pending_focus()
         controller.apply_pending_layout()
 
         assert view._pending_activate_session_id is None
         assert view._pending_activate_at is None
         assert len(view.sticky_sessions) == 1
         assert view.sticky_sessions[0].session_id == "sess-space-double"
-        assert pane_manager.show_session_called is False
+        assert view.state.sessions.preview is not None
+        assert view.state.sessions.preview.session_id == "sess-space-double"
         assert pane_manager.focus_called is False
         assert pane_manager.apply_called is True
         assert view.selected_index == 0
 
-    def test_double_space_press_does_not_activate_preview(self, monkeypatch, mock_focus):
-        """Double Space should not activate preview within the sticky threshold."""
+    def test_double_space_press_previews_and_toggles_sticky(self, monkeypatch, mock_focus):
+        """Double space should preview first, then toggle sticky."""
 
         class MockPaneManager:
             def __init__(self):
@@ -845,7 +851,8 @@ class TestSessionsViewLogic:
         view.apply_pending_focus()
         controller.apply_pending_layout()
 
-        assert pane_manager.show_session_called is False
+        assert view.state.sessions.preview is not None
+        assert view.state.sessions.preview.session_id == "sess-space-double"
         assert pane_manager.focus_called is False
         assert view._pending_activate_session_id is None
         assert len(view.sticky_sessions) == 1
@@ -911,7 +918,8 @@ class TestSessionsViewLogic:
         view.apply_pending_focus()
         controller.apply_pending_layout()
 
-        assert pane_manager.show_session_called is False
+        assert view.state.sessions.preview is not None
+        assert view.state.sessions.preview.session_id == "sess-space-guard"
         assert pane_manager.focus_called is False
         assert view._pending_activate_session_id is None
         assert len(view.sticky_sessions) == 1

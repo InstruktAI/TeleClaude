@@ -115,6 +115,8 @@ class TmuxPaneManager:
         self._in_tmux = bool(os.environ.get("TMUX"))
         self._sticky_specs: list[SessionPaneSpec] = []
         self._active_spec: SessionPaneSpec | None = None
+        self._selected_session_id: str | None = None
+        self._tree_node_has_focus: bool = False
         self._layout_signature: tuple[object, ...] | None = None
         self._session_catalog: dict[str, "SessionInfo"] = {}
         # Store our own pane ID for reference
@@ -139,12 +141,16 @@ class TmuxPaneManager:
         get_computer_info: Callable[[str], ComputerInfo | None],
         active_doc_preview: "DocPreviewState | None" = None,
         sticky_doc_previews: list["DocStickyInfo"] | None = None,
+        selected_session_id: str | None = None,
+        tree_node_has_focus: bool = False,
         focus: bool = True,
     ) -> None:
         """Apply a deterministic layout from session ids."""
         if not self._in_tmux:
             return
         sticky_doc_previews = sticky_doc_previews or []
+        self._selected_session_id = selected_session_id
+        self._tree_node_has_focus = tree_node_has_focus
 
         sticky_specs: list[SessionPaneSpec] = []
         for session_id in sticky_session_ids:
@@ -207,6 +213,7 @@ class TmuxPaneManager:
             self._sync_sticky_mappings()
             if not active_spec:
                 self._clear_active_state_if_sticky()
+            self._refresh_session_pane_backgrounds()
             self._set_tui_pane_background()
             return
 
@@ -536,6 +543,29 @@ class TmuxPaneManager:
             self.state.parent_spec_id = None
             self.state.parent_pane_id = None
 
+    def _refresh_session_pane_backgrounds(self) -> None:
+        """Refresh pane backgrounds for all tracked session panes."""
+        if not self._in_tmux:
+            return
+
+        for session_id, pane_id in self.state.session_to_pane.items():
+            if not self._get_pane_exists(pane_id):
+                continue
+            if session_id.startswith("doc:"):
+                self._set_doc_pane_background(pane_id)
+                continue
+
+            session = self._session_catalog.get(session_id)
+            if not session or not session.tmux_session_name:
+                continue
+
+            self._set_pane_background(
+                pane_id,
+                session.tmux_session_name,
+                session.active_agent,
+                is_tree_selected=self._is_tree_selected_session(session_id),
+            )
+
     def _update_active_pane(self, active_spec: SessionPaneSpec) -> None:
         """Swap the active pane content without rebuilding layout."""
         if not self._in_tmux:
@@ -557,7 +587,10 @@ class TmuxPaneManager:
 
         if active_spec.tmux_session_name:
             self._set_pane_background(
-                self.state.parent_pane_id, active_spec.tmux_session_name, active_spec.active_agent
+                self.state.parent_pane_id,
+                active_spec.tmux_session_name,
+                active_spec.active_agent,
+                is_tree_selected=self._is_tree_selected_session(active_spec.session_id),
             )
         else:
             self._set_doc_pane_background(self.state.parent_pane_id)
@@ -612,6 +645,7 @@ class TmuxPaneManager:
                 split_args = ["-t", self._tui_pane_id, "-h"]
                 if layout.cols == 2 and total_panes <= 3:
                     split_args.extend(["-p", "60"])
+                split_args.append("-d")
                 pane_id = self._run_tmux(
                     "split-window",
                     *split_args,
@@ -626,6 +660,7 @@ class TmuxPaneManager:
                     "-t",
                     col_top_panes[col - 1] or "",
                     "-h",
+                    "-d",
                     "-P",
                     "-F",
                     "#{pane_id}",
@@ -655,6 +690,7 @@ class TmuxPaneManager:
                     "-t",
                     target_pane,
                     "-v",
+                    "-d",
                     "-P",
                     "-F",
                     "#{pane_id}",
@@ -683,26 +719,44 @@ class TmuxPaneManager:
 
         # Apply explicit pane styling so panes never inherit stale colors.
         if spec.tmux_session_name:
-            self._set_pane_background(pane_id, spec.tmux_session_name, spec.active_agent)
+            self._set_pane_background(
+                pane_id,
+                spec.tmux_session_name,
+                spec.active_agent,
+                is_tree_selected=self._is_tree_selected_session(spec.session_id),
+            )
         else:
             self._set_doc_pane_background(pane_id)
 
-    def _set_pane_background(self, pane_id: str, tmux_session_name: str, agent: str) -> None:
+    def _is_tree_selected_session(self, session_id: str) -> bool:
+        """Return True if this session row should get the lighter tree-selected haze."""
+        return (
+            self._tree_node_has_focus
+            and self._selected_session_id is not None
+            and session_id == self._selected_session_id
+        )
+
+    def _set_pane_background(
+        self, pane_id: str, tmux_session_name: str, agent: str, *, is_tree_selected: bool = False
+    ) -> None:
         """Set per-pane colors and keep embedded tmux status bar hidden.
 
         Args:
             pane_id: Tmux pane ID
             tmux_session_name: Tmux session name
             agent: Agent name for color calculation
+            is_tree_selected: Use lighter haze when the tree focus selected row matches.
         """
         # Inactive pane should communicate state through background haze only.
-        bg_color = theme.get_agent_pane_inactive_background(agent)
+        if is_tree_selected:
+            bg_color = theme.get_agent_pane_selected_background(agent)
+        else:
+            bg_color = theme.get_agent_pane_inactive_background(agent)
         pane_fg_color_code = theme.get_agent_highlight_color(agent)
         self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg=colour{pane_fg_color_code},bg={bg_color}")
 
-        # Use explicit terminal background for active pane.
-        # `bg=default` inherits `window-style` in tmux, so it would keep haze.
-        terminal_bg = theme.get_terminal_background()
+        # Use explicit active pane background (no haze) to avoid inheriting window-style haze.
+        terminal_bg = theme.get_agent_pane_active_background(agent)
         self._run_tmux(
             "set",
             "-p",
@@ -772,7 +826,12 @@ class TmuxPaneManager:
             if not pane_id or not self._get_pane_exists(pane_id):
                 continue
             if spec.tmux_session_name:
-                self._set_pane_background(pane_id, spec.tmux_session_name, spec.active_agent)
+                self._set_pane_background(
+                    pane_id,
+                    spec.tmux_session_name,
+                    spec.active_agent,
+                    is_tree_selected=self._is_tree_selected_session(spec.session_id),
+                )
             else:
                 self._set_doc_pane_background(pane_id)
             reapplied_panes.add(pane_id)
@@ -783,7 +842,10 @@ class TmuxPaneManager:
             if pane_id and self._get_pane_exists(pane_id):
                 if self._active_spec.tmux_session_name:
                     self._set_pane_background(
-                        pane_id, self._active_spec.tmux_session_name, self._active_spec.active_agent
+                        pane_id,
+                        self._active_spec.tmux_session_name,
+                        self._active_spec.active_agent,
+                        is_tree_selected=self._is_tree_selected_session(self._active_spec.session_id),
                     )
                 else:
                     self._set_doc_pane_background(pane_id)
@@ -798,7 +860,12 @@ class TmuxPaneManager:
                 continue
             session = self._session_catalog.get(session_id)
             if session and session.tmux_session_name:
-                self._set_pane_background(pane_id, session.tmux_session_name, session.active_agent)
+                self._set_pane_background(
+                    pane_id,
+                    session.tmux_session_name,
+                    session.active_agent,
+                    is_tree_selected=self._is_tree_selected_session(session_id),
+                )
 
     def _build_pane_command(self, spec: SessionPaneSpec) -> str:
         """Build the command used to populate a pane."""
