@@ -1,8 +1,8 @@
 {
-  "phase": "in_progress",
+  "phase": "complete",
   "build": "complete",
   "review": "approved",
-  "deferrals_processed": false,
+  "deferrals_processed": true,
   "breakdown": {
     "assessed": true,
     "todos": []

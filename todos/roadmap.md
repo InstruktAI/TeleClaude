@@ -14,10 +14,6 @@
 > Admins additionally observe all sessions via supergroups. Notifications arrive through
 > the same bot identity as conversations (credential unity).
 
-- help-desk-discord (after: help-desk, role-based-notifications)
-
-Discord UI adapter using discord.py and DiscordSender (PlatformSender impl). Extends IdentityResolver for Snowflake resolution. Forum Threads (Type 15) for session threading. Two entry points: member server and customer server. Shares bot token between adapter and sender.
-
 - config-visual-polish (after: telec-config-interactive)
 
 Animated visual polish for the config menu and onboarding wizard. Reuse the banner animation system with continuous animations running during config editing. Section-aware theming, progress-driven visual evolution, celebration on successful validation. Makes onboarding joyful instead of tedious.
