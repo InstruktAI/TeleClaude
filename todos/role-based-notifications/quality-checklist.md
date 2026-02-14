@@ -31,3 +31,13 @@ Ownership:
 - [x] No unjustified deferrals
 - [x] Commit hygiene verified
 - [x] Code follows project patterns and conventions
+
+## Finalize Gates (Finalizer)
+
+- [x] Review verdict is APPROVE
+- [x] Implementation plan tasks are fully checked
+- [x] Requirements acceptance criteria verified
+- [x] Build and Review gates remain fully checked
+- [x] Lint and unit tests verified during finalize
+- [x] Delivered log updated
+- [x] Roadmap updated
