@@ -70,6 +70,68 @@ jobs:
           name: claude-report
           path: claude-report.json
 
+  codex-lane:
+    name: Codex Release Lane
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare Analysis Context
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "LAST_TAG=$LAST_TAG" >> $GITHUB_ENV
+          if [ -n "$LAST_TAG" ]; then
+            git diff "$LAST_TAG"..HEAD > release-diff.txt
+          else
+            git ls-files > release-diff.txt
+          fi
+
+      - name: Run Codex Inspector
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: |
+            You are a Meticulous Release Inspector for the TeleClaude project.
+
+            Read the following files to understand your task:
+            1. docs/project/spec/release-inspector-prompt.md — your full instructions
+            2. docs/project/spec/release-report-schema.md — the JSON schema your output must match
+
+            Read the public surface manifests:
+            3. docs/project/spec/telec-cli-surface.md
+            4. docs/project/spec/mcp-tool-surface.md
+            5. docs/project/spec/event-vocabulary.md
+            6. docs/project/spec/teleclaude-config.md
+
+            Read the diff to analyze:
+            7. release-diff.txt
+
+            Follow the release inspector prompt instructions exactly.
+            Classify the changes as "patch", "minor", or "none" per Semver 0.x policy.
+            Return ONLY valid JSON matching the release-report-schema. No markdown fences, no extra text.
+          output-file: codex-report.json
+          sandbox: read-only
+
+      - name: Validate Report
+        run: |
+          if [ ! -f codex-report.json ]; then
+            echo "ERROR: codex-report.json was not created"
+            exit 1
+          fi
+          jq empty codex-report.json
+          echo "Report is valid JSON"
+          jq . codex-report.json
+
+      - name: Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-report
+          path: codex-report.json
+
   release-analysis:
     name: AI Release Analysis (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -168,7 +230,7 @@ jobs:
 
   release-arbitration:
     name: Consensus Arbiter
-    needs: [claude-lane, release-analysis]
+    needs: [claude-lane, codex-lane, release-analysis]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -176,6 +238,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: claude-report
+      - name: Download Codex report
+        uses: actions/download-artifact@v4
+        with:
+          name: codex-report
       - name: Download other reports
         uses: actions/download-artifact@v4
         with:
