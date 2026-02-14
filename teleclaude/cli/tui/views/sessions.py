@@ -1005,12 +1005,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 )
         return None
 
-    def _toggle_sticky(self, session_id: str, *, active_agent: str | None = None, clear_preview: bool = False) -> None:
+    def _toggle_sticky(self, session_id: str, *, active_agent: str | None = None) -> None:
         """Toggle sticky state for a session (max 5 sessions).
 
         Args:
             session_id: Session ID to toggle
-            clear_preview: Whether to clear preview before toggling sticky
         """
         existing_idx = None
         for i, sticky in enumerate(self.sticky_sessions):
@@ -1027,13 +1026,52 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             logger.error("BUG: Attempted to add duplicate session_id %s to sticky list", session_id[:8])
             return
 
-        if clear_preview and self._preview:
-            self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
         self.controller.dispatch(
             Intent(IntentType.TOGGLE_STICKY, {"session_id": session_id, "active_agent": active_agent}),
             defer_layout=True,
         )
         logger.info("Toggled sticky: %s (total=%d)", session_id[:8], len(self.sticky_sessions))
+
+    def _set_selection_method(self, method: str) -> None:
+        """Dispatch selection method with a single canonical intent path."""
+        self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": method}))
+
+    def _clear_active_preview(self) -> None:
+        """Clear preview only when one is active."""
+        if self._preview:
+            self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
+
+    def _record_space_press(self, session_id: str, now: float) -> None:
+        """Track the latest space-activation target for debounce."""
+        self._last_space_press_time = now
+        self._last_space_session_id = session_id
+
+    def _handle_sticky_toggle_gesture(self, selected: SessionNode, *, now: float) -> None:
+        """Handle sticky-toggle interactions (double-space/double-click).
+
+        Sticky rows clear active preview before toggling.
+        Non-sticky rows schedule sticky-aware preview after toggling on.
+        """
+        session = selected.data.session
+        session_id = session.session_id
+        was_sticky = self._is_sticky_session_id(session_id)
+
+        self._set_selection_method("click")
+        self._clear_pending_activation()
+        self._mark_space_double_press_guard(session_id, now)
+
+        if was_sticky:
+            self._clear_active_preview()
+
+        self._toggle_sticky(session_id, active_agent=session.active_agent)
+
+        if not was_sticky:
+            self._enqueue_preview_request(
+                selected,
+                request_focus=False,
+                clear_preview=False,
+                force_sticky_preview=True,
+            )
 
     def _preview_activation_request(
         self,
@@ -1223,8 +1261,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         is_sticky = self._is_sticky_session_id(session_id)
         # Keep tree selection state in sync for keyboard-driven highlighting.
         self._sync_selected_session_id(source="user")
-        if is_sticky and self._preview:
-            self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
         if self._is_space_double_press_guarded(session_id, now):
             logger.debug("handle_space_preview_input: guard active for %s", session_id[:8])
             return
@@ -1237,34 +1273,23 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 "handle_space_preview_input: double-press detected, toggling sticky for %s",
                 session_id[:8],
             )
-            was_sticky = self._is_sticky_session_id(session_id)
             self._last_space_session_id = None
             self._last_space_press_time = None
-            self._mark_space_double_press_guard(session_id, now)
-            self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
-            self._toggle_sticky(
-                session_id,
-                active_agent=selected.data.session.active_agent,
-                clear_preview=False,
-            )
-            if not was_sticky:
-                self._clear_pending_activation()
-                self._enqueue_preview_request(
-                    selected,
-                    request_focus=False,
-                    clear_preview=False,
-                    force_sticky_preview=True,
-                )
+            self._handle_sticky_toggle_gesture(selected, now=now)
             # Keep first-space preview intent; do not dispatch a second activation.
             return
 
+        # Keep sticky rows out of normal preview highlight styling, but still allow
+        # double-press sticky toggle by recording the gesture timestamp.
         if is_sticky:
+            self._clear_active_preview()
+            self._record_space_press(session_id, now)
+            self._clear_pending_activation()
             return
 
-        self._last_space_press_time = now
-        self._last_space_session_id = session_id
+        self._record_space_press(session_id, now)
         self._clear_pending_activation()
-        self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
+        self._set_selection_method("click")
         # Single-space/click previews the row while staying non-focusing.
         # Sticky panes stay put; preview updates are only visual/contextual.
         self._enqueue_preview_request(selected, request_focus=False, clear_preview=False)
@@ -1496,20 +1521,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         if sticky_project_sessions:
             # Toggle OFF: Remove all sticky sessions for this project
-            if self._preview:
-                self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
+            self._clear_active_preview()
             for sticky in sticky_project_sessions:
-                self.controller.dispatch(
-                    Intent(
-                        IntentType.TOGGLE_STICKY,
-                        {
-                            "session_id": sticky.session_id,
-                            "active_agent": session_by_id[sticky.session_id].active_agent
-                            if sticky.session_id in session_by_id
-                            else None,
-                        },
-                    ),
-                    defer_layout=True,
+                self._toggle_sticky(
+                    sticky.session_id,
+                    active_agent=session_by_id[sticky.session_id].active_agent
+                    if sticky.session_id in session_by_id
+                    else None,
                 )
             logger.info("_open_project_sessions: closed %d sticky sessions for project", len(sticky_project_sessions))
             return
@@ -1530,18 +1548,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             )
 
         current_sticky_ids = {s.session_id for s in self.sticky_sessions}
-        if self._preview:
-            self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
+        self._clear_active_preview()
         for session in tmux_sessions[:max_sticky]:
             if session.session_id in current_sticky_ids:
                 continue
-            self.controller.dispatch(
-                Intent(
-                    IntentType.TOGGLE_STICKY,
-                    {"session_id": session.session_id, "active_agent": session.active_agent},
-                ),
-                defer_layout=True,
-            )
+            self._toggle_sticky(session.session_id, active_agent=session.active_agent)
 
     def handle_key(self, key: int, stdscr: CursesWindow) -> None:
         """Handle view-specific keys.
@@ -1670,15 +1681,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             )
             # Select the item but don't activate (sticky toggle is the action)
             self._select_index(item_idx, source="user")
-            self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
-            now = time.perf_counter()
-            self._handle_space_preview_input(item, now=now)
-            self._handle_space_preview_input(item, now=now)
+            self._set_selection_method("click")
+            self._handle_sticky_toggle_gesture(item, now=time.perf_counter())
             return True
 
         # SINGLE CLICK - select and update preview context only.
         self._select_index(item_idx, source="user")
-        self.controller.dispatch(Intent(IntentType.SET_SELECTION_METHOD, {"method": "click"}))
+        self._set_selection_method("click")
         self._clear_pending_activation()
 
         # Keep click in tree-only mode; activation/focus remains explicit (Enter/space).
