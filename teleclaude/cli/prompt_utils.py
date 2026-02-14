@@ -146,3 +146,8 @@ def show_validation_results() -> None:
         print(f"\n  {GREEN}All checks passed.{RESET}")
     else:
         print(f"\n  {RED}Some checks failed. See above for details.{RESET}")
+
+    try:
+        input("\n  Press Enter to continue...")
+    except (EOFError, KeyboardInterrupt):
+        print()
