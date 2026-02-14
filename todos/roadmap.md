@@ -14,10 +14,6 @@
 > Admins additionally observe all sessions via supergroups. Notifications arrive through
 > the same bot identity as conversations (credential unity).
 
-- role-based-notifications
-
-Platform-agnostic notification routing subsystem with outbox persistence, PlatformSender protocol, and delivery worker. Ships with Telegram sender. Discord and WhatsApp senders are plugged in by their respective adapter todos. Extends per-person config with multi-platform credentials and notification channel subscriptions.
-
 - webhook-service
 
 Bidirectional webhook infrastructure. Outbound: subscribe to event bus events, deliver as HTTP POST callbacks with HMAC-SHA256 signatures, outbox persistence and retry. Inbound: dynamic endpoint registration (`/hooks/{endpoint_id}`), verification challenge support, handler routing. Solves external webhook reception for any platform (WhatsApp, GitHub, etc.) and enables internal event subscriptions without polling.
