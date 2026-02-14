@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 from typing import Any, Awaitable, Callable
 
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -82,19 +83,23 @@ class InboundEndpointRegistry:
 
         async def handle_post(request: Request) -> dict[str, str]:
             """Handle incoming webhook payload."""
+            body = await request.body()
+
             # Verify signature if configured
             secret = config.get("secret")
             if secret:
                 signature = request.headers.get("X-Hub-Signature-256") or request.headers.get("X-Hook-Signature")
                 if not signature:
                     raise HTTPException(status_code=401, detail="Missing signature")
-                body = await request.body()
                 expected = f"sha256={hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()}"
                 if not hmac.compare_digest(signature, expected):
                     raise HTTPException(status_code=401, detail="Invalid signature")
-                payload = await request.json()
-            else:
-                payload = await request.json()
+
+            try:
+                payload = json.loads(body)
+            except Exception as exc:
+                logger.error("Invalid JSON payload for inbound webhook: %s", path, exc_info=True)
+                raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
 
             normalizer = self._normalizers.get(normalizer_key)
             if not normalizer:
@@ -104,13 +109,13 @@ class InboundEndpointRegistry:
             try:
                 event = normalizer(payload)
             except Exception as exc:
-                logger.error("Normalization failed: %s error=%s", normalizer_key, exc)
+                logger.error("Normalization failed: %s error=%s", normalizer_key, exc, exc_info=True)
                 raise HTTPException(status_code=400, detail="Failed to normalize payload") from exc
 
             try:
                 await self._dispatch(event)
             except Exception as exc:
-                logger.error("Dispatch failed for inbound %s: %s", path, exc)
+                logger.error("Dispatch failed for inbound %s: %s", path, exc, exc_info=True)
                 # Return 200 anyway to prevent platform retries
                 return {"status": "accepted", "warning": "dispatch error"}
 

@@ -38,6 +38,7 @@ async def load_hooks_config(
     """
     # Load subscriptions (contracts)
     subscriptions = hooks_config.get("subscriptions", [])
+    failed_subscriptions = 0
     for sub in subscriptions:
         try:
             contract_data = sub.get("contract", {})
@@ -77,7 +78,16 @@ async def load_hooks_config(
             logger.info("Loaded config contract: %s", contract.id)
 
         except Exception as exc:
-            logger.error("Failed to load subscription %s: %s", sub.get("id", "?"), exc)
+            failed_subscriptions += 1
+            logger.error("Failed to load subscription %s: %s", sub.get("id", "?"), exc, exc_info=True)
+
+    total_subscriptions = len(subscriptions)
+    logger.info(
+        "Loaded %s of %s subscriptions (%s failed)",
+        total_subscriptions - failed_subscriptions,
+        total_subscriptions,
+        failed_subscriptions,
+    )
 
     # Load inbound endpoints
     if inbound_registry:
@@ -95,4 +105,4 @@ async def load_hooks_config(
                 inbound_registry.register(path, normalizer_key, verify_config or None)
                 logger.info("Loaded inbound endpoint: %s → %s", source_name, path)
             except Exception as exc:
-                logger.error("Failed to load inbound %s: %s", source_name, exc)
+                logger.error("Failed to load inbound %s: %s", source_name, exc, exc_info=True)

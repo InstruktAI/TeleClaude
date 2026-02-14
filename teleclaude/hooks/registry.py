@@ -20,13 +20,14 @@ class ContractRegistry:
     async def load_from_db(self) -> None:
         """Load all active contracts from DB into cache."""
         rows = await db.list_webhook_contracts(active_only=True)
-        self._cache.clear()
+        new_cache: dict[str, Contract] = {}
         for row in rows:
             try:
                 contract = Contract.from_json(row.contract_json)
-                self._cache[contract.id] = contract
+                new_cache[contract.id] = contract
             except Exception as exc:
-                logger.error("Failed to load contract %s: %s", row.id, exc)
+                logger.error("Failed to load contract %s: %s", row.id, exc, exc_info=True)
+        self._cache = new_cache
         logger.info("Loaded %d active contracts from DB", len(self._cache))
 
     async def register(self, contract: Contract) -> None:

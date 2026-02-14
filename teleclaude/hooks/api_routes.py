@@ -61,7 +61,7 @@ def _contract_to_response(contract: Contract) -> ContractResponse:
         source_criterion=asdict(contract.source_criterion) if contract.source_criterion else None,
         type_criterion=asdict(contract.type_criterion) if contract.type_criterion else None,
         properties={k: asdict(v) for k, v in contract.properties.items()},
-        target={"handler": contract.target.handler, "url": contract.target.url, "secret": contract.target.secret},
+        target={"handler": contract.target.handler, "url": contract.target.url, "secret": None},
         active=contract.active,
         created_at=contract.created_at,
         source=contract.source,
@@ -97,6 +97,14 @@ async def create_contract(req: CreateContractRequest) -> ContractResponse:
         url=req.target.get("url"),
         secret=req.target.get("secret"),
     )
+    has_handler = bool(target.handler)
+    has_url = bool(target.url)
+    if has_handler == has_url:
+        raise HTTPException(
+            status_code=422,
+            detail="Exactly one of target.handler or target.url must be set",
+        )
+
     source_criterion = PropertyCriterion(**req.source_criterion) if req.source_criterion else None
     type_criterion = PropertyCriterion(**req.type_criterion) if req.type_criterion else None
     properties = {k: PropertyCriterion(**v) for k, v in req.properties.items()}

@@ -1419,7 +1419,14 @@ class Db:
             await db_session.exec(stmt)
             await db_session.commit()
 
-    async def mark_webhook_failed(self, row_id: int, error: str, attempt_count: int, next_attempt_at: str) -> None:
+    async def mark_webhook_failed(
+        self,
+        row_id: int,
+        error: str,
+        attempt_count: int,
+        next_attempt_at: str | None,
+        status: str = "pending",
+    ) -> None:
         """Record a webhook delivery failure and schedule retry."""
         from sqlalchemy import update
 
@@ -1430,6 +1437,7 @@ class Db:
                 attempt_count=attempt_count,
                 next_attempt_at=next_attempt_at,
                 last_error=error,
+                status=status,
                 locked_at=None,
             )
         )

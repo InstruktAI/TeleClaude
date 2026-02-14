@@ -1575,7 +1575,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.info("Hook outbox worker started")
 
             # Initialize webhook service subsystem
-            await self._init_webhook_service()
+            try:
+                await self._init_webhook_service()
+            except Exception:
+                logger.error("Webhook service initialization failed, continuing without webhooks", exc_info=True)
 
             self.resource_monitor_task = asyncio.create_task(self.monitoring_service.resource_monitor_loop())
             self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))

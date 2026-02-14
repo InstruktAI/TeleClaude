@@ -1,10 +1,17 @@
 """Comprehensive tests for the webhook service subsystem."""
 
+import asyncio
+import hashlib
+import hmac
+import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
@@ -256,6 +263,76 @@ class TestDispatcher:
 
         enqueue.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_dispatch_missing_handler_is_ignored(self) -> None:
+        from teleclaude.hooks.dispatcher import HookDispatcher
+        from teleclaude.hooks.handlers import HandlerRegistry
+        from teleclaude.hooks.registry import ContractRegistry
+
+        contract_registry = ContractRegistry()
+        contract_registry._cache["c4"] = Contract(
+            id="c4",
+            target=Target(handler="missing_handler"),
+            source_criterion=PropertyCriterion(match="agent"),
+        )
+
+        handler_registry = HandlerRegistry()
+        enqueue = AsyncMock()
+        dispatcher = HookDispatcher(contract_registry, handler_registry, enqueue)
+
+        event = HookEvent.now(source="agent", type="test")
+        await dispatcher.dispatch(event)
+
+        enqueue.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_handler_failure_is_swallowed(self) -> None:
+        from teleclaude.hooks.dispatcher import HookDispatcher
+        from teleclaude.hooks.handlers import HandlerRegistry
+        from teleclaude.hooks.registry import ContractRegistry
+
+        handler = AsyncMock(side_effect=RuntimeError("handler error"))
+        handler_registry = HandlerRegistry()
+        handler_registry.register("my_handler", handler)
+
+        contract_registry = ContractRegistry()
+        contract_registry._cache["c5"] = Contract(
+            id="c5",
+            target=Target(handler="my_handler"),
+            source_criterion=PropertyCriterion(match="agent"),
+        )
+
+        enqueue = AsyncMock()
+        dispatcher = HookDispatcher(contract_registry, handler_registry, enqueue)
+
+        event = HookEvent.now(source="agent", type="test")
+        await dispatcher.dispatch(event)
+
+        handler.assert_called_once_with(event)
+        enqueue.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_enqueue_failure_is_swallowed(self) -> None:
+        from teleclaude.hooks.dispatcher import HookDispatcher
+        from teleclaude.hooks.handlers import HandlerRegistry
+        from teleclaude.hooks.registry import ContractRegistry
+
+        handler_registry = HandlerRegistry()
+        contract_registry = ContractRegistry()
+        contract_registry._cache["c6"] = Contract(
+            id="c6",
+            target=Target(url="https://example.com/hook"),
+            source_criterion=PropertyCriterion(match="agent"),
+        )
+
+        enqueue = AsyncMock(side_effect=RuntimeError("queue down"))
+        dispatcher = HookDispatcher(contract_registry, handler_registry, enqueue)
+
+        event = HookEvent.now(source="agent", type="test")
+        await dispatcher.dispatch(event)
+
+        enqueue.assert_called_once()
+
 
 # ── Delivery worker tests ────────────────────────────────────────────
 
@@ -267,6 +344,7 @@ class TestDeliveryWorker:
         sig = compute_signature(b'{"test": true}', "secret")
         assert sig.startswith("sha256=")
         assert len(sig) > 10
+        assert sig == "sha256=52a5fe6cfb59da86e9efe5d555c8567f8de17cd01922519e8a8d8e6fd270c954"
 
     def test_compute_backoff(self) -> None:
         from teleclaude.hooks.delivery import compute_backoff
@@ -324,6 +402,30 @@ class TestContractRegistry:
         assert "critical" in vocab["severity"]
         assert "type" in vocab
         assert "session.started" in vocab["type"]
+
+    @pytest.mark.asyncio
+    async def test_load_from_db_replaces_cache_atomically(self, monkeypatch) -> None:
+        import teleclaude.hooks.registry as registry_module
+        from teleclaude.hooks.webhook_models import Target
+
+        registry = registry_module.ContractRegistry()
+        existing = Contract(id="old", target=Target(handler="old_handler"))
+        registry._cache["old"] = existing
+
+        valid_contract = Contract(
+            id="new", target=Target(handler="my_handler"), source_criterion=PropertyCriterion(match="agent")
+        )
+        good_row = SimpleNamespace(id="new", contract_json=valid_contract.to_json())
+        bad_row = SimpleNamespace(id="bad", contract_json="{bad json")
+
+        monkeypatch.setattr(
+            registry_module.db,
+            "list_webhook_contracts",
+            AsyncMock(return_value=[good_row, bad_row]),
+        )
+        await registry.load_from_db()
+
+        assert registry._cache == {"new": valid_contract}
 
 
 # ── DB CRUD tests ────────────────────────────────────────────────────
@@ -488,3 +590,329 @@ class TestEventBusBridge:
         assert event.source == "system"
         assert "error" in event.type
         assert event.properties["severity"] == "critical"
+
+
+class TestWebhookApiRoutes:
+    @pytest.mark.asyncio
+    async def test_create_contract_validation_requires_single_target(self, monkeypatch) -> None:
+        from teleclaude.hooks import api_routes
+
+        monkeypatch.setattr(api_routes, "_contract_registry", MagicMock())
+
+        with pytest.raises(HTTPException):
+            req = api_routes.CreateContractRequest(
+                id="missing",
+                target={},
+                properties={},
+            )
+            await api_routes.create_contract(req)
+
+        with pytest.raises(HTTPException):
+            req = api_routes.CreateContractRequest(
+                id="double",
+                target={"handler": "my_handler", "url": "https://example.com"},
+                properties={},
+            )
+            await api_routes.create_contract(req)
+
+    @pytest.mark.asyncio
+    async def test_list_contracts_hides_secret(self, monkeypatch) -> None:
+        from teleclaude.hooks import api_routes
+        from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
+
+        contract = Contract(
+            id="secure",
+            target=Target(url="https://example.com/webhook", secret="super-secret"),
+            source_criterion=PropertyCriterion(match="agent"),
+            source="api",
+        )
+
+        class Registry:
+            async def list_contracts(
+                self, property_name: str | None = None, property_value: str | None = None
+            ) -> list[Contract]:
+                return [contract]
+
+        monkeypatch.setattr(api_routes, "_contract_registry", Registry())
+
+        result = await api_routes.list_contracts()
+        assert result[0].target["secret"] is None
+
+    @pytest.mark.asyncio
+    async def test_routes_return_503_when_registry_missing(self, monkeypatch) -> None:
+        from teleclaude.hooks import api_routes
+
+        monkeypatch.setattr(api_routes, "_contract_registry", None)
+
+        with pytest.raises(HTTPException):
+            await api_routes.list_contracts()
+
+        with pytest.raises(HTTPException):
+            await api_routes.list_properties()
+
+        with pytest.raises(HTTPException):
+            await api_routes.create_contract(
+                api_routes.CreateContractRequest(
+                    id="x",
+                    target={"handler": "h"},
+                    properties={},
+                )
+            )
+
+    @pytest.mark.asyncio
+    async def test_api_router_endpoints(self) -> None:
+        from teleclaude.hooks import api_routes
+        from teleclaude.hooks.webhook_models import Contract, Target
+
+        class Registry:
+            async def list_contracts(
+                self, property_name: str | None = None, property_value: str | None = None
+            ) -> list[Contract]:
+                return [
+                    Contract(
+                        id="c1",
+                        target=Target(url="https://example.com"),
+                        source_criterion=None,
+                        type_criterion=None,
+                        properties={},
+                        source="api",
+                    )
+                ]
+
+            async def list_properties(self) -> dict[str, set[str]]:
+                return {"source": {"agent"}, "severity": {"critical"}}
+
+            async def register(self, contract: Contract) -> None:
+                return None
+
+            async def deactivate(self, contract_id: str) -> bool:
+                return contract_id == "c1"
+
+        app = FastAPI()
+        app.include_router(api_routes.router)
+        api_routes.set_contract_registry(Registry())
+
+        client = TestClient(app)
+
+        response = client.get("/hooks/contracts")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload[0]["id"] == "c1"
+        assert payload[0]["target"]["secret"] is None
+
+        response = client.get("/hooks/properties")
+        assert response.status_code == 200
+        assert response.json()["source"] == ["agent"]
+
+        response = client.delete("/hooks/contracts/c1")
+        assert response.status_code == 200
+        assert response.json() == {"deactivated": "c1"}
+
+        response = client.delete("/hooks/contracts/missing")
+        assert response.status_code == 404
+
+        response = client.post(
+            "/hooks/contracts",
+            json={
+                "id": "c2",
+                "target": {"handler": "my_handler"},
+                "source_criterion": {"match": "agent"},
+                "type_criterion": {"match": "test"},
+                "properties": {},
+            },
+        )
+        assert response.status_code == 201
+        assert response.json()["id"] == "c2"
+
+    def test_inbound_verification_challenge(self) -> None:
+        from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
+        from teleclaude.hooks.webhook_models import HookEvent
+
+        app = FastAPI()
+        normalizer_registry = NormalizerRegistry()
+        normalizer_registry.register(
+            "test",
+            lambda payload: HookEvent(source="system", type="test.event", timestamp="2024-01-01T00:00:00Z"),
+        )
+
+        InboundEndpointRegistry(app, normalizer_registry, AsyncMock()).register(
+            path="/hooks/test",
+            normalizer_key="test",
+            verify_config={"verify_token": "token"},
+        )
+
+        client = TestClient(app)
+        response = client.get("/hooks/test?hub.mode=subscribe&hub.verify_token=token&hub.challenge=abc")
+        assert response.status_code == 200
+        assert response.text == "abc"
+
+        bad_response = client.get("/hooks/test?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=abc")
+        assert bad_response.status_code == 403
+
+
+class TestInboundEndpoints:
+    def test_signed_payload_is_parsed_once(self) -> None:
+        from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
+        from teleclaude.hooks.webhook_models import HookEvent
+
+        app = FastAPI()
+        normalizer_registry = NormalizerRegistry()
+        dispatch_calls: list[HookEvent] = []
+
+        normalizer_registry.register(
+            "test",
+            lambda payload: HookEvent(
+                source="system", type="test.event", timestamp="2024-01-01T00:00:00Z", properties=payload
+            ),
+        )
+
+        async def dispatch(event: HookEvent) -> None:
+            dispatch_calls.append(event)
+
+        InboundEndpointRegistry(app, normalizer_registry, dispatch).register(
+            path="/hooks/test",
+            normalizer_key="test",
+            verify_config={"secret": "secret"},
+        )
+
+        client = TestClient(app)
+        body = json.dumps({"kind": "message"}).encode()
+        signature = f"sha256={hmac.new(b'secret', body, hashlib.sha256).hexdigest()}"
+
+        response = client.post("/hooks/test", content=body, headers={"X-Hook-Signature": signature})
+        assert response.status_code == 200
+        assert response.json() == {"status": "accepted"}
+        assert dispatch_calls
+
+    def test_inbound_bad_payload_returns_400(self) -> None:
+        from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
+        from teleclaude.hooks.webhook_models import HookEvent
+
+        app = FastAPI()
+        normalizer_registry = NormalizerRegistry()
+        normalizer_registry.register(
+            "test",
+            lambda payload: HookEvent(source="system", type="test.event", timestamp="2024-01-01T00:00:00Z"),
+        )
+
+        InboundEndpointRegistry(app, normalizer_registry, AsyncMock()).register(
+            path="/hooks/test",
+            normalizer_key="test",
+        )
+
+        client = TestClient(app)
+        response = client.post("/hooks/test", content=b"{invalid")
+        assert response.status_code == 400
+
+    def test_inbound_normalizer_exception_returns_400(self) -> None:
+        from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
+
+        app = FastAPI()
+        normalizer_registry = NormalizerRegistry()
+        normalizer_registry.register(
+            "test",
+            lambda payload: (_ for _ in ()).throw(ValueError("bad payload")),
+        )
+
+        InboundEndpointRegistry(app, normalizer_registry, AsyncMock()).register(
+            path="/hooks/test",
+            normalizer_key="test",
+        )
+
+        client = TestClient(app)
+        response = client.post("/hooks/test", content=json.dumps({"kind": "message"}).encode())
+        assert response.status_code == 400
+
+    def test_inbound_dispatch_exception_returns_accepted(self) -> None:
+        from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
+        from teleclaude.hooks.webhook_models import HookEvent
+
+        app = FastAPI()
+        normalizer_registry = NormalizerRegistry()
+        normalizer_registry.register(
+            "test",
+            lambda payload: HookEvent(source="system", type="test.event", timestamp="2024-01-01T00:00:00Z"),
+        )
+
+        async def dispatch(event: HookEvent) -> None:
+            raise RuntimeError("dispatch failed")
+
+        InboundEndpointRegistry(app, normalizer_registry, dispatch).register(
+            path="/hooks/test",
+            normalizer_key="test",
+        )
+
+        client = TestClient(app)
+        response = client.post("/hooks/test", content=json.dumps({"kind": "message"}).encode())
+        assert response.status_code == 200
+        assert response.json() == {"status": "accepted", "warning": "dispatch error"}
+
+
+class TestWebhookWorkerResilience:
+    @pytest.mark.asyncio
+    async def test_deliver_marks_4xx_as_rejected(self, monkeypatch) -> None:
+        from teleclaude.hooks import delivery as delivery_module
+
+        worker = delivery_module.WebhookDeliveryWorker()
+        row = SimpleNamespace(
+            id=1,
+            event_json='{"hello":"world"}',
+            target_secret=None,
+            target_url="https://example.com/webhook",
+            attempt_count=0,
+        )
+        fake_client = SimpleNamespace(post=AsyncMock(return_value=SimpleNamespace(status_code=401)))
+        monkeypatch.setattr(worker, "_get_client", AsyncMock(return_value=fake_client))
+
+        mark_failed = AsyncMock()
+        mark_delivered = AsyncMock()
+        monkeypatch.setattr(delivery_module.db, "mark_webhook_failed", mark_failed)
+        monkeypatch.setattr(delivery_module.db, "mark_webhook_delivered", mark_delivered)
+
+        await worker._deliver(row)
+
+        assert mark_failed.await_args
+        args, _ = mark_failed.call_args
+        assert args == (1, "HTTP 401", 1, None)
+        assert mark_failed.call_args.kwargs["status"] == "rejected"
+        mark_delivered.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_deliver_dead_letters_after_max_attempts(self, monkeypatch) -> None:
+        from teleclaude.hooks import delivery as delivery_module
+
+        worker = delivery_module.WebhookDeliveryWorker()
+        row = SimpleNamespace(
+            id=2,
+            event_json='{"hello":"world"}',
+            target_secret=None,
+            target_url="https://example.com/webhook",
+            attempt_count=9,
+        )
+        fake_client = SimpleNamespace(post=AsyncMock(return_value=SimpleNamespace(status_code=500)))
+        monkeypatch.setattr(worker, "_get_client", AsyncMock(return_value=fake_client))
+
+        mark_failed = AsyncMock()
+        monkeypatch.setattr(delivery_module.db, "mark_webhook_failed", mark_failed)
+
+        await worker._deliver(row)
+
+        args, _ = mark_failed.call_args
+        assert args[2] == 10
+        assert mark_failed.call_args.kwargs["status"] == "dead_letter"
+
+    @pytest.mark.asyncio
+    async def test_run_recovers_from_db_failures(self, monkeypatch) -> None:
+        from teleclaude.hooks import delivery as delivery_module
+
+        worker = delivery_module.WebhookDeliveryWorker()
+        shutdown_event = asyncio.Event()
+        fetch = AsyncMock(side_effect=RuntimeError("temporary db outage"))
+        monkeypatch.setattr(delivery_module.db, "fetch_webhook_batch", fetch)
+
+        async def sleep_with_shutdown(_: float) -> None:
+            shutdown_event.set()
+
+        monkeypatch.setattr(delivery_module.asyncio, "sleep", sleep_with_shutdown)
+        await worker.run(shutdown_event)
+        fetch.assert_called_once()

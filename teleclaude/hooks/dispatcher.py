@@ -61,6 +61,7 @@ class HookDispatcher:
                             handler=target.handler,
                             contract_id=contract.id,
                             error=str(exc),
+                            exc_info=True,
                         )
                 else:
                     logger.warning("Handler not found: %s", target.handler)
@@ -78,4 +79,7 @@ class HookDispatcher:
                         contract_id=contract.id,
                         url=target.url,
                         error=str(exc),
+                        exc_info=True,
                     )
+            else:
+                logger.warning("Contract %s matched but has no handler or URL", contract.id)
