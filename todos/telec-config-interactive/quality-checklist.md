@@ -19,11 +19,11 @@
 
 ## Review Gates (Reviewer)
 
-- [ ] Code follows existing codebase patterns
-- [ ] No hardcoded menu entries for future platforms
-- [ ] Ctrl+C safety verified
-- [ ] Atomic writes prevent partial config
-- [ ] Backward compatibility with existing telec config get/patch/validate
+- [ ] Code follows existing codebase patterns — BLOCKED: C1 (import policy), C4 (cross-module private imports), I1 (Literal type)
+- [x] No hardcoded menu entries for future platforms — schema-driven discovery confirmed
+- [x] Ctrl+C safety verified — KeyboardInterrupt caught at top level, atomic writes protect config
+- [x] Atomic writes prevent partial config — tmp+replace pattern with fcntl locking
+- [x] Backward compatibility with existing telec config get/patch/validate — delegates to config_cmd.py
 
 ## Finalize Gates (Finalizer)
 
