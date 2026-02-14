@@ -942,10 +942,14 @@ def _handle_config(args: list[str]) -> None:
         return
 
     subcommand = args[0]
-    if subcommand in ("get", "patch", "validate"):
+    if subcommand in ("get", "patch"):
         from teleclaude.cli.config_cmd import handle_config_command
 
         handle_config_command(args)
+    elif subcommand in ("people", "env", "notify", "validate", "invite"):
+        from teleclaude.cli.config_cli import handle_config_cli
+
+        handle_config_cli(args)
     else:
         print(f"Unknown config subcommand: {subcommand}")
         print(_config_usage())
@@ -971,13 +975,21 @@ def _config_usage() -> str:
     """Return usage string for telec config."""
     return (
         "Usage:\n"
-        "  telec config                   # Interactive configuration menu\n"
-        "  telec config get [paths...]    # Get config values\n"
-        "  telec config patch [options]   # Patch config values\n"
-        "  telec config validate          # Validate config\n"
+        "  telec config                                   # Interactive menu\n"
+        "  telec config get [paths...]                    # Get daemon config values\n"
+        "  telec config patch [options]                   # Patch daemon config\n"
         "\n"
-        "Interactive mode opens a browsable menu for editing user configs.\n"
-        "Subcommands (get/patch/validate) operate on the daemon config.yml.\n"
+        "  telec config people list [--json]              # List people\n"
+        "  telec config people add --name X [--email Y] [--role Z] [--telegram-user U] [--telegram-id ID]\n"
+        "  telec config people edit NAME [--role Z] [--email Y] [--telegram-user U] [--telegram-id ID]\n"
+        "  telec config people remove NAME [--delete-dir]\n"
+        "\n"
+        "  telec config env list [--json]                 # Show env var status\n"
+        "  telec config env set KEY=VALUE [KEY=VALUE ...] # Set env vars in .env\n"
+        "\n"
+        "  telec config notify NAME --telegram on|off     # Toggle notifications\n"
+        "  telec config validate [--json]                 # Full validation\n"
+        "  telec config invite NAME [--adapters telegram] # Generate invite links\n"
     )
 
 
