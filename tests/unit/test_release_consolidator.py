@@ -7,6 +7,7 @@ from pathlib import Path
 
 from scripts.release_consolidator import (
     LaneReport,
+    _pick_most_detailed,
     load_report,
     resolve_consensus,
 )
@@ -119,12 +120,45 @@ class TestConservativeOverride:
         assert decision["needs_human"] is True
         assert "contract changes" in decision["authoritative_rationale"]
 
+    def test_majority_none_patch_minority_with_changes(self) -> None:
+        reports = {
+            "claude": _report("none"),
+            "codex": _report("none"),
+            "gemini": _report("patch", contract_changes=1),
+        }
+        decision = resolve_consensus(reports)
+        assert decision["release_authorized"] is False
+        assert decision["needs_human"] is True
+        assert "contract changes" in decision["authoritative_rationale"]
+
 
 class TestFailSafe:
     def test_one_valid_report(self) -> None:
         reports: dict[str, LaneReport | None] = {
             "claude": _report("minor"),
             "codex": None,
+            "gemini": None,
+        }
+        decision = resolve_consensus(reports)
+        assert decision["release_authorized"] is False
+        assert decision["needs_human"] is True
+        assert "insufficient" in decision["authoritative_rationale"].lower()
+
+    def test_two_agreeing_reports_one_none(self) -> None:
+        reports: dict[str, LaneReport | None] = {
+            "claude": _report("patch"),
+            "codex": _report("patch"),
+            "gemini": None,
+        }
+        decision = resolve_consensus(reports)
+        assert decision["release_authorized"] is False
+        assert decision["needs_human"] is True
+        assert "insufficient" in decision["authoritative_rationale"].lower()
+
+    def test_two_disagreeing_reports_one_none(self) -> None:
+        reports: dict[str, LaneReport | None] = {
+            "claude": _report("minor"),
+            "codex": _report("patch"),
             "gemini": None,
         }
         decision = resolve_consensus(reports)
@@ -165,6 +199,16 @@ class TestThreeWayDisagreement:
         assert decision["release_authorized"] is False
         assert decision["needs_human"] is True
         assert decision["target_version"] == "none"
+
+
+class TestPickMostDetailed:
+    def test_tied_nonzero_counts_returns_none(self) -> None:
+        reports = {
+            "claude": _report("minor", contract_changes=2),
+            "codex": _report("patch", contract_changes=2),
+            "gemini": _report("none", contract_changes=2),
+        }
+        assert _pick_most_detailed(reports) is None
 
 
 class TestLaneSummaryAndEvidence:
