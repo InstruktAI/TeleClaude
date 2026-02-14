@@ -38,6 +38,18 @@ AGENT_PREVIEW_SELECTED_FOCUS_PAIRS: dict[str, int] = {
     "codex": 39,
 }
 
+STICKY_BADGE_PAIR_ID = 40
+
+DEFAULT_FOREGROUND_COLOR_DARK_MODE = curses.COLOR_BLACK
+DEFAULT_BACKGROUND_COLOR_DARK_MODE = curses.COLOR_WHITE
+DEFAULT_FOREGROUND_COLOR_LIGHT_MODE = curses.COLOR_BLACK
+DEFAULT_BACKGROUND_COLOR_LIGHT_MODE = curses.COLOR_WHITE
+
+STICKY_BADGE_DARK_FG = DEFAULT_FOREGROUND_COLOR_DARK_MODE
+STICKY_BADGE_DARK_BG = DEFAULT_BACKGROUND_COLOR_DARK_MODE
+STICKY_BADGE_LIGHT_FG = DEFAULT_FOREGROUND_COLOR_LIGHT_MODE
+STICKY_BADGE_LIGHT_BG = DEFAULT_BACKGROUND_COLOR_LIGHT_MODE
+
 # Z-index layer color pairs (for backgrounds)
 # Values set dynamically based on light/dark mode
 Z_LAYERS: dict[int, int] = {
@@ -341,6 +353,21 @@ def init_colors() -> None:
         curses.init_pair(25, 28, -1)  # Green (ready)
         curses.init_pair(26, 136, -1)  # Yellow (active)
 
+    # Sticky badge keeps fixed inverse styling (foreground/background should never inherit
+    # row selection/preview styling) and switches by theme mode.
+    sticky_badge_fg = STICKY_BADGE_DARK_FG if _is_dark_mode else STICKY_BADGE_LIGHT_FG
+    sticky_badge_bg = STICKY_BADGE_DARK_BG if _is_dark_mode else STICKY_BADGE_LIGHT_BG
+    curses.init_pair(STICKY_BADGE_PAIR_ID, sticky_badge_fg, sticky_badge_bg)
+
+
+def get_sticky_badge_attr() -> int:
+    """Get curses attribute for sticky badge indicator.
+
+    Foreground/background are fixed to mode-specific defaults.
+    Styling for selection is intentionally handled by the caller.
+    """
+    return curses.color_pair(STICKY_BADGE_PAIR_ID)
+
 
 def get_layer_attr(z_index: int) -> int:
     """Get curses attribute for a z-layer background.
@@ -429,8 +456,10 @@ _LIGHT_MODE_PAPER_BG = "#fdf6e3"
 
 # Configurable haze percentages (0.0 to 1.0) per UI state.
 # Agent preview pane states:
-_AGENT_PANE_INACTIVE_HAZE_PERCENTAGE = 0.12
-_AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE = 0.06
+# Inactive panes should stay clearly distinct from active ones.
+_AGENT_PANE_INACTIVE_HAZE_PERCENTAGE = 0.18
+# Tree-selected pane gets a lighter visual cue while remaining distinct.
+_AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE = 0.08
 _AGENT_PANE_ACTIVE_HAZE_PERCENTAGE = 0.0
 
 # Status-like background accents:

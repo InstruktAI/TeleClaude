@@ -287,7 +287,12 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         if view == "sessions" and isinstance(idx, int):
             prev_session_id = state.sessions.selected_session_id
             state.sessions.selected_index = idx
-            if isinstance(session_id, str):
+            if session_id is None:
+                state.sessions.selected_session_id = None
+                state.sessions.last_selection_session_id = None
+                if source in ("user", "pane", "system"):
+                    state.sessions.last_selection_source = source
+            else:
                 state.sessions.selected_session_id = session_id
                 state.sessions.last_selection_session_id = session_id
                 if source in ("user", "pane", "system"):

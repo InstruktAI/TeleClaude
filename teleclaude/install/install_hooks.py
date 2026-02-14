@@ -385,7 +385,6 @@ def configure_codex(repo_root: Path) -> None:
     config_path = Path.home() / ".codex" / "config.toml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
-    receiver_invocation = _build_hook_invocation(receiver_script)
     notify_value = [
         str(receiver_script),
         AGENT_FLAG,

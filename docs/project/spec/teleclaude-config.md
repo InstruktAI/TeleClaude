@@ -7,11 +7,11 @@ description: 'Authoritative surface for TeleClaude YAML configuration and enviro
 
 # Teleclaude Config — Spec
 
-## Definition
+## What it is
 
 The Teleclaude Config surface defines how the daemon and CLI are initialized and validated.
 
-## Machine-Readable Surface
+## Canonical fields
 
 ```yaml
 config_keys:
@@ -44,3 +44,7 @@ environment_variables:
 - Changing a configuration key from optional to required is a breaking change (Minor bump).
 - Removing or renaming a configuration key is a breaking change.
 - Adding a new optional key or environment variable is a patch.
+
+## See Also
+
+- project/spec/telec-cli-surface

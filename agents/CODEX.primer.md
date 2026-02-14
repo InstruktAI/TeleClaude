@@ -15,6 +15,19 @@ This file defines Codex-specific operating rules for this repository.
 - If ambiguity is outcome-critical, ask one focused clarifying question.
 - Do not ask for routine permission when work is clearly requested and allowed.
 
+## Thinking-Mode Hard Guardrail
+
+When the user explicitly says this is a thinking-only turn (for example: "thinking mode", "just reasoning", "no coding", "do not change anything", or similar), I must treat this as a stop-work trigger:
+
+- Do not run tools.
+- Do not edit files.
+- Do not apply patches.
+- Provide reasoning, diagnosis, and an execution-safe plan only.
+- Never interpret this as permission to continue execution until the user explicitly says to proceed with changes.
+
+Hard reminder to self:
+`Thinking mode = NO_TOOLS, NO_EDITS, NO_PATCHES.`
+
 ## Contract Integrity (Non-Negotiable)
 
 - Contracts define behavior; do not invent values or silent fallbacks.
