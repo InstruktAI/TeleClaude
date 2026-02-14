@@ -28,3 +28,12 @@
 **REQUEST CHANGES**
 
 Blocking issues: Critical #1 (index.yaml corruption) and Important #2 (build gate violation) must be resolved before approval.
+
+## Fixes Applied
+
+- Issue #1 (Critical): Restored stable repository-root paths in `docs/project/index.yaml` and `docs/third-party/index.yaml` to prevent worktree-only path leakage after merge.
+  - Commit: `e62fb890`
+- Issue #2 (Important): Committed current todo state so build/review gate tracking is no longer uncommitted local state.
+  - Commit: `511d95c4`
+- Issue #3 (Important): Attempted to remove out-of-scope change by restoring previous detection logic in `scripts/diagrams/extract_runtime_matrix.py`, but this caused a regression in `tests/unit/test_diagram_extractors.py::test_extract_runtime_matrix_regression` (Codex incorrectly regained `transcript_discovery`). Kept tested behavior and documented blocker for follow-up branch handling.
+  - Commit: none (reverted during verification)
