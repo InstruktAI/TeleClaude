@@ -36,6 +36,9 @@
     "release-lane-codex",
     "release-lane-gemini"
   ],
+  "release-pipeline-simulation": [
+    "release-arbiter"
+  ],
   "release-workflow-foundation": [
     "release-manifests"
   ],
