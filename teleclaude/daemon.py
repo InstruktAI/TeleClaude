@@ -304,6 +304,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.hook_outbox_task: asyncio.Task[object] | None = None
         self.notification_outbox_task: asyncio.Task[object] | None = None
         self.todo_watcher_task: asyncio.Task[object] | None = None
+        self.webhook_delivery_task: asyncio.Task[object] | None = None
 
         self.lifecycle = DaemonLifecycle(
             client=self.client,
@@ -1522,6 +1523,43 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         logger.info("Executed command in session %s: %s (polling=%s)", session_id[:8], command, start_polling)
         return True
 
+    async def _init_webhook_service(self) -> None:
+        """Initialize the webhook service subsystem (contracts, handlers, dispatcher, bridge, delivery)."""
+        from teleclaude.hooks.api_routes import set_contract_registry
+        from teleclaude.hooks.bridge import EventBusBridge
+        from teleclaude.hooks.delivery import WebhookDeliveryWorker
+        from teleclaude.hooks.dispatcher import HookDispatcher
+        from teleclaude.hooks.handlers import HandlerRegistry
+        from teleclaude.hooks.registry import ContractRegistry
+
+        contract_registry = ContractRegistry()
+        handler_registry = HandlerRegistry()
+        dispatcher = HookDispatcher(contract_registry, handler_registry, db.enqueue_webhook)
+        bridge = EventBusBridge(dispatcher)
+        delivery_worker = WebhookDeliveryWorker()
+
+        # Load contracts from DB
+        await contract_registry.load_from_db()
+
+        # Load config-driven contracts and inbound endpoints
+        hooks_cfg = getattr(config, "hooks", None)
+        if hooks_cfg and hasattr(hooks_cfg, "model_dump"):
+            from teleclaude.hooks.config import load_hooks_config
+
+            await load_hooks_config(hooks_cfg.model_dump(), contract_registry)
+
+        # Wire contract registry into API routes
+        set_contract_registry(contract_registry)
+
+        # Subscribe bridge to event bus
+        bridge.register(event_bus)
+
+        # Start delivery worker
+        self.webhook_delivery_task = asyncio.create_task(delivery_worker.run(self.shutdown_event))
+        self.webhook_delivery_task.add_done_callback(self._log_background_task_exception("webhook_delivery"))
+        self._webhook_delivery_worker = delivery_worker
+        logger.info("Webhook service initialized (%d contracts loaded)", len(contract_registry._cache))
+
     async def start(self) -> None:
         """Start the daemon."""
         # Safety net: enforce single-instance lock even for direct start() callers.
@@ -1559,6 +1597,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.notification_outbox_task.add_done_callback(self._log_background_task_exception("notification_outbox"))
             logger.info("Notification outbox worker started")
 
+            # Initialize webhook service subsystem
+            try:
+                await self._init_webhook_service()
+            except Exception:
+                logger.error("Webhook service initialization failed, continuing without webhooks", exc_info=True)
             self.resource_monitor_task = asyncio.create_task(self.monitoring_service.resource_monitor_loop())
             self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
             logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
@@ -1636,6 +1679,17 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 except asyncio.CancelledError:
                     pass
             logger.info("Session outbox workers stopped (%d)", len(workers))
+
+        if self.webhook_delivery_task:
+            self.webhook_delivery_task.cancel()
+            try:
+                await self.webhook_delivery_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Webhook delivery worker stopped")
+
+        if hasattr(self, "_webhook_delivery_worker"):
+            await self._webhook_delivery_worker.close()
 
         if self.resource_monitor_task:
             self.resource_monitor_task.cancel()

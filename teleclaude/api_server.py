@@ -107,6 +107,10 @@ class APIServer:
         from teleclaude.memory.api_routes import router as memory_router
 
         self.app.include_router(memory_router)
+
+        from teleclaude.hooks.api_routes import router as hooks_router
+
+        self.app.include_router(hooks_router)
         self.socket_path = socket_path or API_SOCKET_PATH
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None

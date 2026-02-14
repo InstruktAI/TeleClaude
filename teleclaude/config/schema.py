@@ -129,10 +129,46 @@ class SubscriptionsConfig(BaseModel):
     youtube: Optional[str] = None
 
 
+class InboundSourceConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    path: str
+    verify_token: Optional[str] = None
+    secret: Optional[str] = None
+    normalizer: str
+
+
+class SubscriptionContractConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    source: Optional[Dict[str, Any]] = None
+    type: Optional[Dict[str, Any]] = None
+    # Additional property criteria as extra fields
+
+
+class SubscriptionTargetConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    handler: Optional[str] = None
+    url: Optional[str] = None
+    secret: Optional[str] = None
+
+
+class SubscriptionConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    id: str
+    contract: Dict[str, Any] = {}  # guard: loose-dict - Config YAML contract is unstructured
+    target: Dict[str, Any] = {}  # guard: loose-dict - Config YAML target is unstructured
+
+
+class HooksConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    inbound: Dict[str, InboundSourceConfig] = {}
+    subscriptions: List[SubscriptionConfig] = []
+
+
 class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     project_name: Optional[str] = None
     business: BusinessConfig = BusinessConfig()
+    hooks: HooksConfig = HooksConfig()
     jobs: Dict[str, JobScheduleConfig] = {}
     git: GitConfig = GitConfig()
 

@@ -184,6 +184,40 @@ class MemorySummary(SQLModel, table=True):
     created_at_epoch: int
 
 
+class WebhookContract(SQLModel, table=True):
+    """webhook_contracts table."""
+
+    __tablename__ = "webhook_contracts"
+    __table_args__ = {"extend_existing": True}
+
+    id: str = Field(primary_key=True)
+    contract_json: str
+    active: Optional[int] = 1
+    source: Optional[str] = "api"
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class WebhookOutbox(SQLModel, table=True):
+    """webhook_outbox table."""
+
+    __tablename__ = "webhook_outbox"
+    __table_args__ = {"extend_existing": True}
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    contract_id: str
+    event_json: str
+    target_url: str
+    target_secret: Optional[str] = None
+    status: Optional[str] = "pending"
+    created_at: Optional[str] = None
+    delivered_at: Optional[str] = None
+    attempt_count: Optional[int] = 0
+    next_attempt_at: Optional[str] = None
+    last_error: Optional[str] = None
+    locked_at: Optional[str] = None
+
+
 class MemoryManualSession(SQLModel, table=True):
     """memory_manual_sessions table."""
 
