@@ -28,10 +28,6 @@ Admin supergroup mirroring and intervention. Establish supergroups on Telegram a
 
 Establish baseline GitHub Actions for lint/test and the skeleton release workflow that triggers on main pushes.
 
-- release-lane-codex (after: release-workflow-foundation)
-
-Implement the Codex CLI release inspector lane using `openai/codex-action`.
-
 - release-lane-gemini (after: release-workflow-foundation)
 
 Implement the Gemini release inspector lane using a dedicated Gemini action or API call.

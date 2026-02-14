@@ -55,3 +55,4 @@
 | 2026-02-14 | release-manifests               | Public surface contract manifests and runtime alignment tests                                                           | DELIVERED | fba68258                                 |
 | 2026-02-14 | release-workflow-foundation     | Baseline GitHub Actions for lint/test and skeleton release workflow.                                                    | DELIVERED | d7eee9c0                                 |
 | 2026-02-14 | release-lane-claude             | Claude Code release inspector lane using `anthropics/claude-code-action`.                                               | DELIVERED | 43153b37                                 |
+| 2026-02-14 | release-lane-codex              | Codex CLI release inspector lane using `openai/codex-action`.                                                           | DELIVERED | 726a1a16                                 |
