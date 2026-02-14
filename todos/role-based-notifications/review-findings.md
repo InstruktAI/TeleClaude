@@ -150,3 +150,9 @@ The round 1 fixes are well-executed — error handling, type correctness, test c
 | I7      | Changed `attempt_count` to `int`, `created_at` to `str`; removed `or 0` coercion                        | `6e5e90f9` |
 | S2      | Removed dead `* 1` in `_backoff_seconds`                                                                | `bcef0aad` |
 | S4      | Added truncation warnings for message and caption                                                       | `10f7c2ed` |
+
+## Fixes Applied (Round 2)
+
+| Finding | Fix                                                                                                                         | Commit     |
+| ------- | --------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| C3      | Added `max_attempts` filter to `fetch_notification_batch` and passed `MAX_RETRIES` from worker; added regression unit test. | `e9c344fa` |
