@@ -5,3 +5,10 @@
 #     # If you publish multiple domains, split docs by domain folders:
 #     # social-media: docs/social-media
 #     # fintech: docs/fintech
+#
+# Runtime adapter settings belong in `config.yml`:
+# discord:
+#   enabled: false
+#   token: ${DISCORD_BOT_TOKEN}
+#   guild_id: ${DISCORD_GUILD_ID}
+#   help_desk_channel_id: ${DISCORD_HELP_DESK_CHANNEL_ID}

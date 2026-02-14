@@ -157,6 +157,34 @@ class TestSession:
         assert session.get_metadata().get_ui().get_telegram() is not None
         assert session.get_metadata().get_ui().get_telegram().footer_message_id == "99"
 
+    def test_session_from_dict_parses_discord_metadata(self):
+        """Discord adapter metadata should hydrate from JSON payload."""
+        data = {
+            "session_id": "test-discord",
+            "computer_name": "TestPC",
+            "tmux_session_name": "test-tmux",
+            "last_input_origin": "discord",
+            "title": "Discord Session",
+            "adapter_metadata": json.dumps(
+                {
+                    "discord": {
+                        "user_id": "123456789",
+                        "guild_id": "1001",
+                        "channel_id": "2002",
+                        "thread_id": "3003",
+                    }
+                }
+            ),
+        }
+
+        session = Session.from_dict(data)
+        discord = session.get_metadata().get_ui().get_discord()
+
+        assert discord.user_id == "123456789"
+        assert discord.guild_id == 1001
+        assert discord.channel_id == 2002
+        assert discord.thread_id == 3003
+
 
 class TestRecording:
     """Tests for Recording model."""

@@ -11,6 +11,7 @@ from teleclaude.config.schema import PersonEntry
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
 
 logger = get_logger(__name__)
+CUSTOMER_ROLE = "customer"
 
 
 @dataclass
@@ -121,6 +122,15 @@ class IdentityResolver:
                         platform="web",
                         platform_user_id=email,
                     )
+
+        if origin == "discord":
+            user_id = channel_metadata.get("user_id") or channel_metadata.get("discord_user_id")
+            if user_id is not None:
+                return IdentityContext(
+                    person_role=CUSTOMER_ROLE,
+                    platform="discord",
+                    platform_user_id=str(user_id),
+                )
 
         return None
 

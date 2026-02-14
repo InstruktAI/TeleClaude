@@ -32,6 +32,15 @@ telegram:
     - teleclaude_server_bot
     # Add other computer bot usernames here
 
+discord:
+  enabled: false
+  # Bot token. Prefer environment interpolation to avoid plaintext secrets.
+  token: ${DISCORD_BOT_TOKEN}
+  # Guild (server) where the help desk forum channel lives.
+  guild_id: ${DISCORD_GUILD_ID}
+  # Forum channel ID (Discord channel type 15). Each session gets one thread.
+  help_desk_channel_id: ${DISCORD_HELP_DESK_CHANNEL_ID}
+
 # Agent binaries are resolved internally by platform policy:
 # macOS: ~/Applications/{Claude,Gemini,Codex}Launcher.app/...
 # other Unix: claude, gemini, codex

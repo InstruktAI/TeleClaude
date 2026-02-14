@@ -5,6 +5,7 @@ from enum import Enum
 
 class InputOrigin(str, Enum):
     TELEGRAM = "telegram"
+    DISCORD = "discord"
     REDIS = "redis"
     API = "api"
     MCP = "mcp"

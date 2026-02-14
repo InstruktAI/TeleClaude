@@ -4,6 +4,7 @@ from pathlib import Path
 
 from teleclaude.config import (
     Config,
+    DiscordConfig,
     ExperimentConfig,
 )
 from teleclaude.core.agents import AgentName
@@ -351,6 +352,7 @@ def test_is_experiment_enabled():
         polling=None,
         redis=None,
         telegram=None,
+        discord=DiscordConfig(enabled=False, token=None, guild_id=None, help_desk_channel_id=None),
         creds=None,
         agents={},
         ui=None,
