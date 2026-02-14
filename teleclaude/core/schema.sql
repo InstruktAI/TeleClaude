@@ -144,3 +144,32 @@ CREATE TABLE IF NOT EXISTS memory_manual_sessions (
     project TEXT UNIQUE NOT NULL,
     created_at_epoch INTEGER NOT NULL
 );
+
+-- Webhook contracts for subscriber-first event routing
+CREATE TABLE IF NOT EXISTS webhook_contracts (
+    id TEXT PRIMARY KEY,
+    contract_json TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT 'api',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_webhook_contracts_active ON webhook_contracts(active);
+
+-- Webhook outbox for durable external delivery
+CREATE TABLE IF NOT EXISTS webhook_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id TEXT NOT NULL,
+    event_json TEXT NOT NULL,
+    target_url TEXT NOT NULL,
+    target_secret TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    delivered_at TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT,
+    last_error TEXT,
+    locked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_webhook_outbox_status ON webhook_outbox(status);
+CREATE INDEX IF NOT EXISTS idx_webhook_outbox_next_attempt ON webhook_outbox(next_attempt_at);
