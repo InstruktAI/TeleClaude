@@ -160,5 +160,8 @@ bootstrap-ci:
 	@./bin/install.sh --ci
 	@$(MAKE) build-artifacts
 
+onboard:
+	@telec onboard
+
 build-artifacts:
 	@uv run -m teleclaude.cli.telec sync --warn-only

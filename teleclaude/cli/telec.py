@@ -36,6 +36,8 @@ class TelecCommand(str, Enum):
     WATCH = "watch"
     DOCS = "docs"
     TODO = "todo"
+    CONFIG = "config"
+    ONBOARD = "onboard"
 
 
 # Completion definitions: (short, long, description)
@@ -51,6 +53,8 @@ _COMMAND_DESCRIPTIONS = {
     "watch": "Auto-sync docs on file changes",
     "docs": "Query doc snippets (index or fetch by ID)",
     "todo": "Scaffold a todo folder and core files",
+    "config": "Interactive configuration (or get/patch/validate subcommands)",
+    "onboard": "Guided onboarding wizard for first-run setup",
 }
 _DOCS_FLAGS = [
     ("-h", "--help", "Show usage information"),
@@ -90,6 +94,16 @@ _TAXONOMY_TYPES = [
 _DOMAINS = [
     ("software-development", "Software dev domain"),
     ("general", "Cross-domain"),
+]
+_CONFIG_SUBCOMMANDS = [
+    ("get", "Get config values (telec config get [paths...])"),
+    ("patch", "Patch config values (telec config patch --yaml '...')"),
+    ("validate", "Validate config file"),
+]
+_CONFIG_FLAGS = [
+    ("-h", "--help", "Show usage information"),
+    ("-p", "--project-root", "Project root directory"),
+    ("-f", "--format", "Output format (yaml or json)"),
 ]
 _TODO_SUBCOMMANDS = [
     ("create", "Create todo skeleton files for a slug"),
@@ -146,7 +160,9 @@ def _handle_completion() -> None:
         _complete_agent(rest, current, is_partial)
     elif cmd == "todo":
         _complete_todo(rest, current, is_partial)
-    # list, init have no further completions
+    elif cmd == "config":
+        _complete_config(rest, current, is_partial)
+    # list, init, onboard have no further completions
 
 
 def _flag_used(flag_tuple: tuple[str | None, str, str], used: set[str]) -> bool:
@@ -245,6 +261,26 @@ def _complete_todo(rest: list[str], current: str, is_partial: bool) -> None:
         return
 
     for flag in _TODO_FLAGS:
+        if not _flag_used(flag, used):
+            _print_flag(flag)
+
+
+def _complete_config(rest: list[str], current: str, is_partial: bool) -> None:
+    """Complete telec config arguments."""
+    if not rest:
+        for subcommand, desc in _CONFIG_SUBCOMMANDS:
+            if not is_partial or subcommand.startswith(current):
+                _print_completion(subcommand, desc)
+        return
+
+    used = set(rest)
+    if is_partial and current.startswith("-"):
+        for flag in _CONFIG_FLAGS:
+            if _flag_matches(flag, current) and not _flag_used(flag, used):
+                _print_flag(flag)
+        return
+
+    for flag in _CONFIG_FLAGS:
         if not _flag_used(flag, used):
             _print_flag(flag)
 
@@ -364,6 +400,10 @@ def _handle_cli_command(argv: list[str]) -> None:
         _handle_docs(args)
     elif cmd_enum is TelecCommand.TODO:
         _handle_todo(args)
+    elif cmd_enum is TelecCommand.CONFIG:
+        _handle_config(args)
+    elif cmd_enum is TelecCommand.ONBOARD:
+        _handle_onboard(args)
     else:
         print(f"Unknown command: /{cmd}")
         print(_usage())
@@ -739,6 +779,9 @@ def _usage() -> str:
         "                                 # Scaffold todo files without modifying roadmap\n"
         "  telec todo validate [slug] [--project-root PATH]\n"
         "                                 # Validate todo files and state.json schema\n"
+        "  telec config                   # Interactive configuration menu\n"
+        "  telec config get/patch/validate # Config subcommands (daemon config.yml)\n"
+        "  telec onboard                  # Guided onboarding wizard\n"
     )
 
 
@@ -876,6 +919,76 @@ def _todo_usage() -> str:
         "  - validate: Checks state.json schema and required files for 'Ready' status.\n"
         "  - If slug is omitted for validate, all active todos are checked.\n"
         "  - Does NOT modify todos/roadmap.md\n"
+    )
+
+
+def _handle_config(args: list[str]) -> None:
+    """Handle telec config command.
+
+    No args → interactive menu. Subcommands (get/patch/validate) → delegate
+    to existing config_cmd handler for daemon config.
+    """
+    if args and args[0] in ("--help", "-h"):
+        print(_config_usage())
+        return
+
+    if not args:
+        if not sys.stdin.isatty():
+            print("Error: Interactive config requires a terminal.")
+            raise SystemExit(1)
+        from teleclaude.cli.config_menu import run_interactive_menu
+
+        run_interactive_menu()
+        return
+
+    subcommand = args[0]
+    if subcommand in ("get", "patch", "validate"):
+        from teleclaude.cli.config_cmd import handle_config_command
+
+        handle_config_command(args)
+    else:
+        print(f"Unknown config subcommand: {subcommand}")
+        print(_config_usage())
+        raise SystemExit(1)
+
+
+def _handle_onboard(args: list[str]) -> None:
+    """Handle telec onboard command."""
+    if args and args[0] in ("--help", "-h"):
+        print(_onboard_usage())
+        return
+
+    if not sys.stdin.isatty():
+        print("Error: Onboarding wizard requires a terminal.")
+        raise SystemExit(1)
+
+    from teleclaude.cli.onboard_wizard import run_onboard_wizard
+
+    run_onboard_wizard()
+
+
+def _config_usage() -> str:
+    """Return usage string for telec config."""
+    return (
+        "Usage:\n"
+        "  telec config                   # Interactive configuration menu\n"
+        "  telec config get [paths...]    # Get config values\n"
+        "  telec config patch [options]   # Patch config values\n"
+        "  telec config validate          # Validate config\n"
+        "\n"
+        "Interactive mode opens a browsable menu for editing user configs.\n"
+        "Subcommands (get/patch/validate) operate on the daemon config.yml.\n"
+    )
+
+
+def _onboard_usage() -> str:
+    """Return usage string for telec onboard."""
+    return (
+        "Usage:\n"
+        "  telec onboard                  # Guided onboarding wizard\n"
+        "\n"
+        "Walks through all configuration in order.\n"
+        "Detects existing config and skips completed sections.\n"
     )
 
 
