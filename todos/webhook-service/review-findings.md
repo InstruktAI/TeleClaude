@@ -171,6 +171,88 @@ Protocol returns `None`, but `db.enqueue_webhook` returns `int`. Type-checkers m
 
 The implementation quality is high overall — clean separation of concerns, correct architectural patterns, and solid model design. The issues are primarily around error handling resilience, security (secret exposure), and test coverage gaps.
 
+## Fixes Applied
+
+### C1: 4xx responses now terminal reject (not delivered)
+
+- Fix: `teleclaude/hooks/delivery.py` marks permanent 4xx as `status="rejected"` and stores failure details in `last_error`.
+- Commit: 9083e8cf
+
+### C2: Signed inbound endpoint parses body once
+
+- Fix: `teleclaude/hooks/inbound.py` parses inbound payload from `body = await request.body()` using `json.loads(body)` after signature validation.
+- Commit: 9083e8cf
+
+### C3: Max attempts and dead-letter terminal status added
+
+- Fix: `teleclaude/hooks/delivery.py` introduces `WEBHOOK_MAX_ATTEMPTS` and moves failed rows to `status="dead_letter"` when exceeded.
+- Commit: 9083e8cf
+
+### C4: Secret redaction in contract responses
+
+- Fix: `teleclaude/hooks/api_routes.py:_contract_to_response` now returns `target.secret = None`.
+- Commit: 9083e8cf
+
+### C5: Target validation in create contract
+
+- Fix: `teleclaude/hooks/api_routes.py:create_contract` now validates that exactly one of `handler` or `url` is set and rejects invalid requests with HTTP 422.
+- Commit: 9083e8cf
+
+### I1: Delivery loop survives DB errors
+
+- Fix: `teleclaude/hooks/delivery.py:run` wraps iteration in `try/except` and retries after `WEBHOOK_POLL_INTERVAL_S` on errors.
+- Commit: 9083e8cf
+
+### I2: Webhook subsystem init is non-fatal
+
+- Fix: `teleclaude/daemon.py:start` catches `_init_webhook_service` exceptions and continues startup.
+- Commit: 9083e8cf
+
+### I3: Atomic contract cache swap
+
+- Fix: `teleclaude/hooks/registry.py:load_from_db` now builds a temporary cache and swaps to `_cache` only after successful parsing.
+- Commit: 9083e8cf
+
+### I4: Invalid contract targets are logged
+
+- Fix: `teleclaude/hooks/dispatcher.py` adds warning branch for matched contracts lacking handler/url.
+- Commit: 9083e8cf
+
+### I5: Catch-block logs include tracebacks
+
+- Fix: `teleclaude/hooks/config.py`, `teleclaude/hooks/delivery.py`, `teleclaude/hooks/inbound.py`, `teleclaude/hooks/registry.py`, and `teleclaude/hooks/dispatcher.py` add `exc_info=True`.
+- Commit: 9083e8cf
+
+### I6: Hook subscription load summary added
+
+- Fix: `teleclaude/hooks/config.py:load_hooks_config` now summarizes successful vs failed subscription loads.
+- Commit: 9083e8cf
+
+### T1: Delivery worker branches and header behavior now covered
+
+- Fix: Added unit tests for rejected delivery, dead-lettering, and known signature value.
+- Commit: 9083e8cf
+
+### T2: Inbound endpoint framework coverage added
+
+- Fix: Added tests for signature checks, GET verification challenges, bad payload handling, normalizer exceptions, and dispatch failures.
+- Commit: 9083e8cf
+
+### T3: Dispatcher failure branches covered
+
+- Fix: Added tests for missing handler, handler exception, and enqueue failure paths.
+- Commit: 9083e8cf
+
+### T4: API route coverage added
+
+- Fix: Added tests for contract CRUD/listing endpoints and registry-missing 503 behavior.
+- Commit: 9083e8cf
+
+### T5: Signature correctness now verifies exact HMAC output
+
+- Fix: Updated test to assert exact HMAC signature value.
+- Commit: 9083e8cf
+
 Priority order for fixes:
 
 1. C1 + C3: Fix delivery worker status handling and add retry cap
