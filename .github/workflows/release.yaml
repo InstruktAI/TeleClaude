@@ -132,6 +132,74 @@ jobs:
           name: codex-report
           path: codex-report.json
 
+  gemini-lane:
+    name: Gemini Release Lane
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Gemini CLI
+        run: npm install -g @google/gemini-cli
+
+      - name: Prepare Analysis Context
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "LAST_TAG=$LAST_TAG" >> $GITHUB_ENV
+          if [ -n "$LAST_TAG" ]; then
+            git diff "$LAST_TAG"..HEAD > release-diff.txt
+          else
+            git ls-files > release-diff.txt
+          fi
+
+      - name: Run Gemini Inspector
+        run: |
+          gemini --yolo -p "You are a Meticulous Release Inspector for the TeleClaude project.
+
+          Read the following files to understand your task:
+          1. docs/project/spec/release-inspector-prompt.md — your full instructions
+          2. docs/project/spec/release-report-schema.md — the JSON schema your output must match
+
+          Read the public surface manifests:
+          3. docs/project/spec/telec-cli-surface.md
+          4. docs/project/spec/mcp-tool-surface.md
+          5. docs/project/spec/event-vocabulary.md
+          6. docs/project/spec/teleclaude-config.md
+
+          Read the diff to analyze:
+          7. release-diff.txt
+
+          Follow the release inspector prompt instructions exactly.
+          Classify the changes as 'patch', 'minor', or 'none' per Semver 0.x policy.
+          Write ONLY valid JSON (no markdown fences, no extra text) to gemini-report.json.
+          The JSON must match the release-report-schema."
+        env:
+          GEMINI_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+
+      - name: Validate Report
+        run: |
+          if [ ! -f gemini-report.json ]; then
+            echo "ERROR: gemini-report.json was not created"
+            exit 1
+          fi
+          jq empty gemini-report.json
+          echo "Report is valid JSON"
+          jq . gemini-report.json
+
+      - name: Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini-report
+          path: gemini-report.json
+
   release-analysis:
     name: AI Release Analysis (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -230,7 +298,7 @@ jobs:
 
   release-arbitration:
     name: Consensus Arbiter
-    needs: [claude-lane, codex-lane, release-analysis]
+    needs: [claude-lane, codex-lane, gemini-lane, release-analysis]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -242,6 +310,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: codex-report
+      - name: Download Gemini report
+        uses: actions/download-artifact@v4
+        with:
+          name: gemini-report
       - name: Download other reports
         uses: actions/download-artifact@v4
         with:

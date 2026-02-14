@@ -8,8 +8,8 @@ Implement the Gemini lane by installing `@google/gemini-cli` via `npm` in the Gi
 
 ### 1. GitHub Action Configuration
 
-- [ ] Update `.github/workflows/release.yaml`.
-- [ ] Configure `gemini-lane` job:
+- [x] Update `.github/workflows/release.yaml`.
+- [x] Configure `gemini-lane` job:
   - Step 1: Checkout HEAD and last tag.
   - Step 2: Set up Node.js.
   - Step 3: `npm install -g @google/gemini-cli`.
@@ -18,7 +18,7 @@ Implement the Gemini lane by installing `@google/gemini-cli` via `npm` in the Gi
 
 ## Task Sequence
 
-1. [ ] Add `gemini-lane` job to `release.yaml`.
+1. [x] Add `gemini-lane` job to `release.yaml`.
 2. [ ] Ensure `GOOGLE_API_KEY` is available in CI secrets.
 3. [ ] Test the lane and verify JSON parity with other lanes.
 
