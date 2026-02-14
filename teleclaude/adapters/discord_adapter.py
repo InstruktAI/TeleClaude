@@ -360,7 +360,7 @@ class DiscordAdapter(UiAdapter):
             "user_id": str(getattr(getattr(message, "author", None), "id", "")),
             "discord_user_id": str(getattr(getattr(message, "author", None), "id", "")),
         }
-        metadata = self._metadata(origin=InputOrigin.DISCORD.value, channel_metadata=channel_metadata)
+        metadata = self._metadata(channel_metadata=channel_metadata)
         cmd = ProcessMessageCommand(
             session_id=session.session_id,
             text=text,
