@@ -1834,9 +1834,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             idx_text = f"[{idx}]"
             idx_attr = preview_title_attr
 
-        if selected and is_headless:
-            selected_focus_attr = curses.A_REVERSE | preview_title_attr
-        elif selected and is_previewed:
+        if selected and is_previewed:
             selected_focus_attr = get_agent_preview_selected_focus_attr(agent) | preview_bold_attr
         elif selected:
             selected_focus_attr = get_agent_preview_selected_focus_attr(agent) | curses.A_BOLD
