@@ -7,17 +7,32 @@
 
 ## Help Desk Platform
 
-- help-desk-whatsapp (after: help-desk)
+> Architecture: `docs/project/design/architecture/help-desk-platform.md`
+>
+> Every person gets a persistent personal agent folder. Members/admins are invited via
+> private channels; customers discover the system through public-facing channels.
+> Admins additionally observe all sessions via supergroups. Notifications arrive through
+> the same bot identity as conversations (credential unity).
 
-Implement the WhatsApp adapter and webhook handling, mapping incoming phone numbers to Customer identities and routing them to the Help Desk lobby.
+- role-based-notifications
 
-- help-desk-discord (after: help-desk)
+Platform-agnostic notification routing subsystem with outbox persistence, PlatformSender protocol, and delivery worker. Ships with Telegram sender. Discord and WhatsApp senders are plugged in by their respective adapter todos. Extends per-person config with multi-platform credentials and notification channel subscriptions.
 
-Implement the Discord adapter and bot client using discord.py. Leverage Forum Channels (Type 15) to map each customer session to a dedicated thread, mirroring the Telegram "Control Room" model. Map Discord user IDs to Customer identities.
+- webhook-service
 
-- help-desk-control-room (after: help-desk-whatsapp, help-desk-discord, agent-activity-events)
+Bidirectional webhook infrastructure. Outbound: subscribe to event bus events, deliver as HTTP POST callbacks with HMAC-SHA256 signatures, outbox persistence and retry. Inbound: dynamic endpoint registration (`/hooks/{endpoint_id}`), verification challenge support, handler routing. Solves external webhook reception for any platform (WhatsApp, GitHub, etc.) and enables internal event subscriptions without polling.
 
-Implement the Admin Telegram mirroring and intervention logic. Establish the "Admin Supergroup" where Help Desk sessions are mirrored as topics, allowing Admins to monitor and intervene in customer chats.
+- help-desk-discord (after: help-desk, role-based-notifications)
+
+Discord UI adapter using discord.py and DiscordSender (PlatformSender impl). Extends IdentityResolver for Snowflake resolution. Forum Threads (Type 15) for session threading. Two entry points: member server and customer server. Shares bot token between adapter and sender.
+
+- config-visual-polish (after: telec-config-interactive)
+
+Animated visual polish for the config menu and onboarding wizard. Reuse the banner animation system with continuous animations running during config editing. Section-aware theming, progress-driven visual evolution, celebration on successful validation. Makes onboarding joyful instead of tedious.
+
+- help-desk-control-room (after: help-desk-discord, agent-activity-events)
+
+Admin supergroup mirroring and intervention. Establish supergroups on Telegram and Discord where admin sessions are mirrored as topics/threads. Admins observe and intervene in customer chats.
 
 ## Release Automation
 
@@ -62,17 +77,21 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 - web-interface-3 (after: web-interface-2) — Chat Interface & Part Rendering
 - web-interface-4 (after: web-interface-3) — Session Management & Role-Based Access
 
+## TUI Animation Art
+
+- tui-animation-art
+
+Retro-gaming visual experience for the TUI. Banner scroll-out/in motion, depth-layered effects (behind active tab, in front of inactive), three-mode animation toggle (off / periodic / party). Commodore 64 demoscene + Mario Kart aesthetic. Creative-first process: art director + art creator brainstorm visual concepts before builders implement. Extends existing banner animation system.
+
+- config-visual-polish (after: telec-config-interactive, tui-animation-art)
+
+Animated visual polish for the config menu and onboarding wizard. Consumes animation infrastructure from tui-animation-art for continuous animations during config editing.
+
 ## Rolling Session Titles
 
 - rolling-session-titles
 
 Re-summarize session titles based on the last 3 user inputs instead of only the first. Use a dedicated rolling prompt that captures session direction. Reset the output message on any title change so the telegram title feedback (native client behavior) floats to the top in Telegram.
-
-## Role-Based Notifications
-
-- role-based-notifications
-
-Notification routing subsystem that sends job outputs, reports, and alerts to people based on their role and channel subscriptions in per-person teleclaude.yml. Generalizes the existing personal Telegram script into a multi-person delivery layer.
 
 ## Maintenance
 

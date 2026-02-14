@@ -8,6 +8,10 @@
   "code-context-auditor": [
     "code-context-annotations"
   ],
+  "config-visual-polish": [
+    "telec-config-interactive",
+    "tui-animation-art"
+  ],
   "fallback-fail-fast-hardening": [
     "telegram-routing-contract-hardening"
   ],
