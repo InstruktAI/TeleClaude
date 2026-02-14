@@ -2051,9 +2051,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 stdscr.addstr(row, col, child_indent, header_attr)  # type: ignore[attr-defined]
                 col += len(child_indent)
             selected_idx_attr = (
-                curses.A_REVERSE | selected_header_attr
-                if selected and is_sticky and sticky_position is not None
-                else selected_header_attr
+                idx_attr if selected and is_sticky and sticky_position is not None else selected_header_attr
             )
             stdscr.addstr(row, col, idx_text, idx_attr if not selected else selected_idx_attr)  # type: ignore[attr-defined]
             col += len(idx_text)
