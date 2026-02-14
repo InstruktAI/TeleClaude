@@ -8,8 +8,10 @@ Implement the Claude lane by configuring the `anthropics/claude-code-action@v1` 
 
 ### 1. Inspector Prompt
 
-- [ ] Create `docs/prompts/release-inspector.md` (shared by all lanes).
-- [ ] Refine the prompt to focus on evidence-based classification (Patch vs Minor).
+- [x] Create `docs/prompts/release-inspector.md` (shared by all lanes).
+  - Pre-existing at `docs/project/spec/release-inspector-prompt.md` per codebase convention.
+- [x] Refine the prompt to focus on evidence-based classification (Patch vs Minor).
+  - Prompt already defines step-by-step evidence-based analysis with clear semver 0.x policy.
 
 ### 2. GitHub Action Configuration
 
@@ -22,7 +24,7 @@ Implement the Claude lane by configuring the `anthropics/claude-code-action@v1` 
 
 ## Task Sequence
 
-1. [ ] Draft the common `release-inspector.md` prompt.
+1. [x] Draft the common `release-inspector.md` prompt.
 2. [ ] Add the `claude-lane` job to the skeleton `release.yaml`.
 3. [ ] Test the lane by triggering a push to a test branch.
 4. [ ] Verify the JSON output matches the required schema for the arbiter.
