@@ -1834,14 +1834,16 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             idx_text = f"[{idx}]"
             idx_attr = preview_title_attr
 
-        selected_focus_attr = preview_title_attr
-        if is_previewed and selected:
+        if selected and is_headless:
+            selected_focus_attr = curses.A_REVERSE | preview_title_attr
+        elif selected and is_previewed:
             selected_focus_attr = get_agent_preview_selected_focus_attr(agent) | preview_bold_attr
+        elif selected:
+            selected_focus_attr = get_agent_preview_selected_focus_attr(agent) | curses.A_BOLD
+        else:
+            selected_focus_attr = preview_title_attr
 
-        # Keep headless rows muted when unselected, but keep cursor focus vivid.
         selected_header_attr = selected_focus_attr if selected else preview_title_attr
-        if selected and not is_previewed:
-            selected_header_attr = curses.A_REVERSE | preview_title_attr
         title_attr = selected_header_attr if selected else preview_title_attr
 
         # Collapse indicator
