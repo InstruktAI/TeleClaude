@@ -41,26 +41,44 @@ async def send_telegram_dm(
                 raise ValueError(f"Not a file: {file}")
 
             mime_type, _ = mimetypes.guess_type(file_path.name)
+            caption = message[:DEFAULT_CAPTION_MAX_LENGTH]
+            if len(message) > DEFAULT_CAPTION_MAX_LENGTH:
+                logger.warning("caption truncated", original_len=len(message), max_len=DEFAULT_CAPTION_MAX_LENGTH)
             with file_path.open("rb") as file_obj:
                 response = await client.post(
                     f"https://api.telegram.org/bot{token}/sendDocument",
-                    data={"chat_id": chat_id, "caption": message[:DEFAULT_CAPTION_MAX_LENGTH]},
+                    data={"chat_id": chat_id, "caption": caption},
                     files={"document": (file_path.name, file_obj, mime_type or "application/octet-stream")},
                 )
         else:
+            text = message[:DEFAULT_MESSAGE_MAX_LENGTH]
+            if len(message) > DEFAULT_MESSAGE_MAX_LENGTH:
+                logger.warning("message truncated", original_len=len(message), max_len=DEFAULT_MESSAGE_MAX_LENGTH)
             response = await client.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
                 data={
                     "chat_id": chat_id,
-                    "text": message[:DEFAULT_MESSAGE_MAX_LENGTH],
+                    "text": text,
                     "disable_web_page_preview": "true",
                 },
             )
 
-    payload = response.json()
+    if response.status_code >= 400:
+        try:
+            payload = response.json()
+            detail = payload.get("description") or response.text[:200]
+        except Exception:
+            detail = response.text[:200]
+        raise RuntimeError(f"Telegram send failed (HTTP {response.status_code}): {detail}")
+
+    try:
+        payload = response.json()
+    except Exception as exc:
+        raise RuntimeError(f"Telegram returned non-JSON (HTTP {response.status_code}): {response.text[:200]}") from exc
+
     if not payload.get("ok"):
-        message = payload.get("description") or "telegram api error"
-        raise RuntimeError(f"Telegram send failed: {message}")
+        detail = payload.get("description") or "telegram api error"
+        raise RuntimeError(f"Telegram send failed: {detail}")
     result = payload.get("result") or {}
     message_id = result.get("message_id")
     logger.info("telegram dm sent", chat_id=chat_id, with_file=bool(file), message_id=message_id)
