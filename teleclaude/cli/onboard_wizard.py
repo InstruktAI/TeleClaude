@@ -264,29 +264,25 @@ def _step_notifications() -> None:
 
 
 def _step_environment() -> None:
-    """Environment variable check step."""
+    """Environment variable check — prompt for missing values."""
     _print_header("Step: Environment Check")
 
     all_vars = get_required_env_vars()
 
     if not all_vars:
-        print(f"  {_DIM}No environment variables required (no adapters configured).{_RESET}")
+        print(f"  {_DIM}No environment variables registered.{_RESET}")
         return
 
-    missing = []
-    for adapter_name, vars_list in sorted(all_vars.items()):
-        print(f"\n  {_BOLD}{adapter_name.capitalize()}{_RESET}")
+    for service_name, vars_list in sorted(all_vars.items()):
+        print(f"\n  {_BOLD}{service_name.capitalize()}{_RESET}")
         for var in vars_list:
-            is_set = bool(os.environ.get(var.name))
-            icon = _status_icon(is_set)
+            current = os.environ.get(var.name)
+            icon = _status_icon(bool(current))
             print(f"    {icon} {var.name}: {var.description}")
-            if not is_set:
-                missing.append(var)
-                print(f"      {_DIM}Example: {var.name}={var.example}{_RESET}")
 
-    if missing:
-        print(f"\n  {_YELLOW}Set missing variables before starting the daemon.{_RESET}")
-        print(f"  {_DIM}Add them to your .env file or export in your shell.{_RESET}")
+        has_missing = any(not os.environ.get(v.name) for v in vars_list)
+        if has_missing and _prompt_confirm(f"\n  Configure {service_name} env vars?", default=True):
+            _show_adapter_env_vars(service_name)
     else:
         print(f"\n  {_GREEN}All environment variables are set.{_RESET}")
 

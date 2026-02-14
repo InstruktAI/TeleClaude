@@ -87,6 +87,48 @@ _ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
             "Telegram Bot API token",
             "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
         ),
+        EnvVarInfo(
+            "TELEGRAM_SUPERGROUP_ID",
+            "telegram",
+            "Telegram supergroup chat ID",
+            "-1001234567890",
+        ),
+        EnvVarInfo(
+            "TELEGRAM_USER_IDS",
+            "telegram",
+            "Allowed Telegram user IDs (comma-separated)",
+            "123456789,987654321",
+        ),
+    ],
+    "ai": [
+        EnvVarInfo(
+            "ANTHROPIC_API_KEY",
+            "ai",
+            "Anthropic API key (summarizer)",
+            "sk-ant-api03-...",
+        ),
+        EnvVarInfo(
+            "OPENAI_API_KEY",
+            "ai",
+            "OpenAI API key (summarizer fallback, Whisper STT, TTS)",
+            "sk-proj-...",
+        ),
+    ],
+    "voice": [
+        EnvVarInfo(
+            "ELEVENLABS_API_KEY",
+            "voice",
+            "ElevenLabs API key (text-to-speech)",
+            "sk_...",
+        ),
+    ],
+    "redis": [
+        EnvVarInfo(
+            "REDIS_PASSWORD",
+            "redis",
+            "Redis password (multi-computer transport)",
+            "your-redis-password",
+        ),
     ],
 }
 
@@ -291,35 +333,21 @@ def get_adapter_env_vars(adapter_name: str) -> list[EnvVarInfo]:
     return _ADAPTER_ENV_VARS.get(adapter_name, [])
 
 
+def get_all_env_vars() -> dict[str, list[EnvVarInfo]]:
+    """Return all registered env vars, grouped by service."""
+    return dict(_ADAPTER_ENV_VARS)
+
+
 def get_required_env_vars() -> dict[str, list[EnvVarInfo]]:
-    """Aggregate required env vars for adapters that are actually in use.
-
-    An adapter is "in use" if any person has credentials configured for it.
-    """
-    config = get_global_config()
-    result: dict[str, list[EnvVarInfo]] = {}
-
-    # Check which adapters have creds configured for any person
-    for person in config.people:
-        try:
-            pc = get_person_config(person.name)
-        except (ValueError, ValidationError):
-            continue
-        for adapter_name in _get_adapter_names():
-            if adapter_name in result:
-                continue
-            if getattr(pc.creds, adapter_name, None) is not None:
-                if adapter_name in _ADAPTER_ENV_VARS:
-                    result[adapter_name] = _ADAPTER_ENV_VARS[adapter_name]
-
-    return result
+    """Return all registered env vars. Alias for get_all_env_vars."""
+    return get_all_env_vars()
 
 
 def check_env_vars() -> list[EnvVarStatus]:
     """Check which required env vars are set."""
     all_vars = get_required_env_vars()
     results: list[EnvVarStatus] = []
-    for _adapter, vars_list in sorted(all_vars.items()):
+    for vars_list in all_vars.values():
         for info in vars_list:
             results.append(EnvVarStatus(info=info, is_set=bool(os.environ.get(info.name))))
     return results
