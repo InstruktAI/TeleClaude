@@ -17,10 +17,10 @@ Define the authoritative public surface of TeleClaude in machine-readable specif
 
 ## Success Criteria
 
-- [ ] All public surface specs follow the project taxonomy (`type: spec`).
-- [ ] Specs contain embedded YAML/JSON blocks for machine readability.
-- [ ] `test_contracts.py` fails if any public surface change is detected that is not documented in the specs.
-- [ ] AI Release Inspectors can deterministically identify classification (e.g., "removed flag" = Minor bump).
+- [x] All public surface specs follow the project taxonomy (`type: spec`).
+- [x] Specs contain embedded YAML/JSON blocks for machine readability.
+- [x] `test_contracts.py` fails if any public surface change is detected that is not documented in the specs.
+- [x] AI Release Inspectors can deterministically identify classification (e.g., "removed flag" = Minor bump).
 
 ## Constraints
 
