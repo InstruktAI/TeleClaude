@@ -740,9 +740,9 @@ class TestSessionsViewLogic:
         line0_calls = [call for call in screen_calls if call[0] == 0]
         assert len(line0_calls) == 3
         # Previewed row uses highlighted index/text color.
-        assert line0_calls[0][3] == (3 | curses.A_BOLD)
-        assert line0_calls[1][3] == (3 | curses.A_BOLD)
-        assert line0_calls[2][3] == (3 | curses.A_BOLD)
+        assert line0_calls[0][3] == (27 | curses.A_BOLD)
+        assert line0_calls[1][3] == (27 | curses.A_BOLD)
+        assert line0_calls[2][3] == (27 | curses.A_BOLD)
 
     def test_selected_preview_session_keeps_selection_highlight(self, sessions_view, monkeypatch):
         """Selected preview rows keep reverse-selection emphasis."""
@@ -770,9 +770,9 @@ class TestSessionsViewLogic:
 
         line0_calls = [call for call in session_calls if call[0] == 0]
         assert len(line0_calls) == 3
-        assert line0_calls[0][3] == (curses.A_REVERSE | curses.A_BOLD | 3)
-        assert line0_calls[1][3] == (curses.A_REVERSE | curses.A_BOLD | 3)
-        assert line0_calls[2][3] == (curses.A_REVERSE | curses.A_BOLD | 3)
+        assert line0_calls[0][3] == (curses.A_REVERSE | curses.A_BOLD | 27)
+        assert line0_calls[1][3] == (curses.A_REVERSE | curses.A_BOLD | 27)
+        assert line0_calls[2][3] == (curses.A_REVERSE | curses.A_BOLD | 27)
 
     def test_headless_status_is_normalized_for_header_muting(self, sessions_view, monkeypatch):
         """Status normalization should treat whitespace/case headless values as headless."""

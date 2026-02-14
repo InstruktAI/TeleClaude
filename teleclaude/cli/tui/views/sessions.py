@@ -29,7 +29,7 @@ from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.state import DocStickyInfo, Intent, IntentType, PreviewState, TuiState
 from teleclaude.cli.tui.state_store import load_sticky_state, save_sticky_state
-from teleclaude.cli.tui.theme import AGENT_COLORS
+from teleclaude.cli.tui.theme import AGENT_COLORS, get_agent_preview_selected_bg_attr
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     ComputerNode,
@@ -1820,6 +1820,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         preview_bold_attr = curses.A_BOLD if is_previewed and not is_headless else 0
         if is_previewed:
             preview_title_attr |= preview_bold_attr
+            preview_title_attr |= get_agent_preview_selected_bg_attr(agent)
 
         # Sticky sessions get highlighted [N] indicator
         if is_sticky and sticky_position is not None:
@@ -1830,7 +1831,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             idx_attr = preview_title_attr
 
         # Keep headless rows muted when unselected, but always show keyboard focus when selected.
-        selected_header_attr = curses.A_REVERSE | preview_title_attr
+        selected_header_attr = (curses.A_REVERSE | preview_title_attr) if selected else preview_title_attr
         title_attr = selected_header_attr if selected else preview_title_attr
 
         # Collapse indicator

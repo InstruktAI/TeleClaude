@@ -26,6 +26,12 @@ AGENT_COLORS: dict[str, dict[str, int]] = {
     "codex": {"muted": 7, "normal": 8, "highlight": 9},  # Green tones
 }
 
+AGENT_PREVIEW_SELECTED_BG_PAIRS: dict[str, int] = {
+    "claude": 27,
+    "gemini": 28,
+    "codex": 29,
+}
+
 # Z-index layer color pairs (for backgrounds)
 # Values set dynamically based on light/dark mode
 Z_LAYERS: dict[int, int] = {
@@ -232,6 +238,12 @@ def init_colors() -> None:
         curses.init_pair(7, 67, -1)  # Muted: deep steel blue
         curses.init_pair(8, 110, -1)  # Normal: CadetBlue (grey-blue balanced)
         curses.init_pair(9, 153, -1)  # Highlight: LightSlateGrey (light stone with blue)
+
+        # Previewed sessions keep a muted, per-agent background to make selected rows
+        # remain visually distinct even when not in current keyboard focus.
+        curses.init_pair(27, 180, 94)  # Claude: highlight fg + muted bg
+        curses.init_pair(28, 183, 103)  # Gemini: highlight fg + muted bg
+        curses.init_pair(29, 153, 67)  # Codex: highlight fg + muted bg
     else:
         # Claude (terra/brown tones)
         curses.init_pair(1, 180, -1)  # Muted: light tan/beige
@@ -247,6 +259,12 @@ def init_colors() -> None:
         curses.init_pair(7, 110, -1)  # Muted: light steel blue (slightly darker)
         curses.init_pair(8, 67, -1)  # Normal: steel blue (bluish metal, less cyan)
         curses.init_pair(9, 24, -1)  # Highlight: deep steel blue (slightly darker)
+
+        # Previewed sessions keep a muted, per-agent background to make selected rows
+        # remain visually distinct even when not in current keyboard focus.
+        curses.init_pair(27, 94, 180)  # Claude: highlight fg + muted bg
+        curses.init_pair(28, 90, 177)  # Gemini: highlight fg + muted bg
+        curses.init_pair(29, 24, 110)  # Codex: highlight fg + muted bg
 
     # Disabled/unavailable
     curses.init_pair(10, curses.COLOR_WHITE, -1)
@@ -577,6 +595,19 @@ def get_agent_highlight_color(agent: str) -> int:
     if _is_dark_mode:
         return _AGENT_HIGHLIGHT_DARK.get(agent, 153)
     return _AGENT_HIGHLIGHT_LIGHT.get(agent, 24)
+
+
+def get_agent_preview_selected_bg_attr(agent: str) -> int:
+    """Get curses attribute for a preview-selected row using muted background.
+
+    Args:
+        agent: Agent name ("claude", "gemini", "codex", or unknown)
+
+    Returns:
+        Curses attribute for agent-specific muted-background selection style.
+    """
+    pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS.get(agent, AGENT_PREVIEW_SELECTED_BG_PAIRS["claude"])
+    return curses.color_pair(pair_id)
 
 
 def get_terminal_background() -> str:
