@@ -17,6 +17,7 @@ This specification defines the JSON schema that all AI Release Inspector lanes (
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
+  "additionalProperties": false,
   "required": ["classification", "rationale", "contract_changes", "release_notes"],
   "properties": {
     "classification": {
@@ -32,6 +33,7 @@ This specification defines the JSON schema that all AI Release Inspector lanes (
       "type": "array",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["surface", "item", "change_type"],
         "properties": {
           "surface": {

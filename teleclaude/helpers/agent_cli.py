@@ -148,11 +148,15 @@ def _extract_json_object(text: str) -> str:
 def _load_schema(
     schema_json: str | None, schema_file: str | None
 ) -> dict[str, object]:  # guard: loose-dict - JSON schema is an arbitrary nested structure
+    text = ""
     if schema_json:
-        return json.loads(schema_json)
-    if schema_file:
-        return json.loads(Path(schema_file).read_text(encoding="utf-8"))
-    raise SystemExit("ERROR: schema is required (--schema-json or --schema-file)")
+        text = schema_json
+    elif schema_file:
+        text = Path(schema_file).read_text(encoding="utf-8")
+    else:
+        raise ValueError("ERROR: schema is required (--schema-json or --schema-file)")
+
+    return json.loads(_extract_json_object(text))
 
 
 def _pick_agent(preferred: AgentName | None) -> AgentName:
@@ -285,14 +289,41 @@ def _run_agent(
     if mcp_tools_arg and mcp_tools is not None:
         cmd_parts.extend([mcp_tools_arg, mcp_tools])
 
-    if prompt_flag:
-        cmd_parts.extend(["-p", prompt])
-    else:
-        cmd_parts.append(prompt)
+    # Pass prompt via Stdin if possible to avoid ARG_MAX
+    # Claude: -p reads stdin if no arg provided.
+    # Codex: reads stdin if no prompt arg.
+    # Gemini: -p reads stdin if present.
+
+    use_stdin = False
+
+    if agent == AgentName.CLAUDE:
+        if prompt_flag:
+            cmd_parts.append("-p")
+        use_stdin = True
+
+    elif agent == AgentName.CODEX:
+        # Codex reads stdin if no prompt arg
+        use_stdin = True
+
+    elif agent == AgentName.GEMINI:
+        # Gemini requires -p to be non-interactive.
+        if prompt_flag:
+            cmd_parts.extend(["-p", ""])
+        use_stdin = True
+
+    if not use_stdin:
+        # Fallback to arg (should not happen with our 3 agents)
+        if prompt_flag:
+            cmd_parts.extend(["-p", prompt])
+        else:
+            cmd_parts.append(prompt)
+
     if debug_raw:
-        print(json.dumps({"debug_cmd": cmd_parts}))
+        print(json.dumps({"debug_cmd": cmd_parts, "prompt_len": len(prompt)}))
+
     result = subprocess.run(
         cmd_parts,
+        input=prompt if use_stdin else None,
         capture_output=True,
         text=True,
         check=False,
@@ -492,18 +523,26 @@ def main() -> int:
         "--mcp-tools",
         help='MCP tools list. "" disables. Omit to allow all.',
     )
-    parser.add_argument("--prompt", required=True, help="User prompt")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--prompt", help="User prompt string")
+    group.add_argument("--prompt-file", help="Path to file containing user prompt")
+
     parser.add_argument("--schema-json", help="JSON schema string (required if no --schema-file)")
     parser.add_argument("--schema-file", help="Path to JSON schema file (required if no --schema-file)")
     args = parser.parse_args()
 
     try:
+        if args.prompt_file:
+            prompt = Path(args.prompt_file).read_text(encoding="utf-8")
+        else:
+            prompt = args.prompt
+
         schema = _load_schema(args.schema_json, args.schema_file)
         payload = run_once(
             agent=args.agent,
             thinking_mode=args.thinking_mode,
             system=args.system,
-            prompt=args.prompt,
+            prompt=prompt,
             schema=schema,
             tools=args.tools,
             mcp_tools=args.mcp_tools,
