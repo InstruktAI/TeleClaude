@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -84,6 +85,8 @@ async def list_properties() -> dict[str, list[str]]:
     """Union of all properties declared across all active contracts."""
     registry = _get_registry()
     vocab = registry.list_properties()
+    if inspect.isawaitable(vocab):
+        vocab = await vocab
     return {k: sorted(v) for k, v in vocab.items()}
 
 
