@@ -306,7 +306,7 @@ class TestCLIIntegration:
 
         _handle_config(["--help"])
         output = capsys.readouterr().out
-        assert "Interactive configuration menu" in output
+        assert "Interactive menu" in output
 
     def test_telec_onboard_help(self, capsys):
         from teleclaude.cli.telec import _handle_onboard
@@ -413,7 +413,7 @@ class TestOnboardWizard:
         assert not state.adapters_complete
         assert not state.people_complete
         assert not state.notifications_complete
-        assert state.env_complete  # No adapters = no env vars needed
+        assert not state.env_complete  # All registered env vars must be set
 
     def test_detect_wizard_state_with_people(self, tmp_path):
         config_path = tmp_path / "teleclaude.yml"

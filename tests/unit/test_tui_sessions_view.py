@@ -680,6 +680,168 @@ class TestSessionsViewLogic:
         assert view.state.sessions.preview == PreviewState(session_id="preview-session")
         assert pane_manager.focus_called is False
 
+    def test_single_click_dispatches_single_selection_method(self, mock_focus):
+        """Single click preview should dispatch click selection intent exactly once."""
+
+        class MockPaneManager:
+            def __init__(self):
+                self.is_available = True
+                self.focus_called = False
+
+            def toggle_session(self, *_args, **_kwargs):
+                pass
+
+            def show_session(self, *_args, **_kwargs):
+                pass
+
+            def focus_pane_for_session(self, _session_id):
+                self.focus_called = True
+                return True
+
+            def apply_layout(self, **_kwargs):
+                return None
+
+        pane_manager = MockPaneManager()
+        state = TuiState()
+        controller = TuiController(state, pane_manager, lambda _name: None)
+        original_dispatch = controller.dispatch
+        dispatched_intents: list[tuple[IntentType, dict]] = []
+
+        def recording_dispatch(intent: Intent, defer_layout: bool = False) -> None:
+            dispatched_intents.append((intent.type, dict(intent.payload)))
+            return original_dispatch(intent, defer_layout=defer_layout)
+
+        controller.dispatch = recording_dispatch
+
+        view = SessionsView(
+            api=None,
+            agent_availability={},
+            focus=mock_focus,
+            pane_manager=pane_manager,
+            state=state,
+            controller=controller,
+        )
+        view.flat_items = [
+            self._make_session_node(
+                session_id="preview-session",
+                computer="local-machine",
+                tmux_session_name="tc-preview",
+            )
+        ]
+        view._row_to_item[10] = 0
+        view._computers = [
+            ComputerInfo(
+                name="local-machine",
+                status="online",
+                user="me",
+                host="local",
+                is_local=True,
+                tmux_binary="tmux",
+            )
+        ]
+
+        assert view.handle_click(10, is_double_click=False) is True
+        view.apply_pending_activation()
+        view.apply_pending_focus()
+        controller.apply_pending_layout()
+
+        selection_methods = [
+            payload.get("method")
+            for intent_type, payload in dispatched_intents
+            if intent_type == IntentType.SET_SELECTION_METHOD
+        ]
+        assert selection_methods == ["click"]
+        assert IntentType.SET_PREVIEW in {intent_type for intent_type, _ in dispatched_intents}
+        preview_payload = next(
+            payload for intent_type, payload in dispatched_intents if intent_type == IntentType.SET_PREVIEW
+        )
+        assert preview_payload["session_id"] == "preview-session"
+        assert preview_payload["focus_preview"] is False
+        assert preview_payload["clear_preview"] is False
+        assert pane_manager.focus_called is False
+
+    def test_space_and_click_preview_paths_agree_for_non_sticky_sessions(self, mock_focus):
+        """Space and click should schedule identical non-sticky preview semantics."""
+
+        class MockPaneManager:
+            def __init__(self):
+                self.is_available = True
+                self.focus_called = False
+
+            def toggle_session(self, *_args, **_kwargs):
+                pass
+
+            def show_session(self, *_args, **_kwargs):
+                pass
+
+            def focus_pane_for_session(self, _session_id):
+                self.focus_called = True
+                return True
+
+            def apply_layout(self, **_kwargs):
+                return None
+
+        def make_view() -> tuple[SessionsView, list[tuple[IntentType, dict]], TuiController]:
+            pane_manager = MockPaneManager()
+            state = TuiState()
+            controller = TuiController(state, pane_manager, lambda _name: None)
+            captured: list[tuple[IntentType, dict]] = []
+            original_dispatch = controller.dispatch
+
+            def recording_dispatch(intent: Intent, defer_layout: bool = False) -> None:
+                captured.append((intent.type, dict(intent.payload)))
+                return original_dispatch(intent, defer_layout=defer_layout)
+
+            controller.dispatch = recording_dispatch
+            view = SessionsView(
+                api=None,
+                agent_availability={},
+                focus=mock_focus,
+                pane_manager=pane_manager,
+                state=state,
+                controller=controller,
+            )
+            view.flat_items = [
+                self._make_session_node(
+                    session_id="nonsticky-session",
+                    computer="local-machine",
+                    tmux_session_name="tc-nonsticky",
+                )
+            ]
+            view._computers = [
+                ComputerInfo(
+                    name="local-machine",
+                    status="online",
+                    user="me",
+                    host="local",
+                    is_local=True,
+                    tmux_binary="tmux",
+                )
+            ]
+            return view, captured, controller
+
+        click_view, click_intents, click_controller = make_view()
+        click_view._row_to_item[10] = 0
+        assert click_view.handle_click(10, is_double_click=False) is True
+        click_view.apply_pending_activation()
+        click_view.apply_pending_focus()
+        click_controller.apply_pending_layout()
+        click_preview = next(payload for intent_type, payload in click_intents if intent_type == IntentType.SET_PREVIEW)
+
+        space_view, space_intents, space_controller = make_view()
+        space_view.selected_index = 0
+        space_view.handle_key(ord(" "), None)
+        space_view.apply_pending_activation()
+        space_view.apply_pending_focus()
+        space_controller.apply_pending_layout()
+        space_preview = next(payload for intent_type, payload in space_intents if intent_type == IntentType.SET_PREVIEW)
+
+        assert click_preview["session_id"] == space_preview["session_id"] == "nonsticky-session"
+        assert click_preview["focus_preview"] is False
+        assert space_preview["focus_preview"] is False
+        assert click_preview["clear_preview"] is False
+        assert space_preview["clear_preview"] is False
+
     def test_space_activates_sticky_session(self, mock_focus):
         """Space on a sticky session should only move highlight in the tree."""
 
