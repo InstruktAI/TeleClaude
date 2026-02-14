@@ -232,6 +232,68 @@ def _extract_shell_command(input_data: Mapping[str, object]) -> str:
     return ""
 
 
+def _looks_like_path_token(token: str) -> bool:
+    """Heuristic for shell tokens that are likely file paths."""
+    if not token:
+        return False
+    if token.startswith(("-", "$")):
+        return False
+    if token in {"|", ">", ">>", "2>", "1>", "&&", "||", ";"}:
+        return False
+    if token.startswith("s/") and token.count("/") >= 2:
+        # Common sed replacement expression; not a file path.
+        return False
+    if token.startswith("{") or token.startswith("["):
+        return False
+
+    if token.startswith(("./", "../", "/")):
+        return True
+    if "/" in token:
+        return True
+
+    suffixes = (
+        ".py",
+        ".md",
+        ".txt",
+        ".rst",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".sh",
+        ".sql",
+        ".ini",
+        ".cfg",
+        ".lock",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".css",
+    )
+    return token.endswith(suffixes)
+
+
+def _extract_shell_touched_paths(command: str, project_path: str) -> set[str]:
+    """Best-effort extraction of mutated file paths from shell commands."""
+    touched: set[str] = set()
+    if not command:
+        return touched
+
+    for segment in _split_shell_segments(command):
+        for token in _segment_tokens(segment):
+            clean = token.strip().strip("\"'`").strip(",;:")
+            if not _looks_like_path_token(clean):
+                continue
+            if ":" in clean and not clean.startswith(("./", "../", "/")):
+                # Likely git rev/path syntax or host:port-like token.
+                continue
+            normalized = _normalize_repo_path(clean, project_path)
+            if normalized:
+                touched.add(normalized)
+    return touched
+
+
 def _extract_apply_patch_paths(patch_text: str, project_path: str) -> set[str]:
     """Extract file paths from apply_patch payload text."""
     paths: set[str] = set()
@@ -293,6 +355,9 @@ def _extract_turn_file_signals(timeline: TurnTimeline, project_path: str) -> tup
         # Shell tools can mutate files but usually expose only freeform command text.
         if tool_name in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
             command = _extract_shell_command(record.input_data)
+            shell_touched = _extract_shell_touched_paths(command, project_path)
+            if shell_touched:
+                touched_files.update(shell_touched)
             if _command_likely_mutates_files(command):
                 saw_mutation_signal = True
 
@@ -330,17 +395,19 @@ def _scope_git_files_to_current_turn(
         if scoped:
             return scoped
 
-        # Explicit mutators seen but path mapping failed: prefer fail-open.
+        # Explicit mutators seen but path mapping failed: prefer fail-closed to
+        # avoid attributing repo-wide stale dirty files to this turn.
         if saw_mutation_signal:
-            return git_files
+            return []
         return []
 
     # No mutation signals in this turn: avoid stale dirty-file false positives.
     if not saw_mutation_signal:
         return []
 
-    # Mutation by shell command detected, but no structured file paths available.
-    return git_files
+    # Mutation by shell command detected, but no reliable file-path mapping.
+    # Prefer fail-closed to avoid broad false positives.
+    return []
 
 
 # ---------------------------------------------------------------------------

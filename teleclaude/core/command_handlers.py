@@ -26,7 +26,13 @@ from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import ErrorEventContext, FileEventContext, TeleClaudeEvents, VoiceEventContext
+from teleclaude.core.events import (
+    ErrorEventContext,
+    FileEventContext,
+    SessionLifecycleContext,
+    TeleClaudeEvents,
+    VoiceEventContext,
+)
 from teleclaude.core.feedback import get_last_feedback
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.identity import get_identity_resolver
@@ -1472,6 +1478,17 @@ async def end_session(
     session = await db.get_session(cmd.session_id)
     if not session:
         return {"status": "error", "message": f"Session {cmd.session_id[:8]} not found"}
+
+    if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+        logger.info("Session %s already terminal; replaying session_closed", cmd.session_id[:8])
+        event_bus.emit(
+            TeleClaudeEvents.SESSION_CLOSED,
+            SessionLifecycleContext(session_id=session.session_id),
+        )
+        return {
+            "status": "success",
+            "message": f"Session {cmd.session_id[:8]} already closed; session_closed replayed",
+        }
 
     terminated = await terminate_session(
         cmd.session_id,

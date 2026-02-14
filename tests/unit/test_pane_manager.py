@@ -84,15 +84,15 @@ def test_set_pane_background_keeps_constant_fg_across_focus():
     with (
         patch.object(manager, "_run_tmux", mock_run),
         patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
-        patch.object(theme, "get_agent_normal_color", return_value=111),
+        patch.object(theme, "get_agent_highlight_color", return_value=222),
         patch.object(theme, "get_current_mode", return_value=True),
         patch.object(theme, "get_terminal_background", return_value="#000000"),
     ):
         manager._set_pane_background("%9", "tc_test", "claude")
 
     style_calls = [call.args for call in mock_run.call_args_list if call.args[:4] == ("set", "-p", "-t", "%9")]
-    assert ("set", "-p", "-t", "%9", "window-style", "fg=colour111,bg=#101010") in style_calls
-    assert ("set", "-p", "-t", "%9", "window-active-style", "fg=colour111,bg=#000000") in style_calls
+    assert ("set", "-p", "-t", "%9", "window-style", "fg=colour222,bg=#101010") in style_calls
+    assert ("set", "-p", "-t", "%9", "window-active-style", "fg=colour222,bg=#000000") in style_calls
 
 
 def test_doc_pane_background_is_applied_for_non_session_specs():

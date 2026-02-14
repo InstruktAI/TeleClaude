@@ -15,11 +15,13 @@ import pytest
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import session_cleanup
+from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.session_cleanup import (
     cleanup_all_stale_sessions,
     cleanup_orphan_mcp_wrappers,
     cleanup_orphan_workspaces,
     cleanup_stale_session,
+    emit_recently_closed_session_events,
 )
 
 
@@ -331,3 +333,40 @@ async def test_cleanup_session_resources_uses_to_thread_for_rmtree(monkeypatch, 
     assert called["func"] is shutil.rmtree
     assert called["args"][0] == tmp_path
     assert not tmp_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_emit_recently_closed_session_events_only_replays_window() -> None:
+    """Replay session_closed only for sessions that closed within configured window."""
+    fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
+
+    recent_closed = SimpleNamespace(
+        session_id="recent",
+        closed_at=fixed_now - timedelta(hours=1),
+    )
+    old_closed = SimpleNamespace(
+        session_id="old",
+        closed_at=fixed_now - timedelta(hours=24),
+    )
+    active_session = SimpleNamespace(
+        session_id="active",
+        closed_at=None,
+    )
+
+    with (
+        patch("teleclaude.core.session_cleanup.datetime") as mock_datetime,
+        patch(
+            "teleclaude.core.session_cleanup.db.list_sessions",
+            new=AsyncMock(return_value=[recent_closed, old_closed, active_session]),
+        ),
+        patch("teleclaude.core.session_cleanup.event_bus.emit") as mock_emit,
+    ):
+        mock_datetime.now.return_value = fixed_now
+
+        emitted = await emit_recently_closed_session_events(hours=12)
+
+    assert emitted == 1
+    assert mock_emit.call_count == 1
+    emitted_event, emitted_ctx = mock_emit.call_args.args  # type: ignore[misc]
+    assert emitted_event == TeleClaudeEvents.SESSION_CLOSED
+    assert emitted_ctx.session_id == "recent"

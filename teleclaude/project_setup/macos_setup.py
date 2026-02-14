@@ -132,7 +132,7 @@ print('PERMISSIONS_PROBE_DONE')
 
     denied = True
     try:
-        command = f"python3 {probe_path} ; sleep 8"
+        command = f"{sys.executable} {probe_path} ; sleep 8"
         run_result = subprocess.run(
             [str(tmux_wrapper), "new-session", "-d", "-s", probe_session, command],
             check=False,

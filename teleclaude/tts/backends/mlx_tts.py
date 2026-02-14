@@ -19,6 +19,22 @@ _mlx_audio_import_attempted = False
 logger = get_logger(__name__)
 
 DEFAULT_VOICE_DESIGN_INSTRUCT = "A clear, natural conversational voice."
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _looks_like_python_script(path: str) -> bool:
+    """Detect direct python script executables that can break on broken environments."""
+    candidate = Path(path)
+    if not candidate.is_file():
+        return False
+    if candidate.suffix == ".py":
+        return True
+    try:
+        with candidate.open(encoding="utf-8", errors="ignore") as handle:
+            first_line = handle.readline()
+    except OSError:
+        return False
+    return first_line.startswith("#!") and ("python" in first_line)
 
 
 class MLXTTSBackend:
@@ -150,21 +166,11 @@ class MLXTTSBackend:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             prefix = f"{tmp_dir}/tts_output"
-            cmd = [
-                self._cli_bin,
-                "--model",
-                self._model_ref,
-                "--text",
-                text,
-                "--voice",
-                voice,
-                "--file_prefix",
-                prefix,
-                "--join_audio",
-                "--audio_format",
-                "wav",
-                "--play",
-            ]
+            cmd = self._build_cli_command(
+                text=text,
+                voice=voice,
+                file_prefix=prefix,
+            )
 
             # Pass config params as CLI flags
             for key, val in self._params.items():
@@ -184,6 +190,41 @@ class MLXTTSBackend:
 
         logger.debug("MLX TTS [%s]: spoke %d chars via CLI (voice=%s)", self._service_name, len(text), voice)
         return True
+
+    def _build_cli_command(self, text: str, voice: str, file_prefix: str) -> list[str]:
+        """Build the CLI command list for the fallback CLI path."""
+        cli_args = [
+            "--model",
+            self._model_ref,
+            "--text",
+            text,
+            "--voice",
+            voice,
+            "--file_prefix",
+            file_prefix,
+            "--join_audio",
+            "--audio_format",
+            "wav",
+            "--play",
+        ]
+
+        if self._cli_bin and _looks_like_python_script(self._cli_bin):
+            return [
+                "uv",
+                "run",
+                "--quiet",
+                "--project",
+                str(_REPO_ROOT),
+                "--with",
+                "pip",
+                "python",
+                "-m",
+                "mlx_audio.tts.generate",
+                *cli_args,
+            ]
+
+        assert self._cli_bin is not None
+        return [self._cli_bin, *cli_args]
 
     def _speak_local(self, text: str, voice: str, model_type: str) -> bool:
         """Speak via in-process mlx_audio."""

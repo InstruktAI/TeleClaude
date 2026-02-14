@@ -5,7 +5,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from typing import Awaitable, TypedDict, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -13,10 +13,11 @@ from teleclaude.config import AgentConfig
 from teleclaude.core import command_handlers
 from teleclaude.core.db import Db
 from teleclaude.core.identity import IdentityContext
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 from teleclaude.types.commands import (
+    CloseSessionCommand,
     CreateSessionCommand,
     GetSessionDataCommand,
     HandleFileCommand,
@@ -1549,6 +1550,37 @@ async def test_handle_voice_sends_transcribed_text(mock_initialized_db) -> None:
         await command_handlers.handle_voice(cmd, mock_client, AsyncMock())
 
     assert len(send_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_end_session_replays_session_closed_event_for_terminal_session() -> None:
+    """End session should emit session_closed for already terminal sessions."""
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(
+        return_value=Session(
+            session_id="sess-closed",
+            computer_name="local",
+            tmux_session_name="tc-closed",
+            title="Closed Session",
+            closed_at=datetime.now(timezone.utc),
+            lifecycle_status="closed",
+        )
+    )
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "terminate_session", new=AsyncMock()) as mock_terminate,
+        patch.object(command_handlers.event_bus, "emit") as mock_emit,
+    ):
+        result = await command_handlers.end_session(
+            CloseSessionCommand(session_id="sess-closed"),
+            MagicMock(),
+        )
+
+    assert result["status"] == "success"
+    assert "already closed" in result["message"]
+    mock_emit.assert_called_once_with("session_closed", ANY)
+    mock_terminate.assert_not_awaited()
 
 
 @pytest.mark.asyncio

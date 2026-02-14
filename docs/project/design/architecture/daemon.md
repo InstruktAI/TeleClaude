@@ -111,15 +111,25 @@ sequenceDiagram
 
 ### 3. Background Workers
 
-| Worker             | Interval (default) | Purpose                                             |
-| ------------------ | ------------------ | --------------------------------------------------- |
-| Hook Outbox        | 1s                 | Process agent lifecycle hooks                       |
-| MCP Socket Watcher | 2s                 | Monitor MCP socket health and trigger restart       |
-| Poller Watch       | 5s                 | Keep per-session output pollers aligned with tmux   |
-| Resource Monitor   | 60s                | Emit runtime resource snapshots                     |
-| WAL Checkpoint     | 300s               | Prevent unbounded SQLite WAL growth                 |
-| Launchd Watch      | 300s (optional)    | Log launchd state transitions on macOS              |
-| Session Cleanup    | 1h                 | Periodic stale-session cleanup via maintenance loop |
+| Worker                | Interval (default) | Purpose                                                            |
+| --------------------- | ------------------ | ------------------------------------------------------------------ |
+| Hook Outbox           | 1s                 | Process agent lifecycle hooks                                      |
+| MCP Socket Watcher    | 2s                 | Monitor MCP socket health and trigger restart                      |
+| Poller Watch          | 5s                 | Keep per-session output pollers aligned with tmux                  |
+| Resource Monitor      | 60s                | Emit runtime resource snapshots                                    |
+| WAL Checkpoint        | 300s               | Prevent unbounded SQLite WAL growth                                |
+| Launchd Watch         | 300s (optional)    | Log launchd state transitions on macOS                             |
+| Session Cleanup       | 1h                 | Periodic stale-session cleanup via maintenance loop                |
+| Closed Session Replay | 1h                 | Re-emit `session_closed` for recently closed sessions (12h window) |
+
+An operator can force the same behavior on demand with:
+
+```
+uv run scripts/cleanup_closed_session_channels.py [--hours 12] [--dry-run]
+```
+
+The helper queries local closed sessions within the window and replays their
+`session_closed` handling through the running daemon API.
 
 ### 4. MCP Server Auto-Restart
 

@@ -168,6 +168,17 @@ Usage:
 
         session = await self._get_session_from_topic(update)
         if not session:
+            effective_message = update.effective_message
+            if effective_message and effective_message.message_thread_id:
+                thread_id = effective_message.message_thread_id
+                if update.effective_user and update.effective_user.id in self.user_whitelist:
+                    if await self._emit_session_closed_for_topic(thread_id):
+                        return
+            else:
+                thread_id = None
+
+            if thread_id is None:
+                return
             logger.warning(
                 "Session lookup failed for message in topic %s (user: %s, text: %s)",
                 (update.effective_message.message_thread_id if update.effective_message else None),
@@ -262,6 +273,14 @@ Usage:
 
         session = await self._get_session_from_topic(update)
         if not session:
+            message_thread_id = message.message_thread_id
+            if (
+                message_thread_id
+                and update.effective_user
+                and update.effective_user.id in self.user_whitelist
+                and await self._emit_session_closed_for_topic(message_thread_id)
+            ):
+                return
             logger.warning(
                 "No session found for voice message in thread %s",
                 message.message_thread_id,
@@ -317,6 +336,14 @@ Usage:
 
         session = await self._get_session_from_topic(update)
         if not session:
+            message_thread_id = update.effective_message.message_thread_id if update.effective_message else None
+            if (
+                message_thread_id
+                and update.effective_user
+                and update.effective_user.id in self.user_whitelist
+                and await self._emit_session_closed_for_topic(message_thread_id)
+            ):
+                return
             return
 
         # Get file object (either document or photo)
@@ -400,7 +427,7 @@ Usage:
 
         topic_id = update.message.message_thread_id
 
-        sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", topic_id)
+        sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", topic_id, include_closed=True)
 
         if not sessions:
             logger.warning("No session found for topic %s", topic_id)
@@ -411,6 +438,18 @@ Usage:
             return
 
         session = sessions[0]
+        if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+            logger.info(
+                "Topic %s ended for already closed session %s",
+                topic_id,
+                session.session_id[:8],
+            )
+            event_bus.emit(
+                "session_closed",
+                SessionLifecycleContext(session_id=session.session_id),
+            )
+            return
+
         if session.created_at:
             created_at = ensure_utc(session.created_at)
             session_age = (datetime.now(timezone.utc) - created_at).total_seconds()
@@ -432,6 +471,35 @@ Usage:
             "session_closed",
             SessionLifecycleContext(session_id=session.session_id),
         )
+
+    async def _emit_session_closed_for_topic(self, topic_id: int) -> bool:
+        """Emit session_closed if topic maps to a closed session.
+
+        Returns True when a closed session event was emitted, False otherwise.
+        """
+        sessions = await db.get_sessions_by_adapter_metadata(
+            "telegram",
+            "topic_id",
+            topic_id,
+            include_closed=True,
+        )
+        if not sessions:
+            return False
+
+        session = sessions[0]
+        if not session.closed_at and session.lifecycle_status not in {"closed", "closing"}:
+            return False
+
+        logger.info(
+            "Found closed session %s for topic %s, emitting session_closed",
+            session.session_id[:8],
+            topic_id,
+        )
+        event_bus.emit(
+            "session_closed",
+            SessionLifecycleContext(session_id=session.session_id),
+        )
+        return True
 
     async def _log_all_updates(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Log all Telegram updates for debugging (catch-all handler).

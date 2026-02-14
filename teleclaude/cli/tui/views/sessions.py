@@ -1815,17 +1815,23 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         is_headless = status_normalized.startswith("headless") or not session.tmux_session_name
         header_attr = muted_attr if is_headless else normal_attr
 
+        is_previewed = bool(self._preview and self._preview.session_id == session_id)
+        preview_title_attr = highlight_attr if is_previewed else header_attr
+        preview_bold_attr = curses.A_BOLD if is_previewed and not is_headless else 0
+        if is_previewed:
+            preview_title_attr |= preview_bold_attr
+
         # Sticky sessions get highlighted [N] indicator
         if is_sticky and sticky_position is not None:
             idx_text = f"[{sticky_position}]"
             idx_attr = curses.A_REVERSE | curses.A_BOLD
         else:
             idx_text = f"[{idx}]"
-            idx_attr = header_attr
+            idx_attr = preview_title_attr
 
         # Keep headless rows muted when unselected, but always show keyboard focus when selected.
-        selected_header_attr = curses.A_REVERSE | header_attr
-        title_attr = selected_header_attr if selected else header_attr
+        selected_header_attr = curses.A_REVERSE | preview_title_attr
+        title_attr = selected_header_attr if selected else preview_title_attr
 
         # Collapse indicator
         collapse_indicator = "▶" if is_collapsed else "▼"
@@ -1848,7 +1854,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if session.subdir and col < width:
                 subdir_display = session.subdir.removeprefix("trees/")
                 subdir_text = f" {subdir_display} "
-                subdir_attr = curses.A_REVERSE if selected else 0
+                subdir_attr = selected_header_attr if selected else (preview_title_attr if is_previewed else 0)
                 stdscr.addstr(row, col, subdir_text[: width - col], subdir_attr)  # type: ignore[attr-defined]
                 col += len(subdir_text)
                 title_text = f'"{title}"'

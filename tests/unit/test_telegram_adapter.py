@@ -3,7 +3,9 @@
 import asyncio
 import inspect
 import os
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -851,6 +853,65 @@ class TestReplyMarkup:
 
             assert result is True
             assert len(calls) == 1
+
+
+class TestSessionLookup:
+    """Tests for session lookup by Telegram topic."""
+
+    @pytest.mark.asyncio
+    async def test_get_session_from_topic_ignores_closing_session(self, telegram_adapter):
+        """_get_session_from_topic should not return sessions in closing state."""
+        from teleclaude.core.models import TelegramAdapterMetadata
+
+        update = SimpleNamespace(
+            effective_user=SimpleNamespace(id=12345),
+            effective_message=SimpleNamespace(message_thread_id=101),
+        )
+        update.message = update.effective_message
+
+        session = Session(
+            session_id="session-closing",
+            computer_name="test_computer",
+            tmux_session_name="tmux-closing",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Closing",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=101)),
+            lifecycle_status="closing",
+        )
+
+        with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
+            mock_db.get_sessions_by_adapter_metadata = AsyncMock(return_value=[session])
+            found_session = await telegram_adapter._get_session_from_topic(update)
+
+        assert found_session is None
+
+    @pytest.mark.asyncio
+    async def test_get_session_from_topic_ignores_closed_session(self, telegram_adapter):
+        """_get_session_from_topic should not return already closed sessions."""
+        from teleclaude.core.models import TelegramAdapterMetadata
+
+        update = SimpleNamespace(
+            effective_user=SimpleNamespace(id=12345),
+            effective_message=SimpleNamespace(message_thread_id=102),
+        )
+        update.message = update.effective_message
+
+        session = Session(
+            session_id="session-closed",
+            computer_name="test_computer",
+            tmux_session_name="tmux-closed",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Closed",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=102)),
+            closed_at=datetime.now(timezone.utc),
+            lifecycle_status="closed",
+        )
+
+        with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
+            mock_db.get_sessions_by_adapter_metadata = AsyncMock(return_value=[session])
+            found_session = await telegram_adapter._get_session_from_topic(update)
+
+        assert found_session is None
 
 
 class TestMessageNotModified:

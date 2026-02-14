@@ -713,6 +713,67 @@ class TestSessionsViewLogic:
         assert row0_calls[1][3] == focused_headless_attr
         assert row0_calls[2][3] == focused_headless_attr
 
+    def test_preview_session_uses_highlight_attrs(self, sessions_view, monkeypatch):
+        """Previewed sessions use highlight color regardless of theme mode."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text, attr))
+
+        session = self._make_session_node(
+            session_id="previewed",
+            active_agent="claude",
+            thinking_mode="slow",
+            tmux_session_name="tc-preview",
+        )
+        sessions_view._preview = PreviewState(session_id="previewed")
+        sessions_view.state.sessions.preview = PreviewState(session_id="previewed")
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
+
+        screen = FakeScreen()
+        screen_calls = screen.calls
+        sessions_view._render_session(screen, 0, session, 80, False, 3)
+
+        line0_calls = [call for call in screen_calls if call[0] == 0]
+        assert len(line0_calls) == 3
+        # Previewed row uses highlighted index/text color.
+        assert line0_calls[0][3] == (3 | curses.A_BOLD)
+        assert line0_calls[1][3] == (3 | curses.A_BOLD)
+        assert line0_calls[2][3] == (3 | curses.A_BOLD)
+
+    def test_selected_preview_session_keeps_selection_highlight(self, sessions_view, monkeypatch):
+        """Selected preview rows keep reverse-selection emphasis."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text, attr))
+
+        session = self._make_session_node(
+            session_id="preview-selected",
+            active_agent="claude",
+            thinking_mode="slow",
+            tmux_session_name="tc-preview-selected",
+        )
+        sessions_view._preview = PreviewState(session_id="preview-selected")
+        sessions_view.state.sessions.preview = PreviewState(session_id="preview-selected")
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
+
+        screen = FakeScreen()
+        session_calls = screen.calls
+        sessions_view._render_session(screen, 0, session, 80, True, 3)
+
+        line0_calls = [call for call in session_calls if call[0] == 0]
+        assert len(line0_calls) == 3
+        assert line0_calls[0][3] == (curses.A_REVERSE | curses.A_BOLD | 3)
+        assert line0_calls[1][3] == (curses.A_REVERSE | curses.A_BOLD | 3)
+        assert line0_calls[2][3] == (curses.A_REVERSE | curses.A_BOLD | 3)
+
     def test_headless_status_is_normalized_for_header_muting(self, sessions_view, monkeypatch):
         """Status normalization should treat whitespace/case headless values as headless."""
 

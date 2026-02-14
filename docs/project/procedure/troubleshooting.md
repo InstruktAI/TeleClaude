@@ -192,6 +192,59 @@ If restart is not enough, use:
 - `make status` reports healthy.
 - Recent logs show normal API startup without repeated failures.
 
+## Runbook: API restart churn (SIGTERM storm)
+
+### Symptom
+
+- API socket repeatedly disappears/rebinds.
+- MCP/API clients show bursts of connection-refused errors.
+- Logs show frequent `Received SIGTERM signal...`.
+
+### Likely causes
+
+- External restart trigger loop (automation/operator flow repeatedly issuing restarts).
+- Checkpoint-driven housekeeping loops forcing repeated daemon restarts.
+- Less likely: internal daemon crash (verify via logs before assuming this).
+
+### Fast checks
+
+1. `make status`
+2. `instrukt-ai-logs teleclaude --since 30m --grep "Received SIGTERM signal"`
+3. `instrukt-ai-logs teleclaude --since 30m --grep "Removing API server socket|Connection refused"`
+4. `instrukt-ai-logs teleclaude --since 30m --grep "API server task crashed|API server task exited unexpectedly"`
+
+### Recover
+
+1. Stop issuing additional restart commands.
+2. Perform one controlled restart: `make restart`.
+3. If `make restart` reports timeout/degraded, do not immediately chain another restart; check logs for ongoing startup first:
+   `instrukt-ai-logs teleclaude --since 2m --grep "Starting TeleClaude daemon|API server listening on /tmp/teleclaude-api.sock"`
+4. Validate once: `make status`.
+5. Monitor for 10 minutes and confirm SIGTERM events do not continue repeating.
+
+### Verify
+
+- No new `Received SIGTERM signal...` lines in the verification window.
+- No sustained connection-refused bursts in MCP/API logs.
+- API socket remains present and healthy in `make status`.
+
+## Incident Trail For Next AI
+
+When an incident is non-trivial, preserve the reasoning trail in two places:
+
+1. **Operational runbook context**: this file (`docs/project/procedure/troubleshooting.md`) for stable symptom/recovery steps.
+2. **Case trail with timeline + hypotheses**: append to `docs/explore/teleclaude-api-socket-degradation.md`.
+
+Minimum fields for each case-trail entry:
+
+- timestamp window
+- symptom
+- evidence (exact commands/log patterns)
+- root-cause hypothesis + confidence
+- change/prototype attempted
+- verification result
+- next decision
+
 ## Escalate when
 
 Escalate immediately if any of the following persists after one controlled restart:

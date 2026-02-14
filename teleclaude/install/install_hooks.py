@@ -150,25 +150,22 @@ def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Di
     return merged
 
 
-def _resolve_hook_python(repo_root: Path) -> Path:
-    override = os.getenv("TELECLAUDE_HOOK_PYTHON")
-    if override:
-        return Path(override).expanduser()
+def _build_hook_invocation(receiver_script: Path) -> str:
+    """Build the base receiver invocation.
 
-    venv_python = repo_root / ".venv" / "bin" / "python"
-    if not venv_python.exists():
-        raise FileNotFoundError(f"Expected TeleClaude venv python at {venv_python}")
-    return venv_python
+    Hooks must execute the receiver script directly; wrapper binaries or shell
+    interpreters are not used to preserve direct script portability.
+    """
+    return shlex.quote(str(receiver_script))
 
 
-def _build_hook_command(python_exe: Path, receiver_script: Path, agent: str, event_arg: str) -> str:
-    """Build command string: python executable + script + args, space-separated."""
-    return f'{python_exe} {receiver_script} --agent {agent} --cwd "$PWD" {event_arg}'
+def _build_hook_command(receiver_invocation: str, agent: str, event_arg: str) -> str:
+    """Build command string: receiver invocation + agent context args."""
+    return f'{receiver_invocation} --agent {agent} --cwd "$PWD" {event_arg}'
 
 
 def _build_hook_map(
-    python_exe: Path,
-    receiver_script: Path,
+    receiver_invocation: str,
     agent: str,
     event_args: Mapping[str, AgentHookEventType],
     include_metadata: bool = False,
@@ -186,7 +183,7 @@ def _build_hook_map(
     for event_name, event_arg in event_args.items():
         hook_def: Dict[str, Any] = {
             "type": "command",
-            "command": _build_hook_command(python_exe, receiver_script, agent, event_arg),
+            "command": _build_hook_command(receiver_invocation, agent, event_arg),
         }
         if include_metadata:
             hook_def["name"] = f"teleclaude-{event_arg}"
@@ -208,17 +205,16 @@ def _filter_receiver_handled_events(
     }
 
 
-def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
+def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
     """Return TeleClaude hook definitions for Claude Code."""
     return _build_hook_map(
-        python_exe,
-        receiver_script,
+        receiver_invocation,
         "claude",
         _filter_receiver_handled_events(AgentHookEvents.HOOK_EVENT_MAP["claude"]),
     )
 
 
-def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
+def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
     """Return TeleClaude hook definitions for Gemini CLI."""
     # Installer contract:
     # - Tool lane comes only from BeforeTool/AfterTool.
@@ -228,8 +224,7 @@ def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
     gemini_events["BeforeTool"] = AgentHookEvents.TOOL_USE
     gemini_events["AfterTool"] = AgentHookEvents.TOOL_DONE
     return _build_hook_map(
-        python_exe,
-        receiver_script,
+        receiver_invocation,
         "gemini",
         _filter_receiver_handled_events(gemini_events),
         include_metadata=True,
@@ -315,8 +310,8 @@ def _configure_json_agent_hooks(
     if settings is None:
         return
 
-    python_exe = _resolve_hook_python(repo_root)
-    hooks_map = hook_map_builder(python_exe, receiver_script)
+    receiver_invocation = _build_hook_invocation(receiver_script)
+    hooks_map = hook_map_builder(receiver_invocation, receiver_script)
     allowed_events = set(hooks_map.keys())
 
     existing_hooks = settings.get("hooks", {})
@@ -390,12 +385,11 @@ def configure_codex(repo_root: Path) -> None:
     config_path = Path.home() / ".codex" / "config.toml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
-    python_exe = _resolve_hook_python(repo_root)
+    receiver_invocation = _build_hook_invocation(receiver_script)
     notify_value = [
-        "/bin/bash",
-        "-lc",
-        f'{python_exe} {receiver_script} {AGENT_FLAG} {CODEX_AGENT} --cwd "$PWD" "$1"',
-        "hook",
+        str(receiver_script),
+        AGENT_FLAG,
+        CODEX_AGENT,
     ]
 
     if config_path.exists():
@@ -415,40 +409,37 @@ def configure_codex(repo_root: Path) -> None:
         if not skip_notify_update:
             # Update or add notify line using text manipulation to preserve formatting
             notify_line = f"{NOTIFY_KEY} = {json.dumps(notify_value)}"
+
             if NOTIFY_KEY in config:
                 # Check if existing notify is our hook (contains receiver.py and --agent codex)
                 is_our_hook = False
+                joined = " ".join(str(part) for part in existing_notify)
                 if isinstance(existing_notify, list):
-                    joined = " ".join(str(part) for part in existing_notify)
                     has_receiver = RECEIVER_FILE in joined
-                    has_codex_agent = AGENT_FLAG in existing_notify and CODEX_AGENT in existing_notify
+                    has_codex_agent = f"{AGENT_FLAG} {CODEX_AGENT}" in joined
                     is_our_hook = has_receiver and has_codex_agent
+
                 if not is_our_hook:
                     print(f"Warning: Existing notify hook in {config_path} is not ours, skipping")
                     print(f"  Existing: {existing_notify}")
                     skip_notify_update = True
                 else:
-                    # Replace our existing notify line with updated paths
-                    cleaned_lines: list[str] = []
-                    for line in content.splitlines():
-                        if re.match(rf"^\s*{NOTIFY_KEY}\s*=", line):
-                            continue
-                        cleaned_lines.append(line)
-                    content = "\n".join(cleaned_lines).rstrip()
-                    first_section = re.search(r"^\[", content, re.MULTILINE)
-                    if first_section:
-                        insert_pos = first_section.start()
-                        content = content[:insert_pos] + notify_line + "\n\n" + content[insert_pos:]
-                    else:
-                        content = content + "\n" + notify_line + "\n"
-            if not skip_notify_update and NOTIFY_KEY not in config:
-                # Add notify after any comments at the top, before first section
+                    # Remove previous notify block and reinsert normalized block.
+                    # Capture from `notify = [` up to matching closing `]`.
+                    notify_block_pattern = re.compile(rf"(?ms)^\s*{re.escape(NOTIFY_KEY)}\s*=\s*\[[^\]]*?\]\s*,?\s*$")
+                    content = notify_block_pattern.sub("", content).rstrip()
+            if not skip_notify_update:
+                # Add notify after any comments at top or before first section.
                 first_section = re.search(r"^\[", content, re.MULTILINE)
                 if first_section:
                     insert_pos = first_section.start()
+                    if content and not content.endswith("\n"):
+                        notify_line = "\n" + notify_line
                     content = content[:insert_pos] + notify_line + "\n\n" + content[insert_pos:]
                 else:
-                    content = content.rstrip() + "\n\n" + notify_line + "\n"
+                    if content and not content.endswith("\n"):
+                        notify_line = "\n" + notify_line
+                    content = content.rstrip() + "\n" + notify_line + "\n"
     else:
         # Create new config with just the notify hook
         notify_line = f"{NOTIFY_KEY} = {json.dumps(notify_value)}"
@@ -496,16 +487,15 @@ def _apply_codex_settings_overrides(content: str) -> str:
 
 
 def ensure_codex_mcp_config(content: str, repo_root: Path) -> str:
-    """Ensure Codex MCP server config points at the repo venv wrapper."""
-    venv_python = repo_root / ".venv" / "bin" / "python"
+    """Ensure Codex MCP server config points at the repo root wrapper command."""
     wrapper_path = repo_root / "bin" / "mcp-wrapper.py"
 
     desired_block = (
         "# TeleClaude MCP Server\n"
         "[mcp_servers.teleclaude]\n"
         'type = "stdio"\n'
-        f'command = "{venv_python}"\n'
-        f'args = ["{wrapper_path}"]\n'
+        'command = "uv"\n'
+        f'args = ["run", "--quiet", "--project", "{repo_root}", "{wrapper_path}"]\n'
     )
 
     section_name = "mcp_servers.teleclaude"

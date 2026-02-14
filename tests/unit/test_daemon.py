@@ -1354,39 +1354,83 @@ class TestTitleUpdate:
             assert "title" not in update_calls[1].kwargs
             assert update_calls[2].kwargs["title"] == "Debug auth flow"
 
-    async def test_user_prompt_submit_skips_empty_prompt(self):
-        """Empty prompt hook events should not wipe persisted last input."""
-        coordinator = AgentCoordinator(
-            client=MagicMock(),
-            tts_manager=MagicMock(),
-            headless_snapshot_service=MagicMock(),
-        )
 
-        session = Session(
-            session_id="sess-empty",
-            computer_name="TestMac",
-            tmux_session_name="tmux-1",
-            last_input_origin=InputOrigin.TELEGRAM.value,
-            title="Existing title",
-            active_agent="gemini",
-            thinking_mode="fast",
-        )
+@pytest.mark.asyncio
+async def test_user_prompt_submit_skips_empty_prompt() -> None:
+    """Empty prompt hook events should not wipe persisted last input."""
+    coordinator = AgentCoordinator(
+        client=MagicMock(),
+        tts_manager=MagicMock(),
+        headless_snapshot_service=MagicMock(),
+    )
 
-        context = AgentEventContext(
-            session_id="sess-empty",
-            event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
-            data=UserPromptSubmitPayload(prompt=""),
-        )
+    session = Session(
+        session_id="sess-empty",
+        computer_name="TestMac",
+        tmux_session_name="tmux-1",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Existing title",
+        active_agent="gemini",
+        thinking_mode="fast",
+    )
 
-        with patch("teleclaude.core.agent_coordinator.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=session)
-            mock_db.update_session = AsyncMock()
-            mock_db.set_notification_flag = AsyncMock()
+    context = AgentEventContext(
+        session_id="sess-empty",
+        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+        data=UserPromptSubmitPayload(prompt=""),
+    )
 
-            await coordinator.handle_user_prompt_submit(context)
+    with patch("teleclaude.core.agent_coordinator.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+        mock_db.set_notification_flag = AsyncMock()
 
-            mock_db.set_notification_flag.assert_not_called()
-            mock_db.update_session.assert_not_called()
+        await coordinator.handle_user_prompt_submit(context)
+
+        mock_db.set_notification_flag.assert_not_called()
+        mock_db.update_session.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_periodic_cleanup_replays_recent_closed_sessions() -> None:
+    service = MaintenanceService(client=MagicMock(), output_poller=MagicMock(), poller_watch_interval_s=1.0)
+    sleep_calls = []
+
+    async def stop_after_second_sleep(*_args: object, **_kwargs: object) -> None:
+        if sleep_calls:
+            raise asyncio.CancelledError()
+        sleep_calls.append(1)
+
+    with (
+        patch.object(service, "_cleanup_inactive_sessions", new_callable=AsyncMock) as mock_cleanup_inactive,
+        patch(
+            "teleclaude.services.maintenance_service.session_cleanup.emit_recently_closed_session_events",
+            new_callable=AsyncMock,
+        ) as mock_emit_closed,
+        patch(
+            "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_tmux_sessions",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_workspaces", new_callable=AsyncMock
+        ),
+        patch(
+            "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_mcp_wrappers",
+            new_callable=AsyncMock,
+        ),
+        patch("teleclaude.services.maintenance_service.db.cleanup_stale_voice_assignments", new_callable=AsyncMock),
+        patch(
+            "teleclaude.services.maintenance_service.asyncio.sleep",
+            new_callable=AsyncMock,
+            side_effect=stop_after_second_sleep,
+        ),
+    ):
+        task = asyncio.create_task(service.periodic_cleanup())
+        await task
+
+    assert mock_cleanup_inactive.await_count == 2
+    assert mock_emit_closed.await_count == 2
+    assert len(sleep_calls) == 1
 
 
 def test_all_events_have_handlers():

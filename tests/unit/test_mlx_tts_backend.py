@@ -49,3 +49,48 @@ def test_ensure_model_cli_only_does_not_import_mlx_audio() -> None:
 
     with patch.object(mlx_tts, "import_module", side_effect=AssertionError("should not import mlx_audio")):
         assert backend._ensure_model() is True
+
+
+def test_build_cli_command_uses_uv_for_python_script_backend(monkeypatch, tmp_path: Path) -> None:
+    """Python-script CLI backends are invoked through uv-run module execution."""
+    script = tmp_path / "mlx_audio.tts.generate"
+    script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    script.chmod(0o755)
+
+    backend = MLXTTSBackend.__new__(MLXTTSBackend)
+    backend._service_name = "kokoro"
+    backend._cli_bin = str(script)
+    backend._params = {}
+    backend._model_ref = "mlx-community/Kokoro-82M-bf16"
+
+    monkeypatch.setattr(mlx_tts, "_REPO_ROOT", tmp_path)
+    cmd = backend._build_cli_command(text="hi", voice="nova", file_prefix="/tmp/tts")
+
+    assert cmd[:8] == [
+        "uv",
+        "run",
+        "--quiet",
+        "--project",
+        str(tmp_path),
+        "--with",
+        "pip",
+        "python",
+    ]
+    assert cmd[8:11] == ["-m", "mlx_audio.tts.generate", "--model"]
+
+
+def test_build_cli_command_uses_binary_directly_for_non_script(monkeypatch, tmp_path: Path) -> None:
+    """Binary CLI executables are kept as direct invocations."""
+    binary = tmp_path / "mlx_audio.tts.generate"
+    binary.write_text("binary", encoding="utf-8")
+    binary.chmod(0o755)
+
+    backend = MLXTTSBackend.__new__(MLXTTSBackend)
+    backend._service_name = "kokoro"
+    backend._cli_bin = str(binary)
+    backend._params = {}
+    backend._model_ref = "mlx-community/Kokoro-82M-bf16"
+
+    cmd = backend._build_cli_command(text="hi", voice="nova", file_prefix="/tmp/tts")
+    assert cmd[0] == str(binary)
+    assert cmd[1:3] == ["--model", "mlx-community/Kokoro-82M-bf16"]

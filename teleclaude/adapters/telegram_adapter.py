@@ -834,13 +834,29 @@ class TelegramAdapter(
 
         thread_id = message.message_thread_id
 
-        sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", thread_id)
+        sessions = await db.get_sessions_by_adapter_metadata(
+            "telegram",
+            "topic_id",
+            thread_id,
+            include_closed=True,
+        )
 
         if not sessions:
             logger.debug("_get_session_from_topic: no session found for topic_id %s", thread_id)
             return None
 
-        return sessions[0]
+        session = sessions[0]
+        # TODO(core): keep treating "closing" as terminal here until lifecycle transitions
+        # are strictly enforced at query-time across all adapters.
+        if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+            logger.debug(
+                "_get_session_from_topic: topic_id %s maps to terminal session %s",
+                thread_id,
+                session.session_id[:8],
+            )
+            return None
+
+        return session
 
     async def _require_session_from_topic(self, update: Update) -> Optional[Session]:
         """Get session from topic, with error feedback if not found.

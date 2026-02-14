@@ -15,7 +15,7 @@ import os
 import shutil
 import signal
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional
 
 from instrukt_ai_logging import get_logger
@@ -23,6 +23,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core import tmux_bridge
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_listeners
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 
@@ -36,6 +38,10 @@ logger = get_logger(__name__)
 TMUX_SESSION_PREFIX = "tc_"
 TMUX_TUI_SESSION_NAME = "tc_tui"
 _MCP_WRAPPER_MATCH = "bin/mcp-wrapper.py"
+
+# Lookback window for replaying session_closed events for rows marked closed by an earlier
+# process instance. Replays are safe but intentionally bounded.
+RECENTLY_CLOSED_SESSION_HOURS = 12
 
 
 async def cleanup_session_resources(
@@ -145,6 +151,51 @@ async def terminate_session(
             await db.close_session(session.session_id)
             logger.info("Closed session %s in database", session.session_id[:8])
     return not already_closed or delete_db
+
+
+async def emit_recently_closed_session_events(
+    *,
+    hours: float = RECENTLY_CLOSED_SESSION_HOURS,
+    include_headless: bool = True,
+) -> int:
+    """Replay session_closed for closed sessions from the last *hours* window.
+
+    Used by maintenance to recover closed sessions from daemon restarts or missed
+    event delivery paths (for example, when sessions reach "closed" in DB before
+    channel cleanup runs).
+
+    Returns:
+        Number of sessions for which a session_closed event was emitted.
+    """
+    if hours <= 0:
+        return 0
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    sessions = await db.list_sessions(
+        include_closed=True,
+        include_initializing=True,
+        include_headless=include_headless,
+    )
+
+    emitted = 0
+    for session in sessions:
+        if not session.closed_at:
+            continue
+        if session.closed_at < cutoff:
+            continue
+
+        event_bus.emit(
+            TeleClaudeEvents.SESSION_CLOSED,
+            SessionLifecycleContext(session_id=session.session_id),
+        )
+        emitted += 1
+        logger.info(
+            "Replayed session_closed for session %s (closed_at=%s)",
+            session.session_id[:8],
+            session.closed_at.isoformat(),
+        )
+
+    return emitted
 
 
 async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient") -> bool:

@@ -232,7 +232,7 @@ def test_scope_git_files_handles_absolute_edit_paths():
     assert scoped == ["teleclaude/core/foo.py"]
 
 
-def test_scope_git_files_shell_mutation_falls_back_to_git():
+def test_scope_git_files_shell_mutation_scopes_to_detected_path():
     timeline = _timeline_with(
         _bash_record("sed -i '' 's/a/b/' teleclaude/core/foo.py"),
     )
@@ -241,7 +241,7 @@ def test_scope_git_files_shell_mutation_falls_back_to_git():
         timeline,
         "/repo",
     )
-    assert scoped == ["teleclaude/core/foo.py", "teleclaude/cli/tui/app.py"]
+    assert scoped == ["teleclaude/core/foo.py"]
 
 
 def test_extract_turn_file_signals_detects_mutation_tools_and_bash():
@@ -259,7 +259,7 @@ def test_extract_turn_file_signals_detects_exec_command_mutation():
         ToolCallRecord(tool_name="exec_command", input_data={"command": "sed -i '' 's/a/b/' teleclaude/core/foo.py"}),
     )
     touched, saw_mutation = _extract_turn_file_signals(timeline, "/repo")
-    assert touched == set()
+    assert touched == {"teleclaude/core/foo.py"}
     assert saw_mutation is True
 
 
@@ -268,7 +268,7 @@ def test_extract_turn_file_signals_detects_exec_command_mutation_via_cmd_key():
         ToolCallRecord(tool_name="exec_command", input_data={"cmd": "sed -i '' 's/a/b/' teleclaude/core/foo.py"}),
     )
     touched, saw_mutation = _extract_turn_file_signals(timeline, "/repo")
-    assert touched == set()
+    assert touched == {"teleclaude/core/foo.py"}
     assert saw_mutation is True
 
 
@@ -279,7 +279,7 @@ def test_extract_turn_file_signals_detects_namespaced_exec_command_mutation():
         ),
     )
     touched, saw_mutation = _extract_turn_file_signals(timeline, "/repo")
-    assert touched == set()
+    assert touched == {"teleclaude/core/foo.py"}
     assert saw_mutation is True
 
 
@@ -1055,7 +1055,10 @@ def test_get_checkpoint_content_keeps_actions_for_exec_command_cmd_mutation(monk
     monkeypatch.setattr(
         "teleclaude.hooks.checkpoint.extract_tool_calls_current_turn",
         lambda _path="", _agent="", **_kw: _timeline_with(  # noqa: ARG005  # type: ignore[arg-type]
-            ToolCallRecord(tool_name="exec_command", input_data={"cmd": "apply_patch <<'PATCH'"}),
+            ToolCallRecord(
+                tool_name="exec_command",
+                input_data={"cmd": "sed -i '' 's/a/b/' teleclaude/core/foo.py"},
+            ),
         ),
     )
 
