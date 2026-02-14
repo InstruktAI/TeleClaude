@@ -92,6 +92,26 @@ async def test_notification_outbox_lifecycle(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_notification_outbox_batch_excludes_max_attempt_rows(tmp_path: Path) -> None:
+    """Rows that reached max attempts should not be selected again."""
+    db = Db(str(tmp_path / "teleclaude.db"))
+    await db.initialize()
+
+    row_id = await db.enqueue_notification("idea-miner-reports", "alice@example.com", "hello")
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    lock_cutoff = (now - timedelta(seconds=1)).isoformat()
+
+    await db.mark_notification_failed(row_id, 10, "", "permanent failure")
+
+    rows = await db.fetch_notification_batch(now_iso, 10, lock_cutoff, max_attempts=10)
+    assert rows == []
+
+    await db.close()
+
+
+@pytest.mark.asyncio
 async def test_notification_router_enqueues_only_matching_subscribers(tmp_path: Path) -> None:
     """Router writes outbox rows only for subscribers of the requested channel."""
     root = _people_root(tmp_path)

@@ -85,7 +85,12 @@ class NotificationOutboxWorker:
         now_iso = now.isoformat()
         lock_cutoff = (now - timedelta(seconds=self.lock_ttl_s)).isoformat()
 
-        rows = await self.db.fetch_notification_batch(now_iso, self.batch_size, lock_cutoff)
+        rows = await self.db.fetch_notification_batch(
+            now_iso,
+            self.batch_size,
+            lock_cutoff,
+            max_attempts=MAX_RETRIES,
+        )
         if not rows:
             await self._sleep(self.poll_interval_s)
             return

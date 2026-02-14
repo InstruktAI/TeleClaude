@@ -1337,6 +1337,7 @@ class Db:
         now_iso: str,
         limit: int,
         lock_cutoff_iso: str,
+        max_attempts: int | None = None,
     ) -> list[NotificationOutboxRow]:
         """Fetch a batch of due notification outbox rows."""
         from sqlmodel import select
@@ -1353,6 +1354,8 @@ class Db:
             .order_by(db_models.NotificationOutbox.created_at)
             .limit(limit)
         )
+        if max_attempts is not None:
+            stmt = stmt.where(db_models.NotificationOutbox.attempt_count < max_attempts)
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             rows = result.all()
