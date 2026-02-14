@@ -8,8 +8,8 @@ Implement the Codex lane by configuring `openai/codex-action@v1`. We will reuse 
 
 ### 1. GitHub Action Configuration
 
-- [ ] Update `.github/workflows/release.yaml`.
-- [ ] Configure `codex-lane` job:
+- [x] Update `.github/workflows/release.yaml`.
+- [x] Configure `codex-lane` job:
   - Step 1: Checkout HEAD and last tag.
   - Step 2: Install dependencies (uv).
   - Step 3: Run `codex` CLI via Action with the shared Inspector Prompt.
@@ -17,8 +17,8 @@ Implement the Codex lane by configuring `openai/codex-action@v1`. We will reuse 
 
 ## Task Sequence
 
-1. [ ] Add the `codex-lane` job to `release.yaml`.
-2. [ ] Ensure `OPENAI_API_KEY` is available in CI secrets.
+1. [x] Add the `codex-lane` job to `release.yaml`.
+2. [x] Ensure `OPENAI_API_KEY` is available in CI secrets.
 3. [ ] Test the lane and verify JSON parity with the Claude lane.
 
 ## Verification
