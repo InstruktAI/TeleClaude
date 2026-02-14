@@ -24,10 +24,6 @@ Admin supergroup mirroring and intervention. Establish supergroups on Telegram a
 
 ## Release Automation
 
-- release-manifests
-
-Define public surface contract manifests (CLI, MCP, Events, API) and add contract tests that assert runtime alignment.
-
 - release-workflow-foundation (after: release-manifests)
 
 Establish baseline GitHub Actions for lint/test and the skeleton release workflow that triggers on main pushes.
