@@ -156,8 +156,9 @@ class AdapterClient:
             Exception: If adapter start() fails (daemon crashes - this is intentional)
             ValueError: If no adapters started
         """
-        # Discord adapter
-        if config.discord.enabled:
+        # Discord adapter (guard for tests that patch config with older/minimal objects)
+        discord_cfg = getattr(config, "discord", None)
+        if discord_cfg is not None and bool(getattr(discord_cfg, "enabled", False)):
             discord = DiscordAdapter(self, task_registry=self.task_registry)
             await discord.start()  # Raises if fails -> daemon crashes
             self.adapters["discord"] = discord  # Register ONLY after success
