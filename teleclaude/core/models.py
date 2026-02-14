@@ -24,7 +24,7 @@ JsonDict = dict[str, JsonValue]
 
 
 def asdict_exclude_none(
-    obj: "SessionAdapterMetadata | TelegramAdapterMetadata | RedisTransportMetadata | dict[str, JsonValue]",
+    obj: "SessionAdapterMetadata | TelegramAdapterMetadata | DiscordAdapterMetadata | RedisTransportMetadata | dict[str, JsonValue]",
 ) -> JsonDict:
     """Convert dataclass to dict, recursively excluding None values."""
 
@@ -106,6 +106,7 @@ class AdapterType(str, Enum):
     """Adapter type enum."""
 
     TELEGRAM = "telegram"
+    DISCORD = "discord"
     REDIS = "redis"
 
 
@@ -138,16 +139,33 @@ class TelegramAdapterMetadata:
 
 
 @dataclass
+class DiscordAdapterMetadata:
+    """Discord-specific adapter metadata."""
+
+    user_id: Optional[str] = None
+    guild_id: Optional[int] = None
+    channel_id: Optional[int] = None
+    thread_id: Optional[int] = None
+
+
+@dataclass
 class UiAdapterMetadata:
     """Metadata container for UI adapters."""
 
     _telegram: Optional[TelegramAdapterMetadata] = None
+    _discord: Optional[DiscordAdapterMetadata] = None
 
     def get_telegram(self) -> TelegramAdapterMetadata:
         """Get Telegram metadata, initializing if missing."""
         if self._telegram is None:
             self._telegram = TelegramAdapterMetadata()
         return self._telegram
+
+    def get_discord(self) -> DiscordAdapterMetadata:
+        """Get Discord metadata, initializing if missing."""
+        if self._discord is None:
+            self._discord = DiscordAdapterMetadata()
+        return self._discord
 
 
 @dataclass
@@ -187,15 +205,16 @@ class SessionAdapterMetadata:
     def __init__(
         self,
         telegram: Optional[TelegramAdapterMetadata] = None,
+        discord: Optional[DiscordAdapterMetadata] = None,
         redis: Optional[RedisTransportMetadata] = None,
         _ui: Optional[UiAdapterMetadata] = None,
         _transport: Optional[TransportAdapterMetadata] = None,
     ) -> None:
-        """Initialize with backward compatibility for 'telegram' and 'redis' args."""
+        """Initialize with backward compatibility for adapter shorthand args."""
         if _ui is not None:
             self._ui = _ui
         else:
-            self._ui = UiAdapterMetadata(_telegram=telegram)
+            self._ui = UiAdapterMetadata(_telegram=telegram, _discord=discord)
 
         if _transport is not None:
             self._transport = _transport
@@ -221,6 +240,8 @@ class SessionAdapterMetadata:
         # UI Adapters (flattened)
         if self._ui._telegram:
             data["telegram"] = asdict_exclude_none(self._ui._telegram)
+        if self._ui._discord:
+            data["discord"] = asdict_exclude_none(self._ui._discord)
 
         # Transport Adapters (flattened)
         if self._transport._redis:
@@ -233,6 +254,7 @@ class SessionAdapterMetadata:
         """Deserialize from JSON string, filtering unknown fields per adapter."""
         data_obj: object = json.loads(raw)
         telegram_metadata: Optional[TelegramAdapterMetadata] = None
+        discord_metadata: Optional[DiscordAdapterMetadata] = None
         redis_metadata: Optional[RedisTransportMetadata] = None
 
         if isinstance(data_obj, dict):
@@ -258,6 +280,26 @@ class SessionAdapterMetadata:
                     output_suppressed=output_suppressed,
                     parse_mode=parse_mode,
                     char_offset=char_offset,
+                )
+
+            discord_raw = data_obj.get("discord")
+            if isinstance(discord_raw, dict):
+
+                def _get_int_or_none(key: str) -> int | None:
+                    value = discord_raw.get(key)
+                    if isinstance(value, int):
+                        return value
+                    if isinstance(value, str) and value.isdigit():
+                        return int(value)
+                    return None
+
+                raw_user_id = discord_raw.get("user_id")
+                user_id = str(raw_user_id) if raw_user_id is not None else None
+                discord_metadata = DiscordAdapterMetadata(
+                    user_id=user_id,
+                    guild_id=_get_int_or_none("guild_id"),
+                    channel_id=_get_int_or_none("channel_id"),
+                    thread_id=_get_int_or_none("thread_id"),
                 )
 
             redis_raw = data_obj.get("redis")
@@ -288,7 +330,7 @@ class SessionAdapterMetadata:
                 )
 
         # Reconstruct hierarchy
-        ui_metadata = UiAdapterMetadata(_telegram=telegram_metadata)
+        ui_metadata = UiAdapterMetadata(_telegram=telegram_metadata, _discord=discord_metadata)
         transport_metadata = TransportAdapterMetadata(_redis=redis_metadata)
         return cls(_ui=ui_metadata, _transport=transport_metadata)
 
