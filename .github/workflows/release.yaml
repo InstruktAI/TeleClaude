@@ -335,11 +335,18 @@ jobs:
           echo "Reports collected for arbitration:"
           ls -la *.json
           echo "---"
+          set +e
           python scripts/release_consolidator.py \
             --claude-report claude-report.json \
             --codex-report codex-report.json \
             --gemini-report gemini-report.json \
-            -o arbiter-decision.json || true
+            -o arbiter-decision.json
+          EXIT_CODE=$?
+          set -e
+          if [ "$EXIT_CODE" -eq 1 ]; then
+            echo "ERROR: Arbiter fatal error"
+            exit 1
+          fi
           echo "release_authorized=$(jq -r '.release_authorized' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
           echo "target_version=$(jq -r '.target_version' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
           echo "needs_human=$(jq -r '.needs_human' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
