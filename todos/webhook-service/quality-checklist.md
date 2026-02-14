@@ -14,11 +14,11 @@
 
 ## Review Gates (Reviewer)
 
-- [ ] Code follows existing codebase conventions
-- [ ] No security vulnerabilities (HMAC signing, input validation)
-- [ ] Error handling is appropriate
-- [ ] No unnecessary abstractions or over-engineering
-- [ ] DB migrations are safe (additive schema only)
+- [x] Code follows existing codebase conventions
+- [ ] No security vulnerabilities (HMAC signing, input validation) — C4: secret exposure in API responses
+- [ ] Error handling is appropriate — C1,C3,I1-I6: delivery status, unbounded retries, crash resilience
+- [x] No unnecessary abstractions or over-engineering
+- [x] DB migrations are safe (additive schema only)
 
 ## Finalize Gates (Finalizer)
 
