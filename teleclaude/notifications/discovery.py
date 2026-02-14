@@ -5,8 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import PersonConfig
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -70,7 +74,11 @@ def _iter_person_configs(root: Path) -> list[tuple[str, PersonConfig]]:
         person_cfg_path = person_dir / "teleclaude.yml"
         if not person_cfg_path.exists():
             continue
-        person_cfg = load_person_config(person_cfg_path)
+        try:
+            person_cfg = load_person_config(person_cfg_path)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.error("skipping bad person config", path=str(person_cfg_path), error=str(exc))
+            continue
         results.append((person_dir.name, person_cfg))
 
     return results
