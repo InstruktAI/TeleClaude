@@ -428,14 +428,14 @@ _AGENT_HEX_COLORS_LIGHT: dict[str, str] = {
 _LIGHT_MODE_PAPER_BG = "#fdf6e3"
 
 # Configurable haze percentages (0.0 to 1.0)
-# Restored tuned values used before recent regressions.
-# Inactive session/preview pane background: 20% agent color, 80% base color
+# Tuned values for muted visual layering.
+# Inactive session/preview pane background: 6% agent color, 94% base color.
 _HAZE_PERCENTAGE = 0.06
 # Active pane background: no haze
 _ACTIVE_HAZE_PERCENTAGE = 0.0
 
-# Status bar background: 5% agent color, 95% base color (subtle)
-_STATUS_HAZE_PERCENTAGE = 0.05
+# Status-like background accents when used: 6% agent color, 94% base color (subtle)
+_STATUS_HAZE_PERCENTAGE = 0.06
 # TUI pane inactive haze kept softer than session/preview pane haze.
 _TUI_INACTIVE_HAZE_PERCENTAGE = 0.06
 # Terminal background hint weight: keep TUI palette stable while honoring terminal tone.
@@ -561,12 +561,8 @@ def get_agent_pane_inactive_background(agent: str) -> str:
         agent_colors = _AGENT_HEX_COLORS_LIGHT
     base_bg = get_terminal_background()
 
-    agent_color = agent_colors.get(agent)
-    if not agent_color:
-        # Unknown agent: return base background
-        return base_bg
-
-    return blend_colors(base_bg, agent_color, _HAZE_PERCENTAGE * 3 if _is_dark_mode else _HAZE_PERCENTAGE)
+    agent_color = agent_colors[agent]
+    return blend_colors(base_bg, agent_color, _HAZE_PERCENTAGE)
 
 
 def get_agent_status_background(agent: str) -> str:
@@ -587,12 +583,8 @@ def get_agent_status_background(agent: str) -> str:
         agent_colors = _AGENT_HEX_COLORS_LIGHT
     base_bg = get_terminal_background()
 
-    agent_color = agent_colors.get(agent)
-    if not agent_color:
-        # Unknown agent: return base background
-        return base_bg
-
-    return blend_colors(base_bg, agent_color, _STATUS_HAZE_PERCENTAGE * 2 if _is_dark_mode else _STATUS_HAZE_PERCENTAGE)
+    agent_color = agent_colors[agent]
+    return blend_colors(base_bg, agent_color, _STATUS_HAZE_PERCENTAGE)
 
 
 def get_agent_highlight_color(agent: str) -> int:
@@ -605,8 +597,8 @@ def get_agent_highlight_color(agent: str) -> int:
         xterm 256 color code for the agent's highlight color (default: 153)
     """
     if _is_dark_mode:
-        return _AGENT_HIGHLIGHT_DARK.get(agent, 153)
-    return _AGENT_HIGHLIGHT_LIGHT.get(agent, 24)
+        return _AGENT_HIGHLIGHT_DARK[agent]
+    return _AGENT_HIGHLIGHT_LIGHT[agent]
 
 
 def get_agent_preview_selected_bg_attr(agent: str) -> int:
@@ -618,7 +610,7 @@ def get_agent_preview_selected_bg_attr(agent: str) -> int:
     Returns:
         Curses attribute for agent-specific muted-background selection style.
     """
-    pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS.get(agent, AGENT_PREVIEW_SELECTED_BG_PAIRS["claude"])
+    pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS[agent]
     return curses.color_pair(pair_id)
 
 
@@ -634,7 +626,7 @@ def get_agent_preview_selected_focus_attr(agent: str) -> int:
     Returns:
         Curses attribute for agent-specific selected-preview focused row.
     """
-    pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS.get(agent, AGENT_PREVIEW_SELECTED_FOCUS_PAIRS["claude"])
+    pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS[agent]
     return curses.color_pair(pair_id)
 
 
@@ -688,8 +680,8 @@ def get_agent_muted_color(agent: str) -> int:
     # In dark mode: claude=94, gemini=103, codex=67
     # In light mode: claude=180, gemini=177, codex=110
     if _is_dark_mode:
-        return {"claude": 94, "gemini": 103, "codex": 67}.get(agent, 94)
-    return {"claude": 180, "gemini": 177, "codex": 110}.get(agent, 180)
+        return {"claude": 94, "gemini": 103, "codex": 67}[agent]
+    return {"claude": 180, "gemini": 177, "codex": 110}[agent]
 
 
 def get_agent_normal_color(agent: str) -> int:
@@ -702,16 +694,15 @@ def get_agent_normal_color(agent: str) -> int:
         xterm 256 color code for the agent's normal color
     """
     # Map agent to their color pair ID (normal = second color)
-    agent_pairs = {
+    pair_id = {
         "claude": 2,
         "gemini": 5,
         "codex": 8,
-    }
-    pair_id = agent_pairs.get(agent, 2)
+    }[agent]
 
     # Extract the color code from the pair
     # In dark mode: claude=137, gemini=141, codex=110
     # In light mode: claude=137, gemini=135, codex=67
     if _is_dark_mode:
-        return {2: 137, 5: 141, 8: 110}.get(pair_id, 137)
-    return {2: 137, 5: 135, 8: 67}.get(pair_id, 137)
+        return {2: 137, 5: 141, 8: 110}[pair_id]
+    return {2: 137, 5: 135, 8: 67}[pair_id]
