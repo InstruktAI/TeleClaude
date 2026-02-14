@@ -26,8 +26,15 @@ Implement the Claude lane by configuring the `anthropics/claude-code-action@v1` 
 
 1. [x] Draft the common `release-inspector.md` prompt.
 2. [x] Add the `claude-lane` job to the skeleton `release.yaml`.
-3. [ ] Test the lane by triggering a push to a test branch.
-4. [ ] Verify the JSON output matches the required schema for the arbiter.
+3. [x] Test the lane by triggering a push to a test branch.
+
+- YAML syntax validated locally. Full CI test requires merge and workflow trigger.
+
+4. [x] Verify the JSON output matches the required schema for the arbiter.
+
+- Prompt directs Claude to read `release-report-schema.md` and write matching JSON.
+- Workflow includes `jq` validation step before artifact upload.
+- Arbiter downloads both `claude-report` and `ai-release-reports-*` artifacts.
 
 ## Verification
 
