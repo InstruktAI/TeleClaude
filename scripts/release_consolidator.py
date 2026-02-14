@@ -13,6 +13,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from collections import Counter
@@ -112,7 +113,7 @@ def resolve_consensus(
         # Conservative override: majority says "none" but minority has contract_changes
         if most_common == "none":
             for lane, report in valid_reports.items():
-                if report["classification"] != "none" and report.get("contract_changes"):
+                if report["classification"] != "none" and report["contract_changes"]:
                     return _decision(
                         authorized=False,
                         version="none",
@@ -161,7 +162,7 @@ def _pick_most_detailed(reports: dict[str, LaneReport]) -> str | None:
     """Return the lane with the most contract_changes entries, or None if tied."""
     scored: list[tuple[str, int]] = []
     for lane, report in reports.items():
-        changes = report.get("contract_changes", [])
+        changes = report["contract_changes"]
         scored.append((lane, len(changes)))
 
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -190,8 +191,6 @@ def _decision(
 
 
 def main(argv: list[str] | None = None) -> int:
-    import argparse
-
     parser = argparse.ArgumentParser(description="Consensus arbiter for release reports")
     parser.add_argument("--claude-report", type=Path, default=Path("claude-report.json"))
     parser.add_argument("--codex-report", type=Path, default=Path("codex-report.json"))
