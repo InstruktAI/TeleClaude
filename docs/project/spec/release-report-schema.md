@@ -7,11 +7,11 @@ description: 'Standardized JSON schema for AI release inspector reports.'
 
 # Release Report Schema — Spec
 
-## What it is
+## Definition
 
 This specification defines the JSON schema that all AI Release Inspector lanes (Claude, Codex, Gemini) must produce. This uniformity allows the Consensus Arbiter to process reports deterministically.
 
-## Canonical fields
+## JSON Schema
 
 ```json
 {
@@ -66,7 +66,3 @@ This specification defines the JSON schema that all AI Release Inspector lanes (
 ## Usage
 
 AI agents are prompted to return ONLY valid JSON matching this schema using the `run_once` pattern or a directed `run_job` completion.
-
-## See Also
-
-- project/spec/release-inspector-prompt

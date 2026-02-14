@@ -1049,8 +1049,12 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         for obs in result.observations:
             lines.append(f"- {obs}")
 
+    lines.append("")
+    lines.append("Docs check: If relevant, update existing docs or add a new doc.")
+
     # Capture reminder
-    lines.append("Finish the steps above.")
+    lines.append("")
+    lines.append('Finish the steps above. Then capture "aha moment" memories if needed.')
     lines.append("")
     lines.append(response_policy)
     lines.append("")

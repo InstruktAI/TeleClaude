@@ -42,7 +42,7 @@ type: 'procedure'
 ### When Worker Needs Help
 
 1. Cancel old timer.
-2. Send guidance pointing to docs, not implementation details.
+2. Send guidance pointing to docs, not implementation details. Do not attempt to resolve issues by modifying code or tests yourself; always provide guidance via message instead.
 3. Start new timer and continue waiting.
 
 ### Agent Degradation Handling (Orchestrator-Owned)

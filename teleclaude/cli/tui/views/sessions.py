@@ -1220,8 +1220,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if now is None:
             now = time.perf_counter()
         session_id = selected.data.session.session_id
+        is_sticky = self._is_sticky_session_id(session_id)
         # Keep tree selection state in sync for keyboard-driven highlighting.
         self._sync_selected_session_id(source="user")
+        if is_sticky and self._preview:
+            self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
         if self._is_space_double_press_guarded(session_id, now):
             logger.debug("handle_space_preview_input: guard active for %s", session_id[:8])
             return
@@ -1253,6 +1256,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                     force_sticky_preview=True,
                 )
             # Keep first-space preview intent; do not dispatch a second activation.
+            return
+
+        if is_sticky:
             return
 
         self._last_space_press_time = now
@@ -2050,16 +2056,15 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # Keep previewed rows visibly distinct even when not actively selected.
             preview_title_attr = get_agent_preview_selected_bg_attr(agent)
 
-        selected_idx_attr = preview_title_attr
-
         # Sticky sessions use the [N] badge without inheriting row selection/preview styles.
         if is_sticky and sticky_position is not None:
             idx_text = f"[{sticky_position}]"
             idx_attr = get_sticky_badge_attr()
-            selected_idx_attr = idx_attr | (curses.A_BOLD if (selected or is_previewed) else 0)
         else:
             idx_text = f"[{idx}]"
-            idx_attr = preview_title_attr
+            idx_attr = header_attr
+
+        badge_attr = idx_attr | (curses.A_BOLD if selected else 0)
 
         if selected and is_previewed:
             selected_focus_attr = get_agent_preview_selected_focus_attr(agent) | preview_bold_attr
@@ -2070,10 +2075,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         selected_header_attr = selected_focus_attr if selected else preview_title_attr
         title_attr = selected_header_attr if selected else preview_title_attr
-
-        if not is_sticky or sticky_position is None:
-            selected_idx_attr = selected_header_attr
-
         # Collapse indicator
         collapse_indicator = "▶" if is_collapsed else "▼"
 
@@ -2090,7 +2091,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 row,
                 col,
                 idx_text,
-                selected_idx_attr if selected or is_previewed else idx_attr,
+                badge_attr,
             )  # type: ignore[attr-defined]
             col += len(idx_text)
             agent_part = f" {collapse_indicator} {agent}/{mode}"

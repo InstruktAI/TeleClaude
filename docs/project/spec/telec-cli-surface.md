@@ -7,11 +7,11 @@ description: 'Authoritative surface for the telec command-line tool.'
 
 # CLI Surface — Spec
 
-## What it is
+## Definition
 
 The `telec` command-line tool is the primary interface for human operators. This specification defines the stable subcommands, arguments, and flags.
 
-## Canonical fields
+## Machine-Readable Surface
 
 ```yaml
 tool: telec
@@ -101,7 +101,3 @@ subcommands:
 - Changes to argument order or required flags are considered breaking changes.
 - Adding a new subcommand is a feature addition (Minor bump).
 - Changes to descriptions only are patches.
-
-## See Also
-
-- project/spec/mcp-tool-surface

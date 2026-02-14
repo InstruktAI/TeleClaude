@@ -7,11 +7,11 @@ description: 'Canonical prompt for AI release inspectors.'
 
 # Release Inspector Prompt — Spec
 
-## What it is
+## Objective
 
 Analyze the diff between the current HEAD and the provided baseline tag. Determine the semver release classification based on the project's public surface manifests.
 
-## Canonical fields
+## The Prompt
 
 ```markdown
 # Role

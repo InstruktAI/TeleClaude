@@ -288,6 +288,13 @@ snippets:
   scope: project
   path: docs/project/policy/mcp-tool-filtering.md
   source_project: TeleClaude
+- id: project/policy/orchestrator-jurisdiction
+  description: Enforces strict separation between process state management and system
+    code modification for the Orchestrator role.
+  type: policy
+  scope: project
+  path: docs/project/policy/orchestrator-jurisdiction.md
+  source_project: TeleClaude
 - id: project/policy/scripts-standalone-execution
   description: 'Execution contract for scripts/: portable invocation, uv metadata,
     and robust preflight validation.'

@@ -7,11 +7,11 @@ description: 'Authoritative surface for Model Context Protocol (MCP) tools.'
 
 # MCP Surface — Spec
 
-## What it is
+## Definition
 
 Model Context Protocol (MCP) tools enable AI agents to interact with the TeleClaude daemon and remote computers. This specification defines the stable tool names and their expected function.
 
-## Canonical fields
+## Machine-Readable Surface
 
 ```yaml
 namespace: teleclaude
@@ -65,7 +65,3 @@ tools:
 - Tool name renames or removals are breaking changes (Minor bump).
 - Changes to input schema required fields are breaking changes.
 - Changes to descriptions or adding optional fields are patches.
-
-## See Also
-
-- project/spec/telec-cli-surface

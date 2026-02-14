@@ -147,40 +147,7 @@ class IntentPayload(TypedDict, total=False):
 MAX_STICKY_PANES = 5
 
 
-def _dedupe_sticky_sessions(sessions: list[StickySessionInfo]) -> list[StickySessionInfo]:
-    """Deduplicate sticky sessions while preserving insertion order."""
-    deduped: list[StickySessionInfo] = []
-    seen: set[str] = set()
-    for sticky in sessions:
-        session_id = sticky.session_id
-        if session_id in seen:
-            continue
-        deduped.append(sticky)
-        seen.add(session_id)
-    return deduped
-
-
-def _dedupe_sticky_docs(docs: list[DocStickyInfo]) -> list[DocStickyInfo]:
-    """Deduplicate sticky docs by tuple identity while preserving insertion order."""
-    deduped: list[DocStickyInfo] = []
-    seen: set[tuple[str, str, str]] = set()
-    for sticky in docs:
-        key = (sticky.doc_id, sticky.command, sticky.title)
-        if key in seen:
-            continue
-        deduped.append(sticky)
-        seen.add(key)
-    return deduped
-
-
-def _normalize_sticky_state(state: TuiState) -> None:
-    """Collapse duplicate sticky entries to keep IDs unique."""
-    state.sessions.sticky_sessions = _dedupe_sticky_sessions(state.sessions.sticky_sessions)
-    state.preparation.sticky_previews = _dedupe_sticky_docs(state.preparation.sticky_previews)
-
-
 def _sticky_count(state: TuiState) -> int:
-    _normalize_sticky_state(state)
     return len(state.sessions.sticky_sessions) + len(state.preparation.sticky_previews)
 
 
@@ -320,12 +287,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         if view == "sessions" and isinstance(idx, int):
             prev_session_id = state.sessions.selected_session_id
             state.sessions.selected_index = idx
-            if session_id is None:
-                state.sessions.selected_session_id = None
-                state.sessions.last_selection_session_id = None
-                if source in ("user", "pane", "system"):
-                    state.sessions.last_selection_source = source
-            else:
+            if isinstance(session_id, str):
                 state.sessions.selected_session_id = session_id
                 state.sessions.last_selection_session_id = session_id
                 if source in ("user", "pane", "system"):
@@ -458,7 +420,6 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.preview = None
         if state.sessions.sticky_sessions:
             state.sessions.sticky_sessions = [s for s in state.sessions.sticky_sessions if s.session_id in session_ids]
-        _normalize_sticky_state(state)
         state.sessions.collapsed_sessions.intersection_update(session_ids)
         # Log any input highlights that will be pruned
         pruned_input = state.sessions.input_highlights - session_ids

@@ -10,7 +10,6 @@ import json
 import os
 import re
 import shlex
-import sys
 import tomllib
 from pathlib import Path
 from typing import Any, Dict, Mapping
@@ -154,10 +153,10 @@ def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Di
 def _build_hook_invocation(receiver_script: Path) -> str:
     """Build the base receiver invocation.
 
-    Hooks execute the receiver script using the current Python interpreter
-    to ensure project dependencies (like instrukt-ai-logging) are available.
+    Hooks must execute the receiver script directly; wrapper binaries or shell
+    interpreters are not used to preserve direct script portability.
     """
-    return f"{shlex.quote(sys.executable)} {shlex.quote(str(receiver_script))}"
+    return shlex.quote(str(receiver_script))
 
 
 def _build_hook_command(receiver_invocation: str, agent: str, event_arg: str) -> str:

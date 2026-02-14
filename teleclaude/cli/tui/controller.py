@@ -58,17 +58,7 @@ class TuiController:
         prep_preview = self.state.preparation.preview
         prep_preview_key = (prep_preview.doc_id, prep_preview.command, prep_preview.title) if prep_preview else None
         prep_sticky_key = tuple((d.doc_id, d.command, d.title) for d in self.state.preparation.sticky_previews)
-        selection_method = self.state.sessions.selection_method
-        selected_session_id = self.state.sessions.selected_session_id
-        tree_node_has_focus = selection_method in ("arrow", "click")
-        return (
-            preview_key,
-            sticky_key,
-            prep_preview_key,
-            prep_sticky_key,
-            selected_session_id,
-            tree_node_has_focus,
-        )
+        return (preview_key, sticky_key, prep_preview_key, prep_sticky_key)
 
     def _sticky_inputs(self) -> tuple[object, ...]:
         sticky_key = tuple(s.session_id for s in self.state.sessions.sticky_sessions)
@@ -80,8 +70,6 @@ class TuiController:
         _ = defer_layout
         layout_intents = {
             IntentType.SYNC_SESSIONS,
-            IntentType.SET_SELECTION,
-            IntentType.SET_SELECTION_METHOD,
             IntentType.SET_PREVIEW,
             IntentType.CLEAR_PREVIEW,
             IntentType.TOGGLE_STICKY,

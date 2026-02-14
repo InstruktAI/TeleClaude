@@ -1,14 +1,33 @@
 """Unit tests for TUI reducer highlight transitions."""
 
-from teleclaude.cli.tui.state import (
-    DocStickyInfo,
-    Intent,
-    IntentType,
-    PreviewState,
-    StickySessionInfo,
-    TuiState,
-    reduce_state,
-)
+from teleclaude.cli.tui.state import Intent, IntentType, PreviewState, TuiState, reduce_state
+
+
+def test_toggle_sticky_clears_active_preview() -> None:
+    """Adding a sticky session should clear active preview state."""
+    state = TuiState()
+    state.sessions.preview = PreviewState("sess-sticky")
+
+    reduce_state(
+        state,
+        Intent(
+            IntentType.TOGGLE_STICKY,
+            {"session_id": "sess-sticky", "active_agent": "claude"},
+        ),
+    )
+
+    assert state.sessions.preview is None
+    assert [s.session_id for s in state.sessions.sticky_sessions] == ["sess-sticky"]
+
+
+def test_clear_preview_intent_removes_active_preview() -> None:
+    """CLEAR_PREVIEW intent should reset preview state."""
+    state = TuiState()
+    state.sessions.preview = PreviewState("sess-active")
+
+    reduce_state(state, Intent(IntentType.CLEAR_PREVIEW, {}))
+
+    assert state.sessions.preview is None
 
 
 def test_tool_done_clears_input_and_sets_temp_output_highlight() -> None:
@@ -130,38 +149,6 @@ def test_user_input_clears_any_output_highlight_and_sets_input() -> None:
     assert session_id in state.sessions.input_highlights
     assert session_id not in state.sessions.output_highlights
     assert session_id not in state.sessions.temp_output_highlights
-
-
-def test_set_preview_uses_unique_sticky_counts() -> None:
-    """Preview intents should ignore duplicate sticky entries when enforcing sticky caps."""
-    state = TuiState()
-    state.sessions.sticky_sessions = [
-        StickySessionInfo("sess-dup"),
-        StickySessionInfo("sess-dup"),
-        StickySessionInfo("sess-unique"),
-        StickySessionInfo("sess-unique"),
-    ]
-
-    reduce_state(state, Intent(IntentType.SET_PREVIEW, {"session_id": "sess-preview"}))
-
-    assert state.sessions.preview == PreviewState("sess-preview")
-
-
-def test_sync_sessions_deduplicates_sticky_state() -> None:
-    """SYNC_SESSIONS should collapse duplicate sticky session ids."""
-    state = TuiState()
-    state.sessions.sticky_sessions = [
-        StickySessionInfo("sess-dup"),
-        StickySessionInfo("sess-dup"),
-        StickySessionInfo("sess-live"),
-    ]
-    state.preparation.sticky_previews = [DocStickyInfo("doc", "cmd", "Doc"), DocStickyInfo("doc", "cmd", "Doc")]
-
-    reduce_state(state, Intent(IntentType.SYNC_SESSIONS, {"session_ids": ["sess-dup", "sess-live"]}))
-
-    assert [s.session_id for s in state.sessions.sticky_sessions] == ["sess-dup", "sess-live"]
-    assert len(state.sessions.sticky_sessions) == 2
-    assert len(state.preparation.sticky_previews) == 1
 
 
 def test_clear_temp_highlight_promotes_output_and_clears_tool_state() -> None:
