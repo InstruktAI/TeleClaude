@@ -32,6 +32,12 @@ AGENT_PREVIEW_SELECTED_BG_PAIRS: dict[str, int] = {
     "codex": 29,
 }
 
+AGENT_PREVIEW_SELECTED_FOCUS_PAIRS: dict[str, int] = {
+    "claude": 37,
+    "gemini": 38,
+    "codex": 39,
+}
+
 # Z-index layer color pairs (for backgrounds)
 # Values set dynamically based on light/dark mode
 Z_LAYERS: dict[int, int] = {
@@ -244,6 +250,9 @@ def init_colors() -> None:
         curses.init_pair(27, 180, 94)  # Claude: highlight fg + muted bg
         curses.init_pair(28, 183, 103)  # Gemini: highlight fg + muted bg
         curses.init_pair(29, 153, 67)  # Codex: highlight fg + muted bg
+        curses.init_pair(37, 94, 180)  # Claude: muted fg + muted bg
+        curses.init_pair(38, 103, 183)  # Gemini: muted fg + muted bg
+        curses.init_pair(39, 67, 153)  # Codex: muted fg + muted bg
     else:
         # Claude (terra/brown tones)
         curses.init_pair(1, 180, -1)  # Muted: light tan/beige
@@ -265,6 +274,9 @@ def init_colors() -> None:
         curses.init_pair(27, 94, 180)  # Claude: highlight fg + muted bg
         curses.init_pair(28, 90, 177)  # Gemini: highlight fg + muted bg
         curses.init_pair(29, 24, 110)  # Codex: highlight fg + muted bg
+        curses.init_pair(37, 180, 94)  # Claude: muted fg + muted bg
+        curses.init_pair(38, 177, 90)  # Gemini: muted fg + muted bg
+        curses.init_pair(39, 110, 24)  # Codex: muted fg + muted bg
 
     # Disabled/unavailable
     curses.init_pair(10, curses.COLOR_WHITE, -1)
@@ -607,6 +619,22 @@ def get_agent_preview_selected_bg_attr(agent: str) -> int:
         Curses attribute for agent-specific muted-background selection style.
     """
     pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS.get(agent, AGENT_PREVIEW_SELECTED_BG_PAIRS["claude"])
+    return curses.color_pair(pair_id)
+
+
+def get_agent_preview_selected_focus_attr(agent: str) -> int:
+    """Get curses attribute for a selected preview row with muted foreground.
+
+    This style intentionally inverts color emphasis so muted foreground sits on a
+    muted background while preserving strong contrast with the active row.
+
+    Args:
+        agent: Agent name ("claude", "gemini", "codex", or unknown)
+
+    Returns:
+        Curses attribute for agent-specific selected-preview focused row.
+    """
+    pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS.get(agent, AGENT_PREVIEW_SELECTED_FOCUS_PAIRS["claude"])
     return curses.color_pair(pair_id)
 
 

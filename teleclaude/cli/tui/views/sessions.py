@@ -29,7 +29,11 @@ from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.state import DocStickyInfo, Intent, IntentType, PreviewState, TuiState
 from teleclaude.cli.tui.state_store import load_sticky_state, save_sticky_state
-from teleclaude.cli.tui.theme import AGENT_COLORS, get_agent_preview_selected_bg_attr
+from teleclaude.cli.tui.theme import (
+    AGENT_COLORS,
+    get_agent_preview_selected_bg_attr,
+    get_agent_preview_selected_focus_attr,
+)
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     ComputerNode,
@@ -1830,8 +1834,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             idx_text = f"[{idx}]"
             idx_attr = preview_title_attr
 
-        # Keep headless rows muted when unselected, but always show keyboard focus when selected.
-        selected_header_attr = (curses.A_REVERSE | preview_title_attr) if selected else preview_title_attr
+        selected_focus_attr = preview_title_attr
+        if is_previewed and selected:
+            selected_focus_attr = get_agent_preview_selected_focus_attr(agent) | preview_bold_attr
+
+        # Keep headless rows muted when unselected, but keep cursor focus vivid.
+        selected_header_attr = selected_focus_attr if selected else preview_title_attr
+        if selected and not is_previewed:
+            selected_header_attr = curses.A_REVERSE | preview_title_attr
         title_attr = selected_header_attr if selected else preview_title_attr
 
         # Collapse indicator
@@ -1858,9 +1868,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 subdir_attr = selected_header_attr if selected else (preview_title_attr if is_previewed else 0)
                 stdscr.addstr(row, col, subdir_text[: width - col], subdir_attr)  # type: ignore[attr-defined]
                 col += len(subdir_text)
-                title_text = f'"{title}"'
+                title_text = f'"{title}" '
             else:
-                title_text = f'  "{title}"'
+                title_text = f'  "{title}" '
             if col < width:
                 stdscr.addstr(row, col, title_text[: width - col], title_attr)  # type: ignore[attr-defined]
         except curses.error:
