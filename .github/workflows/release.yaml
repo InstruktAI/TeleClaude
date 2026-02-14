@@ -247,7 +247,7 @@ jobs:
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           echo "LAST_TAG=$LAST_TAG" >> $GITHUB_ENV
           if [ -n "$LAST_TAG" ]; then
-            git diff $LAST_TAG..HEAD > release-diff.txt
+            git diff "$LAST_TAG"..HEAD > release-diff.txt
           else
             git ls-files > release-diff.txt
           fi
