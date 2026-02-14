@@ -28,7 +28,7 @@ from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.state import DocStickyInfo, Intent, IntentType, PreviewState, TuiState
-from teleclaude.cli.tui.state_store import load_sticky_state
+from teleclaude.cli.tui.state_store import load_sticky_state, save_sticky_state
 from teleclaude.cli.tui.theme import AGENT_COLORS
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
@@ -285,6 +285,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         )
 
         previous_selection = self._get_selected_key()
+        last_summary_before = dict(self.state.sessions.last_summary)
 
         # Store sessions for child lookup
         self._sessions = sessions
@@ -299,6 +300,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             summary = (session.last_output_summary or "").strip()
             if summary:
                 self.state.sessions.last_summary[session.session_id] = summary
+
+        if self.state.sessions.last_summary != last_summary_before:
+            save_sticky_state(self.state)
         # Store computers for SSH connection lookup
         self._computers = computers
 
