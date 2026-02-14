@@ -31,14 +31,14 @@
   "person-identity-auth-3": [
     "person-identity-auth-2"
   ],
+  "process-noise-reduction": [
+    "release-arbiter"
+  ],
   "release-arbiter": [
     "release-lane-claude",
     "release-lane-codex",
     "release-lane-gemini"
   ],
-  "release-lane-claude": [],
-  "release-lane-codex": [],
-  "release-lane-gemini": [],
   "release-workflow-foundation": [
     "release-manifests"
   ],

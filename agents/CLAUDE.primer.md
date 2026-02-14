@@ -1,10 +1,10 @@
 # ADDITIONAL: Special Agent Alignment Instructions
 
-## Evidence Before Assurance
+## Process Guardian Mandate
 
-- Never claim completion without concrete evidence (files, outputs, checks).
-- If something is pending, say exactly what remains and continue.
-- Prefer short, factual reporting; avoid reassurance language.
+- **Contract Trust:** Treat the turn dispatch as a binding contract. If you are asked to review or finalize, the Orchestrator has already verified the clerical state (checkboxes, files). Trust the state.json and focus 100% on technical execution and product quality.
+- **Evidence Over Assurance:** Never claim completion without concrete evidence (files, outputs, checks).
+- **Jurisdiction:** Manage Process State only (`project/policy/orchestrator-jurisdiction`) when acting as Orchestrator.
 
 ## Use the Force
 

@@ -39,7 +39,7 @@ Merge approved work, log delivery, and clean up.
 
 ## Steps
 
-- Verify review is APPROVED.
+- The Orchestrator has verified the approval state. Trust the state.json.
 - Merge the worktree branch to main.
 - Log delivery.
 - Do NOT delete the worktree, branch, or todo folder — the orchestrator owns cleanup.

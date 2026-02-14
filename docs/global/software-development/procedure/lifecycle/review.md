@@ -19,34 +19,34 @@ Verify the implementation against requirements and standards, and deliver a bina
 
 ## Preconditions
 
-- `todos/{slug}/requirements.md` exists.
-- `todos/{slug}/implementation-plan.md` exists.
-- `todos/{slug}/quality-checklist.md` exists and includes Build/Review sections.
+- The Orchestrator has verified the clerical state (checkboxes, evidence).
+- `state.json` field `build` is `complete`.
 - Build phase completed for the slug.
 
 ## Steps
 
 1. If no slug provided, select the first item with phase `active` in `state.json` that lacks `review-findings.md`.
-2. Read:
+2. Trust the handoff: The Orchestrator has confirmed the clerical readiness of this build. Focus 100% on the implementation truth vs. the requirements.
+3. Read:
    - `todos/{slug}/requirements.md`
    - `todos/{slug}/implementation-plan.md`
    - `README.md`, `AGENTS.md`, and `docs/*` for project patterns
-3. Use merge-base to focus review scope:
+4. Use merge-base to focus review scope:
 
    ```bash
    git diff $(git merge-base HEAD main)..HEAD --name-only
    git diff $(git merge-base HEAD main)..HEAD
    ```
 
-4. Validate deferrals:
+5. Validate deferrals:
    - If `deferrals.md` exists, confirm each deferral is justified.
    - If unjustified, add a finding and set verdict to REQUEST CHANGES.
-5. Ensure all implementation-plan tasks are checked; otherwise, add a finding and set verdict to REQUEST CHANGES.
-6. Validate Build section in `quality-checklist.md` is fully checked.
+6. Ensure all implementation-plan tasks are checked; otherwise, add a finding and set verdict to REQUEST CHANGES.
+7. Validate Build section in `quality-checklist.md` is fully checked.
    - If not, add a finding and set verdict to REQUEST CHANGES.
-7. Update only the Review section in `quality-checklist.md`.
+8. Update only the Review section in `quality-checklist.md`.
    - Do not edit Build or Finalize sections.
-8. Run review lanes in parallel where possible:
+9. Run review lanes in parallel where possible:
 
    | Aspect   | When to use              | Skill                      | Task                                               |
    | -------- | ------------------------ | -------------------------- | -------------------------------------------------- |
@@ -58,11 +58,11 @@ Verify the implementation against requirements and standards, and deliver a bina
    | logging  | Logging changed or noisy | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes |
    | simplify | After other reviews pass | next-code-simplifier       | Simplify without behavior changes                  |
 
-9. Logging hygiene check (required):
-   - Reject temporary debug probes (e.g., `print("DEBUG: ...")`, one-off file/line probes).
-   - Require structured logger usage per logging policy.
-   - Escalate violations as at least Important findings.
-10. Test quality hygiene check (required):
+10. Logging hygiene check (required):
+    - Reject temporary debug probes (e.g., `print("DEBUG: ...")`, one-off file/line probes).
+    - Require structured logger usage per logging policy.
+    - Escalate violations as at least Important findings.
+11. Test quality hygiene check (required):
 
 - Reject tests that lock narrative documentation wording or style.
 - Allow exact-string assertions only for execution-significant tokens/contracts.

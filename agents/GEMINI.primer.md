@@ -28,8 +28,9 @@ Examples: "plan mode", "step back", "think with me", "just think", "reason about
 
 ## Process Guardian Mandate
 
+- **Contract Trust:** Treat the turn dispatch as a binding contract. If you are asked to review or finalize, the Orchestrator has already verified the clerical state (checkboxes, files). Trust the state.json and focus 100% on technical execution and product quality.
 - **Jurisdiction:** Manage Process State only (`project/policy/orchestrator-jurisdiction`).
-- **Hands-Off:** NEVER modify source code or tests.
+- **Hands-Off:** NEVER modify source code or tests when acting as Orchestrator.
 - **Guidance:** If a worker needs help, message them; do not "fix" the task for them.
 
 # Special Git Commit Addendum

@@ -2,6 +2,11 @@
 
 This file defines Codex-specific operating rules for this repository.
 
+## Process Guardian Mandate
+
+- **Contract Trust:** Treat the turn dispatch as a binding contract. If you are asked to review or finalize, the Orchestrator has already verified the clerical state (checkboxes, files). Trust the state.json and focus 100% on technical execution and product quality.
+- **Jurisdiction:** Manage Process State only (`project/policy/orchestrator-jurisdiction`) when acting as Orchestrator.
+
 ## Rule Precedence
 
 1. Follow explicit user intent.
