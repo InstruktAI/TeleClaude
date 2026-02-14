@@ -247,7 +247,7 @@ jobs:
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           echo "LAST_TAG=$LAST_TAG" >> $GITHUB_ENV
           if [ -n "$LAST_TAG" ]; then
-            git diff $LAST_TAG..HEAD > release-diff.txt
+            git diff "$LAST_TAG"..HEAD > release-diff.txt
           else
             git ls-files > release-diff.txt
           fi
@@ -300,8 +300,18 @@ jobs:
     name: Consensus Arbiter
     needs: [claude-lane, codex-lane, gemini-lane, release-analysis]
     runs-on: ubuntu-latest
+    outputs:
+      release_authorized: ${{ steps.arbiter.outputs.release_authorized }}
+      target_version: ${{ steps.arbiter.outputs.target_version }}
+      needs_human: ${{ steps.arbiter.outputs.needs_human }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Download Claude report
         uses: actions/download-artifact@v4
         with:
@@ -319,9 +329,75 @@ jobs:
         with:
           pattern: ai-release-reports-*
           merge-multiple: true
-      - name: Arbiter pass
+      - name: Run Consensus Arbiter
+        id: arbiter
         run: |
           echo "Reports collected for arbitration:"
           ls -la *.json
           echo "---"
-          echo "Arbiter will consolidate reports here."
+          set +e
+          python scripts/release_consolidator.py \
+            --claude-report claude-report.json \
+            --codex-report codex-report.json \
+            --gemini-report gemini-report.json \
+            -o arbiter-decision.json
+          EXIT_CODE=$?
+          set -e
+          if [ "$EXIT_CODE" -eq 1 ]; then
+            echo "ERROR: Arbiter fatal error"
+            exit 1
+          fi
+          echo "release_authorized=$(jq -r '.release_authorized' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
+          echo "target_version=$(jq -r '.target_version' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
+          echo "needs_human=$(jq -r '.needs_human' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
+      - name: Upload Decision
+        uses: actions/upload-artifact@v4
+        with:
+          name: arbiter-decision
+          path: arbiter-decision.json
+
+  authorized-tag:
+    name: Create Release Tag
+    needs: [release-arbitration]
+    runs-on: ubuntu-latest
+    if: ${{ needs.release-arbitration.outputs.release_authorized == 'true' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download Arbiter Decision
+        uses: actions/download-artifact@v4
+        with:
+          name: arbiter-decision
+      - name: Compute Next Version
+        id: version
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
+          CLEAN_VER="${LAST_TAG#v}"
+          CLEAN_VER="${CLEAN_VER%%-*}"
+          IFS='.' read -r major minor patch <<< "$CLEAN_VER"
+          BUMP="${{ needs.release-arbitration.outputs.target_version }}"
+          if [ "$BUMP" = "minor" ]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+          NEXT_TAG="v${major}.${minor}.${patch}"
+          echo "next_tag=$NEXT_TAG" >> "$GITHUB_OUTPUT"
+          echo "Computed next version: $NEXT_TAG (bump=$BUMP from $LAST_TAG)"
+      - name: Create Tag and Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEXT_TAG="${{ steps.version.outputs.next_tag }}"
+          CLASSIFICATION="${{ needs.release-arbitration.outputs.target_version }}"
+          jq -r --arg ver "$NEXT_TAG" --arg cls "$CLASSIFICATION" \
+            '"## AI Consensus Release\n\n**Version:** " + $ver + "\n**Classification:** " + $cls + "\n**Rationale:** " + .authoritative_rationale + "\n\n### Lane Summary\n" + (.lane_summary | to_entries | map("\(.key): \(.value)") | join(", ")) + "\n\n---\n*Release authorized by AI consensus arbiter.*"' \
+            arbiter-decision.json > release-notes.md
+          git tag "$NEXT_TAG"
+          git push origin "$NEXT_TAG"
+          gh release create "$NEXT_TAG" --title "$NEXT_TAG" --notes-file release-notes.md
