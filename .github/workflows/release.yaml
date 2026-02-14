@@ -392,23 +392,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           NEXT_TAG="${{ steps.version.outputs.next_tag }}"
-          RATIONALE=$(jq -r '.authoritative_rationale' arbiter-decision.json)
-          LANE_SUMMARY=$(jq -r '.lane_summary | to_entries | map("\(.key): \(.value)") | join(", ")' arbiter-decision.json)
+          CLASSIFICATION="${{ needs.release-arbitration.outputs.target_version }}"
+          jq -r --arg ver "$NEXT_TAG" --arg cls "$CLASSIFICATION" \
+            '"## AI Consensus Release\n\n**Version:** " + $ver + "\n**Classification:** " + $cls + "\n**Rationale:** " + .authoritative_rationale + "\n\n### Lane Summary\n" + (.lane_summary | to_entries | map("\(.key): \(.value)") | join(", ")) + "\n\n---\n*Release authorized by AI consensus arbiter.*"' \
+            arbiter-decision.json > release-notes.md
           git tag "$NEXT_TAG"
           git push origin "$NEXT_TAG"
-          gh release create "$NEXT_TAG" \
-            --title "$NEXT_TAG" \
-            --notes "$(cat <<NOTES
-          ## AI Consensus Release
-
-          **Version:** $NEXT_TAG
-          **Classification:** ${{ needs.release-arbitration.outputs.target_version }}
-          **Rationale:** $RATIONALE
-
-          ### Lane Summary
-          $LANE_SUMMARY
-
-          ---
-          *Release authorized by AI consensus arbiter.*
-          NOTES
-          )"
+          gh release create "$NEXT_TAG" --title "$NEXT_TAG" --notes-file release-notes.md
