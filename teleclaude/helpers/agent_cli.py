@@ -53,6 +53,25 @@ class _OneshotSpec(TypedDict, total=False):
     exec_subcommand: str
 
 
+_AGENT_MODEL_FLAGS: dict[str, dict[str, str]] = {
+    "claude": {
+        "fast": "--model haiku",
+        "med": "--model sonnet",
+        "slow": "--model opus",
+    },
+    "gemini": {
+        "fast": "-m gemini-2.5-flash-lite",
+        "med": "-m gemini-3-flash-preview",
+        "slow": "-m gemini-3-pro-preview",
+    },
+    "codex": {
+        "fast": "-m gpt-5.3-codex-spark --config model_reasoning_effort='medium'",
+        "med": "-m gpt-5.3-codex-spark --config model_reasoning_effort='high'",
+        "slow": "-m gpt-5.3-codex-spark --config model_reasoning_effort='xhigh'",
+    },
+}
+
+
 _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
     "claude": {
         "flags": (
@@ -61,11 +80,7 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
             ' --settings \'{"forceLoginMethod": "claudeai",'
             ' "enabledMcpjsonServers": [], "disableAllHooks": true}\''
         ),
-        "model_flags": {
-            "fast": "--model haiku",
-            "med": "--model sonnet",
-            "slow": "--model opus",
-        },
+        "model_flags": _AGENT_MODEL_FLAGS["claude"],
         "output_format": "--output-format json",
         "schema_arg": "--json-schema",
         "prompt_flag": True,
@@ -77,11 +92,7 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
     },
     "gemini": {
         "flags": "--yolo --allowed-mcp-server-names=[]",
-        "model_flags": {
-            "fast": "-m gemini-2.5-flash-lite",
-            "med": "-m gemini-3-flash-preview",
-            "slow": "-m gemini-3-pro-preview",
-        },
+        "model_flags": _AGENT_MODEL_FLAGS["gemini"],
         "output_format": "-o json",
         "schema_arg": "",
         "prompt_flag": True,
@@ -93,11 +104,7 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
     },
     "codex": {
         "flags": "--dangerously-bypass-approvals-and-sandbox --search",
-        "model_flags": {
-            "fast": "-m gpt-5.3-codex-spark --config model_reasoning_effort='medium'",
-            "med": "-m gpt-5.3-codex-spark --config model_reasoning_effort='high'",
-            "slow": "-m gpt-5.3-codex-spark --config model_reasoning_effort='xhigh'",
-        },
+        "model_flags": _AGENT_MODEL_FLAGS["codex"],
         "exec_subcommand": "exec",
         "output_format": "",
         "schema_arg": "--output-schema",
@@ -345,27 +352,15 @@ _JOB_SPEC: dict[str, dict[str, str | dict[str, str]]] = {
             " --disable-slash-commands --setting-sources user"
             ' --settings \'{"forceLoginMethod": "claudeai", "disableAllHooks": true}\''
         ),
-        "model_flags": {
-            "fast": "--model haiku",
-            "med": "--model sonnet",
-            "slow": "--model opus",
-        },
+        "model_flags": _AGENT_MODEL_FLAGS["claude"],
     },
     "gemini": {
         "flags": "--yolo",
-        "model_flags": {
-            "fast": "-m gemini-2.5-flash-lite",
-            "med": "-m gemini-3-flash-preview",
-            "slow": "-m gemini-3-pro-preview",
-        },
+        "model_flags": _AGENT_MODEL_FLAGS["gemini"],
     },
     "codex": {
         "flags": "--dangerously-bypass-approvals-and-sandbox",
-        "model_flags": {
-            "fast": "-m gpt-5.3-codex-spark --config model_reasoning_effort='medium'",
-            "med": "-m gpt-5.3-codex-spark --config model_reasoning_effort='high'",
-            "slow": "-m gpt-5.3-codex-spark --config model_reasoning_effort='xhigh'",
-        },
+        "model_flags": _AGENT_MODEL_FLAGS["codex"],
         "exec_subcommand": "exec",
     },
 }
