@@ -1,14 +1,19 @@
 """Identity resolution for TeleClaude sessions."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import TYPE_CHECKING, Mapping, Optional
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import PersonEntry
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
+
+if TYPE_CHECKING:
+    from teleclaude.core.models import SessionAdapterMetadata
 
 logger = get_logger(__name__)
 CUSTOMER_ROLE = "customer"
@@ -133,6 +138,20 @@ class IdentityResolver:
                 )
 
         return None
+
+
+def derive_identity_key(adapter_metadata: SessionAdapterMetadata) -> str | None:
+    """Derive identity key from adapter metadata.
+
+    Format: {platform}:{platform_user_id}
+    Returns None if no identity can be determined.
+    """
+    ui = adapter_metadata.get_ui()
+    if ui._discord and ui._discord.user_id:
+        return f"discord:{ui._discord.user_id}"
+    if ui._telegram and getattr(ui._telegram, "user_id", None):
+        return f"telegram:{ui._telegram.user_id}"
+    return None
 
 
 _resolver_instance: Optional[IdentityResolver] = None
