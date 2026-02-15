@@ -141,7 +141,7 @@ sequenceDiagram
 6. **Channel Archive**: Adapter archives or marks channel inactive
 7. **Metadata Finalize**: Set status=closed, closed_at timestamp
 8. **Event Emission**: Broadcast SESSION_CLOSED
-9. **Resource Cleanup**: Remove listeners, delete workspace directories if temporary
+9. **Resource Cleanup**: Release finalize lock (if held), remove listeners, delete workspace directories if temporary
 
 ## Failure modes
 
