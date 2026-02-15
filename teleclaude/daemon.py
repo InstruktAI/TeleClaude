@@ -1606,6 +1606,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 await self._init_webhook_service()
             except Exception:
                 logger.error("Webhook service initialization failed, continuing without webhooks", exc_info=True)
+
+            # Wire Redis transport into channels API routes
+            redis_adapter = self.client.adapters.get("redis")
+            if redis_adapter:
+                from teleclaude.channels.api_routes import set_redis_transport
+                from teleclaude.transport.redis_transport import RedisTransport as _RT
+
+                if isinstance(redis_adapter, _RT):
+                    set_redis_transport(redis_adapter)
             self.resource_monitor_task = asyncio.create_task(self.monitoring_service.resource_monitor_loop())
             self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
             logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)

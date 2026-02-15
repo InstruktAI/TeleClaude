@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shlex
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
@@ -1158,6 +1159,35 @@ class MCPHandlersMixin:
     ) -> str:
         """Backward-compatible alias; use teleclaude__mark_agent_status."""
         return await self.teleclaude__mark_agent_status(agent, reason, unavailable_until, clear, status)
+
+    # =========================================================================
+    # Channel Tools
+    # =========================================================================
+
+    async def teleclaude__publish(
+        self,
+        channel: str,
+        payload: dict[str, object],  # guard: loose-dict - Channel payload is arbitrary user JSON
+    ) -> str:
+        """Publish a message to a Redis Stream channel."""
+        from teleclaude.channels.publisher import publish
+
+        transport = self._get_redis_transport()
+        if not transport:
+            return "Error: Redis transport not available"
+        redis_client = await transport._get_redis()
+        msg_id = await publish(redis_client, channel, payload)
+        return f"Published to {channel}: {msg_id}"
+
+    async def teleclaude__channels_list(self, project: str | None = None) -> Sequence[object]:
+        """List active internal Redis Stream channels."""
+        from teleclaude.channels.publisher import list_channels
+
+        transport = self._get_redis_transport()
+        if not transport:
+            return []
+        redis_client = await transport._get_redis()
+        return await list_channels(redis_client, project)
 
     # =========================================================================
     # Helper Methods

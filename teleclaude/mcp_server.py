@@ -60,6 +60,8 @@ class ToolName(str, Enum):
     SET_DEPENDENCIES = "teleclaude__set_dependencies"
     MARK_AGENT_STATUS = "teleclaude__mark_agent_status"
     MARK_AGENT_UNAVAILABLE = "teleclaude__mark_agent_unavailable"
+    PUBLISH = "teleclaude__publish"
+    CHANNELS_LIST = "teleclaude__channels_list"
 
 
 # State file for tracking MCP tool signatures across restarts
