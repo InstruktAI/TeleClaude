@@ -1,0 +1,19 @@
+{
+  "phase": "preparing",
+  "dor": {
+    "score": 8,
+    "status": "pass",
+    "schema_version": 1,
+    "blockers": [],
+    "actions_taken": [
+      "Derived requirements.md from input.md brain dump",
+      "Derived implementation-plan.md with 7 phases grounded in codebase analysis",
+      "Gate: verified all codebase claims (TabBar, AnimationEngine, TuiState, RuntimeSettings, config_handlers, files to remove)",
+      "Gate: resolved splitting decision — keep as one todo, sequential chain",
+      "Gate: resolved creative phase execution — single brainstorming session, gated by SC-12",
+      "Gate: resolved scroll/motion/depth — deferred to Phase 6 contingent on Phase 1",
+      "Gate: resolved headless fallback — error+redirect, no old-menu fallback"
+    ],
+    "last_assessed_at": "2026-02-15T20:10:00Z"
+  }
+}
