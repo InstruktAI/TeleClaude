@@ -164,6 +164,15 @@ class SubscriptionConfig(BaseModel):
     target: Dict[str, Any] = {}  # guard: loose-dict - Config YAML target is unstructured
 
 
+class ChannelSubscription(BaseModel):
+    """A subscription that routes messages from a Redis Stream channel to a target."""
+
+    model_config = ConfigDict(extra="allow")
+    channel: str
+    filter: Optional[Dict[str, Any]] = None  # guard: loose-dict - Subscription filter is intentionally unstructured
+    target: Dict[str, Any] = {}  # guard: loose-dict - Subscription target (notification or project+command)
+
+
 class HooksConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     inbound: Dict[str, InboundSourceConfig] = {}
@@ -177,6 +186,7 @@ class ProjectConfig(BaseModel):
     hooks: HooksConfig = HooksConfig()
     jobs: Dict[str, JobScheduleConfig] = {}
     git: GitConfig = GitConfig()
+    channel_subscriptions: List[ChannelSubscription] = []
 
     @model_validator(mode="before")
     @classmethod
