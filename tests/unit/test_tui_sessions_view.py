@@ -1247,6 +1247,131 @@ class TestSessionsViewLogic:
         assert IntentType.CLEAR_PREVIEW not in dispatched_intents
         assert IntentType.SET_PREVIEW in dispatched_intents
 
+    def test_space_on_active_non_sticky_preview_clears_preview(self, mock_focus):
+        """Space on an already-previewed non-sticky session should clear the preview."""
+
+        class MockPaneManager:
+            def __init__(self):
+                self.is_available = True
+                self.apply_called = False
+
+            def toggle_session(self, *_args, **_kwargs):
+                return None
+
+            def show_session(self, *_args, **_kwargs):
+                return None
+
+            def focus_pane_for_session(self, _session_id):
+                return True
+
+            def apply_layout(self, **_kwargs):
+                self.apply_called = True
+                return None
+
+        pane_manager = MockPaneManager()
+        state = TuiState()
+        state.sessions.preview = PreviewState(session_id="sess-nonsticky")
+        controller = TuiController(state, pane_manager, lambda _name: None)
+        original_dispatch = controller.dispatch
+        dispatched_intents = []
+
+        def recording_dispatch(intent: Intent, defer_layout: bool = False) -> None:
+            dispatched_intents.append(intent.type)
+            return original_dispatch(intent, defer_layout=defer_layout)
+
+        controller.dispatch = recording_dispatch
+
+        view = SessionsView(
+            api=None,
+            agent_availability={},
+            focus=mock_focus,
+            pane_manager=pane_manager,
+            state=state,
+            controller=controller,
+        )
+        view.sticky_sessions = []
+        view.flat_items = [
+            self._make_session_node(
+                session_id="sess-nonsticky",
+                computer="local-machine",
+                tmux_session_name="tc-nonsticky",
+            )
+        ]
+        view.selected_index = 0
+
+        view.handle_key(ord(" "), None)
+
+        assert view.state.sessions.preview is None
+        assert IntentType.CLEAR_PREVIEW in dispatched_intents
+        assert IntentType.SET_PREVIEW not in dispatched_intents
+
+    def test_click_on_active_non_sticky_preview_clears_preview(self, mock_focus):
+        """Single click on an already-previewed non-sticky session should clear the preview."""
+
+        class MockPaneManager:
+            def __init__(self):
+                self.is_available = True
+                self.apply_called = False
+
+            def toggle_session(self, *_args, **_kwargs):
+                return None
+
+            def show_session(self, *_args, **_kwargs):
+                return None
+
+            def focus_pane_for_session(self, _session_id):
+                return True
+
+            def apply_layout(self, **_kwargs):
+                self.apply_called = True
+                return None
+
+        pane_manager = MockPaneManager()
+        state = TuiState()
+        state.sessions.preview = PreviewState(session_id="preview-session")
+        controller = TuiController(state, pane_manager, lambda _name: None)
+        original_dispatch = controller.dispatch
+        dispatched_intents = []
+
+        def recording_dispatch(intent: Intent, defer_layout: bool = False) -> None:
+            dispatched_intents.append(intent.type)
+            return original_dispatch(intent, defer_layout=defer_layout)
+
+        controller.dispatch = recording_dispatch
+
+        view = SessionsView(
+            api=None,
+            agent_availability={},
+            focus=mock_focus,
+            pane_manager=pane_manager,
+            state=state,
+            controller=controller,
+        )
+        view.flat_items = [
+            self._make_session_node(
+                session_id="preview-session",
+                computer="local-machine",
+                tmux_session_name="tc-preview",
+            )
+        ]
+        view._row_to_item[10] = 0
+        view._computers = [
+            ComputerInfo(
+                name="local-machine",
+                status="online",
+                user="me",
+                host="local",
+                is_local=True,
+                tmux_binary="tmux",
+            )
+        ]
+
+        assert view.handle_click(10, is_double_click=False) is True
+
+        assert view.state.sessions.preview is None
+        assert IntentType.CLEAR_PREVIEW in dispatched_intents
+        assert IntentType.SET_PREVIEW not in dispatched_intents
+
     def test_click_sticky_session_activates_existing_pane(self, mock_focus):
         """Single click on a sticky session should not force pane focus."""
 

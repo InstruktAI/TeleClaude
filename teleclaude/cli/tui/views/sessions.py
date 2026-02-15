@@ -160,6 +160,7 @@ class _SessionInputKind(str, Enum):
 
     NONE = "none"
     PREVIEW = "preview"
+    CLEAR_PREVIEW = "clear_preview"
     ACTIVATE = "activate"
     TOGGLE_STICKY = "toggle_sticky"
     CLEAR_STICKY_PREVIEW = "clear_sticky_preview"
@@ -296,6 +297,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_detected_pane_id: str | None = None
         self._we_caused_focus: bool = False
         self._initial_layout_done: bool = False
+        self._state_hydration_complete: bool = False
         # Auto-clear timer for currently watched preview session.
         self._viewing_timer_session: str | None = None
         self._viewing_timer_expires: float | None = None
@@ -451,7 +453,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 else:
                     self._restore_selection(previous_selection)
         else:
-            if self.state.sessions.selected_session_id:
+            if self._state_hydration_complete:
+                self._restore_selection(previous_selection)
+            elif self.state.sessions.selected_session_id:
                 self._restore_selection(("session", self.state.sessions.selected_session_id))
             else:
                 self._restore_selection(previous_selection)
@@ -467,6 +471,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if has_expected_panes and panes_missing:
                 self.controller.apply_layout(focus=False)
                 self._initial_layout_done = True
+        self._state_hydration_complete = True
         self._maybe_activate_ready_session()
 
     def request_select_session(self, session_id: str, *, source: str | None = None) -> bool:
@@ -822,11 +827,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self.flat_items = self._flatten_tree(nodes, base_depth=0)
         logger.debug("Flattened to %d items", len(self.flat_items))
 
-        if self.state.sessions.selected_session_id:
-            for idx, item in enumerate(self.flat_items):
-                if is_session_node(item) and item.data.session.session_id == self.state.sessions.selected_session_id:
-                    self._select_index(idx)
-                    break
         # Reset selection if out of bounds
         if self.selected_index >= len(self.flat_items):
             self._select_index(0)
@@ -1203,6 +1203,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 clear_preview=decision.clear_preview,
             )
 
+        if (
+            decision.action == TreeInteractionAction.PREVIEW
+            and self._preview
+            and self._preview.session_id == session_id
+        ):
+            return _SessionInputIntent(selected, _SessionInputKind.CLEAR_PREVIEW, now=now)
+
         return _SessionInputIntent(selected, _SessionInputKind.PREVIEW, now=now)
 
     def _build_click_preview_interaction(self, selected: SessionNode, *, now: float) -> _SessionInputIntent:
@@ -1256,6 +1263,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return
 
         if interaction.kind == _SessionInputKind.CLEAR_STICKY_PREVIEW:
+            self._clear_active_preview()
+            return
+
+        if interaction.kind == _SessionInputKind.CLEAR_PREVIEW:
             self._clear_active_preview()
             return
 
@@ -1722,8 +1733,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return
 
         if key == ord(" "):
-            # Space key previews selected session without taking input focus.
-            # A second quick Space toggles sticky for that session.
+            # Space toggles preview for the selected session without taking input focus.
+            # A second quick Space still performs sticky-toggle for that session.
             if is_session_node(selected):
                 logger.debug("handle_key: space preview for session")
                 self._handle_session_interaction(
