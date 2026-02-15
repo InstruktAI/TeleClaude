@@ -115,39 +115,6 @@ If restart is not enough, use:
 - Delayed notifications/summaries appear.
 - Hook dispatch errors stop repeating.
 
-## Runbook: Hook routed to wrong TeleClaude session (TMUX contract mismatch)
-
-### Symptom
-
-- Hook events are processed on a TeleClaude session whose `active_agent` does not match `payload.agent_name`.
-- Incremental output parsing fails with `Extra data: line 2 column 1`.
-- Agent output appears missing, duplicated, or stale after a provider switch.
-
-### Likely causes
-
-- The TMUX contract marker (`teleclaude_session_id`) points to a stale session.
-- A marker entry was left for a previous native session and not replaced when another native session attached.
-- Session lookup relied only on marker identity and did not validate against incoming `native_session_id`.
-
-### Fast checks
-
-1. `make status`
-2. `instrukt-ai-logs teleclaude --since 5m --grep "TMUX contract|teleclaude_session_id|resolved_session_id|native_session_id|active_agent|provider"`
-3. Correlate hook payload fields (`native_session_id`, `native_log_file`) with resolved session behavior in logs.
-
-### Recover
-
-1. In the same process, avoid manual `teleclaude_session_id` file edits.
-2. Restart once to rehydrate normal session flow.
-3. After restart, monitor for parser mismatch messages (`Extra data`) and hook retries.
-4. If mismatch persists, record a case entry in `docs/explore/teleclaude-api-socket-degradation.md` before further experiments.
-
-### Verify
-
-- Incoming hook sessions keep matching `active_agent` and parser type.
-- No recurring `Evaluating incremental output ... agent=<wrong>` followed by JSON decode storms.
-- Hook outbox backlog remains at zero after steady-state window.
-
 ## Runbook: Headless session cannot be recovered
 
 ### Symptom
