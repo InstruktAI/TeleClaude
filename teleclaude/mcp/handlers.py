@@ -999,6 +999,13 @@ class MCPHandlersMixin:
                 test_csv_path = str(
                     Path(effective_root).expanduser().resolve() / ".agents" / "tests" / "runs" / "get-context.csv"
                 )
+        # Resolve human_role from caller session for audience filtering
+        caller_human_role: str | None = None
+        if caller_session_id:
+            caller_session = await db.get_session(caller_session_id)
+            if caller_session:
+                caller_human_role = caller_session.human_role
+
         resolved_root = Path(effective_root)
         return build_context_output(
             areas=areas,
@@ -1007,6 +1014,7 @@ class MCPHandlersMixin:
             baseline_only=bool(baseline_only),
             include_third_party=bool(include_third_party),
             domains=domains,
+            human_role=caller_human_role,
             test_agent=test_agent,
             test_mode=test_mode,
             test_request=test_request,
