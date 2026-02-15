@@ -58,3 +58,4 @@
 | 2026-02-14 | release-lane-codex              | Codex CLI release inspector lane using `openai/codex-action`.                                                           | DELIVERED | 726a1a16                                 |
 | 2026-02-14 | release-lane-gemini             | Gemini release inspector lane using `@google/gemini-cli` in GitHub Actions.                                             | DELIVERED | 47b12c04                                 |
 | 2026-02-14 | release-arbiter                 | AI consensus arbiter for automated release authorization based on lane reports.                                         | DELIVERED | 02d8c212                                 |
+| 2026-02-15 | release-pipeline-simulation     | Deterministic CI simulation for release arbiter logic verification without live tokens.                                 | DELIVERED | 87f06fbc                                 |

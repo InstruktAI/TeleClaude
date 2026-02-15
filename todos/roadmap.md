@@ -22,12 +22,6 @@ Animated visual polish for the config menu and onboarding wizard. Reuse the bann
 
 Admin supergroup mirroring and intervention. Establish supergroups on Telegram and Discord where admin sessions are mirrored as topics/threads. Admins observe and intervene in customer chats.
 
-## Release Automation
-
-- release-pipeline-simulation (after: release-arbiter)
-
-Deterministic CI pipeline (`test-release-pipeline.yaml`) that mocks AI agents to verify the Arbiter's logic (Split votes, Safety overrides) and workflow wiring without using live tokens.
-
 ## Session Messages API
 
 - session-messages-api — Structured messages endpoint from native session files
