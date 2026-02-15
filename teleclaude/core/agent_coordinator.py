@@ -626,7 +626,9 @@ class AgentCoordinator:
         if not session:
             return False
 
-        agent_key = session.active_agent
+        raw_agent_name = payload.raw.get("agent_name")
+        payload_agent = raw_agent_name.strip().lower() if isinstance(raw_agent_name, str) else ""
+        agent_key = payload_agent or session.active_agent
         if not agent_key:
             return False
 

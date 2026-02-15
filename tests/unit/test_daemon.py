@@ -1,6 +1,7 @@
 """Unit tests for daemon.py core logic."""
 
 import asyncio
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -147,6 +148,53 @@ async def test_get_session_data_supports_dash_placeholders():
     assert cmd.since_timestamp is None
     assert cmd.until_timestamp == "2026-01-01T00:00:00Z"
     assert cmd.tail_chars == 2000
+
+
+def test_hook_outbox_extra_data_decode_error_is_not_retryable() -> None:
+    """Deterministic parser-format mismatches must not be retried forever."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    exc = json.JSONDecodeError("Extra data", '{"a":1}\n{"b":2}', 7)
+    assert daemon._is_retryable_hook_error(exc) is False
+
+
+def test_hook_outbox_other_decode_errors_remain_retryable() -> None:
+    """Non-deterministic JSON parse failures may be transient and should retry."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    exc = json.JSONDecodeError("Expecting value", "", 0)
+    assert daemon._is_retryable_hook_error(exc) is True
+
+
+@pytest.mark.asyncio
+async def test_dispatch_hook_event_updates_active_agent_from_payload() -> None:
+    """Hook payload agent identity should refresh stale session active_agent metadata."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon._ensure_output_polling = AsyncMock()
+    daemon._handle_agent_event = AsyncMock()
+
+    session = Session(
+        session_id="sess-123",
+        computer_name="macbook",
+        tmux_session_name="",
+        title="Untitled",
+        active_agent="gemini",
+    )
+
+    payload = {
+        "agent_name": "claude",
+        "session_id": "native-123",
+        "native_session_id": "native-123",
+        "transcript_path": "/tmp/transcript.jsonl",
+    }
+
+    with (
+        patch("teleclaude.daemon.db.get_session", new=AsyncMock(return_value=session)),
+        patch("teleclaude.daemon.db.update_session", new_callable=AsyncMock) as mock_update,
+    ):
+        await daemon._dispatch_hook_event("sess-123", AgentHookEvents.TOOL_DONE, payload)
+
+    assert mock_update.await_count >= 1
+    first_kwargs = mock_update.await_args_list[0].kwargs
+    assert first_kwargs.get("active_agent") == "claude"
 
 
 @pytest.mark.asyncio

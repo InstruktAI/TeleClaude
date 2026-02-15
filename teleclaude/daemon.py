@@ -666,6 +666,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Return True if hook dispatch errors should be retried."""
         if isinstance(exc, ValueError) and "not found" in str(exc):
             return False
+        if isinstance(exc, json.JSONDecodeError) and "Extra data" in str(exc):
+            return False
         return True
 
     async def _ensure_headless_session(
@@ -789,6 +791,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 )
 
         update_kwargs = {}
+        if normalized_agent_name in AgentName.choices() and session.active_agent != normalized_agent_name:
+            update_kwargs["active_agent"] = normalized_agent_name
         if isinstance(transcript_path, str) and transcript_path:
             update_kwargs["native_log_file"] = transcript_path
         if isinstance(native_log_file, str) and native_log_file:

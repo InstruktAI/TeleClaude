@@ -7,6 +7,19 @@ from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentOutp
 from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
 
 
+@pytest.fixture(autouse=True)
+def _mock_session_listeners(monkeypatch):
+    """Mock session_listeners functions that now require DB."""
+    monkeypatch.setattr(
+        "teleclaude.core.agent_coordinator.notify_stop",
+        AsyncMock(return_value=0),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.agent_coordinator.notify_input_request",
+        AsyncMock(return_value=0),
+    )
+
+
 @pytest.fixture
 def mock_client():
     client = MagicMock()
@@ -199,3 +212,42 @@ async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
 
         assert meta_update_found, "Should persist adapter_metadata (char_offset reset)"
         assert cursor_clear_found, "Should clear turn cursor"
+
+
+@pytest.mark.asyncio
+async def test_threaded_output_prefers_payload_agent_over_session_agent(coordinator, mock_client):
+    """Incremental output must honor hook payload agent identity over stale session metadata."""
+    session_id = "session-123"
+    payload = AgentOutputPayload(
+        session_id="native-123",
+        transcript_path="/path/to/transcript.jsonl",
+        source_computer="macbook",
+        raw={"agent_name": "claude"},
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.TOOL_DONE, session_id=session_id, data=payload)
+
+    # Session metadata is stale (gemini), payload identity is claude.
+    session = Session(
+        session_id=session_id,
+        computer_name="macbook",
+        tmux_session_name="tmux-123",
+        title="Test Session",
+        active_agent="gemini",
+        native_log_file="/path/to/transcript.jsonl",
+        adapter_metadata=SessionAdapterMetadata(),
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled") as mock_enabled,
+        patch("teleclaude.core.agent_coordinator.get_assistant_messages_since") as mock_get_messages,
+    ):
+        mock_get_session.return_value = session
+        mock_enabled.side_effect = lambda agent: agent == "gemini"
+
+        await coordinator.handle_tool_done(context)
+
+        # Claimed agent from payload should be used, disabling threaded output path.
+        mock_enabled.assert_called_once_with("claude")
+        mock_get_messages.assert_not_called()
+        mock_client.send_threaded_output.assert_not_called()

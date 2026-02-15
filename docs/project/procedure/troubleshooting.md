@@ -97,11 +97,13 @@ If restart is not enough, use:
 
 - Hook outbox backlog.
 - Hook event processing failures.
+- Session parser mismatch: `session.active_agent` points to Gemini while hook payload/transcript is Claude JSONL, causing repeated `Extra data` decode failures.
 
 ### Fast checks
 
 1. `make status`
 2. `instrukt-ai-logs teleclaude --since 2m --grep "hook|outbox|agent_stop|dispatch|retry"`
+3. `instrukt-ai-logs teleclaude --since 5m --grep "Evaluating incremental output|Extra data"`
 
 ### Recover
 
