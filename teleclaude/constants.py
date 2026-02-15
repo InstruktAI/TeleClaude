@@ -46,6 +46,8 @@ HUMAN_ROLE_NEWCOMER = "newcomer"
 HUMAN_ROLE_CUSTOMER = "customer"
 HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER)
 
+AUDIENCE_VALUES = ("admin", "member", "help-desk", "public")
+
 
 class ResultStatus(str, Enum):
     SUCCESS = "success"

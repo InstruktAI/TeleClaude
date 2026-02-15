@@ -27,6 +27,7 @@ class SnippetMeta:
     snippet_type: str
     scope: str
     path: Path
+    audience: tuple[str, ...] = ("admin",)
 
 
 @dataclass(frozen=True)
@@ -234,6 +235,8 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
         path = Path(raw_path).expanduser()
         if not path.is_absolute():
             path = (root_path / path).resolve()
+        audience_raw = item.get("audience")
+        audience = tuple(audience_raw) if isinstance(audience_raw, list) else ("admin",)
         entries.append(
             SnippetMeta(
                 snippet_id=snippet_id,
@@ -241,6 +244,7 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
                 snippet_type=snippet_type,
                 scope=scope,
                 path=path,
+                audience=audience,
             )
         )
 

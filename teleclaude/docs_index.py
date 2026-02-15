@@ -102,6 +102,7 @@ class SnippetEntry(TypedDict):
     scope: str
     path: str
     source_project: NotRequired[str]
+    audience: NotRequired[list[str]]
 
 
 class IndexPayload(TypedDict):
@@ -563,6 +564,9 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             "scope": snippet_scope,
             "path": relative_path,
         }
+        audience_val = metadata.get("audience")
+        if isinstance(audience_val, list) and all(isinstance(a, str) for a in audience_val):
+            entry["audience"] = audience_val
         snippets.append(entry)
 
     snippets.sort(key=lambda e: e["id"])
