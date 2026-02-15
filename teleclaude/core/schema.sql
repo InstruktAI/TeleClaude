@@ -27,9 +27,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     tui_capture_started INTEGER DEFAULT 0,
     last_message_sent TEXT,
     last_message_sent_at TEXT,
-    last_feedback_received TEXT,
-    last_feedback_received_at TEXT,
-    last_feedback_summary TEXT,  -- LLM-generated summary of last_feedback_received
+    last_output_raw TEXT,
+    last_output_at TEXT,
+    last_output_summary TEXT,  -- LLM-generated summary of last_output_raw
     working_slug TEXT,  -- Slug of work item this session is working on (from state machine)
     lifecycle_status TEXT DEFAULT 'active'
     -- No unique constraint on (computer_name, tmux_session_name): tmux enforces

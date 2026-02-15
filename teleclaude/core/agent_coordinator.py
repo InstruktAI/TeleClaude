@@ -173,9 +173,9 @@ def _is_codex_input_already_recorded(
         return False
 
     message_at = _to_utc(session.last_message_sent_at)
-    if not isinstance(session.last_feedback_received_at, datetime):
+    if not isinstance(session.last_output_at, datetime):
         return True
-    feedback_at = _to_utc(session.last_feedback_received_at)
+    feedback_at = _to_utc(session.last_output_at)
     return message_at > feedback_at
 
 
@@ -524,9 +524,9 @@ class AgentCoordinator:
             summary = await self._summarize_output(session_id, raw_output)
             feedback_update_kwargs.update(
                 {
-                    "last_feedback_received": raw_output,
-                    "last_feedback_summary": summary,
-                    "last_feedback_received_at": datetime.now(timezone.utc).isoformat(),
+                    "last_output_raw": raw_output,
+                    "last_output_summary": summary,
+                    "last_output_at": datetime.now(timezone.utc).isoformat(),
                 }
             )
             logger.debug(

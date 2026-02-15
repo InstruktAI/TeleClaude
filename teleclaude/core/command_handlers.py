@@ -33,7 +33,7 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     VoiceEventContext,
 )
-from teleclaude.core.feedback import get_last_feedback
+from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import (
@@ -421,10 +421,8 @@ async def list_sessions() -> list[SessionSummary]:
                 last_activity=s.last_activity.isoformat() if s.last_activity else None,
                 last_input=s.last_message_sent,
                 last_input_at=s.last_message_sent_at.isoformat() if s.last_message_sent_at else None,
-                last_output_summary=get_last_feedback(s),
-                last_output_summary_at=(
-                    s.last_feedback_received_at.isoformat() if s.last_feedback_received_at else None
-                ),
+                last_output_summary=get_last_output_summary(s),
+                last_output_summary_at=(s.last_output_at.isoformat() if s.last_output_at else None),
                 native_session_id=s.native_session_id,
                 tmux_session_name=s.tmux_session_name,
                 initiator_session_id=s.initiator_session_id,
@@ -837,7 +835,7 @@ async def get_session_data(
     lifecycle_status = session.lifecycle_status or ""
     closed_at_raw = session.closed_at
     session_closed = closed_at_raw is not None or lifecycle_status == "closed"
-    feedback_at_raw = session.last_feedback_received_at
+    feedback_at_raw = session.last_output_at
     has_completed_turn = feedback_at_raw is not None
 
     # Get native_log_file from session, or discover it if not set

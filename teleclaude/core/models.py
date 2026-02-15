@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, cast
 
 from teleclaude.constants import FIELD_ADAPTER_METADATA, FIELD_COMMAND, FIELD_COMPUTER
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
-from teleclaude.core.feedback import get_last_feedback
+from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
@@ -419,8 +419,8 @@ class SessionField(Enum):
     SUBDIR = "subdir"
     LAST_MESSAGE_SENT = "last_message_sent"
     LAST_MESSAGE_SENT_AT = "last_message_sent_at"
-    LAST_FEEDBACK_RECEIVED = "last_feedback_received"
-    LAST_FEEDBACK_RECEIVED_AT = "last_feedback_received_at"
+    LAST_OUTPUT_RAW = "last_output_raw"
+    LAST_OUTPUT_AT = "last_output_at"
     LAST_TOOL_DONE_AT = "last_tool_done_at"
     LAST_TOOL_USE_AT = "last_tool_use_at"
     LAST_CHECKPOINT_AT = "last_checkpoint_at"
@@ -461,9 +461,9 @@ class Session:  # pylint: disable=too-many-instance-attributes
     tui_capture_started: bool = False
     last_message_sent: Optional[str] = None
     last_message_sent_at: Optional[datetime] = None
-    last_feedback_received: Optional[str] = None
-    last_feedback_received_at: Optional[datetime] = None
-    last_feedback_summary: Optional[str] = None
+    last_output_raw: Optional[str] = None
+    last_output_at: Optional[datetime] = None
+    last_output_summary: Optional[str] = None
     last_output_digest: Optional[str] = None
     last_tool_done_at: Optional[datetime] = None
     last_tool_use_at: Optional[datetime] = None
@@ -486,8 +486,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
             data["last_activity"] = self.last_activity.isoformat()
         if self.last_message_sent_at:
             data["last_message_sent_at"] = self.last_message_sent_at.isoformat()
-        if self.last_feedback_received_at:
-            data["last_feedback_received_at"] = self.last_feedback_received_at.isoformat()
+        if self.last_output_at:
+            data["last_output_at"] = self.last_output_at.isoformat()
         if self.last_tool_done_at:
             data["last_tool_done_at"] = self.last_tool_done_at.isoformat()
         if self.last_tool_use_at:
@@ -526,11 +526,9 @@ class Session:  # pylint: disable=too-many-instance-attributes
             else last_message_sent_at_raw
         )
 
-        last_feedback_received_at_raw = data.get("last_feedback_received_at")
-        last_feedback_received_at = (
-            parse_iso_datetime(last_feedback_received_at_raw)
-            if isinstance(last_feedback_received_at_raw, str)
-            else last_feedback_received_at_raw
+        last_output_at_raw = data.get("last_output_at")
+        last_output_at = (
+            parse_iso_datetime(last_output_at_raw) if isinstance(last_output_at_raw, str) else last_output_at_raw
         )
         last_tool_done_at_raw = data.get("last_tool_done_at")
         last_tool_done_at = (
@@ -595,14 +593,12 @@ class Session:  # pylint: disable=too-many-instance-attributes
             last_message_sent_at=ensure_utc(last_message_sent_at)
             if isinstance(last_message_sent_at, datetime)
             else None,
-            last_feedback_received=_get_optional_str("last_feedback_received"),
-            last_feedback_received_at=ensure_utc(last_feedback_received_at)
-            if isinstance(last_feedback_received_at, datetime)
-            else None,
+            last_output_raw=_get_optional_str("last_output_raw"),
+            last_output_at=ensure_utc(last_output_at) if isinstance(last_output_at, datetime) else None,
             last_tool_done_at=ensure_utc(last_tool_done_at) if isinstance(last_tool_done_at, datetime) else None,
             last_tool_use_at=ensure_utc(last_tool_use_at) if isinstance(last_tool_use_at, datetime) else None,
             last_checkpoint_at=ensure_utc(last_checkpoint_at) if isinstance(last_checkpoint_at, datetime) else None,
-            last_feedback_summary=_get_optional_str("last_feedback_summary"),
+            last_output_summary=_get_optional_str("last_output_summary"),
             last_output_digest=_get_optional_str("last_output_digest"),
             working_slug=_get_optional_str("working_slug"),
             human_email=_get_optional_str("human_email"),
@@ -834,10 +830,8 @@ class SessionSummary:
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
             last_input=session.last_message_sent,
             last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
-            last_output_summary=get_last_feedback(session),
-            last_output_summary_at=(
-                session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None
-            ),
+            last_output_summary=get_last_output_summary(session),
+            last_output_summary_at=(session.last_output_at.isoformat() if session.last_output_at else None),
             last_output_digest=session.last_output_digest,
             native_session_id=session.native_session_id,
             tmux_session_name=session.tmux_session_name,

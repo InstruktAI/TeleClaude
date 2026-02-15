@@ -445,7 +445,7 @@ async def test_handle_get_session_data_returns_transcript():
     mock_session.native_log_file = None  # No file yet
     mock_session.lifecycle_status = "active"
     mock_session.closed_at = None
-    mock_session.last_feedback_received_at = datetime.now()
+    mock_session.last_output_at = datetime.now()
 
     cmd = GetSessionDataCommand(session_id="test-session-123")
 
@@ -573,7 +573,7 @@ async def test_handle_get_session_data_pending_for_pre_stop_non_codex_session():
     mock_session.active_agent = "claude"
     mock_session.lifecycle_status = "active"
     mock_session.closed_at = None
-    mock_session.last_feedback_received_at = None
+    mock_session.last_output_at = None
     mock_session.tmux_session_name = None
 
     cmd = GetSessionDataCommand(session_id="claude-session-1")
@@ -602,7 +602,7 @@ async def test_handle_get_session_data_errors_after_completed_turn_when_transcri
     mock_session.active_agent = "claude"
     mock_session.lifecycle_status = "active"
     mock_session.closed_at = None
-    mock_session.last_feedback_received_at = datetime.now()
+    mock_session.last_output_at = datetime.now()
 
     cmd = GetSessionDataCommand(session_id="claude-session-2")
 
@@ -630,7 +630,7 @@ async def test_handle_get_session_data_codex_pending_is_case_insensitive():
     mock_session.active_agent = "Codex"
     mock_session.lifecycle_status = "active"
     mock_session.closed_at = None
-    mock_session.last_feedback_received_at = None
+    mock_session.last_output_at = None
     mock_session.tmux_session_name = None
 
     cmd = GetSessionDataCommand(session_id="codex-session-3")
@@ -695,7 +695,7 @@ async def test_handle_get_session_data_non_codex_falls_back_to_tmux_before_pendi
     mock_session.active_agent = "claude"
     mock_session.lifecycle_status = "active"
     mock_session.closed_at = None
-    mock_session.last_feedback_received_at = None
+    mock_session.last_output_at = None
     mock_session.tmux_session_name = "tc_claude_1"
 
     cmd = GetSessionDataCommand(session_id="claude-session-tmux-1")
@@ -760,7 +760,7 @@ async def test_handle_get_session_data_non_codex_returns_empty_tmux_tail_before_
     mock_session.active_agent = "claude"
     mock_session.lifecycle_status = "active"
     mock_session.closed_at = None
-    mock_session.last_feedback_received_at = None
+    mock_session.last_output_at = None
     mock_session.tmux_session_name = "tc_claude_empty"
 
     cmd = GetSessionDataCommand(session_id="claude-session-tmux-empty")

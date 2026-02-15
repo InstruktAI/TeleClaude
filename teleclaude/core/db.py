@@ -105,12 +105,12 @@ class Db:
             tui_capture_started=bool(row.tui_capture_started) if row.tui_capture_started is not None else False,
             last_message_sent=row.last_message_sent,
             last_message_sent_at=Db._coerce_datetime(row.last_message_sent_at),
-            last_feedback_received=row.last_feedback_received,
-            last_feedback_received_at=Db._coerce_datetime(row.last_feedback_received_at),
+            last_output_raw=row.last_output_raw,
+            last_output_at=Db._coerce_datetime(row.last_output_at),
             last_tool_done_at=Db._coerce_datetime(row.last_tool_done_at),
             last_tool_use_at=Db._coerce_datetime(row.last_tool_use_at),
             last_checkpoint_at=Db._coerce_datetime(row.last_checkpoint_at),
-            last_feedback_summary=row.last_feedback_summary,
+            last_output_summary=row.last_output_summary,
             last_output_digest=row.last_output_digest,
             working_slug=row.working_slug,
             human_email=row.human_email,
@@ -573,7 +573,7 @@ class Db:
                         "last_activity",
                         "closed_at",
                         "last_message_sent_at",
-                        "last_feedback_received_at",
+                        "last_output_at",
                         "last_tool_done_at",
                         "last_tool_use_at",
                         "last_checkpoint_at",
@@ -597,11 +597,11 @@ class Db:
                     ):
                         updates[SessionField.LAST_MESSAGE_SENT_AT.value] = now
                     if (
-                        SessionField.LAST_FEEDBACK_RECEIVED.value in updates
-                        and SessionField.LAST_FEEDBACK_RECEIVED_AT.value not in updates
+                        SessionField.LAST_OUTPUT_RAW.value in updates
+                        and SessionField.LAST_OUTPUT_AT.value not in updates
                     ):
-                        updates[SessionField.LAST_FEEDBACK_RECEIVED_AT.value] = now
-                        summary_val = updates.get(SessionField.LAST_FEEDBACK_RECEIVED.value)
+                        updates[SessionField.LAST_OUTPUT_AT.value] = now
+                        summary_val = updates.get(SessionField.LAST_OUTPUT_RAW.value)
                         summary_len = len(str(summary_val)) if summary_val is not None else 0
                         logger.debug(
                             "Summary updated: session=%s len=%d",

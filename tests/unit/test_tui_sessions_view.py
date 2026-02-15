@@ -272,7 +272,7 @@ class TestSessionsViewLogic:
             last_input="Test input",
             last_input_at="2024-01-01T00:00:00Z",
         )
-        sessions_view.state.sessions.last_summary["test-session-001"] = "Test output"
+        sessions_view.state.sessions.last_output_summary["test-session-001"] = "Test output"
         sessions_view.flat_items = [session]
         # Don't add to collapsed_sessions = expanded by default
 
@@ -402,8 +402,8 @@ class TestSessionsViewLogic:
         assert selected.data.session.session_id == "sess-2"
 
     @pytest.mark.asyncio
-    async def test_refresh_backfills_last_summary_from_session_data(self, sessions_view):
-        """Refresh should repopulate last_summary from persisted session summaries."""
+    async def test_refresh_backfills_last_output_summary_from_session_data(self, sessions_view):
+        """Refresh should repopulate last_output_summary from persisted session summaries."""
         computers = [
             ComputerInfo(
                 name="test-computer",
@@ -433,7 +433,7 @@ class TestSessionsViewLogic:
 
         await sessions_view.refresh(computers, projects, sessions)
 
-        assert sessions_view.state.sessions.last_summary["sess-summary"] == "persisted summary text"
+        assert sessions_view.state.sessions.last_output_summary["sess-summary"] == "persisted summary text"
 
     def test_depth_indentation(self, sessions_view):
         """Items are not indented in the simplified render output."""
@@ -471,7 +471,7 @@ class TestSessionsViewLogic:
             last_input="hello",
             last_input_at="2024-01-01T00:00:00Z",
         )
-        sessions_view.state.sessions.last_summary["s1"] = "world"
+        sessions_view.state.sessions.last_output_summary["s1"] = "world"
         sessions_view.flat_items = [session]
 
         lines = sessions_view.get_render_lines(120, 10)
@@ -486,7 +486,7 @@ class TestSessionsViewLogic:
         monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
 
         session = self._make_session_node(session_id="s1")
-        sessions_view.state.sessions.last_summary["s1"] = "final answer text"
+        sessions_view.state.sessions.last_output_summary["s1"] = "final answer text"
         sessions_view.state.sessions.temp_output_highlights.add("s1")
         sessions_view.flat_items = [session]
 
@@ -501,7 +501,7 @@ class TestSessionsViewLogic:
         monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
 
         session = self._make_session_node(session_id="s-codex-temp", active_agent="codex")
-        sessions_view.state.sessions.last_summary["s-codex-temp"] = "final answer text"
+        sessions_view.state.sessions.last_output_summary["s-codex-temp"] = "final answer text"
         sessions_view.state.sessions.temp_output_highlights.add("s-codex-temp")
         sessions_view.flat_items = [session]
 
@@ -516,7 +516,7 @@ class TestSessionsViewLogic:
         monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
 
         session = self._make_session_node(session_id="s-working")
-        sessions_view.state.sessions.last_summary["s-working"] = "final answer text"
+        sessions_view.state.sessions.last_output_summary["s-working"] = "final answer text"
         sessions_view.state.sessions.input_highlights.add("s-working")
         sessions_view.flat_items = [session]
 
@@ -531,7 +531,7 @@ class TestSessionsViewLogic:
         monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
 
         session = self._make_session_node(session_id="s-codex-input", active_agent="codex")
-        sessions_view.state.sessions.last_summary["s-codex-input"] = "latest codex answer"
+        sessions_view.state.sessions.last_output_summary["s-codex-input"] = "latest codex answer"
         sessions_view.state.sessions.input_highlights.add("s-codex-input")
         sessions_view.flat_items = [session]
 
@@ -1788,7 +1788,7 @@ class TestSessionsViewLogic:
             tmux_session_name=None,
         )
         monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
-        sessions_view.state.sessions.last_summary["headless-1"] = "agent output"
+        sessions_view.state.sessions.last_output_summary["headless-1"] = "agent output"
         sessions_view.state.sessions.output_highlights.add("headless-1")
 
         screen = FakeScreen()
@@ -2541,7 +2541,7 @@ class TestSessionsViewLogic:
         monkeypatch.setattr(curses, "A_ITALIC", 0, raising=False)
 
         session = self._make_session_node(session_id="s-final")
-        sessions_view.state.sessions.last_summary["s-final"] = "real output now"
+        sessions_view.state.sessions.last_output_summary["s-final"] = "real output now"
         sessions_view.flat_items = [session]
 
         output = "\n".join(sessions_view.get_render_lines(120, 10))

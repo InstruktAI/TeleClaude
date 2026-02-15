@@ -24,7 +24,7 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents, UiCommands
 from teleclaude.core.feature_flags import is_threaded_output_enabled
-from teleclaude.core.feedback import get_last_feedback
+from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.models import (
     CleanupTrigger,
     MessageMetadata,
@@ -765,13 +765,13 @@ class UiAdapter(BaseAdapter):
             await self.client.update_channel_title(session, display_title)
             logger.info("Synced display title to UiAdapters for session %s: %s", session_id[:8], display_title)
 
-        # Handle feedback output updates (check both raw and summary fields).
-        # Only dispatch feedback to the adapter whose key matches last_input_origin.
-        # This prevents Telegram from receiving feedback when the user is interacting
-        # via TUI/CLI/API/MCP — each adapter instance only sends feedback for sessions
+        # Handle output summary updates (check both raw and summary fields).
+        # Only dispatch output to the adapter whose key matches last_input_origin.
+        # This prevents Telegram from receiving output when the user is interacting
+        # via TUI/CLI/API/MCP — each adapter instance only sends output for sessions
         # that originated from IT.
         feedback_updated = (
-            SessionField.LAST_FEEDBACK_RECEIVED.value in updated_fields or "last_feedback_summary" in updated_fields
+            SessionField.LAST_OUTPUT_RAW.value in updated_fields or "last_output_summary" in updated_fields
         )
         if (
             feedback_updated
@@ -779,7 +779,7 @@ class UiAdapter(BaseAdapter):
             and session.last_input_origin == self.ADAPTER_KEY
         ):
             # Use helper to get appropriate feedback based on config
-            feedback = get_last_feedback(session) or ""
+            feedback = get_last_output_summary(session) or ""
             if feedback:
                 logger.debug(
                     "Feedback emit: session=%s origin=%s adapter=%s len=%d",
