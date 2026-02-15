@@ -44,11 +44,16 @@ from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.state import Intent, IntentType, TuiState
 from teleclaude.cli.tui.state_store import save_sticky_state
 from teleclaude.cli.tui.theme import (
+    PANE_THEMING_MODE_FULL,
+    PANE_THEMING_MODE_OFF,
+    PANE_THEMING_MODE_SEMI,
     get_current_mode,
+    get_pane_theming_mode,
     get_system_dark_mode,
     get_tab_line_attr,
     init_colors,
     is_dark_mode,
+    set_pane_theming_mode,
 )
 from teleclaude.cli.tui.tree import is_computer_node, is_session_node
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NotificationLevel
@@ -208,6 +213,7 @@ class TelecApp:
         self.running = True
         self.agent_availability: dict[str, AgentAvailabilityInfo] = {}
         self.tts_enabled: bool = False
+        self.pane_theming_mode: str = get_pane_theming_mode()
         self._loop: asyncio.AbstractEventLoop | None = None
         self.focus = FocusContext()  # Shared focus across views
         self.notification: Notification | None = None
@@ -278,6 +284,39 @@ class TelecApp:
             subscriptions=["sessions", "projects", "todos"],
         )
 
+    def _apply_pane_theming_mode(self, mode: str) -> None:
+        """Apply pane mode override and refresh pane colors."""
+        if mode == self.pane_theming_mode:
+            return
+
+        normalized = mode.strip().lower()
+        if normalized not in {PANE_THEMING_MODE_FULL, PANE_THEMING_MODE_SEMI, PANE_THEMING_MODE_OFF}:
+            logger.warning("Ignoring unknown pane_theming_mode: %s", mode)
+            return
+
+        self.pane_theming_mode = normalized
+        set_pane_theming_mode(normalized)
+        self.pane_manager.reapply_agent_colors()
+
+        if self.footer:
+            self.footer.pane_theming_mode = normalized
+
+    def _cycle_pane_theming_mode(self) -> None:
+        """Advance pane theming mode to the next presentation option."""
+        cycle = (PANE_THEMING_MODE_OFF, PANE_THEMING_MODE_SEMI, PANE_THEMING_MODE_FULL)
+        try:
+            index = cycle.index(self.pane_theming_mode)
+        except ValueError:
+            index = 0
+        next_mode = cycle[(index + 1) % len(cycle)]
+        self._apply_pane_theming_mode(next_mode)
+
+        if self._loop:
+            asyncio.run_coroutine_threadsafe(
+                self.api.patch_settings(SettingsPatchInfo(pane_theming_mode=next_mode)),
+                self._loop,
+            )
+
     async def refresh_data(self) -> None:
         """Refresh all data from API."""
         logger.debug("Refreshing data from API...")
@@ -333,6 +372,7 @@ class TelecApp:
 
             # Update TTS state from settings
             self.tts_enabled = settings.tts.enabled
+            self._apply_pane_theming_mode(settings.pane_theming_mode)
 
             # Refresh ALL views with data (not just current)
             for view_num, view in self.views.items():
@@ -344,7 +384,12 @@ class TelecApp:
                 )
 
             # Update footer with new availability and TTS state
-            self.footer = Footer(self.agent_availability, tts_enabled=self.tts_enabled)
+            self.footer = Footer(
+                self.agent_availability,
+                tts_enabled=self.tts_enabled,
+                pane_theming_mode=self.pane_theming_mode,
+                pane_theming_agent=self._get_footer_pane_theming_agent(),
+            )
             logger.debug("Data refresh complete")
             self._refresh_error_since = None
             self._refresh_error_notified = False
@@ -867,18 +912,23 @@ class TelecApp:
                 # Single click: select item or switch tab
                 elif bstate & curses.BUTTON1_CLICKED:
                     height, _ = stdscr.getmaxyx()  # type: ignore[attr-defined]
-                    # Check if click is on footer row (TTS toggle)
-                    if my == height - 1 and self.footer and self.footer.handle_click(mx):
-                        self.tts_enabled = not self.tts_enabled
-                        self.footer.tts_enabled = self.tts_enabled
-                        if self._loop:
-                            asyncio.run_coroutine_threadsafe(
-                                self.api.patch_settings(
-                                    SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=self.tts_enabled))
-                                ),
-                                self._loop,
-                            )
-                        logger.debug("TTS toggled to %s via footer click", self.tts_enabled)
+                    # Check if click is on footer row
+                    if my == height - 1 and self.footer and (clicked := self.footer.handle_click(mx)):
+                        if clicked == "tts":
+                            self.tts_enabled = not self.tts_enabled
+                            self.footer.tts_enabled = self.tts_enabled
+                            if self._loop:
+                                asyncio.run_coroutine_threadsafe(
+                                    self.api.patch_settings(
+                                        SettingsPatchInfo(
+                                            tts=TTSSettingsPatchInfo(enabled=self.tts_enabled),
+                                        )
+                                    ),
+                                    self._loop,
+                                )
+                            logger.debug("TTS toggled to %s via footer click", self.tts_enabled)
+                        elif clicked == "pane_theming_mode":
+                            self._cycle_pane_theming_mode()
                     # Check if a tab was clicked
                     elif self.tab_bar.handle_click(my, mx) is not None:
                         clicked_tab = self.tab_bar.handle_click(my, mx)
@@ -1028,6 +1078,9 @@ class TelecApp:
                     self._loop,
                 )
             logger.debug("TTS toggled to %s via hotkey", self.tts_enabled)
+        elif key == ord("c"):
+            self._cycle_pane_theming_mode()
+            logger.debug("Pane theming mode toggled to %s via hotkey", self.pane_theming_mode)
 
         # View-specific actions
         else:
@@ -1074,6 +1127,7 @@ class TelecApp:
         Args:
             view_num: View number (1 or 2)
         """
+        current_view = self.current_view
         if view_num in self.views:
             logger.debug("Switching from view %d to view %d", self.current_view, view_num)
             self.current_view = view_num
@@ -1092,6 +1146,10 @@ class TelecApp:
                     if self._loop:
                         self._loop.run_until_complete(self.refresh_data())
             # Panes remain unchanged across view switches.
+            if current_view == 2 and view_num != 2:
+                prep_view = self.views.get(2)
+                if prep_view:
+                    prep_view.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW), defer_layout=True)
         else:
             logger.warning("Attempted to switch to non-existent view %d", view_num)
 
@@ -1166,15 +1224,35 @@ class TelecApp:
         stdscr.addstr(height - 3, 0, action_bar[:line_width])  # type: ignore[attr-defined]
 
         # Row height-2: Global shortcuts bar
-        global_bar = "[+/-] Expand/Collapse  [r] Refresh  [v] TTS  [q] Quit"
+        global_bar = "[+/-] Expand/Collapse  [r] Refresh  [v] TTS  [c] Colors  [q] Quit"
         stdscr.addstr(height - 2, 0, global_bar[:line_width], curses.A_DIM)  # type: ignore[attr-defined]
 
         # Row height-1: Footer
         if self.footer and line_width > 0:
+            self.footer.pane_theming_agent = self._get_footer_pane_theming_agent()
             self.footer.render(stdscr, height - 1, line_width)
 
         stdscr.move(0, 0)  # type: ignore[attr-defined]
         stdscr.refresh()  # type: ignore[attr-defined]
+
+    def _get_footer_pane_theming_agent(self) -> str:
+        """Pick the current row agent so pane-theming indicator can mirror highlights."""
+        view = self.views.get(self.current_view)
+        if not view or not hasattr(view, "flat_items") or not hasattr(view, "selected_index"):
+            return "codex"
+
+        flat_items = getattr(view, "flat_items")
+        selected_index = getattr(view, "selected_index")
+        if not flat_items or not isinstance(selected_index, int):
+            return "codex"
+        if selected_index < 0 or selected_index >= len(flat_items):
+            return "codex"
+
+        selected = flat_items[selected_index]
+        if self.current_view == 1 and is_session_node(selected):
+            return selected.data.session.active_agent or "codex"
+
+        return "codex"
 
     def _render_breadcrumb(self, stdscr: object, row: int, width: int) -> None:
         """Render breadcrumb with last part bold.

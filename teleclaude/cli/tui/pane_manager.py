@@ -734,23 +734,27 @@ class TmuxPaneManager:
             agent: Agent name for color calculation
             is_tree_selected: Use lighter haze when the tree focus selected row matches.
         """
+        mode = theme.get_pane_theming_mode()
+        use_native_fg = mode in {theme.PANE_THEMING_MODE_SEMI, theme.PANE_THEMING_MODE_OFF}
+
         # Inactive pane should communicate state through background haze only.
         if is_tree_selected:
             bg_color = theme.get_agent_pane_selected_background(agent)
         else:
             bg_color = theme.get_agent_pane_inactive_background(agent)
-        pane_fg_color_code = theme.get_agent_normal_color(agent)
-        self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg=colour{pane_fg_color_code},bg={bg_color}")
+        pane_fg_color = f"colour{theme.get_agent_normal_color(agent)}" if not use_native_fg else "default"
+        self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg={pane_fg_color},bg={bg_color}")
 
         # Use explicit active pane background (no haze) to avoid inheriting window-style haze.
         terminal_bg = theme.get_agent_pane_active_background(agent)
+        active_pane_fg_color = f"colour{theme.get_agent_normal_color(agent)}" if not use_native_fg else "default"
         self._run_tmux(
             "set",
             "-p",
             "-t",
             pane_id,
             "window-active-style",
-            f"fg=colour{pane_fg_color_code},bg={terminal_bg}",
+            f"fg={active_pane_fg_color},bg={terminal_bg}",
         )
 
         # Embedded session panes should not render tmux status bars.

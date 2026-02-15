@@ -5,24 +5,73 @@ import unicodedata
 from datetime import datetime
 
 from teleclaude.cli.models import AgentAvailabilityInfo
+from teleclaude.cli.tui.theme import (
+    PANE_THEMING_MODE_FULL,
+    PANE_THEMING_MODE_OFF,
+    PANE_THEMING_MODE_SEMI,
+    get_agent_preview_selected_bg_attr,
+    get_agent_preview_selected_focus_attr,
+    get_agent_status_color_pair,
+)
 from teleclaude.cli.tui.widgets.agent_status import build_agent_render_spec
 
 
 class Footer:
-    """Persistent status footer showing agent availability and TTS toggle."""
+    """Persistent status footer showing agent availability and footer toggles."""
 
     def __init__(
         self,
         agent_availability: dict[str, AgentAvailabilityInfo],
         tts_enabled: bool = False,
+        pane_theming_mode: str = PANE_THEMING_MODE_FULL,
+        pane_theming_agent: str = "codex",
     ):
         self.agent_availability = agent_availability
         self.tts_enabled = tts_enabled
+        self.pane_theming_mode = pane_theming_mode
+        self.pane_theming_agent = pane_theming_agent
         self._tts_col_start: int = -1
         self._tts_col_end: int = -1
+        self._pane_theming_col_start: int = -1
+        self._pane_theming_col_end: int = -1
+
+    @staticmethod
+    def _normalize_mode(mode: str) -> str:
+        """Normalize pane mode to canonical enum-like values."""
+        return mode.strip().lower()
+
+    @staticmethod
+    def _normalize_agent(agent: str) -> str:
+        """Normalize agent label and fall back to codex."""
+        normalized = (agent or "codex").strip().lower()
+        return normalized if normalized else "codex"
+
+    def _format_pane_mode_cells(self, mode: str, *, agent: str) -> list[tuple[str, int]]:
+        """Return a two-cell indicator pattern for pane coloring mode."""
+        normalized = self._normalize_mode(mode)
+        safe_agent = self._normalize_agent(agent)
+
+        outline_attr = get_agent_status_color_pair(safe_agent, muted=True) | curses.A_DIM
+        fill_attr = {
+            PANE_THEMING_MODE_SEMI: get_agent_preview_selected_bg_attr(safe_agent),
+            PANE_THEMING_MODE_FULL: get_agent_preview_selected_focus_attr(safe_agent),
+        }
+
+        if normalized == PANE_THEMING_MODE_FULL:
+            return [(" ", fill_attr[PANE_THEMING_MODE_FULL]), (" ", fill_attr[PANE_THEMING_MODE_FULL])]
+        if normalized == PANE_THEMING_MODE_SEMI:
+            return [(" ", fill_attr[PANE_THEMING_MODE_SEMI]), (" ", outline_attr)]
+        if normalized == PANE_THEMING_MODE_OFF:
+            return [(" ", outline_attr), (" ", outline_attr)]
+        return [(" ", outline_attr), (" ", outline_attr)]
 
     def render(self, stdscr: object, row: int, width: int) -> None:
-        """Render footer with right-aligned agent availability and TTS indicator."""
+        """Render footer with left-aligned agent availability and right-aligned icons."""
+        self._tts_col_start = -1
+        self._tts_col_end = -1
+        self._pane_theming_col_start = -1
+        self._pane_theming_col_end = -1
+
         # Build agent availability parts with shared status renderer
         agent_parts: list[tuple[str, int, bool]] = []  # (text, color_pair, bold)
         for agent in ["claude", "gemini", "codex"]:
@@ -38,62 +87,89 @@ class Footer:
         if tts_width <= 0:
             tts_text = "[TTS]"
             tts_width = len(tts_text)
-        spacing = 2  # space between agent pills and TTS
 
-        # Calculate total width needed for right alignment
-        agents_width = sum(self._display_width(text) for text, _, _ in agent_parts) + (len(agent_parts) - 1) * 2
-        total_text_width = agents_width + spacing + tts_width
+        pane_mode_cells = self._format_pane_mode_cells(
+            self.pane_theming_mode,
+            agent=self.pane_theming_agent,
+        )
+        pane_mode_width = 2
+
         max_width = max(0, width - 1)  # avoid last-column writes
         if max_width == 0:
             return
 
-        # If overflow, drop leftmost agent parts until it fits
-        if total_text_width > max_width:
-            trimmed: list[tuple[str, int, bool]] = []
-            used = spacing + tts_width
-            for text, color, bold in reversed(agent_parts):
-                text_width = self._display_width(text)
-                needed = text_width if not trimmed else text_width + 2
-                if used + needed > max_width:
-                    break
-                trimmed.append((text, color, bold))
-                used += needed
-            agent_parts = list(reversed(trimmed))
-            total_text_width = used
+        icon_gap = 2
+        icon_block_width = pane_mode_width + icon_gap + tts_width
+        icons_fit = icon_block_width <= max_width
+        icon_block_start = max_width - icon_block_width if icons_fit else max_width
+        agent_space = max(0, icon_block_start)
 
-        start_col = max(0, max_width - total_text_width)
-
-        # Render each agent with its color
-        col = start_col
+        # Render agent pills from left, clipping if we need to reserve icon space.
+        col = 0
         try:
             for i, (text, color_pair_id, bold) in enumerate(agent_parts):
                 if i > 0:
+                    gap = 2
+                    if col + gap > agent_space:
+                        break
                     stdscr.addstr(row, col, "  ")  # type: ignore[attr-defined]
-                    col += 2
+                    col += gap
+
+                text_width = self._display_width(text)
+                if col + text_width > agent_space:
+                    break
+
                 attr = curses.color_pair(color_pair_id)
                 if bold:
                     attr |= curses.A_BOLD
                 stdscr.addstr(row, col, text, attr)  # type: ignore[attr-defined]
-                col += self._display_width(text)
+                col += text_width
 
-            # Render TTS indicator
-            col += spacing
-            self._tts_col_start = col
-            self._tts_col_end = col + tts_width
+            # Render controls if they fit in the footer width.
+            if not icons_fit:
+                return
+
+            self._pane_theming_col_start = icon_block_start
+            self._pane_theming_col_end = icon_block_start + pane_mode_width
+
+            col = icon_block_start
+            for idx, (cell_text, cell_attr) in enumerate(pane_mode_cells):
+                stdscr.addstr(row, col + idx, cell_text, cell_attr)  # type: ignore[attr-defined]
+
+            self._tts_col_start = icon_block_start + pane_mode_width + icon_gap
+            self._tts_col_end = self._tts_col_start + tts_width
             if self.tts_enabled:
                 tts_attr = curses.color_pair(3) | curses.A_BOLD  # green + bold
             else:
                 tts_attr = curses.A_DIM
-            stdscr.addstr(row, col, tts_text, tts_attr)  # type: ignore[attr-defined]
+            stdscr.addstr(row, self._tts_col_start, tts_text, tts_attr)  # type: ignore[attr-defined]
         except curses.error:
-            pass  # Screen too small
+            # Restore clickable targets only if draw succeeded.
+            self._tts_col_start = -1
+            self._tts_col_end = -1
+            self._pane_theming_col_start = -1
+            self._pane_theming_col_end = -1
+            return
 
-    def handle_click(self, col: int) -> bool:
-        """Check if a click at the given column hits the TTS indicator.
+        # Ensure we never report invalid click regions when controls are not rendered.
+        if self._pane_theming_col_start == -1 or self._tts_col_start == -1:
+            self._pane_theming_col_start = -1
+            self._pane_theming_col_end = -1
+            self._tts_col_start = -1
+            self._tts_col_end = -1
 
-        Returns True if the TTS region was clicked.
+    def handle_click(self, col: int) -> str | None:
+        """Check if a click at the given column hits a footer icon.
+
+        Returns:
+            "tts" for the TTS icon, "pane_theming_mode" for color mode icon,
+            or None when nothing is hit.
         """
-        return self._tts_col_start <= col < self._tts_col_end
+        if self._pane_theming_col_start <= col < self._pane_theming_col_end:
+            return "pane_theming_mode"
+        if self._tts_col_start <= col < self._tts_col_end:
+            return "tts"
+        return None
 
     def _format_countdown(self, until: str) -> str:
         """Format countdown string from ISO timestamp."""
