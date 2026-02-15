@@ -399,8 +399,12 @@ def _get_tmux_contract_tmpdir() -> str:
     return tmpdir
 
 
-def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str | None) -> bool:
-    """Validate whether a TMUX contract session is still bound to this native session."""
+def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str | None, *, agent: str) -> bool:
+    """Validate whether a TMUX contract session is still bound to this hook identity.
+
+    Allow native-session rollover for the same active agent (expected during
+    start/resume transitions) while rejecting cross-agent/cross-native binding.
+    """
     if not native_session_id:
         return True
 
@@ -435,11 +439,24 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
         return False
 
     if row.native_session_id and row.native_session_id != native_session_id:
+        row_agent = (row.active_agent or "").strip().lower()
+        incoming_agent = (agent or "").strip().lower()
+        if row_agent and incoming_agent and row_agent == incoming_agent:
+            logger.debug(
+                "TMUX contract native id rollover accepted for same agent",
+                session_id=session_id[:8],
+                agent=incoming_agent,
+                previous_native_session_id=(row.native_session_id or "")[:8],
+                incoming_native_session_id=native_session_id[:8],
+            )
+            return True
         logger.debug(
             "TMUX contract session rejected: native session id mismatch",
             session_id=session_id[:8],
             contract_native_session_id=(row.native_session_id or "")[:8],
             incoming_native_session_id=native_session_id[:8],
+            contract_agent=row_agent,
+            incoming_agent=incoming_agent,
         )
         return False
 
@@ -613,7 +630,9 @@ def _resolve_hook_session_id(
         if not resolved_session_id:
             return None, None, None
 
-        if native_session_id and not _is_tmux_contract_session_compatible(resolved_session_id, native_session_id):
+        if native_session_id and not _is_tmux_contract_session_compatible(
+            resolved_session_id, native_session_id, agent=agent
+        ):
             fallback_session_id = _find_session_id_by_native(native_session_id)
             if fallback_session_id:
                 logger.warning(

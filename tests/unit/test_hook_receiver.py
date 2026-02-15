@@ -1043,3 +1043,67 @@ def test_get_tmux_contract_tmpdir_prefers_tmp_when_tmpdir_missing(monkeypatch, t
     (tmp_path / "tmp-fallback").mkdir(parents=True, exist_ok=True)
 
     assert receiver._get_tmux_contract_tmpdir() == str((tmp_path / "tmp-fallback"))
+
+
+def test_tmux_contract_compatibility_allows_native_rollover_for_same_agent(monkeypatch, tmp_path):
+    """Same-agent TMUX route should allow native session rollover without rejecting marker session."""
+    db_path = tmp_path / "teleclaude.db"
+
+    from sqlalchemy import create_engine
+    from sqlmodel import Session as SqlSession
+    from sqlmodel import SQLModel
+
+    from teleclaude.core import db_models as _models
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    SQLModel.metadata.create_all(engine)
+    with SqlSession(engine) as session:
+        session.add(
+            _models.Session(
+                session_id="sess-rollover",
+                computer_name="test",
+                active_agent="claude",
+                native_session_id="native-old",
+            )
+        )
+        session.commit()
+
+    monkeypatch.setattr(receiver, "_create_sync_engine", lambda: engine)
+
+    assert receiver._is_tmux_contract_session_compatible(
+        "sess-rollover",
+        "native-new",
+        agent="claude",
+    )
+
+
+def test_tmux_contract_compatibility_rejects_cross_agent_native_mismatch(monkeypatch, tmp_path):
+    """Cross-agent mismatch should be rejected to prevent misrouting hooks."""
+    db_path = tmp_path / "teleclaude.db"
+
+    from sqlalchemy import create_engine
+    from sqlmodel import Session as SqlSession
+    from sqlmodel import SQLModel
+
+    from teleclaude.core import db_models as _models
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    SQLModel.metadata.create_all(engine)
+    with SqlSession(engine) as session:
+        session.add(
+            _models.Session(
+                session_id="sess-cross",
+                computer_name="test",
+                active_agent="gemini",
+                native_session_id="native-gemini",
+            )
+        )
+        session.commit()
+
+    monkeypatch.setattr(receiver, "_create_sync_engine", lambda: engine)
+
+    assert not receiver._is_tmux_contract_session_compatible(
+        "sess-cross",
+        "native-claude",
+        agent="claude",
+    )
