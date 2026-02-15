@@ -35,12 +35,6 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 - web-interface-3 (after: web-interface-2) — Chat Interface & Part Rendering
 - web-interface-4 (after: web-interface-3) — Session Management & Role-Based Access
 
-## TUI Config Experience & Animation Art
-
-- tui-config-experience
-
-Move all interactive configuration into the TUI as a first-class Config tab with sub-tabs, killing `telec config` interactive menu and `telec onboard` CLI wizard. Each config section becomes a reusable curses component with contextual guidance, provider-specific help with links, and section-aware animation. Simultaneously evolves the animation engine: target-agnostic rendering, state-driven selection, section-aware palettes, scroll/motion transitions, depth layering, three-mode toggle (off / periodic / party). Creative-first: art director + artist brainstorm visual concepts before builders implement. Absorbs config-visual-polish and tui-animation-art.
-
 ## Rolling Session Titles
 
 - rolling-session-titles
