@@ -99,3 +99,31 @@ Each new entry should include:
     - Session `7236062a...` updated to `active_agent=claude`.
     - Outbox drained fully: `pending_extra 0`, `pending_total 0`.
 - **Next decision:** Keep this guard in place and monitor for new parser mismatch signatures; if similar errors appear with different parsers, add explicit parser-format detection in transcript utilities as a secondary safety net.
+
+## 2026-02-15 — TMUX session contract mismatch can misroute hooks to stale session rows
+
+- **Timestamp window:** Feb 15, 2026 (post hook-outbox incident, same day window)
+- **Symptom:** Hook payload for Claude native session was delivered to a Gemini-labeled TeleClaude session, causing deterministic parser mismatch and repeated decode/retry failures.
+- **Evidence:**
+  - Session `7236062a-31e8-483c-91bf-10cd410dfae4` started as Gemini.
+  - Claude hook attachment event at `2026-02-14T23:24:32Z` showed incoming `native_session_id=<claude-session-id>` while `resolved_session_id` was Gemini session.
+  - Logs showed `Evaluating incremental output agent=gemini` while payload transcript type/format was Claude JSONL.
+  - Parsing failure remained `Extra data: line 2 column 1`.
+- **Hypothesis + confidence:** `teleclaude_session_id` contract mapping can become stale across native sessions in tmux flow, and resolver path trusted marker identity without validating native identity compatibility. Incoming hook `native_session_id` and contract marker session were not cross-checked. **Confidence: high**.
+- **Change/prototype attempted:**
+  - Hardened `teleclaude/hooks/receiver.py` to validate TMUX contract candidate via session row compatibility:
+    - compare marker session native identity against incoming `native_session_id`
+    - reject mismatched/closed/incompatible marker rows
+    - fallback to lookup by native session id when marker is stale
+    - fail fast when no compatible session can be found
+  - Added unit tests in `tests/unit/test_hook_receiver.py`:
+    - marker mismatch falls back to native lookup
+    - marker mismatch without fallback exits with error
+    - TMP path fallback test coverage
+- **Verification result:**
+  - `pytest tests/unit/test_hook_receiver.py -q` passed.
+  - `pytest tests/unit/test_hook_receiver.py` reported all cases passing (33).
+  - Runbook and trail documentation updated in:
+    - `docs/project/procedure/troubleshooting.md`
+    - `docs/explore/teleclaude-api-socket-degradation.md`
+- **Next decision:** Keep `native_session_id`/marker validation in the hot path for all receiver session resolution and monitor for recurring stale-marker telemetry before adding cleanup heuristics.
