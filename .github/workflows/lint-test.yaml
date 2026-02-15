@@ -13,6 +13,7 @@ jobs:
     env:
       TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
       TELECLAUDE_ENV_PATH: tests/integration/.env
+      INSTRUKT_AI_LOG_ROOT: /tmp/teleclaude-logs
     strategy:
       fail-fast: false
       matrix:
