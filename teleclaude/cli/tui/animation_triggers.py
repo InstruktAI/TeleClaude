@@ -145,7 +145,9 @@ class StateDrivenTrigger:
             return
 
         # Get palette (assuming section-aware palette exists, or fallback)
-        palette = palette_registry.get(section_id)
+        # Strip adapters. prefix if present (C1)
+        palette_key = section_id.split(".")[-1] if "." in section_id else section_id
+        palette = palette_registry.get(palette_key)
         if not palette:
             palette = palette_registry.get("spectrum")  # Fallback
 

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import curses
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from teleclaude.cli.config_handlers import check_env_vars
-from teleclaude.cli.tui.config_components.base import ConfigComponent
+from teleclaude.cli.tui.config_components.base import ConfigComponent, ConfigComponentCallback
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.types import CursesWindow
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class EnvironmentConfigComponent(ConfigComponent):
     """Component for displaying environment variable status."""
 
-    def __init__(self, callback: Any) -> None:
+    def __init__(self, callback: ConfigComponentCallback) -> None:
         super().__init__(callback)
         self.env_status = check_env_vars()
         self.selected_index = 0
@@ -55,6 +55,8 @@ class EnvironmentConfigComponent(ConfigComponent):
             self.notify_animation_change()
             return True
         elif key == curses.KEY_DOWN:
+            if not self.env_status:
+                return True
             max_idx = len(self.env_status) - 1
             self.selected_index = min(max_idx, self.selected_index + 1)
             if self.selected_index > self.scroll_offset + 5:
@@ -65,3 +67,4 @@ class EnvironmentConfigComponent(ConfigComponent):
 
     def on_focus(self) -> None:
         self.env_status = check_env_vars()
+        self.selected_index = min(self.selected_index, max(0, len(self.env_status) - 1))

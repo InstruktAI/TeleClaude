@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import curses
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from teleclaude.cli.tui.config_components.base import ConfigComponent
+from teleclaude.cli.tui.config_components.base import ConfigComponent, ConfigComponentCallback
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.types import CursesWindow
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 class NotificationsConfigComponent(ConfigComponent):
     """Component for notification settings."""
 
-    def __init__(self, callback: Any) -> None:
+    def __init__(self, callback: ConfigComponentCallback) -> None:
         super().__init__(callback)
         # Assuming current user context or default user?
         # Ideally this component should know WHICH user config it's editing.

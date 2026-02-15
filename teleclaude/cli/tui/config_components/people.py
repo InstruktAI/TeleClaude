@@ -3,21 +3,22 @@
 from __future__ import annotations
 
 import curses
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from teleclaude.cli.config_handlers import list_people
-from teleclaude.cli.tui.config_components.base import ConfigComponent
+from teleclaude.cli.tui.config_components.base import ConfigComponent, ConfigComponentCallback
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.types import CursesWindow
+    from teleclaude.config.schema import PersonEntry
 
 
 class PeopleConfigComponent(ConfigComponent):
     """Component for managing people."""
 
-    def __init__(self, callback: Any) -> None:
+    def __init__(self, callback: ConfigComponentCallback) -> None:
         super().__init__(callback)
-        self.people = list_people()
+        self.people: list[PersonEntry] = []
         self.selected_index = 0
         self.scroll_offset = 0
 
@@ -60,6 +61,8 @@ class PeopleConfigComponent(ConfigComponent):
             self.notify_animation_change()
             return True
         elif key == curses.KEY_DOWN:
+            if not self.people:
+                return True
             max_idx = len(self.people) - 1
             self.selected_index = min(max_idx, self.selected_index + 1)
             # Simple scroll tracking
@@ -72,3 +75,4 @@ class PeopleConfigComponent(ConfigComponent):
     def on_focus(self) -> None:
         # Refresh list on focus in case it changed
         self.people = list_people()
+        self.selected_index = min(self.selected_index, max(0, len(self.people) - 1))

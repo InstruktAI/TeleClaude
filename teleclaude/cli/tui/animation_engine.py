@@ -116,6 +116,11 @@ class AnimationEngine:
         for buf in self._buffers_back.values():
             buf.clear()
 
+    def set_looping(self, target: str, looping: bool) -> None:
+        """Set looping state for a specific target's current animation."""
+        if target in self._targets:
+            self._targets[target].looping = looping
+
     def update(self) -> None:
         """Update animation state. Call this once per render cycle (~100ms).
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TypedDict, cast
+from typing import Literal, TypedDict, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -74,9 +74,7 @@ class PreparationViewState:
 class ConfigViewState:
     """State for Configuration view."""
 
-    active_subtab: str = "adapters"
-    selected_field_index: int = 0
-    scroll_offset: int = 0
+    active_subtab: Literal["adapters", "people", "notifications", "environment", "validate"] = "adapters"
     guided_mode: bool = False
 
 
@@ -87,7 +85,7 @@ class TuiState:
     sessions: SessionViewState = field(default_factory=SessionViewState)
     preparation: PreparationViewState = field(default_factory=PreparationViewState)
     config: ConfigViewState = field(default_factory=ConfigViewState)
-    animation_mode: str = "periodic"  # "off", "periodic", "party"
+    animation_mode: Literal["off", "periodic", "party"] = "periodic"  # "off", "periodic", "party"
 
 
 class IntentType(str, Enum):
@@ -456,13 +454,13 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
     if t is IntentType.SET_ANIMATION_MODE:
         mode = p.get("mode")
         if mode in ("off", "periodic", "party"):
-            state.animation_mode = mode
+            state.animation_mode = mode  # type: ignore
         return
 
     if t is IntentType.SET_CONFIG_SUBTAB:
         subtab = p.get("subtab")
-        if isinstance(subtab, str):
-            state.config.active_subtab = subtab
+        if subtab in ("adapters", "people", "notifications", "environment", "validate"):
+            state.config.active_subtab = subtab  # type: ignore
         return
 
     if t is IntentType.SET_CONFIG_GUIDED_MODE:

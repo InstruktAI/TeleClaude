@@ -110,6 +110,8 @@ class AdapterConfigComponent(ConfigComponent):
             self.notify_animation_change()
             return True
         elif key == curses.KEY_DOWN:
+            if not self.env_vars:
+                return True
             max_idx = len(self.env_vars) - 1
             self.selected_index = min(max_idx, self.selected_index + 1)
             # Scroll down

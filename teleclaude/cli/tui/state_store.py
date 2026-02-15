@@ -55,7 +55,9 @@ def load_sticky_state(state: TuiState) -> None:
         if isinstance(preview_data, dict) and preview_data.get("session_id"):
             state.sessions.preview = PreviewState(session_id=preview_data["session_id"])
 
-        state.animation_mode = data.get("animation_mode", "periodic")
+        anim_mode = data.get("animation_mode", "periodic")
+        if anim_mode in ("off", "periodic", "party"):
+            state.animation_mode = anim_mode  # type: ignore
 
         logger.info(
             "Loaded TUI state: %d sticky, %d in_hl, %d out_hl, %d summaries, %d collapsed, preview=%s, anim=%s",

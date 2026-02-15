@@ -125,6 +125,7 @@ palette_registry.register(AgentPalette("codex"))
 # Section Palettes
 # Indices: Red=0, Yellow=1, Green=2, Cyan=3, Blue=4, Magenta=5, White=6
 palette_registry.register(SectionPalette("telegram", [4, 6]))  # Blue, White
+palette_registry.register(SectionPalette("whatsapp", [2, 6]))  # Green, White (I6)
 palette_registry.register(SectionPalette("discord", [4, 5, 6]))  # Blue, Magenta, White
 palette_registry.register(SectionPalette("ai_keys", [2, 1]))  # Green, Yellow
 palette_registry.register(SectionPalette("people", [6]))  # White
