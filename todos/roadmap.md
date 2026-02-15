@@ -14,7 +14,9 @@
 > Admins additionally observe all sessions via supergroups. Notifications arrive through
 > the same bot identity as conversations (credential unity).
 
-- help-desk-control-room
+- help-desk-platform — Two-plane help desk: customer ingress on any adapter, operator workspace on Discord, identity-scoped memory, escalation tooling, admin relay channels, internal pub/sub channels, standalone operator workspace.
+
+- help-desk-control-room (after: help-desk-platform)
 
 Admin supergroup mirroring and intervention. Establish supergroups on Discord like we have for Telegram where all AI sessions are mirrored as topics/threads. Admins observe and can intervene in such chats. For Telegram, right now we don't have any distinction between help desk and internal sessions. It would be great if we could find a way to make this distinction for Discord because Telegram does not give us these rich primitives to also have sub channels in channels and such. We cannot group threads in supergroups, unfortunately. That's why we wanted to move to Discord for this richer experience. So we have to find out if we can establish this. This is what is important.
 
