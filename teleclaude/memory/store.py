@@ -44,6 +44,7 @@ class MemoryStore:
             files_modified=None,
             created_at=now.isoformat(),
             created_at_epoch=int(now.timestamp()),
+            identity_key=inp.identity_key,
         )
 
         async with db._session() as session:
@@ -77,6 +78,7 @@ class MemoryStore:
                 files_modified=None,
                 created_at=now.isoformat(),
                 created_at_epoch=int(now.timestamp()),
+                identity_key=inp.identity_key,
             )
             session.add(obs)
             session.commit()
@@ -218,6 +220,7 @@ def _row_to_observation(row: object) -> db_models.MemoryObservation:
             discovery_tokens=row[12],
             created_at=row[13],
             created_at_epoch=row[14],
+            identity_key=row[15] if len(row) > 15 else None,
         )
     return row  # type: ignore[return-value]
 
