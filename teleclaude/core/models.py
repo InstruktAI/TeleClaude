@@ -472,6 +472,11 @@ class Session:  # pylint: disable=too-many-instance-attributes
     human_email: Optional[str] = None
     human_role: Optional[str] = None
     lifecycle_status: str = "active"
+    last_memory_extraction_at: Optional[datetime] = None
+    help_desk_processed_at: Optional[datetime] = None
+    relay_status: Optional[str] = None
+    relay_discord_channel_id: Optional[str] = None
+    relay_started_at: Optional[datetime] = None
 
     def get_metadata(self) -> SessionAdapterMetadata:
         """Get session adapter metadata."""

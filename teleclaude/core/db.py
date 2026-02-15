@@ -116,6 +116,11 @@ class Db:
             human_email=row.human_email,
             human_role=row.human_role,
             lifecycle_status=row.lifecycle_status or "active",
+            last_memory_extraction_at=Db._coerce_datetime(row.last_memory_extraction_at),
+            help_desk_processed_at=Db._coerce_datetime(row.help_desk_processed_at),
+            relay_status=row.relay_status,
+            relay_discord_channel_id=row.relay_discord_channel_id,
+            relay_started_at=Db._coerce_datetime(row.relay_started_at),
         )
 
     def __init__(self, db_path: str) -> None:
