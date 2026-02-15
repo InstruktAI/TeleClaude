@@ -229,7 +229,7 @@ class MCPHandlersMixin:
         *,
         skip_peer_check: bool = False,
     ) -> list[dict[str, object]]:  # guard: loose-dict - Todo structure with mixed value types
-        """List todos from roadmap.md for a project on target computer.
+        """List roadmap and todo-folder based work items for a project on target computer.
 
         Args:
             computer: Target computer name

@@ -482,7 +482,7 @@ async def list_projects_with_todos() -> list[ProjectInfo]:
 
 
 async def list_todos(project_path: str) -> list[TodoInfo]:
-    """List todos from roadmap.md for a project.
+    """List roadmap + folder-based todos for a project.
 
     Ephemeral request/response - no DB session required.
 
@@ -492,104 +492,212 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
     Returns:
         List of todo objects.
     """
-    roadmap_path = Path(project_path) / "todos" / "roadmap.md"
+    todos_root = Path(project_path) / "todos"
+    roadmap_path = todos_root / "roadmap.md"
+    icebox_path = todos_root / "icebox.md"
 
-    if not roadmap_path.exists():
+    todos: list[TodoInfo] = []
+    seen_slugs: set[str] = set()
+
+    if not todos_root.exists():
         return []
 
-    content = roadmap_path.read_text()
-    todos: list[TodoInfo] = []
+    def slugify_heading(value: str) -> str:
+        """Normalize a todo title heading into a filesystem-style slug."""
+        return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
-    # Pattern for todo line: - slug-name (plain slug list, no markers)
-    pattern = re.compile(r"^-\s+(\S+)", re.MULTILINE)
+    def parse_icebox_slugs() -> set[str]:
+        """Collect todo slugs currently parked in icebox.md (table or heading formats)."""
+        icebox_slugs: set[str] = set()
+        if not icebox_path.exists():
+            return icebox_slugs
 
-    lines = content.split("\n")
-    for i, line in enumerate(lines):
-        match = pattern.match(line)
-        if match:
-            slug = match.group(1)
+        heading_pattern = re.compile(r"^\s*#+\s+(.*)\s*$")
+        table_pattern = re.compile(r"\|\s*([a-z0-9-]+)\s*\|")
 
-            # Extract description (next indented lines)
-            description = ""
-            for j in range(i + 1, len(lines)):
-                next_line = lines[j]
-                if next_line.startswith("      "):  # 6 spaces = indented
-                    description += next_line.strip() + " "
-                elif next_line.strip() == "":
+        try:
+            for line in icebox_path.read_text(encoding="utf-8").splitlines():
+                heading_match = heading_pattern.match(line)
+                if heading_match:
+                    heading = heading_match.group(1).strip()
+                    if heading and heading.lower() != "icebox":
+                        icebox_slugs.add(slugify_heading(heading))
                     continue
+
+                table_match = table_pattern.search(line)
+                if table_match:
+                    slug = table_match.group(1)
+                    if slug != "slug":
+                        icebox_slugs.add(slug)
+        except OSError:
+            return set()
+
+        return icebox_slugs
+
+    icebox_slugs = parse_icebox_slugs()
+
+    def read_todo_metadata(
+        todo_dir: Path,
+    ) -> tuple[bool, bool, Optional[str], Optional[str], Optional[int], Optional[str], int, Optional[str], list[str]]:
+        has_requirements = (todo_dir / "requirements.md").exists()
+        has_impl_plan = (todo_dir / "implementation-plan.md").exists()
+        build_status = None
+        review_status = None
+        dor_score = None
+        deferrals_status = None
+        findings_count = 0
+        phase_status = "pending"
+
+        state_path = todo_dir / "state.json"
+        if state_path.exists():
+            try:
+                state = json.loads(state_path.read_text())
+                # Derive status from phase field
+                raw_phase = state.get("phase")
+                if raw_phase == "ready":
+                    # Migration: normalize persisted "ready" to "pending"
+                    phase_status = "pending"
+                elif isinstance(raw_phase, str) and raw_phase in ("pending", "in_progress", "done"):
+                    phase_status = raw_phase
                 else:
-                    break
+                    # Migration: derive phase from existing fields
+                    build_val = state.get("build")
+                    if isinstance(build_val, str) and build_val != "pending":
+                        phase_status = "in_progress"
 
-            # Check for requirements.md and implementation-plan.md
-            todos_dir = Path(project_path) / "todos" / slug
-            has_requirements = (todos_dir / "requirements.md").exists()
-            has_impl_plan = (todos_dir / "implementation-plan.md").exists()
+                build_status = state.get("build") if isinstance(state.get("build"), str) else None
+                review_status = state.get("review") if isinstance(state.get("review"), str) else None
+                dor = state.get("dor")
+                if isinstance(dor, dict):
+                    raw_score = dor.get("score")
+                    if isinstance(raw_score, int):
+                        dor_score = raw_score
+                deferrals_processed = state.get("deferrals_processed")
+                if deferrals_processed is True:
+                    deferrals_status = "processed"
+                unresolved = state.get("unresolved_findings")
+                if isinstance(unresolved, list):
+                    findings_count = len(unresolved)
 
-            # Read state.json for enrichment fields (including phase)
-            build_status = None
-            review_status = None
-            dor_score = None
-            deferrals_status = None
-            findings_count = 0
-            phase_status = "pending"
-            files: list[str] = []
+                # Derive display status: pending + dor_score >= 8 shows as "ready"
+                if phase_status == "pending" and isinstance(dor_score, int) and dor_score >= 8:
+                    phase_status = "ready"
+            except (json.JSONDecodeError, OSError):
+                pass
 
-            state_path = todos_dir / "state.json"
-            if state_path.exists():
-                try:
-                    state = json.loads(state_path.read_text())
-                    # Derive status from phase field
-                    raw_phase = state.get("phase")
-                    if raw_phase == "ready":
-                        # Migration: normalize persisted "ready" to "pending"
-                        phase_status = "pending"
-                    elif isinstance(raw_phase, str) and raw_phase in ("pending", "in_progress", "done"):
-                        phase_status = raw_phase
-                    else:
-                        # Migration: derive phase from existing fields
-                        build_val = state.get("build")
-                        if isinstance(build_val, str) and build_val != "pending":
-                            phase_status = "in_progress"
+        files: list[str] = []
+        if todo_dir.is_dir():
+            files = sorted(f.name for f in todo_dir.iterdir() if f.is_file() and not f.name.startswith("."))
 
-                    build_status = state.get("build") if isinstance(state.get("build"), str) else None
-                    review_status = state.get("review") if isinstance(state.get("review"), str) else None
-                    dor = state.get("dor")
-                    if isinstance(dor, dict):
-                        raw_score = dor.get("score")
-                        if isinstance(raw_score, int):
-                            dor_score = raw_score
-                    deferrals_processed = state.get("deferrals_processed")
-                    if deferrals_processed is True:
-                        deferrals_status = "processed"
-                    unresolved = state.get("unresolved_findings")
-                    if isinstance(unresolved, list):
-                        findings_count = len(unresolved)
+        return (
+            has_requirements,
+            has_impl_plan,
+            build_status,
+            review_status,
+            dor_score,
+            deferrals_status,
+            findings_count,
+            phase_status,
+            files,
+        )
 
-                    # Derive display status: pending + dor_score >= 8 shows as "ready"
-                    if phase_status == "pending" and isinstance(dor_score, int) and dor_score >= 8:
-                        phase_status = "ready"
-                except (json.JSONDecodeError, OSError):
-                    pass
+    def append_todo(slug: str, description: str | None = None) -> None:
+        todo_dir = todos_root / slug
+        (
+            has_requirements,
+            has_impl_plan,
+            build_status,
+            review_status,
+            dor_score,
+            deferrals_status,
+            findings_count,
+            phase_status,
+            files,
+        ) = read_todo_metadata(todo_dir)
 
-            # Discover files in todo directory
-            if todos_dir.is_dir():
-                files = sorted(f.name for f in todos_dir.iterdir() if f.is_file() and not f.name.startswith("."))
-
-            todos.append(
-                TodoInfo(
-                    slug=slug,
-                    status=phase_status,
-                    description=description.strip() or None,
-                    has_requirements=has_requirements,
-                    has_impl_plan=has_impl_plan,
-                    build_status=build_status,
-                    review_status=review_status,
-                    dor_score=dor_score,
-                    deferrals_status=deferrals_status,
-                    findings_count=findings_count,
-                    files=files,
-                )
+        todos.append(
+            TodoInfo(
+                slug=slug,
+                status=phase_status,
+                description=description,
+                has_requirements=has_requirements,
+                has_impl_plan=has_impl_plan,
+                build_status=build_status,
+                review_status=review_status,
+                dor_score=dor_score,
+                deferrals_status=deferrals_status,
+                findings_count=findings_count,
+                files=files,
             )
+        )
+
+    def infer_input_description(todo_dir: Path) -> str | None:
+        input_path = todo_dir / "input.md"
+        if not input_path.exists():
+            return None
+        try:
+            for line in input_path.read_text().splitlines():
+                cleaned = line.strip()
+                if not cleaned:
+                    continue
+                if cleaned.startswith("#"):
+                    return cleaned.lstrip("#").strip()
+                return cleaned
+        except OSError:
+            return None
+        return None
+
+    if roadmap_path.exists():
+        content = roadmap_path.read_text()
+
+        # Pattern for todo line: - slug-name (plain slug list, no markers)
+        pattern = re.compile(r"^-\s+(\S+)", re.MULTILINE)
+
+        lines = content.split("\n")
+        for i, line in enumerate(lines):
+            match = pattern.match(line)
+            if match:
+                slug = match.group(1)
+                if slug in seen_slugs:
+                    logger.warning(
+                        "Duplicate todo slug '%s' in %s on line %d, ignoring duplicate",
+                        slug,
+                        roadmap_path,
+                        i + 1,
+                    )
+                    continue
+                if slug in icebox_slugs:
+                    logger.info("Skipping todo '%s' because it is in icebox", slug)
+                    continue
+
+                seen_slugs.add(slug)
+
+                # Extract description (next indented lines)
+                description = ""
+                for j in range(i + 1, len(lines)):
+                    next_line = lines[j]
+                    if next_line.startswith("      "):  # 6 spaces = indented
+                        description += next_line.strip() + " "
+                    elif next_line.strip() == "":
+                        continue
+                    else:
+                        break
+
+                append_todo(slug, description=description.strip() or None)
+
+    for todo_dir in sorted(todos_root.iterdir(), key=lambda p: p.name):
+        if not todo_dir.is_dir():
+            continue
+        if todo_dir.name.startswith("."):
+            continue
+        if todo_dir.name in icebox_slugs:
+            continue
+        if todo_dir.name in seen_slugs:
+            continue
+
+        if todo_dir.name != "roadmap.md":
+            seen_slugs.add(todo_dir.name)
+            append_todo(todo_dir.name, description=infer_input_description(todo_dir))
 
     return todos
 

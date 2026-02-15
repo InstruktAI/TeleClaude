@@ -2502,7 +2502,7 @@ class TestSessionsViewLogic:
         # Placeholder overlay is italicized
         assert "Thinking" in output_row_calls[1][2]
         assert "**Thinking" not in output_row_calls[1][2]
-        assert output_row_calls[1][3] == (41 | curses.A_ITALIC)
+        assert output_row_calls[1][3] == (41 | curses.A_ITALIC | curses.A_BOLD)
 
     def test_working_placeholder_uses_agent_color_with_italics(self, sessions_view, monkeypatch):
         """Working placeholder should keep agent color and italicize only the placeholder."""
@@ -2533,7 +2533,7 @@ class TestSessionsViewLogic:
         assert output_row_calls[0][3] == 3  # claude normal pair
         # Placeholder overlay keeps agent color + italic
         assert "..." in output_row_calls[1][2]
-        assert output_row_calls[1][3] == (3 | curses.A_ITALIC)
+        assert output_row_calls[1][3] == (3 | curses.A_ITALIC | curses.A_BOLD)
 
     def test_real_output_wins_when_no_highlights(self, sessions_view, monkeypatch):
         """Real output must be shown immediately when highlight states are cleared."""

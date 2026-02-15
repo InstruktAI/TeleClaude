@@ -856,31 +856,14 @@ class TelecApp:
                             # Pass is_double_click=True to allow view-specific double-click handling
                             if view.handle_click(my, is_double_click=True):
                                 click_ms = int((time.perf_counter() - click_start) * 1000)
-                                # For sessions view (1), double-click toggles sticky (no enter action)
-                                # For other views, execute default action
-                                if self.current_view != 1:
-                                    enter_start = time.perf_counter()
-                                    view.handle_enter(stdscr)
-                                    enter_ms = int((time.perf_counter() - enter_start) * 1000)
-                                    logger.trace(
-                                        "mouse_double_click_action",
-                                        view=self.current_view,
-                                        x=mx,
-                                        y=my,
-                                        click_ms=click_ms,
-                                        enter_ms=enter_ms,
-                                        total_ms=int((time.perf_counter() - mouse_start) * 1000),
-                                    )
-                                else:
-                                    # Sessions view: double-click handled by toggle_sticky
-                                    logger.trace(
-                                        "mouse_double_click_sticky",
-                                        view=self.current_view,
-                                        x=mx,
-                                        y=my,
-                                        click_ms=click_ms,
-                                        total_ms=int((time.perf_counter() - mouse_start) * 1000),
-                                    )
+                                logger.trace(
+                                    "mouse_double_click_action",
+                                    view=self.current_view,
+                                    x=mx,
+                                    y=my,
+                                    click_ms=click_ms,
+                                    total_ms=int((time.perf_counter() - mouse_start) * 1000),
+                                )
                 # Single click: select item or switch tab
                 elif bstate & curses.BUTTON1_CLICKED:
                     height, _ = stdscr.getmaxyx()  # type: ignore[attr-defined]

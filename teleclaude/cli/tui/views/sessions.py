@@ -51,6 +51,11 @@ from teleclaude.cli.tui.tree import (
 )
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NodeType, NotificationLevel, StickySessionInfo
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
+from teleclaude.cli.tui.views.interaction import (
+    TreeInteractionAction,
+    TreeInteractionDecision,
+    TreeInteractionState,
+)
 from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
 from teleclaude.paths import TUI_STATE_PATH as _TUI_STATE_PATH
 
@@ -275,11 +280,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_rendered_range: tuple[int, int] = (0, 0)
         self._last_click_time: dict[int, float] = {}  # screen_row -> timestamp
         self._double_click_threshold = 0.4  # seconds
+        self._preview_interaction_state = TreeInteractionState()
         self._space_double_press_threshold = 0.65  # seconds
-        self._last_space_press_time: float | None = None
-        self._last_space_session_id: str | None = None
-        self._space_double_press_guard_session_id: str | None = None
-        self._space_double_press_guard_until: float | None = None
         self._pending_select_session_id: str | None = None
         self._pending_select_source: str | None = None
         self._pending_activate_request: Intent | None = None
@@ -1126,10 +1128,50 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if self._preview:
             self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
 
-    def _record_space_press(self, session_id: str, now: float) -> None:
-        """Track the latest space-activation target for debounce."""
-        self._last_space_press_time = now
-        self._last_space_session_id = session_id
+    @property
+    def _space_double_press_threshold(self) -> float:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.double_press_threshold
+
+    @_space_double_press_threshold.setter
+    def _space_double_press_threshold(self, value: float) -> None:
+        self._preview_interaction_state.double_press_threshold = value
+
+    @property
+    def _last_space_press_time(self) -> float | None:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.last_press_time
+
+    @_last_space_press_time.setter
+    def _last_space_press_time(self, value: float | None) -> None:
+        self._preview_interaction_state.last_press_time = value
+
+    @property
+    def _last_space_session_id(self) -> str | None:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.last_press_item_id
+
+    @_last_space_session_id.setter
+    def _last_space_session_id(self, value: str | None) -> None:
+        self._preview_interaction_state.last_press_item_id = value
+
+    @property
+    def _space_double_press_guard_session_id(self) -> str | None:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.double_press_guard_item_id
+
+    @_space_double_press_guard_session_id.setter
+    def _space_double_press_guard_session_id(self, value: str | None) -> None:
+        self._preview_interaction_state.double_press_guard_item_id = value
+
+    @property
+    def _space_double_press_guard_until(self) -> float | None:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.double_press_guard_until
+
+    @_space_double_press_guard_until.setter
+    def _space_double_press_guard_until(self, value: float | None) -> None:
+        self._preview_interaction_state.double_press_guard_until = value
 
     def _build_preview_interaction(
         self,
@@ -1140,32 +1182,33 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     ) -> _SessionInputIntent:
         """Build normalized preview intent from user interaction."""
         session_id = selected.data.session.session_id
+        is_sticky = self._is_sticky_session_id(session_id)
+        decision: TreeInteractionDecision = self._preview_interaction_state.decide_preview_action(
+            session_id,
+            now,
+            is_sticky=is_sticky,
+            allow_sticky_toggle=allow_sticky_toggle,
+        )
 
-        if allow_sticky_toggle and self._is_space_double_press_guarded(session_id, now):
+        if decision.action == TreeInteractionAction.NONE:
             logger.debug("handle_space_preview_input: guard active for %s", session_id[:8])
             return _SessionInputIntent(selected, _SessionInputKind.NONE, now=now)
 
-        if allow_sticky_toggle and (
-            self._last_space_session_id == session_id
-            and self._last_space_press_time is not None
-            and now - self._last_space_press_time < self._space_double_press_threshold
-        ):
+        if decision.action == TreeInteractionAction.CLEAR_STICKY_PREVIEW:
+            return _SessionInputIntent(selected, _SessionInputKind.CLEAR_STICKY_PREVIEW, now=now)
+
+        if decision.action == TreeInteractionAction.TOGGLE_STICKY:
             logger.debug(
                 "handle_space_preview_input: double-press detected, toggling sticky for %s",
                 session_id[:8],
             )
-            self._last_space_session_id = None
-            self._last_space_press_time = None
             return _SessionInputIntent(
                 selected,
                 _SessionInputKind.TOGGLE_STICKY,
                 now=now,
-                clear_preview=self._is_sticky_session_id(session_id),
+                clear_preview=decision.clear_preview,
             )
 
-        self._record_space_press(session_id, now)
-        if self._is_sticky_session_id(session_id):
-            return _SessionInputIntent(selected, _SessionInputKind.CLEAR_STICKY_PREVIEW, now=now)
         return _SessionInputIntent(selected, _SessionInputKind.PREVIEW, now=now)
 
     def _build_click_preview_interaction(self, selected: SessionNode, *, now: float) -> _SessionInputIntent:
@@ -1207,7 +1250,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if interaction.kind == _SessionInputKind.TOGGLE_STICKY:
             if interaction.clear_preview:
                 self._clear_active_preview()
-            self._mark_space_double_press_guard(session_id, interaction.now)
+            self._preview_interaction_state.mark_double_press_guard(session_id, interaction.now)
             self._toggle_sticky(session_id, active_agent=session.active_agent)
             if not is_sticky:
                 self._enqueue_preview_request(
@@ -1388,24 +1431,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._pending_activate_at = None
         self._pending_focus_session_id = None
         self._pending_ready_session_id = None
-
-    def _is_space_double_press_guarded(self, session_id: str, now: float) -> bool:
-        """Return True if a recent double-space guard blocks repeated immediate activation."""
-        if self._space_double_press_guard_session_id != session_id:
-            return False
-        guard_until = self._space_double_press_guard_until
-        if guard_until is None:
-            return False
-        if now >= guard_until:
-            self._space_double_press_guard_session_id = None
-            self._space_double_press_guard_until = None
-            return False
-        return True
-
-    def _mark_space_double_press_guard(self, session_id: str, now: float) -> None:
-        """Block a second/third-space preview activation for the same session."""
-        self._space_double_press_guard_session_id = session_id
-        self._space_double_press_guard_until = now + self._space_double_press_threshold
 
     def apply_pending_activation(self) -> None:
         """Apply any deferred activation once per loop tick."""
@@ -1943,10 +1968,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             line3 = f"{detail_indent}[{input_time}]  in: {input_text}"
             lines.append(line3[:width])
 
-        # Line 4: Last output — driven by activity events, not session record
+        # Line 4: Last output — driven by activity events, not session record.
+        # Rule: once the session has had activity, this row must ALWAYS be present.
+        # It can only be updated, never removed.
         last_output = self.state.sessions.last_summary.get(session_id, "")
         has_input_highlight = session_id in self.state.sessions.input_highlights
         has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
+        has_output_highlight = session_id in self.state.sessions.output_highlights
+        has_activity = session_id in self.state.sessions.last_activity_at
         event_activity_at = self.state.sessions.last_activity_at.get(session_id)
         activity_time = _format_time(event_activity_at or session.last_activity)
         summary_at = self.state.sessions.last_summary_at.get(session_id) or session.last_output_summary_at
@@ -1964,6 +1993,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         elif last_output:
             output_text = last_output.replace("\n", " ")[:60]
             line4 = f"{detail_indent}[{output_time}] out: {output_text}"
+            lines.append(line4[:width])
+        elif has_output_highlight or has_activity:
+            line4 = f"{detail_indent}[{activity_time}] out: {_working_placeholder_text()}"
             lines.append(line4[:width])
 
         return lines
@@ -2314,6 +2346,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             details.append(_SessionDetailModel(line3, input_attr))
 
         last_output = self.state.sessions.last_summary.get(session_id, "")
+        has_activity = session_id in self.state.sessions.last_activity_at
         event_activity_at = self.state.sessions.last_activity_at.get(session_id)
         activity_time = _format_time(event_activity_at or session.last_activity)
         summary_at = self.state.sessions.last_summary_at.get(session_id) or session.last_output_summary_at
@@ -2329,11 +2362,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                         prefix_text,
                         output_attr,
                         suffix_text=placeholder_text,
-                        suffix_attr=output_attr | italic_attr,
+                        suffix_attr=output_attr | italic_attr | curses.A_BOLD,
                     )
                 )
             else:
-                details.append(_SessionDetailModel(f"{prefix_text}{placeholder_text}", output_attr))
+                details.append(_SessionDetailModel(f"{prefix_text}{placeholder_text}", output_attr | curses.A_BOLD))
         elif has_input_highlight:
             italic_attr = getattr(curses, "A_ITALIC", 0)
             prefix_text = f"{detail_indent}[{activity_time}] out: "
@@ -2344,15 +2377,30 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                         prefix_text,
                         output_attr,
                         suffix_text=placeholder_text,
-                        suffix_attr=output_attr | italic_attr,
+                        suffix_attr=output_attr | italic_attr | curses.A_BOLD,
                     )
                 )
             else:
-                details.append(_SessionDetailModel(f"{prefix_text}{placeholder_text}", output_attr))
+                details.append(_SessionDetailModel(f"{prefix_text}{placeholder_text}", output_attr | curses.A_BOLD))
         elif last_output:
             output_text = last_output.replace("\n", " ")[:60]
             line4 = f"{detail_indent}[{output_time}] out: {output_text}"
             details.append(_SessionDetailModel(line4, output_attr))
+        elif has_output_highlight or has_activity:
+            italic_attr = getattr(curses, "A_ITALIC", 0)
+            prefix_text = f"{detail_indent}[{activity_time}] out: "
+            placeholder_text = _working_placeholder_text()
+            if italic_attr:
+                details.append(
+                    _SessionDetailModel(
+                        prefix_text,
+                        output_attr,
+                        suffix_text=placeholder_text,
+                        suffix_attr=output_attr | italic_attr | curses.A_BOLD,
+                    )
+                )
+            else:
+                details.append(_SessionDetailModel(f"{prefix_text}{placeholder_text}", output_attr | curses.A_BOLD))
 
         return _SessionRowModel(
             header=_SessionHeaderModel(

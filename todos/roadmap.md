@@ -14,13 +14,9 @@
 > Admins additionally observe all sessions via supergroups. Notifications arrive through
 > the same bot identity as conversations (credential unity).
 
-- config-visual-polish (after: telec-config-interactive)
+- help-desk-control-room
 
-Animated visual polish for the config menu and onboarding wizard. Reuse the banner animation system with continuous animations running during config editing. Section-aware theming, progress-driven visual evolution, celebration on successful validation. Makes onboarding joyful instead of tedious.
-
-- help-desk-control-room (after: help-desk-discord, agent-activity-events)
-
-Admin supergroup mirroring and intervention. Establish supergroups on Telegram and Discord where admin sessions are mirrored as topics/threads. Admins observe and intervene in customer chats.
+Admin supergroup mirroring and intervention. Establish supergroups on Discord like we have for Telegram where all AI sessions are mirrored as topics/threads. Admins observe and can intervene in such chats. For Telegram, right now we don't have any distinction between help desk and internal sessions. It would be great if we could find a way to make this distinction for Discord because Telegram does not give us these rich primitives to also have sub channels in channels and such. We cannot group threads in supergroups, unfortunately. That's why we wanted to move to Discord for this richer experience. So we have to find out if we can establish this. This is what is important.
 
 ## Session Messages API
 

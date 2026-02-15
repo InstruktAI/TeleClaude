@@ -1,4 +1,4 @@
-"""Preparation view - shows planned work from todos/roadmap.md.
+"""Preparation view - shows roadmap and todo-folder discovered work items.
 
 Required reads:
 - @docs/project/design/tui-state-layout.md
@@ -7,10 +7,12 @@ Required reads:
 from __future__ import annotations
 
 import curses
+import json
 import os
 import shlex
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Sequence, TypeGuard
@@ -40,6 +42,11 @@ from teleclaude.cli.tui.types import (
     TodoStatus,
 )
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
+from teleclaude.cli.tui.views.interaction import (
+    TreeInteractionAction,
+    TreeInteractionDecision,
+    TreeInteractionState,
+)
 from teleclaude.cli.tui.widgets.modal import StartSessionModal
 from teleclaude.config import config
 
@@ -139,8 +146,26 @@ def _is_file_node(node: PrepTreeNode) -> TypeGuard[PrepFileNode]:
     return node.type == NodeType.FILE
 
 
+class _PrepInputKind(str, Enum):
+    """Normalized preparation interaction kinds."""
+
+    NONE = "none"
+    PREVIEW = "preview"
+    TOGGLE_STICKY = "toggle_sticky"
+    CLEAR_STICKY_PREVIEW = "clear_sticky_preview"
+
+
+@dataclass(frozen=True)
+class _PrepInputIntent:
+    """Internal preparation interaction intent for a selected file row."""
+
+    item: "PrepFileNode"
+    kind: _PrepInputKind
+    now: float
+
+
 class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
-    """View 2: Preparation - todo-centric tree showing roadmap items.
+    """View 2: Preparation - todo-centric tree showing roadmap and folder-based items.
 
     Shows tree structure: Computer -> Project -> Todos -> Files
     Computers and projects are always expanded.
@@ -177,6 +202,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         self.flat_items: list[PrepTreeNode] = []
         # Row-to-item mapping for mouse click handling (built during render)
         self._row_to_item: dict[int, int] = {}
+        self._preview_interaction_state = TreeInteractionState()
+        self._space_double_press_threshold = 0.65  # seconds
         # Signal for app to trigger data refresh
         self.needs_refresh: bool = False
         # Store computers for SSH connection lookup
@@ -281,7 +308,13 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                 for todo in project.todos
             ]
             for todo in todos_by_project[key]:
-                todo_ids.add(todo.slug)
+                todo_ids.add(
+                    self._todo_node_id(
+                        computer=computer,
+                        project_path=path,
+                        slug=todo.slug,
+                    )
+                )
 
         # Aggregate todo and project counts per computer for badges
         todo_counts: dict[str, int] = {}
@@ -445,11 +478,59 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                 result.extend(self._flatten_tree(node.children, base_depth + 1))
             # Expand todos if in expanded set - add file children
             elif _is_todo_node(node):
-                slug = node.data.todo.slug
-                if slug in self.expanded_todos:
+                if self._is_todo_expanded(node.data):
                     result.extend(self._create_file_nodes(node, base_depth + 1))
 
         return result
+
+    def _todo_node_id(self, computer: str, project_path: str, slug: str) -> str:
+        """Build a stable identifier for one todo instance."""
+        return json.dumps([computer, project_path, slug], separators=(",", ":"))
+
+    def _todo_node_id_from_display(self, todo: PrepTodoDisplayInfo) -> str:
+        """Build a stable identifier for a rendered todo row."""
+        return self._todo_node_id(todo.computer, todo.project_path, todo.todo.slug)
+
+    @staticmethod
+    def _todo_node_id_from_file(item: PrepFileDisplayInfo) -> str:
+        """Build a stable identifier for the todo parent of a file row."""
+        return json.dumps([item.computer, item.project_path, item.slug], separators=(",", ":"))
+
+    @staticmethod
+    def _doc_file_id(item: PrepFileDisplayInfo) -> str:
+        """Build a stable absolute identifier for a doc file row."""
+        return os.path.join(item.project_path, "todos", item.slug, item.filename)
+
+    def _is_sticky_file(self, item: PrepFileDisplayInfo) -> bool:
+        """Return true if a file row already has a sticky doc preview."""
+        filepath = self._doc_file_id(item)
+        return any(sticky.doc_id == filepath for sticky in self._sticky_previews)
+
+    def _is_todo_expanded(self, todo: PrepTodoDisplayInfo) -> bool:
+        """Return true if todo is expanded; support legacy slug-only IDs."""
+        todo_id = self._todo_node_id_from_display(todo)
+        return todo_id in self.expanded_todos or todo.todo.slug in self.expanded_todos
+
+    def _is_file_parent_expanded(self, item: PrepFileDisplayInfo) -> bool:
+        """Return true if the parent todo for a file node is expanded."""
+        file_todo = PrepTodoDisplayInfo(
+            todo=TodoItem(
+                slug=item.slug,
+                status="pending",
+                files=[],
+                has_requirements=False,
+                has_impl_plan=False,
+                build_status=None,
+                review_status=None,
+                dor_score=None,
+                deferrals_status=None,
+                findings_count=0,
+                description=None,
+            ),
+            project_path=item.project_path,
+            computer=item.computer,
+        )
+        return self._is_todo_expanded(file_todo)
 
     def _create_file_nodes(self, todo_node: PrepTodoNode, depth: int) -> list[PrepTreeNode]:
         """Create file nodes for an expanded todo.
@@ -487,6 +568,134 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             )
             file_nodes.append(file_node)
         return file_nodes
+
+    def _select_index(self, index: int, source: str = "user") -> None:
+        """Select row and record selection state via shared controller path."""
+        if index == self.selected_index:
+            self.selected_index = index
+            return
+        self.selected_index = index
+        self.controller.dispatch(
+            Intent(IntentType.SET_SELECTION, {"view": "preparation", "index": index, "source": source})
+        )
+
+    @property
+    def _space_double_press_threshold(self) -> float:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.double_press_threshold
+
+    @_space_double_press_threshold.setter
+    def _space_double_press_threshold(self, value: float) -> None:
+        self._preview_interaction_state.double_press_threshold = value
+
+    @property
+    def _last_space_press_time(self) -> float | None:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.last_press_time
+
+    @_last_space_press_time.setter
+    def _last_space_press_time(self, value: float | None) -> None:
+        self._preview_interaction_state.last_press_time = value
+
+    @property
+    def _last_space_file_id(self) -> str | None:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.last_press_item_id
+
+    @_last_space_file_id.setter
+    def _last_space_file_id(self, value: str | None) -> None:
+        self._preview_interaction_state.last_press_item_id = value
+
+    @property
+    def _space_double_press_guard_file_id(self) -> str | None:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.double_press_guard_item_id
+
+    @_space_double_press_guard_file_id.setter
+    def _space_double_press_guard_file_id(self, value: str | None) -> None:
+        self._preview_interaction_state.double_press_guard_item_id = value
+
+    @property
+    def _space_double_press_guard_until(self) -> float | None:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.double_press_guard_until
+
+    @_space_double_press_guard_until.setter
+    def _space_double_press_guard_until(self, value: float | None) -> None:
+        self._preview_interaction_state.double_press_guard_until = value
+
+    def _build_preview_interaction(
+        self,
+        selected: PrepFileNode,
+        *,
+        now: float,
+        allow_sticky_toggle: bool,
+    ) -> _PrepInputIntent:
+        """Build a normalized preview intent for file interactions."""
+        file_id = self._doc_file_id(selected.data)
+        is_sticky = self._is_sticky_file(selected.data)
+        decision: TreeInteractionDecision = self._preview_interaction_state.decide_preview_action(
+            file_id,
+            now,
+            is_sticky=is_sticky,
+            allow_sticky_toggle=allow_sticky_toggle,
+        )
+
+        if decision.action == TreeInteractionAction.NONE:
+            return _PrepInputIntent(selected, _PrepInputKind.NONE, now=now)
+
+        if decision.action == TreeInteractionAction.TOGGLE_STICKY:
+            return _PrepInputIntent(selected, _PrepInputKind.TOGGLE_STICKY, now=now)
+
+        if decision.action == TreeInteractionAction.CLEAR_STICKY_PREVIEW:
+            return _PrepInputIntent(selected, _PrepInputKind.CLEAR_STICKY_PREVIEW, now=now)
+
+        return _PrepInputIntent(selected, _PrepInputKind.PREVIEW, now=now)
+
+    def _build_click_preview_interaction(self, selected: PrepFileNode, *, now: float) -> _PrepInputIntent:
+        """Build single-click preview intent (single preview, no sticky toggle)."""
+        return self._build_preview_interaction(selected, now=now, allow_sticky_toggle=False)
+
+    def _build_space_preview_interaction(self, selected: PrepFileNode, *, now: float) -> _PrepInputIntent:
+        """Build space-preview intent (single preview, second space toggles sticky)."""
+        return self._build_preview_interaction(selected, now=now, allow_sticky_toggle=True)
+
+    def _build_sticky_toggle_interaction(
+        self,
+        selected: PrepFileNode,
+        *,
+        now: float,
+    ) -> _PrepInputIntent:
+        """Build sticky toggle interaction intent."""
+        return _PrepInputIntent(selected, _PrepInputKind.TOGGLE_STICKY, now=now)
+
+    def _handle_prep_interaction(self, interaction: _PrepInputIntent) -> None:
+        """Resolve normalized interaction intent for selected file row."""
+        if interaction.kind == _PrepInputKind.NONE:
+            return
+
+        selected = interaction.item
+        filepath = self._doc_file_id(selected.data)
+
+        if interaction.kind == _PrepInputKind.CLEAR_STICKY_PREVIEW:
+            if self._preview:
+                self.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW))
+            self.pane_manager.focus_pane_for_session(f"doc:{filepath}")
+            return
+
+        if interaction.kind == _PrepInputKind.TOGGLE_STICKY:
+            was_sticky = self._is_sticky_file(selected.data)
+            self._toggle_doc_sticky(selected.data)
+            self._preview_interaction_state.mark_double_press_guard(filepath, interaction.now)
+            is_sticky = self._is_sticky_file(selected.data)
+            if not was_sticky and is_sticky:
+                self._open_doc_preview(selected.data)
+            elif was_sticky and not is_sticky and self._preview and self._preview.doc_id == filepath:
+                self.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW))
+            return
+
+        # PREVIEW
+        self._open_doc_preview(selected.data)
 
     def get_action_bar(self) -> str:
         """Return action bar string.
@@ -551,20 +760,21 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
 
         # If on a file, collapse parent todo
         if _is_file_node(item):
-            slug = item.data.slug
-            if slug in self.expanded_todos:
-                self.controller.dispatch(Intent(IntentType.COLLAPSE_TODO, {"todo_id": slug}))
+            todo_id = self._todo_node_id_from_file(item.data)
+            if todo_id in self.expanded_todos or self._is_file_parent_expanded(item.data):
+                self.controller.dispatch(Intent(IntentType.COLLAPSE_TODO, {"todo_id": todo_id}))
                 self.rebuild_for_focus()
                 save_sticky_state(self.state)
-                logger.debug("collapse_selected: collapsed file's parent todo %s", slug)
+                logger.debug("collapse_selected: collapsed file's parent todo %s", item.data.slug)
                 return True
             logger.debug("collapse_selected: file's parent todo not expanded")
             return False
 
         if _is_todo_node(item):
+            todo_id = self._todo_node_id_from_display(item.data)
             slug = item.data.todo.slug
-            if slug in self.expanded_todos:
-                self.controller.dispatch(Intent(IntentType.COLLAPSE_TODO, {"todo_id": slug}))
+            if self._is_todo_expanded(item.data):
+                self.controller.dispatch(Intent(IntentType.COLLAPSE_TODO, {"todo_id": todo_id}))
                 self.rebuild_for_focus()
                 save_sticky_state(self.state)
                 logger.debug("collapse_selected: collapsed todo %s", slug)
@@ -596,9 +806,10 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             return True
         if _is_todo_node(item):
             # Expand todo to show file children
+            todo_id = self._todo_node_id_from_display(item.data)
             slug = item.data.todo.slug
-            if slug not in self.expanded_todos:
-                self.controller.dispatch(Intent(IntentType.EXPAND_TODO, {"todo_id": slug}))
+            if not self._is_todo_expanded(item.data):
+                self.controller.dispatch(Intent(IntentType.EXPAND_TODO, {"todo_id": todo_id}))
                 self.rebuild_for_focus()
                 save_sticky_state(self.state)
                 logger.debug("drill_down: expanded todo %s", slug)
@@ -615,7 +826,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         todo_ids: list[str] = []
         for item in self.flat_items:
             if _is_todo_node(item):
-                todo_ids.append(item.data.todo.slug)
+                todo_ids.append(self._todo_node_id_from_display(item.data))
                 count += 1
         self.controller.dispatch(Intent(IntentType.EXPAND_ALL_TODOS, {"todo_ids": todo_ids}))
         logger.debug("expand_all: expanded %d todos, now expanded_todos=%s", count, self.expanded_todos)
@@ -943,6 +1154,17 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
 
         # File-specific actions
         if _is_file_node(item):
+            if key == ord(" "):
+                if item.data.exists:
+                    logger.debug("handle_key: space preview for file")
+                    self._handle_prep_interaction(
+                        self._build_space_preview_interaction(
+                            item,
+                            now=time.perf_counter(),
+                        )
+                    )
+                return
+
             if key == ord("c"):
                 self.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW))
                 return
@@ -973,25 +1195,23 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         """
         item_idx = self._row_to_item.get(screen_row)
         if item_idx is not None:
-            self.selected_index = item_idx
+            self._select_index(item_idx)
             item = self.flat_items[item_idx]
             if _is_file_node(item) and item.data.exists:
                 if is_double_click:
-                    self._toggle_doc_sticky(item.data)
-                else:
-                    filepath = os.path.join(
-                        item.data.project_path,
-                        "todos",
-                        item.data.slug,
-                        item.data.filename,
+                    self._handle_prep_interaction(
+                        self._build_sticky_toggle_interaction(
+                            item,
+                            now=time.perf_counter(),
+                        )
                     )
-                    is_sticky = any(sticky.doc_id == filepath for sticky in self._sticky_previews)
-                    if is_sticky:
-                        if self._preview:
-                            self.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW))
-                        self.pane_manager.focus_pane_for_session(f"doc:{filepath}")
-                    else:
-                        self._open_doc_preview(item.data)
+                else:
+                    self._handle_prep_interaction(
+                        self._build_click_preview_interaction(
+                            item,
+                            now=time.perf_counter(),
+                        )
+                    )
             return True
         return False
 
@@ -1075,7 +1295,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         """
         indent = "  " * item.depth
         slug = item.data.todo.slug
-        is_expanded = slug in self.expanded_todos
+        is_expanded = self._is_todo_expanded(item.data)
 
         # Collapse indicator
         indicator = "v" if is_expanded else ">"
@@ -1290,7 +1510,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         indent = "  " * item.depth
         attr = curses.A_REVERSE if selected else 0
         slug = item.data.todo.slug
-        is_expanded = slug in self.expanded_todos
+        is_expanded = self._is_todo_expanded(item.data)
 
         # Collapse indicator
         indicator = "v" if is_expanded else ">"
