@@ -74,13 +74,13 @@ def _create_sync_engine() -> object:
     return engine
 
 
-def _get_memory_context(project_name: str) -> str:
+def _get_memory_context(project_name: str, identity_key: str | None = None) -> str:
     """Fetch pre-formatted memory context from local database."""
     try:
         from teleclaude.memory.context import generate_context_sync
 
         db_path = str(config.database.path)
-        return generate_context_sync(project_name, db_path)
+        return generate_context_sync(project_name, db_path, identity_key=identity_key)
     except Exception:
         return ""
 
@@ -208,17 +208,33 @@ def _maybe_checkpoint_output(
     return checkpoint_reason
 
 
-def _print_memory_injection(cwd: str | None, adapter: object) -> None:
+def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | None = None) -> None:
     """Print memory context to stdout for agent context injection via SessionStart hook."""
     project_name = Path(cwd).name if cwd else None
     if not project_name:
         return
 
-    context = _get_memory_context(project_name)
+    # Resolve identity_key from session adapter metadata for identity-scoped memories
+    identity_key: str | None = None
+    if session_id:
+        try:
+            from teleclaude.core.identity import derive_identity_key
+            from teleclaude.core.models import SessionAdapterMetadata
+            from sqlmodel import Session as SqlSession
+
+            with SqlSession(_create_sync_engine()) as db_session:
+                row = db_session.get(db_models.Session, session_id)
+                if row and row.adapter_metadata:
+                    adapter_meta = SessionAdapterMetadata.from_json(row.adapter_metadata)
+                    identity_key = derive_identity_key(adapter_meta)
+        except Exception:  # noqa: BLE001 - fail-open: identity resolution is best-effort
+            logger.debug("Identity key derivation failed for session %s", (session_id or "")[:8])
+
+    context = _get_memory_context(project_name, identity_key=identity_key)
     if not context:
         return
 
-    logger.debug("Memory context fetched", project=project_name, length=len(context))
+    logger.debug("Memory context fetched", project=project_name, length=len(context), identity_key=identity_key or "")
     payload = adapter.format_memory_injection(context)  # type: ignore[union-attr]
     if payload:
         print(payload)
@@ -922,7 +938,7 @@ def main() -> None:
         if cwd:
             project_name = Path(cwd).name
             logger.debug("Injecting memory index for session_start", project=project_name)
-            _print_memory_injection(cwd, adapter)
+            _print_memory_injection(cwd, adapter, session_id=teleclaude_session_id)
         else:
             logger.error("Skipping memory injection: no CWD provided (contract violation)")
 

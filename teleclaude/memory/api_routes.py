@@ -24,6 +24,7 @@ class SaveObservationRequest(BaseModel):
     type: ObservationType = ObservationType.DISCOVERY
     concepts: list[str] | None = None
     facts: list[str] | None = None
+    identity_key: str | None = None
 
 
 class SaveObservationResponse(BaseModel):
@@ -51,6 +52,7 @@ async def save_observation(req: SaveObservationRequest) -> SaveObservationRespon
         type=req.type,
         concepts=req.concepts or [],
         facts=req.facts or [],
+        identity_key=req.identity_key,
     )
     store = MemoryStore()
     result = await store.save_observation(inp)
@@ -65,10 +67,11 @@ async def search_memory(
     type: ObservationType | None = Query(
         default=None, description="Filter by observation type for progressive disclosure"
     ),
+    identity_key: str | None = None,
 ) -> list[dict]:
-    """Search memory observations. Supports type filter for progressive disclosure."""
+    """Search memory observations. Supports type and identity_key filters."""
     search = MemorySearch()
-    results = await search.search(query, project, limit, obs_type=type)
+    results = await search.search(query, project, limit, obs_type=type, identity_key=identity_key)
     return [asdict(r) for r in results]
 
 
@@ -106,9 +109,9 @@ async def delete_observation(observation_id: int) -> dict:
 
 
 @router.get("/inject")
-async def inject_context(projects: str) -> str:
+async def inject_context(projects: str, identity_key: str | None = None) -> str:
     """Generate context for injection (replaces memory-management-api /api/context/inject)."""
     project = projects.split(",")[0].strip()
     if not project:
         return ""
-    return await generate_context(project)
+    return await generate_context(project, identity_key=identity_key)

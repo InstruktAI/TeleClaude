@@ -1555,10 +1555,10 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         exists = item.data.exists
 
         filepath = os.path.join(
-            item.project_path,
+            item.data.project_path,  # type: ignore[attr-defined]
             "todos",
-            item.slug,
-            item.filename,
+            item.data.slug,  # type: ignore[attr-defined]
+            item.data.filename,  # type: ignore[attr-defined]
         )
         is_previewed = bool(self._preview and self._preview.doc_id == filepath)
 

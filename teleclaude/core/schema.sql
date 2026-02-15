@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS memory_observations (
     files_modified TEXT,
     prompt_number INTEGER,
     discovery_tokens INTEGER DEFAULT 0,
+    identity_key TEXT,
     created_at TEXT NOT NULL,
     created_at_epoch INTEGER NOT NULL
 );

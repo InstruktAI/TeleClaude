@@ -1,23 +1,15 @@
 ---
-id: 'organization/spec/about'
-type: 'spec'
-scope: 'global'
-description: 'Organization overview and product information.'
-audience:
-  - public
+id: organization/spec/about
+type: spec
+scope: global
+description: About this organization. Use /author-knowledge to expand.
+audience: [admin, help-desk]
 ---
 
-# About — Spec
-
-## Required reads
+# About This Organization — Spec
 
 ## What it is
 
-This is your organization. Use `/author-knowledge` to build out your documentation with product details, company policies, and FAQ.
+This is your organization's knowledge base. It starts empty and grows as you document your products, policies, and procedures.
 
-## Canonical fields
-
-- Organization name: (to be documented)
-- Products: (to be documented)
-
-## See also
+Use `/author-knowledge` to have a conversation about your organization and turn that knowledge into structured documentation that your help desk operator can reference when assisting customers.

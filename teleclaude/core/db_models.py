@@ -169,6 +169,7 @@ class MemoryObservation(SQLModel, table=True):
     discovery_tokens: Optional[int] = 0
     created_at: str
     created_at_epoch: int
+    identity_key: Optional[str] = None
 
 
 class MemorySummary(SQLModel, table=True):

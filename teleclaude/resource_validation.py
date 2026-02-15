@@ -555,6 +555,17 @@ def _validate_snippet_sections(
             if not isinstance(meta.get(field), str) or not meta.get(field):
                 _warn("snippet_missing_frontmatter_field", path=str(path), field=field)
 
+    audience_val = meta.get("audience")
+    if audience_val is not None:
+        from teleclaude.constants import AUDIENCE_VALUES
+
+        if isinstance(audience_val, list):
+            for av in audience_val:
+                if av not in AUDIENCE_VALUES:
+                    _warn("snippet_invalid_audience_value", path=str(path), value=str(av))
+        else:
+            _warn("snippet_invalid_audience_type", path=str(path))
+
     snippet_type = meta.get("type") if isinstance(meta.get("type"), str) else None
     if not snippet_type:
         snippet_type = _infer_type_from_path(path)

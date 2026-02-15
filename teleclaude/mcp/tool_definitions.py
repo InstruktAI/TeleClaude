@@ -673,4 +673,69 @@ def get_tool_definitions() -> list[Tool]:
                 "required": ["agent"],
             },
         ),
+        Tool(
+            name="teleclaude__publish",
+            title="Publish to Channel",
+            description=(
+                "Publish a message to an internal Redis Stream channel. "
+                "Channels use the naming convention channel:{project}:{topic}. "
+                "Publishing to a non-existent channel creates it automatically."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "channel": {
+                        "type": "string",
+                        "description": "Full channel key, e.g. 'channel:myproject:events'.",
+                    },
+                    "payload": {
+                        "type": "object",
+                        "description": "JSON-serialisable payload to publish.",
+                    },
+                },
+                "required": ["channel", "payload"],
+            },
+        ),
+        Tool(
+            name="teleclaude__channels_list",
+            title="List Channels",
+            description="List active internal Redis Stream channels, optionally filtered by project.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Optional project name to filter channels.",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="teleclaude__escalate",
+            title="Escalate to Admin",
+            description=(
+                "Escalate a customer conversation to a human admin. "
+                "Creates a Discord thread in the escalation forum, notifies admins, "
+                "and activates relay mode so admin messages are forwarded to the customer. "
+                "Only available in customer sessions."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "customer_name": {
+                        "type": "string",
+                        "description": "Display name of the customer requesting escalation.",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Reason for the escalation.",
+                    },
+                    "context_summary": {
+                        "type": "string",
+                        "description": "Optional summary of the conversation context for the admin.",
+                    },
+                },
+                "required": ["customer_name", "reason"],
+            },
+        ),
     ]

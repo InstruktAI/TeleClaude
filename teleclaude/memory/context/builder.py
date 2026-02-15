@@ -14,10 +14,10 @@ from teleclaude.memory.context.renderer import render_context
 logger = get_logger(__name__)
 
 
-async def generate_context(project: str) -> str:
+async def generate_context(project: str, identity_key: str | None = None) -> str:
     """Generate memory context markdown (async, for daemon/API)."""
     try:
-        observations = await _get_recent_observations(project)
+        observations = await _get_recent_observations(project, identity_key=identity_key)
         summaries = await _get_recent_summaries(project)
 
         if not observations and not summaries:
@@ -31,7 +31,7 @@ async def generate_context(project: str) -> str:
         return ""
 
 
-def generate_context_sync(project: str, db_path: str) -> str:
+def generate_context_sync(project: str, db_path: str, identity_key: str | None = None) -> str:
     """Generate memory context markdown (sync, for hook receiver)."""
     try:
         engine = create_engine(f"sqlite:///{db_path}")
@@ -39,12 +39,14 @@ def generate_context_sync(project: str, db_path: str) -> str:
             session.exec(text("PRAGMA journal_mode = WAL"))
             session.exec(text("PRAGMA busy_timeout = 5000"))
 
-            # Recent observations
-            result = session.exec(
-                text(
-                    "SELECT * FROM memory_observations WHERE project = :project ORDER BY created_at_epoch DESC LIMIT 50"
-                ).bindparams(project=project)
-            )
+            # Recent observations (identity-scoped)
+            obs_sql = "SELECT * FROM memory_observations WHERE project = :project"
+            obs_params: dict[str, str | int] = {"project": project}
+            if identity_key:
+                obs_sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
+                obs_params["identity_key"] = identity_key
+            obs_sql += " ORDER BY created_at_epoch DESC LIMIT 50"
+            result = session.exec(text(obs_sql).bindparams(**obs_params))
             obs_rows = result.fetchall()
             observations = [_row_to_observation(row) for row in obs_rows]
 
@@ -68,14 +70,18 @@ def generate_context_sync(project: str, db_path: str) -> str:
         return ""
 
 
-async def _get_recent_observations(project: str, limit: int = 50) -> list[db_models.MemoryObservation]:
-    """Fetch recent observations for a project."""
+async def _get_recent_observations(
+    project: str, limit: int = 50, identity_key: str | None = None
+) -> list[db_models.MemoryObservation]:
+    """Fetch recent observations for a project, optionally scoped by identity."""
     async with db._session() as session:
-        result = await session.exec(
-            text(
-                "SELECT * FROM memory_observations WHERE project = :project ORDER BY created_at_epoch DESC LIMIT :limit"
-            ).bindparams(project=project, limit=limit)
-        )
+        sql = "SELECT * FROM memory_observations WHERE project = :project"
+        params: dict[str, str | int] = {"project": project, "limit": limit}
+        if identity_key:
+            sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
+            params["identity_key"] = identity_key
+        sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
+        result = await session.exec(text(sql).bindparams(**params))
         rows = result.fetchall()
         return [_row_to_observation(row) for row in rows]
 
@@ -114,6 +120,7 @@ def _row_to_observation(row: object) -> db_models.MemoryObservation:
             discovery_tokens=row[12],
             created_at=row[13],
             created_at_epoch=row[14],
+            identity_key=row[15] if len(row) > 15 else None,
         )
     return row  # type: ignore[return-value]
 

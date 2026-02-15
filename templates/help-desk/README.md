@@ -1,3 +1,3 @@
 # Help Desk
 
-AI-powered help desk operator workspace managed by TeleClaude.
+Customer support workspace powered by TeleClaude. Use `/author-knowledge` to build out your organization's documentation.

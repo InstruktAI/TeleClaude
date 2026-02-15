@@ -63,6 +63,7 @@ class MemorySearch:
         project: str | None = None,
         limit: int = 20,
         obs_type: ObservationType | None = None,
+        identity_key: str | None = None,
     ) -> list[SearchResult]:
         """Search observations using FTS5 with LIKE fallback.
 
@@ -71,6 +72,7 @@ class MemorySearch:
             project: Filter by project.
             limit: Max results.
             obs_type: Filter by observation type for progressive disclosure.
+            identity_key: Filter by identity scope (includes unscoped memories).
         """
         type_value = obs_type.value if obs_type else None
 
@@ -88,6 +90,9 @@ class MemorySearch:
                 if type_value:
                     sql += " AND type = :obs_type"
                     params["obs_type"] = type_value
+                if identity_key:
+                    sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
+                    params["identity_key"] = identity_key
                 sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
                 result = await session.exec(text(sql).bindparams(**params))  # noqa: raw-sql
                 rows = result.fetchall()
@@ -108,6 +113,9 @@ class MemorySearch:
             if type_value:
                 sql += " AND type = :obs_type"
                 params["obs_type"] = type_value
+            if identity_key:
+                sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
+                params["identity_key"] = identity_key
             sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
             result = await session.exec(text(sql).bindparams(**params))  # noqa: raw-sql
             rows = result.fetchall()

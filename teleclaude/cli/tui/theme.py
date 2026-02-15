@@ -419,10 +419,10 @@ def init_colors() -> None:
         "codex": _derive_theme_preview_text_shades("codex"),
     }
     for agent, text_shades in preview_pair_values.items():
-        highlight_pair, default_pair, muted_pair = text_shades
+        _highlight_pair, default_pair, muted_pair = text_shades
 
-        # Full mode keeps stronger contrast: default foreground on muted background, and
-        # a brighter foreground for the active preview/focus state.
+        # Full mode uses muted background with native terminal foreground (keeps text
+        # palette intact while emphasizing the selection background).
         curses.init_pair(
             AGENT_PREVIEW_SELECTED_BG_PAIRS[agent],
             default_pair,
@@ -430,7 +430,7 @@ def init_colors() -> None:
         )
         curses.init_pair(
             AGENT_PREVIEW_SELECTED_FOCUS_PAIRS[agent],
-            highlight_pair,
+            -1,
             get_agent_normal_color(agent),
         )
 
@@ -442,7 +442,7 @@ def init_colors() -> None:
         )
         curses.init_pair(
             AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_SEMI[agent],
-            default_pair,
+            -1,
             get_agent_normal_color(agent),
         )
 
@@ -887,11 +887,11 @@ def set_pane_theming_mode(mode: str | None) -> None:
     global _PANE_THEMING_MODE_OVERRIDE  # noqa: PLW0603
     normalized = (mode or "").strip().lower()
     if not mode:
-        _PANE_THEMING_MODE_OVERRIDE = None
+        _PANE_THEMING_MODE_OVERRIDE = None  # type: ignore[reportConstantRedefinition]
         return
     if normalized not in _VALID_PANE_THEMING_MODES:
         raise ValueError(f"Invalid pane_theming_mode: {mode}")
-    _PANE_THEMING_MODE_OVERRIDE = normalized
+    _PANE_THEMING_MODE_OVERRIDE = normalized  # type: ignore[reportConstantRedefinition]
 
 
 def get_agent_preview_selected_bg_attr(agent: str) -> int:
