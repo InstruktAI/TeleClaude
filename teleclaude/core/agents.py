@@ -86,7 +86,7 @@ def get_agent_command(
         'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\' -m haiku'
 
         >>> get_agent_command("codex", thinking_mode="slow", exec=True)
-        'codex exec --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.3-codex'
+        'codex exec --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.3-codex-spark'
 
         >>> get_agent_command("claude", native_session_id="abc123")
         'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\' --resume abc123'

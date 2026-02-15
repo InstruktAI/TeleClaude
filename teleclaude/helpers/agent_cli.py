@@ -21,7 +21,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 # Anchor imports at repo root for teleclaude constants access.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -94,10 +94,9 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
     "codex": {
         "flags": "--dangerously-bypass-approvals-and-sandbox --search",
         "model_flags": {
-            "fast": "-m gpt-5.3-codex --config model_reasoning_effort='low'",
-            "med": "-m gpt-5.3-codex --config model_reasoning_effort='medium'",
-            "slow": "-m gpt-5.3-codex --config model_reasoning_effort='high'",
-            "deep": "-m gpt-5.3-codex --config model_reasoning_effort='xhigh'",
+            "fast": "-m gpt-5.3-codex-spark --config model_reasoning_effort='medium'",
+            "med": "-m gpt-5.3-codex-spark --config model_reasoning_effort='high'",
+            "slow": "-m gpt-5.3-codex-spark --config model_reasoning_effort='xhigh'",
         },
         "exec_subcommand": "exec",
         "output_format": "",
@@ -237,6 +236,7 @@ def _run_agent(
     *,
     tools: str | None,
     mcp_tools: str | None,
+    input_mode: Literal["stdin", "arg"] = "stdin",
     debug_raw: bool = False,
     timeout_s: int | None = None,
 ) -> str:
@@ -289,34 +289,33 @@ def _run_agent(
     if mcp_tools_arg and mcp_tools is not None:
         cmd_parts.extend([mcp_tools_arg, mcp_tools])
 
-    # Pass prompt via Stdin if possible to avoid ARG_MAX
-    # Claude: -p reads stdin if no arg provided.
-    # Codex: reads stdin if no prompt arg.
-    # Gemini: -p reads stdin if present.
-
-    use_stdin = False
+    # Handle prompt passing based on input_mode
+    use_stdin = input_mode == "stdin"
 
     if agent == AgentName.CLAUDE:
-        if prompt_flag:
-            cmd_parts.append("-p")
-        use_stdin = True
+        if use_stdin:
+            if prompt_flag:
+                cmd_parts.append("-p")
+        else:
+            if prompt_flag:
+                cmd_parts.extend(["-p", prompt])
+            else:
+                cmd_parts.append(prompt)
 
     elif agent == AgentName.CODEX:
-        # Codex reads stdin if no prompt arg
-        use_stdin = True
+        # Codex reads stdin if no prompt arg.
+        if not use_stdin:
+            cmd_parts.append(prompt)
 
     elif agent == AgentName.GEMINI:
-        # Gemini requires -p to be non-interactive.
-        if prompt_flag:
-            cmd_parts.extend(["-p", ""])
-        use_stdin = True
-
-    if not use_stdin:
-        # Fallback to arg (should not happen with our 3 agents)
-        if prompt_flag:
-            cmd_parts.extend(["-p", prompt])
+        if use_stdin:
+            if prompt_flag:
+                cmd_parts.extend(["-p", ""])
         else:
-            cmd_parts.append(prompt)
+            if prompt_flag:
+                cmd_parts.extend(["-p", prompt])
+            else:
+                cmd_parts.append(prompt)
 
     if debug_raw:
         print(json.dumps({"debug_cmd": cmd_parts, "prompt_len": len(prompt)}))
@@ -363,10 +362,9 @@ _JOB_SPEC: dict[str, dict[str, str | dict[str, str]]] = {
     "codex": {
         "flags": "--dangerously-bypass-approvals-and-sandbox",
         "model_flags": {
-            "fast": "-m gpt-5.3-codex --config model_reasoning_effort='low'",
-            "med": "-m gpt-5.3-codex --config model_reasoning_effort='medium'",
-            "slow": "-m gpt-5.3-codex --config model_reasoning_effort='high'",
-            "deep": "-m gpt-5.3-codex --config model_reasoning_effort='xhigh'",
+            "fast": "-m gpt-5.3-codex-spark --config model_reasoning_effort='medium'",
+            "med": "-m gpt-5.3-codex-spark --config model_reasoning_effort='high'",
+            "slow": "-m gpt-5.3-codex-spark --config model_reasoning_effort='xhigh'",
         },
         "exec_subcommand": "exec",
     },
@@ -434,6 +432,7 @@ def run_once(
     schema: dict[str, object],  # guard: loose-dict - JSON schema
     tools: str | None = None,
     mcp_tools: str | None = None,
+    input_mode: Literal["stdin", "arg"] = "stdin",
     debug_raw: bool = False,
     timeout_s: int | None = None,
 ) -> dict[str, object]:  # guard: loose-dict - Agent response with embedded result
@@ -453,6 +452,7 @@ def run_once(
         schema,
         tools=tools,
         mcp_tools=mcp_tools,
+        input_mode=input_mode,
         debug_raw=debug_raw,
         timeout_s=timeout_s,
     )
@@ -532,10 +532,13 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        input_mode: Literal["stdin", "arg"] = "arg"
         if args.prompt_file:
             prompt = Path(args.prompt_file).read_text(encoding="utf-8")
+            input_mode = "stdin"
         else:
             prompt = args.prompt
+            input_mode = "arg"
 
         schema = _load_schema(args.schema_json, args.schema_file)
         payload = run_once(
@@ -546,6 +549,7 @@ def main() -> int:
             schema=schema,
             tools=args.tools,
             mcp_tools=args.mcp_tools,
+            input_mode=input_mode,
         )
         print(json.dumps(payload))
         return 0

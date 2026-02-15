@@ -345,10 +345,9 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "restricted": "--full-auto --search",
         },
         "model_flags": {
-            "fast": "-m gpt-5.3-codex --config model_reasoning_effort='low'",
-            "med": "-m gpt-5.3-codex --config model_reasoning_effort='medium'",
-            "slow": "-m gpt-5.3-codex --config model_reasoning_effort='high'",
-            "deep": "-m gpt-5.3-codex --config model_reasoning_effort='xhigh'",
+            "fast": "-m gpt-5.3-codex-spark --config model_reasoning_effort='medium'",
+            "med": "-m gpt-5.3-codex-spark --config model_reasoning_effort='high'",
+            "slow": "-m gpt-5.3-codex-spark --config model_reasoning_effort='xhigh'",
         },
         "exec_subcommand": "exec",
         "interactive_flag": "",
