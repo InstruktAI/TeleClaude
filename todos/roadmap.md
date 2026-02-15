@@ -35,15 +35,11 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 - web-interface-3 (after: web-interface-2) — Chat Interface & Part Rendering
 - web-interface-4 (after: web-interface-3) — Session Management & Role-Based Access
 
-## TUI Animation Art
+## TUI Config Experience & Animation Art
 
-- tui-animation-art
+- tui-config-experience
 
-Retro-gaming visual experience for the TUI. Banner scroll-out/in motion, depth-layered effects (behind active tab, in front of inactive), three-mode animation toggle (off / periodic / party). Commodore 64 demoscene + Mario Kart aesthetic. Creative-first process: art director + art creator brainstorm visual concepts before builders implement. Extends existing banner animation system.
-
-- tui-config-experience (after: tui-animation-art)
-
-Move all interactive configuration into the TUI as a first-class Config tab with sub-tabs, killing `telec config` interactive menu and `telec onboard` CLI wizard. Each config section becomes a reusable curses component with contextual guidance, provider-specific help with links, and section-aware animation. `telec onboard` becomes "launch TUI in Config tab, guided mode." Creative-first: art director + artist brainstorm visual concepts per section before builders implement. Absorbs config-visual-polish.
+Move all interactive configuration into the TUI as a first-class Config tab with sub-tabs, killing `telec config` interactive menu and `telec onboard` CLI wizard. Each config section becomes a reusable curses component with contextual guidance, provider-specific help with links, and section-aware animation. Simultaneously evolves the animation engine: target-agnostic rendering, state-driven selection, section-aware palettes, scroll/motion transitions, depth layering, three-mode toggle (off / periodic / party). Creative-first: art director + artist brainstorm visual concepts before builders implement. Absorbs config-visual-polish and tui-animation-art.
 
 ## Rolling Session Titles
 
