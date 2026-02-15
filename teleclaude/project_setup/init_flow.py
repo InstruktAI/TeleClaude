@@ -13,6 +13,12 @@ from teleclaude.project_setup.macos_setup import install_launchers, is_macos, ru
 from teleclaude.project_setup.sync import install_docs_watch, sync_project_artifacts
 
 
+def _is_teleclaude_project(project_root: Path) -> bool:
+    """Check if this is the TeleClaude project itself (not a user project)."""
+    marker = project_root / "teleclaude" / "project_setup" / "init_flow.py"
+    return marker.exists()
+
+
 def init_project(project_root: Path) -> None:
     """Initialize a project for TeleClaude.
 
@@ -30,5 +36,11 @@ def init_project(project_root: Path) -> None:
     if is_macos():
         install_launchers(project_root)
         run_permissions_probe(project_root)
+
+    # Bootstrap help desk workspace if running from the TeleClaude project
+    if _is_teleclaude_project(project_root):
+        from teleclaude.project_setup.help_desk_bootstrap import bootstrap_help_desk
+
+        bootstrap_help_desk()
 
     print("telec init complete.")
