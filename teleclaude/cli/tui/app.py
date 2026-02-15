@@ -38,7 +38,13 @@ from teleclaude.cli.models import (
 )
 from teleclaude.cli.tui.animation_colors import palette_registry
 from teleclaude.cli.tui.animation_engine import AnimationEngine
-from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger
+from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger, StateDrivenTrigger
+from teleclaude.cli.tui.animations.config import (
+    ErrorAnimation,
+    PulseAnimation,
+    SuccessAnimation,
+    TypingAnimation,
+)
 from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.state import Intent, IntentType, TuiState
@@ -193,18 +199,23 @@ class Notification:
 
 
 class TelecApp:
-    """Main TUI application with view switching (1=Sessions, 2=Preparation)."""
+    """Main TUI application with view switching (1=Sessions, 2=Preparation, 3=Configuration)."""
 
-    def __init__(self, api: "TelecAPIClient"):
+    def __init__(self, api: "TelecAPIClient", start_view: int = 1, config_guided: bool = False):
         """Initialize TUI app.
 
         Args:
             api: API client instance
+            start_view: Initial view to show (default 1)
+            config_guided: Whether to start configuration in guided mode
         """
         self.api = api
-        self.current_view = 1  # 1=Sessions, 2=Preparation
-        self.views: dict[int, SessionsView | PreparationView] = {}
+        self.current_view = start_view
+        self.views: dict[int, SessionsView | PreparationView | ConfigurationView] = {}
         self.tab_bar = TabBar()
+        # Set initial active tab
+        self.tab_bar.set_active(start_view)
+
         self.footer: Footer | None = None
         self.running = True
         self.agent_availability: dict[str, AgentAvailabilityInfo] = {}
@@ -214,6 +225,11 @@ class TelecApp:
         self.notification: Notification | None = None
         self.pane_manager = TmuxPaneManager()
         self.state = TuiState()
+
+        # Set initial config state
+        if config_guided:
+            self.state.config.guided_mode = True
+
         self._computers: list[ApiComputerInfo] = []
         self.controller = TuiController(self.state, self.pane_manager, self._get_computer_info)
         # Content area bounds for mouse click handling
@@ -236,6 +252,24 @@ class TelecApp:
         self.animation_engine = AnimationEngine()
         self.periodic_trigger = PeriodicTrigger(self.animation_engine, animations_subset=config.ui.animations_subset)
         self.activity_trigger = ActivityTrigger(self.animation_engine, animations_subset=config.ui.animations_subset)
+        self.state_driven_trigger = StateDrivenTrigger(self.animation_engine)
+
+        # Register config animations
+        sections = [
+            "adapters.telegram",
+            "adapters.discord",
+            "adapters.ai_keys",
+            "adapters.whatsapp",
+            "people",
+            "notifications",
+            "environment",
+            "validate",
+        ]
+        for section in sections:
+            self.state_driven_trigger.register(section, "idle", PulseAnimation)
+            self.state_driven_trigger.register(section, "interacting", TypingAnimation)
+            self.state_driven_trigger.register(section, "success", SuccessAnimation)
+            self.state_driven_trigger.register(section, "error", ErrorAnimation)
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
@@ -272,6 +306,7 @@ class TelecApp:
             self.state,
             self.controller,
             notify=self.notify,
+            on_animation_context_change=self.state_driven_trigger.set_context,
         )
 
         # Start animation triggers (palette initialization deferred to run())

@@ -5,12 +5,9 @@ All tests use tmp_path fixtures to isolate from real config.
 """
 
 import json
-import os
 from unittest.mock import patch
 
 import pytest
-
-from teleclaude.config.schema import GlobalConfig, PersonConfig, PersonEntry
 
 
 def _setup_config(tmp_path, people=None):

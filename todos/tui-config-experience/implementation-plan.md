@@ -149,7 +149,7 @@ Each build phase is scoped to fit a single AI session.
 
 ### Step 2.6: Scroll/Motion and Depth Layering
 
-- [ ] **Defer to Phase 6.** These are visual polish that depend on having config animations to test with. Placeholder hooks are sufficient in Phase 2.
+- [x] **Defer to Phase 6.** These are visual polish that depend on having config animations to test with. Placeholder hooks are sufficient in Phase 2.
 
 **Verification:** Existing Sessions/Preparation tab animations still work identically. New target registration works. State-driven trigger can be called programmatically.
 
@@ -218,38 +218,38 @@ Each build phase is scoped to fit a single AI session.
 
 **File:** `config_components/base.py` (new)
 
-- [ ] Protocol/ABC with: `render(stdscr, start_row, height, width)`, `handle_key(key)`, `get_section_id() -> str`, `get_animation_state() -> str`, `get_progress() -> float`.
-- [ ] Manages field list, selected field, input mode (browsing vs editing).
-- [ ] Calls `config_handlers` for reads/writes.
-- [ ] Emits animation context changes via callback.
+- [x] Protocol/ABC with: `render(stdscr, start_row, height, width)`, `handle_key(key)`, `get_section_id() -> str`, `get_animation_state() -> str`, `get_progress() -> float`.
+- [x] Manages field list, selected field, input mode (browsing vs editing).
+- [x] Calls `config_handlers` for reads/writes.
+- [x] Emits animation context changes via callback.
 
 ### Step 4.2: Adapter Components
 
 **File:** `config_components/adapters.py` (new)
 
-- [ ] `TelegramConfigComponent` — fields from `_ADAPTER_ENV_VARS["telegram"]` + YAML config.
-- [ ] `DiscordConfigComponent` — Discord bot token, guild ID, channel mappings.
-- [ ] `WhatsAppConfigComponent` — placeholder (adapter not yet implemented).
-- [ ] `AIKeysConfigComponent` — Anthropic, OpenAI, Google, ElevenLabs API keys.
-- [ ] Each component renders: section header, field list with labels/values/status, guidance panel for selected field.
-- [ ] Input: Enter to edit field, Esc to cancel, field-level validation on confirm.
+- [x] `TelegramConfigComponent` — fields from `_ADAPTER_ENV_VARS["telegram"]` + YAML config.
+- [x] `DiscordConfigComponent` — Discord bot token, guild ID, channel mappings.
+- [x] `WhatsAppConfigComponent` — placeholder (adapter not yet implemented).
+- [x] `AIKeysConfigComponent` — Anthropic, OpenAI, Google, ElevenLabs API keys.
+- [x] Each component renders: section header, field list with labels/values/status, guidance panel for selected field.
+- [x] Input: Enter to edit field, Esc to cancel, field-level validation on confirm.
 
 ### Step 4.3: People, Notifications, Environment Components
 
 **Files:** `config_components/people.py`, `notifications.py`, `environment.py` (new)
 
-- [ ] People: list view of PersonEntry items, add/edit/remove.
-- [ ] Notifications: notification channel config.
-- [ ] Environment: env var status display and guidance (read-only — env vars set in shell, not YAML).
+- [x] People: list view of PersonEntry items, add/edit/remove.
+- [x] Notifications: notification channel config.
+- [x] Environment: env var status display and guidance (read-only — env vars set in shell, not YAML).
 
 ### Step 4.4: Validate Component
 
 **File:** `config_components/validate.py` (new)
 
-- [ ] Runs `validate_all()` + `check_env_vars()`.
-- [ ] Displays progress bar (0.0-1.0) while running.
-- [ ] Shows per-area pass/fail with error details and suggestions.
-- [ ] Triggers success celebration or error animation via animation hookpoint.
+- [x] Runs `validate_all()` + `check_env_vars()`.
+- [x] Displays progress bar (0.0-1.0) while running.
+- [x] Shows per-area pass/fail with error details and suggestions.
+- [x] Triggers success celebration or error animation via animation hookpoint.
 
 **Verification:** Each config section renders its fields, accepts input, validates, and saves. Guidance panel shows relevant help. Validation runs end-to-end.
 
@@ -265,18 +265,18 @@ Each build phase is scoped to fit a single AI session.
 
 **File:** `views/configuration.py`
 
-- When `guided_mode=True`, sub-tabs advance sequentially on section completion.
-- "Next" / "Skip" controls at bottom of each section.
-- Progress indicator: "Step 2 of 5: People".
-- At end, show summary + next-steps (matching current wizard behavior).
+- [x] When `guided_mode=True`, sub-tabs advance sequentially on section completion.
+- [x] "Next" / "Skip" controls at bottom of each section.
+- [x] Progress indicator: "Step 2 of 5: People".
+- [x] At end, show summary + next-steps (matching current wizard behavior).
 
 ### Step 5.2: Redirect `telec onboard`
 
 **File:** `teleclaude/cli/helpers/agent_cli.py` or relevant CLI entry point
 
-- `telec onboard` → launch TUI with `--config-guided` flag.
-- Flag sets `guided_mode=True` in ConfigViewState before TUI loop starts.
-- Detect existing config state via `detect_wizard_state()` to skip completed sections.
+- [x] `telec onboard` → launch TUI with `--config-guided` flag.
+- [x] Flag sets `guided_mode=True` in ConfigViewState before TUI loop starts.
+- [x] Detect existing config state via `detect_wizard_state()` to skip completed sections.
 
 **Verification:** `telec onboard` launches TUI in guided mode. Completed sections are skipped. Sequential progression works.
 
@@ -292,23 +292,23 @@ Each build phase is scoped to fit a single AI session.
 
 **File:** `animations/config.py` (new)
 
-- Implement idle, interaction, success, error animations per section from visual specs.
-- Register in state-driven trigger registry keyed by `(section_id, state)`.
+- [x] Implement idle, interaction, success, error animations per section from visual specs.
+- [x] Register in state-driven trigger registry keyed by `(section_id, state)`.
 
 ### Step 6.2: Tab Transition Animations
 
-- Scroll-out/in motion on tab switches.
-- Integrated into `_switch_view()` in app.py.
+- [ ] Scroll-out/in motion on tab switches.
+- [ ] Integrated into `_switch_view()` in app.py.
 
 ### Step 6.3: Celebration Effects
 
-- Validation success: multi-stage celebration animation.
-- Wired to Validate component's success state.
+- [x] Validation success: multi-stage celebration animation.
+- [x] Wired to Validate component's success state.
 
 ### Step 6.4: Depth-Layered Rendering (if in scope from Phase 1)
 
-- Z-order rendering for overlapping animation elements.
-- Applied to Sessions/Preparation tabs as well (behind active tab, in front of inactive).
+- [ ] Z-order rendering for overlapping animation elements.
+- [ ] Applied to Sessions/Preparation tabs as well (behind active tab, in front of inactive).
 
 **Verification:** Each config section plays its idle animation. Interactions trigger visual response. Validation celebrations fire. Tab transitions are smooth.
 
@@ -322,22 +322,22 @@ Each build phase is scoped to fit a single AI session.
 
 ### Step 7.1: Remove Old Files
 
-- Delete `teleclaude/cli/config_menu.py`.
-- Delete `teleclaude/cli/onboard_wizard.py`.
-- Audit `teleclaude/cli/prompt_utils.py` — remove if fully unused, or strip to minimal headless fallback.
+- [x] Delete `teleclaude/cli/config_menu.py`.
+- [x] Delete `teleclaude/cli/onboard_wizard.py`.
+- [x] Audit `teleclaude/cli/prompt_utils.py` — remove if fully unused, or strip to minimal headless fallback.
 
 ### Step 7.2: Update CLI Entry Points
 
-- `telec config` (no subcommand) → launch TUI Config tab.
-- `telec config get/patch/validate` → unchanged.
-- `telec onboard` → launch TUI guided mode.
-- Update `--help` text for both commands.
+- [x] `telec config` (no subcommand) → launch TUI Config tab.
+- [x] `telec config get/patch/validate` → unchanged.
+- [x] `telec onboard` → launch TUI guided mode.
+- [x] Update `--help` text for both commands.
 
 ### Step 7.3: Test Pass
 
-- Verify all existing TUI tests pass.
-- Verify config CLI agent commands still work.
-- Verify `telec onboard` guided flow end-to-end.
+- [x] Verify all existing TUI tests pass.
+- [x] Verify config CLI agent commands still work.
+- [x] Verify `telec onboard` guided flow end-to-end.
 
 **Verification:** No dead imports, no orphaned files. CLI help is accurate. Tests pass.
 

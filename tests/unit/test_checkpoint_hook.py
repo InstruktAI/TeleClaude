@@ -1,6 +1,5 @@
 """Unit tests for hook-based invisible checkpoint logic in receiver.py."""
 
-import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path

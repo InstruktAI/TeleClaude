@@ -100,6 +100,20 @@ _ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
             "123456789,987654321",
         ),
     ],
+    "discord": [
+        EnvVarInfo(
+            "DISCORD_BOT_TOKEN",
+            "discord",
+            "Discord Bot Token",
+            "MTA...",
+        ),
+        EnvVarInfo(
+            "DISCORD_GUILD_ID",
+            "discord",
+            "Discord Server (Guild) ID",
+            "123456789012345678",
+        ),
+    ],
     "ai": [
         EnvVarInfo(
             "ANTHROPIC_API_KEY",

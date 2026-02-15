@@ -118,6 +118,7 @@ class IntentType(str, Enum):
     CLEAR_TEMP_HIGHLIGHT = "clear_temp_highlight"
     SET_ANIMATION_MODE = "set_animation_mode"
     SET_CONFIG_SUBTAB = "set_config_subtab"
+    SET_CONFIG_GUIDED_MODE = "set_config_guided_mode"
 
 
 @dataclass(frozen=True)
@@ -151,6 +152,7 @@ class IntentPayload(TypedDict, total=False):
     summary: str | None  # Output summary from agent_stop events
     mode: str  # Animation mode ("off", "periodic", "party")
     subtab: str  # Config subtab name
+    enabled: bool  # Guided mode enabled state
 
 
 MAX_STICKY_PANES = 5
@@ -461,4 +463,10 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         subtab = p.get("subtab")
         if isinstance(subtab, str):
             state.config.active_subtab = subtab
+        return
+
+    if t is IntentType.SET_CONFIG_GUIDED_MODE:
+        enabled = p.get("enabled")
+        if isinstance(enabled, bool):
+            state.config.guided_mode = enabled
         return
