@@ -8,7 +8,6 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import get_agent_command
@@ -23,7 +22,7 @@ logger = get_logger(__name__)
 
 # Customer sessions trigger memory extraction after this idle threshold (seconds).
 # Unlike admin idle timeout, this does NOT terminate the session.
-CUSTOMER_IDLE_THRESHOLD_S = 30 * 60  # 30 minutes
+COMPACTION_IDLE_THRESHOLD_S = 30 * 60  # 30 minutes — applies to any long-lived session
 
 
 class MaintenanceService:
@@ -55,7 +54,7 @@ class MaintenanceService:
                 await session_cleanup.cleanup_orphan_workspaces()
                 await session_cleanup.cleanup_orphan_mcp_wrappers()
                 await db.cleanup_stale_voice_assignments()
-                await self._check_customer_idle_compaction()
+                await self._check_idle_compaction()
 
             except asyncio.CancelledError:
                 break
@@ -150,24 +149,24 @@ class MaintenanceService:
                 )
                 logger.info("Session %s cleaned up (72h lifecycle)", session.session_id[:8])
 
-    async def _check_customer_idle_compaction(self) -> None:
-        """Detect idle customer sessions and mark them for memory extraction.
+    async def _check_idle_compaction(self) -> None:
+        """Detect idle long-lived sessions and mark them for memory extraction.
 
-        Customer sessions (human_role == "customer") are never terminated by idle
-        timeout. Instead, when idle beyond CUSTOMER_IDLE_THRESHOLD_S, the daemon:
+        Any session with a human_role (customer, member, etc.) is eligible for
+        idle compaction. When idle beyond COMPACTION_IDLE_THRESHOLD_S, the daemon:
         1. Updates last_memory_extraction_at to mark the extraction window
         2. A separate extraction job reads the transcript and saves memories
         3. After extraction, /compact is injected to keep the session lean
 
-        Only the 72h inactivity sweep in _cleanup_inactive_sessions terminates
-        customer sessions.
+        Session termination is handled separately by _cleanup_inactive_sessions.
         """
         now = datetime.now(timezone.utc)
-        idle_threshold = timedelta(seconds=CUSTOMER_IDLE_THRESHOLD_S)
+        idle_threshold = timedelta(seconds=COMPACTION_IDLE_THRESHOLD_S)
         sessions = await db.get_active_sessions()
 
         for session in sessions:
-            if session.human_role != HUMAN_ROLE_CUSTOMER:
+            # Only compact sessions with a human role (long-lived interactive sessions)
+            if not session.human_role:
                 continue
 
             if not session.last_activity:
@@ -189,7 +188,7 @@ class MaintenanceService:
                 last_memory_extraction_at=extraction_marker,
             )
             logger.info(
-                "Customer session idle compaction triggered",
+                "Session idle compaction triggered",
                 session_id=session.session_id[:8],
                 idle_seconds=idle_duration.total_seconds(),
                 human_role=session.human_role,

@@ -1,15 +1,18 @@
-"""Help desk session review and memory extraction job.
+"""Session memory extraction job.
 
-Finds customer sessions needing processing (where help_desk_processed_at is
+Finds sessions needing processing (where help_desk_processed_at is
 older than last_activity or NULL), reads transcripts since the last extraction,
 and extracts personal + business memories plus actionable items.
 
 Memory extraction runs as an idempotent job with two scopes:
-- **Personal memories** are identity-scoped (tied to the customer via identity_key).
-- **Business memories** are project-scoped (shared across the help desk).
+- **Personal memories** are identity-scoped (tied to the user via identity_key).
+- **Business memories** are project-scoped (shared across the project).
 
 Actionable items (e.g. follow-ups, feature requests, bugs) are published to
 the internal channels subsystem for downstream routing.
+
+Consumers include help desk customer sessions, member personal assistant
+sessions, and any future long-lived session type with an identity_key.
 
 Integration:
 - Scheduled via teleclaude.yml (default: every 30 minutes).
@@ -32,19 +35,20 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 
-class HelpDeskSessionReviewJob(Job):
-    """Extract memories and actionable items from customer sessions.
+class SessionMemoryExtractionJob(Job):
+    """Extract memories and actionable items from long-lived sessions.
 
     Scans for sessions where ``help_desk_processed_at`` is older than
     ``last_activity`` (or NULL), reads the transcript delta, and runs
     AI-powered extraction for personal memories, business memories, and
-    actionable items.
+    actionable items. Works for any session with a human_role — customers,
+    members, and other long-lived session types.
     """
 
-    name = "help-desk-session-review"
+    name = "session-memory-extraction"
 
     def run(self) -> JobResult:
-        """Execute session review for all pending customer sessions."""
+        """Execute memory extraction for all pending sessions."""
         import asyncio
 
         loop = asyncio.new_event_loop()
@@ -54,13 +58,13 @@ class HelpDeskSessionReviewJob(Job):
             loop.close()
 
     async def _run_async(self) -> JobResult:
-        """Async implementation of the session review pipeline."""
-        sessions = await self._find_sessions_needing_review()
+        """Async implementation of the extraction pipeline."""
+        sessions = await self._find_sessions_needing_extraction()
 
         if not sessions:
             return JobResult(
                 success=True,
-                message="No sessions need review",
+                message="No sessions need extraction",
                 items_processed=0,
             )
 
@@ -77,9 +81,9 @@ class HelpDeskSessionReviewJob(Job):
 
         success = len(errors) == 0
         message = (
-            f"Reviewed {processed} session(s)"
+            f"Extracted {processed} session(s)"
             if success
-            else f"Reviewed {processed} session(s) with {len(errors)} error(s)"
+            else f"Extracted {processed} session(s) with {len(errors)} error(s)"
         )
         return JobResult(
             success=success,
@@ -88,18 +92,20 @@ class HelpDeskSessionReviewJob(Job):
             errors=errors if errors else None,
         )
 
-    async def _find_sessions_needing_review(self) -> list[object]:
+    async def _find_sessions_needing_extraction(self) -> list[object]:
         """Find sessions where help_desk_processed_at < last_activity or is NULL.
 
-        Returns sessions with human_role == 'customer' that have unprocessed
-        transcript content.
+        Returns sessions with a human_role that have unprocessed transcript
+        content. This covers customer sessions, member sessions, and any
+        other long-lived session type.
         """
         from teleclaude.core.db import db
 
         all_sessions = await db.list_sessions(include_closed=True)
         pending = []
         for session in all_sessions:
-            if getattr(session, "human_role", None) != "customer":
+            # Any session with a human_role is eligible for extraction
+            if not getattr(session, "human_role", None):
                 continue
             last_activity = getattr(session, "last_activity", None)
             if not last_activity:
@@ -168,7 +174,7 @@ class HelpDeskSessionReviewJob(Job):
     ) -> None:
         """Extract personal memories from transcript and save with identity scope.
 
-        Personal memories capture customer-specific information: preferences,
+        Personal memories capture user-specific information: preferences,
         communication style, history, and relationship context.
         """
         # TODO: Use AI agent to analyse transcript and extract personal memories.
@@ -194,7 +200,7 @@ class HelpDeskSessionReviewJob(Job):
         """Extract business memories from transcript and save at project scope.
 
         Business memories capture product feedback, feature requests, common
-        pain points, and domain knowledge shared by customers.
+        pain points, and domain knowledge shared by users.
         """
         # TODO: Use AI agent to analyse transcript and extract business memories.
         # Save via MemoryStore WITHOUT identity_key (project-scoped):
@@ -248,4 +254,4 @@ class HelpDeskSessionReviewJob(Job):
 
 
 # Job instance for discovery by runner
-JOB = HelpDeskSessionReviewJob()
+JOB = SessionMemoryExtractionJob()
