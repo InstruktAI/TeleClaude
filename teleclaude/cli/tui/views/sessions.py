@@ -29,7 +29,7 @@ from teleclaude.cli.models import ComputerInfo as ApiComputerInfo
 from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
-from teleclaude.cli.tui.state import DocStickyInfo, Intent, IntentType, PreviewState, TuiState
+from teleclaude.cli.tui.state import Intent, IntentType, PreviewState, TuiState
 from teleclaude.cli.tui.state_store import load_sticky_state, save_sticky_state
 from teleclaude.cli.tui.theme import (
     AGENT_COLORS,
@@ -353,10 +353,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     def _selection_method(self, value: str) -> None:
         self.state.sessions.selection_method = value
 
-    @property
-    def _prep_sticky_previews(self) -> list[DocStickyInfo]:
-        return self.state.preparation.sticky_previews
-
     async def refresh(
         self,
         computers: list[ApiComputerInfo],
@@ -378,7 +374,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         )
 
         previous_selection = self._get_selected_key()
-        last_summary_before = dict(self.state.sessions.last_summary)
+        last_output_summary_before = dict(self.state.sessions.last_output_summary)
 
         # Store sessions for child lookup
         self._sessions = sessions
@@ -392,9 +388,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         for session in sessions:
             summary = (session.last_output_summary or "").strip()
             if summary:
-                self.state.sessions.last_summary[session.session_id] = summary
+                self.state.sessions.last_output_summary[session.session_id] = summary
 
-        if self.state.sessions.last_summary != last_summary_before:
+        if self.state.sessions.last_output_summary != last_output_summary_before:
             save_sticky_state(self.state)
         # Store computers for SSH connection lookup
         self._computers = computers
@@ -460,11 +456,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             else:
                 self._restore_selection(previous_selection)
         if self.pane_manager.is_available and not self._initial_layout_done:
-            has_expected_panes = bool(
-                self.sticky_sessions or self._preview or self._prep_sticky_previews or self.state.preparation.preview
-            )
+            has_expected_panes = bool(self.sticky_sessions or self._preview or self.state.preparation.preview)
             panes_missing = False
-            if self.sticky_sessions or self._prep_sticky_previews:
+            if self.sticky_sessions:
                 if not self.pane_manager.state.sticky_pane_ids:
                     panes_missing = True
             if self._preview or self.state.preparation.preview:
@@ -1104,7 +1098,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 existing_idx = i
                 break
 
-        if existing_idx is None and (len(self.sticky_sessions) + len(self._prep_sticky_previews)) >= 5:
+        if existing_idx is None and len(self.sticky_sessions) >= 5:
             if self.notify:
                 self.notify("Maximum 5 sticky sessions", NotificationLevel.WARNING)
             logger.warning("Cannot add sticky session %s: maximum 5 reached", session_id[:8])
@@ -1971,14 +1965,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Line 4: Last output — driven by activity events, not session record.
         # Rule: once the session has had activity, this row must ALWAYS be present.
         # It can only be updated, never removed.
-        last_output = self.state.sessions.last_summary.get(session_id, "")
+        last_output = self.state.sessions.last_output_summary.get(session_id, "")
         has_input_highlight = session_id in self.state.sessions.input_highlights
         has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
         has_output_highlight = session_id in self.state.sessions.output_highlights
         has_activity = session_id in self.state.sessions.last_activity_at
         event_activity_at = self.state.sessions.last_activity_at.get(session_id)
         activity_time = _format_time(event_activity_at or session.last_activity)
-        summary_at = self.state.sessions.last_summary_at.get(session_id) or session.last_output_summary_at
+        summary_at = self.state.sessions.last_output_summary_at.get(session_id) or session.last_output_summary_at
         output_time = _format_time(summary_at) if summary_at else activity_time
         if has_temp_output_highlight:
             tool_preview = self.state.sessions.active_tool.get(session_id)
@@ -2345,11 +2339,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             line3 = f"{detail_indent}[{input_time}]  in: {input_text}"
             details.append(_SessionDetailModel(line3, input_attr))
 
-        last_output = self.state.sessions.last_summary.get(session_id, "")
+        last_output = self.state.sessions.last_output_summary.get(session_id, "")
         has_activity = session_id in self.state.sessions.last_activity_at
         event_activity_at = self.state.sessions.last_activity_at.get(session_id)
         activity_time = _format_time(event_activity_at or session.last_activity)
-        summary_at = self.state.sessions.last_summary_at.get(session_id) or session.last_output_summary_at
+        summary_at = self.state.sessions.last_output_summary_at.get(session_id) or session.last_output_summary_at
         output_time = _format_time(summary_at) if summary_at else activity_time
         if has_temp_output_highlight:
             italic_attr = getattr(curses, "A_ITALIC", 0)

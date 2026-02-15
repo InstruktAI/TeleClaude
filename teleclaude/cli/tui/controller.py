@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.models import SessionInfo
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
-from teleclaude.cli.tui.state import DocPreviewState, DocStickyInfo, Intent, IntentType, TuiState, reduce_state
+from teleclaude.cli.tui.state import DocPreviewState, Intent, IntentType, TuiState, reduce_state
 from teleclaude.cli.tui.state_store import save_sticky_state
 
 logger = get_logger(__name__)
@@ -26,7 +26,6 @@ class LayoutState:
     active_session_id: str | None
     sticky_session_ids: list[str]
     active_doc_preview: DocPreviewState | None
-    sticky_doc_previews: list[DocStickyInfo]
     selected_session_id: str | None
     tree_node_has_focus: bool
 
@@ -57,13 +56,11 @@ class TuiController:
         sticky_key = tuple(s.session_id for s in self.state.sessions.sticky_sessions)
         prep_preview = self.state.preparation.preview
         prep_preview_key = (prep_preview.doc_id, prep_preview.command, prep_preview.title) if prep_preview else None
-        prep_sticky_key = tuple((d.doc_id, d.command, d.title) for d in self.state.preparation.sticky_previews)
-        return (preview_key, sticky_key, prep_preview_key, prep_sticky_key)
+        return (preview_key, sticky_key, prep_preview_key)
 
     def _sticky_inputs(self) -> tuple[object, ...]:
         sticky_key = tuple(s.session_id for s in self.state.sessions.sticky_sessions)
-        prep_sticky_key = tuple((d.doc_id, d.command, d.title) for d in self.state.preparation.sticky_previews)
-        return (sticky_key, prep_sticky_key)
+        return (sticky_key,)
 
     def dispatch(self, intent: Intent, *, defer_layout: bool = False) -> None:
         """Apply intent to state and update layout if needed."""
@@ -75,7 +72,6 @@ class TuiController:
             IntentType.TOGGLE_STICKY,
             IntentType.SET_PREP_PREVIEW,
             IntentType.CLEAR_PREP_PREVIEW,
-            IntentType.TOGGLE_PREP_STICKY,
         }
         before_layout = self._layout_inputs() if intent.type in layout_intents else None
         before_sticky = self._sticky_inputs() if intent.type in layout_intents else None
@@ -112,7 +108,6 @@ class TuiController:
             sticky_session_ids=layout.sticky_session_ids,
             get_computer_info=self._get_computer_info,
             active_doc_preview=layout.active_doc_preview,
-            sticky_doc_previews=layout.sticky_doc_previews,
             selected_session_id=layout.selected_session_id,
             tree_node_has_focus=layout.tree_node_has_focus,
             focus=focus,
@@ -131,14 +126,12 @@ class TuiController:
         active_session_id = preview.session_id if preview else None
         sticky_session_ids = [s.session_id for s in self.state.sessions.sticky_sessions]
         active_doc_preview = self.state.preparation.preview
-        sticky_doc_previews = list(self.state.preparation.sticky_previews)
         selection_method = self.state.sessions.selection_method
         tree_node_has_focus = selection_method in ("arrow", "click")
         return LayoutState(
             active_session_id=active_session_id,
             sticky_session_ids=sticky_session_ids,
             active_doc_preview=active_doc_preview,
-            sticky_doc_previews=sticky_doc_previews,
             selected_session_id=self.state.sessions.selected_session_id,
             tree_node_has_focus=tree_node_has_focus,
         )

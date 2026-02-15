@@ -7,7 +7,7 @@ import os
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.tui.state import DocStickyInfo, PreviewState, TuiState
+from teleclaude.cli.tui.state import PreviewState, TuiState
 from teleclaude.cli.tui.types import StickySessionInfo
 from teleclaude.paths import TUI_STATE_PATH
 
@@ -27,15 +27,6 @@ def load_sticky_state(state: TuiState) -> None:
         sticky_data = data.get("sticky_sessions", [])
         state.sessions.sticky_sessions = [StickySessionInfo(session_id=item["session_id"]) for item in sticky_data]
 
-        sticky_docs = data.get("sticky_docs", [])
-        state.preparation.sticky_previews = [
-            DocStickyInfo(
-                doc_id=item["doc_id"],
-                command=item["command"],
-                title=item.get("title", ""),
-            )
-            for item in sticky_docs
-        ]
         expanded_todos = data.get("expanded_todos", [])
         if isinstance(expanded_todos, list):
             state.preparation.expanded_todos = set(str(item) for item in expanded_todos)
@@ -48,11 +39,11 @@ def load_sticky_state(state: TuiState) -> None:
         if isinstance(output_highlights, list):
             state.sessions.output_highlights = set(str(item) for item in output_highlights)
 
-        last_summary = data.get("last_summary", {})
-        if isinstance(last_summary, dict):
-            state.sessions.last_summary = {
+        last_output_summary = data.get("last_output_summary", {})
+        if isinstance(last_output_summary, dict):
+            state.sessions.last_output_summary = {
                 str(session_id): str(summary)
-                for session_id, summary in last_summary.items()
+                for session_id, summary in last_output_summary.items()
                 if isinstance(session_id, str) and isinstance(summary, str)
             }
 
@@ -65,19 +56,17 @@ def load_sticky_state(state: TuiState) -> None:
             state.sessions.preview = PreviewState(session_id=preview_data["session_id"])
 
         logger.info(
-            "Loaded TUI state: %d sticky, %d docs, %d in_hl, %d out_hl, %d summaries, %d collapsed, preview=%s",
+            "Loaded TUI state: %d sticky, %d in_hl, %d out_hl, %d summaries, %d collapsed, preview=%s",
             len(state.sessions.sticky_sessions),
-            len(state.preparation.sticky_previews),
             len(state.sessions.input_highlights),
             len(state.sessions.output_highlights),
-            len(state.sessions.last_summary),
+            len(state.sessions.last_output_summary),
             len(state.sessions.collapsed_sessions),
             state.sessions.preview.session_id[:8] if state.sessions.preview else None,
         )
     except (json.JSONDecodeError, KeyError, TypeError, OSError) as e:
         logger.warning("Failed to load TUI state from %s: %s", TUI_STATE_PATH, e)
         state.sessions.sticky_sessions = []
-        state.preparation.sticky_previews = []
 
 
 def save_sticky_state(state: TuiState) -> None:
@@ -91,13 +80,10 @@ def save_sticky_state(state: TuiState) -> None:
         preview = state.sessions.preview
         state_data = {
             "sticky_sessions": [{"session_id": s.session_id} for s in state.sessions.sticky_sessions],
-            "sticky_docs": [
-                {"doc_id": d.doc_id, "command": d.command, "title": d.title} for d in state.preparation.sticky_previews
-            ],
             "expanded_todos": sorted(state.preparation.expanded_todos),
             "input_highlights": sorted(state.sessions.input_highlights),
             "output_highlights": sorted(state.sessions.output_highlights),
-            "last_summary": dict(sorted(state.sessions.last_summary.items())),
+            "last_output_summary": dict(sorted(state.sessions.last_output_summary.items())),
             "collapsed_sessions": sorted(state.sessions.collapsed_sessions),
             "preview": {"session_id": preview.session_id} if preview else None,
         }
@@ -128,9 +114,8 @@ def save_sticky_state(state: TuiState) -> None:
             return  # Skip write rather than risk corruption
 
         logger.debug(
-            "Saved %d sticky sessions, %d sticky docs, %d expanded todos to %s",
+            "Saved %d sticky sessions, %d expanded todos to %s",
             len(state.sessions.sticky_sessions),
-            len(state.preparation.sticky_previews),
             len(state.preparation.expanded_todos),
             TUI_STATE_PATH,
         )

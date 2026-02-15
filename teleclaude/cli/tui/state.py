@@ -33,15 +33,6 @@ class DocPreviewState:
     title: str
 
 
-@dataclass(frozen=True)
-class DocStickyInfo:
-    """Sticky document preview entry."""
-
-    doc_id: str
-    command: str
-    title: str
-
-
 @dataclass
 class SessionViewState:
     """State for Sessions view."""
@@ -61,8 +52,8 @@ class SessionViewState:
     temp_output_highlights: set[str] = field(default_factory=set)  # For streaming safety timer
     active_tool: dict[str, str] = field(default_factory=dict)  # session_id -> tool preview text
     activity_timer_reset: set[str] = field(default_factory=set)  # Sessions needing timer reset
-    last_summary: dict[str, str] = field(default_factory=dict)  # session_id -> output summary from agent_stop
-    last_summary_at: dict[str, str] = field(default_factory=dict)  # session_id -> ISO timestamp of last summary
+    last_output_summary: dict[str, str] = field(default_factory=dict)  # session_id -> output summary from agent_stop
+    last_output_summary_at: dict[str, str] = field(default_factory=dict)  # session_id -> ISO timestamp of last summary
     last_activity_at: dict[str, str] = field(
         default_factory=dict
     )  # session_id -> ISO timestamp of latest activity event
@@ -77,7 +68,6 @@ class PreparationViewState:
     expanded_todos: set[str] = field(default_factory=set)
     file_pane_id: str | None = None
     preview: DocPreviewState | None = None
-    sticky_previews: list[DocStickyInfo] = field(default_factory=list)
 
 
 @dataclass
@@ -96,7 +86,6 @@ class IntentType(str, Enum):
     TOGGLE_STICKY = "toggle_sticky"
     SET_PREP_PREVIEW = "set_prep_preview"
     CLEAR_PREP_PREVIEW = "clear_prep_preview"
-    TOGGLE_PREP_STICKY = "toggle_prep_sticky"
     COLLAPSE_SESSION = "collapse_session"
     EXPAND_SESSION = "expand_session"
     EXPAND_ALL_SESSIONS = "expand_all_sessions"
@@ -152,7 +141,7 @@ MAX_STICKY_PANES = 5
 
 
 def _sticky_count(state: TuiState) -> int:
-    return len(state.sessions.sticky_sessions) + len(state.preparation.sticky_previews)
+    return len(state.sessions.sticky_sessions)
 
 
 def _preserve_output_highlight_on_select(active_agent: str | None) -> bool:
@@ -218,27 +207,6 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
 
     if t is IntentType.CLEAR_PREP_PREVIEW:
         state.preparation.preview = None
-        return
-
-    if t is IntentType.TOGGLE_PREP_STICKY:
-        doc_id = p.get("doc_id")
-        command = p.get("command")
-        title = p.get("title") or ""
-        if not doc_id or not command:
-            return
-        existing_idx = None
-        for idx, sticky in enumerate(state.preparation.sticky_previews):
-            if sticky.doc_id == doc_id:
-                existing_idx = idx
-                break
-        if existing_idx is not None:
-            state.preparation.sticky_previews.pop(existing_idx)
-        else:
-            if _sticky_count(state) >= MAX_STICKY_PANES:
-                return
-            state.preparation.sticky_previews.append(DocStickyInfo(doc_id, command, title))
-            if state.preparation.preview and state.preparation.preview.doc_id == doc_id:
-                state.preparation.preview = None
         return
 
     if t is IntentType.COLLAPSE_SESSION:
@@ -404,10 +372,10 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.output_highlights.add(session_id)
             summary = p.get("summary")
             if isinstance(summary, str) and summary:
-                state.sessions.last_summary[session_id] = summary
+                state.sessions.last_output_summary[session_id] = summary
             timestamp = p.get("timestamp")
             if isinstance(timestamp, str) and timestamp:
-                state.sessions.last_summary_at[session_id] = timestamp
+                state.sessions.last_output_summary_at[session_id] = timestamp
             logger.debug("output_highlight ADDED for %s (event=agent_stop)", session_id[:8])
         return
 
@@ -440,13 +408,13 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         state.sessions.output_highlights.intersection_update(session_ids)
         state.sessions.temp_output_highlights.intersection_update(session_ids)
         state.sessions.activity_timer_reset.intersection_update(session_ids)
-        # Prune last_summary for removed sessions
-        stale_summaries = set(state.sessions.last_summary) - session_ids
+        # Prune last_output_summary for removed sessions
+        stale_summaries = set(state.sessions.last_output_summary) - session_ids
         for sid in stale_summaries:
-            del state.sessions.last_summary[sid]
-        stale_timestamps = set(state.sessions.last_summary_at) - session_ids
+            del state.sessions.last_output_summary[sid]
+        stale_timestamps = set(state.sessions.last_output_summary_at) - session_ids
         for sid in stale_timestamps:
-            del state.sessions.last_summary_at[sid]
+            del state.sessions.last_output_summary_at[sid]
         stale_activity = set(state.sessions.last_activity_at) - session_ids
         for sid in stale_activity:
             del state.sessions.last_activity_at[sid]

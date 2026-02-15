@@ -14,7 +14,7 @@ from teleclaude.config import config
 
 if TYPE_CHECKING:
     from teleclaude.cli.models import SessionInfo
-    from teleclaude.cli.tui.state import DocPreviewState, DocStickyInfo
+    from teleclaude.cli.tui.state import DocPreviewState
 
 logger = get_logger(__name__)
 
@@ -140,7 +140,7 @@ class TmuxPaneManager:
         sticky_session_ids: list[str],
         get_computer_info: Callable[[str], ComputerInfo | None],
         active_doc_preview: "DocPreviewState | None" = None,
-        sticky_doc_previews: list["DocStickyInfo"] | None = None,
+        sticky_doc_previews: list[object] | None = None,
         selected_session_id: str | None = None,
         tree_node_has_focus: bool = False,
         focus: bool = True,
@@ -148,7 +148,6 @@ class TmuxPaneManager:
         """Apply a deterministic layout from session ids."""
         if not self._in_tmux:
             return
-        sticky_doc_previews = sticky_doc_previews or []
         self._selected_session_id = selected_session_id
         self._tree_node_has_focus = tree_node_has_focus
 
@@ -169,18 +168,6 @@ class TmuxPaneManager:
                     active_agent=session.active_agent,
                 )
             )
-        for doc in sticky_doc_previews:
-            sticky_specs.append(
-                SessionPaneSpec(
-                    session_id=f"doc:{doc.doc_id}",
-                    tmux_session_name=None,
-                    computer_info=None,
-                    is_sticky=True,
-                    active_agent="",
-                    command=doc.command,
-                )
-            )
-
         active_spec: SessionPaneSpec | None = None
         if active_session_id:
             session = self._session_catalog.get(active_session_id)

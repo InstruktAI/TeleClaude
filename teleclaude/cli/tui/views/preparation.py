@@ -31,7 +31,7 @@ from teleclaude.cli.models import (
 from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
-from teleclaude.cli.tui.state import DocPreviewState, DocStickyInfo, Intent, IntentType, TuiState
+from teleclaude.cli.tui.state import DocPreviewState, Intent, IntentType, TuiState
 from teleclaude.cli.tui.state_store import save_sticky_state
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import (
@@ -151,8 +151,7 @@ class _PrepInputKind(str, Enum):
 
     NONE = "none"
     PREVIEW = "preview"
-    TOGGLE_STICKY = "toggle_sticky"
-    CLEAR_STICKY_PREVIEW = "clear_sticky_preview"
+    ACTIVATE = "activate"
 
 
 @dataclass(frozen=True)
@@ -162,6 +161,7 @@ class _PrepInputIntent:
     item: "PrepFileNode"
     kind: _PrepInputKind
     now: float
+    request_focus: bool = False
 
 
 class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
@@ -252,10 +252,6 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
     @_preview.setter
     def _preview(self, value: DocPreviewState | None) -> None:
         self.state.preparation.preview = value
-
-    @property
-    def _sticky_previews(self) -> list[DocStickyInfo]:
-        return self.state.preparation.sticky_previews
 
     async def refresh(
         self,
@@ -501,11 +497,6 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         """Build a stable absolute identifier for a doc file row."""
         return os.path.join(item.project_path, "todos", item.slug, item.filename)
 
-    def _is_sticky_file(self, item: PrepFileDisplayInfo) -> bool:
-        """Return true if a file row already has a sticky doc preview."""
-        filepath = self._doc_file_id(item)
-        return any(sticky.doc_id == filepath for sticky in self._sticky_previews)
-
     def _is_todo_expanded(self, todo: PrepTodoDisplayInfo) -> bool:
         """Return true if todo is expanded; support legacy slug-only IDs."""
         todo_id = self._todo_node_id_from_display(todo)
@@ -633,11 +624,10 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
     ) -> _PrepInputIntent:
         """Build a normalized preview intent for file interactions."""
         file_id = self._doc_file_id(selected.data)
-        is_sticky = self._is_sticky_file(selected.data)
         decision: TreeInteractionDecision = self._preview_interaction_state.decide_preview_action(
             file_id,
             now,
-            is_sticky=is_sticky,
+            is_sticky=False,
             allow_sticky_toggle=allow_sticky_toggle,
         )
 
@@ -645,10 +635,15 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             return _PrepInputIntent(selected, _PrepInputKind.NONE, now=now)
 
         if decision.action == TreeInteractionAction.TOGGLE_STICKY:
-            return _PrepInputIntent(selected, _PrepInputKind.TOGGLE_STICKY, now=now)
+            return _PrepInputIntent(
+                selected,
+                _PrepInputKind.ACTIVATE,
+                now=now,
+                request_focus=True,
+            )
 
         if decision.action == TreeInteractionAction.CLEAR_STICKY_PREVIEW:
-            return _PrepInputIntent(selected, _PrepInputKind.CLEAR_STICKY_PREVIEW, now=now)
+            return _PrepInputIntent(selected, _PrepInputKind.PREVIEW, now=now)
 
         return _PrepInputIntent(selected, _PrepInputKind.PREVIEW, now=now)
 
@@ -657,17 +652,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         return self._build_preview_interaction(selected, now=now, allow_sticky_toggle=False)
 
     def _build_space_preview_interaction(self, selected: PrepFileNode, *, now: float) -> _PrepInputIntent:
-        """Build space-preview intent (single preview, second space toggles sticky)."""
+        """Build space-preview intent (single preview, double space activates)."""
         return self._build_preview_interaction(selected, now=now, allow_sticky_toggle=True)
-
-    def _build_sticky_toggle_interaction(
-        self,
-        selected: PrepFileNode,
-        *,
-        now: float,
-    ) -> _PrepInputIntent:
-        """Build sticky toggle interaction intent."""
-        return _PrepInputIntent(selected, _PrepInputKind.TOGGLE_STICKY, now=now)
 
     def _handle_prep_interaction(self, interaction: _PrepInputIntent) -> None:
         """Resolve normalized interaction intent for selected file row."""
@@ -675,27 +661,11 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             return
 
         selected = interaction.item
-        filepath = self._doc_file_id(selected.data)
-
-        if interaction.kind == _PrepInputKind.CLEAR_STICKY_PREVIEW:
-            if self._preview:
-                self.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW))
-            self.pane_manager.focus_pane_for_session(f"doc:{filepath}")
+        if interaction.kind == _PrepInputKind.ACTIVATE:
+            self._open_doc_preview(selected.data, request_focus=True)
             return
 
-        if interaction.kind == _PrepInputKind.TOGGLE_STICKY:
-            was_sticky = self._is_sticky_file(selected.data)
-            self._toggle_doc_sticky(selected.data)
-            self._preview_interaction_state.mark_double_press_guard(filepath, interaction.now)
-            is_sticky = self._is_sticky_file(selected.data)
-            if not was_sticky and is_sticky:
-                self._open_doc_preview(selected.data)
-            elif was_sticky and not is_sticky and self._preview and self._preview.doc_id == filepath:
-                self.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW))
-            return
-
-        # PREVIEW
-        self._open_doc_preview(selected.data)
+        self._open_doc_preview(selected.data, request_focus=False)
 
     def get_action_bar(self) -> str:
         """Return action bar string.
@@ -862,7 +832,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         elif _is_file_node(item):
             # Enter on file = view if exists
             if item.data.exists:
-                self._view_file(item.data, stdscr)
+                self._view_file(item.data, stdscr, request_focus=True)
 
     def _get_selected(self) -> PrepTreeNode | None:
         """Get currently selected item."""
@@ -1018,13 +988,16 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         viewer = "glow -p" if shutil.which("glow") else "less"
         return f"{viewer} {shlex.quote(filepath)}"
 
-    def _open_doc_preview(self, item: PrepFileDisplayInfo) -> None:
+    def _open_doc_preview(self, item: PrepFileDisplayInfo, *, request_focus: bool = False) -> None:
         filepath = os.path.join(
             item.project_path,
             "todos",
             item.slug,
             item.filename,
         )
+        if not os.environ.get("TMUX"):
+            return
+
         cmd = self._build_view_command(filepath)
         if self._preview and self._preview.doc_id != filepath:
             self.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW))
@@ -1038,41 +1011,16 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                 },
             )
         )
+        if request_focus:
+            self.controller.apply_layout(focus=True)
 
-    def _toggle_doc_sticky(self, item: PrepFileDisplayInfo) -> None:
-        filepath = os.path.join(
-            item.project_path,
-            "todos",
-            item.slug,
-            item.filename,
-        )
-        existing = any(sticky.doc_id == filepath for sticky in self._sticky_previews)
-        combined = len(self._sticky_previews) + len(self.state.sessions.sticky_sessions)
-        if not existing and combined >= 5:
-            if self.notify:
-                self.notify("Maximum 5 sticky panes", NotificationLevel.WARNING)
-            logger.warning("Cannot add sticky doc preview: maximum 5 reached")
-            return
-
-        cmd = self._build_view_command(filepath)
-        self.controller.dispatch(
-            Intent(
-                IntentType.TOGGLE_PREP_STICKY,
-                {
-                    "doc_id": filepath,
-                    "command": cmd,
-                    "title": item.display_name,
-                },
-            )
-        )
-        save_sticky_state(self.state)
-
-    def _view_file(self, item: PrepFileDisplayInfo, stdscr: CursesWindow) -> None:
+    def _view_file(self, item: PrepFileDisplayInfo, stdscr: CursesWindow, *, request_focus: bool = False) -> None:
         """View a file in glow (or less as fallback) in a tmux split pane.
 
         Args:
             item: File data dict
             stdscr: Curses screen object for restoration (used when not in tmux)
+            request_focus: Whether to focus the doc preview pane
         """
         filepath = os.path.join(
             item.project_path,
@@ -1083,7 +1031,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
 
         # If in tmux, open in preview pane (layout-managed)
         if os.environ.get("TMUX"):
-            self._open_doc_preview(item)
+            self._open_doc_preview(item, request_focus=request_focus)
             return
 
         # Fallback: take over terminal if not in tmux
@@ -1170,7 +1118,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                 return
             if key == ord("v") and item.data.exists:
                 logger.debug("handle_key: viewing file")
-                self._view_file(item.data, stdscr)
+                self._view_file(item.data, stdscr, request_focus=False)
             elif key == ord("e"):
                 logger.debug("handle_key: editing file")
                 self._edit_file(item.data, stdscr)
@@ -1200,9 +1148,11 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             if _is_file_node(item) and item.data.exists:
                 if is_double_click:
                     self._handle_prep_interaction(
-                        self._build_sticky_toggle_interaction(
+                        _PrepInputIntent(
                             item,
+                            _PrepInputKind.ACTIVATE,
                             now=time.perf_counter(),
+                            request_focus=True,
                         )
                     )
                 else:
@@ -1581,7 +1531,6 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         indent = "  " * item.depth
         display_name = item.data.display_name
         exists = item.data.exists
-        filepath = os.path.join(item.data.project_path, "todos", item.data.slug, item.data.filename)
 
         # Dimmed if file doesn't exist, normal otherwise
         if selected:
@@ -1591,18 +1540,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         else:
             attr = 0
 
-        sticky_position = None
-        for i, sticky in enumerate(self._sticky_previews):
-            if sticky.doc_id == filepath:
-                sticky_position = i + 1
-                break
-
-        if sticky_position is not None:
-            idx_text = f"[{sticky_position}]"
-            idx_attr = curses.A_REVERSE | curses.A_BOLD
-        else:
-            idx_text = f"{index}."
-            idx_attr = attr
+        idx_text = f"{index}."
+        idx_attr = attr
 
         try:
             col = 0

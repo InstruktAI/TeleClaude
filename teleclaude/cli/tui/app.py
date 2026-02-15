@@ -1111,14 +1111,13 @@ class TelecApp:
         total_panes = 1  # TUI pane
         banner_panes = 1  # TUI pane + sticky panes only (stable across previews)
         sticky_session_ids = [s.session_id for s in self.state.sessions.sticky_sessions]
-        sticky_doc_ids = [s.doc_id for s in self.state.preparation.sticky_previews]
-        total_sticky = len(sticky_session_ids) + len(sticky_doc_ids)
+        total_sticky = len(sticky_session_ids)
         total_panes += total_sticky
         banner_panes += total_sticky
 
         if self.state.sessions.preview and self.state.sessions.preview.session_id not in sticky_session_ids:
             total_panes += 1
-        elif self.state.preparation.preview and self.state.preparation.preview.doc_id not in sticky_doc_ids:
+        elif self.state.preparation.preview:
             total_panes += 1
 
         # Hide banner for 4 or 6 panes (optimizes vertical space for grid layouts)
