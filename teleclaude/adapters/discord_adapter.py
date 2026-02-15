@@ -21,6 +21,8 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import CreateSessionCommand, ProcessMessageCommand
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session
     from teleclaude.core.task_registry import TaskRegistry
@@ -346,12 +348,24 @@ class DiscordAdapter(UiAdapter):
         if not isinstance(text, str) or not text.strip():
             return
 
+        # Check if this message is in a relay thread (escalation forum)
+        channel = getattr(message, "channel", None)
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
+        if parent_id and parent_id == config.discord.escalation_channel_id:
+            await self._handle_relay_thread_message(message, text)
+            return
+
         try:
             session = await self._resolve_or_create_session(message)
         except Exception as exc:
             logger.error("Discord session resolution failed: %s", exc, exc_info=True)
             return
         if not session:
+            return
+
+        # Relay mode: divert customer messages to the relay thread instead of the AI session
+        if session.relay_status == "active" and session.relay_discord_channel_id:
+            await self._forward_to_relay_thread(session, text, message)
             return
 
         message_id = str(getattr(message, "id", ""))
@@ -554,12 +568,14 @@ class DiscordAdapter(UiAdapter):
                 logger.debug("Discord fetch_channel(%s) failed: %s", channel_id, exc)
         return None
 
-    async def _create_forum_thread(self, forum_channel: object, *, title: str) -> int:
+    async def _create_forum_thread(
+        self, forum_channel: object, *, title: str, content: str = "Initializing Help Desk session..."
+    ) -> int:
         create_thread_fn = self._require_async_callable(
             getattr(forum_channel, "create_thread", None), label="Discord forum create_thread"
         )
 
-        result = await create_thread_fn(name=title, content="Initializing Help Desk session...")
+        result = await create_thread_fn(name=title, content=content)
         thread = getattr(result, "thread", None)
         if thread is None and isinstance(result, tuple) and result:
             thread = result[0]
@@ -571,6 +587,174 @@ class DiscordAdapter(UiAdapter):
             raise AdapterError("Discord create_thread() returned invalid thread id")
         return thread_id
 
+    async def create_escalation_thread(
+        self,
+        *,
+        customer_name: str,
+        reason: str,
+        context_summary: str | None,
+        session_id: str,
+    ) -> int:
+        """Create a thread in the escalation forum channel for admin relay."""
+        escalation_channel_id = config.discord.escalation_channel_id
+        if not escalation_channel_id:
+            raise AdapterError("escalation_channel_id not configured")
+
+        forum = await self._get_channel(escalation_channel_id)
+        if forum is None:
+            raise AdapterError(f"Escalation channel {escalation_channel_id} not found")
+        if not self._is_forum_channel(forum):
+            raise AdapterError(f"Escalation channel {escalation_channel_id} is not a Forum Channel")
+
+        body = f"**Reason:** {reason}"
+        if context_summary:
+            body += f"\n\n**Context:** {context_summary}"
+        body += f"\n\n*Session: {session_id}*"
+
+        return await self._create_forum_thread(forum, title=customer_name, content=body)
+
     @staticmethod
     def _is_forum_channel(channel: object) -> bool:
         return "forum" in type(channel).__name__.lower()
+
+    # =========================================================================
+    # Relay Methods
+    # =========================================================================
+
+    async def _forward_to_relay_thread(self, session: "Session", text: str, message: object) -> None:
+        """Forward a customer message to the relay Discord thread (relay diversion)."""
+        relay_channel_id = session.relay_discord_channel_id
+        if not relay_channel_id:
+            return
+        try:
+            thread = await self._get_channel(int(relay_channel_id))
+            if thread is None:
+                logger.error("Relay thread %s not found", relay_channel_id)
+                return
+
+            author = getattr(message, "author", None)
+            name = getattr(author, "display_name", None) or "Customer"
+            origin = session.last_input_origin or "discord"
+
+            send_fn = self._require_async_callable(getattr(thread, "send", None), label="relay thread send")
+            await send_fn(f"**{name}** ({origin}): {text}")
+        except Exception:  # noqa: BLE001 - best-effort relay forwarding
+            logger.warning("Failed to forward message to relay thread %s", relay_channel_id)
+
+    async def _handle_relay_thread_message(self, message: object, text: str) -> None:
+        """Handle an admin message in a relay thread — forward to customer or handback."""
+        channel = getattr(message, "channel", None)
+        thread_id = str(getattr(channel, "id", ""))
+
+        session = await db.get_session_by_field("relay_discord_channel_id", thread_id)
+        if not session:
+            return  # Orphaned thread or relay already closed
+
+        if self._is_agent_tag(text):
+            await self._handle_agent_handback(session, text, thread_id)
+            return
+
+        # Forward admin message to customer via their originating adapter
+        author = getattr(message, "author", None)
+        admin_name = getattr(author, "display_name", None) or "Admin"
+        await self._deliver_to_customer(session, f"{admin_name}: {text}")
+
+    async def _deliver_to_customer(self, session: "Session", text: str) -> None:
+        """Deliver a message to the customer via all UI adapters."""
+        from teleclaude.core.models import MessageMetadata
+
+        metadata = MessageMetadata()
+        try:
+            await self.client.send_message(session=session, text=text, metadata=metadata, ephemeral=False)
+        except Exception:  # noqa: BLE001 - best-effort delivery
+            logger.warning("Failed to deliver relay message to customer session %s", session.session_id[:8])
+
+    def _is_agent_tag(self, text: str) -> bool:
+        """Check if a message contains an @agent handback tag."""
+        if "@agent" in text.lower():
+            return True
+        if self._client and getattr(self._client, "user", None):
+            bot_id = getattr(getattr(self._client, "user", None), "id", None)
+            if bot_id and f"<@{bot_id}>" in text:
+                return True
+        return False
+
+    async def _handle_agent_handback(self, session: "Session", _text: str, thread_id: str) -> None:
+        """Collect relay messages and inject context back into the AI session."""
+        messages = await self._collect_relay_messages(thread_id, session.relay_started_at)
+        context_block = self._compile_relay_context(messages)
+
+        # Inject context into the AI session's tmux
+        from teleclaude.core.tmux_bridge import send_keys_existing_tmux
+
+        await send_keys_existing_tmux(session.tmux_session_name, context_block, send_enter=True)
+
+        # Clear relay state
+        await db.update_session(
+            session.session_id,
+            relay_status=None,
+            relay_discord_channel_id=None,
+            relay_started_at=None,
+        )
+
+        logger.info("Agent handback completed for session %s (thread %s)", session.session_id[:8], thread_id)
+
+    async def _collect_relay_messages(self, thread_id: str, since: "datetime | None") -> list[dict[str, str]]:
+        """Read all messages from a relay thread since the given timestamp."""
+        thread = await self._get_channel(int(thread_id))
+        if not thread:
+            return []
+
+        history_fn = getattr(thread, "history", None)
+        if not callable(history_fn):
+            return []
+
+        messages: list[dict[str, str]] = []
+        history_iter = cast(AsyncIterator[object], history_fn(after=since, limit=200))
+        async for msg in history_iter:
+            if self._is_bot_message(msg):
+                continue
+            author = getattr(msg, "author", None)
+            name = getattr(author, "display_name", None) or "Unknown"
+            is_admin = not getattr(author, "bot", False)
+            role = "Admin" if is_admin else "Customer"
+            messages.append(
+                {
+                    "role": role,
+                    "name": name,
+                    "content": getattr(msg, "content", ""),
+                }
+            )
+        return messages
+
+    @staticmethod
+    def _sanitize_relay_text(text: str) -> str:
+        """Strip control characters and ANSI escape sequences from relay text."""
+        import re
+
+        # Remove ANSI escape sequences
+        text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
+        # Remove other control characters (keep newlines and tabs)
+        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+        return text
+
+    @staticmethod
+    def _compile_relay_context(messages: list[dict[str, str]]) -> str:
+        """Compile relay messages into a context block for AI injection."""
+        lines = [
+            "[Admin Relay Conversation]",
+            "The admin spoke directly with the customer. Here is the full exchange:",
+            "",
+        ]
+        for msg in messages:
+            content = DiscordAdapter._sanitize_relay_text(msg["content"])
+            lines.append(f"{msg['role']} ({msg['name']}): {content}")
+
+        lines.extend(
+            [
+                "",
+                "The admin has handed the conversation back to you. Continue naturally,",
+                "acknowledging what was discussed.",
+            ]
+        )
+        return "\n".join(lines)

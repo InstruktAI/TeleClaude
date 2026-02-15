@@ -33,6 +33,10 @@ from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.state import DocPreviewState, Intent, IntentType, TuiState
 from teleclaude.cli.tui.state_store import save_sticky_state
+from teleclaude.cli.tui.theme import (
+    get_agent_preview_selected_bg_attr,
+    get_agent_preview_selected_focus_attr,
+)
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import (
     CursesWindow,
@@ -665,7 +669,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             self._open_doc_preview(selected.data, request_focus=True)
             return
 
-        self._open_doc_preview(selected.data, request_focus=False)
+        self._open_doc_preview(selected.data, request_focus=interaction.request_focus)
 
     def get_action_bar(self) -> str:
         """Return action bar string.
@@ -831,8 +835,26 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                 self.drill_down()
         elif _is_file_node(item):
             # Enter on file = view if exists
-            if item.data.exists:
-                self._view_file(item.data, stdscr, request_focus=True)
+            self._handle_prep_file_activation(item, stdscr)
+
+    def _handle_prep_file_activation(self, item: PrepFileNode, stdscr: CursesWindow) -> None:
+        """Open a file from preparation with activated/focus semantics."""
+        if not item.data.exists:
+            return
+
+        if os.environ.get("TMUX"):
+            self._handle_prep_interaction(
+                _PrepInputIntent(
+                    item,
+                    _PrepInputKind.ACTIVATE,
+                    now=time.perf_counter(),
+                    request_focus=True,
+                )
+            )
+            return
+
+        # Preserve current fallback behavior when not running under tmux.
+        self._view_file(item.data, stdscr, request_focus=True)
 
     def _get_selected(self) -> PrepTreeNode | None:
         """Get currently selected item."""
@@ -1532,13 +1554,28 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         display_name = item.data.display_name
         exists = item.data.exists
 
-        # Dimmed if file doesn't exist, normal otherwise
-        if selected:
-            attr = curses.A_REVERSE
-        elif not exists:
-            attr = curses.A_DIM
+        filepath = os.path.join(
+            item.data.project_path,  # type: ignore[attr-defined]
+            "todos",
+            item.data.slug,  # type: ignore[attr-defined]
+            item.data.filename,  # type: ignore[attr-defined]
+        )
+        is_previewed = bool(self._preview and self._preview.doc_id == filepath)
+
+        if is_previewed:
+            if selected:
+                attr = get_agent_preview_selected_focus_attr("codex")
+            else:
+                attr = get_agent_preview_selected_bg_attr("codex")
+        elif selected:
+            attr = get_agent_preview_selected_focus_attr("codex")
         else:
             attr = 0
+        if selected and not is_previewed:
+            attr |= curses.A_BOLD
+
+        if not exists:
+            attr |= curses.A_DIM
 
         idx_text = f"{index}."
         idx_attr = attr

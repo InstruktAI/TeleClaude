@@ -58,6 +58,12 @@ tools:
     description: 'Set agent dispatch status (available/unavailable/degraded).'
   teleclaude__mark_agent_unavailable:
     description: 'Mark an agent as temporarily unavailable (legacy alias for mark_agent_status).'
+  teleclaude__publish:
+    description: 'Publish a message to an internal Redis Stream channel.'
+  teleclaude__channels_list:
+    description: 'List configured internal channels and their subscriptions.'
+  teleclaude__escalate:
+    description: 'Escalate a customer session to an operator via Discord thread.'
 ```
 
 ## Constraints

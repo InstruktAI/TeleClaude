@@ -56,6 +56,11 @@ ui:
   animations_enabled: true # Enable banner/logo animations
   animations_periodic_interval: 60 # Seconds between periodic animations
   animations_subset: [] # Empty list = all animations. Specify names to filter (e.g., ["FullSpectrumCycle", "LetterWave"])
+  # Preview/pane theming modes:
+  #   - full: vivid terminal palette with explicit contrast fg and pane tinting (legacy behavior)
+  #   - semi: agent-aware tinted highlights while preserving native terminal foreground
+  #   - off: no forced foreground overrides; only muted/normal background gradients
+  pane_theming_mode: full
 
 # Speech-to-Text Configuration
 stt:

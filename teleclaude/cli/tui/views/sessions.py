@@ -2267,13 +2267,12 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         is_previewed = bool(self._preview and self._preview.session_id == session_id and not is_sticky)
         preview_title_attr = highlight_attr if is_previewed else header_attr
-        preview_bold_attr = curses.A_BOLD if is_previewed and not is_headless else 0
         if is_previewed:
             # Keep previewed rows visibly distinct even when not actively selected.
-            preview_title_attr = get_agent_preview_selected_bg_attr(agent) | curses.A_BOLD
+            preview_title_attr = get_agent_preview_selected_bg_attr(agent)
 
         if selected and is_previewed:
-            selected_focus_attr = get_agent_preview_selected_focus_attr(agent) | preview_bold_attr
+            selected_focus_attr = get_agent_preview_selected_focus_attr(agent)
         elif selected:
             selected_focus_attr = get_agent_preview_selected_focus_attr(agent) | curses.A_BOLD
         else:

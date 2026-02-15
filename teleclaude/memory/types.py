@@ -41,6 +41,7 @@ class ObservationInput:
     type: ObservationType = ObservationType.DISCOVERY
     concepts: list[str] = field(default_factory=list)
     facts: list[str] = field(default_factory=list)
+    identity_key: str | None = None
 
 
 @dataclass

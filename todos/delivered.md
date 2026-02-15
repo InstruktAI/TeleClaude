@@ -59,3 +59,4 @@
 | 2026-02-14 | release-lane-gemini             | Gemini release inspector lane using `@google/gemini-cli` in GitHub Actions.                                             | DELIVERED | 47b12c04                                 |
 | 2026-02-14 | release-arbiter                 | AI consensus arbiter for automated release authorization based on lane reports.                                         | DELIVERED | 02d8c212                                 |
 | 2026-02-15 | release-pipeline-simulation     | Deterministic CI simulation for release arbiter logic verification without live tokens.                                 | DELIVERED | 87f06fbc                                 |
+| 2026-02-15 | help-desk-platform              | Two-plane help desk: customer ingress, operator workspace, identity-scoped memory, escalation, relay, pub/sub channels  | DELIVERED | 7156e94a                                 |

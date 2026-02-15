@@ -111,6 +111,10 @@ class APIServer:
         from teleclaude.hooks.api_routes import router as hooks_router
 
         self.app.include_router(hooks_router)
+
+        from teleclaude.channels.api_routes import router as channels_router
+
+        self.app.include_router(channels_router)
         self.socket_path = socket_path or API_SOCKET_PATH
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None
@@ -792,7 +796,10 @@ class APIServer:
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
             state = self.runtime_settings.get_state()
-            return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))
+            return SettingsDTO(
+                tts=TTSSettingsDTO(enabled=state.tts.enabled),
+                pane_theming_mode=state.pane_theming_mode,
+            )
 
         @self.app.patch("/settings")
         async def patch_settings(body: dict[str, PatchBodyValue] = Body(...)) -> SettingsDTO:  # pyright: ignore
@@ -804,7 +811,10 @@ class APIServer:
             try:
                 typed_patch = RuntimeSettings.parse_patch(body)
                 state = self.runtime_settings.patch(typed_patch)
-                return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))
+                return SettingsDTO(
+                    tts=TTSSettingsDTO(enabled=state.tts.enabled),
+                    pane_theming_mode=state.pane_theming_mode,
+                )
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
 

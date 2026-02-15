@@ -55,6 +55,11 @@ class Session(SQLModel, table=True):
     lifecycle_status: Optional[str] = "active"
     human_email: Optional[str] = None
     human_role: Optional[str] = None
+    last_memory_extraction_at: Optional[str] = None
+    help_desk_processed_at: Optional[str] = None
+    relay_status: Optional[str] = None
+    relay_discord_channel_id: Optional[str] = None
+    relay_started_at: Optional[str] = None
 
 
 class VoiceAssignment(SQLModel, table=True):
@@ -164,6 +169,7 @@ class MemoryObservation(SQLModel, table=True):
     discovery_tokens: Optional[int] = 0
     created_at: str
     created_at_epoch: int
+    identity_key: Optional[str] = None
 
 
 class MemorySummary(SQLModel, table=True):

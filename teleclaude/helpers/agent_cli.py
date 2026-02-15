@@ -344,10 +344,9 @@ def _run_agent(
             cmd_parts.append(prompt)
 
     elif agent == AgentName.GEMINI:
-        if use_stdin:
-            if prompt_flag:
-                cmd_parts.extend(["-p", ""])
-        else:
+        # Gemini reads stdin natively; -p "" makes it ignore stdin.
+        # Only pass -p when using arg mode with actual content.
+        if not use_stdin:
             if prompt_flag:
                 cmd_parts.extend(["-p", prompt])
             else:

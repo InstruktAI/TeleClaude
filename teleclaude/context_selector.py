@@ -27,6 +27,7 @@ class SnippetMeta:
     snippet_type: str
     scope: str
     path: Path
+    audience: tuple[str, ...] = ("admin",)
 
 
 @dataclass(frozen=True)
@@ -234,6 +235,11 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
         path = Path(raw_path).expanduser()
         if not path.is_absolute():
             path = (root_path / path).resolve()
+        raw_audience = item.get("audience")
+        if isinstance(raw_audience, list) and all(isinstance(a, str) for a in raw_audience):
+            audience = tuple(raw_audience)
+        else:
+            audience = ("admin",)
         entries.append(
             SnippetMeta(
                 snippet_id=snippet_id,
@@ -241,6 +247,7 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
                 snippet_type=snippet_type,
                 scope=scope,
                 path=path,
+                audience=audience,
             )
         )
 
@@ -388,6 +395,7 @@ def build_context_output(
     baseline_only: bool = False,
     include_third_party: bool = False,
     domains: list[str] | None = None,
+    human_role: str | None = None,
     test_agent: str | None = None,
     test_mode: str | None = None,
     test_request: str | None = None,
@@ -429,7 +437,20 @@ def build_context_output(
     if not project_domain_roots:
         project_domain_roots = {d: project_root / "docs" for d in domain_config.keys()}
 
+    # Audience filtering based on human_role
+    if not human_role or human_role == "admin":
+        _allowed_audiences: set[str] | None = None  # see everything
+    elif human_role == "customer":
+        _allowed_audiences = {"public", "help-desk"}
+    elif human_role == "member":
+        _allowed_audiences = {"admin", "member", "help-desk", "public"}
+    else:
+        _allowed_audiences = None  # unknown role -> see everything
+
     def _include_snippet(snippet: SnippetMeta) -> bool:
+        if _allowed_audiences is not None:
+            if not any(a in _allowed_audiences for a in snippet.audience):
+                return False
         if global_snippets_root in snippet.path.parents:
             if snippet.snippet_id.startswith("general/"):
                 return True

@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shlex
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
@@ -998,6 +999,13 @@ class MCPHandlersMixin:
                 test_csv_path = str(
                     Path(effective_root).expanduser().resolve() / ".agents" / "tests" / "runs" / "get-context.csv"
                 )
+        # Resolve human_role for audience filtering
+        human_role: str | None = None
+        if caller_session_id:
+            caller_session = await db.get_session(caller_session_id)
+            if caller_session:
+                human_role = caller_session.human_role
+
         resolved_root = Path(effective_root)
         return build_context_output(
             areas=areas,
@@ -1006,6 +1014,7 @@ class MCPHandlersMixin:
             baseline_only=bool(baseline_only),
             include_third_party=bool(include_third_party),
             domains=domains,
+            human_role=human_role,
             test_agent=test_agent,
             test_mode=test_mode,
             test_request=test_request,
@@ -1158,6 +1167,99 @@ class MCPHandlersMixin:
     ) -> str:
         """Backward-compatible alias; use teleclaude__mark_agent_status."""
         return await self.teleclaude__mark_agent_status(agent, reason, unavailable_until, clear, status)
+
+    # =========================================================================
+    # Channel Tools
+    # =========================================================================
+
+    async def teleclaude__publish(
+        self,
+        channel: str,
+        payload: dict[str, object],  # guard: loose-dict - Channel payload is arbitrary user JSON
+    ) -> str:
+        """Publish a message to a Redis Stream channel."""
+        from teleclaude.channels.publisher import publish
+
+        transport = self._get_redis_transport()
+        if not transport:
+            return "Error: Redis transport not available"
+        redis_client = await transport._get_redis()
+        msg_id = await publish(redis_client, channel, payload)
+        return f"Published to {channel}: {msg_id}"
+
+    async def teleclaude__channels_list(self, project: str | None = None) -> Sequence[object]:
+        """List active internal Redis Stream channels."""
+        from teleclaude.channels.publisher import list_channels
+
+        transport = self._get_redis_transport()
+        if not transport:
+            return []
+        redis_client = await transport._get_redis()
+        return await list_channels(redis_client, project)
+
+    # =========================================================================
+    # Escalation
+    # =========================================================================
+
+    async def teleclaude__escalate(
+        self,
+        customer_name: str,
+        reason: str,
+        context_summary: str | None = None,
+        caller_session_id: str | None = None,
+    ) -> str:
+        """Escalate a customer conversation to an admin.
+
+        Creates a Discord thread in the escalation forum, notifies admins,
+        and activates relay mode on the calling session.
+        """
+        if not caller_session_id:
+            return "Error: Could not resolve calling session"
+
+        session = await db.get_session(caller_session_id)
+        if not session:
+            return f"Error: Session {caller_session_id[:8]} not found"
+
+        if session.human_role != "customer":
+            return "Error: Escalation is only available in customer sessions"
+
+        # Resolve Discord adapter
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        discord_adapter: DiscordAdapter | None = None
+        for adapter in self.client.adapters.values():
+            if isinstance(adapter, DiscordAdapter):
+                discord_adapter = adapter
+                break
+        if not discord_adapter:
+            return "Error: Discord adapter not available"
+
+        try:
+            thread_id = await discord_adapter.create_escalation_thread(
+                customer_name=customer_name,
+                reason=reason,
+                context_summary=context_summary,
+                session_id=session.session_id,
+            )
+
+            now = datetime.now(timezone.utc)
+            await db.update_session(
+                session.session_id,
+                relay_status="active",
+                relay_discord_channel_id=str(thread_id),
+                relay_started_at=now.isoformat(),
+            )
+        except Exception as e:
+            logger.error("Escalation failed: %s", e)
+            return f"Error creating escalation: {e}"
+
+        logger.info(
+            "Escalation created: session=%s thread=%s customer=%s",
+            session.session_id[:8],
+            thread_id,
+            customer_name,
+        )
+        return f"Escalation created. Admin notified via Discord thread {thread_id}. Relay is now active."
 
     # =========================================================================
     # Helper Methods
