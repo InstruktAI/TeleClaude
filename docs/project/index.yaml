@@ -86,6 +86,13 @@ snippets:
   scope: project
   path: docs/project/design/architecture/feature-flags.md
   source_project: TeleClaude
+- id: project/design/architecture/help-desk-platform
+  description: Help desk platform with identity-scoped memory, internal channels,
+    and operator workspace.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/help-desk-platform.md
+  source_project: TeleClaude
 - id: project/design/architecture/jobs-runner
   description: 'Scheduled job runner: architecture, job contract, and configuration
     surface.'

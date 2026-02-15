@@ -576,10 +576,9 @@ main() {
 
     if [ "$CI_MODE" = false ]; then
         install_macos_launchers
+        setup_config
     fi
-    
-    setup_config
-    
+
     if [ "$CI_MODE" = false ]; then
         setup_log_file
         install_service
