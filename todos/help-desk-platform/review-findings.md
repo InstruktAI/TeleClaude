@@ -154,3 +154,23 @@ If one session fails during idle compaction, the exception propagates and blocks
 | Suggestion | 6     |
 
 The implementation delivers a substantial architectural foundation (identity model, relay, channels, escalation, audience filtering, bootstrap, templates) but has critical wiring gaps that make the three new MCP tools unreachable, a schema gap that breaks fresh installs, and zero test coverage for ~1920 lines of new code. Multiple error handling gaps create silent failure paths in the relay and channel subsystems.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix                                                                                                                                                                         | Commit     |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| C1    | Added ESCALATE to ToolName enum, escalate tool definition, and dispatch entries for all three tools (publish, channels_list, escalate)                                      | `2de02bfa` |
+| C2    | Added `identity_key TEXT` column and index to `memory_observations` in schema.sql                                                                                           | `e4a7e338` |
+| C3    | Added 23 unit tests covering identity key derivation, customer role filtering, audience filtering, channel consumer, bootstrap cleanup, relay sanitization, API route guard | `49fe68e3` |
+| I1    | Implemented member/contributor/newcomer audience filtering (restricts to admin+member+help-desk+public)                                                                     | `bbc2762f` |
+| I2    | Added `_sanitize_relay_text` to strip ANSI escapes and control characters before tmux injection                                                                             | `bbc2762f` |
+| I3    | Added `teleclaude__publish` and `teleclaude__channels_list` to `CUSTOMER_EXCLUDED_TOOLS`                                                                                    | `bbc2762f` |
+| I4    | Wrapped `_forward_to_relay_thread` in try/except for best-effort relay forwarding                                                                                           | `bbc2762f` |
+| I5    | Bootstrap now removes partial directory via `shutil.rmtree` on git failure                                                                                                  | `bbc2762f` |
+| I6    | Moved `db.update_session` inside the escalation try/except to prevent orphaned threads                                                                                      | `bbc2762f` |
+| I7    | Added `SessionAdapterMetadata.from_json()` deserialization before calling `derive_identity_key`                                                                             | `bbc2762f` |
+| I8    | Skipped — index.yaml paths managed by `.gitattributes` `teleclaude-docs` filter; portable after merge                                                                       | `bbc2762f` |
+| I9    | Payloadless messages now acknowledged with `XACK` to prevent redelivery loop                                                                                                | `bbc2762f` |
+| I10   | Added duplicate-setup guard (`RuntimeError`) to `set_redis_transport()`                                                                                                     | `bbc2762f` |
