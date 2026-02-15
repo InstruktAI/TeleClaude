@@ -52,6 +52,7 @@ from teleclaude.cli.tui.theme import (
 )
 from teleclaude.cli.tui.tree import is_computer_node, is_session_node
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NotificationLevel
+from teleclaude.cli.tui.views.configuration import ConfigurationView
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import BANNER_HEIGHT, render_banner
@@ -263,10 +264,18 @@ class TelecApp:
             self.controller,
             notify=self.notify,
         )
+        self.views[3] = ConfigurationView(
+            self.api,
+            self.agent_availability,
+            self.focus,
+            self.pane_manager,
+            self.state,
+            self.controller,
+            notify=self.notify,
+        )
 
         # Start animation triggers (palette initialization deferred to run())
-        self.animation_engine.is_enabled = config.ui.animations_enabled
-        self.periodic_trigger.interval_sec = config.ui.animations_periodic_interval
+        self._apply_animation_mode()
         self.periodic_trigger.task = asyncio.create_task(self.periodic_trigger.start())
 
         # Now refresh to populate views with data (always include todos so prep view has data)
@@ -344,7 +353,11 @@ class TelecApp:
                 )
 
             # Update footer with new availability and TTS state
-            self.footer = Footer(self.agent_availability, tts_enabled=self.tts_enabled)
+            self.footer = Footer(
+                self.agent_availability,
+                tts_enabled=self.tts_enabled,
+                animation_mode=self.state.animation_mode,
+            )
             logger.debug("Data refresh complete")
             self._refresh_error_since = None
             self._refresh_error_notified = False
@@ -666,6 +679,20 @@ class TelecApp:
         )
         logger.debug("Session %s removed", session_id[:8])
 
+    def _apply_animation_mode(self) -> None:
+        """Update animation engine based on current mode."""
+        mode = self.state.animation_mode
+
+        if mode == "off":
+            self.animation_engine.is_enabled = False
+        else:
+            self.animation_engine.is_enabled = True
+
+        if mode == "party":
+            self.periodic_trigger.interval_sec = 10
+        else:
+            self.periodic_trigger.interval_sec = config.ui.animations_periodic_interval
+
     def run(self, stdscr: CursesWindow) -> None:
         """Main event loop.
 
@@ -955,6 +982,9 @@ class TelecApp:
         elif key == ord("2"):
             logger.debug("Switching to view 2 (Preparation)")
             self._switch_view(2)
+        elif key == ord("3"):
+            logger.debug("Switching to view 3 (Configuration)")
+            self._switch_view(3)
 
         # Navigation - delegate to current view
         elif key == curses.KEY_UP:
@@ -1028,6 +1058,28 @@ class TelecApp:
                     self._loop,
                 )
             logger.debug("TTS toggled to %s via hotkey", self.tts_enabled)
+
+        # Animation mode toggle
+        elif key == ord("m"):
+            modes = ["periodic", "party", "off"]
+            current = self.state.animation_mode
+            try:
+                next_mode = modes[(modes.index(current) + 1) % len(modes)]
+            except ValueError:
+                next_mode = "periodic"
+
+            self.controller.dispatch(Intent(IntentType.SET_ANIMATION_MODE, {"mode": next_mode}))
+            self._apply_animation_mode()
+            save_sticky_state(self.state)
+
+            # Update footer if it exists
+            if self.footer:
+                self.footer.animation_mode = next_mode
+
+            msg = f"Animation mode: {next_mode.upper()}"
+            level = NotificationLevel.INFO if next_mode != "off" else NotificationLevel.WARNING
+            self.notify(msg, level)
+            logger.debug("Animation mode toggled to %s", next_mode)
 
         # View-specific actions
         else:
@@ -1166,7 +1218,7 @@ class TelecApp:
         stdscr.addstr(height - 3, 0, action_bar[:line_width])  # type: ignore[attr-defined]
 
         # Row height-2: Global shortcuts bar
-        global_bar = "[+/-] Expand/Collapse  [r] Refresh  [v] TTS  [q] Quit"
+        global_bar = "[+/-] Expand/Collapse  [r] Refresh  [v] TTS  [m] Anim  [q] Quit"
         stdscr.addstr(height - 2, 0, global_bar[:line_width], curses.A_DIM)  # type: ignore[attr-defined]
 
         # Row height-1: Footer

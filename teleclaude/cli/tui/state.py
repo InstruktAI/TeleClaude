@@ -71,11 +71,23 @@ class PreparationViewState:
 
 
 @dataclass
+class ConfigViewState:
+    """State for Configuration view."""
+
+    active_subtab: str = "adapters"
+    selected_field_index: int = 0
+    scroll_offset: int = 0
+    guided_mode: bool = False
+
+
+@dataclass
 class TuiState:
     """Shared state for all TUI views."""
 
     sessions: SessionViewState = field(default_factory=SessionViewState)
     preparation: PreparationViewState = field(default_factory=PreparationViewState)
+    config: ConfigViewState = field(default_factory=ConfigViewState)
+    animation_mode: str = "periodic"  # "off", "periodic", "party"
 
 
 class IntentType(str, Enum):
@@ -104,6 +116,8 @@ class IntentType(str, Enum):
     SET_FILE_PANE_ID = "set_file_pane_id"
     CLEAR_FILE_PANE_ID = "clear_file_pane_id"
     CLEAR_TEMP_HIGHLIGHT = "clear_temp_highlight"
+    SET_ANIMATION_MODE = "set_animation_mode"
+    SET_CONFIG_SUBTAB = "set_config_subtab"
 
 
 @dataclass(frozen=True)
@@ -135,6 +149,8 @@ class IntentPayload(TypedDict, total=False):
     tool_name: str | None  # Tool name for tool_use events
     tool_preview: str | None  # Optional tool preview text for tool_use events
     summary: str | None  # Output summary from agent_stop events
+    mode: str  # Animation mode ("off", "periodic", "party")
+    subtab: str  # Config subtab name
 
 
 MAX_STICKY_PANES = 5
@@ -433,4 +449,16 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
 
     if t is IntentType.CLEAR_FILE_PANE_ID:
         state.preparation.file_pane_id = None
+        return
+
+    if t is IntentType.SET_ANIMATION_MODE:
+        mode = p.get("mode")
+        if mode in ("off", "periodic", "party"):
+            state.animation_mode = mode
+        return
+
+    if t is IntentType.SET_CONFIG_SUBTAB:
+        subtab = p.get("subtab")
+        if isinstance(subtab, str):
+            state.config.active_subtab = subtab
         return

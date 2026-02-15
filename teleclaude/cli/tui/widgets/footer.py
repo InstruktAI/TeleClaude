@@ -5,6 +5,7 @@ import unicodedata
 from datetime import datetime
 
 from teleclaude.cli.models import AgentAvailabilityInfo
+from teleclaude.cli.tui.types import CursesWindow
 from teleclaude.cli.tui.widgets.agent_status import build_agent_render_spec
 
 
@@ -15,13 +16,15 @@ class Footer:
         self,
         agent_availability: dict[str, AgentAvailabilityInfo],
         tts_enabled: bool = False,
+        animation_mode: str = "periodic",
     ):
         self.agent_availability = agent_availability
         self.tts_enabled = tts_enabled
+        self.animation_mode = animation_mode
         self._tts_col_start: int = -1
         self._tts_col_end: int = -1
 
-    def render(self, stdscr: object, row: int, width: int) -> None:
+    def render(self, stdscr: CursesWindow, row: int, width: int) -> None:
         """Render footer with right-aligned agent availability and TTS indicator."""
         # Build agent availability parts with shared status renderer
         agent_parts: list[tuple[str, int, bool]] = []  # (text, color_pair, bold)
@@ -38,11 +41,17 @@ class Footer:
         if tts_width <= 0:
             tts_text = "[TTS]"
             tts_width = len(tts_text)
-        spacing = 2  # space between agent pills and TTS
+
+        # Animation indicator
+        anim_icons = {"off": "🚫", "periodic": "✨", "party": "🎉"}
+        anim_text = anim_icons.get(self.animation_mode, "✨")
+        anim_width = self._display_width(anim_text)
+
+        spacing = 2  # space between agent pills and indicators
 
         # Calculate total width needed for right alignment
         agents_width = sum(self._display_width(text) for text, _, _ in agent_parts) + (len(agent_parts) - 1) * 2
-        total_text_width = agents_width + spacing + tts_width
+        total_text_width = agents_width + spacing + tts_width + spacing + anim_width
         max_width = max(0, width - 1)  # avoid last-column writes
         if max_width == 0:
             return
@@ -50,7 +59,7 @@ class Footer:
         # If overflow, drop leftmost agent parts until it fits
         if total_text_width > max_width:
             trimmed: list[tuple[str, int, bool]] = []
-            used = spacing + tts_width
+            used = spacing + tts_width + spacing + anim_width
             for text, color, bold in reversed(agent_parts):
                 text_width = self._display_width(text)
                 needed = text_width if not trimmed else text_width + 2
@@ -85,6 +94,12 @@ class Footer:
             else:
                 tts_attr = curses.A_DIM
             stdscr.addstr(row, col, tts_text, tts_attr)  # type: ignore[attr-defined]
+
+            # Render Animation indicator
+            col += tts_width + spacing
+            anim_attr = curses.A_NORMAL if self.animation_mode != "off" else curses.A_DIM
+            stdscr.addstr(row, col, anim_text, anim_attr)
+
         except curses.error:
             pass  # Screen too small
 

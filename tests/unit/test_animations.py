@@ -74,12 +74,12 @@ class TestAnimationEngine(unittest.TestCase):
         # Start periodic animation
         periodic_anim = FullSpectrumCycle(palette, is_big=True, duration_seconds=5.0, speed_ms=100)
         engine.play(periodic_anim, priority=AnimationPriority.PERIODIC)
-        self.assertEqual(engine._big_priority, AnimationPriority.PERIODIC)
+        self.assertEqual(engine._targets["banner"].priority, AnimationPriority.PERIODIC)
 
         # Activity animation should interrupt
         activity_anim = FullSpectrumCycle(palette, is_big=True, duration_seconds=2.0, speed_ms=100)
         engine.play(activity_anim, priority=AnimationPriority.ACTIVITY)
-        self.assertEqual(engine._big_priority, AnimationPriority.ACTIVITY)
+        self.assertEqual(engine._targets["banner"].priority, AnimationPriority.ACTIVITY)
 
     def test_small_and_big_simultaneous(self):
         """Test that big and small animations run simultaneously."""
@@ -115,7 +115,7 @@ class TestAnimationEngine(unittest.TestCase):
         engine.play(animation)
 
         # Animation should not have started
-        self.assertIsNone(engine._big_animation)
+        self.assertIsNone(engine._targets["banner"].animation)
 
 
 class TestAnimations(unittest.TestCase):

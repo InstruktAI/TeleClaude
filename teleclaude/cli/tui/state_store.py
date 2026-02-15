@@ -55,14 +55,17 @@ def load_sticky_state(state: TuiState) -> None:
         if isinstance(preview_data, dict) and preview_data.get("session_id"):
             state.sessions.preview = PreviewState(session_id=preview_data["session_id"])
 
+        state.animation_mode = data.get("animation_mode", "periodic")
+
         logger.info(
-            "Loaded TUI state: %d sticky, %d in_hl, %d out_hl, %d summaries, %d collapsed, preview=%s",
+            "Loaded TUI state: %d sticky, %d in_hl, %d out_hl, %d summaries, %d collapsed, preview=%s, anim=%s",
             len(state.sessions.sticky_sessions),
             len(state.sessions.input_highlights),
             len(state.sessions.output_highlights),
             len(state.sessions.last_output_summary),
             len(state.sessions.collapsed_sessions),
             state.sessions.preview.session_id[:8] if state.sessions.preview else None,
+            state.animation_mode,
         )
     except (json.JSONDecodeError, KeyError, TypeError, OSError) as e:
         logger.warning("Failed to load TUI state from %s: %s", TUI_STATE_PATH, e)
@@ -86,6 +89,7 @@ def save_sticky_state(state: TuiState) -> None:
             "last_output_summary": dict(sorted(state.sessions.last_output_summary.items())),
             "collapsed_sessions": sorted(state.sessions.collapsed_sessions),
             "preview": {"session_id": preview.session_id} if preview else None,
+            "animation_mode": state.animation_mode,
         }
 
         # Atomic write with lock to prevent race conditions
