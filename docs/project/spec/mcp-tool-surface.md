@@ -62,6 +62,8 @@ tools:
     description: 'Publish a message to an internal Redis Stream channel.'
   teleclaude__channels_list:
     description: 'List configured internal channels and their subscriptions.'
+  teleclaude__escalate:
+    description: 'Escalate a customer session to an operator via Discord thread.'
 ```
 
 ## Constraints
