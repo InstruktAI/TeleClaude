@@ -1,0 +1,6 @@
+{
+  "classification": "patch",
+  "rationale": "Session cleanup timing fix — internal only, no API changes.",
+  "contract_changes": [],
+  "release_notes": "Patch: fix race condition in session cleanup during daemon restart."
+}

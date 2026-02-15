@@ -1,0 +1,6 @@
+{
+  "classification": "patch",
+  "rationale": "Bug fix in session cleanup — no contract surface affected.",
+  "contract_changes": [],
+  "release_notes": "Patch release: daemon restart race condition resolved."
+}

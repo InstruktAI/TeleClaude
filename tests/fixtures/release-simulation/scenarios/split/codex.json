@@ -1,0 +1,13 @@
+{
+  "classification": "minor",
+  "rationale": "Hook adapters now use a protocol pattern — structural change to internal API.",
+  "contract_changes": [
+    {
+      "surface": "internal",
+      "item": "HookAdapter protocol",
+      "change_type": "added",
+      "details": "New protocol class for hook adapters"
+    }
+  ],
+  "release_notes": "Minor: hook adapter protocol pattern introduces new internal API surface."
+}

@@ -1,0 +1,6 @@
+{
+  "classification": "patch",
+  "rationale": "Internal refactor only — no public surface changes.",
+  "contract_changes": [],
+  "release_notes": "Patch: internal hook adapter refactor."
+}

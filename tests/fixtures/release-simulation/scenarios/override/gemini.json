@@ -1,0 +1,19 @@
+{
+  "classification": "patch",
+  "rationale": "New MCP tool surface detected in config spec changes.",
+  "contract_changes": [
+    {
+      "surface": "mcp",
+      "item": "teleclaude__new_tool",
+      "change_type": "added",
+      "details": "New MCP tool registered in tool surface manifest"
+    },
+    {
+      "surface": "config",
+      "item": "new_setting",
+      "change_type": "added",
+      "details": "New configuration key added to teleclaude.yml schema"
+    }
+  ],
+  "release_notes": "Patch: new MCP tool and config setting added."
+}

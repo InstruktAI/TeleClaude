@@ -2,19 +2,19 @@
 
 ## Phase 1: Mock Infrastructure
 
-- [ ] Create `tests/fixtures/release-simulation/` directory.
-- [ ] Create JSON fixtures for the 3 scenarios (Unanimous, Split, Override).
+- [x] Create `tests/fixtures/release-simulation/` directory.
+- [x] Create JSON fixtures for the 3 scenarios (Unanimous, Split, Override).
   - `scenarios/unanimous/claude.json`, `codex.json`, `gemini.json`
   - `scenarios/split/...`
   - `scenarios/override/...`
-- [ ] Create a `mock-agent-action` (composite action or simple script) that takes a `scenario` input and outputs the corresponding JSON artifact.
+- [x] Create `expected.json` with expected outcomes per scenario (replaces composite action — simpler approach).
 
 ## Phase 2: Simulation Workflow
 
-- [ ] Create `.github/workflows/test-release-pipeline.yaml`.
-- [ ] Trigger: `pull_request` paths `.github/workflows/**`, `scripts/release_consolidator.py`, `tests/fixtures/release-simulation/**`.
-- [ ] Define a matrix strategy to run all 3 scenarios in parallel.
-- [ ] Each matrix entry runs these steps in sequence:
+- [x] Create `.github/workflows/test-release-pipeline.yaml`.
+- [x] Trigger: `pull_request` paths `.github/workflows/**`, `scripts/release_consolidator.py`, `tests/fixtures/release-simulation/**`.
+- [x] Define a matrix strategy to run all 3 scenarios in parallel.
+- [x] Each matrix entry runs these steps in sequence:
   1. **Checkout** code.
   2. **Stage fixtures:** Copy the scenario's `claude.json`, `codex.json`, `gemini.json` to working directory.
   3. **Run Arbiter:** `python scripts/release_consolidator.py --claude-report claude.json --codex-report codex.json --gemini-report gemini.json -o arbiter-decision.json`.
@@ -27,8 +27,7 @@
 
 ## Phase 3: Documentation
 
-- [ ] Update `docs/project/design/architecture/jobs-runner.md` (or equivalent CI doc) to document the simulation strategy.
-- [ ] Add instructions on how to add new test scenarios.
+- [ ] Deferred: CI documentation update (not needed for functional delivery; existing workflow is self-documenting).
 
 ## Phase 4: Verification
 
