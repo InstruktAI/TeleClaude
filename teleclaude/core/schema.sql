@@ -136,6 +136,7 @@ CREATE TABLE IF NOT EXISTS memory_observations (
     files_modified TEXT,
     prompt_number INTEGER,
     discovery_tokens INTEGER DEFAULT 0,
+    identity_key TEXT,
     created_at TEXT NOT NULL,
     created_at_epoch INTEGER NOT NULL
 );
@@ -143,6 +144,7 @@ CREATE TABLE IF NOT EXISTS memory_observations (
 CREATE INDEX IF NOT EXISTS idx_memory_obs_project ON memory_observations(project, created_at_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_obs_session ON memory_observations(memory_session_id);
 CREATE INDEX IF NOT EXISTS idx_memory_obs_type ON memory_observations(type);
+CREATE INDEX IF NOT EXISTS idx_memory_identity ON memory_observations(project, identity_key);
 
 -- Memory summaries
 CREATE TABLE IF NOT EXISTS memory_summaries (
