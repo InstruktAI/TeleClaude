@@ -181,9 +181,7 @@ class ConfigurationView(BaseView):
 
         # Guided mode navigation
         if self.state.config.guided_mode:
-            if key == 10:  # Enter -> Next step
-                self._advance_guided_mode()
-            elif key == 27:  # Esc -> Exit
+            if key == 27:  # Esc -> Exit
                 self.controller.dispatch(Intent(IntentType.SET_CONFIG_GUIDED_MODE, {"enabled": False}))
                 if self.notify:
                     self.notify("Exited guided mode", NotificationLevel.INFO)

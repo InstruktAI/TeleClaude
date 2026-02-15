@@ -168,9 +168,5 @@ class StateDrivenTrigger:
 
         self.engine.play(animation, priority=AnimationPriority.ACTIVITY, target=target)
 
-        # Access the slot directly to set looping if idle
-        # This relies on engine implementation details, but they are in same package.
         if is_idle:
-            slot = self.engine._targets.get(target)
-            if slot:
-                slot.looping = True
+            self.engine.set_looping(target, True)
