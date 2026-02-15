@@ -210,9 +210,10 @@ STEP 2 - START BACKGROUND TIMER:
 Bash(command="sleep 300", run_in_background=true)
 Save the returned task_id.
 
-STEP 3 - STOP:
+STEP 3 - WAIT:
 Tell the user: "Dispatched session <session_id>. Waiting for completion."
-STOP responding. Do NOT call any more tools.
+Do NOT call any more tools UNTIL one of the events below fires.
+When an event fires, you MUST immediately act on it — do NOT wait for user input.
 
 WHAT HAPPENS NEXT (one of these will occur):
 
@@ -221,9 +222,12 @@ A) NOTIFICATION ARRIVES (worker completed):
    - Follow WHEN WORKER COMPLETES below
 
 B) TIMER COMPLETES (no notification after 5 minutes):
-   - Use TaskOutput(task_id=<task_id>) to confirm timer finished
+   THIS IS YOUR ACTIVATION TRIGGER. You MUST act immediately:
    - Check on the session: teleclaude__get_session_data(computer="local", session_id="<session_id>", tail_chars=2000)
-   - Based on session status, decide next action
+   - If still running: reset timer (sleep 300, run_in_background=true) and WAIT again
+   - If completed/idle: follow WHEN WORKER COMPLETES below
+   - If stuck/errored: intervene or escalate to user
+   Do NOT stop after checking — either reset the timer or execute completion steps.
 
 C) YOU SEND ANOTHER MESSAGE TO THE AGENT BECAUSE IT NEEDS FEEDBACK OR HELP:
    - Cancel the old timer: KillShell(shell_id=<task_id>)
