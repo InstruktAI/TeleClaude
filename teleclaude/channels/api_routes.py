@@ -13,13 +13,17 @@ from teleclaude.transport.redis_transport import RedisTransport
 
 router = APIRouter(prefix="/api/channels", tags=["channels"])
 
-# Lazy reference — set by daemon during startup
+# Set once by daemon during startup before requests are served.
+# Safe because asyncio is single-threaded: set_redis_transport runs before
+# any request handler can call _get_transport.
 _redis_transport: RedisTransport | None = None
 
 
 def set_redis_transport(transport: RedisTransport) -> None:
-    """Called by daemon to inject the RedisTransport instance."""
+    """Called by daemon during startup to inject the RedisTransport instance."""
     global _redis_transport
+    if _redis_transport is not None:
+        raise RuntimeError("RedisTransport already configured; refusing duplicate setup")
     _redis_transport = transport
 
 

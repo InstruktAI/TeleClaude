@@ -626,17 +626,20 @@ class DiscordAdapter(UiAdapter):
         relay_channel_id = session.relay_discord_channel_id
         if not relay_channel_id:
             return
-        thread = await self._get_channel(int(relay_channel_id))
-        if thread is None:
-            logger.error("Relay thread %s not found", relay_channel_id)
-            return
+        try:
+            thread = await self._get_channel(int(relay_channel_id))
+            if thread is None:
+                logger.error("Relay thread %s not found", relay_channel_id)
+                return
 
-        author = getattr(message, "author", None)
-        name = getattr(author, "display_name", None) or "Customer"
-        origin = session.last_input_origin or "discord"
+            author = getattr(message, "author", None)
+            name = getattr(author, "display_name", None) or "Customer"
+            origin = session.last_input_origin or "discord"
 
-        send_fn = self._require_async_callable(getattr(thread, "send", None), label="relay thread send")
-        await send_fn(f"**{name}** ({origin}): {text}")
+            send_fn = self._require_async_callable(getattr(thread, "send", None), label="relay thread send")
+            await send_fn(f"**{name}** ({origin}): {text}")
+        except Exception:  # noqa: BLE001 - best-effort relay forwarding
+            logger.warning("Failed to forward message to relay thread %s", relay_channel_id)
 
     async def _handle_relay_thread_message(self, message: object, text: str) -> None:
         """Handle an admin message in a relay thread — forward to customer or handback."""
@@ -725,6 +728,17 @@ class DiscordAdapter(UiAdapter):
         return messages
 
     @staticmethod
+    def _sanitize_relay_text(text: str) -> str:
+        """Strip control characters and ANSI escape sequences from relay text."""
+        import re
+
+        # Remove ANSI escape sequences
+        text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
+        # Remove other control characters (keep newlines and tabs)
+        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+        return text
+
+    @staticmethod
     def _compile_relay_context(messages: list[dict[str, str]]) -> str:
         """Compile relay messages into a context block for AI injection."""
         lines = [
@@ -733,7 +747,8 @@ class DiscordAdapter(UiAdapter):
             "",
         ]
         for msg in messages:
-            lines.append(f"{msg['role']} ({msg['name']}): {msg['content']}")
+            content = DiscordAdapter._sanitize_relay_text(msg["content"])
+            lines.append(f"{msg['role']} ({msg['name']}): {content}")
 
         lines.extend(
             [

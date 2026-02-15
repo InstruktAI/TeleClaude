@@ -68,6 +68,8 @@ async def consume(
             decoded_id = msg_id.decode() if hasattr(msg_id, "decode") else str(msg_id)
             payload_raw = fields.get(b"payload") or fields.get("payload")
             if payload_raw is None:
+                logger.warning("Message %s has no payload field; acknowledging to prevent redelivery", decoded_id)
+                ack_ids.append(msg_id)
                 continue
             payload_str = payload_raw.decode() if hasattr(payload_raw, "decode") else str(payload_raw)
             try:

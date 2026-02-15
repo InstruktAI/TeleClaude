@@ -45,14 +45,18 @@ def bootstrap_help_desk(teleclaude_root: Path) -> None:
 
     shutil.copytree(template_dir, help_desk_dir)
 
-    subprocess.run(["git", "init"], cwd=help_desk_dir, capture_output=True, check=True)
-
-    subprocess.run(["git", "add", "."], cwd=help_desk_dir, capture_output=True, check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "Initial help desk scaffold"],
-        cwd=help_desk_dir,
-        capture_output=True,
-        check=True,
-    )
+    try:
+        subprocess.run(["git", "init"], cwd=help_desk_dir, capture_output=True, check=True)
+        subprocess.run(["git", "add", "."], cwd=help_desk_dir, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial help desk scaffold"],
+            cwd=help_desk_dir,
+            capture_output=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError:
+        logger.error("Bootstrap git setup failed; removing partial directory %s", help_desk_dir)
+        shutil.rmtree(help_desk_dir, ignore_errors=True)
+        raise
 
     logger.info("Help desk workspace bootstrapped at %s", help_desk_dir)

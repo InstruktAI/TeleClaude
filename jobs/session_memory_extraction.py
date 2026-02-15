@@ -160,10 +160,15 @@ class SessionMemoryExtractionJob(Job):
     def _resolve_identity_key(self, session: object) -> str | None:
         """Derive the identity key from session adapter metadata."""
         from teleclaude.core.identity import derive_identity_key
+        from teleclaude.core.models import SessionAdapterMetadata
 
-        adapter_metadata = getattr(session, "adapter_metadata", None)
-        if adapter_metadata is None:
+        adapter_metadata_raw = getattr(session, "adapter_metadata", None)
+        if adapter_metadata_raw is None:
             return None
+        if isinstance(adapter_metadata_raw, str):
+            adapter_metadata = SessionAdapterMetadata.from_json(adapter_metadata_raw)
+        else:
+            adapter_metadata = adapter_metadata_raw
         return derive_identity_key(adapter_metadata)
 
     async def _extract_personal_memories(

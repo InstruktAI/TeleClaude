@@ -435,12 +435,14 @@ def build_context_output(
         project_domain_roots = {d: project_root / "docs" for d in domain_config.keys()}
 
     def _include_snippet(snippet: SnippetMeta) -> bool:
-        # Audience filtering: admin sees everything, customer sees public/help-desk only
+        # Audience filtering: admin sees everything, others see role-appropriate content
         if human_role and human_role != "admin":
             if human_role == "customer":
                 if not any(a in ("public", "help-desk") for a in snippet.audience):
                     return False
-            # member sees admin, member, help-desk, public (everything except restricted)
+            elif human_role in ("member", "contributor", "newcomer"):
+                if not any(a in ("admin", "member", "help-desk", "public") for a in snippet.audience):
+                    return False
         if global_snippets_root in snippet.path.parents:
             if snippet.snippet_id.startswith("general/"):
                 return True

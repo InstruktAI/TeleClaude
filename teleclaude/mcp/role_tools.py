@@ -58,6 +58,8 @@ CUSTOMER_EXCLUDED_TOOLS: set[str] = (
     | {
         "teleclaude__list_sessions",
         "teleclaude__list_todos",
+        "teleclaude__publish",
+        "teleclaude__channels_list",
     }
 ) - {"teleclaude__escalate"}
 

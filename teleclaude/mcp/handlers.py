@@ -1241,17 +1241,17 @@ class MCPHandlersMixin:
                 context_summary=context_summary,
                 session_id=session.session_id,
             )
-        except Exception as e:
-            logger.error("Escalation thread creation failed: %s", e)
-            return f"Error creating escalation thread: {e}"
 
-        now = datetime.now(timezone.utc)
-        await db.update_session(
-            session.session_id,
-            relay_status="active",
-            relay_discord_channel_id=str(thread_id),
-            relay_started_at=now.isoformat(),
-        )
+            now = datetime.now(timezone.utc)
+            await db.update_session(
+                session.session_id,
+                relay_status="active",
+                relay_discord_channel_id=str(thread_id),
+                relay_started_at=now.isoformat(),
+            )
+        except Exception as e:
+            logger.error("Escalation failed: %s", e)
+            return f"Error creating escalation: {e}"
 
         logger.info(
             "Escalation created: session=%s thread=%s customer=%s",
