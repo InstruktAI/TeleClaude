@@ -554,12 +554,14 @@ class DiscordAdapter(UiAdapter):
                 logger.debug("Discord fetch_channel(%s) failed: %s", channel_id, exc)
         return None
 
-    async def _create_forum_thread(self, forum_channel: object, *, title: str) -> int:
+    async def _create_forum_thread(
+        self, forum_channel: object, *, title: str, content: str = "Initializing Help Desk session..."
+    ) -> int:
         create_thread_fn = self._require_async_callable(
             getattr(forum_channel, "create_thread", None), label="Discord forum create_thread"
         )
 
-        result = await create_thread_fn(name=title, content="Initializing Help Desk session...")
+        result = await create_thread_fn(name=title, content=content)
         thread = getattr(result, "thread", None)
         if thread is None and isinstance(result, tuple) and result:
             thread = result[0]
@@ -570,6 +572,32 @@ class DiscordAdapter(UiAdapter):
         if thread_id is None:
             raise AdapterError("Discord create_thread() returned invalid thread id")
         return thread_id
+
+    async def create_escalation_thread(
+        self,
+        *,
+        customer_name: str,
+        reason: str,
+        context_summary: str | None,
+        session_id: str,
+    ) -> int:
+        """Create a thread in the escalation forum channel for admin relay."""
+        escalation_channel_id = config.discord.escalation_channel_id
+        if not escalation_channel_id:
+            raise AdapterError("escalation_channel_id not configured")
+
+        forum = await self._get_channel(escalation_channel_id)
+        if forum is None:
+            raise AdapterError(f"Escalation channel {escalation_channel_id} not found")
+        if not self._is_forum_channel(forum):
+            raise AdapterError(f"Escalation channel {escalation_channel_id} is not a Forum Channel")
+
+        body = f"**Reason:** {reason}"
+        if context_summary:
+            body += f"\n\n**Context:** {context_summary}"
+        body += f"\n\n*Session: {session_id}*"
+
+        return await self._create_forum_thread(forum, title=customer_name, content=body)
 
     @staticmethod
     def _is_forum_channel(channel: object) -> bool:
