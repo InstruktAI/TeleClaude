@@ -8,6 +8,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import get_agent_command
@@ -19,6 +20,10 @@ from teleclaude.core.session_utils import get_display_title_for_session, get_out
 from teleclaude.core.voice_assignment import get_voice_env_vars
 
 logger = get_logger(__name__)
+
+# Customer sessions trigger memory extraction after this idle threshold (seconds).
+# Unlike admin idle timeout, this does NOT terminate the session.
+CUSTOMER_IDLE_THRESHOLD_S = 30 * 60  # 30 minutes
 
 
 class MaintenanceService:
@@ -45,6 +50,7 @@ class MaintenanceService:
                 first_run = False
 
                 await self._cleanup_inactive_sessions()
+                await self._check_customer_idle_compaction()
                 await session_cleanup.emit_recently_closed_session_events(hours=12)
                 await session_cleanup.cleanup_orphan_tmux_sessions()
                 await session_cleanup.cleanup_orphan_workspaces()
@@ -143,6 +149,51 @@ class MaintenanceService:
                     session=session,
                 )
                 logger.info("Session %s cleaned up (72h lifecycle)", session.session_id[:8])
+
+    async def _check_customer_idle_compaction(self) -> None:
+        """Detect idle customer sessions and mark them for memory extraction.
+
+        Customer sessions (human_role == "customer") are never terminated by idle
+        timeout. Instead, when idle beyond CUSTOMER_IDLE_THRESHOLD_S, the daemon:
+        1. Updates last_memory_extraction_at to mark the extraction window
+        2. A separate extraction job reads the transcript and saves memories
+        3. After extraction, /compact is injected to keep the session lean
+
+        Only the 72h inactivity sweep in _cleanup_inactive_sessions terminates
+        customer sessions.
+        """
+        now = datetime.now(timezone.utc)
+        idle_threshold = timedelta(seconds=CUSTOMER_IDLE_THRESHOLD_S)
+        sessions = await db.get_active_sessions()
+
+        for session in sessions:
+            if session.human_role != HUMAN_ROLE_CUSTOMER:
+                continue
+
+            if not session.last_activity:
+                continue
+
+            idle_duration = now - session.last_activity
+            if idle_duration < idle_threshold:
+                continue
+
+            # Skip if extraction was already triggered recently (within the idle threshold)
+            if session.last_memory_extraction_at:
+                if (now - session.last_memory_extraction_at) < idle_threshold:
+                    continue
+
+            # Mark the session for memory extraction
+            extraction_marker = now.isoformat()
+            await db.update_session(
+                session.session_id,
+                last_memory_extraction_at=extraction_marker,
+            )
+            logger.info(
+                "Customer session idle compaction triggered",
+                session_id=session.session_id[:8],
+                idle_seconds=idle_duration.total_seconds(),
+                human_role=session.human_role,
+            )
 
     async def ensure_tmux_session(self, session: Session) -> bool:
         working_dir = resolve_working_dir(session.project_path, session.subdir)
