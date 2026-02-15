@@ -10,6 +10,9 @@ jobs:
   lint-test:
     name: Lint and Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    env:
+      TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
+      TELECLAUDE_ENV_PATH: tests/integration/.env
     strategy:
       fail-fast: false
       matrix:
@@ -45,6 +48,3 @@ jobs:
 
       - name: Run tests
         run: ./tools/test.sh
-        env:
-          TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
-          TELECLAUDE_ENV_PATH: tests/integration/.env
