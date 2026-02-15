@@ -385,6 +385,15 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     if cmd.launch_intent and cmd.launch_intent.thinking_mode:
         await db.update_session(session.session_id, thinking_mode=cmd.launch_intent.thinking_mode)
 
+    # Persist platform user_id on adapter metadata for derive_identity_key()
+    if identity and identity.platform == "telegram" and identity.platform_user_id:
+        try:
+            tg_meta = session.get_metadata().get_ui().get_telegram()
+            tg_meta.user_id = int(identity.platform_user_id)
+            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        except (ValueError, TypeError):
+            pass
+
     # NOTE: tmux creation + auto-command execution are handled asynchronously
     # by the daemon bootstrap task. Channel creation is deferred to UI lanes
     # on first output.

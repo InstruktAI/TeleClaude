@@ -136,6 +136,7 @@ class TelegramAdapterMetadata:
     output_suppressed: bool = False
     parse_mode: Optional[str] = None
     char_offset: int = 0
+    user_id: Optional[int] = None
 
 
 @dataclass
@@ -273,6 +274,12 @@ class SessionAdapterMetadata:
                 output_suppressed = bool(tg_raw.get("output_suppressed", False))
                 parse_mode = str(tg_raw.get("parse_mode")) if tg_raw.get("parse_mode") else None
                 char_offset = int(tg_raw.get("char_offset", 0))
+                tg_user_id_val: object = tg_raw.get("user_id")
+                tg_user_id: int | None = None
+                if isinstance(tg_user_id_val, int):
+                    tg_user_id = tg_user_id_val
+                elif isinstance(tg_user_id_val, str) and tg_user_id_val.isdigit():
+                    tg_user_id = int(tg_user_id_val)
                 telegram_metadata = TelegramAdapterMetadata(
                     topic_id=topic_id,
                     output_message_id=output_message_id,
@@ -280,6 +287,7 @@ class SessionAdapterMetadata:
                     output_suppressed=output_suppressed,
                     parse_mode=parse_mode,
                     char_offset=char_offset,
+                    user_id=tg_user_id,
                 )
 
             discord_raw = data_obj.get("discord")
