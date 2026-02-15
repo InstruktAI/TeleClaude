@@ -2,11 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Turn TeleClaude into a help desk platform with identity-scoped memory, customer session lifecycle, internal channels, and an operator workspace.
+**Goal:** Turn TeleClaude into a two-plane help desk platform — customer ingress on any adapter, operator workspace on Discord — with identity-scoped memory, escalation tooling, admin relay channels, internal pub/sub channels, and a standalone operator workspace.
 
-**Architecture:** The platform extends the existing daemon with per-customer memory scoping (identity_key on memory_observations), Discord/Telegram identity resolution, customer-role MCP filtering, audience-tagged doc snippets, Redis Stream internal channels, and a standalone operator workspace bootstrapped by `telec init`. Memory extraction runs as an idempotent job with two trigger paths (idle-detected and cron sweep).
+**Architecture:** The platform extends the existing daemon with per-customer memory scoping (identity_key on memory_observations), Discord/Telegram identity resolution, customer-role MCP filtering, an escalation MCP tool (`teleclaude__escalate`), admin relay channels (Discord threads bridging to customer platforms), audience-tagged doc snippets, Redis Stream internal channels, and a standalone operator workspace bootstrapped by `telec init`. Memory extraction runs as an idempotent job with two trigger paths (idle-detected and cron sweep).
 
-**Tech Stack:** Python 3.12, SQLAlchemy/SQLModel, Redis Streams, Pydantic config, MCP tools, doc snippet frontmatter YAML
+**Tech Stack:** Python 3.12, SQLAlchemy/SQLModel, Redis Streams, Pydantic config, MCP tools, doc snippet frontmatter YAML, discord.py
 
 **Design doc:** `docs/project/design/architecture/help-desk-platform.md`
 
@@ -225,7 +225,7 @@ if origin == InputOrigin.DISCORD:
 
 **Step 4: Write tests for Discord identity resolution**
 
-Test: known user → configured role, unknown user → customer role.
+Test: known user -> configured role, unknown user -> customer role.
 
 **Step 5: Run tests and commit**
 
@@ -235,53 +235,85 @@ feat(identity): add Discord person config lookup via discord_user_id
 
 ---
 
-## Work Package 3: MCP Customer Role
+## Work Package 3: MCP Customer Role & Escalation Gating
 
-### Task 5: Add CUSTOMER_EXCLUDED_TOOLS tier
+### Task 5: Add CUSTOMER_EXCLUDED_TOOLS tier and escalation gating
 
 **Files:**
 
-- Modify: `teleclaude/mcp/role_tools.py:35-73`
+- Modify: `teleclaude/mcp/role_tools.py:17-73`
+- Modify: `teleclaude/constants.py:42-46`
 - Test: `tests/unit/test_role_tools.py`
 
-**Step 1: Define CUSTOMER_EXCLUDED_TOOLS**
+**Step 1: Add HUMAN_ROLE_CUSTOMER constant**
+
+In `teleclaude/constants.py` (line ~46), add:
+
+```python
+HUMAN_ROLE_CUSTOMER = "customer"
+```
+
+Update `HUMAN_ROLES` tuple to include it:
+
+```python
+HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER)
+```
+
+**Step 2: Define CUSTOMER_EXCLUDED_TOOLS**
 
 In `teleclaude/mcp/role_tools.py`, add after `UNAUTHORIZED_EXCLUDED_TOOLS` (line ~50):
 
 ```python
 CUSTOMER_EXCLUDED_TOOLS: set[str] = UNAUTHORIZED_EXCLUDED_TOOLS | {
-    "teleclaude__start_session",
-    "teleclaude__end_session",
-    "teleclaude__send_message",
-    "teleclaude__deploy",
-    "teleclaude__run_agent_command",
     "teleclaude__list_sessions",
-    "teleclaude__mark_phase",
-    "teleclaude__set_dependencies",
-    "teleclaude__next_work",
-    "teleclaude__next_prepare",
-    "teleclaude__next_maintain",
-    "teleclaude__mark_agent_status",
+    "teleclaude__list_todos",
 }
 ```
 
-**Step 2: Add customer branch to get_excluded_tools()**
+This is the superset of `UNAUTHORIZED_EXCLUDED_TOOLS` plus any remaining tools customers should not see. The escalation tool (`teleclaude__escalate`) is explicitly NOT in this set — customers must see it.
 
-In `get_excluded_tools()` (line ~59), add:
+**Step 3: Add escalation tool to non-customer exclusion lists**
+
+Add `"teleclaude__escalate"` to these sets so only customer sessions see it:
 
 ```python
-if human_role == "customer":
+WORKER_EXCLUDED_TOOLS = {
+    ...,
+    "teleclaude__escalate",
+}
+
+MEMBER_EXCLUDED_TOOLS = {
+    ...,
+    "teleclaude__escalate",
+}
+
+UNAUTHORIZED_EXCLUDED_TOOLS = {
+    ...,
+    "teleclaude__escalate",
+}
+```
+
+**Step 4: Add customer branch to get_excluded_tools()**
+
+In `get_excluded_tools()` (line ~59), add before the member check:
+
+```python
+if human_role == HUMAN_ROLE_CUSTOMER:
     excluded.update(CUSTOMER_EXCLUDED_TOOLS)
+    return excluded  # Customer tier is terminal — no further layering
 ```
 
-**Step 3: Write test**
+**Step 5: Write tests**
 
-Verify `get_excluded_tools(role=None, human_role="customer")` returns the expected superset.
+- `get_excluded_tools(role=None, human_role="customer")` returns CUSTOMER_EXCLUDED_TOOLS
+- `get_excluded_tools(role=None, human_role="customer")` does NOT include `teleclaude__escalate`
+- `get_excluded_tools(role=None, human_role="admin")` DOES include `teleclaude__escalate` (from UNAUTHORIZED? No — admin sees everything). Actually: admin has no exclusions, so `teleclaude__escalate` is visible. But for member/worker/unauthorized, it IS excluded.
+- `get_excluded_tools(role="worker", human_role=None)` includes `teleclaude__escalate`
 
-**Step 4: Run tests and commit**
+**Step 6: Run tests and commit**
 
 ```
-feat(mcp): add CUSTOMER_EXCLUDED_TOOLS tier for help desk sessions
+feat(mcp): add CUSTOMER_EXCLUDED_TOOLS tier and gate escalation tool to customer sessions
 ```
 
 ---
@@ -352,19 +384,19 @@ feat(docs): add audience field to doc snippet frontmatter for role-filtered cont
 
 **Step 1: Thread human_role through to build_context_output()**
 
-In `teleclaude/mcp/handlers.py` `teleclaude__get_context()`, resolve `human_role` from the calling session (already available via `caller_session_id` → `session.human_role`). Pass as new parameter to `build_context_output()`.
+In `teleclaude/mcp/handlers.py` `teleclaude__get_context()`, resolve `human_role` from the calling session (already available via `caller_session_id` -> `session.human_role`). Pass as new parameter to `build_context_output()`.
 
 **Step 2: Filter snippets by audience in \_include_snippet()**
 
 In `teleclaude/context_selector.py`, modify the `_include_snippet()` closure:
 
 ```python
-# If no human_role or human_role is admin → see everything
-# If human_role is customer → only see snippets tagged "public" or "help-desk"
-# If human_role is member → see "admin", "member", "help-desk", "public"
+# If no human_role or human_role is admin -> see everything
+# If human_role is customer -> only see snippets tagged "public" or "help-desk"
+# If human_role is member -> see "admin", "member", "help-desk", "public"
 ```
 
-Default: no audience field → treated as `["admin"]`.
+Default: no audience field -> treated as `["admin"]`.
 
 **Step 3: Write tests for audience filtering**
 
@@ -378,22 +410,31 @@ feat(context): filter doc snippets by audience based on caller's human_role
 
 ## Work Package 5: Session Schema Extensions
 
-### Task 8: Add bookkeeping columns to sessions table
+### Task 8: Add bookkeeping and relay columns to sessions table
 
 **Files:**
 
 - Modify: `teleclaude/core/schema.sql:3-37`
 - Modify: `teleclaude/core/models.py:437-474`
-- Modify: `teleclaude/core/db_models.py` (Session SQLModel)
+- Modify: `teleclaude/core/db_models.py:16-57` (Session SQLModel)
 - Modify: `teleclaude/core/db.py` (create_session, \_to_core_session)
 - Create: migration for existing databases
 
 **Step 1: Add columns to schema.sql**
 
+After `lifecycle_status TEXT DEFAULT 'active'` (line 34), add:
+
 ```sql
 last_memory_extraction_at TEXT,
 help_desk_processed_at TEXT,
+relay_status TEXT,                -- NULL (normal) or 'active' (relay mode)
+relay_discord_channel_id TEXT,    -- Discord thread ID for escalation relay
+relay_started_at TEXT,            -- Timestamp of relay activation
+human_email TEXT,
+human_role TEXT
 ```
+
+Note: `human_email` and `human_role` already exist in `db_models.py` (lines 56-57) but are missing from `schema.sql`. Add them for completeness.
 
 **Step 2: Add fields to Session dataclass**
 
@@ -402,25 +443,41 @@ In `teleclaude/core/models.py` (after line ~474):
 ```python
 last_memory_extraction_at: Optional[datetime] = None
 help_desk_processed_at: Optional[datetime] = None
+relay_status: Optional[str] = None
+relay_discord_channel_id: Optional[str] = None
+relay_started_at: Optional[datetime] = None
 ```
 
 **Step 3: Add fields to db_models.Session**
 
+In `teleclaude/core/db_models.py`, add to the `Session` SQLModel class (after line ~57):
+
+```python
+last_memory_extraction_at: Optional[str] = None
+help_desk_processed_at: Optional[str] = None
+relay_status: Optional[str] = None
+relay_discord_channel_id: Optional[str] = None
+relay_started_at: Optional[str] = None
+```
+
 **Step 4: Update \_to_core_session() and create_session()**
 
-In `teleclaude/core/db.py`, ensure the new fields are serialized/deserialized.
+In `teleclaude/core/db.py`, ensure the new fields are serialized/deserialized. Add datetime parsing for the new timestamp fields in `Session.from_dict()` and serialization in `Session.to_dict()`.
 
 **Step 5: Write migration**
 
 ```sql
 ALTER TABLE sessions ADD COLUMN last_memory_extraction_at TEXT;
 ALTER TABLE sessions ADD COLUMN help_desk_processed_at TEXT;
+ALTER TABLE sessions ADD COLUMN relay_status TEXT;
+ALTER TABLE sessions ADD COLUMN relay_discord_channel_id TEXT;
+ALTER TABLE sessions ADD COLUMN relay_started_at TEXT;
 ```
 
 **Step 6: Run tests and commit**
 
 ```
-feat(sessions): add bookkeeping columns for memory extraction tracking
+feat(sessions): add bookkeeping and relay state columns
 ```
 
 ---
@@ -476,16 +533,25 @@ feat(hooks): inject identity-scoped memories on SessionStart
 - Create: `templates/help-desk/docs/global/organization/baseline.md`
 - Create: `templates/help-desk/docs/global/organization/spec/about.md`
 - Create: `templates/help-desk/docs/project/baseline.md`
+- Create: `templates/help-desk/docs/project/policy/escalation.md`
+- Create: `templates/help-desk/docs/project/procedure/escalation.md`
+- Create: `templates/help-desk/docs/project/spec/tools/escalation.md`
 - Create: `templates/help-desk/docs/project/design/help-desk-overview.md`
 
 **Step 1: Create each template file**
 
-See design doc section "Help Desk Bootstrap Routine → Template contents" for exact content descriptions.
+See design doc section "Help Desk Bootstrap Routine -> Template contents" for exact content descriptions.
+
+Key additions from the escalation design:
+
+- `docs/project/policy/escalation.md` — starter escalation policy: when to escalate (billing, security, low confidence, explicit human request), thresholds
+- `docs/project/procedure/escalation.md` — step-by-step: recognize trigger -> call `teleclaude__escalate` -> inform customer help is on the way -> wait for `@agent` handback
+- `docs/project/spec/tools/escalation.md` — tool contract: parameters (`customer_name` required, `reason` required, `context_summary` optional), return value, behavior (creates Discord thread, sets relay, sends notification)
 
 **Step 2: Commit**
 
 ```
-feat(templates): add help desk project skeleton
+feat(templates): add help desk project skeleton with escalation docs
 ```
 
 ---
@@ -580,7 +646,7 @@ Required reads should reference:
 
 Activation: "You are now the Knowledge Author."
 
-Steps should cover the conversational extraction → taxonomy classification → doc snippet creation → telec sync → commit flow.
+Steps should cover the conversational extraction -> taxonomy classification -> doc snippet creation -> telec sync -> commit flow.
 
 **Step 2: Run telec sync**
 
@@ -604,7 +670,7 @@ feat(commands): add global /author-knowledge command for brain-dump documentatio
 
 - Create: `teleclaude/channels/publisher.py`
 - Create: `teleclaude/channels/consumer.py`
-- Modify: `teleclaude/mcp/handlers.py` (add teleclaude**publish, teleclaude**channels_list)
+- Modify: `teleclaude/mcp/handlers.py` (add teleclaude\_\_publish, teleclaude\_\_channels_list)
 - Modify: `teleclaude/api/routes.py` (add POST /api/channels/{name}/publish)
 
 **Step 1: Create publisher module**
@@ -697,7 +763,7 @@ When a customer session hits idle threshold:
 
 1. Do NOT kill the session (unlike admin idle timeout)
 2. Spawn memory extraction job
-3. After extraction completes → inject `/compact`
+3. After extraction completes -> inject `/compact`
 4. Do NOT update `last_message_sent`
 
 **Step 3: Ensure 72h sweep is the only death path**
@@ -731,7 +797,7 @@ class HelpDeskSessionReviewJob(Job):
         # 2. For each: read transcript since last_memory_extraction_at
         # 3. Extract personal memories (identity-scoped)
         # 4. Extract business memories (project-scoped)
-        # 5. Extract actionable items → publish to channels
+        # 5. Extract actionable items -> publish to channels
         # 6. Update bookkeeping timestamps
         return JobResult(success=True, message=f"Processed {count} sessions")
 ```
@@ -797,6 +863,18 @@ feat(jobs): add help-desk-intelligence daily digest job
 
 Following design doc section "Operator Brain" — identity, knowledge access, memory awareness, interaction style, observer interests, escalation rules, idle routines.
 
+The operator brain MUST include a `## Required reads` section referencing the escalation docs:
+
+```markdown
+## Required reads
+
+- @docs/project/policy/escalation.md
+- @docs/project/procedure/escalation.md
+- @docs/project/spec/tools/escalation.md
+```
+
+These get inlined at `telec sync` so the operator knows when, how, and with what tool to escalate.
+
 **Step 2: Run telec sync in templates context**
 
 Verify the AGENTS.master.md compiles correctly.
@@ -804,7 +882,424 @@ Verify the AGENTS.master.md compiles correctly.
 **Step 3: Commit**
 
 ```
-feat(templates): expand operator brain with full help desk persona and routines
+feat(templates): expand operator brain with full help desk persona, escalation awareness, and routines
+```
+
+---
+
+## Work Package 13: Escalation Tool
+
+### Task 20: Add escalation_channel_id to Discord config
+
+**Files:**
+
+- Modify: `teleclaude/config/__init__.py:171-175` (DiscordConfig dataclass)
+- Modify: `teleclaude/config/__init__.py:349` (DEFAULTS dict)
+- Modify: `teleclaude/config/__init__.py:654-656` (config loader)
+
+**Step 1: Add escalation_channel_id field**
+
+In `teleclaude/config/__init__.py`, add to `DiscordConfig` (after `help_desk_channel_id` on line 175):
+
+```python
+@dataclass
+class DiscordConfig:
+    enabled: bool
+    token: str | None
+    guild_id: int | None
+    help_desk_channel_id: int | None
+    escalation_channel_id: int | None  # NEW: Forum channel for admin relay threads
+```
+
+**Step 2: Add default**
+
+In `DEFAULTS["discord"]` (line ~349):
+
+```python
+"escalation_channel_id": None,
+```
+
+**Step 3: Update config loader**
+
+In the config loading function (line ~654), add parsing for `escalation_channel_id`:
+
+```python
+escalation_channel_id=(
+    _parse_optional_int(discord_raw.get("escalation_channel_id")) if isinstance(discord_raw, dict) else None
+),
+```
+
+**Step 4: Run tests and commit**
+
+```
+feat(config): add escalation_channel_id to Discord config
+```
+
+---
+
+### Task 21: Implement teleclaude\_\_escalate MCP handler
+
+**Files:**
+
+- Modify: `teleclaude/mcp/handlers.py` (add new handler after ~line 912)
+- Modify: `teleclaude/adapters/discord_adapter.py` (add `create_escalation_thread` method)
+- Test: `tests/unit/test_mcp_server.py`
+
+**Step 1: Add escalation handler to MCP handlers**
+
+In `teleclaude/mcp/handlers.py`, add after `teleclaude__send_result` (~line 912):
+
+```python
+async def teleclaude__escalate(
+    self,
+    customer_name: str,
+    reason: str,
+    context_summary: str | None = None,
+) -> str:
+    """Escalate a customer conversation to an admin.
+
+    Creates a Discord thread in the escalation forum, notifies admins,
+    and activates relay mode on the calling session.
+    """
+    # 1. Resolve calling session
+    session = await self._get_caller_session()
+    if not session:
+        return "Error: Could not resolve calling session"
+
+    # 2. Validate this is a customer session
+    if session.human_role != "customer":
+        return "Error: Escalation tool is only available in customer sessions"
+
+    # 3. Create Discord escalation thread
+    discord_adapter = self._get_discord_adapter()
+    if not discord_adapter:
+        return "Error: Discord adapter not available"
+
+    thread_id = await discord_adapter.create_escalation_thread(
+        customer_name=customer_name,
+        reason=reason,
+        context_summary=context_summary,
+        session_id=session.session_id,
+    )
+
+    # 4. Set relay state on session
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    await self._update_session_fields(session.session_id, {
+        "relay_status": "active",
+        "relay_discord_channel_id": str(thread_id),
+        "relay_started_at": now.isoformat(),
+    })
+
+    # 5. Send notification to admins
+    await self._send_escalation_notification(
+        customer_name=customer_name,
+        reason=reason,
+        session_id=session.session_id,
+    )
+
+    return f"Escalation created. Admin notified. Relay channel active (thread {thread_id})."
+```
+
+**Step 2: Add create_escalation_thread to Discord adapter**
+
+In `teleclaude/adapters/discord_adapter.py`, add method:
+
+```python
+async def create_escalation_thread(
+    self,
+    customer_name: str,
+    reason: str,
+    context_summary: str | None,
+    session_id: str,
+) -> int:
+    """Create a thread in the escalation forum channel."""
+    escalation_channel_id = config.discord.escalation_channel_id
+    if not escalation_channel_id:
+        raise AdapterError("DISCORD_ESCALATION_CHANNEL_ID not configured")
+
+    forum = await self._get_channel(escalation_channel_id)
+    if forum is None:
+        raise AdapterError(f"Escalation channel {escalation_channel_id} not found")
+
+    # Build opening message
+    body = f"**Reason:** {reason}"
+    if context_summary:
+        body += f"\n\n**Context:** {context_summary}"
+    body += f"\n\n*Session: {session_id}*"
+
+    thread, _ = await forum.create_thread(
+        name=customer_name,
+        content=body,
+    )
+    return thread.id
+```
+
+**Step 3: Add helper methods to MCP handler**
+
+- `_get_caller_session()` — resolve session from `caller_session_id`
+- `_get_discord_adapter()` — get the running Discord adapter instance
+- `_update_session_fields()` — update arbitrary session fields in DB
+- `_send_escalation_notification()` — enqueue notification via the outbox
+
+**Step 4: Write tests**
+
+- Escalation creates thread and sets relay state
+- Escalation fails gracefully when Discord unavailable
+- Escalation rejected for non-customer sessions
+
+**Step 5: Run tests and commit**
+
+```
+feat(mcp): implement teleclaude__escalate tool with Discord relay activation
+```
+
+---
+
+## Work Package 14: Admin Relay Channel
+
+### Task 22: Message routing diversion for relay mode
+
+**Files:**
+
+- Modify: `teleclaude/adapters/discord_adapter.py:341-376` (\_handle_on_message)
+- Modify: other adapters (Telegram) if they handle customer sessions
+
+**Step 1: Add relay check to adapter message handling**
+
+In the Discord adapter's `_handle_on_message()` (line 341), after session resolution (line 350):
+
+```python
+session = await self._resolve_or_create_session(message)
+if not session:
+    return
+
+# Check relay mode — divert customer messages to relay thread
+if session.relay_status == "active" and session.relay_discord_channel_id:
+    await self._forward_to_relay_thread(session, text, message)
+    return  # Do NOT dispatch to tmux
+```
+
+Implement `_forward_to_relay_thread()`:
+
+```python
+async def _forward_to_relay_thread(
+    self, session: "Session", text: str, message: object
+) -> None:
+    """Forward customer message to the relay Discord thread."""
+    thread = await self._get_channel(int(session.relay_discord_channel_id))
+    if thread is None:
+        logger.error("Relay thread %s not found", session.relay_discord_channel_id)
+        return
+
+    # Determine customer display name
+    author = getattr(message, "author", None)
+    name = getattr(author, "display_name", None) or "Customer"
+    platform = session.last_input_origin or "unknown"
+
+    await thread.send(f"**{name}** ({platform}): {text}")
+```
+
+**Step 2: Add relay check to Telegram adapter**
+
+Same pattern: after session resolution, check `relay_status`. If active, forward the message to the Discord relay thread via the Discord adapter (cross-adapter call through the daemon).
+
+**Step 3: Run tests and commit**
+
+```
+feat(adapters): divert customer messages to relay thread when relay is active
+```
+
+---
+
+### Task 23: Admin-to-customer relay forwarding
+
+**Files:**
+
+- Modify: `teleclaude/adapters/discord_adapter.py:341-376` (\_handle_on_message)
+
+**Step 1: Detect messages in relay threads**
+
+In `_handle_on_message()`, before the normal session resolution flow, check if the message is in a relay thread (escalation forum channel):
+
+```python
+async def _handle_on_message(self, message: object) -> None:
+    if self._is_bot_message(message):
+        return
+
+    text = getattr(message, "content", None)
+    if not isinstance(text, str) or not text.strip():
+        return
+
+    # Check if this is a relay thread message
+    channel = getattr(message, "channel", None)
+    parent_id = getattr(channel, "parent_id", None)
+    if parent_id and parent_id == config.discord.escalation_channel_id:
+        await self._handle_relay_thread_message(message, text)
+        return
+
+    # ... existing session resolution flow
+```
+
+**Step 2: Implement \_handle_relay_thread_message()**
+
+```python
+async def _handle_relay_thread_message(self, message: object, text: str) -> None:
+    """Handle admin message in a relay thread — forward to customer."""
+    thread_id = str(getattr(getattr(message, "channel", None), "id", ""))
+
+    # Find the session with this relay_discord_channel_id
+    session = await self._find_session_by_relay_thread(thread_id)
+    if not session:
+        return  # Orphaned thread, ignore
+
+    # Check for @agent handback (handled in Task 24)
+    if self._is_agent_tag(text):
+        await self._handle_agent_handback(session, text, thread_id)
+        return
+
+    # Forward admin message to customer's platform
+    author = getattr(message, "author", None)
+    admin_name = getattr(author, "display_name", None) or "Admin"
+    await self._deliver_to_customer(session, f"{admin_name}: {text}")
+```
+
+**Step 3: Implement \_deliver_to_customer()**
+
+Routes the message back to the customer via their originating platform adapter:
+
+```python
+async def _deliver_to_customer(self, session: "Session", text: str) -> None:
+    """Deliver a message to the customer via their originating adapter."""
+    origin = session.last_input_origin
+    # Use the adapter client to fan-out to the correct adapter
+    await self.client.deliver_to_session(session.session_id, text, origin=origin)
+```
+
+**Step 4: Implement \_find_session_by_relay_thread()**
+
+Query the DB for a session where `relay_discord_channel_id == thread_id` and `relay_status == "active"`.
+
+**Step 5: Run tests and commit**
+
+```
+feat(discord): forward admin relay messages to customer platform
+```
+
+---
+
+### Task 24: `@agent` handback with context injection
+
+**Files:**
+
+- Modify: `teleclaude/adapters/discord_adapter.py` (add handback logic)
+
+**Step 1: Implement \_is_agent_tag()**
+
+Detect `@agent` in the message text. Check for both the Discord bot mention (`<@BOT_ID>`) and the text convention `@agent`:
+
+```python
+def _is_agent_tag(self, text: str) -> bool:
+    """Check if message contains an @agent handback tag."""
+    if "@agent" in text.lower():
+        return True
+    if self._client and self._client.user:
+        bot_mention = f"<@{self._client.user.id}>"
+        if bot_mention in text:
+            return True
+    return False
+```
+
+**Step 2: Implement \_handle_agent_handback()**
+
+```python
+async def _handle_agent_handback(
+    self, session: "Session", text: str, thread_id: str
+) -> None:
+    """Collect relay messages and inject context back into AI session."""
+    # 1. Collect messages from relay thread since relay_started_at
+    messages = await self._collect_relay_messages(
+        thread_id=thread_id,
+        since=session.relay_started_at,
+    )
+
+    # 2. Compile into context block
+    context_block = self._compile_relay_context(messages)
+
+    # 3. Inject into AI session's tmux
+    from teleclaude.core.tmux_bridge import inject_text
+    inject_text(session.tmux_session_name, context_block)
+
+    # 4. Clear relay state
+    await self._update_session_fields(session.session_id, {
+        "relay_status": None,
+        "relay_discord_channel_id": None,
+        "relay_started_at": None,
+    })
+```
+
+**Step 3: Implement \_collect_relay_messages()**
+
+Use Discord API to read thread history since `relay_started_at`:
+
+```python
+async def _collect_relay_messages(
+    self, thread_id: str, since: datetime | None
+) -> list[dict]:
+    """Read all messages from a relay thread since the given timestamp."""
+    thread = await self._get_channel(int(thread_id))
+    if not thread:
+        return []
+
+    messages = []
+    async for msg in thread.history(after=since, limit=200):
+        if self._is_bot_message(msg):
+            continue  # Skip the bot's own relay forwarding
+        author = getattr(msg, "author", None)
+        name = getattr(author, "display_name", None) or "Unknown"
+        is_admin = not getattr(author, "bot", False)
+        role = "Admin" if is_admin else "Customer"
+        messages.append({
+            "role": role,
+            "name": name,
+            "content": getattr(msg, "content", ""),
+            "timestamp": getattr(msg, "created_at", None),
+        })
+    return messages
+```
+
+**Step 4: Implement \_compile_relay_context()**
+
+```python
+def _compile_relay_context(self, messages: list[dict]) -> str:
+    """Compile relay messages into a context block for AI injection."""
+    lines = [
+        "[Admin Relay Conversation]",
+        "The admin spoke directly with the customer. Here is the full exchange:",
+        "",
+    ]
+    for msg in messages:
+        lines.append(f"{msg['role']} ({msg['name']}): {msg['content']}")
+
+    lines.extend([
+        "",
+        "The admin has handed the conversation back to you. Continue naturally,",
+        "acknowledging what was discussed.",
+    ])
+    return "\n".join(lines)
+```
+
+**Step 5: Write tests**
+
+- `@agent` triggers context collection and injection
+- Relay state cleared after handback
+- Messages collected since `relay_started_at` only
+- Multiple handback cycles within one session work correctly
+
+**Step 6: Run tests and commit**
+
+```
+feat(discord): implement @agent handback with relay context injection
 ```
 
 ---
@@ -815,10 +1310,20 @@ feat(templates): expand operator brain with full help desk persona and routines
 | -------------- | --------------- | --------------- |
 | **Foundation** | 1, 2, 3, 4, 5   | None            |
 | **Infra**      | 6, 7, 8, 10, 11 | Phase 1         |
+| **Config**     | 20              | None (parallel) |
 | **Bootstrap**  | 12, 13          | Phase 1         |
 | **Channels**   | 14, 15          | None (parallel) |
 | **Lifecycle**  | 9, 16           | Tasks 1, 2      |
+| **Escalation** | 21              | Tasks 5, 8, 20  |
+| **Relay**      | 22, 23, 24      | Tasks 8, 21     |
 | **Jobs**       | 17, 18          | Tasks 1, 9, 14  |
 | **Polish**     | 19              | Tasks 6, 10, 12 |
 
 Tasks within a phase can be worked in parallel where noted. The dependency graph is encoded above — a task only requires its listed dependencies, not the entire prior phase.
+
+**Parallelism opportunities:**
+
+- Tasks 1-5 + 14 + 20 can all run in parallel (no shared dependencies)
+- Tasks 6-8 + 10-11 can run in parallel once Phase 1 is done
+- Tasks 21-24 form a sequential chain (escalation -> relay diversion -> forwarding -> handback)
+- Task 19 (operator brain) is the final integrator — it references everything else
