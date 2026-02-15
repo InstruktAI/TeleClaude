@@ -472,6 +472,11 @@ class Session:  # pylint: disable=too-many-instance-attributes
     human_email: Optional[str] = None
     human_role: Optional[str] = None
     lifecycle_status: str = "active"
+    last_memory_extraction_at: Optional[datetime] = None
+    help_desk_processed_at: Optional[datetime] = None
+    relay_status: Optional[str] = None
+    relay_discord_channel_id: Optional[str] = None
+    relay_started_at: Optional[datetime] = None
 
     def get_metadata(self) -> SessionAdapterMetadata:
         """Get session adapter metadata."""
@@ -496,6 +501,12 @@ class Session:  # pylint: disable=too-many-instance-attributes
             data["last_checkpoint_at"] = self.last_checkpoint_at.isoformat()
         if self.closed_at:
             data["closed_at"] = self.closed_at.isoformat()
+        if self.last_memory_extraction_at:
+            data["last_memory_extraction_at"] = self.last_memory_extraction_at.isoformat()
+        if self.help_desk_processed_at:
+            data["help_desk_processed_at"] = self.help_desk_processed_at.isoformat()
+        if self.relay_started_at:
+            data["relay_started_at"] = self.relay_started_at.isoformat()
         data["lifecycle_status"] = self.lifecycle_status
         adapter_meta = self.adapter_metadata
         if isinstance(adapter_meta, dict):
@@ -604,6 +615,17 @@ class Session:  # pylint: disable=too-many-instance-attributes
             human_email=_get_optional_str("human_email"),
             human_role=_get_optional_str("human_role"),
             lifecycle_status=str(data.get("lifecycle_status") or "active"),
+            last_memory_extraction_at=parse_iso_datetime(data.get("last_memory_extraction_at"))
+            if isinstance(data.get("last_memory_extraction_at"), str)
+            else None,
+            help_desk_processed_at=parse_iso_datetime(data.get("help_desk_processed_at"))
+            if isinstance(data.get("help_desk_processed_at"), str)
+            else None,
+            relay_status=_get_optional_str("relay_status"),
+            relay_discord_channel_id=_get_optional_str("relay_discord_channel_id"),
+            relay_started_at=parse_iso_datetime(data.get("relay_started_at"))
+            if isinstance(data.get("relay_started_at"), str)
+            else None,
         )
 
 

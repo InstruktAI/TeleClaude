@@ -31,7 +31,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_output_at TEXT,
     last_output_summary TEXT,  -- LLM-generated summary of last_output_raw
     working_slug TEXT,  -- Slug of work item this session is working on (from state machine)
-    lifecycle_status TEXT DEFAULT 'active'
+    lifecycle_status TEXT DEFAULT 'active',
+    last_memory_extraction_at TEXT,
+    help_desk_processed_at TEXT,
+    relay_status TEXT,
+    relay_discord_channel_id TEXT,
+    relay_started_at TEXT,
+    human_email TEXT,
+    human_role TEXT
     -- No unique constraint on (computer_name, tmux_session_name): tmux enforces
     -- its own name uniqueness, and headless sessions have NULL tmux_session_name.
 );
