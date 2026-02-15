@@ -17,11 +17,12 @@ The current `release.yaml` depends on live AI agents (Claude, Codex, Gemini). Te
 - [ ] **Mock Actions:** Create a local composite action or script that mimics the interface of the real AI agents (Inputs: `diff`; Outputs: `report.json` artifact).
 - [ ] **Test Pipeline:** Create `.github/workflows/test-release-pipeline.yaml` that triggers on PRs to `.github/workflows/`.
 - [ ] **Scenarios:** The pipeline must run the Arbiter against 3 pre-canned scenarios:
-  1.  **Unanimous Patch:** All 3 agents say "patch". -> Result: `vX.Y.Z+1` authorized.
-  2.  **Split Vote:** 2 Patch, 1 Minor. -> Result: `patch` wins (Majority).
-  3.  **Conservative Override:** Majority "None", Minority "Patch" with `contract_changes: true`. -> Result: `minor` wins (Safety).
-- [ ] **Artifact Verification:** The test pipeline must assert that the generated `release-notes.md` contains the expected Rationale and Lane Summary.
-- [ ] **Dry-Run Validation:** Verify the tagging step runs with `--dry-run` and does not crash on the generated version number.
+  1.  **Unanimous Patch:** All 3 agents say "patch". -> Result: `release_authorized=true`, `target_version="patch"`, `needs_human=false`.
+  2.  **Split Vote:** 2 Patch, 1 Minor. -> Result: `release_authorized=true`, `target_version="patch"`, `needs_human=false` (majority wins).
+  3.  **Conservative Override:** Majority "None", Minority "Patch" with `contract_changes` present. -> Result: `release_authorized=false`, `needs_human=true`, rationale mentions "contract changes" (escalation to human review).
+- [ ] **Decision Verification:** The test pipeline must assert the `arbiter-decision.json` fields match the expected outcome for each scenario (authorized, version, needs_human, rationale substring).
+- [ ] **Release Notes Generation:** For the authorized scenario (Unanimous Patch), replicate the `jq` release-notes generation from `release.yaml` and verify the output contains the Rationale and Lane Summary.
+- [ ] **Dry-Run Validation:** For the authorized scenario, run the version-bump shell logic from `release.yaml` against a known last tag and verify the computed next version string is correct.
 
 ## Constraints
 

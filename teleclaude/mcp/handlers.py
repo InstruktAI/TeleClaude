@@ -1022,11 +1022,13 @@ class MCPHandlersMixin:
             cwd = str(config.computer.default_working_dir)
         return await next_prepare(db, slug, cwd, hitl)
 
-    async def teleclaude__next_work(self, slug: str | None = None, cwd: str | None = None) -> str:
+    async def teleclaude__next_work(
+        self, slug: str | None = None, cwd: str | None = None, caller_session_id: str | None = None
+    ) -> str:
         """Phase B: Execute build/review/fix cycle on prepared work items."""
         if not cwd:
             return "ERROR: NO_CWD\nWorking directory not provided. This should be auto-injected by MCP wrapper."
-        return await next_work(db, slug, cwd)
+        return await next_work(db, slug, cwd, caller_session_id)
 
     async def teleclaude__next_maintain(self, cwd: str | None = None) -> str:
         """Phase D: Execute maintenance steps (stub)."""

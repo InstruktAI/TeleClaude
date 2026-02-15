@@ -27,17 +27,28 @@ Merge approved work to main, log delivery, and clean up.
 2. Update only the Finalize section in `quality-checklist.md`.
    - Do not edit Build or Review sections.
 3. Use commit hooks for verification (lint + unit tests).
-4. Merge to main (from within the worktree, use `git -C` to operate on the main repo):
+4. Integrate main into the branch (inside the worktree — you have code context to resolve conflicts):
+
+   ```bash
+   git fetch origin main
+   git merge origin/main --no-edit
+   ```
+
+   If conflicts occur, resolve them here in the worktree where you have full code context,
+   commit the resolution, and re-run verification.
+
+5. Merge branch to main (from the worktree, use `git -C` to operate on the main repo):
 
    ```bash
    MAIN_REPO="$(git rev-parse --git-common-dir)/.."
    git -C "$MAIN_REPO" fetch origin main
-   git -C "$MAIN_REPO" checkout main
+   git -C "$MAIN_REPO" switch main
    git -C "$MAIN_REPO" pull --ff-only origin main
    git -C "$MAIN_REPO" merge {slug} --no-edit
    ```
 
-5. Resolve conflicts if needed, then re-run verification.
+   This merge should be clean because step 4 already integrated main into the branch.
+
 6. Push main:
 
    ```bash

@@ -12,21 +12,18 @@
 ## Phase 2: Simulation Workflow
 
 - [ ] Create `.github/workflows/test-release-pipeline.yaml`.
+- [ ] Trigger: `pull_request` paths `.github/workflows/**`, `scripts/release_consolidator.py`, `tests/fixtures/release-simulation/**`.
 - [ ] Define a matrix strategy to run all 3 scenarios in parallel.
-- [ ] **Job 1: Mock Lanes:**
-  - Checkout code.
-  - Copy fixture JSONs to `artifacts/` based on matrix scenario.
-  - Upload artifacts (mimicking the real agent jobs).
-- [ ] **Job 2: Arbiter:**
-  - Download artifacts.
-  - Run `scripts/release_consolidator.py`.
-  - Upload `arbiter-decision.json`.
-- [ ] **Job 3: Assertions:**
-  - Download decision.
-  - Run a simple bash/python script to assert the decision matches the scenario expectation.
-    - Unanimous -> Authorized: True, Version: Patch
-    - Split -> Authorized: True, Version: Patch (Majority)
-    - Override -> Authorized: False (or Needs Human), Rationale contains "Safety"
+- [ ] Each matrix entry runs these steps in sequence:
+  1. **Checkout** code.
+  2. **Stage fixtures:** Copy the scenario's `claude.json`, `codex.json`, `gemini.json` to working directory.
+  3. **Run Arbiter:** `python scripts/release_consolidator.py --claude-report claude.json --codex-report codex.json --gemini-report gemini.json -o arbiter-decision.json`.
+  4. **Assert decision:** Run assertion script/step that validates `arbiter-decision.json` against expected outcome:
+     - Unanimous -> `release_authorized=true`, `target_version="patch"`, `needs_human=false`.
+     - Split -> `release_authorized=true`, `target_version="patch"`, `needs_human=false`.
+     - Override -> `release_authorized=false`, `needs_human=true`, rationale contains `"contract changes"`.
+  5. **Release notes (Unanimous only):** Replicate the `jq` generation from `release.yaml` authorized-tag job, assert output contains rationale and lane summary.
+  6. **Version bump (Unanimous only):** Run the version-bump shell logic from `release.yaml` against a known baseline tag (e.g., `v0.1.5`), assert next version equals `v0.1.6`.
 
 ## Phase 3: Documentation
 

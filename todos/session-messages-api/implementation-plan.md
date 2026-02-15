@@ -68,7 +68,7 @@ Add a structured messages API backed by native session transcript files. Two cha
 | -------------------------------------------------------- | ------------------------------------------------------------ |
 | `teleclaude/core/db_models.py`                           | Add `transcript_files` field                                 |
 | `teleclaude/core/schema.sql`                             | Add column                                                   |
-| `teleclaude/core/migrations/NNN_add_transcript_files.py` | New migration                                                |
+| `teleclaude/core/migrations/011_add_transcript_files.py` | New migration                                                |
 | `teleclaude/hooks/receiver.py`                           | Chain accumulation in `_update_session_native_fields`        |
 | `teleclaude/utils/transcript.py`                         | `extract_structured_messages`, `extract_messages_from_chain` |
 | `teleclaude/api_server.py`                               | New messages endpoint                                        |

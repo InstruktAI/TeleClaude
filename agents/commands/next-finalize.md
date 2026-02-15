@@ -40,6 +40,7 @@ Merge approved work, log delivery, and clean up.
 ## Steps
 
 - The Orchestrator has verified the approval state. Trust the state.json.
-- Merge the worktree branch to main.
+- First, integrate main into the branch (inside the worktree): `git fetch origin main && git merge origin/main --no-edit`. Resolve conflicts here where you have code context.
+- Then merge the branch to main using `git -C "$MAIN_REPO"` commands per the finalize procedure.
 - Log delivery.
 - Do NOT delete the worktree, branch, or todo folder — the orchestrator owns cleanup.

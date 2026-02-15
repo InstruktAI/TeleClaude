@@ -1683,6 +1683,19 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     """
     retry_call = f'teleclaude__next_work(slug="{slug}")' if slug else "teleclaude__next_work()"
 
+    # Release finalize lock ONLY if the locked item's finalize is confirmed complete.
+    # Finalize removes the slug from roadmap, so "not in roadmap" is the completion signal.
+    if caller_session_id:
+        lock_holder = get_finalize_lock_holder(cwd)
+        if lock_holder and lock_holder.get("session_id") == caller_session_id:
+            locked_slug = lock_holder.get("slug", "")
+            if locked_slug:
+                finalize_done = get_item_phase(cwd, locked_slug) == ItemPhase.DONE.value or not slug_in_roadmap(
+                    cwd, locked_slug
+                )
+                if finalize_done:
+                    release_finalize_lock(cwd, caller_session_id)
+
     async def _pick_agent(task_type: str) -> tuple[str, str] | str:
         try:
             return await get_available_agent(db, task_type, WORK_FALLBACK)

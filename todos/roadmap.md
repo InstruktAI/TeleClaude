@@ -28,10 +28,6 @@ Admin supergroup mirroring and intervention. Establish supergroups on Telegram a
 
 Deterministic CI pipeline (`test-release-pipeline.yaml`) that mocks AI agents to verify the Arbiter's logic (Split votes, Safety overrides) and workflow wiring without using live tokens.
 
-- release-workflow-foundation (after: release-manifests)
-
-Establish baseline GitHub Actions for lint/test and the skeleton release workflow that triggers on main pushes.
-
 ## Session Messages API
 
 - session-messages-api — Structured messages endpoint from native session files
