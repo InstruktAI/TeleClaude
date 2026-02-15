@@ -2016,9 +2016,9 @@ class TestSessionsViewLogic:
         assert line0_calls[0][3] == 0
         assert line0_calls[1][2] == "[1]"
         assert line0_calls[1][3] == 12
-        assert line0_calls[2][3] == 77 | curses.A_BOLD
-        assert line0_calls[3][3] == 77 | curses.A_BOLD
-        assert line0_calls[4][3] == 77 | curses.A_BOLD
+        assert line0_calls[2][3] == 77
+        assert line0_calls[3][3] == 77
+        assert line0_calls[4][3] == 77
         assert line0_calls[4][2].endswith(" ")
 
     def test_selected_preview_session_keeps_selection_highlight(self, sessions_view, monkeypatch):
@@ -2062,9 +2062,9 @@ class TestSessionsViewLogic:
         assert line0_calls[0][3] == 0
         assert line0_calls[1][2] == "[1]"
         assert line0_calls[1][3] == (12 | curses.A_BOLD)
-        assert line0_calls[2][3] == (99 | curses.A_BOLD)
-        assert line0_calls[3][3] == (99 | curses.A_BOLD)
-        assert line0_calls[4][3] == (99 | curses.A_BOLD)
+        assert line0_calls[2][3] == 99
+        assert line0_calls[3][3] == 99
+        assert line0_calls[4][3] == 99
         assert line0_calls[4][2].endswith(" ")
 
     def test_selected_non_preview_session_uses_focus_muted_colors(self, sessions_view, monkeypatch):
@@ -2445,9 +2445,9 @@ class TestSessionsViewLogic:
         assert line0_calls[1][3] == expected_badge_attr
 
         if selected:
-            expected_title_attr = 99 | curses.A_BOLD
+            expected_title_attr = (99 | curses.A_BOLD) if not previewed else 99
         else:
-            expected_title_attr = (77 | curses.A_BOLD) if previewed else 12
+            expected_title_attr = 77 if previewed else 12
         assert line0_calls[2][3] == expected_title_attr
         assert line0_calls[3][3] == expected_title_attr
         assert line0_calls[4][3] == expected_title_attr
