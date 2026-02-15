@@ -86,10 +86,19 @@ run_agent() {
 }
 
 # Run them all
-run_agent "claude" || exit 1
-run_agent "codex" || exit 1
-run_agent "gemini" || exit 1
+EXIT_STATUS=0
+run_agent "claude" || EXIT_STATUS=1
+run_agent "codex" || EXIT_STATUS=1
+run_agent "gemini" || EXIT_STATUS=1
 
-echo "---------------------------------------------------"
-echo "🎉 ALL AGENTS VERIFIED SUCCESSFUL"
-echo "---------------------------------------------------"
+if [ $EXIT_STATUS -eq 0 ]; then
+    echo "---------------------------------------------------"
+    echo "🎉 ALL AGENTS VERIFIED SUCCESSFUL"
+    echo "---------------------------------------------------"
+    exit 0
+else
+    echo "---------------------------------------------------"
+    echo "❌ SOME AGENTS FAILED"
+    echo "---------------------------------------------------"
+    exit 1
+fi

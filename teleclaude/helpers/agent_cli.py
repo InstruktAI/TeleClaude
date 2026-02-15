@@ -76,6 +76,7 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
     "claude": {
         "flags": (
             "--dangerously-skip-permissions --no-session-persistence --no-chrome"
+            " --strict-mcp-config"
             ' --tools "" --disable-slash-commands --setting-sources user'
             ' --settings \'{"forceLoginMethod": "claudeai",'
             ' "enabledMcpjsonServers": [], "disableAllHooks": true}\''
@@ -91,7 +92,7 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
         "tools_map": {"web_search": "web_search"},
     },
     "gemini": {
-        "flags": "--yolo --allowed-mcp-server-names=[]",
+        "flags": "--yolo --allowed-mcp-server-names _none_",
         "model_flags": _AGENT_MODEL_FLAGS["gemini"],
         "output_format": "-o json",
         "schema_arg": "",
@@ -105,7 +106,7 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
     "codex": {
         "flags": "--dangerously-bypass-approvals-and-sandbox --search",
         "model_flags": _AGENT_MODEL_FLAGS["codex"],
-        "exec_subcommand": "exec",
+        "exec_subcommand": "exec --ephemeral",
         "output_format": "",
         "schema_arg": "--output-schema",
         "schema_file": "true",
@@ -263,7 +264,7 @@ def _run_agent(
 
     exec_subcommand = str(spec.get("exec_subcommand", "") or "")
     if exec_subcommand:
-        cmd_parts.append(exec_subcommand)
+        cmd_parts.extend(shlex.split(exec_subcommand))
     if model_flag:
         cmd_parts.extend(shlex.split(str(model_flag)))
 
@@ -327,6 +328,17 @@ def _run_agent(
     if debug_raw:
         print(json.dumps({"debug_cmd": cmd_parts, "prompt_len": len(prompt)}))
 
+    # Sanitize env: strip parent-session markers and inherited API keys.
+    # One-shot spec manages its own auth (forceLoginMethod, --yolo, etc.);
+    # leaked dummy/test keys from the parent would override the intended flow.
+    _STRIP_PREFIXES = ("CLAUDE_CODE", "CLAUDECODE")
+    _STRIP_EXACT = {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in _STRIP_EXACT and not any(k.startswith(p) for p in _STRIP_PREFIXES)
+    }
+
     result = subprocess.run(
         cmd_parts,
         input=prompt if use_stdin else None,
@@ -334,9 +346,11 @@ def _run_agent(
         text=True,
         check=False,
         timeout=timeout_s,
+        env=env,
     )
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "Agent CLI failed")
+        detail = result.stderr.strip() or result.stdout.strip()[:200] or "Agent CLI failed"
+        raise RuntimeError(detail)
     return result.stdout
 
 
@@ -398,7 +412,7 @@ def run_job(
 
     exec_subcommand = str(spec.get("exec_subcommand", "") or "")
     if exec_subcommand:
-        cmd_parts.append(exec_subcommand)
+        cmd_parts.extend(shlex.split(exec_subcommand))
     if model_flag:
         cmd_parts.extend(shlex.split(model_flag))
 

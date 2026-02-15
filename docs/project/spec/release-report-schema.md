@@ -34,7 +34,7 @@ This specification defines the JSON schema that all AI Release Inspector lanes (
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["surface", "item", "change_type"],
+        "required": ["surface", "item", "change_type", "details"],
         "properties": {
           "surface": {
             "type": "string",

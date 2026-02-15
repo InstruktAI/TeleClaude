@@ -302,6 +302,7 @@ addopts = [
 markers = [
   "unit: Unit tests (fast, isolated, mocked)",
   "integration: Integration tests (slower, real components)",
+  "expensive: Tests that call real LLM APIs (excluded from default runs)",
   "timeout: Test timeout marker",
 ]
 asyncio_mode = "auto"
