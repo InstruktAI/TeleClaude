@@ -8,8 +8,8 @@
 ### 1. Intent & Success — PASS
 
 - Problem statement is explicit: testing release workflow wiring without live LLMs.
-- Success criteria are concrete, testable, and now aligned with actual `release_consolidator.py` behavior.
-- Gate fix applied: Scenario 3 expected result corrected from "minor wins" to "escalation to human review" per actual code (lines 113-124).
+- Success criteria are concrete, testable, and aligned with current `release_consolidator.py` behavior.
+- Scenario 3 (Conservative Override) now expects `authorized=true` after the arbiter was made fully autonomous.
 
 ### 2. Scope & Size — PASS
 
@@ -21,7 +21,7 @@
 
 - The test pipeline IS the verification — it runs deterministic assertions against known fixtures.
 - Three distinct scenarios cover majority consensus, split vote, and conservative override.
-- Release notes generation and version bump logic are now included in assertions.
+- Release notes generation and version bump logic are included in assertions.
 
 ### 4. Approach Known — PASS
 
@@ -53,11 +53,8 @@
 
 ## Actions Taken
 
-1. Fixed Scenario 3 expected result in `requirements.md` to match actual `release_consolidator.py` behavior (was: "minor wins (Safety)", now: "release_authorized=false, needs_human=true, rationale mentions contract changes").
+1. Fixed Scenario 3 expected result in `requirements.md` — conservative override now authorizes the release at the minority's classification (minority trusted when it has contract changes).
 2. Expanded success criteria to separate decision verification, release notes generation, and version bump validation.
 3. Restructured implementation plan Phase 2 from ambiguous 3-job split to clear per-scenario matrix with sequential steps.
 4. Added workflow trigger paths and release-notes/version-bump assertion steps to implementation plan.
-
-## Open Questions
-
-None. All gates satisfied.
+5. Removed all `needs_human` references from requirements and plan after arbiter was made fully autonomous.

@@ -16,9 +16,9 @@ You will receive three JSON reports, each conforming to the release-report-schem
 ## Consensus Rules
 
 1. **Majority wins**: If 2 out of 3 lanes agree on a classification, adopt that classification.
-2. **Detail tiebreaker**: If all 3 lanes disagree, examine the `contract_changes` arrays. The report with the most specific and verifiable contract changes takes precedence. If still ambiguous, set `release_authorized` to `false` and `needs_human` to `true`.
+2. **Detail tiebreaker**: If all 3 lanes disagree, examine the `contract_changes` arrays. The report with the most specific and verifiable contract changes takes precedence. If still ambiguous, set `release_authorized` to `false` and `target_version` to `"none"`.
 3. **Fail-safe**: If any report is missing, malformed, or cannot be parsed, set `release_authorized` to `false`.
-4. **Conservative override**: If the majority says "none" but a minority report lists concrete `contract_changes`, escalate to human review.
+4. **Conservative override**: If the majority says "none" but a minority report lists concrete `contract_changes`, trust the minority — they detected real changes the majority missed. Authorize the release at the minority's classification.
 
 ## Output
 
@@ -29,7 +29,6 @@ Return ONLY valid JSON matching this structure:
   "release_authorized": true,
   "target_version": "minor",
   "authoritative_rationale": "2/3 lanes agree on minor: new MCP tool added.",
-  "needs_human": false,
   "lane_summary": {
     "claude": "minor",
     "codex": "minor",
@@ -44,7 +43,6 @@ Return ONLY valid JSON matching this structure:
 - `release_authorized` (boolean): `true` only when consensus is reached and classification is "patch" or "minor".
 - `target_version` ("patch" | "minor" | "none"): The resolved classification.
 - `authoritative_rationale` (string): Brief explanation of how the decision was reached.
-- `needs_human` (boolean): `true` when three-way disagreement or conservative override triggered.
 - `lane_summary` (object): The classification from each lane.
 - `evidence` (array of strings): File paths to the lane artifacts considered.
 

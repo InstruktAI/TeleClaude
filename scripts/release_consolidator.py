@@ -8,7 +8,6 @@ release decision as JSON.
 Exit codes:
   0 — decision written successfully
   1 — fatal error (missing files, parse failures)
-  2 — needs human review (three-way disagreement)
 """
 
 from __future__ import annotations
@@ -39,7 +38,6 @@ class ArbiterDecision(TypedDict):
     release_authorized: bool
     target_version: str
     authoritative_rationale: str
-    needs_human: bool
     lane_summary: dict[str, str | None]
     evidence: list[str]
 
@@ -92,13 +90,12 @@ def resolve_consensus(
         else:
             lane_summary[lane] = None
 
-    # Fail-safe: all three reports required per spec
+    # Fail-safe: all three reports required for consensus
     if len(valid_reports) < 3:
         return _decision(
             authorized=False,
             version="none",
             rationale=f"Only {len(valid_reports)}/3 valid reports — insufficient for consensus.",
-            needs_human=True,
             lane_summary=lane_summary,
             evidence=evidence,
         )
@@ -110,15 +107,19 @@ def resolve_consensus(
 
     # Majority consensus (2+ agree)
     if most_count >= 2:
-        # Conservative override: majority says "none" but minority has contract_changes
+        # Conservative override: majority says "none" but minority found contract changes.
+        # Trust the minority — they detected real changes the majority missed.
         if most_common == "none":
             for lane, report in valid_reports.items():
                 if report["classification"] != "none" and report["contract_changes"]:
+                    minority_version = report["classification"]
                     return _decision(
-                        authorized=False,
-                        version="none",
-                        rationale=(f"Majority says none but {lane} reports contract changes — escalating."),
-                        needs_human=True,
+                        authorized=True,
+                        version=minority_version,
+                        rationale=(
+                            f"Majority says none but {lane} reports contract changes "
+                            f"— overriding to {minority_version}."
+                        ),
                         lane_summary=lane_summary,
                         evidence=evidence,
                     )
@@ -128,7 +129,6 @@ def resolve_consensus(
             authorized=authorized,
             version=most_common,
             rationale=f"{most_count}/3 lanes agree on {most_common}.",
-            needs_human=False,
             lane_summary=lane_summary,
             evidence=evidence,
         )
@@ -141,18 +141,16 @@ def resolve_consensus(
         return _decision(
             authorized=authorized,
             version=chosen,
-            rationale=(f"Three-way split — {best_lane} has most detailed contract_changes, choosing {chosen}."),
-            needs_human=True,
+            rationale=f"Three-way split — {best_lane} has most detailed contract_changes, choosing {chosen}.",
             lane_summary=lane_summary,
             evidence=evidence,
         )
 
-    # Fully ambiguous
+    # Fully ambiguous: conservative default
     return _decision(
         authorized=False,
         version="none",
-        rationale="Three-way disagreement with no clear detail winner.",
-        needs_human=True,
+        rationale="Three-way disagreement with no clear detail winner — defaulting to no release.",
         lane_summary=lane_summary,
         evidence=evidence,
     )
@@ -176,7 +174,6 @@ def _decision(
     authorized: bool,
     version: str,
     rationale: str,
-    needs_human: bool,
     lane_summary: dict[str, str | None],
     evidence: list[str],
 ) -> ArbiterDecision:
@@ -184,7 +181,6 @@ def _decision(
         release_authorized=authorized,
         target_version=version,
         authoritative_rationale=rationale,
-        needs_human=needs_human,
         lane_summary=lane_summary,
         evidence=evidence,
     )
@@ -214,8 +210,6 @@ def main(argv: list[str] | None = None) -> int:
     args.output.write_text(json.dumps(decision, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(decision, indent=2))
 
-    if decision.get("needs_human"):
-        return 2
     return 0
 
 

@@ -72,7 +72,6 @@ class TestMajorityConsensus:
         decision = resolve_consensus(reports)
         assert decision["release_authorized"] is True
         assert decision["target_version"] == "minor"
-        assert decision["needs_human"] is False
         assert "2/3" in decision["authoritative_rationale"]
 
     def test_two_patch_one_minor(self) -> None:
@@ -94,7 +93,6 @@ class TestMajorityConsensus:
         decision = resolve_consensus(reports)
         assert decision["release_authorized"] is False
         assert decision["target_version"] == "none"
-        assert decision["needs_human"] is False
 
     def test_two_none_one_patch_no_changes(self) -> None:
         reports = {
@@ -105,30 +103,30 @@ class TestMajorityConsensus:
         decision = resolve_consensus(reports)
         assert decision["release_authorized"] is False
         assert decision["target_version"] == "none"
-        assert decision["needs_human"] is False
 
 
 class TestConservativeOverride:
-    def test_majority_none_minority_has_changes(self) -> None:
+    def test_majority_none_minority_has_changes_promotes(self) -> None:
         reports = {
             "claude": _report("none"),
             "codex": _report("none"),
             "gemini": _report("minor", contract_changes=2),
         }
         decision = resolve_consensus(reports)
-        assert decision["release_authorized"] is False
-        assert decision["needs_human"] is True
+        assert decision["release_authorized"] is True
+        assert decision["target_version"] == "minor"
         assert "contract changes" in decision["authoritative_rationale"]
+        assert "overriding" in decision["authoritative_rationale"]
 
-    def test_majority_none_patch_minority_with_changes(self) -> None:
+    def test_majority_none_patch_minority_with_changes_promotes(self) -> None:
         reports = {
             "claude": _report("none"),
             "codex": _report("none"),
             "gemini": _report("patch", contract_changes=1),
         }
         decision = resolve_consensus(reports)
-        assert decision["release_authorized"] is False
-        assert decision["needs_human"] is True
+        assert decision["release_authorized"] is True
+        assert decision["target_version"] == "patch"
         assert "contract changes" in decision["authoritative_rationale"]
 
 
@@ -141,7 +139,6 @@ class TestFailSafe:
         }
         decision = resolve_consensus(reports)
         assert decision["release_authorized"] is False
-        assert decision["needs_human"] is True
         assert "insufficient" in decision["authoritative_rationale"].lower()
 
     def test_two_agreeing_reports_one_none(self) -> None:
@@ -152,7 +149,6 @@ class TestFailSafe:
         }
         decision = resolve_consensus(reports)
         assert decision["release_authorized"] is False
-        assert decision["needs_human"] is True
         assert "insufficient" in decision["authoritative_rationale"].lower()
 
     def test_two_disagreeing_reports_one_none(self) -> None:
@@ -163,7 +159,6 @@ class TestFailSafe:
         }
         decision = resolve_consensus(reports)
         assert decision["release_authorized"] is False
-        assert decision["needs_human"] is True
         assert "insufficient" in decision["authoritative_rationale"].lower()
 
     def test_zero_valid_reports(self) -> None:
@@ -174,7 +169,6 @@ class TestFailSafe:
         }
         decision = resolve_consensus(reports)
         assert decision["release_authorized"] is False
-        assert decision["needs_human"] is True
 
 
 class TestThreeWayDisagreement:
@@ -185,7 +179,6 @@ class TestThreeWayDisagreement:
             "gemini": _report("none", contract_changes=0),
         }
         decision = resolve_consensus(reports)
-        assert decision["needs_human"] is True
         assert decision["target_version"] == "minor"
         assert decision["release_authorized"] is True
 
@@ -197,7 +190,6 @@ class TestThreeWayDisagreement:
         }
         decision = resolve_consensus(reports)
         assert decision["release_authorized"] is False
-        assert decision["needs_human"] is True
         assert decision["target_version"] == "none"
 
 
@@ -246,6 +238,37 @@ class TestLaneSummaryAndEvidence:
         assert decision["lane_summary"]["codex"] is None
 
 
+class TestNoNeedsHumanField:
+    """Verify needs_human was fully removed from the decision schema."""
+
+    def test_decision_has_no_needs_human_key(self) -> None:
+        reports = {
+            "claude": _report("patch"),
+            "codex": _report("patch"),
+            "gemini": _report("patch"),
+        }
+        decision = resolve_consensus(reports)
+        assert "needs_human" not in decision
+
+    def test_fail_safe_has_no_needs_human_key(self) -> None:
+        reports: dict[str, LaneReport | None] = {
+            "claude": _report("minor"),
+            "codex": None,
+            "gemini": None,
+        }
+        decision = resolve_consensus(reports)
+        assert "needs_human" not in decision
+
+    def test_three_way_has_no_needs_human_key(self) -> None:
+        reports = {
+            "claude": _report("minor", contract_changes=3),
+            "codex": _report("patch", contract_changes=1),
+            "gemini": _report("none", contract_changes=0),
+        }
+        decision = resolve_consensus(reports)
+        assert "needs_human" not in decision
+
+
 # --- main CLI integration ---
 
 
@@ -272,11 +295,10 @@ class TestMainCLI:
         decision = json.loads((tmp_path / "decision.json").read_text(encoding="utf-8"))
         assert decision["release_authorized"] is True
 
-    def test_main_returns_2_when_needs_human(self, tmp_path: Path) -> None:
+    def test_main_returns_0_even_for_blocked_release(self, tmp_path: Path) -> None:
         from scripts.release_consolidator import main
 
         _write_report(tmp_path / "claude-report.json", _report("minor"))
-        # Only one report — fail-safe triggers
 
         exit_code = main(
             [
@@ -290,4 +312,6 @@ class TestMainCLI:
                 str(tmp_path / "decision.json"),
             ]
         )
-        assert exit_code == 2
+        assert exit_code == 0
+        decision = json.loads((tmp_path / "decision.json").read_text(encoding="utf-8"))
+        assert decision["release_authorized"] is False

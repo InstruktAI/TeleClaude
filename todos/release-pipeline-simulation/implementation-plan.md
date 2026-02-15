@@ -19,9 +19,9 @@
   2. **Stage fixtures:** Copy the scenario's `claude.json`, `codex.json`, `gemini.json` to working directory.
   3. **Run Arbiter:** `python scripts/release_consolidator.py --claude-report claude.json --codex-report codex.json --gemini-report gemini.json -o arbiter-decision.json`.
   4. **Assert decision:** Run assertion script/step that validates `arbiter-decision.json` against expected outcome:
-     - Unanimous -> `release_authorized=true`, `target_version="patch"`, `needs_human=false`.
-     - Split -> `release_authorized=true`, `target_version="patch"`, `needs_human=false`.
-     - Override -> `release_authorized=false`, `needs_human=true`, rationale contains `"contract changes"`.
+     - Unanimous -> `release_authorized=true`, `target_version="patch"`.
+     - Split -> `release_authorized=true`, `target_version="patch"`.
+     - Override -> `release_authorized=true`, `target_version="patch"`, rationale contains `"contract changes"` and `"overriding"`.
   5. **Release notes (Unanimous only):** Replicate the `jq` generation from `release.yaml` authorized-tag job, assert output contains rationale and lane summary.
   6. **Version bump (Unanimous only):** Run the version-bump shell logic from `release.yaml` against a known baseline tag (e.g., `v0.1.5`), assert next version equals `v0.1.6`.
 

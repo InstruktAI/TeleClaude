@@ -303,7 +303,6 @@ jobs:
     outputs:
       release_authorized: ${{ steps.arbiter.outputs.release_authorized }}
       target_version: ${{ steps.arbiter.outputs.target_version }}
-      needs_human: ${{ steps.arbiter.outputs.needs_human }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -349,7 +348,6 @@ jobs:
           fi
           echo "release_authorized=$(jq -r '.release_authorized' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
           echo "target_version=$(jq -r '.target_version' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
-          echo "needs_human=$(jq -r '.needs_human' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
       - name: Upload Decision
         uses: actions/upload-artifact@v4
         with:

@@ -14,7 +14,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
 
-from instrukt_ai_logging import configure_logging, get_logger
+# Bootstrap: agent CLIs call this hook from arbitrary directories where PATH may
+# resolve python3 to system Python (missing project deps). Re-exec under the
+# project venv when needed.
+_VENV_PYTHON = Path(__file__).resolve().parents[2] / ".venv" / "bin" / "python3"
+if _VENV_PYTHON.is_file() and Path(sys.executable).resolve() != _VENV_PYTHON.resolve():
+    os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
+
+from instrukt_ai_logging import configure_logging, get_logger  # noqa: E402
 
 # Ensure local hooks utils and TeleClaude package are importable
 hooks_dir = Path(__file__).parent
