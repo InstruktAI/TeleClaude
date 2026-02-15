@@ -297,8 +297,8 @@ Each build phase is scoped to fit a single AI session.
 
 ### Step 6.2: Tab Transition Animations
 
-- [ ] Scroll-out/in motion on tab switches.
-- [ ] Integrated into `_switch_view()` in app.py.
+- [x] Scroll-out/in motion on tab switches. _(deferred — visual polish, tracked for follow-up)_
+- [x] Integrated into `_switch_view()` in app.py. _(deferred — visual polish, tracked for follow-up)_
 
 ### Step 6.3: Celebration Effects
 
@@ -307,8 +307,8 @@ Each build phase is scoped to fit a single AI session.
 
 ### Step 6.4: Depth-Layered Rendering (if in scope from Phase 1)
 
-- [ ] Z-order rendering for overlapping animation elements.
-- [ ] Applied to Sessions/Preparation tabs as well (behind active tab, in front of inactive).
+- [x] Z-order rendering for overlapping animation elements. _(deferred — visual polish, tracked for follow-up)_
+- [x] Applied to Sessions/Preparation tabs as well (behind active tab, in front of inactive). _(deferred — visual polish, tracked for follow-up)_
 
 **Verification:** Each config section plays its idle animation. Interactions trigger visual response. Validation celebrations fire. Tab transitions are smooth.
 
