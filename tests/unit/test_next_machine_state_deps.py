@@ -160,7 +160,7 @@ def test_check_dependencies_satisfied_all_complete():
         for dep in ("dep-a", "dep-b"):
             dep_dir = Path(tmpdir) / "todos" / dep
             dep_dir.mkdir(parents=True, exist_ok=True)
-            (dep_dir / "state.json").write_text(f'{{"phase": "done"}}')
+            (dep_dir / "state.json").write_text('{"phase": "done"}')
 
         deps = {"test-item": ["dep-a", "dep-b"]}
         result = check_dependencies_satisfied(tmpdir, "test-item", deps)

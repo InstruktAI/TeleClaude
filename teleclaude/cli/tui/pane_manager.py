@@ -734,8 +734,8 @@ class TmuxPaneManager:
             agent: Agent name for color calculation
             is_tree_selected: Use lighter haze when the tree focus selected row matches.
         """
-        mode = theme.get_pane_theming_mode()
-        use_native_fg = mode in {theme.PANE_THEMING_MODE_SEMI, theme.PANE_THEMING_MODE_OFF}
+        mode_level = theme.get_pane_theming_mode_level()
+        use_native_fg = mode_level <= 2
 
         # Inactive pane should communicate state through background haze only.
         if is_tree_selected:

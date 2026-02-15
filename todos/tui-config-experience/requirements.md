@@ -18,7 +18,7 @@ All interactive configuration lives inside the TUI as a first-class Config tab. 
 - SC-4: Each config section displays provider-specific help: description, numbered steps to obtain credentials, direct URL to provider portal, expected format with example, and validation rules.
 - SC-5: The animation engine supports arbitrary render targets beyond big banner and small logo.
 - SC-6: Animations can be selected by section + state (idle/interacting/success/error), not only random/agent triggers.
-- SC-7: Each config section has a distinct color palette (provider brand colors like Discord blurple, Telegram blue are encouraged for recognition).
+- SC-7: Each config section has a distinct color palette (e.g., Discord indigo/blurple, Telegram blue).
 - SC-8: Continuous idle animations run while a config section is active without being distracting.
 - SC-9: A three-mode animation toggle exists: off / periodic / party.
 - SC-10: `telec config get/patch/validate` CLI subcommands for agents remain unchanged.
@@ -60,7 +60,7 @@ All interactive configuration lives inside the TUI as a first-class Config tab. 
 
 - FR-5.1: The engine supports named render targets (e.g., "banner", "logo", "config_banner") instead of hardcoded big/small.
 - FR-5.2: A new state-driven trigger selects animations based on `(section_id, state)` tuples where state is one of: idle, interacting, success, error.
-- FR-5.3: Section-aware palettes are registered in `PaletteRegistry` (e.g., "discord", "telegram", "ai_keys"). Palette design is defined by Phase 1 visual specs.
+- FR-5.3: Section-aware palettes are registered in `PaletteRegistry` (e.g., "discord", "telegram", "ai_keys").
 - FR-5.4: Continuous idle animations run indefinitely until explicitly stopped or replaced (unlike current fire-and-finish model).
 - FR-5.5: Scroll/motion transitions animate tab and section switches (scroll-out/in, fade).
 - FR-5.6: Depth layering supports z-order for overlapping elements.
@@ -75,50 +75,12 @@ All interactive configuration lives inside the TUI as a first-class Config tab. 
 - FR-6.3: Reduce `prompt_utils.py` to only what's needed for headless/agent fallback (or remove entirely if unused).
 - FR-6.4: Update CLI help text for `telec config` and `telec onboard`.
 
-## Visual Style Direction
-
-The aesthetic target for all visual elements — animations, borders, decorative art, section headers, status indicators — is defined here. This is creative direction, not a prohibition list. The Art Director and Artist have full creative freedom within this style.
-
-### Style: 8-Bit / Chiptune Pop
-
-The feel is Commodore 64, early Mario, chiptune — poppy, contrast-rich, alive. Simple shapes that punch. Color that pops against the terminal background. Animations that give the interface personality without overwhelming it.
-
-TeleClaude does not have an established house visual identity beyond the current banner with color cycling. This work defines it. The creative team owns that definition.
-
-### Contrast-Rich
-
-Elements should be clearly visible and distinct. The interface should feel crisp and readable. When something is animated, it should be noticeable. When something is static, it should be clean.
-
-### Simple, Not Spectacle
-
-The banner's current simplicity — text with color cycling — is the starting point. The goal is to extend that into something richer while keeping the same spirit: life and personality, not visual noise.
-
-### Provider Colors Welcome
-
-Section palettes may use provider brand colors (Discord's blurple, Telegram's blue, etc.) for recognition. There is no TeleClaude brand palette to conflict with — the creative team defines what works.
-
-### Banner Area: Make It Fun
-
-The TELECLAUDE banner is not a static logo. It's a playground. The creative team should design scene animations that bring the banner and surrounding TUI to life — not just color cycling, but movement, character, surprise.
-
-**Inspiration (invent more of the same):**
-
-- A tiny character rides a bicycle across the tab pane line — in front of subdued tabs, behind the selected tab (depth/parallax)
-- A car drives across the same line in the other direction
-- The TELECLAUDE banner scrolls out of the window to the left and comes back in from the right
-- The banner drops in from above, lands with a bounce
-- The banner disintegrates into pixels and reassembles
-- Scrolling banners, marquee text, demoscene-style scrollers
-
-These are examples, not a checklist. The creative team should take this energy and run with it — more playful scene animations, more surprises, more personality. The banner area should make people smile.
-
 ## Non-Functional Requirements
 
 - NFR-1: Config tab renders correctly in terminals >= 80 columns wide.
 - NFR-2: Animation engine evolution must not break existing banner/logo animations in Sessions and Preparation tabs.
 - NFR-3: Config read/write operations use the existing atomic YAML write path (file lock + tmp + replace).
 - NFR-4: The creative phase (art direction) produces concrete visual specs before any animation implementation begins.
-- NFR-5: All visual output aligns with the Visual Style Direction. The creative team defines what that means concretely.
 
 ## Out of Scope
 

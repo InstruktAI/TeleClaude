@@ -38,25 +38,32 @@ from teleclaude.cli.models import (
 )
 from teleclaude.cli.tui.animation_colors import palette_registry
 from teleclaude.cli.tui.animation_engine import AnimationEngine
-from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger
+from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger, StateDrivenTrigger
+from teleclaude.cli.tui.animations.config import (
+    ErrorAnimation,
+    PulseAnimation,
+    SuccessAnimation,
+    TypingAnimation,
+)
 from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.state import Intent, IntentType, TuiState
 from teleclaude.cli.tui.state_store import save_sticky_state
 from teleclaude.cli.tui.theme import (
-    PANE_THEMING_MODE_FULL,
-    PANE_THEMING_MODE_OFF,
-    PANE_THEMING_MODE_SEMI,
+    PANE_THEMING_MODE_CYCLE,
     get_current_mode,
     get_pane_theming_mode,
+    get_pane_theming_mode_level,
     get_system_dark_mode,
     get_tab_line_attr,
     init_colors,
     is_dark_mode,
+    normalize_pane_theming_mode,
     set_pane_theming_mode,
 )
 from teleclaude.cli.tui.tree import is_computer_node, is_session_node
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NotificationLevel
+from teleclaude.cli.tui.views.configuration import ConfigurationView
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import BANNER_HEIGHT, render_banner
@@ -197,18 +204,23 @@ class Notification:
 
 
 class TelecApp:
-    """Main TUI application with view switching (1=Sessions, 2=Preparation)."""
+    """Main TUI application with view switching (1=Sessions, 2=Preparation, 3=Configuration)."""
 
-    def __init__(self, api: "TelecAPIClient"):
+    def __init__(self, api: "TelecAPIClient", start_view: int = 1, config_guided: bool = False):
         """Initialize TUI app.
 
         Args:
             api: API client instance
+            start_view: Initial view to show (default 1)
+            config_guided: Whether to start configuration in guided mode
         """
         self.api = api
-        self.current_view = 1  # 1=Sessions, 2=Preparation
-        self.views: dict[int, SessionsView | PreparationView] = {}
+        self.current_view = start_view
+        self.views: dict[int, SessionsView | PreparationView | ConfigurationView] = {}
         self.tab_bar = TabBar()
+        # Set initial active tab
+        self.tab_bar.set_active(start_view)
+
         self.footer: Footer | None = None
         self.running = True
         self.agent_availability: dict[str, AgentAvailabilityInfo] = {}
@@ -219,6 +231,11 @@ class TelecApp:
         self.notification: Notification | None = None
         self.pane_manager = TmuxPaneManager()
         self.state = TuiState()
+
+        # Set initial config state
+        if config_guided:
+            self.state.config.guided_mode = True
+
         self._computers: list[ApiComputerInfo] = []
         self.controller = TuiController(self.state, self.pane_manager, self._get_computer_info)
         # Content area bounds for mouse click handling
@@ -241,6 +258,24 @@ class TelecApp:
         self.animation_engine = AnimationEngine()
         self.periodic_trigger = PeriodicTrigger(self.animation_engine, animations_subset=config.ui.animations_subset)
         self.activity_trigger = ActivityTrigger(self.animation_engine, animations_subset=config.ui.animations_subset)
+        self.state_driven_trigger = StateDrivenTrigger(self.animation_engine)
+
+        # Register config animations
+        sections = [
+            "adapters.telegram",
+            "adapters.discord",
+            "adapters.ai_keys",
+            "adapters.whatsapp",
+            "people",
+            "notifications",
+            "environment",
+            "validate",
+        ]
+        for section in sections:
+            self.state_driven_trigger.register(section, "idle", PulseAnimation)
+            self.state_driven_trigger.register(section, "interacting", TypingAnimation)
+            self.state_driven_trigger.register(section, "success", SuccessAnimation)
+            self.state_driven_trigger.register(section, "error", ErrorAnimation)
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
@@ -269,10 +304,19 @@ class TelecApp:
             self.controller,
             notify=self.notify,
         )
+        self.views[3] = ConfigurationView(
+            self.api,
+            self.agent_availability,
+            self.focus,
+            self.pane_manager,
+            self.state,
+            self.controller,
+            notify=self.notify,
+            on_animation_context_change=self.state_driven_trigger.set_context,
+        )
 
         # Start animation triggers (palette initialization deferred to run())
-        self.animation_engine.is_enabled = config.ui.animations_enabled
-        self.periodic_trigger.interval_sec = config.ui.animations_periodic_interval
+        self._apply_animation_mode()
         self.periodic_trigger.task = asyncio.create_task(self.periodic_trigger.start())
 
         # Now refresh to populate views with data (always include todos so prep view has data)
@@ -289,8 +333,9 @@ class TelecApp:
         if mode == self.pane_theming_mode:
             return
 
-        normalized = mode.strip().lower()
-        if normalized not in {PANE_THEMING_MODE_FULL, PANE_THEMING_MODE_SEMI, PANE_THEMING_MODE_OFF}:
+        try:
+            normalized = normalize_pane_theming_mode(mode)
+        except ValueError:
             logger.warning("Ignoring unknown pane_theming_mode: %s", mode)
             return
 
@@ -303,11 +348,8 @@ class TelecApp:
 
     def _cycle_pane_theming_mode(self) -> None:
         """Advance pane theming mode to the next presentation option."""
-        cycle = (PANE_THEMING_MODE_OFF, PANE_THEMING_MODE_SEMI, PANE_THEMING_MODE_FULL)
-        try:
-            index = cycle.index(self.pane_theming_mode)
-        except ValueError:
-            index = 0
+        cycle = PANE_THEMING_MODE_CYCLE
+        index = get_pane_theming_mode_level(self.pane_theming_mode)
         next_mode = cycle[(index + 1) % len(cycle)]
         self._apply_pane_theming_mode(next_mode)
 
@@ -387,6 +429,7 @@ class TelecApp:
             self.footer = Footer(
                 self.agent_availability,
                 tts_enabled=self.tts_enabled,
+                animation_mode=self.state.animation_mode,
                 pane_theming_mode=self.pane_theming_mode,
                 pane_theming_agent=self._get_footer_pane_theming_agent(),
             )
@@ -711,6 +754,20 @@ class TelecApp:
         )
         logger.debug("Session %s removed", session_id[:8])
 
+    def _apply_animation_mode(self) -> None:
+        """Update animation engine based on current mode."""
+        mode = self.state.animation_mode
+
+        if mode == "off":
+            self.animation_engine.is_enabled = False
+        else:
+            self.animation_engine.is_enabled = True
+
+        if mode == "party":
+            self.periodic_trigger.interval_sec = 10
+        else:
+            self.periodic_trigger.interval_sec = config.ui.animations_periodic_interval
+
     def run(self, stdscr: CursesWindow) -> None:
         """Main event loop.
 
@@ -1005,6 +1062,9 @@ class TelecApp:
         elif key == ord("2"):
             logger.debug("Switching to view 2 (Preparation)")
             self._switch_view(2)
+        elif key == ord("3"):
+            logger.debug("Switching to view 3 (Configuration)")
+            self._switch_view(3)
 
         # Navigation - delegate to current view
         elif key == curses.KEY_UP:
@@ -1081,6 +1141,28 @@ class TelecApp:
         elif key == ord("c"):
             self._cycle_pane_theming_mode()
             logger.debug("Pane theming mode toggled to %s via hotkey", self.pane_theming_mode)
+
+        # Animation mode toggle
+        elif key == ord("m"):
+            modes = ["periodic", "party", "off"]
+            current = self.state.animation_mode
+            try:
+                next_mode = modes[(modes.index(current) + 1) % len(modes)]
+            except ValueError:
+                next_mode = "periodic"
+
+            self.controller.dispatch(Intent(IntentType.SET_ANIMATION_MODE, {"mode": next_mode}))
+            self._apply_animation_mode()
+            save_sticky_state(self.state)
+
+            # Update footer if it exists
+            if self.footer:
+                self.footer.animation_mode = next_mode
+
+            msg = f"Animation mode: {next_mode.upper()}"
+            level = NotificationLevel.INFO if next_mode != "off" else NotificationLevel.WARNING
+            self.notify(msg, level)
+            logger.debug("Animation mode toggled to %s", next_mode)
 
         # View-specific actions
         else:
@@ -1224,7 +1306,7 @@ class TelecApp:
         stdscr.addstr(height - 3, 0, action_bar[:line_width])  # type: ignore[attr-defined]
 
         # Row height-2: Global shortcuts bar
-        global_bar = "[+/-] Expand/Collapse  [r] Refresh  [v] TTS  [c] Colors  [q] Quit"
+        global_bar = "[+/-] Expand/Collapse  [r] Refresh  [v] TTS  [m] Anim  [c] Colors  [q] Quit"
         stdscr.addstr(height - 2, 0, global_bar[:line_width], curses.A_DIM)  # type: ignore[attr-defined]
 
         # Row height-1: Footer

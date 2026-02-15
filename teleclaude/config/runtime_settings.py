@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from ruamel.yaml import YAML
 
+from teleclaude.cli.tui.theme import normalize_pane_theming_mode
 from teleclaude.config import config
 
 if TYPE_CHECKING:
@@ -18,7 +19,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 FLUSH_DELAY_S = 0.5
-_VALID_PANE_THEMING_MODES = {"full", "semi", "off"}
 
 
 @dataclass
@@ -182,7 +182,9 @@ class RuntimeSettings:
     @staticmethod
     def _normalize_pane_theming_mode(raw: str) -> str:
         """Normalize and validate pane-theming mode values."""
-        normalized = raw.strip().lower()
-        if normalized not in _VALID_PANE_THEMING_MODES:
-            raise ValueError(f"pane_theming_mode must be one of: {', '.join(sorted(_VALID_PANE_THEMING_MODES))}")
-        return normalized
+        try:
+            return normalize_pane_theming_mode(raw)
+        except ValueError as exc:
+            raise ValueError(
+                "pane_theming_mode must be one of: full|semi|off|highlight|highlight2|agent|agent_plus"
+            ) from exc

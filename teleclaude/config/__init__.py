@@ -361,7 +361,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "animations_enabled": True,
         "animations_periodic_interval": 60,
         "animations_subset": [],  # Empty list = all animations enabled
-        "pane_theming_mode": "full",  # full|semi|off
+        "pane_theming_mode": "full",  # full|semi|off|highlight|highlight2|agent|agent_plus
     },
     "tts": {
         "enabled": False,

@@ -57,9 +57,13 @@ ui:
   animations_periodic_interval: 60 # Seconds between periodic animations
   animations_subset: [] # Empty list = all animations. Specify names to filter (e.g., ["FullSpectrumCycle", "LetterWave"])
   # Preview/pane theming modes:
-  #   - full: vivid terminal palette with explicit contrast fg and pane tinting (legacy behavior)
-  #   - semi: agent-aware tinted highlights while preserving native terminal foreground
-  #   - off: no forced foreground overrides; only muted/normal background gradients
+  #   - full: vivid terminal palette with explicit contrast fg and pane tinting (legacy alias for agent_plus)
+  #   - semi: agent-aware tinted highlights while preserving native terminal foreground (legacy alias for agent)
+  #   - highlight: highlight-only preview treatment; native terminal foreground
+  #   - highlight2: two-cell highlight-only treatment
+  #   - agent: theme agent colors for pane foregrounds
+  #   - agent_plus: agent colors + stronger accent treatment
+  #   - off: pure native terminal rendering with muted/normal bg only
   pane_theming_mode: full
 
 # Speech-to-Text Configuration

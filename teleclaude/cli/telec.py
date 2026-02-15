@@ -341,7 +341,7 @@ def main() -> None:
         logger.exception("telec TUI crashed during startup")
 
 
-def _run_tui() -> None:
+def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
     """Run TUI application."""
     logger = get_logger(__name__)
     # Lazy import: TelecApp applies nest_asyncio which breaks httpx for CLI commands
@@ -350,7 +350,7 @@ def _run_tui() -> None:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     api = TelecAPIClient()
-    app = TelecApp(api)
+    app = TelecApp(api, start_view=start_view, config_guided=config_guided)
 
     try:
         _ensure_tmux_status_hidden_for_tui()
@@ -365,6 +365,11 @@ def _run_tui() -> None:
         loop.run_until_complete(api.close())
         loop.close()
         _maybe_kill_tui_session()
+
+
+def _run_tui_config_mode(guided: bool = False) -> None:
+    """Run TUI in configuration mode."""
+    _run_tui(start_view=3, config_guided=guided)
 
 
 def _handle_cli_command(argv: list[str]) -> None:
@@ -925,7 +930,7 @@ def _todo_usage() -> str:
 def _handle_config(args: list[str]) -> None:
     """Handle telec config command.
 
-    No args → interactive menu. Subcommands (get/patch/validate) → delegate
+    No args → interactive menu (TUI). Subcommands (get/patch/validate) → delegate
     to existing config_cmd handler for daemon config.
     """
     if args and args[0] in ("--help", "-h"):
@@ -936,9 +941,8 @@ def _handle_config(args: list[str]) -> None:
         if not sys.stdin.isatty():
             print("Error: Interactive config requires a terminal.")
             raise SystemExit(1)
-        from teleclaude.cli.config_menu import run_interactive_menu
 
-        run_interactive_menu()
+        _run_tui_config_mode(guided=False)
         return
 
     subcommand = args[0]
@@ -966,9 +970,7 @@ def _handle_onboard(args: list[str]) -> None:
         print("Error: Onboarding wizard requires a terminal.")
         raise SystemExit(1)
 
-    from teleclaude.cli.onboard_wizard import run_onboard_wizard
-
-    run_onboard_wizard()
+    _run_tui_config_mode(guided=True)
 
 
 def _config_usage() -> str:

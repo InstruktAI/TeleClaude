@@ -2,6 +2,7 @@
 
 import time
 from collections import deque
+from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Deque, Dict, Optional, Tuple
 
@@ -15,32 +16,39 @@ class AnimationPriority(IntEnum):
     ACTIVITY = 2
 
 
-class AnimationEngine:
-    """Manages animation state and timing for the banner and logo.
+@dataclass
+class AnimationSlot:
+    """State for a single animation target."""
 
-    Supports priority-based animation queuing:
+    animation: Optional[Animation] = None
+    frame_count: int = 0
+    last_update_ms: float = 0
+    priority: AnimationPriority = AnimationPriority.PERIODIC
+    queue: Deque[Tuple[Animation, AnimationPriority]] = field(default_factory=lambda: deque(maxlen=5))
+    looping: bool = False
+
+
+class AnimationEngine:
+    """Manages animation state and timing for multiple render targets.
+
+    Supports priority-based animation queuing per target:
     - Activity animations (higher priority) interrupt periodic animations
     - Periodic animations queue behind activity animations
     """
 
     def __init__(self):
-        self._big_animation: Optional[Animation] = None
-        self._small_animation: Optional[Animation] = None
-        self._big_frame_count: int = 0
-        self._small_frame_count: int = 0
-        self._big_last_update_ms: float = 0
-        self._small_last_update_ms: float = 0
-        self._big_priority: AnimationPriority = AnimationPriority.PERIODIC
-        self._small_priority: AnimationPriority = AnimationPriority.PERIODIC
-        # Double-buffering: front buffer for rendering, back buffer for updates
-        self._colors_front: Dict[Tuple[int, int], int] = {}
-        self._colors_back: Dict[Tuple[int, int], int] = {}
-        self._logo_colors_front: Dict[Tuple[int, int], int] = {}
-        self._logo_colors_back: Dict[Tuple[int, int], int] = {}
-        # Priority queues for big/small animations
-        self._big_queue: Deque[Tuple[Animation, AnimationPriority]] = deque(maxlen=5)
-        self._small_queue: Deque[Tuple[Animation, AnimationPriority]] = deque(maxlen=5)
+        # State per target
+        self._targets: Dict[str, AnimationSlot] = {}
+
+        # Double-buffering per target: target -> { (x,y) -> color_pair }
+        self._buffers_front: Dict[str, Dict[Tuple[int, int], int]] = {}
+        self._buffers_back: Dict[str, Dict[Tuple[int, int], int]] = {}
+
         self._is_enabled: bool = True
+
+        # Initialize default targets
+        self._ensure_target("banner")
+        self._ensure_target("logo")
 
     @property
     def is_enabled(self) -> bool:
@@ -52,12 +60,26 @@ class AnimationEngine:
         if not value:
             self.stop()
 
-    def play(self, animation: Animation, priority: AnimationPriority = AnimationPriority.PERIODIC) -> None:
+    def _ensure_target(self, target: str) -> AnimationSlot:
+        """Ensure a target slot exists."""
+        if target not in self._targets:
+            self._targets[target] = AnimationSlot()
+            self._buffers_front[target] = {}
+            self._buffers_back[target] = {}
+        return self._targets[target]
+
+    def play(
+        self,
+        animation: Animation,
+        priority: AnimationPriority = AnimationPriority.PERIODIC,
+        target: Optional[str] = None,
+    ) -> None:
         """Start a new animation with priority-based queuing.
 
         Args:
             animation: The animation to play
             priority: Priority level (ACTIVITY interrupts PERIODIC)
+            target: Target name (defaults to animation.target)
 
         Rules:
             - Higher priority animations interrupt lower priority ones
@@ -67,39 +89,37 @@ class AnimationEngine:
         if not self._is_enabled:
             return
 
-        if animation.is_big:
-            # Higher priority interrupts current animation
-            if self._big_animation is None or priority >= self._big_priority:
-                self._big_animation = animation
-                self._big_frame_count = 0
-                self._big_last_update_ms = time.time() * 1000
-                self._big_priority = priority
-            # Lower priority gets queued (if queue has space)
-            else:
-                self._big_queue.append((animation, priority))
+        target_name = target or animation.target
+        slot = self._ensure_target(target_name)
+
+        # Higher priority interrupts current animation
+        if slot.animation is None or priority >= slot.priority:
+            slot.animation = animation
+            slot.frame_count = 0
+            slot.last_update_ms = time.time() * 1000
+            slot.priority = priority
+            slot.looping = False  # Reset looping state
+        # Lower priority gets queued (if queue has space)
         else:
-            # Higher priority interrupts current animation
-            if self._small_animation is None or priority >= self._small_priority:
-                self._small_animation = animation
-                self._small_frame_count = 0
-                self._small_last_update_ms = time.time() * 1000
-                self._small_priority = priority
-            # Lower priority gets queued (if queue has space)
-            else:
-                self._small_queue.append((animation, priority))
+            slot.queue.append((animation, priority))
 
     def stop(self) -> None:
         """Stop all animations, clear queues, and clear colors."""
-        self._big_animation = None
-        self._small_animation = None
-        self._big_frame_count = 0
-        self._small_frame_count = 0
-        self._big_queue.clear()
-        self._small_queue.clear()
-        self._colors_front.clear()
-        self._colors_back.clear()
-        self._logo_colors_front.clear()
-        self._logo_colors_back.clear()
+        for slot in self._targets.values():
+            slot.animation = None
+            slot.frame_count = 0
+            slot.queue.clear()
+            slot.looping = False
+
+        for buf in self._buffers_front.values():
+            buf.clear()
+        for buf in self._buffers_back.values():
+            buf.clear()
+
+    def set_looping(self, target: str, looping: bool) -> None:
+        """Set looping state for a specific target's current animation."""
+        if target in self._targets:
+            self._targets[target].looping = looping
 
     def update(self) -> None:
         """Update animation state. Call this once per render cycle (~100ms).
@@ -111,65 +131,48 @@ class AnimationEngine:
         """
         current_time_ms = time.time() * 1000
 
-        # Update big animation in back buffer (respecting speed_ms timing)
-        if self._big_animation:
-            elapsed_ms = current_time_ms - self._big_last_update_ms
-            if elapsed_ms >= self._big_animation.speed_ms:
-                # Time to advance frame
-                new_colors = self._big_animation.update(self._big_frame_count)
-                self._colors_back.update(new_colors)
-                self._big_frame_count += 1
-                self._big_last_update_ms = current_time_ms
+        for target_name, slot in self._targets.items():
+            back_buffer = self._buffers_back[target_name]
 
-                if self._big_animation.is_complete(self._big_frame_count):
-                    # Animation complete - check queue for next animation
-                    if self._big_queue:
-                        next_animation, next_priority = self._big_queue.popleft()
-                        self._big_animation = next_animation
-                        self._big_frame_count = 0
-                        self._big_last_update_ms = current_time_ms
-                        self._big_priority = next_priority
-                    else:
-                        self._big_animation = None
-                        self._colors_back.clear()  # Clear colors to revert to default rendering
-        else:
-            self._colors_back.clear()
+            if slot.animation:
+                elapsed_ms = current_time_ms - slot.last_update_ms
+                if elapsed_ms >= slot.animation.speed_ms:
+                    # Time to advance frame
+                    new_colors = slot.animation.update(slot.frame_count)
+                    back_buffer.update(new_colors)
+                    slot.frame_count += 1
+                    slot.last_update_ms = current_time_ms
 
-        # Update small animation in back buffer (respecting speed_ms timing)
-        if self._small_animation:
-            elapsed_ms = current_time_ms - self._small_last_update_ms
-            if elapsed_ms >= self._small_animation.speed_ms:
-                # Time to advance frame
-                new_colors = self._small_animation.update(self._small_frame_count)
-                self._logo_colors_back.update(new_colors)
-                self._small_frame_count += 1
-                self._small_last_update_ms = current_time_ms
-
-                if self._small_animation.is_complete(self._small_frame_count):
-                    # Animation complete - check queue for next animation
-                    if self._small_queue:
-                        next_animation, next_priority = self._small_queue.popleft()
-                        self._small_animation = next_animation
-                        self._small_frame_count = 0
-                        self._small_last_update_ms = current_time_ms
-                        self._small_priority = next_priority
-                    else:
-                        self._small_animation = None
-                        self._logo_colors_back.clear()  # Clear colors to revert to default rendering
-        else:
-            self._logo_colors_back.clear()
+                    if slot.animation.is_complete(slot.frame_count):
+                        if slot.looping:
+                            # Loop animation
+                            slot.frame_count = 0
+                        elif slot.queue:
+                            # Animation complete - check queue for next animation
+                            next_animation, next_priority = slot.queue.popleft()
+                            slot.animation = next_animation
+                            slot.frame_count = 0
+                            slot.priority = next_priority
+                            slot.looping = False  # Reset looping for queued item
+                        else:
+                            # No more animations
+                            slot.animation = None
+                            back_buffer.clear()
+            else:
+                back_buffer.clear()
 
         # Swap buffers atomically
-        self._colors_front, self._colors_back = self._colors_back, self._colors_front
-        self._logo_colors_front, self._logo_colors_back = (
-            self._logo_colors_back,
-            self._logo_colors_front,
-        )
+        self._buffers_front, self._buffers_back = self._buffers_back, self._buffers_front
 
-    def get_color(self, x: int, y: int, is_big: bool = True) -> Optional[int]:
+    def get_color(self, x: int, y: int, is_big: bool = True, target: Optional[str] = None) -> Optional[int]:
         """Get the color pair ID for a specific pixel.
 
         Reads from front buffer (stable snapshot during rendering).
+
+        Args:
+            x, y: Coordinates
+            is_big: Legacy flag for banner/logo selection (deprecated)
+            target: Explicit target name (overrides is_big)
 
         Returns:
             Color pair ID or None if no animation color is set for this pixel.
@@ -177,7 +180,14 @@ class AnimationEngine:
         if not self._is_enabled:
             return None
 
-        colors = self._colors_front if is_big else self._logo_colors_front
+        # Resolve target
+        target_name = target if target is not None else ("banner" if is_big else "logo")
+
+        # Check if target exists (don't create on get_color to avoid noise)
+        if target_name not in self._buffers_front:
+            return None
+
+        colors = self._buffers_front[target_name]
         color = colors.get((x, y))
         if color == -1:
             return None
@@ -185,7 +195,7 @@ class AnimationEngine:
 
     def clear_colors(self) -> None:
         """Clear all active animation colors (both buffers)."""
-        self._colors_front.clear()
-        self._colors_back.clear()
-        self._logo_colors_front.clear()
-        self._logo_colors_back.clear()
+        for buf in self._buffers_front.values():
+            buf.clear()
+        for buf in self._buffers_back.values():
+            buf.clear()

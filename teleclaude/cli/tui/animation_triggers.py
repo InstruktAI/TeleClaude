@@ -2,7 +2,7 @@
 
 import asyncio
 import random
-from typing import List, Optional, Type
+from typing import Dict, List, Optional, Tuple, Type
 
 from teleclaude.cli.tui.animation_colors import palette_registry
 from teleclaude.cli.tui.animation_engine import AnimationEngine, AnimationPriority
@@ -102,3 +102,71 @@ class ActivityTrigger:
 
         animation = anim_class(palette=palette, is_big=is_big, duration_seconds=random.uniform(2, 5))
         self.engine.play(animation, priority=AnimationPriority.ACTIVITY)
+
+
+class StateDrivenTrigger:
+    """Trigger for state-driven animations (e.g., Config tab)."""
+
+    def __init__(self, engine: AnimationEngine):
+        self.engine = engine
+        # Registry: (section_id, state) -> AnimationClass
+        self._registry: Dict[Tuple[str, str], Type[Animation]] = {}
+        # Current: (target, section_id, state)
+        self._current_context: Optional[Tuple[str, str, str]] = None
+
+    def register(self, section_id: str, state: str, animation_cls: Type[Animation]) -> None:
+        """Register an animation class for a specific section and state."""
+        self._registry[(section_id, state)] = animation_cls
+
+    def set_context(self, target: str, section_id: str, state: str, progress: float = 0.0) -> None:
+        """Update the current context and trigger animation if changed.
+
+        Args:
+            target: Render target name
+            section_id: Config section ID
+            state: "idle", "interacting", "success", "error"
+            progress: 0.0-1.0 (unused by trigger, but available for animations if needed)
+        """
+        if not self.engine.is_enabled:
+            return
+
+        # Check if context changed
+        new_context = (target, section_id, state)
+        if self._current_context == new_context:
+            return
+
+        self._current_context = new_context
+
+        # Look up animation
+        anim_cls = self._registry.get((section_id, state))
+        if not anim_cls:
+            # Fallback or silent?
+            # For now silent, assuming registration covers needs or UI handles fallback visuals
+            return
+
+        # Get palette (assuming section-aware palette exists, or fallback)
+        # Strip adapters. prefix if present (C1)
+        palette_key = section_id.split(".")[-1] if "." in section_id else section_id
+        palette = palette_registry.get(palette_key)
+        if not palette:
+            palette = palette_registry.get("spectrum")  # Fallback
+
+        # Determine duration and looping
+        is_idle = state == "idle"
+        duration = 2.0 if is_idle else 1.0  # Idle duration irrelevant as it loops
+
+        # Instantiate
+        # Note: We pass is_big=True as dummy, target is what matters
+        animation = anim_cls(palette=palette, is_big=True, duration_seconds=duration, target=target)
+
+        # Play with appropriate priority and looping
+        # State driven implies user focus, so ACTIVITY priority is reasonable,
+        # but idle might be lower?
+        # Actually, if it's the active section, it should probably override periodic.
+        # But maybe not agent activity?
+        # Let's use ACTIVITY for now as it's user-driven config.
+
+        self.engine.play(animation, priority=AnimationPriority.ACTIVITY, target=target)
+
+        if is_idle:
+            self.engine.set_looping(target, True)

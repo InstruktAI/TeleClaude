@@ -50,6 +50,18 @@ AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_SEMI: dict[str, int] = {
     "codex": 57,
 }
 
+AGENT_PREVIEW_SELECTED_BG_PAIRS_HIGHLIGHT: dict[str, int] = {
+    "claude": 64,
+    "gemini": 65,
+    "codex": 66,
+}
+
+AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_HIGHLIGHT: dict[str, int] = {
+    "claude": 67,
+    "gemini": 68,
+    "codex": 69,
+}
+
 AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF: dict[str, int] = {
     "claude": 58,
     "gemini": 59,
@@ -65,7 +77,38 @@ AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF: dict[str, int] = {
 PANE_THEMING_MODE_FULL = "full"
 PANE_THEMING_MODE_SEMI = "semi"
 PANE_THEMING_MODE_OFF = "off"
-_VALID_PANE_THEMING_MODES = {PANE_THEMING_MODE_FULL, PANE_THEMING_MODE_SEMI, PANE_THEMING_MODE_OFF}
+PANE_THEMING_MODE_HIGHLIGHT = "highlight"
+PANE_THEMING_MODE_HIGHLIGHT_EXT = "highlight2"
+PANE_THEMING_MODE_AGENT = "agent"
+PANE_THEMING_MODE_AGENT_PLUS = "agent_plus"
+PANE_THEMING_MODE_CYCLE = (
+    PANE_THEMING_MODE_OFF,
+    PANE_THEMING_MODE_HIGHLIGHT,
+    PANE_THEMING_MODE_HIGHLIGHT_EXT,
+    PANE_THEMING_MODE_AGENT,
+    PANE_THEMING_MODE_AGENT_PLUS,
+)
+_PANE_THEMING_MODE_CANONICAL: dict[str, str] = {
+    PANE_THEMING_MODE_SEMI: PANE_THEMING_MODE_AGENT,
+    PANE_THEMING_MODE_FULL: PANE_THEMING_MODE_AGENT_PLUS,
+}
+_PANE_THEMING_MODE_TO_LEVEL: dict[str, int] = {
+    PANE_THEMING_MODE_OFF: 0,
+    PANE_THEMING_MODE_HIGHLIGHT: 1,
+    PANE_THEMING_MODE_HIGHLIGHT_EXT: 2,
+    PANE_THEMING_MODE_AGENT: 3,
+    PANE_THEMING_MODE_AGENT_PLUS: 4,
+    PANE_THEMING_MODE_SEMI: 3,
+    PANE_THEMING_MODE_FULL: 4,
+}
+_PANE_LEVEL_TO_CANONICAL_MODE: tuple[str, str, str, str, str] = (
+    PANE_THEMING_MODE_OFF,
+    PANE_THEMING_MODE_HIGHLIGHT,
+    PANE_THEMING_MODE_HIGHLIGHT_EXT,
+    PANE_THEMING_MODE_AGENT,
+    PANE_THEMING_MODE_AGENT_PLUS,
+)
+_VALID_PANE_THEMING_MODES = set(_PANE_THEMING_MODE_TO_LEVEL)
 
 # Optional process-scoped override for runtime UI toggles.
 _PANE_THEMING_MODE_OVERRIDE: str | None = None
@@ -449,6 +492,18 @@ def init_colors() -> None:
         # Off mode uses terminal-native default colors with no forced preview emphasis.
         curses.init_pair(AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF[agent], -1, -1)
         curses.init_pair(AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF[agent], -1, -1)
+
+        # Highlight mode is focused visual feedback with brighter foreground emphasis.
+        curses.init_pair(
+            AGENT_PREVIEW_SELECTED_BG_PAIRS_HIGHLIGHT[agent],
+            _highlight_pair,
+            get_agent_muted_color(agent),
+        )
+        curses.init_pair(
+            AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_HIGHLIGHT[agent],
+            get_agent_highlight_color(agent),
+            get_agent_normal_color(agent),
+        )
 
     # Disabled/unavailable
     curses.init_pair(10, curses.COLOR_WHITE, -1)
@@ -864,34 +919,62 @@ def get_pane_theming_mode() -> str:
     """Return effective pane theming mode from config.
 
     Supported:
-      - "full": legacy/explicitly vivid preview and pane contrast
-      - "semi": theme-aware preview colors with preserved native foreground intent
+      - "highlight": minimal mode: highlight text on native foreground intent
+      - "highlight2": same as highlight with two fill indicators
+      - "agent": theme agent-tinted text with foreground overrides
+      - "agent_plus": stronger agent mode with higher contrast accents
+      - legacy aliases: "full" -> "agent_plus", "semi" -> "agent"
       - "off": no forced foreground in preview rows and pane foregrounds
     """
     if _PANE_THEMING_MODE_OVERRIDE:
         return _PANE_THEMING_MODE_OVERRIDE
 
     configured_mode = str(config.ui.pane_theming_mode)  # type: ignore[attr-defined]
-    normalized = configured_mode.strip().lower()
-    if normalized in _VALID_PANE_THEMING_MODES:
-        return normalized
-    return PANE_THEMING_MODE_FULL
+    try:
+        return normalize_pane_theming_mode(configured_mode)
+    except ValueError:
+        return PANE_THEMING_MODE_AGENT_PLUS
+
+
+def get_pane_theming_mode_level(mode: str | None = None) -> int:
+    """Return 0..4 numeric level for the current or supplied pane theming mode."""
+    canonical_mode = normalize_pane_theming_mode(mode if mode is not None else get_pane_theming_mode())
+    return _PANE_THEMING_MODE_TO_LEVEL[canonical_mode]
+
+
+def normalize_pane_theming_mode(mode: str) -> str:
+    """Normalize pane theming mode to one canonical state."""
+    canonical_mode = (mode or "").strip().lower()
+    canonical_mode = _PANE_THEMING_MODE_CANONICAL.get(canonical_mode, canonical_mode)
+    if canonical_mode not in _VALID_PANE_THEMING_MODES:
+        raise ValueError(f"Invalid pane_theming_mode: {mode}")
+    return canonical_mode
+
+
+def get_pane_theming_mode_from_level(level: int) -> str:
+    """Convert mode level to canonical mode string."""
+    if level < 0 or level >= len(_PANE_LEVEL_TO_CANONICAL_MODE):
+        raise ValueError(f"pane_theming_mode level must be 0..{len(_PANE_LEVEL_TO_CANONICAL_MODE) - 1}")
+    return _PANE_LEVEL_TO_CANONICAL_MODE[level]
+
+
+def get_pane_theming_mode_cycle() -> tuple[str, ...]:
+    """Expose canonical cycle order for UI toggles."""
+    return PANE_THEMING_MODE_CYCLE
 
 
 def set_pane_theming_mode(mode: str | None) -> None:
     """Set runtime override for pane theming mode.
 
     Args:
-        mode: "full" | "semi" | "off" or None to clear override.
+        mode: "off" | "highlight" | "highlight2" | "agent" | "agent_plus" or legacy
+            aliases "full"/"semi"/None to clear override.
     """
     global _PANE_THEMING_MODE_OVERRIDE  # noqa: PLW0603
-    normalized = (mode or "").strip().lower()
     if not mode:
         _PANE_THEMING_MODE_OVERRIDE = None  # type: ignore[reportConstantRedefinition]
         return
-    if normalized not in _VALID_PANE_THEMING_MODES:
-        raise ValueError(f"Invalid pane_theming_mode: {mode}")
-    _PANE_THEMING_MODE_OVERRIDE = normalized  # type: ignore[reportConstantRedefinition]
+    _PANE_THEMING_MODE_OVERRIDE = normalize_pane_theming_mode(mode)  # type: ignore[reportConstantRedefinition]
 
 
 def get_agent_preview_selected_bg_attr(agent: str) -> int:
@@ -904,11 +987,13 @@ def get_agent_preview_selected_bg_attr(agent: str) -> int:
         Curses attribute for agent-specific preview selection style.
     """
     safe_agent = _safe_agent(agent)
-    mode = get_pane_theming_mode()
-    if mode == PANE_THEMING_MODE_SEMI:
-        pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS_SEMI[safe_agent]
-    elif mode == PANE_THEMING_MODE_OFF:
+    level = get_pane_theming_mode_level()
+    if level == 0:
         pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF[safe_agent]
+    elif level <= 2:
+        pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS_HIGHLIGHT[safe_agent]
+    elif level == 3:
+        pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS_SEMI[safe_agent]
     else:
         pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS[safe_agent]
     return curses.color_pair(pair_id)
@@ -924,11 +1009,13 @@ def get_agent_preview_selected_focus_attr(agent: str) -> int:
         Curses attribute for agent-specific focused preview row.
     """
     safe_agent = _safe_agent(agent)
-    mode = get_pane_theming_mode()
-    if mode == PANE_THEMING_MODE_SEMI:
-        pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_SEMI[safe_agent]
-    elif mode == PANE_THEMING_MODE_OFF:
+    level = get_pane_theming_mode_level()
+    if level == 0:
         pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF[safe_agent]
+    elif level <= 2:
+        pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_HIGHLIGHT[safe_agent]
+    elif level == 3:
+        pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_SEMI[safe_agent]
     else:
         pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS[safe_agent]
     return curses.color_pair(pair_id)
