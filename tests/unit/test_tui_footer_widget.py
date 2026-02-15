@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import curses
+
 from teleclaude.cli.tui.widgets.footer import Footer
 
 
@@ -28,12 +30,19 @@ def test_footer_renders_enabled_tts_icon_and_click_region(monkeypatch) -> None:
         call for call in screen.calls if footer._pane_theming_col_start <= call[1] < footer._pane_theming_col_end
     ]
 
-    assert len(indicator_cells) == 2
-    assert all(text == " " for _, _, text, _ in indicator_cells)
-    assert all(attr == 11 for _, _, _, attr in indicator_cells)
+    assert len(indicator_cells) == 7
+    assert [cell[2] for cell in indicator_cells] == ["[", " ", "]", " ", "[", " ", "]"]
+    outline_attr = 33 | curses.A_DIM | curses.A_REVERSE
+    assert indicator_cells[0][3] == outline_attr
+    assert indicator_cells[1][3] == 22
+    assert indicator_cells[2][3] == outline_attr
+    assert indicator_cells[3][3] == curses.A_DIM
+    assert indicator_cells[4][3] == outline_attr
+    assert indicator_cells[5][3] == 11
+    assert indicator_cells[6][3] == outline_attr
     assert any(text == "🔊" for _, _, text, _ in screen.calls)
     assert footer._tts_col_end - footer._tts_col_start == Footer._display_width("🔊")
-    assert footer._pane_theming_col_end - footer._pane_theming_col_start == 2
+    assert footer._pane_theming_col_end - footer._pane_theming_col_start == 7
     assert footer.handle_click(footer._tts_col_start) == "tts"
     assert footer.handle_click(footer._tts_col_end) is None
     assert footer.handle_click(footer._pane_theming_col_start) == "pane_theming_mode"
@@ -54,9 +63,16 @@ def test_footer_renders_disabled_tts_icon(monkeypatch) -> None:
         call for call in screen.calls if footer._pane_theming_col_start <= call[1] < footer._pane_theming_col_end
     ]
 
-    assert len(indicator_cells) == 2
-    assert all(text == " " for _, _, text, _ in indicator_cells)
-    assert indicator_cells[0][3] != 11  # off state should not use focus attr
-    assert footer._pane_theming_col_end - footer._pane_theming_col_start == 2
+    assert len(indicator_cells) == 7
+    assert [cell[2] for cell in indicator_cells] == ["[", " ", "]", " ", "[", " ", "]"]
+    outline_attr = 33 | curses.A_DIM | curses.A_REVERSE
+    assert indicator_cells[0][3] == outline_attr  # off state should use outline attr
+    assert indicator_cells[1][3] == outline_attr
+    assert indicator_cells[2][3] == outline_attr
+    assert indicator_cells[3][3] == curses.A_DIM
+    assert indicator_cells[4][3] == outline_attr
+    assert indicator_cells[5][3] == outline_attr
+    assert indicator_cells[6][3] == outline_attr
+    assert footer._pane_theming_col_end - footer._pane_theming_col_start == 7
     assert any(text == "🔇" for _, _, text, _ in screen.calls)
     assert footer._tts_col_end - footer._tts_col_start == Footer._display_width("🔇")

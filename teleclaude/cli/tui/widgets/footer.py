@@ -47,23 +47,28 @@ class Footer:
         return normalized if normalized else "codex"
 
     def _format_pane_mode_cells(self, mode: str, *, agent: str) -> list[tuple[str, int]]:
-        """Return a two-cell indicator pattern for pane coloring mode."""
+        """Return a multi-cell ASCII indicator pattern for pane coloring mode."""
         normalized = self._normalize_mode(mode)
         safe_agent = self._normalize_agent(agent)
 
-        outline_attr = get_agent_status_color_pair(safe_agent, muted=True) | curses.A_DIM
-        fill_attr = {
-            PANE_THEMING_MODE_SEMI: get_agent_preview_selected_bg_attr(safe_agent),
-            PANE_THEMING_MODE_FULL: get_agent_preview_selected_focus_attr(safe_agent),
-        }
+        outline_attr = get_agent_status_color_pair(safe_agent, muted=True) | curses.A_DIM | curses.A_REVERSE
+        base_cell_fill_attr = get_agent_preview_selected_bg_attr(safe_agent)
+        accent_cell_fill_attr = get_agent_preview_selected_focus_attr(safe_agent)
+        separator_attr = curses.A_DIM
+
+        left_toggle = [("[", outline_attr), (" ", base_cell_fill_attr), ("]", outline_attr)]
+        right_toggle = [("[", outline_attr), (" ", outline_attr), ("]", outline_attr)]
+        right_toggle_full = [("[", outline_attr), (" ", accent_cell_fill_attr), ("]", outline_attr)]
+        separator = [(" ", separator_attr)]
 
         if normalized == PANE_THEMING_MODE_FULL:
-            return [(" ", fill_attr[PANE_THEMING_MODE_FULL]), (" ", fill_attr[PANE_THEMING_MODE_FULL])]
+            return left_toggle + separator + right_toggle_full
         if normalized == PANE_THEMING_MODE_SEMI:
-            return [(" ", fill_attr[PANE_THEMING_MODE_SEMI]), (" ", outline_attr)]
+            return left_toggle + separator + right_toggle
+        off_toggle = [("[", outline_attr), (" ", outline_attr), ("]", outline_attr)]
         if normalized == PANE_THEMING_MODE_OFF:
-            return [(" ", outline_attr), (" ", outline_attr)]
-        return [(" ", outline_attr), (" ", outline_attr)]
+            return off_toggle + separator + off_toggle
+        return off_toggle + separator + off_toggle
 
     def render(self, stdscr: object, row: int, width: int) -> None:
         """Render footer with left-aligned agent availability and right-aligned icons."""
@@ -92,7 +97,7 @@ class Footer:
             self.pane_theming_mode,
             agent=self.pane_theming_agent,
         )
-        pane_mode_width = 2
+        pane_mode_width = len(pane_mode_cells)
 
         max_width = max(0, width - 1)  # avoid last-column writes
         if max_width == 0:
