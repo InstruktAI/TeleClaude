@@ -34,6 +34,13 @@ from teleclaude.hooks.checkpoint_flags import (  # noqa: E402
     set_checkpoint_flag,
 )
 
+# Bootstrap: agent CLIs call this hook from arbitrary directories where PATH may
+# resolve python3 to system Python (missing project deps). Re-exec under the
+# project venv when needed.
+_VENV_PYTHON = Path(__file__).resolve().parents[2] / ".venv" / "bin" / "python3"
+if _VENV_PYTHON.is_file() and Path(sys.executable).resolve() != _VENV_PYTHON.resolve():
+    os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
+
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
 
@@ -385,17 +392,69 @@ def _get_cached_session_id(agent: str, native_session_id: str | None) -> str | N
     return cached
 
 
+def _get_tmux_contract_tmpdir() -> str:
+    tmpdir = os.getenv("TMPDIR") or os.getenv("TMP") or os.getenv("TEMP")
+    if not isinstance(tmpdir, str) or not tmpdir.strip():
+        raise ValueError("TMUX hook contract violated: TMPDIR/TMP/TEMP is missing")
+    return tmpdir
+
+
+def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str | None) -> bool:
+    """Validate whether a TMUX contract session is still bound to this native session."""
+    if not native_session_id:
+        return True
+
+    from sqlmodel import Session as SqlSession
+
+    try:
+        with SqlSession(_create_sync_engine()) as session:
+            row = session.get(db_models.Session, session_id)
+    except Exception as exc:  # noqa: BLE001 - fail-open when DB access is unavailable.
+        logger.debug(
+            "TMUX contract DB lookup skipped (db unavailable)",
+            session_id=session_id[:8],
+            native_session_id=native_session_id[:8],
+            error=str(exc),
+        )
+        return True
+
+    if not row:
+        logger.debug(
+            "TMUX contract session not found in DB",
+            session_id=session_id[:8],
+            native_session_id=native_session_id[:8],
+        )
+        return False
+
+    if row.closed_at:
+        logger.debug(
+            "TMUX contract session rejected: closed row",
+            session_id=session_id[:8],
+            native_session_id=native_session_id[:8],
+        )
+        return False
+
+    if row.native_session_id and row.native_session_id != native_session_id:
+        logger.debug(
+            "TMUX contract session rejected: native session id mismatch",
+            session_id=session_id[:8],
+            contract_native_session_id=(row.native_session_id or "")[:8],
+            incoming_native_session_id=native_session_id[:8],
+        )
+        return False
+
+    return True
+
+
 def _get_tmux_contract_session_id() -> str:
     """Resolve TeleClaude session id from TMUX contract marker file.
 
     Contract (non-headless):
     - TMUX env var is present
-    - TMPDIR is present
-    - TMPDIR/teleclaude_session_id exists and is non-empty
+    - TMPDIR/TMP/TEMP is present
+    - {temp}/teleclaude_session_id exists and is non-empty
     """
-    tmpdir = os.getenv("TMPDIR")
-    if not isinstance(tmpdir, str) or not tmpdir.strip():
-        raise ValueError("TMUX hook contract violated: TMPDIR is missing")
+    tmpdir = _get_tmux_contract_tmpdir()
 
     marker = Path(tmpdir).expanduser() / "teleclaude_session_id"
     try:
@@ -548,10 +607,33 @@ def _resolve_hook_session_id(
     - `cached_session_id` is map lookup (`agent:native_session_id -> teleclaude_session_id`)
     - `existing_session_id` is DB lookup (`sessions.native_session_id == native_session_id`)
     """
-    # Non-headless route (TMUX): contract file is authoritative.
-    # No map/DB lookup on this route.
+    # Non-headless route (TMUX): primary contract is the session marker.
     if not headless:
         resolved_session_id = _get_tmux_contract_session_id()
+        if not resolved_session_id:
+            return None, None, None
+
+        if native_session_id and not _is_tmux_contract_session_compatible(resolved_session_id, native_session_id):
+            fallback_session_id = _find_session_id_by_native(native_session_id)
+            if fallback_session_id:
+                logger.warning(
+                    "TMUX contract session mismatch; falling back to native session lookup",
+                    marker_session_id=resolved_session_id[:8],
+                    fallback_session_id=fallback_session_id[:8],
+                    native_session_id=native_session_id[:8],
+                    agent=agent,
+                )
+                _persist_session_map(agent, native_session_id, fallback_session_id)
+                return fallback_session_id, None, resolved_session_id
+
+            logger.error(
+                "TMUX contract session mismatch and no native-session fallback",
+                marker_session_id=resolved_session_id[:8],
+                native_session_id=native_session_id[:8],
+                agent=agent,
+            )
+            return None, None, resolved_session_id
+
         if resolved_session_id and native_session_id:
             _persist_session_map(agent, native_session_id, resolved_session_id)
         return resolved_session_id, None, None
