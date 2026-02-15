@@ -62,6 +62,7 @@ class ToolName(str, Enum):
     MARK_AGENT_UNAVAILABLE = "teleclaude__mark_agent_unavailable"
     PUBLISH = "teleclaude__publish"
     CHANNELS_LIST = "teleclaude__channels_list"
+    ESCALATE = "teleclaude__escalate"
 
 
 # State file for tracking MCP tool signatures across restarts
@@ -568,6 +569,36 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     )
                 ]
 
+            async def _handle_publish() -> list[TextContent]:
+                payload_obj = arguments.get("payload") if arguments else None
+                payload = payload_obj if isinstance(payload_obj, dict) else {}
+                return [
+                    TextContent(
+                        type="text",
+                        text=await self.teleclaude__publish(
+                            self._str_arg(arguments, "channel"),
+                            payload,
+                        ),
+                    )
+                ]
+
+            async def _handle_channels_list() -> list[TextContent]:
+                project = self._str_arg(arguments, "project") or None
+                return self._json_response(await self.teleclaude__channels_list(project))
+
+            async def _handle_escalate() -> list[TextContent]:
+                return [
+                    TextContent(
+                        type="text",
+                        text=await self.teleclaude__escalate(
+                            self._str_arg(arguments, "customer_name"),
+                            self._str_arg(arguments, "reason"),
+                            self._str_arg(arguments, "context_summary") or None,
+                            caller_session_id,
+                        ),
+                    )
+                ]
+
             tool_handlers: dict[ToolName, Callable[[], Awaitable[list[TextContent]]]] = {
                 ToolName.HELP: _handle_help,
                 ToolName.GET_CONTEXT: _handle_get_context,
@@ -590,6 +621,9 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 ToolName.SET_DEPENDENCIES: _handle_set_dependencies,
                 ToolName.MARK_AGENT_STATUS: _handle_mark_agent_status,
                 ToolName.MARK_AGENT_UNAVAILABLE: _handle_mark_agent_status,
+                ToolName.PUBLISH: _handle_publish,
+                ToolName.CHANNELS_LIST: _handle_channels_list,
+                ToolName.ESCALATE: _handle_escalate,
             }
 
             try:

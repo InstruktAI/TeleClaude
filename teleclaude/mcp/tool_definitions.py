@@ -710,4 +710,32 @@ def get_tool_definitions() -> list[Tool]:
                 },
             },
         ),
+        Tool(
+            name="teleclaude__escalate",
+            title="Escalate to Admin",
+            description=(
+                "Escalate a customer conversation to a human admin. "
+                "Creates a Discord thread in the escalation forum, notifies admins, "
+                "and activates relay mode so admin messages are forwarded to the customer. "
+                "Only available in customer sessions."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "customer_name": {
+                        "type": "string",
+                        "description": "Display name of the customer requesting escalation.",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Reason for the escalation.",
+                    },
+                    "context_summary": {
+                        "type": "string",
+                        "description": "Optional summary of the conversation context for the admin.",
+                    },
+                },
+                "required": ["customer_name", "reason"],
+            },
+        ),
     ]
