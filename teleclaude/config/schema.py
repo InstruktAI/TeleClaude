@@ -112,9 +112,15 @@ class TelegramCreds(BaseModel):
     user_id: int
 
 
+class DiscordCreds(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    user_id: str  # Discord user IDs are snowflakes (strings)
+
+
 class CredsConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     telegram: Optional[TelegramCreds] = None
+    discord: Optional[DiscordCreds] = None
 
 
 class NotificationsConfig(BaseModel):
