@@ -27,6 +27,7 @@ from teleclaude.constants import MAIN_MODULE
 from teleclaude.mcp.protocol import McpMethod
 
 PARAM_CWD = "cwd"
+PARAM_CALLER_SESSION_ID = "caller_session_id"
 RESULT_KEY = "result"
 EMPTY_STRING = ""
 
@@ -50,7 +51,8 @@ logger.setLevel(_TRACE_LEVEL)
 MCP_SOCKET = "/tmp/teleclaude.sock"
 # Map parameter names to env var names. Special value None means use os.getcwd()
 CONTEXT_TO_INJECT: dict[str, str | None] = {
-    PARAM_CWD: None,  # Special: inject os.getcwd() instead of env var
+    PARAM_CWD: None,  # Special: inject os.getcwd()
+    PARAM_CALLER_SESSION_ID: None,  # Special: inject from TMPDIR/teleclaude_session_id
 }
 RECONNECT_DELAY = 5
 CONNECTION_TIMEOUT = 10

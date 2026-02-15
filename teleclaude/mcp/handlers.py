@@ -808,7 +808,7 @@ class MCPHandlersMixin:
             return {"status": "error", "message": "caller_session_id required"}
 
         if self._is_local_computer(computer):
-            success = unregister_listener(target_session_id=session_id, caller_session_id=caller_session_id)
+            success = await unregister_listener(target_session_id=session_id, caller_session_id=caller_session_id)
             if success:
                 return {"status": "success", "message": f"Stopped notifications from session {session_id[:8]}"}
             return {"status": "error", "message": f"No listener found for session {session_id[:8]}"}
@@ -1217,7 +1217,7 @@ class MCPHandlersMixin:
         try:
             caller_session = await db.get_session(caller_session_id)
             if caller_session:
-                register_listener(
+                await register_listener(
                     target_session_id=str(remote_session_id),
                     caller_session_id=caller_session_id,
                     caller_tmux_session=caller_session.tmux_session_name,

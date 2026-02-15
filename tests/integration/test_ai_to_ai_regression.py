@@ -94,7 +94,7 @@ async def test_ai_to_ai_notification_delivery(daemon_with_mocked_telegram):
     # Register listener (simulating what handlers do)
     from teleclaude.core.session_listeners import register_listener
 
-    register_listener(
+    await register_listener(
         target_session_id=worker.session_id,
         caller_session_id=initiator.session_id,
         caller_tmux_session=initiator.tmux_session_name,

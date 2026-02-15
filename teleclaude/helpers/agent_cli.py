@@ -236,6 +236,34 @@ def _parse_iso_utc(value: str) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+# CLI agents authenticate via OAuth/account allowance, not API keys.
+# Each CLI reads credentials from its own store after user login:
+#   Claude  → macOS Keychain  (service "Claude Code-credentials")
+#   Codex   → ~/.codex/auth.json  (OAuth2 JWTs from ChatGPT account)
+#   Gemini  → ~/.gemini/oauth_creds.json  (Google OAuth2, selectedType "oauth-personal")
+#
+# API keys are reserved for SDK operations (summarization, voice) that
+# need speed. Leaking them to CLI subprocesses would bypass OAuth and
+# incur direct API charges.
+_CLI_STRIP_PREFIXES = ("CLAUDE_CODE", "CLAUDECODE")
+_CLI_STRIP_EXACT = {
+    "ANTHROPIC_API_KEY",  # Claude: bypasses OAuth, uses direct API billing
+    "ANTHROPIC_AUTH_TOKEN",  # Claude: alternative auth token
+    "OPENAI_API_KEY",  # Codex: bypasses ChatGPT OAuth
+    "GEMINI_API_KEY",  # Gemini: bypasses Google OAuth
+    "GOOGLE_API_KEY",  # Gemini: bypasses Google OAuth (Vertex express)
+}
+
+
+def _cli_env() -> dict[str, str]:
+    """Build a clean environment for CLI agent subprocesses."""
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if k not in _CLI_STRIP_EXACT and not any(k.startswith(p) for p in _CLI_STRIP_PREFIXES)
+    }
+
+
 def _run_agent(
     agent: AgentName,
     thinking_mode: ThinkingMode,
@@ -328,16 +356,7 @@ def _run_agent(
     if debug_raw:
         print(json.dumps({"debug_cmd": cmd_parts, "prompt_len": len(prompt)}))
 
-    # Sanitize env: strip parent-session markers and inherited API keys.
-    # One-shot spec manages its own auth (forceLoginMethod, --yolo, etc.);
-    # leaked dummy/test keys from the parent would override the intended flow.
-    _STRIP_PREFIXES = ("CLAUDE_CODE", "CLAUDECODE")
-    _STRIP_EXACT = {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"}
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if k not in _STRIP_EXACT and not any(k.startswith(p) for p in _STRIP_PREFIXES)
-    }
+    env = _cli_env()
 
     result = subprocess.run(
         cmd_parts,
@@ -418,7 +437,7 @@ def run_job(
 
     cmd_parts.extend(["-p", prompt])
 
-    env = os.environ.copy()
+    env = _cli_env()
     env["TELECLAUDE_JOB_ROLE"] = role
 
     result = subprocess.run(

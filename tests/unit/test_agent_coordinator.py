@@ -15,6 +15,19 @@ from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStop
 from teleclaude.core.models import Session
 
 
+@pytest.fixture(autouse=True)
+def _mock_session_listeners(monkeypatch):
+    """Mock session_listeners functions that now require DB."""
+    monkeypatch.setattr(
+        "teleclaude.core.agent_coordinator.notify_stop",
+        AsyncMock(return_value=0),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.agent_coordinator.notify_input_request",
+        AsyncMock(return_value=0),
+    )
+
+
 @pytest.fixture
 def mock_client():
     client = MagicMock()

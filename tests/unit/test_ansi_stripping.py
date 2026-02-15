@@ -156,6 +156,8 @@ async def test_agent_coordinator_handle_agent_stop_strips_ansi(monkeypatch):
     from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
 
     monkeypatch.setattr(config.terminal, "strip_ansi", True)
+    monkeypatch.setattr("teleclaude.core.agent_coordinator.notify_stop", AsyncMock(return_value=0))
+    monkeypatch.setattr("teleclaude.core.agent_coordinator.notify_input_request", AsyncMock(return_value=0))
 
     client = MagicMock()
     tts = MagicMock()

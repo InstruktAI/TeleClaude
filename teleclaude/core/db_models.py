@@ -218,6 +218,18 @@ class WebhookOutbox(SQLModel, table=True):
     locked_at: Optional[str] = None
 
 
+class SessionListenerRow(SQLModel, table=True):
+    """session_listeners table — durable PUB-SUB for stop notifications."""
+
+    __tablename__ = "session_listeners"
+    __table_args__ = {"extend_existing": True}
+
+    target_session_id: str = Field(primary_key=True)
+    caller_session_id: str = Field(primary_key=True)
+    caller_tmux_session: str
+    registered_at: str
+
+
 class MemoryManualSession(SQLModel, table=True):
     """memory_manual_sessions table."""
 

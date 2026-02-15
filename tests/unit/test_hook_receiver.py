@@ -433,7 +433,7 @@ def test_checkpoint_output_stop_hook_active_blocks_once_then_allows(monkeypatch,
     monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", _fake_checkpoint)
 
     first = receiver._maybe_checkpoint_output("sess-recheck", "claude", {"stop_hook_active": True})
-    assert first == json.dumps({"decision": "block", "reason": "checkpoint"})
+    assert first == "checkpoint"
     assert calls["count"] == 1
 
     recheck_path = checkpoint_flag_path("sess-recheck", CHECKPOINT_RECHECK_FLAG)

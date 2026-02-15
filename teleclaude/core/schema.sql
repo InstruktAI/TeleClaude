@@ -191,3 +191,15 @@ CREATE TABLE IF NOT EXISTS webhook_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_webhook_outbox_status ON webhook_outbox(status);
 CREATE INDEX IF NOT EXISTS idx_webhook_outbox_next_attempt ON webhook_outbox(next_attempt_at);
+
+-- Session listeners for durable PUB-SUB stop notifications
+-- Survives daemon restarts (previously in-memory only)
+CREATE TABLE IF NOT EXISTS session_listeners (
+    target_session_id TEXT NOT NULL,
+    caller_session_id TEXT NOT NULL,
+    caller_tmux_session TEXT NOT NULL,
+    registered_at TEXT NOT NULL,
+    PRIMARY KEY (target_session_id, caller_session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_session_listeners_caller
+    ON session_listeners(caller_session_id);

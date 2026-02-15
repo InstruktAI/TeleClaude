@@ -194,6 +194,20 @@ class TestSessionsViewLogic:
             parent=None,
         )
 
+    def _capture_header_text(self, view: SessionsView, session: SessionNode, *, selected: bool, width: int = 80) -> str:
+        """Render only the header and return its concatenated plain text."""
+
+        class FakeScreen:
+            def __init__(self) -> None:
+                self.calls: list[tuple[int, int, str, int]] = []
+
+            def addstr(self, row: int, col: int, text: str, attr: int) -> None:  # noqa: D401
+                self.calls.append((row, col, text, attr))
+
+        screen = FakeScreen()
+        view._render_session(screen, 0, session, width, selected, 3)
+        return "".join(call[2] for call in screen.calls if call[0] == 0)
+
     def test_empty_shows_message(self, sessions_view):
         """Empty sessions list shows appropriate message."""
         sessions_view.flat_items = []
@@ -1742,12 +1756,13 @@ class TestSessionsViewLogic:
 
         assert lines_used == 2
 
-        # Rendering uses three calls for line 1 (idx, agent/mode, title) and one for line 2
-        assert len(screen.calls) == 4
+        # Rendering uses five calls for line 1 (leading space, idx, spacer, agent/mode, title)
+        # and one for line 2.
+        assert len(screen.calls) == 6
 
         # Line 1 does not guarantee full width padding
         line1_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(line1_calls) == 3
+        assert len(line1_calls) == 5
 
         # Line 2 (ID line) should still be full width
         line2_calls = [call for call in screen.calls if call[0] == 1]
@@ -1781,12 +1796,14 @@ class TestSessionsViewLogic:
 
         assert lines_used == 3
 
-        # Header/title line (row 0): [idx], agent/mode, and title should be muted for headless.
+        # Header/title line (row 0): leading space, [idx], spacer, agent/mode, and title should be muted.
         row0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(row0_calls) == 3
-        assert row0_calls[0][3] == 1
+        assert len(row0_calls) == 5
+        assert row0_calls[0][3] == 0
         assert row0_calls[1][3] == 1
         assert row0_calls[2][3] == 1
+        assert row0_calls[3][3] == 1
+        assert row0_calls[4][3] == 1
 
         # Line 2 ID row is also muted for headless.
         row1_calls = [call for call in screen.calls if call[0] == 1]
@@ -1823,11 +1840,13 @@ class TestSessionsViewLogic:
 
         assert lines_used == 2
         row0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(row0_calls) == 3
+        assert len(row0_calls) == 5
         focused_headless_selection_attr = 37 | curses.A_BOLD
-        assert row0_calls[0][3] == focused_headless_selection_attr
-        assert row0_calls[1][3] == focused_headless_selection_attr
+        assert row0_calls[0][3] == 0
+        assert row0_calls[1][3] == (1 | curses.A_BOLD)
         assert row0_calls[2][3] == focused_headless_selection_attr
+        assert row0_calls[3][3] == focused_headless_selection_attr
+        assert row0_calls[4][3] == focused_headless_selection_attr
 
     def test_preview_session_uses_highlight_attrs(self, sessions_view, monkeypatch):
         """Previewed non-selected sessions use muted background with agent color."""
@@ -1866,14 +1885,16 @@ class TestSessionsViewLogic:
         sessions_view._render_session(screen, 0, session, 80, False, 3)
 
         line0_calls = [call for call in screen_calls if call[0] == 0]
-        assert len(line0_calls) == 3
+        assert len(line0_calls) == 5
         # Previewed non-selected rows remain distinct via muted background,
         # without using focused selection color.
-        assert line0_calls[0][2] == "[1]"
-        assert line0_calls[0][3] == 12
-        assert line0_calls[1][3] == 77
+        assert line0_calls[0][3] == 0
+        assert line0_calls[1][2] == "[1]"
+        assert line0_calls[1][3] == 12
         assert line0_calls[2][3] == 77
-        assert line0_calls[2][2].endswith(" ")
+        assert line0_calls[3][3] == 77
+        assert line0_calls[4][3] == 77
+        assert line0_calls[4][2].endswith(" ")
 
     def test_selected_preview_session_keeps_selection_highlight(self, sessions_view, monkeypatch):
         """Selected preview rows keep reverse-selection emphasis."""
@@ -1912,12 +1933,14 @@ class TestSessionsViewLogic:
         sessions_view._render_session(screen, 0, session, 80, True, 3)
 
         line0_calls = [call for call in session_calls if call[0] == 0]
-        assert len(line0_calls) == 3
-        assert line0_calls[0][2] == "[1]"
-        assert line0_calls[0][3] == (12 | curses.A_BOLD)
-        assert line0_calls[1][3] == (99 | curses.A_BOLD)
+        assert len(line0_calls) == 5
+        assert line0_calls[0][3] == 0
+        assert line0_calls[1][2] == "[1]"
+        assert line0_calls[1][3] == (12 | curses.A_BOLD)
         assert line0_calls[2][3] == (99 | curses.A_BOLD)
-        assert line0_calls[2][2].endswith(" ")
+        assert line0_calls[3][3] == (99 | curses.A_BOLD)
+        assert line0_calls[4][3] == (99 | curses.A_BOLD)
+        assert line0_calls[4][2].endswith(" ")
 
     def test_selected_non_preview_session_uses_focus_muted_colors(self, sessions_view, monkeypatch):
         """Non-preview selected rows use muted focus colors while navigating."""
@@ -1949,12 +1972,41 @@ class TestSessionsViewLogic:
         sessions_view._render_session(screen, 0, session, 80, True, 3)
 
         line0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(line0_calls) == 3
-        assert line0_calls[0][2] == "[1]"
-        assert line0_calls[0][3] == (12 | curses.A_BOLD)
-        assert line0_calls[1][3] == (99 | curses.A_BOLD)
+        assert len(line0_calls) == 5
+        assert line0_calls[0][3] == 0
+        assert line0_calls[1][2] == "[1]"
+        assert line0_calls[1][3] == (12 | curses.A_BOLD)
         assert line0_calls[2][3] == (99 | curses.A_BOLD)
-        assert line0_calls[2][2].endswith(" ")
+        assert line0_calls[3][3] == (99 | curses.A_BOLD)
+        assert line0_calls[4][3] == (99 | curses.A_BOLD)
+        assert line0_calls[4][2].endswith(" ")
+
+    def test_unknown_agent_does_not_crash_row_render(self, sessions_view, monkeypatch):
+        """Unknown agent names should render using fallback palette, never raising KeyError."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text, attr))
+
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
+        session = self._make_session_node(
+            session_id="unknown-agent",
+            active_agent="mystery",
+            thinking_mode="slow",
+            tmux_session_name="tc-unknown-agent",
+        )
+
+        screen = FakeScreen()
+        lines_used = sessions_view._render_session(screen, 0, session, 80, True, 3)
+
+        assert lines_used == 2
+        row0_calls = [call for call in screen.calls if call[0] == 0]
+        assert len(row0_calls) == 5
+        assert row0_calls[0][3] == 0
+        assert any("mystery/slow" in call[2] for call in row0_calls)
 
     @pytest.mark.parametrize("selected,previewed", [(False, False), (True, False), (False, True), (True, True)])
     def test_badge_color_isolation_for_sticky_sessions(self, sessions_view, monkeypatch, selected, previewed):
@@ -1986,6 +2038,7 @@ class TestSessionsViewLogic:
             active_agent="claude",
             thinking_mode="slow",
             tmux_session_name="tc-matrix-sticky",
+            depth=3,
         )
         sessions_view.sticky_sessions = [StickySessionInfo(session_id="sticky-matrix-session")]
         if previewed:
@@ -1999,16 +2052,224 @@ class TestSessionsViewLogic:
         sessions_view._render_session(screen, 0, session, 80, selected, 3)
 
         line0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(line0_calls) == 3
+        assert len(line0_calls) == 5
 
         assert line0_calls[0][1] == 0
+        assert line0_calls[0][2] == "  "
         assert line0_calls[1][1] == len(line0_calls[0][2])
-        assert not line0_calls[1][2].startswith(" ")
+        assert line0_calls[1][2] == "[1]"
+        assert line0_calls[2][2] == " "
         expected_badge_attr = (44 | curses.A_BOLD) if selected else 44
-        assert line0_calls[0][3] == expected_badge_attr
         expected_title_attr = (99 | curses.A_BOLD) if selected else 12
-        assert line0_calls[1][3] == expected_title_attr
+        assert line0_calls[0][3] == 0
+        assert line0_calls[1][3] == expected_badge_attr
         assert line0_calls[2][3] == expected_title_attr
+        assert line0_calls[3][3] == expected_title_attr
+        assert line0_calls[4][3] == expected_title_attr
+
+    def test_sticky_transition_preserves_header_text(self, sessions_view, monkeypatch):
+        """Sticky transitions preserve rendered header text; only style should change."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text, attr))
+
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.get_sticky_badge_attr",
+            lambda: 44,
+        )
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
+            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+        )
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
+
+        session = self._make_session_node(
+            session_id="sticky-matrix-session",
+            active_agent="claude",
+            thinking_mode="slow",
+            tmux_session_name="tc-matrix-sticky",
+            depth=3,
+        )
+
+        base_screen = FakeScreen()
+        sessions_view._render_session(base_screen, 0, session, 80, False, 3)
+        base_row_text = "".join(call[2] for call in base_screen.calls if call[0] == 0)
+
+        sticky_screen = FakeScreen()
+        sessions_view.sticky_sessions = [StickySessionInfo("sticky-matrix-session")]
+        sessions_view._render_session(sticky_screen, 0, session, 80, False, 3)
+        sticky_row_text = "".join(call[2] for call in sticky_screen.calls if call[0] == 0)
+
+        assert base_row_text == sticky_row_text
+
+    def test_session_header_text_is_stable_across_interaction_states(self, sessions_view, monkeypatch):
+        """Selection, preview, and sticky-state changes do not mutate header text."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text, attr))
+
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.get_sticky_badge_attr",
+            lambda: 44,
+        )
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
+            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+        )
+        monkeypatch.setattr(
+            "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_focus_attr",
+            lambda _agent: 99,
+        )
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
+
+        session = self._make_session_node(
+            session_id="stable-session",
+            active_agent="claude",
+            thinking_mode="slow",
+            tmux_session_name="tc-stable-session",
+            depth=3,
+        )
+
+        header_texts: set[str] = set()
+
+        for sticky in (False, True):
+            sessions_view.sticky_sessions = [StickySessionInfo("stable-session")] if sticky else []
+
+            for selected in (False, True):
+                for previewed in (False, True):
+                    if previewed:
+                        sessions_view._preview = PreviewState(session_id="stable-session")
+                        sessions_view.state.sessions.preview = PreviewState(session_id="stable-session")
+                    else:
+                        sessions_view._preview = None
+                        sessions_view.state.sessions.preview = None
+
+                    screen = FakeScreen()
+                    sessions_view._render_session(screen, 0, session, 80, selected, 3)
+                    header_text = "".join(call[2] for call in screen.calls if call[0] == 0)
+                    header_texts.add(header_text)
+
+        assert len(header_texts) == 1
+
+    def test_interaction_does_not_mutate_non_sticky_header_text(self, mock_focus, monkeypatch):
+        """Single click does not change rendered header content for non-sticky sessions."""
+
+        class MockPaneManager:
+            def __init__(self) -> None:
+                self.is_available = True
+
+            def toggle_session(self, *_args, **_kwargs):
+                return None
+
+            def show_session(self, *_args, **_kwargs):
+                return None
+
+            def focus_pane_for_session(self, _session_id):
+                return True
+
+            def apply_layout(self, **_kwargs):
+                return None
+
+        pane_manager = MockPaneManager()
+        state = TuiState()
+        controller = TuiController(state, pane_manager, lambda _name: None)
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
+        view = SessionsView(
+            api=None,
+            agent_availability={},
+            focus=mock_focus,
+            pane_manager=pane_manager,
+            state=state,
+            controller=controller,
+        )
+        session = self._make_session_node(
+            session_id="nonsticky-render-stable",
+            depth=3,
+            tmux_session_name="tc-nonsticky",
+        )
+        view.flat_items = [session]
+        view._row_to_item[10] = 0
+        view._computers = [
+            ComputerInfo(
+                name="local-machine",
+                status="online",
+                user="me",
+                host="local",
+                is_local=True,
+                tmux_binary="tmux",
+            )
+        ]
+
+        base_text = self._capture_header_text(view, session, selected=False)
+        assert view.handle_click(10, is_double_click=False) is True
+        view.apply_pending_activation()
+        assert self._capture_header_text(view, session, selected=True) == base_text
+
+    def test_interaction_does_not_mutate_sticky_header_text(self, mock_focus, monkeypatch):
+        """Double-click toggle does not change sticky row header text (only state)."""
+
+        class MockPaneManager:
+            def __init__(self) -> None:
+                self.is_available = True
+
+            def toggle_session(self, *_args, **_kwargs):
+                return None
+
+            def show_session(self, *_args, **_kwargs):
+                return None
+
+            def focus_pane_for_session(self, _session_id):
+                return True
+
+            def apply_layout(self, **_kwargs):
+                return None
+
+        pane_manager = MockPaneManager()
+        state = TuiState()
+        state.sessions.preview = PreviewState(session_id="other-session")
+        controller = TuiController(state, pane_manager, lambda _name: None)
+        monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
+        view = SessionsView(
+            api=None,
+            agent_availability={},
+            focus=mock_focus,
+            pane_manager=pane_manager,
+            state=state,
+            controller=controller,
+        )
+        session = self._make_session_node(
+            session_id="sticky-render-stable",
+            depth=3,
+            tmux_session_name="tc-sticky-render",
+        )
+        view.flat_items = [session]
+        view._row_to_item[10] = 0
+        view._computers = [
+            ComputerInfo(
+                name="local-machine",
+                status="online",
+                user="me",
+                host="local",
+                is_local=True,
+                tmux_binary="tmux",
+            )
+        ]
+
+        view.sticky_sessions = [StickySessionInfo("sticky-render-stable")]
+        base_text = self._capture_header_text(view, session, selected=False)
+        assert view.handle_click(10, is_double_click=True) is True
+        view.apply_pending_activation()
+        view.apply_pending_focus()
+        assert len(view.sticky_sessions) == 0
+        assert self._capture_header_text(view, session, selected=True) == base_text
 
     @pytest.mark.parametrize("selected,previewed", [(False, False), (True, False), (False, True), (True, True)])
     def test_badge_color_isolation_for_non_sticky_sessions(self, sessions_view, monkeypatch, selected, previewed):
@@ -2052,17 +2313,19 @@ class TestSessionsViewLogic:
         sessions_view._render_session(screen, 0, session, 80, selected, 3)
 
         line0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(line0_calls) == 3
+        assert len(line0_calls) == 5
 
+        assert line0_calls[0][3] == 0
         expected_badge_attr = (12 | curses.A_BOLD) if selected else 12
-        assert line0_calls[0][3] == expected_badge_attr
+        assert line0_calls[1][3] == expected_badge_attr
 
         if selected:
             expected_title_attr = 99 | curses.A_BOLD
         else:
             expected_title_attr = 77 if previewed else 12
-        assert line0_calls[1][3] == expected_title_attr
         assert line0_calls[2][3] == expected_title_attr
+        assert line0_calls[3][3] == expected_title_attr
+        assert line0_calls[4][3] == expected_title_attr
 
     def test_selected_sticky_session_badge_is_bolded(self, sessions_view, monkeypatch):
         """Sticky row selection should bold only the index badge."""
@@ -2087,8 +2350,9 @@ class TestSessionsViewLogic:
         sessions_view._render_session(screen, 0, session, 80, True, 3)
 
         line0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(line0_calls) == 3
-        assert line0_calls[0][3] == (get_sticky_badge_attr() | curses.A_BOLD)
+        assert len(line0_calls) == 5
+        assert line0_calls[0][3] == 0
+        assert line0_calls[1][3] == (get_sticky_badge_attr() | curses.A_BOLD)
 
     def test_unselected_sticky_session_badge_is_bolded_and_uses_base_color(self, sessions_view, monkeypatch):
         """Sticky row badges stay on base colors and stay bold when not selected."""
@@ -2113,8 +2377,9 @@ class TestSessionsViewLogic:
         sessions_view._render_session(screen, 0, session, 80, False, 3)
 
         line0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(line0_calls) >= 1
-        assert line0_calls[0][3] == get_sticky_badge_attr()
+        assert len(line0_calls) >= 2
+        assert line0_calls[0][3] == 0
+        assert line0_calls[1][3] == get_sticky_badge_attr()
 
     def test_previewed_sticky_session_badge_uses_base_colors(self, sessions_view, monkeypatch):
         """Previewed sticky row badges stay on base colors while keeping boldness."""
@@ -2141,9 +2406,10 @@ class TestSessionsViewLogic:
         sessions_view._render_session(screen, 0, session, 80, False, 3)
 
         line0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(line0_calls) >= 1
+        assert len(line0_calls) >= 2
+        assert line0_calls[0][3] == 0
         # Sticky rows are never 'previewed' to keep their badges stable.
-        assert line0_calls[0][3] == get_sticky_badge_attr()
+        assert line0_calls[1][3] == get_sticky_badge_attr()
 
     def test_selected_previewed_sticky_session_badge_uses_base_colors(self, sessions_view, monkeypatch):
         """Selected previewed sticky rows keep badge colors and stay bold."""
@@ -2170,8 +2436,9 @@ class TestSessionsViewLogic:
         sessions_view._render_session(screen, 0, session, 80, True, 3)
 
         line0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(line0_calls) >= 1
-        assert line0_calls[0][3] == (get_sticky_badge_attr() | curses.A_BOLD)
+        assert len(line0_calls) >= 2
+        assert line0_calls[0][3] == 0
+        assert line0_calls[1][3] == (get_sticky_badge_attr() | curses.A_BOLD)
 
     def test_headless_status_is_normalized_for_header_muting(self, sessions_view, monkeypatch):
         """Status normalization should treat whitespace/case headless values as headless."""
@@ -2198,10 +2465,12 @@ class TestSessionsViewLogic:
 
         assert lines_used == 2
         row0_calls = [call for call in screen.calls if call[0] == 0]
-        assert len(row0_calls) == 3
-        assert row0_calls[0][3] == 1  # claude muted pair
+        assert len(row0_calls) == 5
+        assert row0_calls[0][3] == 0  # leading space — default bg
         assert row0_calls[1][3] == 1  # claude muted pair
         assert row0_calls[2][3] == 1  # claude muted pair
+        assert row0_calls[3][3] == 1  # claude muted pair
+        assert row0_calls[4][3] == 1  # claude muted pair
 
     def test_temp_output_highlight_uses_italic_attr_when_available(self, sessions_view, monkeypatch):
         """When italics are supported, only placeholder text is italicized."""

@@ -45,10 +45,8 @@ DEFAULT_BACKGROUND_COLOR_DARK_MODE = curses.COLOR_WHITE
 DEFAULT_FOREGROUND_COLOR_LIGHT_MODE = curses.COLOR_BLACK
 DEFAULT_BACKGROUND_COLOR_LIGHT_MODE = curses.COLOR_WHITE
 
-STICKY_BADGE_DARK_FG = DEFAULT_FOREGROUND_COLOR_DARK_MODE
-STICKY_BADGE_DARK_BG = DEFAULT_BACKGROUND_COLOR_DARK_MODE
-STICKY_BADGE_LIGHT_FG = DEFAULT_FOREGROUND_COLOR_LIGHT_MODE
-STICKY_BADGE_LIGHT_BG = DEFAULT_BACKGROUND_COLOR_LIGHT_MODE
+STICKY_BADGE_FG = -1  # terminal default — inverted via A_REVERSE
+STICKY_BADGE_BG = -1  # terminal default — inverted via A_REVERSE
 
 # Z-index layer color pairs (for backgrounds)
 # Values set dynamically based on light/dark mode
@@ -91,6 +89,12 @@ _AGENT_HIGHLIGHT_LIGHT = {
 }
 
 _APPLE_DARK_LABEL = "Dark"
+_DEFAULT_AGENT = "codex"
+
+
+def _safe_agent(agent: str) -> str:
+    """Normalize unknown agent names to a stable default."""
+    return agent if agent in AGENT_COLORS else _DEFAULT_AGENT
 
 
 def _get_tmux_socket_path() -> Optional[str]:
@@ -353,20 +357,20 @@ def init_colors() -> None:
         curses.init_pair(25, 28, -1)  # Green (ready)
         curses.init_pair(26, 136, -1)  # Yellow (active)
 
-    # Sticky badge keeps fixed inverse styling (foreground/background should never inherit
-    # row selection/preview styling) and switches by theme mode.
-    sticky_badge_fg = STICKY_BADGE_DARK_FG if _is_dark_mode else STICKY_BADGE_LIGHT_FG
-    sticky_badge_bg = STICKY_BADGE_DARK_BG if _is_dark_mode else STICKY_BADGE_LIGHT_BG
-    curses.init_pair(STICKY_BADGE_PAIR_ID, sticky_badge_fg, sticky_badge_bg)
+    # Sticky badge uses terminal defaults with A_REVERSE for inversion.
+    curses.init_pair(STICKY_BADGE_PAIR_ID, STICKY_BADGE_FG, STICKY_BADGE_BG)
 
 
 def get_sticky_badge_attr() -> int:
     """Get curses attribute for sticky badge indicator.
 
-    Foreground/background are fixed to mode-specific defaults.
-    Styling for selection is intentionally handled by the caller.
+    This is a standalone badge style contract:
+    - Uses terminal defaults (-1, -1) with A_REVERSE for inversion, matching
+      the terminal's native typography instead of hard COLOR_BLACK/COLOR_WHITE.
+    - The caller may add only bold for row selection.
+    - Never alter this function to satisfy row/preview highlighting requirements.
     """
-    return curses.color_pair(STICKY_BADGE_PAIR_ID)
+    return curses.color_pair(STICKY_BADGE_PAIR_ID) | curses.A_REVERSE
 
 
 def get_layer_attr(z_index: int) -> int:
@@ -593,7 +597,7 @@ def get_agent_pane_inactive_background(agent: str, haze_percentage: float | None
         agent_colors = _AGENT_HEX_COLORS_LIGHT
     base_bg = get_terminal_background()
 
-    agent_color = agent_colors[agent]
+    agent_color = agent_colors[_safe_agent(agent)]
     percentage = _AGENT_PANE_INACTIVE_HAZE_PERCENTAGE if haze_percentage is None else haze_percentage
     return blend_colors(base_bg, agent_color, percentage)
 
@@ -634,7 +638,7 @@ def get_agent_status_background(agent: str) -> str:
         agent_colors = _AGENT_HEX_COLORS_LIGHT
     base_bg = get_terminal_background()
 
-    agent_color = agent_colors[agent]
+    agent_color = agent_colors[_safe_agent(agent)]
     return blend_colors(base_bg, agent_color, _AGENT_STATUS_HAZE_PERCENTAGE)
 
 
@@ -647,9 +651,10 @@ def get_agent_highlight_color(agent: str) -> int:
     Returns:
         xterm 256 color code for the agent's highlight color (default: 153)
     """
+    key = _safe_agent(agent)
     if _is_dark_mode:
-        return _AGENT_HIGHLIGHT_DARK[agent]
-    return _AGENT_HIGHLIGHT_LIGHT[agent]
+        return _AGENT_HIGHLIGHT_DARK[key]
+    return _AGENT_HIGHLIGHT_LIGHT[key]
 
 
 def get_agent_preview_selected_bg_attr(agent: str) -> int:
@@ -661,7 +666,7 @@ def get_agent_preview_selected_bg_attr(agent: str) -> int:
     Returns:
         Curses attribute for agent-specific muted-background selection style.
     """
-    pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS[agent]
+    pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS[_safe_agent(agent)]
     return curses.color_pair(pair_id)
 
 
@@ -677,7 +682,7 @@ def get_agent_preview_selected_focus_attr(agent: str) -> int:
     Returns:
         Curses attribute for agent-specific selected-preview focused row.
     """
-    pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS[agent]
+    pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS[_safe_agent(agent)]
     return curses.color_pair(pair_id)
 
 
@@ -732,9 +737,10 @@ def get_agent_muted_color(agent: str) -> int:
     """
     # In dark mode: claude=94, gemini=103, codex=67
     # In light mode: claude=180, gemini=177, codex=110
+    key = _safe_agent(agent)
     if _is_dark_mode:
-        return {"claude": 94, "gemini": 103, "codex": 67}[agent]
-    return {"claude": 180, "gemini": 177, "codex": 110}[agent]
+        return {"claude": 94, "gemini": 103, "codex": 67}[key]
+    return {"claude": 180, "gemini": 177, "codex": 110}[key]
 
 
 def get_agent_normal_color(agent: str) -> int:
@@ -751,7 +757,7 @@ def get_agent_normal_color(agent: str) -> int:
         "claude": 2,
         "gemini": 5,
         "codex": 8,
-    }[agent]
+    }[_safe_agent(agent)]
 
     # Extract the color code from the pair
     # In dark mode: claude=137, gemini=141, codex=110

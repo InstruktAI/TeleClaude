@@ -148,13 +148,6 @@ snippets:
   scope: project
   path: docs/general/procedure/maintenance/log-bug-hunter.md
   source_project: TeleClaude
-- id: general/procedure/maintenance/merge-runner
-  description: Serialized merge procedure that promotes approved worktree branches
-    into main through an isolated merge workspace.
-  type: procedure
-  scope: project
-  path: docs/general/procedure/maintenance/merge-runner.md
-  source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare
   description: Orchestration procedure for next-prepare. Routes work to draft or gate
     procedures with strict phase separation.

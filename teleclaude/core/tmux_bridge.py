@@ -243,6 +243,13 @@ async def _create_tmux_session(
         # The plugin auto-restores the last directory when starting in $HOME unless this var is set.
         effective_env_vars["ZSH_LAST_WORKING_DIRECTORY"] = "1"
 
+        # Prepend TeleClaude bin to PATH so the git wrapper intercepts prohibited commands
+        # (stash, checkout, restore, reset --hard, clean). See: version-control-safety policy.
+        teleclaude_bin = str(Path.home() / ".teleclaude" / "bin")
+        current_path = os.environ.get("PATH", "/usr/bin:/bin")
+        if teleclaude_bin not in current_path.split(os.pathsep):
+            effective_env_vars["PATH"] = f"{teleclaude_bin}{os.pathsep}{current_path}"
+
         # Claude Code can crash on macOS if TMPDIR contains unix sockets (fs.watch EOPNOTSUPP/UNKNOWN).
         # Use a per-session, empty TMPDIR to avoid inheriting sockets from global temp directories.
         if session_id:

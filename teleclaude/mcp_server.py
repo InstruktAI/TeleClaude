@@ -269,7 +269,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     target_session_id[:8],
                     caller_session.tmux_session_name,
                 )
-                register_listener(
+                await register_listener(
                     target_session_id=target_session_id,
                     caller_session_id=caller_session_id,
                     caller_tmux_session=caller_session.tmux_session_name,
