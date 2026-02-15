@@ -45,6 +45,9 @@ HUMAN_ROLE_CONTRIBUTOR = "contributor"
 HUMAN_ROLE_NEWCOMER = "newcomer"
 HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER)
 
+# Audience tags for doc snippet visibility
+AUDIENCE_VALUES = ("admin", "member", "help-desk", "public")
+
 
 class ResultStatus(str, Enum):
     SUCCESS = "success"

@@ -29,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from teleclaude.constants import TAXONOMY_TYPES, TYPE_SUFFIX  # noqa: E402
+from teleclaude.constants import AUDIENCE_VALUES, TAXONOMY_TYPES, TYPE_SUFFIX  # noqa: E402
 from teleclaude.snippet_validation import (  # noqa: E402
     expected_snippet_id_for_path,
     load_domains,
@@ -344,6 +344,12 @@ def validate_snippet(path: Path, content: str, project_root: Path, *, domains: s
             expected_id=expected_id,
             snippet_id=parsed_id.value(),
         )
+
+    raw_audience = meta.get("audience")
+    if isinstance(raw_audience, list):
+        for val in raw_audience:
+            if not isinstance(val, str) or val not in AUDIENCE_VALUES:
+                _warn("snippet_invalid_audience_value", path=str(path), value=str(val))
 
     _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
