@@ -1,3 +1,11 @@
+@docs/third-party/a2a-protocol/agent-card.md
+@docs/third-party/a2a-protocol/api-methods.md
+@docs/third-party/a2a-protocol/mcp-integration.md
+@docs/third-party/a2a-protocol/overview.md
+@docs/third-party/a2a-protocol/python-sdk.md
+@docs/third-party/a2a-protocol/task-lifecycle.md
+@docs/third-party/a2ui/overview.md
+@docs/third-party/ag-ui/overview.md
 @docs/third-party/claude-code/commands.md
 @docs/third-party/claude-code/hooks.md
 @docs/third-party/claude-code/permissions.md

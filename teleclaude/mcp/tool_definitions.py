@@ -595,7 +595,7 @@ def get_tool_definitions() -> list[Tool]:
                     },
                     "phase": {
                         "type": "string",
-                        "enum": ["build", "review", "docstrings", "snippets"],
+                        "enum": ["build", "review"],
                         "description": "Phase to update",
                     },
                     "status": {

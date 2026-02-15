@@ -1040,8 +1040,8 @@ class MCPHandlersMixin:
         """Mark a work phase as complete/approved in state.json."""
         if not cwd:
             return "ERROR: NO_CWD\nWorking directory not provided."
-        if phase not in ("build", "review", "docstrings", "snippets"):
-            return f"ERROR: Invalid phase '{phase}'. Must be 'build', 'review', 'docstrings', or 'snippets'."
+        if phase not in ("build", "review"):
+            return f"ERROR: Invalid phase '{phase}'. Must be 'build' or 'review'."
         if status not in ("pending", "complete", "approved", "changes_requested"):
             return (
                 f"ERROR: Invalid status '{status}'. Must be 'pending', 'complete', 'approved', or 'changes_requested'."

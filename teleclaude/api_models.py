@@ -332,6 +332,7 @@ class AgentActivityEventDTO(BaseModel):  # type: ignore[explicit-any]
     tool_name: str | None = None
     tool_preview: str | None = None
     summary: str | None = None
+    timestamp: str | None = None
 
 
 class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]

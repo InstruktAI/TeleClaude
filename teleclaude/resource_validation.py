@@ -596,6 +596,15 @@ def _is_web_url(value: str) -> bool:
     return value.startswith("http://") or value.startswith("https://")
 
 
+_MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\((https?://[^)]+)\)$")
+
+
+def _extract_markdown_link_url(value: str) -> str | None:
+    """Extract URL from a markdown link like [text](https://...)."""
+    m = _MARKDOWN_LINK_RE.match(value)
+    return m.group(2) if m else None
+
+
 def _check_url_alive(url: str, *, timeout: int = 8) -> bool:
     headers = {"User-Agent": "TeleClaude/1.0"}
     try:
@@ -636,9 +645,13 @@ def validate_third_party_docs(project_root: Path) -> None:
         for source in sources:
             if _is_context7_id(source):
                 continue
-            if _is_web_url(source):
-                if not _check_url_alive(source):
-                    _warn("third_party_source_unreachable", path=str(path), source=source)
+            url = source
+            md_url = _extract_markdown_link_url(source)
+            if md_url:
+                url = md_url
+            if _is_web_url(url):
+                if not _check_url_alive(url):
+                    _warn("third_party_source_unreachable", path=str(path), source=url)
                 continue
             _warn("third_party_source_invalid", path=str(path), source=source)
 

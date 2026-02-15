@@ -44,7 +44,7 @@ stateDiagram-v2
 - `todos/roadmap.md` - Work item registry with priorities
 - `todos/{slug}/requirements.md` - Feature requirements
 - `todos/{slug}/implementation-plan.md` - Technical design
-- `todos/{slug}/state.json` - Phase tracking (build, review, docstrings, snippets)
+- `todos/{slug}/state.json` - Phase tracking (build, review)
 - `todos/{slug}/deferrals.md` - Identified technical debt
 
 **Outputs:**

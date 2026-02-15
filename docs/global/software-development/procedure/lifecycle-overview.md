@@ -1,5 +1,5 @@
 ---
-description: 'Deterministic software development lifecycle with prepare, build, review, fix, documentation, finalize, and maintenance phases. Serial workflow managed by Orchestrator.'
+description: 'Deterministic software development lifecycle with prepare, build, review, fix, finalize, and maintenance phases. Serial workflow managed by Orchestrator.'
 id: 'software-development/procedure/lifecycle-overview'
 scope: 'domain'
 type: 'procedure'
@@ -15,9 +15,8 @@ The software development lifecycle in this organization follows a deterministic,
 2. Build — implement the plan with tests and commits
 3. Review — validate against requirements and standards
 4. Fix — address review findings
-5. Documentation — sync docstrings and docs
-6. Finalize — merge and deliver
-7. Maintenance — infra/dependency/security upkeep
+5. Finalize — merge and deliver
+6. Maintenance — infra/dependency/security upkeep
 
 ### 1. Prepare
 
@@ -49,21 +48,14 @@ Address review findings. Re-commit. Workflow returns to Review phase.
 
 Review/fix loops are capped by `max_review_rounds` (default `3`). At the cap, orchestrator owns pragmatic closure: approve with documented follow-up for non-critical residual items, and escalate only when unresolved critical risk remains.
 
-### 5. Documentation
-
-**Output:** Updated docstrings and docs
-**Responsibility:** Orchestrator
-
-Run docstring synchronization, then snippet synchronization. This phase is part of the work lifecycle and required for Definition of Done.
-
-### 6. Finalize
+### 5. Finalize
 
 **Output:** Merge, log delivery, cleanup
 **Responsibility:** Orchestrator
 
 Merge approved work, update delivered log, remove todo folder, clean up worktree.
 
-### 7. Maintenance
+### 6. Maintenance
 
 **Output:** Infra/dependency/security upkeep
 **Responsibility:** Orchestrator
@@ -79,8 +71,6 @@ Work state lives in `todos/{slug}/state.json` and records:
 
 - `build`: `pending` | `complete`
 - `review`: `pending` | `approved` | `changes_requested`
-- `docstrings`: `pending` | `complete`
-- `docs`: `pending` | `complete`
 - `deferrals_processed`: boolean
 
 ## Preconditions
@@ -93,7 +83,7 @@ Work state lives in `todos/{slug}/state.json` and records:
 1. Run preparation to validate requirements and plan.
 2. Execute build phase to implement changes.
 3. Run review phase; address findings in fix phase if needed.
-4. Finalize by updating docs, docstrings, and state.
+4. Finalize by merging, logging delivery, and cleaning up.
 
 ## Outputs
 

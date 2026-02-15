@@ -46,6 +46,7 @@ class AgentPalette(ColorPalette):
         super().__init__(f"agent_{agent_name}")
         agent_cfg = AGENT_COLORS.get(agent_name, AGENT_COLORS["claude"])
         self.color_pairs = [
+            agent_cfg["subtle"],
             agent_cfg["muted"],
             agent_cfg["normal"],
             agent_cfg["highlight"],

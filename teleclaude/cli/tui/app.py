@@ -560,6 +560,7 @@ class TelecApp:
                             "tool_name": event.tool_name,
                             "tool_preview": event.tool_preview,
                             "summary": event.summary,
+                            "timestamp": event.timestamp,
                         },
                     )
                 )

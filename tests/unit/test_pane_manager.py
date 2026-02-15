@@ -85,7 +85,7 @@ def test_set_pane_background_keeps_constant_fg_across_focus():
         patch.object(manager, "_run_tmux", mock_run),
         patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
         patch.object(theme, "get_agent_pane_active_background", return_value="#000000"),
-        patch.object(theme, "get_agent_highlight_color", return_value=222),
+        patch.object(theme, "get_agent_normal_color", return_value=222),
     ):
         manager._set_pane_background("%9", "tc_test", "claude")
 
@@ -105,7 +105,7 @@ def test_set_pane_background_uses_selected_haze_for_tree_selection():
         patch.object(manager, "_run_tmux", mock_run),
         patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
         patch.object(theme, "get_agent_pane_selected_background", return_value="#060606") as get_selected,
-        patch.object(theme, "get_agent_highlight_color", return_value=222),
+        patch.object(theme, "get_agent_normal_color", return_value=222),
     ):
         manager._set_pane_background("%9", "tc_test", "claude", is_tree_selected=True)
 
@@ -208,7 +208,7 @@ def test_render_layout_split_windows_do_not_capture_focus_with_d_flag():
         patch.object(manager, "_get_pane_exists", return_value=True),
         patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
         patch.object(theme, "get_agent_pane_active_background", return_value="#000000"),
-        patch.object(theme, "get_agent_highlight_color", return_value=15),
+        patch.object(theme, "get_agent_normal_color", return_value=15),
         patch.object(theme, "get_tui_inactive_background", return_value="#e8e2d0"),
         patch.object(theme, "get_terminal_background", return_value="#fbf8f1"),
     ):

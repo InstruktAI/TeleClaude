@@ -19,11 +19,11 @@ from teleclaude.cli.tui.types import ThemeMode
 from teleclaude.config import config
 
 # Agent color pair IDs (initialized after curses.start_color())
-# Three colors per agent: muted (dim), normal (default), highlight (activity)
+# Four colors per agent: subtle (tint), muted (dim), normal (default), highlight (activity)
 AGENT_COLORS: dict[str, dict[str, int]] = {
-    "claude": {"muted": 1, "normal": 2, "highlight": 3},  # Orange tones
-    "gemini": {"muted": 4, "normal": 5, "highlight": 6},  # Cyan tones
-    "codex": {"muted": 7, "normal": 8, "highlight": 9},  # Green tones
+    "claude": {"subtle": 1, "muted": 2, "normal": 3, "highlight": 41},  # Orange tones
+    "gemini": {"subtle": 4, "muted": 5, "normal": 6, "highlight": 42},  # Cyan tones
+    "codex": {"subtle": 7, "muted": 8, "normal": 9, "highlight": 43},  # Green tones
 }
 
 AGENT_PREVIEW_SELECTED_BG_PAIRS: dict[str, int] = {
@@ -75,18 +75,19 @@ _is_dark_mode: bool = True  # set at module load below, after is_dark_mode() is 
 # Status bar foreground color (neutral gray for both dark/light modes)
 STATUS_FG_COLOR = "#727578"
 
-# Agent highlight color codes (xterm 256) for active pane foreground
-_AGENT_HIGHLIGHT_DARK = {
-    "claude": 180,  # Light tan/beige
-    "gemini": 183,  # Light purple
-    "codex": 153,  # LightSlateGrey (light stone with blue)
-}
+# Agent xterm 256 color codes per tier (for tmux pane foreground and external references)
+_AGENT_SUBTLE_DARK = {"claude": 94, "gemini": 103, "codex": 67}
+_AGENT_SUBTLE_LIGHT = {"claude": 180, "gemini": 177, "codex": 110}
 
-_AGENT_HIGHLIGHT_LIGHT = {
-    "claude": 94,  # Dark brown
-    "gemini": 90,  # Soft lilac
-    "codex": 24,  # Deep steel blue
-}
+_AGENT_MUTED_DARK = {"claude": 137, "gemini": 141, "codex": 110}
+_AGENT_MUTED_LIGHT = {"claude": 137, "gemini": 135, "codex": 67}
+
+_AGENT_NORMAL_DARK = {"claude": 180, "gemini": 183, "codex": 153}
+_AGENT_NORMAL_LIGHT = {"claude": 94, "gemini": 90, "codex": 24}
+
+# Highlight: maximum contrast for activity bursts
+_AGENT_HIGHLIGHT_DARK = {"claude": 231, "gemini": 231, "codex": 231}
+_AGENT_HIGHLIGHT_LIGHT = {"claude": 16, "gemini": 16, "codex": 16}
 
 _APPLE_DARK_LABEL = "Dark"
 _DEFAULT_AGENT = "codex"
@@ -224,10 +225,11 @@ def get_current_mode() -> bool:
 def init_colors() -> None:
     """Initialize curses color pairs for agents and layers.
 
-    Three colors per agent:
-    - muted: for inactive/idle content
-    - normal: default display color (title line)
-    - highlight: for active/changed content
+    Four colors per agent:
+    - subtle: lightest tint (highlighted row backgrounds, headless sessions)
+    - muted: subdued text (unavailable agents, dim content)
+    - normal: default rendering color (session titles, pane foreground)
+    - highlight: maximum contrast activity bursts (white in dark, black in light)
 
     Z-layer colors adapt to light/dark mode:
     - Dark mode: 15% white (#262626) for inactive, terminal bg for active
@@ -242,57 +244,65 @@ def init_colors() -> None:
     # recomputes against current system mode/profile values.
     _terminal_bg_cache = None
 
-    # Agent colors: invert muted/highlight between dark and light mode.
-    # Dark mode: muted is darker, highlight is lighter.
-    # Light mode: muted is lighter, highlight is darker.
+    # Agent colors: invert subtle/normal between dark and light mode.
+    # Dark mode: subtle is darker, normal is lighter.
+    # Light mode: subtle is lighter, normal is darker.
     if _is_dark_mode:
-        # Claude (terra/brown tones) - muted darker, highlight lighter in dark mode
-        curses.init_pair(1, 94, -1)  # Muted: dark brown
-        curses.init_pair(2, 137, -1)  # Normal: light brown/tan
-        curses.init_pair(3, 180, -1)  # Highlight: light tan/beige
-
-        # Gemini (lilac/purple tones) - muted darker, highlight lighter
-        curses.init_pair(4, 103, -1)  # Muted: lighter purple for dark mode
-        curses.init_pair(5, 141, -1)  # Normal: lilac
-        curses.init_pair(6, 183, -1)  # Highlight: light purple
-
-        # Codex (steel blue tones) - muted darker, highlight lighter
-        curses.init_pair(7, 67, -1)  # Muted: deep steel blue
-        curses.init_pair(8, 110, -1)  # Normal: CadetBlue (grey-blue balanced)
-        curses.init_pair(9, 153, -1)  # Highlight: LightSlateGrey (light stone with blue)
-
-        # Previewed sessions keep a muted, per-agent background to make selected rows
-        # remain visually distinct even when not in current keyboard focus.
-        curses.init_pair(27, 180, 94)  # Claude: highlight fg + muted bg
-        curses.init_pair(28, 183, 103)  # Gemini: highlight fg + muted bg
-        curses.init_pair(29, 153, 67)  # Codex: highlight fg + muted bg
-        curses.init_pair(37, 94, 180)  # Claude: muted fg + muted bg
-        curses.init_pair(38, 103, 183)  # Gemini: muted fg + muted bg
-        curses.init_pair(39, 67, 153)  # Codex: muted fg + muted bg
-    else:
         # Claude (terra/brown tones)
-        curses.init_pair(1, 180, -1)  # Muted: light tan/beige
-        curses.init_pair(2, 137, -1)  # Normal: light brown/tan
-        curses.init_pair(3, 94, -1)  # Highlight: dark brown
+        curses.init_pair(1, 94, -1)  # Subtle: dark brown (tint/background)
+        curses.init_pair(2, 137, -1)  # Muted: light brown/tan (subdued text)
+        curses.init_pair(3, 180, -1)  # Normal: light tan/beige (default text)
 
         # Gemini (lilac/purple tones)
-        curses.init_pair(4, 177, -1)  # Muted: light purple (slightly darker)
-        curses.init_pair(5, 135, -1)  # Normal: lilac (slightly darker)
-        curses.init_pair(6, 90, -1)  # Highlight: soft lilac (slightly darker)
+        curses.init_pair(4, 103, -1)  # Subtle: lighter purple (tint/background)
+        curses.init_pair(5, 141, -1)  # Muted: lilac (subdued text)
+        curses.init_pair(6, 183, -1)  # Normal: light purple (default text)
 
         # Codex (steel blue tones)
-        curses.init_pair(7, 110, -1)  # Muted: light steel blue (slightly darker)
-        curses.init_pair(8, 67, -1)  # Normal: steel blue (bluish metal, less cyan)
-        curses.init_pair(9, 24, -1)  # Highlight: deep steel blue (slightly darker)
+        curses.init_pair(7, 67, -1)  # Subtle: deep steel blue (tint/background)
+        curses.init_pair(8, 110, -1)  # Muted: CadetBlue (subdued text)
+        curses.init_pair(9, 153, -1)  # Normal: LightSlateGrey (default text)
 
-        # Previewed sessions keep a muted, per-agent background to make selected rows
-        # remain visually distinct even when not in current keyboard focus.
-        curses.init_pair(27, 94, 180)  # Claude: highlight fg + muted bg
-        curses.init_pair(28, 90, 177)  # Gemini: highlight fg + muted bg
-        curses.init_pair(29, 24, 110)  # Codex: highlight fg + muted bg
-        curses.init_pair(37, 180, 94)  # Claude: muted fg + muted bg
-        curses.init_pair(38, 177, 90)  # Gemini: muted fg + muted bg
-        curses.init_pair(39, 110, 24)  # Codex: muted fg + muted bg
+        # Highlight: pure white for activity bursts (maximum contrast)
+        curses.init_pair(41, 231, -1)  # Claude highlight
+        curses.init_pair(42, 231, -1)  # Gemini highlight
+        curses.init_pair(43, 231, -1)  # Codex highlight
+
+        # Previewed sessions: black fg for crispy contrast against agent muted bg.
+        curses.init_pair(27, 16, 137)  # Claude: black fg + muted bg
+        curses.init_pair(28, 16, 141)  # Gemini: black fg + muted bg
+        curses.init_pair(29, 16, 110)  # Codex: black fg + muted bg
+        curses.init_pair(37, 16, 180)  # Claude: black fg + normal bg
+        curses.init_pair(38, 16, 183)  # Gemini: black fg + normal bg
+        curses.init_pair(39, 16, 153)  # Codex: black fg + normal bg
+    else:
+        # Claude (terra/brown tones)
+        curses.init_pair(1, 180, -1)  # Subtle: light tan/beige (tint/background)
+        curses.init_pair(2, 137, -1)  # Muted: light brown/tan (subdued text)
+        curses.init_pair(3, 94, -1)  # Normal: dark brown (default text)
+
+        # Gemini (lilac/purple tones)
+        curses.init_pair(4, 177, -1)  # Subtle: light purple (tint/background)
+        curses.init_pair(5, 135, -1)  # Muted: lilac (subdued text)
+        curses.init_pair(6, 90, -1)  # Normal: soft lilac (default text)
+
+        # Codex (steel blue tones)
+        curses.init_pair(7, 110, -1)  # Subtle: light steel blue (tint/background)
+        curses.init_pair(8, 67, -1)  # Muted: steel blue (subdued text)
+        curses.init_pair(9, 24, -1)  # Normal: deep steel blue (default text)
+
+        # Highlight: pure black for activity bursts (maximum contrast)
+        curses.init_pair(41, 16, -1)  # Claude highlight
+        curses.init_pair(42, 16, -1)  # Gemini highlight
+        curses.init_pair(43, 16, -1)  # Codex highlight
+
+        # Previewed sessions: white fg for crispy contrast against agent muted bg.
+        curses.init_pair(27, 231, 137)  # Claude: white fg + muted bg
+        curses.init_pair(28, 231, 135)  # Gemini: white fg + muted bg
+        curses.init_pair(29, 231, 67)  # Codex: white fg + muted bg
+        curses.init_pair(37, 231, 94)  # Claude: white fg + normal bg
+        curses.init_pair(38, 231, 90)  # Gemini: white fg + normal bg
+        curses.init_pair(39, 231, 24)  # Codex: white fg + normal bg
 
     # Disabled/unavailable
     curses.init_pair(10, curses.COLOR_WHITE, -1)
@@ -642,14 +652,29 @@ def get_agent_status_background(agent: str) -> str:
     return blend_colors(base_bg, agent_color, _AGENT_STATUS_HAZE_PERCENTAGE)
 
 
-def get_agent_highlight_color(agent: str) -> int:
-    """Get xterm 256 color code for agent's highlight color (for active pane foreground).
+def get_agent_normal_color(agent: str) -> int:
+    """Get xterm 256 color code for agent's normal color (default text, pane foreground).
 
     Args:
         agent: Agent name ("claude", "gemini", "codex", or unknown)
 
     Returns:
-        xterm 256 color code for the agent's highlight color (default: 153)
+        xterm 256 color code for the agent's normal color
+    """
+    key = _safe_agent(agent)
+    if _is_dark_mode:
+        return _AGENT_NORMAL_DARK[key]
+    return _AGENT_NORMAL_LIGHT[key]
+
+
+def get_agent_highlight_color(agent: str) -> int:
+    """Get xterm 256 color code for agent's highlight color (activity bursts, maximum contrast).
+
+    Args:
+        agent: Agent name ("claude", "gemini", "codex", or unknown)
+
+    Returns:
+        xterm 256 color code (231=bright white in dark, 16=true black in light)
     """
     key = _safe_agent(agent)
     if _is_dark_mode:
@@ -658,29 +683,29 @@ def get_agent_highlight_color(agent: str) -> int:
 
 
 def get_agent_preview_selected_bg_attr(agent: str) -> int:
-    """Get curses attribute for a preview-selected row using muted background.
+    """Get curses attribute for a preview-selected row (terminal bg as fg on subtle bg).
 
     Args:
         agent: Agent name ("claude", "gemini", "codex", or unknown)
 
     Returns:
-        Curses attribute for agent-specific muted-background selection style.
+        Curses attribute for agent-specific preview selection style.
     """
     pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS[_safe_agent(agent)]
     return curses.color_pair(pair_id)
 
 
 def get_agent_preview_selected_focus_attr(agent: str) -> int:
-    """Get curses attribute for a selected preview row with muted foreground.
+    """Get curses attribute for a focused preview row (terminal bg as fg on normal bg).
 
-    This style intentionally inverts color emphasis so muted foreground sits on a
-    muted background while preserving strong contrast with the active row.
+    Uses the terminal background color as foreground for inverted pop against
+    the agent-colored background.
 
     Args:
         agent: Agent name ("claude", "gemini", "codex", or unknown)
 
     Returns:
-        Curses attribute for agent-specific selected-preview focused row.
+        Curses attribute for agent-specific focused preview row.
     """
     pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS[_safe_agent(agent)]
     return curses.color_pair(pair_id)
@@ -726,8 +751,23 @@ def get_tui_inactive_background() -> str:
     )
 
 
+def get_agent_subtle_color(agent: str) -> int:
+    """Get xterm 256 color code for agent's subtle color (lightest tint for backgrounds).
+
+    Args:
+        agent: Agent name ("claude", "gemini", "codex", or unknown)
+
+    Returns:
+        xterm 256 color code for the agent's subtle color
+    """
+    key = _safe_agent(agent)
+    if _is_dark_mode:
+        return _AGENT_SUBTLE_DARK[key]
+    return _AGENT_SUBTLE_LIGHT[key]
+
+
 def get_agent_muted_color(agent: str) -> int:
-    """Get xterm 256 color code for agent's muted color (for active pane foreground).
+    """Get xterm 256 color code for agent's muted color (subdued text).
 
     Args:
         agent: Agent name ("claude", "gemini", "codex", or unknown)
@@ -735,33 +775,7 @@ def get_agent_muted_color(agent: str) -> int:
     Returns:
         xterm 256 color code for the agent's muted color
     """
-    # In dark mode: claude=94, gemini=103, codex=67
-    # In light mode: claude=180, gemini=177, codex=110
     key = _safe_agent(agent)
     if _is_dark_mode:
-        return {"claude": 94, "gemini": 103, "codex": 67}[key]
-    return {"claude": 180, "gemini": 177, "codex": 110}[key]
-
-
-def get_agent_normal_color(agent: str) -> int:
-    """Get xterm 256 color code for agent's normal color (for inactive pane foreground).
-
-    Args:
-        agent: Agent name ("claude", "gemini", "codex", or unknown)
-
-    Returns:
-        xterm 256 color code for the agent's normal color
-    """
-    # Map agent to their color pair ID (normal = second color)
-    pair_id = {
-        "claude": 2,
-        "gemini": 5,
-        "codex": 8,
-    }[_safe_agent(agent)]
-
-    # Extract the color code from the pair
-    # In dark mode: claude=137, gemini=141, codex=110
-    # In light mode: claude=137, gemini=135, codex=67
-    if _is_dark_mode:
-        return {2: 137, 5: 141, 8: 110}[pair_id]
-    return {2: 137, 5: 135, 8: 67}[pair_id]
+        return _AGENT_MUTED_DARK[key]
+    return _AGENT_MUTED_LIGHT[key]

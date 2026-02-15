@@ -62,6 +62,10 @@ class SessionViewState:
     active_tool: dict[str, str] = field(default_factory=dict)  # session_id -> tool preview text
     activity_timer_reset: set[str] = field(default_factory=set)  # Sessions needing timer reset
     last_summary: dict[str, str] = field(default_factory=dict)  # session_id -> output summary from agent_stop
+    last_summary_at: dict[str, str] = field(default_factory=dict)  # session_id -> ISO timestamp of last summary
+    last_activity_at: dict[str, str] = field(
+        default_factory=dict
+    )  # session_id -> ISO timestamp of latest activity event
 
 
 @dataclass
@@ -358,6 +362,10 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         tool_preview = p.get("tool_preview")
         if not session_id or not event_type:
             return
+        # Store activity timestamp from every event type
+        timestamp = p.get("timestamp")
+        if isinstance(timestamp, str) and timestamp:
+            state.sessions.last_activity_at[session_id] = timestamp
         if event_type == "user_prompt_submit":
             # User sent input: highlight input, clear output highlight
             state.sessions.input_highlights.add(session_id)
@@ -397,6 +405,9 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             summary = p.get("summary")
             if isinstance(summary, str) and summary:
                 state.sessions.last_summary[session_id] = summary
+            timestamp = p.get("timestamp")
+            if isinstance(timestamp, str) and timestamp:
+                state.sessions.last_summary_at[session_id] = timestamp
             logger.debug("output_highlight ADDED for %s (event=agent_stop)", session_id[:8])
         return
 
@@ -433,6 +444,12 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         stale_summaries = set(state.sessions.last_summary) - session_ids
         for sid in stale_summaries:
             del state.sessions.last_summary[sid]
+        stale_timestamps = set(state.sessions.last_summary_at) - session_ids
+        for sid in stale_timestamps:
+            del state.sessions.last_summary_at[sid]
+        stale_activity = set(state.sessions.last_activity_at) - session_ids
+        for sid in stale_activity:
+            del state.sessions.last_activity_at[sid]
         return
 
     if t is IntentType.SYNC_TODOS:

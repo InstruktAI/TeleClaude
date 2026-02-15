@@ -74,4 +74,3 @@ This command launches Codex in a mode where:
 ## Sources
 
 - https://openai.com/codex-cli-docs
-- Inferred internal wrapper behavior for `gpt-5.3-codex`.

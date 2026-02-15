@@ -49,7 +49,7 @@ def build_agent_render_spec(
     degraded = is_agent_degraded(info)
     available = selectable and not degraded
 
-    agent_colors = AGENT_COLORS.get(agent, {"muted": 0, "normal": 0})
+    agent_colors = AGENT_COLORS.get(agent, {"subtle": 0, "muted": 0, "normal": 0, "highlight": 0})
     color_pair_id = agent_colors["normal"] if selectable else agent_colors["muted"]
 
     if degraded:

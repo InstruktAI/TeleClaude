@@ -217,6 +217,7 @@ class APIServer:
             tool_name=context.tool_name,
             tool_preview=context.tool_preview,
             summary=context.summary,
+            timestamp=context.timestamp,
         )
         self._broadcast_payload("agent_activity", dto.model_dump(exclude_none=True))
 

@@ -477,7 +477,7 @@ class TestSessionsViewLogic:
         lines = sessions_view.get_render_lines(120, 10)
         output = "\n".join(lines)
 
-        assert "[17:43:21] in: hello" in output
+        assert "[17:43:21]  in: hello" in output
         assert "[17:43:21] out: world" in output
 
     def test_temp_output_highlight_shows_thinking_placeholder(self, sessions_view, monkeypatch):
@@ -1813,7 +1813,7 @@ class TestSessionsViewLogic:
         # Output row keeps activity highlight behavior.
         row2_calls = [call for call in screen.calls if call[0] == 2]
         assert len(row2_calls) == 1
-        assert row2_calls[0][3] == 3
+        assert row2_calls[0][3] == 41  # claude highlight pair
 
     def test_selected_headless_session_headers_show_keyboard_focus(self, sessions_view, monkeypatch):
         """Selected headless rows should use muted focus colors during navigation."""
@@ -1860,7 +1860,7 @@ class TestSessionsViewLogic:
 
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
-            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+            {"claude": {"subtle": 10, "muted": 11, "normal": 12, "highlight": 13}},
         )
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_bg_attr",
@@ -1891,9 +1891,9 @@ class TestSessionsViewLogic:
         assert line0_calls[0][3] == 0
         assert line0_calls[1][2] == "[1]"
         assert line0_calls[1][3] == 12
-        assert line0_calls[2][3] == 77
-        assert line0_calls[3][3] == 77
-        assert line0_calls[4][3] == 77
+        assert line0_calls[2][3] == 77 | curses.A_BOLD
+        assert line0_calls[3][3] == 77 | curses.A_BOLD
+        assert line0_calls[4][3] == 77 | curses.A_BOLD
         assert line0_calls[4][2].endswith(" ")
 
     def test_selected_preview_session_keeps_selection_highlight(self, sessions_view, monkeypatch):
@@ -1908,7 +1908,7 @@ class TestSessionsViewLogic:
 
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
-            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+            {"claude": {"subtle": 10, "muted": 11, "normal": 12, "highlight": 13}},
         )
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_bg_attr",
@@ -1954,7 +1954,7 @@ class TestSessionsViewLogic:
 
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
-            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+            {"claude": {"subtle": 10, "muted": 11, "normal": 12, "highlight": 13}},
         )
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_focus_attr",
@@ -2025,7 +2025,7 @@ class TestSessionsViewLogic:
         )
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
-            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+            {"claude": {"subtle": 10, "muted": 11, "normal": 12, "highlight": 13}},
         )
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_focus_attr",
@@ -2083,7 +2083,7 @@ class TestSessionsViewLogic:
         )
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
-            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+            {"claude": {"subtle": 10, "muted": 11, "normal": 12, "highlight": 13}},
         )
         monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
 
@@ -2122,7 +2122,7 @@ class TestSessionsViewLogic:
         )
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
-            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+            {"claude": {"subtle": 10, "muted": 11, "normal": 12, "highlight": 13}},
         )
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_focus_attr",
@@ -2284,7 +2284,7 @@ class TestSessionsViewLogic:
 
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.AGENT_COLORS",
-            {"claude": {"muted": 11, "normal": 12, "highlight": 13}},
+            {"claude": {"subtle": 10, "muted": 11, "normal": 12, "highlight": 13}},
         )
         monkeypatch.setattr(
             "teleclaude.cli.tui.views.sessions.get_agent_preview_selected_bg_attr",
@@ -2322,7 +2322,7 @@ class TestSessionsViewLogic:
         if selected:
             expected_title_attr = 99 | curses.A_BOLD
         else:
-            expected_title_attr = 77 if previewed else 12
+            expected_title_attr = (77 | curses.A_BOLD) if previewed else 12
         assert line0_calls[2][3] == expected_title_attr
         assert line0_calls[3][3] == expected_title_attr
         assert line0_calls[4][3] == expected_title_attr
@@ -2498,11 +2498,11 @@ class TestSessionsViewLogic:
         assert len(output_row_calls) == 2
         # Prefix line is non-italic
         assert "out:" in output_row_calls[0][2]
-        assert output_row_calls[0][3] == 3
+        assert output_row_calls[0][3] == 41  # claude highlight pair
         # Placeholder overlay is italicized
         assert "Thinking" in output_row_calls[1][2]
         assert "**Thinking" not in output_row_calls[1][2]
-        assert output_row_calls[1][3] == (3 | curses.A_ITALIC)
+        assert output_row_calls[1][3] == (41 | curses.A_ITALIC)
 
     def test_working_placeholder_uses_agent_color_with_italics(self, sessions_view, monkeypatch):
         """Working placeholder should keep agent color and italicize only the placeholder."""
@@ -2530,10 +2530,10 @@ class TestSessionsViewLogic:
         assert len(output_row_calls) == 2
         # Prefix line is agent color, non-italic
         assert "out:" in output_row_calls[0][2]
-        assert output_row_calls[0][3] == 2  # claude normal pair
+        assert output_row_calls[0][3] == 3  # claude normal pair
         # Placeholder overlay keeps agent color + italic
         assert "..." in output_row_calls[1][2]
-        assert output_row_calls[1][3] == (2 | curses.A_ITALIC)
+        assert output_row_calls[1][3] == (3 | curses.A_ITALIC)
 
     def test_real_output_wins_when_no_highlights(self, sessions_view, monkeypatch):
         """Real output must be shown immediately when highlight states are cleared."""

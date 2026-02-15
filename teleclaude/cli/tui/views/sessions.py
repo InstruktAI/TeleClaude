@@ -1940,14 +1940,17 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
             input_time = _format_time(last_input_at)
-            line3 = f"{detail_indent}[{input_time}] in: {input_text}"
+            line3 = f"{detail_indent}[{input_time}]  in: {input_text}"
             lines.append(line3[:width])
 
         # Line 4: Last output — driven by activity events, not session record
         last_output = self.state.sessions.last_summary.get(session_id, "")
         has_input_highlight = session_id in self.state.sessions.input_highlights
         has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
-        activity_time = _format_time(session.last_activity)
+        event_activity_at = self.state.sessions.last_activity_at.get(session_id)
+        activity_time = _format_time(event_activity_at or session.last_activity)
+        summary_at = self.state.sessions.last_summary_at.get(session_id) or session.last_output_summary_at
+        output_time = _format_time(summary_at) if summary_at else activity_time
         if has_temp_output_highlight:
             tool_preview = self.state.sessions.active_tool.get(session_id)
             line4 = (
@@ -1960,7 +1963,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             lines.append(line4[:width])
         elif last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            line4 = f"{detail_indent}[{activity_time}] out: {output_text}"
+            line4 = f"{detail_indent}[{output_time}] out: {output_text}"
             lines.append(line4[:width])
 
         return lines
@@ -2207,30 +2210,30 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         title = session.title
         idx = session_display.display_index
 
-        # Get agent color pairs (muted, normal, highlight)
+        # Get agent color pairs (subtle, muted, normal, highlight)
         agent_colors = AGENT_COLORS.get(agent)
         if agent_colors is None:
             agent_colors = AGENT_COLORS.get("codex")
         if agent_colors is None:
             agent_colors = next(iter(AGENT_COLORS.values()))
-        muted_pair = agent_colors["muted"]
+        subtle_pair = agent_colors["subtle"]
         normal_pair = agent_colors["normal"]
         highlight_pair = agent_colors["highlight"]
-        muted_attr = curses.color_pair(muted_pair) if muted_pair else curses.A_DIM
+        subtle_attr = curses.color_pair(subtle_pair) if subtle_pair else curses.A_DIM
         normal_attr = curses.color_pair(normal_pair) if normal_pair else 0
         highlight_attr = curses.color_pair(highlight_pair) if highlight_pair else curses.A_BOLD
 
         status_raw = session.status or ""
         status_normalized = status_raw.strip().lower()
         is_headless = status_normalized.startswith("headless") or not session.tmux_session_name
-        header_attr = muted_attr if is_headless else normal_attr
+        header_attr = subtle_attr if is_headless else normal_attr
 
         is_previewed = bool(self._preview and self._preview.session_id == session_id and not is_sticky)
         preview_title_attr = highlight_attr if is_previewed else header_attr
         preview_bold_attr = curses.A_BOLD if is_previewed and not is_headless else 0
         if is_previewed:
             # Keep previewed rows visibly distinct even when not actively selected.
-            preview_title_attr = get_agent_preview_selected_bg_attr(agent)
+            preview_title_attr = get_agent_preview_selected_bg_attr(agent) | curses.A_BOLD
 
         if selected and is_previewed:
             selected_focus_attr = get_agent_preview_selected_focus_attr(agent) | preview_bold_attr
@@ -2307,10 +2310,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
             input_time = _format_time(last_input_at)
-            line3 = f"{detail_indent}[{input_time}] in: {input_text}"
+            line3 = f"{detail_indent}[{input_time}]  in: {input_text}"
             details.append(_SessionDetailModel(line3, input_attr))
 
         last_output = self.state.sessions.last_summary.get(session_id, "")
+        event_activity_at = self.state.sessions.last_activity_at.get(session_id)
+        activity_time = _format_time(event_activity_at or session.last_activity)
+        summary_at = self.state.sessions.last_summary_at.get(session_id) or session.last_output_summary_at
+        output_time = _format_time(summary_at) if summary_at else activity_time
         if has_temp_output_highlight:
             italic_attr = getattr(curses, "A_ITALIC", 0)
             prefix_text = f"{detail_indent}[{activity_time}] out: "
@@ -2344,7 +2351,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 details.append(_SessionDetailModel(f"{prefix_text}{placeholder_text}", output_attr))
         elif last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            line4 = f"{detail_indent}[{activity_time}] out: {output_text}"
+            line4 = f"{detail_indent}[{output_time}] out: {output_text}"
             details.append(_SessionDetailModel(line4, output_attr))
 
         return _SessionRowModel(

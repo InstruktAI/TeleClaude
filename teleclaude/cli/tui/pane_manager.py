@@ -752,7 +752,7 @@ class TmuxPaneManager:
             bg_color = theme.get_agent_pane_selected_background(agent)
         else:
             bg_color = theme.get_agent_pane_inactive_background(agent)
-        pane_fg_color_code = theme.get_agent_highlight_color(agent)
+        pane_fg_color_code = theme.get_agent_normal_color(agent)
         self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg=colour{pane_fg_color_code},bg={bg_color}")
 
         # Use explicit active pane background (no haze) to avoid inheriting window-style haze.
