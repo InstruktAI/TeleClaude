@@ -21,8 +21,22 @@ function loadConfig(): TeleClaudeGlobalConfig {
   const configPath =
     process.env.TELECLAUDE_CONFIG_PATH ??
     resolve(process.env.HOME ?? "", ".teleclaude", "teleclaude.yml");
-  const raw = readFileSync(configPath, "utf-8");
-  return parse(raw) as TeleClaudeGlobalConfig;
+
+  try {
+    const raw = readFileSync(configPath, "utf-8");
+    return parse(raw) as TeleClaudeGlobalConfig;
+  } catch (err) {
+    const error = err as NodeJS.ErrnoException;
+    console.error(`[people] Failed to load config from ${configPath}:`, error.message);
+
+    if (error.code === "ENOENT") {
+      throw new Error(`TeleClaude config file not found at ${configPath}`);
+    } else if (error.code === "EACCES") {
+      throw new Error(`Permission denied reading config file at ${configPath}`);
+    } else {
+      throw new Error(`Failed to parse TeleClaude config: ${error.message}`);
+    }
+  }
 }
 
 export function getPeople(): Person[] {
