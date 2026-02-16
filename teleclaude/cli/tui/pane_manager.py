@@ -123,6 +123,11 @@ class TmuxPaneManager:
         self._tui_pane_id: str | None = None
         if self._in_tmux:
             self._tui_pane_id = self._get_current_pane_id()
+            # Ensure the tmux server knows tmux-256color clients support
+            # truecolor.  Without this, RGB escape sequences from CLIs are
+            # stripped when rendered through nested tmux attach.
+            self._run_tmux("set", "-sa", "terminal-overrides", ",tmux-256color:Tc")
+            self._run_tmux("set", "-sa", "terminal-features", "tmux-256color:RGB")
 
     @property
     def is_available(self) -> bool:
@@ -344,7 +349,17 @@ class TmuxPaneManager:
 
     def _build_tmux_attach_command(self, tmux_session_name: str) -> str:
         """Build tmux command with inline appearance tweaks before attach."""
-        return f"set-option -t {tmux_session_name} status off \\; attach-session -t {tmux_session_name}"
+        # Enable truecolor passthrough for nested tmux clients.  The server
+        # typically has Tc overrides for xterm-256color but NOT tmux-256color,
+        # which is what TERM is set to in _build_attach_cmd.  Without this,
+        # RGB color sequences emitted by CLIs (Gemini, Claude, Codex) are
+        # stripped and the output appears black-and-white.
+        return (
+            f"set -sa terminal-overrides ',tmux-256color:Tc' \\; "
+            f"set -sa terminal-features 'tmux-256color:RGB' \\; "
+            f"set-option -t {tmux_session_name} status off \\; "
+            f"attach-session -t {tmux_session_name}"
+        )
 
     def show_session(
         self,
@@ -734,31 +749,18 @@ class TmuxPaneManager:
             agent: Agent name for color calculation
             is_tree_selected: Use lighter haze when the tree focus selected row matches.
         """
-        apply_override = theme.should_apply_paint_pane_theming()
-
-        if apply_override:
+        if theme.should_apply_paint_pane_theming():
             if is_tree_selected:
                 bg_color = theme.get_agent_pane_selected_background(agent)
             else:
                 bg_color = theme.get_agent_pane_inactive_background(agent)
-            pane_fg_color = f"colour{theme.get_agent_normal_color(agent)}"
-            terminal_bg = theme.get_agent_pane_active_background(agent)
-            active_pane_fg_color = pane_fg_color
+            fg = f"colour{theme.get_agent_normal_color(agent)}"
+            active_bg = theme.get_agent_pane_active_background(agent)
+            self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg={fg},bg={bg_color}")
+            self._run_tmux("set", "-p", "-t", pane_id, "window-active-style", f"fg={fg},bg={active_bg}")
         else:
-            bg_color = "default"
-            pane_fg_color = "default"
-            terminal_bg = "default"
-            active_pane_fg_color = "default"
-
-        self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg={pane_fg_color},bg={bg_color}")
-        self._run_tmux(
-            "set",
-            "-p",
-            "-t",
-            pane_id,
-            "window-active-style",
-            f"fg={active_pane_fg_color},bg={terminal_bg}",
-        )
+            self._run_tmux("set", "-pu", "-t", pane_id, "window-style")
+            self._run_tmux("set", "-pu", "-t", pane_id, "window-active-style")
 
         # Embedded session panes should not render tmux status bars.
         self._run_tmux("set", "-t", tmux_session_name, "status", "off")
@@ -776,19 +778,16 @@ class TmuxPaneManager:
         if theme.should_apply_session_theming():
             inactive_bg = theme.get_tui_inactive_background()
             terminal_bg = theme.get_terminal_background()
-        else:
-            inactive_bg = "default"
-            terminal_bg = "default"
-
-        self._run_tmux("set", "-p", "-t", self._tui_pane_id, "window-style", f"fg=default,bg={inactive_bg}")
-        self._run_tmux("set", "-p", "-t", self._tui_pane_id, "window-active-style", f"fg=default,bg={terminal_bg}")
-        # Keep tc_tui split borders visually neutral; global tmux theme remains untouched.
-        if inactive_bg != "default":
+            self._run_tmux("set", "-p", "-t", self._tui_pane_id, "window-style", f"bg={inactive_bg}")
+            self._run_tmux("set", "-p", "-t", self._tui_pane_id, "window-active-style", f"bg={terminal_bg}")
             border_style = f"fg={inactive_bg},bg={inactive_bg}"
+            self._run_tmux("set", "-w", "-t", self._tui_pane_id, "pane-border-style", border_style)
+            self._run_tmux("set", "-w", "-t", self._tui_pane_id, "pane-active-border-style", border_style)
         else:
-            border_style = "default"
-        self._run_tmux("set", "-w", "-t", self._tui_pane_id, "pane-border-style", border_style)
-        self._run_tmux("set", "-w", "-t", self._tui_pane_id, "pane-active-border-style", border_style)
+            self._run_tmux("set", "-pu", "-t", self._tui_pane_id, "window-style")
+            self._run_tmux("set", "-pu", "-t", self._tui_pane_id, "window-active-style")
+            self._run_tmux("set", "-wu", "-t", self._tui_pane_id, "pane-border-style")
+            self._run_tmux("set", "-wu", "-t", self._tui_pane_id, "pane-active-border-style")
 
     def _set_doc_pane_background(self, pane_id: str, *, agent: str = "") -> None:
         """Apply styling for doc preview panes (glow/less).
@@ -796,18 +795,16 @@ class TmuxPaneManager:
         In native mode, both foreground and background are delegated to terminal
         defaults. In paint-theming mode, pane-specific agent colors are applied.
         """
-        use_paint_theming = theme.should_apply_paint_pane_theming()
-        if use_paint_theming:
-            pane_fg_color = f"colour{theme.get_agent_normal_color(agent)}" if agent else "default"
+        if theme.should_apply_paint_pane_theming():
+            fg = f"colour{theme.get_agent_normal_color(agent)}" if agent else ""
             inactive_bg = theme.get_tui_inactive_background()
             terminal_bg = theme.get_terminal_background()
+            fg_prefix = f"fg={fg}," if fg else ""
+            self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"{fg_prefix}bg={inactive_bg}")
+            self._run_tmux("set", "-p", "-t", pane_id, "window-active-style", f"{fg_prefix}bg={terminal_bg}")
         else:
-            pane_fg_color = "default"
-            inactive_bg = "default"
-            terminal_bg = "default"
-
-        self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg={pane_fg_color},bg={inactive_bg}")
-        self._run_tmux("set", "-p", "-t", pane_id, "window-active-style", f"fg={pane_fg_color},bg={terminal_bg}")
+            self._run_tmux("set", "-pu", "-t", pane_id, "window-style")
+            self._run_tmux("set", "-pu", "-t", pane_id, "window-active-style")
 
     def reapply_agent_colors(self) -> None:
         """Re-apply agent-colored backgrounds and status bars to all session panes.

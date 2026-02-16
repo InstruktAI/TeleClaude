@@ -144,6 +144,10 @@ _BANNER_PAIR_ID = 22
 # Tab line color pair (muted in dark mode)
 _TAB_LINE_PAIR_ID = 23
 
+# Peaceful mode grayscale pairs (level 0: no agent color, just calm grays)
+_PEACEFUL_NORMAL_PAIR_ID = 50
+_PEACEFUL_MUTED_PAIR_ID = 51
+
 # Track current mode for reference
 _is_dark_mode: bool = True  # set at module load below, after is_dark_mode() is defined
 
@@ -365,10 +369,10 @@ def init_colors() -> None:
         curses.init_pair(8, 110, -1)  # Muted: CadetBlue (subdued text)
         curses.init_pair(9, 153, -1)  # Normal: LightSlateGrey (default text)
 
-        # Highlight: pure white for activity bursts (maximum contrast)
-        curses.init_pair(41, 231, -1)  # Claude highlight
-        curses.init_pair(42, 231, -1)  # Gemini highlight
-        curses.init_pair(43, 231, -1)  # Codex highlight
+        # Highlight: agent normal color + bold (activity emphasis with agent identity)
+        curses.init_pair(41, _AGENT_NORMAL_DARK["claude"], -1)
+        curses.init_pair(42, _AGENT_NORMAL_DARK["gemini"], -1)
+        curses.init_pair(43, _AGENT_NORMAL_DARK["codex"], -1)
 
     else:
         # Claude (terra/brown tones)
@@ -386,10 +390,18 @@ def init_colors() -> None:
         curses.init_pair(8, 67, -1)  # Muted: steel blue (subdued text)
         curses.init_pair(9, 24, -1)  # Normal: deep steel blue (default text)
 
-        # Highlight: pure black for activity bursts (maximum contrast)
-        curses.init_pair(41, 16, -1)  # Claude highlight
-        curses.init_pair(42, 16, -1)  # Gemini highlight
-        curses.init_pair(43, 16, -1)  # Codex highlight
+        # Highlight: agent normal color + bold (activity emphasis with agent identity)
+        curses.init_pair(41, _AGENT_NORMAL_LIGHT["claude"], -1)
+        curses.init_pair(42, _AGENT_NORMAL_LIGHT["gemini"], -1)
+        curses.init_pair(43, _AGENT_NORMAL_LIGHT["codex"], -1)
+
+    # Peaceful mode grays (level 0): neutral grayscale, no agent tint.
+    if _is_dark_mode:
+        curses.init_pair(_PEACEFUL_NORMAL_PAIR_ID, 252, -1)  # 80% gray
+        curses.init_pair(_PEACEFUL_MUTED_PAIR_ID, 247, -1)  # 60% gray
+    else:
+        curses.init_pair(_PEACEFUL_NORMAL_PAIR_ID, 236, -1)  # 20% gray (inverted)
+        curses.init_pair(_PEACEFUL_MUTED_PAIR_ID, 242, -1)  # 40% gray (inverted)
 
     # Disabled/unavailable
     curses.init_pair(10, curses.COLOR_WHITE, -1)
@@ -924,8 +936,18 @@ def get_agent_normal_attr(agent: str) -> int:
 
 
 def get_agent_highlight_attr(agent: str) -> int:
-    """Get curses attribute for highlighted agent emphasis."""
-    return curses.color_pair(AGENT_COLORS[_safe_agent(agent)]["highlight"])
+    """Get curses attribute for highlighted agent emphasis (bold + agent color)."""
+    return curses.color_pair(AGENT_COLORS[_safe_agent(agent)]["highlight"]) | curses.A_BOLD
+
+
+def get_peaceful_normal_attr() -> int:
+    """Curses attr for peaceful mode normal text (80% gray)."""
+    return curses.color_pair(_PEACEFUL_NORMAL_PAIR_ID)
+
+
+def get_peaceful_muted_attr() -> int:
+    """Curses attr for peaceful mode muted text (60% gray, headless sessions)."""
+    return curses.color_pair(_PEACEFUL_MUTED_PAIR_ID)
 
 
 def get_pane_theming_mode() -> str:

@@ -108,9 +108,9 @@ def test_set_pane_background_native_when_paint_theming_off():
     ):
         manager._set_pane_background("%9", "tc_test", "claude")
 
-    style_calls = [call.args for call in mock_run.call_args_list if call.args[:4] == ("set", "-p", "-t", "%9")]
-    assert ("set", "-p", "-t", "%9", "window-style", "fg=default,bg=default") in style_calls
-    assert ("set", "-p", "-t", "%9", "window-active-style", "fg=default,bg=default") in style_calls
+    style_calls = [call.args for call in mock_run.call_args_list]
+    assert ("set", "-pu", "-t", "%9", "window-style") in style_calls
+    assert ("set", "-pu", "-t", "%9", "window-active-style") in style_calls
 
 
 def test_set_pane_background_uses_selected_haze_for_tree_selection():
@@ -150,9 +150,9 @@ def test_doc_pane_background_is_applied_for_non_session_specs():
     ):
         manager._set_doc_pane_background("%42")
 
-    style_calls = [call.args for call in mock_run.call_args_list if call.args[:4] == ("set", "-p", "-t", "%42")]
-    assert ("set", "-p", "-t", "%42", "window-style", "fg=default,bg=default") in style_calls
-    assert ("set", "-p", "-t", "%42", "window-active-style", "fg=default,bg=default") in style_calls
+    style_calls = [call.args for call in mock_run.call_args_list]
+    assert ("set", "-pu", "-t", "%42", "window-style") in style_calls
+    assert ("set", "-pu", "-t", "%42", "window-active-style") in style_calls
 
 
 def test_doc_pane_background_is_tinted_when_paint_theming_is_enabled():
@@ -193,8 +193,8 @@ def test_doc_pane_background_uses_native_foreground_for_anonymous_paints_in_them
         manager._set_doc_pane_background("%42")
 
     style_calls = [call.args for call in mock_run.call_args_list if call.args[:4] == ("set", "-p", "-t", "%42")]
-    assert ("set", "-p", "-t", "%42", "window-style", "fg=default,bg=#e8e2d0") in style_calls
-    assert ("set", "-p", "-t", "%42", "window-active-style", "fg=default,bg=#fdf6e3") in style_calls
+    assert ("set", "-p", "-t", "%42", "window-style", "bg=#e8e2d0") in style_calls
+    assert ("set", "-p", "-t", "%42", "window-active-style", "bg=#fdf6e3") in style_calls
 
 
 def test_reapply_agent_colors_fallback_styles_tracked_session_panes():
@@ -237,7 +237,8 @@ def test_set_tui_pane_background_applies_haze_when_session_theming_on():
         manager._set_tui_pane_background()
 
     calls = [call.args for call in mock_run.call_args_list]
-    assert ("set", "-p", "-t", "%1", "window-active-style", "fg=default,bg=#fdf6e3") in calls
+    assert ("set", "-p", "-t", "%1", "window-style", "bg=#e8e2d0") in calls
+    assert ("set", "-p", "-t", "%1", "window-active-style", "bg=#fdf6e3") in calls
     assert ("set", "-w", "-t", "%1", "pane-border-style", "fg=#e8e2d0,bg=#e8e2d0") in calls
     assert ("set", "-w", "-t", "%1", "pane-active-border-style", "fg=#e8e2d0,bg=#e8e2d0") in calls
 
@@ -257,10 +258,10 @@ def test_set_tui_pane_background_native_when_session_theming_off():
         manager._set_tui_pane_background()
 
     calls = [call.args for call in mock_run.call_args_list]
-    assert ("set", "-p", "-t", "%1", "window-style", "fg=default,bg=default") in calls
-    assert ("set", "-p", "-t", "%1", "window-active-style", "fg=default,bg=default") in calls
-    assert ("set", "-w", "-t", "%1", "pane-border-style", "default") in calls
-    assert ("set", "-w", "-t", "%1", "pane-active-border-style", "default") in calls
+    assert ("set", "-pu", "-t", "%1", "window-style") in calls
+    assert ("set", "-pu", "-t", "%1", "window-active-style") in calls
+    assert ("set", "-wu", "-t", "%1", "pane-border-style") in calls
+    assert ("set", "-wu", "-t", "%1", "pane-active-border-style") in calls
 
 
 def test_render_layout_split_windows_do_not_capture_focus_with_d_flag():

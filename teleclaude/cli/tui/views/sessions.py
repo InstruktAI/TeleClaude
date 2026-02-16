@@ -37,6 +37,8 @@ from teleclaude.cli.tui.theme import (
     get_agent_preview_selected_bg_attr,
     get_agent_preview_selected_focus_attr,
     get_agent_subtle_attr,
+    get_peaceful_muted_attr,
+    get_peaceful_normal_attr,
     get_sticky_badge_attr,
     should_apply_session_theming,
 )
@@ -2255,8 +2257,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             normal_attr = get_agent_normal_attr(agent)
             highlight_attr = get_agent_highlight_attr(agent)
         else:
-            subtle_attr = curses.A_DIM
-            normal_attr = curses.A_NORMAL
+            subtle_attr = get_peaceful_muted_attr()
+            normal_attr = get_peaceful_normal_attr()
             highlight_attr = curses.A_BOLD
 
         status_raw = session.status or ""

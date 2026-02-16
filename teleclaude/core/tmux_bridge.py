@@ -250,6 +250,11 @@ async def _create_tmux_session(
         if teleclaude_bin not in current_path.split(os.pathsep):
             effective_env_vars["PATH"] = f"{teleclaude_bin}{os.pathsep}{current_path}"
 
+        # Enable truecolor for CLI agents.  Without this, CLIs (Gemini, Claude,
+        # Codex) fall back to 256-color or plain text because TERM=tmux-256color
+        # alone does not advertise truecolor.
+        effective_env_vars["COLORTERM"] = "truecolor"
+
         # Claude Code can crash on macOS if TMPDIR contains unix sockets (fs.watch EOPNOTSUPP/UNKNOWN).
         # Use a per-session, empty TMPDIR to avoid inheriting sockets from global temp directories.
         if session_id:
