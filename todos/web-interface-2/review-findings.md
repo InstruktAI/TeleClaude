@@ -108,3 +108,55 @@ No frontend-specific tests. High regression risk on auth flow, proxy behavior, a
 ## Verdict: REQUEST CHANGES
 
 5 critical/important issues must be resolved before approval. C1 (streaming) and C2 (login broken) are the primary blockers.
+
+---
+
+## Fixes Applied
+
+### C1: Chat route streaming
+
+**Commit:** db56db7a
+**Fix:** Replaced `daemonRequest` with `daemonStream` in chat route. Response stream is now relayed directly to client without buffering per FR3 requirement. Also separated JSON parse errors (400) from daemon connection errors (503) per I5.
+
+### C2: Middleware blocking /api/people
+
+**Commit:** 8c0bd253
+**Fix:** Added `/api/people` to middleware matcher exclusion list. Login page can now fetch people config before authentication.
+
+### C3: Session creation body injection
+
+**Commit:** 27df916a
+**Fix:** Replaced body spread with explicit field allowlist (`computer`, `title`, `initial_message`). Identity fields (`human_email`, `human_role`) are now server-controlled only. Also separated JSON parse errors per I5.
+
+### I1: Email expiry mismatch
+
+**Commit:** 3acaddc5
+**Fix:** Updated email template text and HTML to show "3 minutes" matching auth.ts maxAge value.
+
+### I2: daemonStream dead code
+
+**Resolution:** Resolved by C1 fix. Function is now actively used by chat route.
+
+### I3: Redundant SessionWithRole type
+
+**Commit:** 59333aeb
+**Fix:** Removed local `SessionWithRole` interface and cast. Using `session.user.role` directly since type augmentation already provides the role field.
+
+### I4: loadConfig() crash handling
+
+**Commit:** aff0c715
+**Fix:** Wrapped file read and YAML parse in try-catch. Provides specific error messages for missing file (ENOENT), permissions (EACCES), and parse failures.
+
+### I5: Broad catch blocks
+
+**Commits:** db56db7a, 27df916a, 7958a764
+**Fix:** Separated `request.json()` parsing into its own try-catch returning 400 for invalid JSON. Daemon connection errors remain in separate catch blocks returning 503. Applied to chat, sessions, and messages routes.
+
+### I6: Unnecessary cast in identity-headers
+
+**Commit:** e6f2a576
+**Fix:** Replaced `"role" in session.user && session.user.role` with `session.user.role as string` cast with simple truthy check `if (session.user.role)`. Type augmentation already types role correctly.
+
+---
+
+**All Critical and Important issues resolved. Ready for re-review.**
