@@ -10,12 +10,12 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Literal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from instrukt_ai_logging import get_logger
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from teleclaude.api.transcript_converter import (
     convert_entry,
@@ -26,6 +26,7 @@ from teleclaude.api.transcript_converter import (
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
+from teleclaude.core.db_models import Session
 from teleclaude.utils.transcript import _iter_claude_entries, _iter_codex_entries, _parse_timestamp
 
 logger = get_logger(__name__)
@@ -46,7 +47,7 @@ class ChatStreamMessage(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    role: str
+    role: Literal["user", "assistant", "system"]
     content: str
 
 
@@ -55,7 +56,7 @@ class ChatStreamRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    sessionId: str
+    session_id: str = Field(..., min_length=1, alias="sessionId")
     since_timestamp: str | None = None
     messages: list[ChatStreamMessage] | None = None
 
@@ -65,26 +66,24 @@ class ChatStreamRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _get_transcript_chain(session: object) -> list[str]:
+def _get_transcript_chain(session: Session) -> list[str]:
     """Build ordered list of transcript file paths from a session record."""
     chain: list[str] = []
-    transcript_files = getattr(session, "transcript_files", None)
-    if transcript_files:
+    if session.transcript_files:
         try:
-            stored = json.loads(transcript_files)
+            stored = json.loads(session.transcript_files)
             if isinstance(stored, list):
                 chain = [str(p) for p in stored if p]
         except (json.JSONDecodeError, TypeError):
             pass
-    native_log = getattr(session, "native_log_file", None)
-    if native_log and native_log not in chain:
-        chain.append(native_log)
+    if session.native_log_file and session.native_log_file not in chain:
+        chain.append(session.native_log_file)
     return chain
 
 
-def _get_agent_name(session: object) -> AgentName:
+def _get_agent_name(session: Session) -> AgentName:
     """Resolve agent name from session, defaulting to Claude."""
-    active_agent = getattr(session, "active_agent", None) or "claude"
+    active_agent = session.active_agent or "claude"
     try:
         return AgentName.from_str(active_agent)
     except ValueError:
@@ -113,6 +112,7 @@ def _iter_entries_for_file(
 
 
 async def _stream_sse(
+    session: Session,
     session_id: str,
     since_timestamp: str | None,
     user_message: str | None,
@@ -121,10 +121,6 @@ async def _stream_sse(
 
     Yields SSE-formatted strings conforming to AI SDK v5 UIMessage Stream.
     """
-    session = await db.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
     agent_name = _get_agent_name(session)
     chain = _get_transcript_chain(session)
 
@@ -134,16 +130,25 @@ async def _stream_sse(
 
     # --- Task 5: Message ingestion ---
     if user_message:
-        tmux_session_name = getattr(session, "tmux_session_name", None)
-        if tmux_session_name:
+        if session.tmux_session_name:
             from teleclaude.core import tmux_bridge
 
-            await tmux_bridge.send_keys_existing_tmux(
-                tmux_session_name,
+            success = await tmux_bridge.send_keys_existing_tmux(
+                session.tmux_session_name,
                 user_message,
                 send_enter=True,
-                active_agent=getattr(session, "active_agent", None),
+                active_agent=session.active_agent,
             )
+            if not success:
+                logger.warning(
+                    "Failed to deliver message to tmux session %s for session %s",
+                    session.tmux_session_name,
+                    session_id,
+                )
+                yield convert_session_status("error", session_id)
+        else:
+            logger.warning("Cannot deliver message: session %s has no tmux_session_name", session_id)
+            yield convert_session_status("error", session_id)
 
     # --- History replay ---
     since_dt = _parse_timestamp(since_timestamp) if since_timestamp else None
@@ -180,7 +185,7 @@ async def _stream_sse(
 
         # Check if session is still active
         refreshed = await db.get_session(session_id)
-        if not refreshed or getattr(refreshed, "closed_at", None):
+        if not refreshed or refreshed.closed_at:
             yield convert_session_status("closed", session_id)
             break
 
@@ -198,8 +203,8 @@ async def _stream_sse(
         try:
             with open(live_file, "rb") as f:
                 f.seek(file_size)
-                new_bytes = f.read(current_size - file_size)
-            file_size = current_size
+                new_bytes = f.read()
+                file_size = f.tell()
 
             new_text = new_bytes.decode("utf-8", errors="ignore")
             for line in new_text.splitlines():
@@ -220,10 +225,9 @@ async def _stream_sse(
 
         # Check if transcript file rotated (new native_log_file)
         refreshed = await db.get_session(session_id)
-        if refreshed:
-            new_log = getattr(refreshed, "native_log_file", None)
-            if new_log and new_log != live_file and Path(new_log).exists():
-                live_file = new_log
+        if refreshed and refreshed.native_log_file:
+            if refreshed.native_log_file != live_file and Path(refreshed.native_log_file).exists():
+                live_file = refreshed.native_log_file
                 file_size = 0
 
     yield message_finish(message_id)
@@ -238,6 +242,11 @@ async def _stream_sse(
 @router.post("/stream")
 async def chat_stream(request: ChatStreamRequest) -> StreamingResponse:
     """SSE streaming endpoint for the web interface."""
+    # Validate session exists before creating streaming response
+    session = await db.get_session(request.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
     # Extract user message if present
     user_message: str | None = None
     if request.messages:
@@ -247,7 +256,8 @@ async def chat_stream(request: ChatStreamRequest) -> StreamingResponse:
                 break
 
     generator = _stream_sse(
-        session_id=request.sessionId,
+        session=session,
+        session_id=request.session_id,
         since_timestamp=request.since_timestamp,
         user_message=user_message,
     )
