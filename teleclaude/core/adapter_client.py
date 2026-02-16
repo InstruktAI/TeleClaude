@@ -476,10 +476,12 @@ class AdapterClient:
         exit_code: Optional[int] = None,
         render_markdown: bool = False,
     ) -> Optional[str]:
-        """Broadcast output update to ALL UI adapters.
+        """Route output update to originating UI adapter.
 
-        Sends filtered output to all registered UiAdapters. Each adapter
-        handles truncation and formatting based on its platform limits.
+        Delivers streaming output to the adapter that originated the user input.
+        When no origin is set (API/MCP sessions), falls back to broadcasting
+        to all UI adapters. No observer broadcast — output is an edit-in-place
+        streaming operation, not a notification.
 
         Args:
             session: Session object
@@ -491,7 +493,7 @@ class AdapterClient:
             render_markdown: If True, send output as Markdown (no code block wrapper)
 
         Returns:
-            Message ID from first successful adapter, or None if all failed
+            Message ID from origin adapter, or None if failed
         """
         logger.debug(
             "[OUTPUT_ROUTE] send_output_update called: session=%s output_len=%d is_final=%s",
@@ -511,64 +513,18 @@ class AdapterClient:
             )
             return None
 
-        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
-            return adapter.send_output_update(
-                lane_session,
-                output,
-                started_at,
-                last_output_changed_at,
-                is_final,
-                exit_code,
-                render_markdown,
-            )
-
-        # Broadcast to ALL UI adapters (per-adapter lanes)
-        tasks = [
-            (adapter_type, self._run_ui_lane(session, adapter_type, adapter, make_task))
-            for adapter_type, adapter in self.adapters.items()
-            if isinstance(adapter, UiAdapter)
-        ]
-
-        logger.debug(
-            "[OUTPUT_ROUTE] Found %d UI adapters: %s",
-            len(tasks),
-            [adapter_type for adapter_type, _ in tasks],
+        result = await self._route_to_ui(
+            session,
+            "send_output_update",
+            output,
+            started_at,
+            last_output_changed_at,
+            is_final,
+            exit_code,
+            render_markdown,
+            broadcast=False,
         )
-
-        if not tasks:
-            logger.warning("No UI adapters available for session %s", session.session_id[:8])
-            return None
-
-        # Execute all in parallel
-        results = await asyncio.gather(*[task for _, task in tasks], return_exceptions=True)
-
-        # Log failures and return first success
-        first_success: Optional[str] = None
-        for (adapter_type, _), result in zip(tasks, results):
-            if isinstance(result, Exception):
-                logger.error(
-                    "[OUTPUT_ROUTE] Adapter %s failed for session %s: %s",
-                    adapter_type,
-                    session.session_id[:8],
-                    result,
-                )
-            elif isinstance(result, str) and not first_success:
-                first_success = result
-                logger.debug("[OUTPUT_ROUTE] Output update sent to %s: message_id=%s", adapter_type, result)
-            elif result is None:
-                logger.warning(
-                    "[OUTPUT_ROUTE] Adapter %s returned None for session %s (likely ensure_channel failed)",
-                    adapter_type,
-                    session.session_id[:8],
-                )
-
-        if not first_success:
-            logger.error(
-                "[OUTPUT_ROUTE] NO ADAPTERS SUCCEEDED for session %s - output lost!",
-                session.session_id[:8],
-            )
-
-        return first_success
+        return str(result) if result else None
 
     async def broadcast_user_input(
         self,

@@ -1,0 +1,31 @@
+{
+  "phase": "in_progress",
+  "build": "pending",
+  "review": "pending",
+  "deferrals_processed": false,
+  "breakdown": {
+    "assessed": false,
+    "todos": []
+  },
+  "review_round": 0,
+  "max_review_rounds": 3,
+  "review_baseline_commit": "",
+  "unresolved_findings": [],
+  "resolved_findings": [],
+  "dor": {
+    "schema_version": 1,
+    "score": 9,
+    "status": "pass",
+    "blockers": [],
+    "actions_taken": [
+      "Derived requirements.md from input.md",
+      "Created implementation-plan.md with single-method fix",
+      "Wrote draft dor-report.md with gate analysis",
+      "Gate: verified all code claims against adapter_client.py",
+      "Gate: confirmed _route_to_ui(broadcast=False) pattern matches send_threaded_output",
+      "Gate: confirmed no-origin fallback preserves broadcast behavior",
+      "Gate: confirmed empty dependency list in dependencies.json"
+    ],
+    "last_assessed_at": "2026-02-16T12:00:00Z"
+  }
+}
