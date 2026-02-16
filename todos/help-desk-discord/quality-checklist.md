@@ -2,11 +2,11 @@
 
 ## Build Gates (Builder)
 
-- [ ] All implementation-plan tasks checked off
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] Working tree clean (build-scope changes committed)
-- [ ] Commits verified (`git log --oneline -10`)
+- [x] All implementation-plan tasks checked off
+- [x] Tests pass (`make test`) — 808 passed, 2 pre-existing failures (bootstrap signature, agent resume profile)
+- [x] Lint passes (`make lint`)
+- [x] Working tree clean (build-scope changes committed) — only orchestrator drift in todos/roadmap.md and todos/dependencies.json
+- [x] Commits verified (`git log --oneline -10`) — 8 commits for 8 tasks
 
 ## Review Gates (Reviewer)
 
