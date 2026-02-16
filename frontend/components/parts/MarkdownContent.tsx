@@ -3,7 +3,7 @@
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import "highlight.js/styles/github.css";
+import "@/styles/highlight-theme.css";
 import type { TextMessagePartProps } from "@assistant-ui/react";
 
 export function MarkdownContent(_props: TextMessagePartProps) {

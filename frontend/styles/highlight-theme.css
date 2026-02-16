@@ -1,0 +1,9 @@
+/* Light mode syntax highlighting */
+@media (prefers-color-scheme: light) {
+  @import 'highlight.js/styles/github.css';
+}
+
+/* Dark mode syntax highlighting */
+@media (prefers-color-scheme: dark) {
+  @import 'highlight.js/styles/github-dark-dimmed.css';
+}
