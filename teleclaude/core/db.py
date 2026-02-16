@@ -121,6 +121,7 @@ class Db:
             relay_status=row.relay_status,
             relay_discord_channel_id=row.relay_discord_channel_id,
             relay_started_at=Db._coerce_datetime(row.relay_started_at),
+            transcript_files=row.transcript_files or "[]",
             char_offset=int(row.char_offset) if row.char_offset is not None else 0,
         )
 

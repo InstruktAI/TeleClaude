@@ -485,6 +485,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
     relay_status: Optional[str] = None
     relay_discord_channel_id: Optional[str] = None
     relay_started_at: Optional[datetime] = None
+    transcript_files: str = "[]"
     char_offset: int = 0
 
     def get_metadata(self) -> SessionAdapterMetadata:

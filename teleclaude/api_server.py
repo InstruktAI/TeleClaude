@@ -27,6 +27,7 @@ from teleclaude.api_models import (
     CreateSessionResponseDTO,
     FileUploadRequest,
     KeysRequest,
+    MessageDTO,
     ProjectDTO,
     ProjectsInitialDataDTO,
     ProjectsInitialEventDTO,
@@ -35,6 +36,7 @@ from teleclaude.api_models import (
     SendMessageRequest,
     SessionClosedDataDTO,
     SessionClosedEventDTO,
+    SessionMessagesDTO,
     SessionsInitialDataDTO,
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
@@ -648,6 +650,78 @@ class APIServer:
             except Exception as e:
                 logger.error("revive_session failed for session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to revive session: {e}") from e
+
+        @self.app.get("/sessions/{session_id}/messages")
+        async def get_session_messages(  # pyright: ignore
+            session_id: str,
+            since: str | None = Query(None, description="ISO 8601 UTC timestamp; only messages after this time"),
+            include_tools: bool = Query(False, description="Include tool_use/tool_result entries"),
+            include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
+        ) -> SessionMessagesDTO:
+            """Get structured messages from a session's transcript files."""
+            from teleclaude.core.agents import AgentName
+            from teleclaude.utils.transcript import extract_messages_from_chain
+
+            try:
+                session = await db.get_session(session_id)
+                if not session:
+                    raise HTTPException(status_code=404, detail="Session not found")
+
+                # Build file chain: transcript_files (historical) + native_log_file (current)
+                chain: list[str] = []
+                if session.transcript_files:
+                    try:
+                        stored = json.loads(session.transcript_files)
+                        if isinstance(stored, list):
+                            chain = [str(p) for p in stored if p]
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                if session.native_log_file and session.native_log_file not in chain:
+                    chain.append(session.native_log_file)
+
+                if not chain:
+                    return SessionMessagesDTO(
+                        session_id=session_id,
+                        agent=session.active_agent,
+                        messages=[],
+                    )
+
+                # Determine agent for parser selection
+                try:
+                    agent_name = AgentName.from_str(session.active_agent or "claude")
+                except ValueError:
+                    agent_name = AgentName.CLAUDE
+
+                raw_messages = extract_messages_from_chain(
+                    chain,
+                    agent_name,
+                    since=since,
+                    include_tools=include_tools,
+                    include_thinking=include_thinking,
+                )
+
+                messages = [
+                    MessageDTO(
+                        role=str(m.get("role", "assistant")),
+                        type=str(m.get("type", "text")),
+                        text=str(m.get("text", "")),
+                        timestamp=str(m["timestamp"]) if m.get("timestamp") else None,
+                        entry_index=int(m.get("entry_index", 0)),
+                        file_index=int(m.get("file_index", 0)),
+                    )
+                    for m in raw_messages
+                ]
+
+                return SessionMessagesDTO(
+                    session_id=session_id,
+                    agent=session.active_agent,
+                    messages=messages,
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error("get_session_messages failed (session=%s): %s", session_id, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to get messages: {e}") from e
 
         @self.app.get("/computers")
         async def list_computers() -> list[ComputerDTO]:  # pyright: ignore

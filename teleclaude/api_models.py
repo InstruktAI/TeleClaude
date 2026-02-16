@@ -370,3 +370,26 @@ class SettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
 
     tts: TTSSettingsPatchDTO | None = None
     pane_theming_mode: PaneThemingMode | None = None
+
+
+class MessageDTO(BaseModel):  # type: ignore[explicit-any]
+    """A single structured message from a session transcript."""
+
+    model_config = ConfigDict(frozen=True)
+
+    role: Literal["user", "assistant", "system"]
+    type: Literal["text", "compaction", "tool_use", "tool_result", "thinking"]
+    text: str
+    timestamp: str | None = None
+    entry_index: int = 0
+    file_index: int = 0
+
+
+class SessionMessagesDTO(BaseModel):  # type: ignore[explicit-any]
+    """Response for GET /sessions/{session_id}/messages."""
+
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+    agent: str | None = None
+    messages: list[MessageDTO] = Field(default_factory=list)
