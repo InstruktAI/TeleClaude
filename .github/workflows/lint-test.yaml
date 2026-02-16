@@ -9,7 +9,7 @@ on:
 jobs:
   lint-test:
     name: Lint and Test
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: [self-hosted, OSX, ARM64]
     env:
       TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
       TELECLAUDE_ENV_PATH: tests/integration/.env
