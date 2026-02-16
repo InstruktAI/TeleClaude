@@ -20,9 +20,12 @@ jobs:
 
       - name: Full TeleClaude Bootstrap
         run: make bootstrap-ci
+        timeout-minutes: 5
 
       - name: Run lint
         run: ./tools/lint.sh
+        timeout-minutes: 5
 
       - name: Run tests
         run: ./tools/test.sh
+        timeout-minutes: 10
