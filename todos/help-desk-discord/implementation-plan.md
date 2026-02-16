@@ -168,7 +168,7 @@ Cross-adapter relay deferred. Customers stay on their original adapter; convergi
 
 ---
 
-### Task 9: Template jobs config + identity key index (R9, R10, R11)
+### [x] Task 9: Template jobs config + identity key index (R9, R10, R11)
 
 **Files:**
 

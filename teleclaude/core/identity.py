@@ -166,6 +166,8 @@ def derive_identity_key(adapter_metadata: SessionAdapterMetadata) -> str | None:
         return f"discord:{ui._discord.user_id}"
     if ui._telegram and getattr(ui._telegram, "user_id", None):
         return f"telegram:{ui._telegram.user_id}"
+    # TODO: Add web platform when WebAdapterMetadata is implemented:
+    #   if ui._web and ui._web.email: return f"web:{ui._web.email}"
     return None
 
 
