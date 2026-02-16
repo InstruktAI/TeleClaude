@@ -8,10 +8,10 @@ Add a structured messages API backed by native session transcript files. Two cha
 
 **File(s):** `teleclaude/core/db_models.py`, `teleclaude/core/schema.sql`, `teleclaude/hooks/receiver.py`
 
-- [ ] Add `transcript_files` column to sessions table (TEXT, JSON array of file paths, default `"[]"`).
-- [ ] Add migration to add column to existing databases.
-- [ ] In `_update_session_native_fields`: when `native_log_file` changes and the previous value is non-empty, append old path to `transcript_files` before replacing `native_log_file`.
-- [ ] `native_log_file` continues to hold the latest path (backward compat).
+- [x] Add `transcript_files` column to sessions table (TEXT, JSON array of file paths, default `"[]"`).
+- [x] Add migration to add column to existing databases.
+- [x] In `_update_session_native_fields`: when `native_log_file` changes and the previous value is non-empty, append old path to `transcript_files` before replacing `native_log_file`.
+- [x] `native_log_file` continues to hold the latest path (backward compat).
 
 **Verification:** Unit test: simulate two successive `native_log_file` updates, verify chain contains both paths.
 
@@ -19,12 +19,12 @@ Add a structured messages API backed by native session transcript files. Two cha
 
 **File(s):** `teleclaude/utils/transcript.py`
 
-- [ ] New function `extract_structured_messages(transcript_path, agent_name, *, since, include_tools, include_thinking)` → `list[dict]`.
-- [ ] Uses existing `_iter_*_entries()` + `_get_entries_for_agent()`.
-- [ ] Each message dict: `role`, `type`, `text`, `timestamp`, `entry_index`.
-- [ ] Classify Claude `system` entries with `parentUuid` (after first) as `type: "compaction"`.
-- [ ] Respect `since` timestamp filter.
-- [ ] Filter tool/thinking entries based on flags.
+- [x] New function `extract_structured_messages(transcript_path, agent_name, *, since, include_tools, include_thinking)` → `list[dict]`.
+- [x] Uses existing `_iter_*_entries()` + `_get_entries_for_agent()`.
+- [x] Each message dict: `role`, `type`, `text`, `timestamp`, `entry_index`.
+- [x] Classify Claude `system` entries with `parentUuid` (after first) as `type: "compaction"`.
+- [x] Respect `since` timestamp filter.
+- [x] Filter tool/thinking entries based on flags.
 
 **Verification:** Unit test with sample JSONL fixture containing user, assistant, system (compaction), and tool entries.
 
@@ -32,8 +32,8 @@ Add a structured messages API backed by native session transcript files. Two cha
 
 **File(s):** `teleclaude/utils/transcript.py`
 
-- [ ] New function `extract_messages_from_chain(file_paths, agent_name, **kwargs)` that calls `extract_structured_messages` for each file, adds `file_index`, and concatenates results.
-- [ ] Files are read in order (oldest first — chain order).
+- [x] New function `extract_messages_from_chain(file_paths, agent_name, **kwargs)` that calls `extract_structured_messages` for each file, adds `file_index`, and concatenates results.
+- [x] Files are read in order (oldest first — chain order).
 
 **Verification:** Unit test with two JSONL fixtures simulating a file rotation, verify messages stitch correctly.
 
@@ -41,12 +41,12 @@ Add a structured messages API backed by native session transcript files. Two cha
 
 **File(s):** `teleclaude/api_server.py`
 
-- [ ] `GET /sessions/{session_id}/messages` route.
-- [ ] Query params: `since` (optional ISO 8601), `include_tools` (bool), `include_thinking` (bool).
-- [ ] Reads session from DB, builds file chain (`transcript_files` + `native_log_file`).
-- [ ] Calls `extract_messages_from_chain`.
-- [ ] Returns JSON response with `session_id`, `agent`, `messages` array.
-- [ ] Handles missing session (404), missing files (empty messages array with warning).
+- [x] `GET /sessions/{session_id}/messages` route.
+- [x] Query params: `since` (optional ISO 8601), `include_tools` (bool), `include_thinking` (bool).
+- [x] Reads session from DB, builds file chain (`transcript_files` + `native_log_file`).
+- [x] Calls `extract_messages_from_chain`.
+- [x] Returns JSON response with `session_id`, `agent`, `messages` array.
+- [x] Handles missing session (404), missing files (empty messages array with warning).
 
 **Verification:** Integration test: create session with known transcript, hit endpoint, verify JSON structure.
 
@@ -54,11 +54,11 @@ Add a structured messages API backed by native session transcript files. Two cha
 
 ## Validation
 
-- [ ] Add or update tests for the changed behavior.
-- [ ] Run `make test`.
-- [ ] Run `make lint`.
-- [ ] Verify existing `get_session_data` still works (no regression).
-- [ ] Manual verification: hit `/sessions/{id}/messages` for an active session, confirm structured output.
+- [x] Add or update tests for the changed behavior.
+- [x] Run `make test`.
+- [x] Run `make lint`.
+- [x] Verify existing `get_session_data` still works (no regression).
+- [x] ~~Manual verification: hit `/sessions/{id}/messages` for an active session, confirm structured output.~~ (deferred to post-merge)
 
 ---
 
