@@ -73,7 +73,7 @@ Adopt assistant-ui as the web UI while making Next.js API routes the public cont
 
 ### Task 5: Route map + migration status tracking
 
-- [ ] `todos/web-interface-2/route-map.md` updated with actual implementation status.
+- [x] `todos/web-interface-2/route-map.md` updated with actual implementation status.
 
 ### Task 6: Verification and guardrails
 
