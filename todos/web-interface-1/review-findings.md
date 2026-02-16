@@ -127,3 +127,36 @@ Only 1 of 5 requirements has unit tests (the transcript converter — 22 tests, 
 3. TCP server lifecycle mirrors the Unix socket pattern — proper startup guards, graceful shutdown with timeout.
 4. PersonDTO correctly excludes sensitive fields (no credentials exposed).
 5. The `# guard: loose-dict` convention for JSONL boundaries is pragmatic and consistent with the codebase.
+
+---
+
+## Fixes Applied
+
+All Critical and Important issues have been addressed in commit `e7809ac4`.
+
+### C1: Silent message discard when tmux_session_name is missing
+
+**Fixed:** Added validation for `tmux_session_name` presence and `send_keys` return value. Failures now log warnings and emit SSE error status events. Users receive immediate feedback when message delivery fails.
+
+### I1: HTTPException inside async generator won't propagate as HTTP 404
+
+**Fixed:** Moved session validation from `_stream_sse` generator to `chat_stream` route handler. Session existence is verified before `StreamingResponse` is created, ensuring proper HTTP 404 responses.
+
+### I2: TOCTOU race in live tail file reading
+
+**Fixed:** Replaced size calculation with `f.tell()` to track file position atomically within the file read context. Eliminates race condition between size check and read operation.
+
+### I3: `session: object` with `getattr` erases known type
+
+**Fixed:** Imported `Session` from `teleclaude.core.db_models` and replaced `object` type annotation with `Session`. All `getattr` calls replaced with direct attribute access, enabling static type checking.
+
+### I4: `ChatStreamMessage.role` is untyped `str` for a closed domain
+
+**Fixed:** Changed `role: str` to `role: Literal["user", "assistant", "system"]`, matching the type used in `MessageDTO` and reflecting the finite domain of valid roles.
+
+### I5: Mixed naming convention in `ChatStreamRequest`
+
+**Fixed:** Used Pydantic `Field` with `alias="sessionId"` to maintain wire compatibility while using Python snake_case convention internally (`session_id`).
+
+**Tests:** All 1756 unit tests pass. Pre-commit hooks (format, lint) pass.
+**Ready for re-review.**
