@@ -15,9 +15,17 @@ export async function POST(
 
   const { id } = await params;
 
+  let body;
   try {
-    const body = await request.json();
+    body = await request.json();
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Invalid JSON in request body" },
+      { status: 400 },
+    );
+  }
 
+  try {
     const res = await daemonRequest({
       method: "POST",
       path: `/sessions/${encodeURIComponent(id)}/message`,
