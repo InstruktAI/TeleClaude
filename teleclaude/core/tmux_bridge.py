@@ -243,6 +243,18 @@ async def _create_tmux_session(
         # The plugin auto-restores the last directory when starting in $HOME unless this var is set.
         effective_env_vars["ZSH_LAST_WORKING_DIRECTORY"] = "1"
 
+        # Prepend TeleClaude bin to PATH so the git wrapper intercepts prohibited commands
+        # (stash, checkout, restore, reset --hard, clean). See: version-control-safety policy.
+        teleclaude_bin = str(Path.home() / ".teleclaude" / "bin")
+        current_path = os.environ.get("PATH", "/usr/bin:/bin")
+        if teleclaude_bin not in current_path.split(os.pathsep):
+            effective_env_vars["PATH"] = f"{teleclaude_bin}{os.pathsep}{current_path}"
+
+        # Enable truecolor for CLI agents.  Without this, CLIs (Gemini, Claude,
+        # Codex) fall back to 256-color or plain text because TERM=tmux-256color
+        # alone does not advertise truecolor.
+        effective_env_vars["COLORTERM"] = "truecolor"
+
         # Claude Code can crash on macOS if TMPDIR contains unix sockets (fs.watch EOPNOTSUPP/UNKNOWN).
         # Use a per-session, empty TMPDIR to avoid inheriting sockets from global temp directories.
         if session_id:
@@ -287,6 +299,19 @@ async def _create_tmux_session(
                 stderr.decode().strip() if stderr else "",
             )
             return False
+
+        # Strip NO_COLOR from the session environment as a safe default.
+        # The variable is inherited from the parent shell; removing it here
+        # lets CLIs emit colors.  The TUI pane manager may re-set NO_COLOR=1
+        # for peaceful theming levels (0, 1) when the pane is displayed.
+        try:
+            unset_cmd = [config.computer.tmux_binary, "set-environment", "-t", name, "-u", "NO_COLOR"]
+            unset_result = await asyncio.create_subprocess_exec(
+                *unset_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await communicate_with_timeout(unset_result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
+        except Exception:
+            pass  # Best-effort; color loss is cosmetic, not critical.
 
         # Ensure detach does NOT destroy the session (respect persistent TC sessions).
         try:

@@ -1,14 +1,19 @@
 """Identity resolution for TeleClaude sessions."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import TYPE_CHECKING, Mapping, Optional
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import PersonEntry
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
+
+if TYPE_CHECKING:
+    from teleclaude.core.models import SessionAdapterMetadata
 
 logger = get_logger(__name__)
 CUSTOMER_ROLE = "customer"
@@ -32,6 +37,7 @@ class IdentityResolver:
         self._by_email: dict[str, PersonEntry] = {}
         self._by_username: dict[str, PersonEntry] = {}
         self._by_telegram_user_id: dict[int, PersonEntry] = {}
+        self._by_discord_user_id: dict[str, PersonEntry] = {}
         self._load_config()
 
     @staticmethod
@@ -41,10 +47,10 @@ class IdentityResolver:
 
     @staticmethod
     def _normalize_role(role: str) -> str:
-        """Normalize known configured roles to runtime access roles."""
-        if role == HUMAN_ROLE_ADMIN:
-            return HUMAN_ROLE_ADMIN
-        return HUMAN_ROLE_MEMBER
+        """Validate role against known roles, defaulting unknown to customer."""
+        if role in HUMAN_ROLES:
+            return role
+        return HUMAN_ROLE_CUSTOMER
 
     def _load_config(self) -> None:
         """Load global and per-person configuration to build lookup maps."""
@@ -79,6 +85,10 @@ class IdentityResolver:
             telegram_creds = getattr(person_conf.creds, "telegram", None) if person_conf.creds else None
             if telegram_creds:
                 self._by_telegram_user_id[telegram_creds.user_id] = person
+
+            discord_creds = getattr(person_conf.creds, "discord", None) if person_conf.creds else None
+            if discord_creds:
+                self._by_discord_user_id[discord_creds.user_id] = person
 
     def resolve(self, origin: str, channel_metadata: Mapping[str, object]) -> Optional[IdentityContext]:
         """Resolve identity from origin and metadata.
@@ -124,15 +134,41 @@ class IdentityResolver:
                     )
 
         if origin == "discord":
-            user_id = channel_metadata.get("user_id") or channel_metadata.get("discord_user_id")
-            if user_id is not None:
+            discord_user_id = channel_metadata.get("user_id") or channel_metadata.get("discord_user_id")
+            if discord_user_id is not None:
+                discord_uid_str = str(discord_user_id)
+                person = self._by_discord_user_id.get(discord_uid_str)
+                if person:
+                    return IdentityContext(
+                        person_name=person.name,
+                        person_email=person.email,
+                        person_role=self._normalize_role(person.role),
+                        platform="discord",
+                        platform_user_id=discord_uid_str,
+                    )
                 return IdentityContext(
                     person_role=CUSTOMER_ROLE,
                     platform="discord",
-                    platform_user_id=str(user_id),
+                    platform_user_id=discord_uid_str,
                 )
 
         return None
+
+
+def derive_identity_key(adapter_metadata: SessionAdapterMetadata) -> str | None:
+    """Derive identity key from adapter metadata.
+
+    Format: {platform}:{platform_user_id}
+    Returns None if no identity can be determined.
+    """
+    ui = adapter_metadata.get_ui()
+    if ui._discord and ui._discord.user_id:
+        return f"discord:{ui._discord.user_id}"
+    if ui._telegram and getattr(ui._telegram, "user_id", None):
+        return f"telegram:{ui._telegram.user_id}"
+    # TODO: Add web platform when WebAdapterMetadata is implemented:
+    #   if ui._web and ui._web.email: return f"web:{ui._web.email}"
+    return None
 
 
 _resolver_instance: Optional[IdentityResolver] = None

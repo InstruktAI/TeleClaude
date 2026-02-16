@@ -8,6 +8,7 @@ import asyncio
 import curses
 import os
 import queue
+import random
 import signal
 import sys
 import time
@@ -37,21 +38,33 @@ from teleclaude.cli.models import (
     ComputerInfo as ApiComputerInfo,
 )
 from teleclaude.cli.tui.animation_colors import palette_registry
-from teleclaude.cli.tui.animation_engine import AnimationEngine
-from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger
+from teleclaude.cli.tui.animation_engine import AnimationEngine, AnimationPriority
+from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger, StateDrivenTrigger
+from teleclaude.cli.tui.animations.config import (
+    ErrorAnimation,
+    PulseAnimation,
+    SuccessAnimation,
+    TypingAnimation,
+)
 from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.state import Intent, IntentType, TuiState
 from teleclaude.cli.tui.state_store import save_sticky_state
 from teleclaude.cli.tui.theme import (
+    PANE_THEMING_MODE_CYCLE,
     get_current_mode,
+    get_pane_theming_mode,
+    get_pane_theming_mode_level,
     get_system_dark_mode,
     get_tab_line_attr,
     init_colors,
     is_dark_mode,
+    normalize_pane_theming_mode,
+    set_pane_theming_mode,
 )
 from teleclaude.cli.tui.tree import is_computer_node, is_session_node
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NotificationLevel
+from teleclaude.cli.tui.views.configuration import ConfigurationView
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import BANNER_HEIGHT, render_banner
@@ -192,27 +205,39 @@ class Notification:
 
 
 class TelecApp:
-    """Main TUI application with view switching (1=Sessions, 2=Preparation)."""
+    """Main TUI application with view switching (1=Sessions, 2=Preparation, 3=Configuration)."""
 
-    def __init__(self, api: "TelecAPIClient"):
+    def __init__(self, api: "TelecAPIClient", start_view: int = 1, config_guided: bool = False):
         """Initialize TUI app.
 
         Args:
             api: API client instance
+            start_view: Initial view to show (default 1)
+            config_guided: Whether to start configuration in guided mode
         """
         self.api = api
-        self.current_view = 1  # 1=Sessions, 2=Preparation
-        self.views: dict[int, SessionsView | PreparationView] = {}
+        self.current_view = start_view
+        self.views: dict[int, SessionsView | PreparationView | ConfigurationView] = {}
         self.tab_bar = TabBar()
+        # Set initial active tab
+        self.tab_bar.set_active(start_view)
+
         self.footer: Footer | None = None
         self.running = True
         self.agent_availability: dict[str, AgentAvailabilityInfo] = {}
         self.tts_enabled: bool = False
+        self.pane_theming_mode: str = get_pane_theming_mode()
+        self._pane_mode_pending_patch: bool = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self.focus = FocusContext()  # Shared focus across views
         self.notification: Notification | None = None
         self.pane_manager = TmuxPaneManager()
         self.state = TuiState()
+
+        # Set initial config state
+        if config_guided:
+            self.state.config.guided_mode = True
+
         self._computers: list[ApiComputerInfo] = []
         self.controller = TuiController(self.state, self.pane_manager, self._get_computer_info)
         # Content area bounds for mouse click handling
@@ -235,6 +260,24 @@ class TelecApp:
         self.animation_engine = AnimationEngine()
         self.periodic_trigger = PeriodicTrigger(self.animation_engine, animations_subset=config.ui.animations_subset)
         self.activity_trigger = ActivityTrigger(self.animation_engine, animations_subset=config.ui.animations_subset)
+        self.state_driven_trigger = StateDrivenTrigger(self.animation_engine)
+
+        # Register config animations
+        sections = [
+            "adapters.telegram",
+            "adapters.discord",
+            "adapters.ai_keys",
+            "adapters.whatsapp",
+            "people",
+            "notifications",
+            "environment",
+            "validate",
+        ]
+        for section in sections:
+            self.state_driven_trigger.register(section, "idle", PulseAnimation)
+            self.state_driven_trigger.register(section, "interacting", TypingAnimation)
+            self.state_driven_trigger.register(section, "success", SuccessAnimation)
+            self.state_driven_trigger.register(section, "error", ErrorAnimation)
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
@@ -263,10 +306,19 @@ class TelecApp:
             self.controller,
             notify=self.notify,
         )
+        self.views[3] = ConfigurationView(
+            self.api,
+            self.agent_availability,
+            self.focus,
+            self.pane_manager,
+            self.state,
+            self.controller,
+            notify=self.notify,
+            on_animation_context_change=self.state_driven_trigger.set_context,
+        )
 
         # Start animation triggers (palette initialization deferred to run())
-        self.animation_engine.is_enabled = config.ui.animations_enabled
-        self.periodic_trigger.interval_sec = config.ui.animations_periodic_interval
+        self._apply_animation_mode()
         self.periodic_trigger.task = asyncio.create_task(self.periodic_trigger.start())
 
         # Now refresh to populate views with data (always include todos so prep view has data)
@@ -277,6 +329,43 @@ class TelecApp:
             callback=self._on_ws_event,
             subscriptions=["sessions", "projects", "todos"],
         )
+
+    def _apply_pane_theming_mode(self, mode: str, *, from_api: bool = False) -> None:
+        """Apply pane mode override and refresh pane colors."""
+        try:
+            normalized = normalize_pane_theming_mode(mode)
+        except ValueError:
+            logger.warning("Ignoring unknown pane_theming_mode: %s", mode)
+            return
+
+        if normalized == self.pane_theming_mode:
+            if from_api:
+                self._pane_mode_pending_patch = False
+            return
+
+        if from_api and self._pane_mode_pending_patch:
+            return
+
+        self.pane_theming_mode = normalized
+        set_pane_theming_mode(normalized)
+        self.pane_manager.reapply_agent_colors()
+
+        if self.footer:
+            self.footer.pane_theming_mode = normalized
+
+    def _cycle_pane_theming_mode(self) -> None:
+        """Advance pane theming mode to the next presentation option."""
+        cycle = PANE_THEMING_MODE_CYCLE
+        index = get_pane_theming_mode_level(self.pane_theming_mode)
+        next_mode = cycle[(index + 1) % len(cycle)]
+        self._pane_mode_pending_patch = True
+        self._apply_pane_theming_mode(next_mode)
+
+        if self._loop:
+            asyncio.run_coroutine_threadsafe(
+                self.api.patch_settings(SettingsPatchInfo(pane_theming_mode=next_mode)),
+                self._loop,
+            )
 
     async def refresh_data(self) -> None:
         """Refresh all data from API."""
@@ -333,6 +422,7 @@ class TelecApp:
 
             # Update TTS state from settings
             self.tts_enabled = settings.tts.enabled
+            self._apply_pane_theming_mode(settings.pane_theming_mode, from_api=True)
 
             # Refresh ALL views with data (not just current)
             for view_num, view in self.views.items():
@@ -344,7 +434,13 @@ class TelecApp:
                 )
 
             # Update footer with new availability and TTS state
-            self.footer = Footer(self.agent_availability, tts_enabled=self.tts_enabled)
+            self.footer = Footer(
+                self.agent_availability,
+                tts_enabled=self.tts_enabled,
+                animation_mode=self.state.animation_mode,
+                pane_theming_mode=self.pane_theming_mode,
+                pane_theming_agent=self._get_footer_pane_theming_agent(),
+            )
             logger.debug("Data refresh complete")
             self._refresh_error_since = None
             self._refresh_error_notified = False
@@ -560,6 +656,7 @@ class TelecApp:
                             "tool_name": event.tool_name,
                             "tool_preview": event.tool_preview,
                             "summary": event.summary,
+                            "timestamp": event.timestamp,
                         },
                     )
                 )
@@ -664,6 +761,71 @@ class TelecApp:
             Intent(IntentType.SYNC_SESSIONS, {"session_ids": [s.session_id for s in sessions_view._sessions]})
         )
         logger.debug("Session %s removed", session_id[:8])
+
+    def _apply_animation_mode(self) -> None:
+        """Update animation engine based on current mode."""
+        mode = self.state.animation_mode
+
+        if mode == "off":
+            self.animation_engine.is_enabled = False
+        else:
+            self.animation_engine.is_enabled = True
+            self.periodic_trigger.interval_sec = config.ui.animations_periodic_interval
+
+    def _maybe_play_party_animation(self) -> None:
+        """Play continuous animations in party mode.
+
+        Called from the render loop so it doesn't depend on the async
+        event loop being pumped. Starts a new animation whenever the
+        banner slot is idle.
+        """
+        banner_slot = self.animation_engine._targets.get("banner")
+        if banner_slot and banner_slot.animation is not None:
+            return  # Animation still playing
+
+        from teleclaude.cli.tui.animation_triggers import filter_animations
+        from teleclaude.cli.tui.animations.general import GENERAL_ANIMATIONS
+
+        palette = palette_registry.get("spectrum")
+        filtered = filter_animations(GENERAL_ANIMATIONS, self.periodic_trigger.animations_subset)
+        if not filtered or not palette:
+            return
+
+        anim_cls = random.choice(filtered)
+        self.animation_engine.play(
+            anim_cls(palette=palette, is_big=True, duration_seconds=random.uniform(3, 6)),
+            priority=AnimationPriority.PERIODIC,
+        )
+
+        # Also play on logo
+        small_compatible = [cls for cls in filtered if cls.supports_small]
+        if small_compatible:
+            anim_cls_small = random.choice(small_compatible)
+            self.animation_engine.play(
+                anim_cls_small(palette=palette, is_big=False, duration_seconds=random.uniform(3, 6)),
+                priority=AnimationPriority.PERIODIC,
+            )
+
+    def _cycle_animation_mode(self) -> None:
+        """Cycle animation mode: periodic -> party -> off -> periodic."""
+        modes = ["periodic", "party", "off"]
+        current = self.state.animation_mode
+        try:
+            next_mode = modes[(modes.index(current) + 1) % len(modes)]
+        except ValueError:
+            next_mode = "periodic"
+
+        self.controller.dispatch(Intent(IntentType.SET_ANIMATION_MODE, {"mode": next_mode}))
+        self._apply_animation_mode()
+        save_sticky_state(self.state)
+
+        if self.footer:
+            self.footer.animation_mode = next_mode
+
+        msg = f"Animation mode: {next_mode.upper()}"
+        level = NotificationLevel.INFO if next_mode != "off" else NotificationLevel.WARNING
+        self.notify(msg, level)
+        logger.debug("Animation mode toggled to %s", next_mode)
 
     def run(self, stdscr: CursesWindow) -> None:
         """Main event loop.
@@ -855,46 +1017,36 @@ class TelecApp:
                             # Pass is_double_click=True to allow view-specific double-click handling
                             if view.handle_click(my, is_double_click=True):
                                 click_ms = int((time.perf_counter() - click_start) * 1000)
-                                # For sessions view (1), double-click toggles sticky (no enter action)
-                                # For other views, execute default action
-                                if self.current_view != 1:
-                                    enter_start = time.perf_counter()
-                                    view.handle_enter(stdscr)
-                                    enter_ms = int((time.perf_counter() - enter_start) * 1000)
-                                    logger.trace(
-                                        "mouse_double_click_action",
-                                        view=self.current_view,
-                                        x=mx,
-                                        y=my,
-                                        click_ms=click_ms,
-                                        enter_ms=enter_ms,
-                                        total_ms=int((time.perf_counter() - mouse_start) * 1000),
-                                    )
-                                else:
-                                    # Sessions view: double-click handled by toggle_sticky
-                                    logger.trace(
-                                        "mouse_double_click_sticky",
-                                        view=self.current_view,
-                                        x=mx,
-                                        y=my,
-                                        click_ms=click_ms,
-                                        total_ms=int((time.perf_counter() - mouse_start) * 1000),
-                                    )
+                                logger.trace(
+                                    "mouse_double_click_action",
+                                    view=self.current_view,
+                                    x=mx,
+                                    y=my,
+                                    click_ms=click_ms,
+                                    total_ms=int((time.perf_counter() - mouse_start) * 1000),
+                                )
                 # Single click: select item or switch tab
                 elif bstate & curses.BUTTON1_CLICKED:
                     height, _ = stdscr.getmaxyx()  # type: ignore[attr-defined]
-                    # Check if click is on footer row (TTS toggle)
-                    if my == height - 1 and self.footer and self.footer.handle_click(mx):
-                        self.tts_enabled = not self.tts_enabled
-                        self.footer.tts_enabled = self.tts_enabled
-                        if self._loop:
-                            asyncio.run_coroutine_threadsafe(
-                                self.api.patch_settings(
-                                    SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=self.tts_enabled))
-                                ),
-                                self._loop,
-                            )
-                        logger.debug("TTS toggled to %s via footer click", self.tts_enabled)
+                    # Check if click is on footer row
+                    if my == height - 1 and self.footer and (clicked := self.footer.handle_click(mx)):
+                        if clicked == "tts":
+                            self.tts_enabled = not self.tts_enabled
+                            self.footer.tts_enabled = self.tts_enabled
+                            if self._loop:
+                                asyncio.run_coroutine_threadsafe(
+                                    self.api.patch_settings(
+                                        SettingsPatchInfo(
+                                            tts=TTSSettingsPatchInfo(enabled=self.tts_enabled),
+                                        )
+                                    ),
+                                    self._loop,
+                                )
+                            logger.debug("TTS toggled to %s via footer click", self.tts_enabled)
+                        elif clicked == "pane_theming_mode":
+                            self._cycle_pane_theming_mode()
+                        elif clicked == "animation_mode":
+                            self._cycle_animation_mode()
                     # Check if a tab was clicked
                     elif self.tab_bar.handle_click(my, mx) is not None:
                         clicked_tab = self.tab_bar.handle_click(my, mx)
@@ -971,6 +1123,9 @@ class TelecApp:
         elif key == ord("2"):
             logger.debug("Switching to view 2 (Preparation)")
             self._switch_view(2)
+        elif key == ord("3"):
+            logger.debug("Switching to view 3 (Configuration)")
+            self._switch_view(3)
 
         # Navigation - delegate to current view
         elif key == curses.KEY_UP:
@@ -1044,6 +1199,13 @@ class TelecApp:
                     self._loop,
                 )
             logger.debug("TTS toggled to %s via hotkey", self.tts_enabled)
+        elif key == ord("c"):
+            self._cycle_pane_theming_mode()
+            logger.debug("Pane theming mode toggled to %s via hotkey", self.pane_theming_mode)
+
+        # Animation mode toggle
+        elif key == ord("m"):
+            self._cycle_animation_mode()
 
         # View-specific actions
         else:
@@ -1090,6 +1252,7 @@ class TelecApp:
         Args:
             view_num: View number (1 or 2)
         """
+        current_view = self.current_view
         if view_num in self.views:
             logger.debug("Switching from view %d to view %d", self.current_view, view_num)
             self.current_view = view_num
@@ -1108,6 +1271,10 @@ class TelecApp:
                     if self._loop:
                         self._loop.run_until_complete(self.refresh_data())
             # Panes remain unchanged across view switches.
+            if current_view == 2 and view_num != 2:
+                prep_view = self.views.get(2)
+                if prep_view:
+                    prep_view.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW), defer_layout=True)
         else:
             logger.warning("Attempted to switch to non-existent view %d", view_num)
 
@@ -1123,18 +1290,22 @@ class TelecApp:
         # Update animations
         self.animation_engine.update()
 
+        # Party mode: play continuous back-to-back animations directly
+        # (bypasses async periodic trigger which depends on event loop pumping)
+        if self.state.animation_mode == "party":
+            self._maybe_play_party_animation()
+
         # Calculate pane counts (1 TUI pane + session panes)
         total_panes = 1  # TUI pane
         banner_panes = 1  # TUI pane + sticky panes only (stable across previews)
         sticky_session_ids = [s.session_id for s in self.state.sessions.sticky_sessions]
-        sticky_doc_ids = [s.doc_id for s in self.state.preparation.sticky_previews]
-        total_sticky = len(sticky_session_ids) + len(sticky_doc_ids)
+        total_sticky = len(sticky_session_ids)
         total_panes += total_sticky
         banner_panes += total_sticky
 
         if self.state.sessions.preview and self.state.sessions.preview.session_id not in sticky_session_ids:
             total_panes += 1
-        elif self.state.preparation.preview and self.state.preparation.preview.doc_id not in sticky_doc_ids:
+        elif self.state.preparation.preview:
             total_panes += 1
 
         # Hide banner for 4 or 6 panes (optimizes vertical space for grid layouts)
@@ -1183,15 +1354,35 @@ class TelecApp:
         stdscr.addstr(height - 3, 0, action_bar[:line_width])  # type: ignore[attr-defined]
 
         # Row height-2: Global shortcuts bar
-        global_bar = "[+/-] Expand/Collapse  [r] Refresh  [v] TTS  [q] Quit"
+        global_bar = "[+/-] Expand/Collapse  [r] Refresh  [v] TTS  [m] Anim  [c] Colors  [q] Quit"
         stdscr.addstr(height - 2, 0, global_bar[:line_width], curses.A_DIM)  # type: ignore[attr-defined]
 
         # Row height-1: Footer
         if self.footer and line_width > 0:
+            self.footer.pane_theming_agent = self._get_footer_pane_theming_agent()
             self.footer.render(stdscr, height - 1, line_width)
 
         stdscr.move(0, 0)  # type: ignore[attr-defined]
         stdscr.refresh()  # type: ignore[attr-defined]
+
+    def _get_footer_pane_theming_agent(self) -> str:
+        """Pick the current row agent so pane-theming indicator can mirror highlights."""
+        view = self.views.get(self.current_view)
+        if not view or not hasattr(view, "flat_items") or not hasattr(view, "selected_index"):
+            return "codex"
+
+        flat_items = getattr(view, "flat_items")
+        selected_index = getattr(view, "selected_index")
+        if not flat_items or not isinstance(selected_index, int):
+            return "codex"
+        if selected_index < 0 or selected_index >= len(flat_items):
+            return "codex"
+
+        selected = flat_items[selected_index]
+        if self.current_view == 1 and is_session_node(selected):
+            return selected.data.session.active_agent or "codex"
+
+        return "codex"
 
     def _render_breadcrumb(self, stdscr: object, row: int, width: int) -> None:
         """Render breadcrumb with last part bold.

@@ -3,7 +3,10 @@
 import json
 from unittest.mock import patch
 
-from teleclaude.hooks.receiver import _format_injection_payload, _get_memory_context, _print_memory_injection
+from teleclaude.hooks.adapters.claude import ClaudeAdapter
+from teleclaude.hooks.adapters.codex import CodexAdapter
+from teleclaude.hooks.adapters.gemini import GeminiAdapter
+from teleclaude.hooks.receiver import _get_memory_context, _print_memory_injection
 
 
 def test_get_memory_context_success():
@@ -20,9 +23,10 @@ def test_get_memory_context_failure():
         assert result == ""
 
 
-def test_format_injection_payload_claude():
-    """Test Claude Code gets hookSpecificOutput with hookEventName."""
-    result = json.loads(_format_injection_payload("claude", "test context"))
+def test_format_memory_injection_claude():
+    """Test Claude adapter formats hookSpecificOutput with hookEventName."""
+    adapter = ClaudeAdapter()
+    result = json.loads(adapter.format_memory_injection("test context"))
     assert result == {
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
@@ -31,9 +35,10 @@ def test_format_injection_payload_claude():
     }
 
 
-def test_format_injection_payload_gemini():
-    """Test Gemini gets hookSpecificOutput without hookEventName."""
-    result = json.loads(_format_injection_payload("gemini", "test context"))
+def test_format_memory_injection_gemini():
+    """Test Gemini adapter formats hookSpecificOutput without hookEventName."""
+    adapter = GeminiAdapter()
+    result = json.loads(adapter.format_memory_injection("test context"))
     assert result == {
         "hookSpecificOutput": {
             "additionalContext": "test context",
@@ -41,29 +46,33 @@ def test_format_injection_payload_gemini():
     }
 
 
-def test_format_injection_payload_codex():
-    """Test Codex returns empty (no SessionStart hook mechanism)."""
-    result = _format_injection_payload("codex", "test context")
+def test_format_memory_injection_codex():
+    """Test Codex adapter returns empty (no SessionStart hook mechanism)."""
+    adapter = CodexAdapter()
+    result = adapter.format_memory_injection("test context")
     assert result == ""
 
 
 def test_print_memory_injection_no_cwd(capsys):
     """Test no output when cwd is None."""
-    _print_memory_injection(None, "claude")
+    adapter = ClaudeAdapter()
+    _print_memory_injection(None, adapter)
     assert capsys.readouterr().out == ""
 
 
 def test_print_memory_injection_empty_context(capsys):
     """Test no output when context returns empty."""
+    adapter = ClaudeAdapter()
     with patch("teleclaude.hooks.receiver._get_memory_context", return_value=""):
-        _print_memory_injection("/tmp/foo", "claude")
+        _print_memory_injection("/tmp/foo", adapter)
         assert capsys.readouterr().out == ""
 
 
 def test_print_memory_injection_claude(capsys):
     """Test Claude output is valid hookSpecificOutput JSON."""
+    adapter = ClaudeAdapter()
     with patch("teleclaude.hooks.receiver._get_memory_context", return_value="memory context here"):
-        _print_memory_injection("/tmp/myproject", "claude")
+        _print_memory_injection("/tmp/myproject", adapter)
         output = json.loads(capsys.readouterr().out)
         assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
         assert output["hookSpecificOutput"]["additionalContext"] == "memory context here"
@@ -71,8 +80,9 @@ def test_print_memory_injection_claude(capsys):
 
 def test_print_memory_injection_gemini(capsys):
     """Test Gemini output is valid hookSpecificOutput JSON without hookEventName."""
+    adapter = GeminiAdapter()
     with patch("teleclaude.hooks.receiver._get_memory_context", return_value="memory context here"):
-        _print_memory_injection("/tmp/myproject", "gemini")
+        _print_memory_injection("/tmp/myproject", adapter)
         output = json.loads(capsys.readouterr().out)
         assert "hookEventName" not in output["hookSpecificOutput"]
         assert output["hookSpecificOutput"]["additionalContext"] == "memory context here"

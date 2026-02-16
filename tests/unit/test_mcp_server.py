@@ -40,11 +40,13 @@ def mock_mcp_server():
     mock_caller_session.active_agent = "claude"
     mock_caller_session.thinking_mode = "slow"
     mock_caller_session.last_input_origin = "telegram"
+    mock_caller_session.tmux_session_name = "test-tmux-session"
 
     with (
         patch("teleclaude.mcp_server.config") as mock_config,
         patch("teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=mock_caller_session)),
         patch("teleclaude.mcp.handlers.get_command_service", return_value=mock_commands),
+        patch("teleclaude.mcp_server.register_listener", new=AsyncMock()),
     ):
         mock_config.computer.name = "TestComputer"
         mock_config.mcp.socket_path = "/tmp/test.sock"
@@ -286,9 +288,11 @@ async def test_teleclaude_start_session_creates_session(mock_mcp_server):
     # Mock create_session to return success with session_id
     server.command_service.create_session = AsyncMock(return_value={"session_id": "new-session-456"})
 
+    mock_session = MagicMock(last_input_origin=InputOrigin.TELEGRAM.value)
+    mock_session.tmux_session_name = "test-tmux-session"
     with patch(
         "teleclaude.mcp.handlers.db.get_session",
-        new=AsyncMock(return_value=MagicMock(last_input_origin=InputOrigin.TELEGRAM.value)),
+        new=AsyncMock(return_value=mock_session),
     ):
         result = await server.teleclaude__start_session(
             computer="local",

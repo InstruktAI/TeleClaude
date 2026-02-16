@@ -1,0 +1,17 @@
+{
+  "unanimous": {
+    "release_authorized": true,
+    "target_version": "patch",
+    "rationale_contains": "3/3 lanes agree"
+  },
+  "split": {
+    "release_authorized": true,
+    "target_version": "patch",
+    "rationale_contains": "2/3 lanes agree"
+  },
+  "override": {
+    "release_authorized": true,
+    "target_version": "patch",
+    "rationale_contains": "contract changes"
+  }
+}

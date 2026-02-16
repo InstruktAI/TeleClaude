@@ -84,7 +84,7 @@ await self._inject_linked_output(context)
 New method `_inject_linked_output(context)`:
 
 1. Call `get_link_for_session(session_id)` — if no link, return early.
-2. Get agent output from `session.last_feedback_received` (already extracted by
+2. Get agent output from `session.last_output_raw` (already extracted by
    `_extract_agent_output()` earlier in the handler).
 3. **Checkpoint filter**: if output contains `CHECKPOINT_MESSAGE` prefix or is empty,
    skip injection. Do NOT increment turn count.
@@ -277,7 +277,7 @@ Document:
 ## Assumptions
 
 1. The existing `send_keys_existing_tmux()` reliably injects text into agent sessions.
-2. `session.last_feedback_received` contains the agent's final output at agent_stop.
+2. `session.last_output_raw` contains the agent's final output at agent_stop.
 3. The checkpoint message prefix is stable and detectable via string matching.
 4. In-memory link storage (no DB persistence) is acceptable for this experiment.
 5. Agents will follow intentional heartbeat prompting with reasonable reliability

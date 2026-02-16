@@ -173,6 +173,7 @@ class DiscordConfig:
     token: str | None
     guild_id: int | None
     help_desk_channel_id: int | None
+    escalation_channel_id: int | None
 
 
 @dataclass
@@ -182,6 +183,7 @@ class UIConfig:
     animations_enabled: bool
     animations_periodic_interval: int
     animations_subset: List[str]  # Empty list means all animations enabled
+    pane_theming_mode: str = "full"
 
 
 @dataclass
@@ -347,6 +349,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "token": None,
         "guild_id": None,
         "help_desk_channel_id": None,
+        "escalation_channel_id": None,
     },
     "creds": {
         "telegram": None,
@@ -358,6 +361,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "animations_enabled": True,
         "animations_periodic_interval": 60,
         "animations_subset": [],  # Empty list = all animations enabled
+        "pane_theming_mode": "full",  # full|semi|off|highlight|highlight2|agent|agent_plus
     },
     "tts": {
         "enabled": False,
@@ -654,6 +658,9 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             help_desk_channel_id=(
                 _parse_optional_int(discord_raw.get("help_desk_channel_id")) if isinstance(discord_raw, dict) else None
             ),
+            escalation_channel_id=(
+                _parse_optional_int(discord_raw.get("escalation_channel_id")) if isinstance(discord_raw, dict) else None
+            ),
         ),
         creds=CredsConfig(telegram=tg_creds),
         agents=agents_registry,
@@ -661,6 +668,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             animations_enabled=bool(ui_raw["animations_enabled"]),  # type: ignore[index,misc]
             animations_periodic_interval=int(ui_raw["animations_periodic_interval"]),  # type: ignore[index,misc]
             animations_subset=list(ui_raw.get("animations_subset", [])),  # type: ignore[index,misc]
+            pane_theming_mode=str(ui_raw.get("pane_theming_mode", "full")),  # type: ignore[index,misc]
         ),
         terminal=TerminalConfig(
             strip_ansi=bool(terminal_raw.get("strip_ansi", True))  # type: ignore[attr-defined]

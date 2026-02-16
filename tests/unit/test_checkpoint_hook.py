@@ -1,6 +1,5 @@
 """Unit tests for hook-based invisible checkpoint logic in receiver.py."""
 
-import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -79,19 +78,14 @@ def test_no_turn_start_returns_none(db_with_session):
     assert result is None
 
 
-def test_checkpoint_claude_returns_blocking_json(db_with_session, monkeypatch):
-    """Claude checkpoint should return blocking JSON with reason."""
+def test_checkpoint_claude_returns_reason_string(db_with_session, monkeypatch):
+    """Checkpoint should return reason string (caller formats via adapter)."""
     now = datetime.now(timezone.utc)
     engine = db_with_session(last_message_sent_at=now - timedelta(seconds=60))
     monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", lambda **_kw: "test checkpoint")
 
     result = receiver._maybe_checkpoint_output("sess-1", "claude", {})
-    assert result is not None
-
-    parsed = json.loads(result)
-    assert parsed["decision"] == "block"
-    assert isinstance(parsed["reason"], str)
-    assert len(parsed["reason"]) > 0
+    assert result == "test checkpoint"
 
     # Verify DB was updated with last_checkpoint_at
     from sqlmodel import Session as SqlSession
@@ -104,19 +98,14 @@ def test_checkpoint_claude_returns_blocking_json(db_with_session, monkeypatch):
         assert row.last_checkpoint_at is not None
 
 
-def test_checkpoint_gemini_returns_deny_json(db_with_session, monkeypatch):
-    """Gemini checkpoint should return deny JSON with reason."""
+def test_checkpoint_gemini_returns_reason_string(db_with_session, monkeypatch):
+    """Checkpoint returns the same reason string regardless of agent."""
     now = datetime.now(timezone.utc)
     db_with_session(last_message_sent_at=now - timedelta(seconds=60))
     monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", lambda **_kw: "test checkpoint")
 
     result = receiver._maybe_checkpoint_output("sess-1", "gemini", {})
-    assert result is not None
-
-    parsed = json.loads(result)
-    assert parsed["decision"] == "deny"
-    assert isinstance(parsed["reason"], str)
-    assert len(parsed["reason"]) > 0
+    assert result == "test checkpoint"
 
 
 def test_checkpoint_skips_when_context_builder_returns_none(db_with_session, monkeypatch):
@@ -189,9 +178,7 @@ def test_checkpoint_fires_when_checkpoint_at_is_old(db_with_session, monkeypatch
     monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", lambda **_kw: "test checkpoint")
 
     result = receiver._maybe_checkpoint_output("sess-1", "claude", {})
-    assert result is not None
-    parsed = json.loads(result)
-    assert parsed["decision"] == "block"
+    assert result == "test checkpoint"
 
 
 def test_checkpoint_prefers_session_project_path_over_transcript_workdir(db_with_session, monkeypatch):

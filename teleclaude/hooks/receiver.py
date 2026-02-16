@@ -14,7 +14,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
 
-from instrukt_ai_logging import configure_logging, get_logger
+# Bootstrap: agent CLIs call this hook from arbitrary directories where PATH may
+# resolve python3 to system Python (missing project deps). Re-exec under the
+# project venv when needed.
+_VENV_PYTHON = Path(__file__).resolve().parents[2] / ".venv" / "bin" / "python3"
+if _VENV_PYTHON.is_file() and Path(sys.executable).resolve() != _VENV_PYTHON.resolve():
+    os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
+
+from instrukt_ai_logging import configure_logging, get_logger  # noqa: E402
 
 # Ensure local hooks utils and TeleClaude package are importable
 hooks_dir = Path(__file__).parent
@@ -25,6 +32,7 @@ from teleclaude.config import config  # noqa: E402
 from teleclaude.core.agents import AgentName  # noqa: E402
 from teleclaude.core import db_models  # noqa: E402
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType  # noqa: E402
+from teleclaude.hooks.adapters import get_adapter  # noqa: E402
 from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS  # noqa: E402
 from teleclaude.hooks.checkpoint_flags import (  # noqa: E402
     CHECKPOINT_RECHECK_FLAG,
@@ -32,6 +40,13 @@ from teleclaude.hooks.checkpoint_flags import (  # noqa: E402
     is_checkpoint_disabled,
     set_checkpoint_flag,
 )
+
+# Bootstrap: agent CLIs call this hook from arbitrary directories where PATH may
+# resolve python3 to system Python (missing project deps). Re-exec under the
+# project venv when needed.
+_VENV_PYTHON = Path(__file__).resolve().parents[2] / ".venv" / "bin" / "python3"
+if _VENV_PYTHON.is_file() and Path(sys.executable).resolve() != _VENV_PYTHON.resolve():
+    os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -59,38 +74,15 @@ def _create_sync_engine() -> object:
     return engine
 
 
-def _get_memory_context(project_name: str) -> str:
+def _get_memory_context(project_name: str, identity_key: str | None = None) -> str:
     """Fetch pre-formatted memory context from local database."""
     try:
         from teleclaude.memory.context import generate_context_sync
 
         db_path = str(config.database.path)
-        return generate_context_sync(project_name, db_path)
+        return generate_context_sync(project_name, db_path, identity_key=identity_key)
     except Exception:
         return ""
-
-
-def _format_injection_payload(agent: str, context: str) -> str:
-    """Format context into agent-specific SessionStart hook response JSON."""
-    if agent == AgentName.CLAUDE.value:
-        return json.dumps(
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": "SessionStart",
-                    "additionalContext": context,
-                }
-            }
-        )
-    if agent == AgentName.GEMINI.value:
-        return json.dumps(
-            {
-                "hookSpecificOutput": {
-                    "additionalContext": context,
-                }
-            }
-        )
-    # Codex has no SessionStart hook mechanism
-    return ""
 
 
 def _reset_checkpoint_flags(session_id: str) -> None:
@@ -105,8 +97,9 @@ def _maybe_checkpoint_output(
 ) -> str | None:
     """Evaluate whether to block an agent_stop with a checkpoint instruction.
 
-    Returns agent-specific JSON to print to stdout (blocking the stop), or None
-    to let the stop pass through to the normal enqueue path.
+    Returns the checkpoint reason string if a checkpoint is warranted, or None
+    to let the stop pass through to the normal enqueue path. The caller is
+    responsible for formatting the reason into agent-specific JSON via the adapter.
     """
     # Session-scoped persistent disable: while clear marker exists, skip checkpoints.
     if is_checkpoint_disabled(session_id):
@@ -117,12 +110,6 @@ def _maybe_checkpoint_output(
     stop_hook_active = bool(raw_data.get("stop_hook_active"))
     if stop_hook_active and consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG):
         logger.info("Checkpoint skipped (recheck limit reached)", session_id=session_id[:8], agent=agent)
-        return None
-
-    # Codex does not support hook blocking; checkpoint injection is handled
-    # by AgentCoordinator tmux logic only.
-    if agent == AgentName.CODEX.value:
-        logger.debug("Checkpoint skipped (codex uses tmux injection path)")
         return None
 
     from sqlmodel import Session as SqlSession
@@ -218,27 +205,39 @@ def _maybe_checkpoint_output(
         payload_len=len(checkpoint_reason),
     )
 
-    if agent == AgentName.CLAUDE.value:
-        return json.dumps({"decision": "block", "reason": checkpoint_reason})
-    if agent == AgentName.GEMINI.value:
-        return json.dumps({"decision": "deny", "reason": checkpoint_reason})
-
-    # Codex has no hook-based checkpoint mechanism
-    return None
+    return checkpoint_reason
 
 
-def _print_memory_injection(cwd: str | None, agent: str) -> None:
+def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | None = None) -> None:
     """Print memory context to stdout for agent context injection via SessionStart hook."""
     project_name = Path(cwd).name if cwd else None
     if not project_name:
         return
 
-    context = _get_memory_context(project_name)
+    # Resolve identity_key from session adapter metadata for identity-scoped memories
+    identity_key: str | None = None
+    if session_id:
+        try:
+            from teleclaude.core.identity import derive_identity_key
+            from teleclaude.core.models import SessionAdapterMetadata
+            from sqlmodel import Session as SqlSession
+
+            with SqlSession(_create_sync_engine()) as db_session:
+                row = db_session.get(db_models.Session, session_id)
+                if row and row.adapter_metadata:
+                    adapter_meta = SessionAdapterMetadata.from_json(row.adapter_metadata)
+                    identity_key = derive_identity_key(adapter_meta)
+        except Exception:  # noqa: BLE001 - fail-open: identity resolution is best-effort
+            logger.debug("Identity key derivation failed for session %s", (session_id or "")[:8])
+
+    context = _get_memory_context(project_name, identity_key=identity_key)
     if not context:
         return
 
-    logger.debug("Memory context fetched", project=project_name, length=len(context))
-    print(_format_injection_payload(agent, context))
+    logger.debug("Memory context fetched", project=project_name, length=len(context), identity_key=identity_key or "")
+    payload = adapter.format_memory_injection(context)  # type: ignore[union-attr]
+    if payload:
+        print(payload)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -322,7 +321,11 @@ def _update_session_native_fields(
     native_log_file: str | None = None,
     native_session_id: str | None = None,
 ) -> None:
-    """Update native session fields directly on the session row."""
+    """Update native session fields directly on the session row.
+
+    When native_log_file changes and the previous value is non-empty,
+    the old path is appended to transcript_files before replacing native_log_file.
+    """
     if not native_log_file and not native_session_id:
         return
     from sqlmodel import Session as SqlSession
@@ -333,6 +336,21 @@ def _update_session_native_fields(
             return
         previous_native_session_id = row.native_session_id
         previous_native_log_file = row.native_log_file
+
+        # Chain accumulation: preserve old transcript path before replacing
+        transcript_changed = bool(
+            native_log_file and previous_native_log_file and previous_native_log_file != native_log_file
+        )
+        if transcript_changed:
+            chain: list[str] = []
+            try:
+                chain = json.loads(row.transcript_files or "[]")
+            except (json.JSONDecodeError, TypeError):
+                chain = []
+            if previous_native_log_file not in chain:
+                chain.append(previous_native_log_file)
+            row.transcript_files = json.dumps(chain)
+
         if native_log_file:
             row.native_log_file = native_log_file
         if native_session_id:
@@ -341,8 +359,8 @@ def _update_session_native_fields(
         session.commit()
 
         session_changed = bool(native_session_id and previous_native_session_id != native_session_id)
-        transcript_changed = bool(native_log_file and previous_native_log_file != native_log_file)
-        if not session_changed and not transcript_changed:
+        transcript_changed_log = bool(native_log_file and previous_native_log_file != native_log_file)
+        if not session_changed and not transcript_changed_log:
             return
 
         old_path = Path(previous_native_log_file).expanduser() if previous_native_log_file else None
@@ -360,30 +378,10 @@ def _update_session_native_fields(
             native_session_changed=session_changed,
             native_log_file_before=previous_native_log_file or "",
             native_log_file_after=native_log_file or "",
-            native_log_changed=transcript_changed,
+            native_log_changed=transcript_changed_log,
             old_path_exists=old_exists,
             new_path_exists=new_exists,
         )
-
-
-# guard: loose-dict-func - Native identity fields come from dynamic hook payloads.
-def _extract_native_identity(agent: str, data: dict[str, object]) -> tuple[str | None, str | None]:
-    """Extract native session id + transcript path from raw hook payload."""
-    native_session_id: str | None = None
-    native_log_file: str | None = None
-
-    if agent == AgentName.CODEX.value:
-        raw_id = data.get("thread-id")
-    else:
-        raw_id = data.get("session_id")
-    if isinstance(raw_id, str):
-        native_session_id = raw_id
-
-    raw_log = data.get("transcript_path")
-    if isinstance(raw_log, str):
-        native_log_file = raw_log
-
-    return native_session_id, native_log_file
 
 
 def _get_session_map_path() -> Path:
@@ -436,17 +434,86 @@ def _get_cached_session_id(agent: str, native_session_id: str | None) -> str | N
     return cached
 
 
+def _get_tmux_contract_tmpdir() -> str:
+    tmpdir = os.getenv("TMPDIR") or os.getenv("TMP") or os.getenv("TEMP")
+    if not isinstance(tmpdir, str) or not tmpdir.strip():
+        raise ValueError("TMUX hook contract violated: TMPDIR/TMP/TEMP is missing")
+    return tmpdir
+
+
+def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str | None, *, agent: str) -> bool:
+    """Validate whether a TMUX contract session is still bound to this hook identity.
+
+    Allow native-session rollover for the same active agent (expected during
+    start/resume transitions) while rejecting cross-agent/cross-native binding.
+    """
+    if not native_session_id:
+        return True
+
+    from sqlmodel import Session as SqlSession
+
+    try:
+        with SqlSession(_create_sync_engine()) as session:
+            row = session.get(db_models.Session, session_id)
+    except Exception as exc:  # noqa: BLE001 - fail-open when DB access is unavailable.
+        logger.debug(
+            "TMUX contract DB lookup skipped (db unavailable)",
+            session_id=session_id[:8],
+            native_session_id=native_session_id[:8],
+            error=str(exc),
+        )
+        return True
+
+    if not row:
+        logger.debug(
+            "TMUX contract session not found in DB",
+            session_id=session_id[:8],
+            native_session_id=native_session_id[:8],
+        )
+        return False
+
+    if row.closed_at:
+        logger.debug(
+            "TMUX contract session rejected: closed row",
+            session_id=session_id[:8],
+            native_session_id=native_session_id[:8],
+        )
+        return False
+
+    if row.native_session_id and row.native_session_id != native_session_id:
+        row_agent = (row.active_agent or "").strip().lower()
+        incoming_agent = (agent or "").strip().lower()
+        if row_agent and incoming_agent and row_agent == incoming_agent:
+            logger.debug(
+                "TMUX contract native id rollover accepted for same agent",
+                session_id=session_id[:8],
+                agent=incoming_agent,
+                previous_native_session_id=(row.native_session_id or "")[:8],
+                incoming_native_session_id=native_session_id[:8],
+            )
+            return True
+        logger.debug(
+            "TMUX contract session rejected: native session id mismatch",
+            session_id=session_id[:8],
+            contract_native_session_id=(row.native_session_id or "")[:8],
+            incoming_native_session_id=native_session_id[:8],
+            contract_agent=row_agent,
+            incoming_agent=incoming_agent,
+        )
+        return False
+
+    return True
+
+
 def _get_tmux_contract_session_id() -> str:
     """Resolve TeleClaude session id from TMUX contract marker file.
 
     Contract (non-headless):
     - TMUX env var is present
-    - TMPDIR is present
-    - TMPDIR/teleclaude_session_id exists and is non-empty
+    - TMPDIR/TMP/TEMP is present
+    - {temp}/teleclaude_session_id exists and is non-empty
     """
-    tmpdir = os.getenv("TMPDIR")
-    if not isinstance(tmpdir, str) or not tmpdir.strip():
-        raise ValueError("TMUX hook contract violated: TMPDIR is missing")
+    tmpdir = _get_tmux_contract_tmpdir()
 
     marker = Path(tmpdir).expanduser() / "teleclaude_session_id"
     try:
@@ -591,6 +658,7 @@ def _resolve_hook_session_id(
     event_type: str,
     native_session_id: str | None,
     headless: bool,
+    mint_events: frozenset[str] = frozenset(),
 ) -> tuple[str | None, str | None, str | None]:
     """Resolve TeleClaude session ID from the canonical native identity map path.
 
@@ -598,10 +666,35 @@ def _resolve_hook_session_id(
     - `cached_session_id` is map lookup (`agent:native_session_id -> teleclaude_session_id`)
     - `existing_session_id` is DB lookup (`sessions.native_session_id == native_session_id`)
     """
-    # Non-headless route (TMUX): contract file is authoritative.
-    # No map/DB lookup on this route.
+    # Non-headless route (TMUX): primary contract is the session marker.
     if not headless:
         resolved_session_id = _get_tmux_contract_session_id()
+        if not resolved_session_id:
+            return None, None, None
+
+        if native_session_id and not _is_tmux_contract_session_compatible(
+            resolved_session_id, native_session_id, agent=agent
+        ):
+            fallback_session_id = _find_session_id_by_native(native_session_id)
+            if fallback_session_id:
+                logger.warning(
+                    "TMUX contract session mismatch; falling back to native session lookup",
+                    marker_session_id=resolved_session_id[:8],
+                    fallback_session_id=fallback_session_id[:8],
+                    native_session_id=native_session_id[:8],
+                    agent=agent,
+                )
+                _persist_session_map(agent, native_session_id, fallback_session_id)
+                return fallback_session_id, None, resolved_session_id
+
+            logger.error(
+                "TMUX contract session mismatch and no native-session fallback",
+                marker_session_id=resolved_session_id[:8],
+                native_session_id=native_session_id[:8],
+                agent=agent,
+            )
+            return None, None, resolved_session_id
+
         if resolved_session_id and native_session_id:
             _persist_session_map(agent, native_session_id, resolved_session_id)
         return resolved_session_id, None, None
@@ -617,14 +710,7 @@ def _resolve_hook_session_id(
     if not resolved_session_id and existing_session_id:
         resolved_session_id = existing_session_id
 
-    should_mint_headless = (
-        isinstance(native_session_id, str)
-        and bool(native_session_id)
-        and (
-            event_type == AgentHookEvents.AGENT_SESSION_START
-            or (agent == AgentName.CODEX.value and event_type == AgentHookEvents.AGENT_STOP)
-        )
-    )
+    should_mint_headless = isinstance(native_session_id, str) and bool(native_session_id) and event_type in mint_events
 
     if not resolved_session_id and should_mint_headless:
         resolved_session_id = str(uuid.uuid4())
@@ -657,7 +743,10 @@ def _emit_receiver_error_best_effort(
     try:
         raw_native_session_id = None
         if raw_data is not None:
-            raw_native_session_id, _ = _extract_native_identity(agent, raw_data)
+            # Try canonical name first, then Codex raw name as fallback
+            raw_id = raw_data.get("session_id") or raw_data.get("thread-id")
+            if isinstance(raw_id, str):
+                raw_native_session_id = raw_id
         session_id = _get_cached_session_id(agent, raw_native_session_id)
         if not session_id:
             session_id = _find_session_id_by_native(raw_native_session_id)
@@ -699,59 +788,34 @@ def main() -> None:
         agent=args.agent,
     )
 
-    # Read input based on agent type
-    if args.agent == AgentName.CODEX.value:
-        # Codex notify passes JSON as command-line argument, event is always "agent_stop"
-        raw_input = args.event_type or ""
-        try:
-            parsed = json.loads(raw_input) if raw_input.strip() else {}
-        except json.JSONDecodeError:
-            _emit_receiver_error_best_effort(
-                agent=args.agent,
-                event_type="agent_stop",
-                message="Invalid hook payload JSON from codex notify argument",
-                code="HOOK_INVALID_JSON",
-                details={"raw_payload_present": bool(raw_input.strip())},
-            )
-            sys.exit(1)
-        if not isinstance(parsed, dict):
-            _emit_receiver_error_best_effort(
-                agent=args.agent,
-                event_type="agent_stop",
-                message="Codex hook payload must be a JSON object",
-                code="HOOK_PAYLOAD_NOT_OBJECT",
-            )
-            sys.exit(1)
-        raw_data = cast(dict[str, object], parsed)
-        event_type = "agent_stop"
-    else:
-        # Claude/Gemini pass event_type as arg, JSON on stdin
-        event_type = cast(str, args.event_type)
-        try:
-            raw_input, raw_data = _read_stdin()
-        except json.JSONDecodeError:
-            _emit_receiver_error_best_effort(
-                agent=args.agent,
-                event_type=event_type,
-                message="Invalid hook payload JSON from stdin",
-                code="HOOK_INVALID_JSON",
-            )
-            sys.exit(1)
-        except ValueError as exc:
-            _emit_receiver_error_best_effort(
-                agent=args.agent,
-                event_type=event_type,
-                message=str(exc),
-                code="HOOK_PAYLOAD_NOT_OBJECT",
-            )
-            sys.exit(1)
+    adapter = get_adapter(args.agent)
+
+    # Parse input via adapter (agent-specific input format)
+    try:
+        raw_input, raw_event_type, raw_data = adapter.parse_input(args)
+    except json.JSONDecodeError:
+        _emit_receiver_error_best_effort(
+            agent=args.agent,
+            event_type=getattr(args, "event_type", None),
+            message="Invalid hook payload JSON",
+            code="HOOK_INVALID_JSON",
+        )
+        sys.exit(1)
+    except ValueError as exc:
+        _emit_receiver_error_best_effort(
+            agent=args.agent,
+            event_type=getattr(args, "event_type", None),
+            message=str(exc),
+            code="HOOK_PAYLOAD_NOT_OBJECT",
+        )
+        sys.exit(1)
 
     # log_raw = os.getenv("TELECLAUDE_HOOK_LOG_RAW") == "1"
     log_raw = True
     _log_raw_input(raw_input, log_raw=log_raw)
 
     # Map agent-specific event_type to TeleClaude internal event_type
-    raw_event_type = event_type
+    event_type = raw_event_type
     agent_map = AgentHookEvents.HOOK_EVENT_MAP.get(args.agent, {})
 
     # Contract boundary: event names are trusted; only exact mapping is allowed.
@@ -771,7 +835,20 @@ def main() -> None:
 
     headless_route = _is_headless_route()
 
-    raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, raw_data)
+    # Normalize payload: maps agent-specific field names to canonical internal names.
+    # After this, all agents use: session_id, transcript_path, prompt, message.
+    data = adapter.normalize_payload(dict(raw_data))
+
+    # Extract native identity from normalized data (agent-agnostic)
+    raw_native_session_id: str | None = None
+    raw_id = data.get("session_id")
+    if isinstance(raw_id, str):
+        raw_native_session_id = raw_id
+
+    raw_native_log_file: str | None = None
+    raw_log = data.get("transcript_path")
+    if isinstance(raw_log, str):
+        raw_native_log_file = raw_log
 
     try:
         teleclaude_session_id, cached_session_id, existing_id = _resolve_hook_session_id(
@@ -779,6 +856,7 @@ def main() -> None:
             event_type=event_type,
             native_session_id=raw_native_session_id,
             headless=headless_route,
+            mint_events=adapter.mint_events,
         )
     except ValueError as exc:
         logger.error(
@@ -811,8 +889,6 @@ def main() -> None:
             existing_session_id=(existing_id or "")[:8],
         )
         sys.exit(1)
-
-    data = dict(raw_data)
 
     logger.debug(
         "Hook event received",
@@ -881,17 +957,17 @@ def main() -> None:
         if cwd:
             project_name = Path(cwd).name
             logger.debug("Injecting memory index for session_start", project=project_name)
-            _print_memory_injection(cwd, args.agent)
+            _print_memory_injection(cwd, adapter, session_id=teleclaude_session_id)
         else:
             logger.error("Skipping memory injection: no CWD provided (contract violation)")
 
-    # Hook-based invisible checkpoint for Claude/Gemini.
+    # Hook-based checkpoint: skip for agents that don't support hook blocking.
     # If checkpoint fires: print blocking JSON, exit 0, skip enqueue (agent continues).
     # If no checkpoint: fall through to enqueue (real stop enters the system).
-    if event_type == AgentHookEvents.AGENT_STOP:
-        checkpoint_json: str | None = None
+    if event_type == AgentHookEvents.AGENT_STOP and adapter.supports_hook_checkpoint:
+        checkpoint_reason: str | None = None
         try:
-            checkpoint_json = _maybe_checkpoint_output(teleclaude_session_id, args.agent, raw_data)
+            checkpoint_reason = _maybe_checkpoint_output(teleclaude_session_id, args.agent, raw_data)
         except Exception as exc:  # noqa: BLE001 - fail-open: never break hooks on checkpoint logic
             logger.warning(
                 "Checkpoint eval crashed (ignored)",
@@ -900,9 +976,11 @@ def main() -> None:
                 agent=args.agent,
                 error=str(exc),
             )
-        if checkpoint_json:
-            print(checkpoint_json)
-            sys.exit(0)
+        if checkpoint_reason:
+            checkpoint_json = adapter.format_checkpoint_response(checkpoint_reason)
+            if checkpoint_json:
+                print(checkpoint_json)
+                sys.exit(0)
 
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(timezone.utc).isoformat()

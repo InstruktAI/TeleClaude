@@ -121,3 +121,76 @@ def test_tui_origin_requires_boundary_identity(mock_load_global_config, mock_glo
     ctx = resolver.resolve("tui", {})
 
     assert ctx is None
+
+
+# =========================================================================
+# _normalize_role Tests
+# =========================================================================
+
+
+@patch("teleclaude.core.identity.Path.glob")
+@patch("teleclaude.core.identity.load_global_config")
+def test_normalize_role_preserves_customer(mock_load_global_config, mock_glob) -> None:
+    """Customer role is preserved, not collapsed to member."""
+    mock_load_global_config.return_value = _make_global_config([])
+    mock_glob.return_value = []
+
+    resolver = IdentityResolver()
+    assert resolver._normalize_role("customer") == "customer"
+
+
+@patch("teleclaude.core.identity.Path.glob")
+@patch("teleclaude.core.identity.load_global_config")
+def test_normalize_role_preserves_admin(mock_load_global_config, mock_glob) -> None:
+    """Admin role passes through."""
+    mock_load_global_config.return_value = _make_global_config([])
+    mock_glob.return_value = []
+
+    resolver = IdentityResolver()
+    assert resolver._normalize_role("admin") == "admin"
+
+
+@patch("teleclaude.core.identity.Path.glob")
+@patch("teleclaude.core.identity.load_global_config")
+def test_normalize_role_preserves_member(mock_load_global_config, mock_glob) -> None:
+    """Member role passes through."""
+    mock_load_global_config.return_value = _make_global_config([])
+    mock_glob.return_value = []
+
+    resolver = IdentityResolver()
+    assert resolver._normalize_role("member") == "member"
+
+
+@patch("teleclaude.core.identity.Path.glob")
+@patch("teleclaude.core.identity.load_global_config")
+def test_normalize_role_preserves_contributor(mock_load_global_config, mock_glob) -> None:
+    """Contributor role passes through."""
+    mock_load_global_config.return_value = _make_global_config([])
+    mock_glob.return_value = []
+
+    resolver = IdentityResolver()
+    assert resolver._normalize_role("contributor") == "contributor"
+
+
+@patch("teleclaude.core.identity.Path.glob")
+@patch("teleclaude.core.identity.load_global_config")
+def test_normalize_role_preserves_newcomer(mock_load_global_config, mock_glob) -> None:
+    """Newcomer role passes through."""
+    mock_load_global_config.return_value = _make_global_config([])
+    mock_glob.return_value = []
+
+    resolver = IdentityResolver()
+    assert resolver._normalize_role("newcomer") == "newcomer"
+
+
+@patch("teleclaude.core.identity.Path.glob")
+@patch("teleclaude.core.identity.load_global_config")
+def test_normalize_role_unknown_defaults_to_customer(mock_load_global_config, mock_glob) -> None:
+    """Unknown roles default to customer (most restrictive)."""
+    mock_load_global_config.return_value = _make_global_config([])
+    mock_glob.return_value = []
+
+    resolver = IdentityResolver()
+    assert resolver._normalize_role("boss") == "customer"
+    assert resolver._normalize_role("superadmin") == "customer"
+    assert resolver._normalize_role("") == "customer"

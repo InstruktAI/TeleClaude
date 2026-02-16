@@ -44,9 +44,9 @@ class Session(SQLModel, table=True):
     tui_capture_started: Optional[int] = 0
     last_message_sent: Optional[str] = None
     last_message_sent_at: Optional[datetime] = None
-    last_feedback_received: Optional[str] = None
-    last_feedback_received_at: Optional[datetime] = None
-    last_feedback_summary: Optional[str] = None
+    last_output_raw: Optional[str] = None
+    last_output_at: Optional[datetime] = None
+    last_output_summary: Optional[str] = None
     last_output_digest: Optional[str] = None
     last_tool_done_at: Optional[datetime] = None
     last_tool_use_at: Optional[datetime] = None
@@ -55,6 +55,13 @@ class Session(SQLModel, table=True):
     lifecycle_status: Optional[str] = "active"
     human_email: Optional[str] = None
     human_role: Optional[str] = None
+    last_memory_extraction_at: Optional[str] = None
+    help_desk_processed_at: Optional[str] = None
+    relay_status: Optional[str] = None
+    relay_discord_channel_id: Optional[str] = None
+    relay_started_at: Optional[str] = None
+    transcript_files: Optional[str] = "[]"
+    char_offset: Optional[int] = 0
 
 
 class VoiceAssignment(SQLModel, table=True):
@@ -164,6 +171,7 @@ class MemoryObservation(SQLModel, table=True):
     discovery_tokens: Optional[int] = 0
     created_at: str
     created_at_epoch: int
+    identity_key: Optional[str] = None
 
 
 class MemorySummary(SQLModel, table=True):
@@ -216,6 +224,18 @@ class WebhookOutbox(SQLModel, table=True):
     next_attempt_at: Optional[str] = None
     last_error: Optional[str] = None
     locked_at: Optional[str] = None
+
+
+class SessionListenerRow(SQLModel, table=True):
+    """session_listeners table — durable PUB-SUB for stop notifications."""
+
+    __tablename__ = "session_listeners"
+    __table_args__ = {"extend_existing": True}
+
+    target_session_id: str = Field(primary_key=True)
+    caller_session_id: str = Field(primary_key=True)
+    caller_tmux_session: str
+    registered_at: str
 
 
 class MemoryManualSession(SQLModel, table=True):

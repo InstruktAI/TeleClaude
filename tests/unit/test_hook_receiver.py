@@ -433,7 +433,7 @@ def test_checkpoint_output_stop_hook_active_blocks_once_then_allows(monkeypatch,
     monkeypatch.setattr("teleclaude.hooks.checkpoint.get_checkpoint_content", _fake_checkpoint)
 
     first = receiver._maybe_checkpoint_output("sess-recheck", "claude", {"stop_hook_active": True})
-    assert first == json.dumps({"decision": "block", "reason": "checkpoint"})
+    assert first == "checkpoint"
     assert calls["count"] == 1
 
     recheck_path = checkpoint_flag_path("sess-recheck", CHECKPOINT_RECHECK_FLAG)
@@ -811,6 +811,11 @@ def test_receiver_session_start_uses_env_session_id_over_mint(monkeypatch, tmp_p
         "_find_session_id_by_native",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("TMUX route must not use DB native lookup")),
     )
+    monkeypatch.setattr(
+        receiver,
+        "_is_tmux_contract_session_compatible",
+        lambda *_args, **_kwargs: True,
+    )
     monkeypatch.setattr(receiver.uuid, "uuid4", lambda: "minted-should-not-be-used")
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ('{"session_id": "native-5"}', {"session_id": "native-5"}))
     monkeypatch.setattr(
@@ -855,6 +860,11 @@ def test_receiver_session_start_env_overrides_stale_cached_mapping(monkeypatch, 
         "_resolve_or_refresh_session_id",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("TMUX route must not use DB refresh")),
     )
+    monkeypatch.setattr(
+        receiver,
+        "_is_tmux_contract_session_compatible",
+        lambda *_args, **_kwargs: True,
+    )
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ('{"session_id": "native-6"}', {"session_id": "native-6"}))
     monkeypatch.setattr(
         receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="session_start", cwd=None)
@@ -870,6 +880,73 @@ def test_receiver_session_start_env_overrides_stale_cached_mapping(monkeypatch, 
     assert session_id == "env-sess-2"
     assert event_type == "session_start"
     assert persisted == [("gemini", "native-6", "env-sess-2")]
+
+
+def test_receiver_session_start_tmux_marker_mismatch_falls_back_to_native_lookup(monkeypatch, tmp_path):
+    """TMUX marker mismatch should fall back to native session lookup."""
+    sent = []
+    persisted = []
+    session_tmp = tmp_path / "session-mismatch"
+    session_tmp.mkdir(parents=True, exist_ok=True)
+    (session_tmp / "teleclaude_session_id").write_text("env-gemini-session", encoding="utf-8")
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    def fake_persist(agent, native_session_id, session_id):
+        persisted.append((agent, native_session_id, session_id))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_persist_session_map", fake_persist)
+    monkeypatch.setattr(receiver, "_is_tmux_contract_session_compatible", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(receiver, "_find_session_id_by_native", lambda _native: "claude-session-123")
+    monkeypatch.setattr(
+        receiver, "_read_stdin", lambda: ('{"session_id": "native-claude"}', {"session_id": "native-claude"})
+    )
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="tool_use", cwd=None)
+    )
+    monkeypatch.setenv("TMUX", "tmux-contract")
+    monkeypatch.setenv("TMPDIR", str(session_tmp.resolve()))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path.resolve()))
+
+    receiver.main()
+
+    assert sent
+    session_id, event_type, _data = sent[0]
+    assert event_type == "tool_use"
+    assert session_id == "claude-session-123"
+    assert persisted == [("claude", "native-claude", "claude-session-123")]
+
+
+def test_receiver_session_start_tmux_marker_mismatch_without_fallback_fails_fast(monkeypatch, tmp_path):
+    """TMUX marker mismatch with no native fallback should fail fast."""
+    sent = []
+    session_tmp = tmp_path / "session-mismatch-2"
+    session_tmp.mkdir(parents=True, exist_ok=True)
+    (session_tmp / "teleclaude_session_id").write_text("env-gemini-session", encoding="utf-8")
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_is_tmux_contract_session_compatible", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(receiver, "_find_session_id_by_native", lambda _native: None)
+    monkeypatch.setattr(
+        receiver, "_read_stdin", lambda: ('{"session_id": "native-claude"}', {"session_id": "native-claude"})
+    )
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="tool_use", cwd=None)
+    )
+    monkeypatch.setenv("TMUX", "tmux-contract")
+    monkeypatch.setenv("TMPDIR", str(session_tmp.resolve()))
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path.resolve()))
+
+    with pytest.raises(SystemExit) as exc:
+        receiver.main()
+
+    assert exc.value.code == 1
+    assert sent == []
 
 
 def test_receiver_tmux_contract_missing_marker_fails_fast(monkeypatch, tmp_path):
@@ -957,3 +1034,76 @@ def test_receiver_codex_headless_agent_stop_mints_when_unmapped(monkeypatch, tmp
     assert session_id == "minted-codex-1"
     assert event_type == "agent_stop"
     assert persisted == [("codex", "native-codex-1", "minted-codex-1")]
+
+
+def test_get_tmux_contract_tmpdir_prefers_tmp_when_tmpdir_missing(monkeypatch, tmp_path):
+    """TMP/TEMP should be accepted when TMPDIR is unset for TMUX contract resolution."""
+    monkeypatch.delenv("TMPDIR", raising=False)
+    monkeypatch.setenv("TMP", str(tmp_path / "tmp-fallback"))
+    (tmp_path / "tmp-fallback").mkdir(parents=True, exist_ok=True)
+
+    assert receiver._get_tmux_contract_tmpdir() == str((tmp_path / "tmp-fallback"))
+
+
+def test_tmux_contract_compatibility_allows_native_rollover_for_same_agent(monkeypatch, tmp_path):
+    """Same-agent TMUX route should allow native session rollover without rejecting marker session."""
+    db_path = tmp_path / "teleclaude.db"
+
+    from sqlalchemy import create_engine
+    from sqlmodel import Session as SqlSession
+    from sqlmodel import SQLModel
+
+    from teleclaude.core import db_models as _models
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    SQLModel.metadata.create_all(engine)
+    with SqlSession(engine) as session:
+        session.add(
+            _models.Session(
+                session_id="sess-rollover",
+                computer_name="test",
+                active_agent="claude",
+                native_session_id="native-old",
+            )
+        )
+        session.commit()
+
+    monkeypatch.setattr(receiver, "_create_sync_engine", lambda: engine)
+
+    assert receiver._is_tmux_contract_session_compatible(
+        "sess-rollover",
+        "native-new",
+        agent="claude",
+    )
+
+
+def test_tmux_contract_compatibility_rejects_cross_agent_native_mismatch(monkeypatch, tmp_path):
+    """Cross-agent mismatch should be rejected to prevent misrouting hooks."""
+    db_path = tmp_path / "teleclaude.db"
+
+    from sqlalchemy import create_engine
+    from sqlmodel import Session as SqlSession
+    from sqlmodel import SQLModel
+
+    from teleclaude.core import db_models as _models
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    SQLModel.metadata.create_all(engine)
+    with SqlSession(engine) as session:
+        session.add(
+            _models.Session(
+                session_id="sess-cross",
+                computer_name="test",
+                active_agent="gemini",
+                native_session_id="native-gemini",
+            )
+        )
+        session.commit()
+
+    monkeypatch.setattr(receiver, "_create_sync_engine", lambda: engine)
+
+    assert not receiver._is_tmux_contract_session_compatible(
+        "sess-cross",
+        "native-claude",
+        agent="claude",
+    )

@@ -312,7 +312,7 @@ run_macos_setup_action() {
         return 0
     fi
 
-    local cmd=("$INSTALL_DIR/.venv/bin/python" "-m" "teleclaude.entrypoints.macos_setup" "--project-root" "$INSTALL_DIR")
+    local cmd=(env "PYTHONPATH=$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "-m" "teleclaude.entrypoints.macos_setup" "--project-root" "$INSTALL_DIR")
     if [ "$CI_MODE" = true ]; then
         cmd+=("--skip-build")
     fi
@@ -576,10 +576,9 @@ main() {
 
     if [ "$CI_MODE" = false ]; then
         install_macos_launchers
+        setup_config
     fi
-    
-    setup_config
-    
+
     if [ "$CI_MODE" = false ]; then
         setup_log_file
         install_service

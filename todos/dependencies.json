@@ -16,12 +16,9 @@
     "telegram-routing-contract-hardening"
   ],
   "help-desk-control-room": [
-    "help-desk-whatsapp",
     "help-desk-discord"
   ],
-  "help-desk-discord": [
-    "help-desk-research"
-  ],
+  "help-desk-discord": [],
   "help-desk-whatsapp": [
     "help-desk-research"
   ],
@@ -36,14 +33,8 @@
     "release-lane-codex",
     "release-lane-gemini"
   ],
-  "release-lane-claude": [
-    "release-workflow-foundation"
-  ],
-  "release-lane-codex": [
-    "release-workflow-foundation"
-  ],
-  "release-lane-gemini": [
-    "release-workflow-foundation"
+  "release-pipeline-simulation": [
+    "release-arbiter"
   ],
   "release-workflow-foundation": [
     "release-manifests"

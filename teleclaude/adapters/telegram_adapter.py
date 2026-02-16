@@ -403,6 +403,28 @@ class TelegramAdapter(
         logger.warning("Message from untrusted bot: %s", bot_username)
         return False
 
+    def _topic_owned_by_this_bot(self, update: Update, topic_id: int) -> bool:  # noqa: ARG002
+        """Check if a forum topic was created by this bot.
+
+        Uses the reply_to_message on the topic close event, which references
+        the original forum_topic_created message and its author.
+        """
+        message = update.message
+        if not message or not message.reply_to_message:
+            return False
+        creator = message.reply_to_message.from_user
+        if not creator:
+            return False
+        return creator.id == self.bot.id
+
+    async def _delete_orphan_topic(self, topic_id: int) -> None:
+        """Delete a forum topic that has no session in the database."""
+        try:
+            await self._delete_forum_topic_with_retry(topic_id)
+            logger.info("Deleted orphan topic %s", topic_id)
+        except Exception as e:
+            logger.warning("Failed to delete orphan topic %s: %s", topic_id, e)
+
     def format_output(self, tmux_output: str) -> str:
         """Format tmux output with Telegram MarkdownV2 escaping and line shortening."""
         from teleclaude.utils.markdown import escape_markdown_v2_preformatted

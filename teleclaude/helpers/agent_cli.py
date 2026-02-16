@@ -21,7 +21,9 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal
+
+from typing_extensions import TypedDict
 
 # Anchor imports at repo root for teleclaude constants access.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -53,19 +55,35 @@ class _OneshotSpec(TypedDict, total=False):
     exec_subcommand: str
 
 
+_AGENT_MODEL_FLAGS: dict[str, dict[str, str]] = {
+    "claude": {
+        "fast": "--model haiku",
+        "med": "--model sonnet",
+        "slow": "--model opus",
+    },
+    "gemini": {
+        "fast": "-m gemini-2.5-flash-lite",
+        "med": "-m gemini-3-flash-preview",
+        "slow": "-m gemini-3-pro-preview",
+    },
+    "codex": {
+        "fast": "-m gpt-5.3-codex-spark --config model_reasoning_effort='medium'",
+        "med": "-m gpt-5.3-codex-spark --config model_reasoning_effort='high'",
+        "slow": "-m gpt-5.3-codex-spark --config model_reasoning_effort='xhigh'",
+    },
+}
+
+
 _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
     "claude": {
         "flags": (
             "--dangerously-skip-permissions --no-session-persistence --no-chrome"
+            " --strict-mcp-config"
             ' --tools "" --disable-slash-commands --setting-sources user'
             ' --settings \'{"forceLoginMethod": "claudeai",'
             ' "enabledMcpjsonServers": [], "disableAllHooks": true}\''
         ),
-        "model_flags": {
-            "fast": "--model haiku",
-            "med": "--model sonnet",
-            "slow": "--model opus",
-        },
+        "model_flags": _AGENT_MODEL_FLAGS["claude"],
         "output_format": "--output-format json",
         "schema_arg": "--json-schema",
         "prompt_flag": True,
@@ -76,12 +94,8 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
         "tools_map": {"web_search": "web_search"},
     },
     "gemini": {
-        "flags": "--yolo --allowed-mcp-server-names=[]",
-        "model_flags": {
-            "fast": "-m gemini-2.5-flash-lite",
-            "med": "-m gemini-3-flash-preview",
-            "slow": "-m gemini-3-pro-preview",
-        },
+        "flags": "--yolo --allowed-mcp-server-names _none_",
+        "model_flags": _AGENT_MODEL_FLAGS["gemini"],
         "output_format": "-o json",
         "schema_arg": "",
         "prompt_flag": True,
@@ -93,13 +107,8 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
     },
     "codex": {
         "flags": "--dangerously-bypass-approvals-and-sandbox --search",
-        "model_flags": {
-            "fast": "-m gpt-5.3-codex --config model_reasoning_effort='low'",
-            "med": "-m gpt-5.3-codex --config model_reasoning_effort='medium'",
-            "slow": "-m gpt-5.3-codex --config model_reasoning_effort='high'",
-            "deep": "-m gpt-5.3-codex --config model_reasoning_effort='xhigh'",
-        },
-        "exec_subcommand": "exec",
+        "model_flags": _AGENT_MODEL_FLAGS["codex"],
+        "exec_subcommand": "exec --ephemeral",
         "output_format": "",
         "schema_arg": "--output-schema",
         "schema_file": "true",
@@ -148,11 +157,15 @@ def _extract_json_object(text: str) -> str:
 def _load_schema(
     schema_json: str | None, schema_file: str | None
 ) -> dict[str, object]:  # guard: loose-dict - JSON schema is an arbitrary nested structure
+    text = ""
     if schema_json:
-        return json.loads(schema_json)
-    if schema_file:
-        return json.loads(Path(schema_file).read_text(encoding="utf-8"))
-    raise SystemExit("ERROR: schema is required (--schema-json or --schema-file)")
+        text = schema_json
+    elif schema_file:
+        text = Path(schema_file).read_text(encoding="utf-8")
+    else:
+        raise ValueError("ERROR: schema is required (--schema-json or --schema-file)")
+
+    return json.loads(_extract_json_object(text))
 
 
 def _pick_agent(preferred: AgentName | None) -> AgentName:
@@ -225,6 +238,34 @@ def _parse_iso_utc(value: str) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+# CLI agents authenticate via OAuth/account allowance, not API keys.
+# Each CLI reads credentials from its own store after user login:
+#   Claude  → macOS Keychain  (service "Claude Code-credentials")
+#   Codex   → ~/.codex/auth.json  (OAuth2 JWTs from ChatGPT account)
+#   Gemini  → ~/.gemini/oauth_creds.json  (Google OAuth2, selectedType "oauth-personal")
+#
+# API keys are reserved for SDK operations (summarization, voice) that
+# need speed. Leaking them to CLI subprocesses would bypass OAuth and
+# incur direct API charges.
+_CLI_STRIP_PREFIXES = ("CLAUDE_CODE", "CLAUDECODE")
+_CLI_STRIP_EXACT = {
+    "ANTHROPIC_API_KEY",  # Claude: bypasses OAuth, uses direct API billing
+    "ANTHROPIC_AUTH_TOKEN",  # Claude: alternative auth token
+    "OPENAI_API_KEY",  # Codex: bypasses ChatGPT OAuth
+    "GEMINI_API_KEY",  # Gemini: bypasses Google OAuth
+    "GOOGLE_API_KEY",  # Gemini: bypasses Google OAuth (Vertex express)
+}
+
+
+def _cli_env() -> dict[str, str]:
+    """Build a clean environment for CLI agent subprocesses."""
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if k not in _CLI_STRIP_EXACT and not any(k.startswith(p) for p in _CLI_STRIP_PREFIXES)
+    }
+
+
 def _run_agent(
     agent: AgentName,
     thinking_mode: ThinkingMode,
@@ -233,6 +274,7 @@ def _run_agent(
     *,
     tools: str | None,
     mcp_tools: str | None,
+    input_mode: Literal["stdin", "arg"] = "stdin",
     debug_raw: bool = False,
     timeout_s: int | None = None,
 ) -> str:
@@ -252,7 +294,7 @@ def _run_agent(
 
     exec_subcommand = str(spec.get("exec_subcommand", "") or "")
     if exec_subcommand:
-        cmd_parts.append(exec_subcommand)
+        cmd_parts.extend(shlex.split(exec_subcommand))
     if model_flag:
         cmd_parts.extend(shlex.split(str(model_flag)))
 
@@ -285,21 +327,50 @@ def _run_agent(
     if mcp_tools_arg and mcp_tools is not None:
         cmd_parts.extend([mcp_tools_arg, mcp_tools])
 
-    if prompt_flag:
-        cmd_parts.extend(["-p", prompt])
-    else:
-        cmd_parts.append(prompt)
+    # Handle prompt passing based on input_mode
+    use_stdin = input_mode == "stdin"
+
+    if agent == AgentName.CLAUDE:
+        if use_stdin:
+            if prompt_flag:
+                cmd_parts.append("-p")
+        else:
+            if prompt_flag:
+                cmd_parts.extend(["-p", prompt])
+            else:
+                cmd_parts.append(prompt)
+
+    elif agent == AgentName.CODEX:
+        # Codex reads stdin if no prompt arg.
+        if not use_stdin:
+            cmd_parts.append(prompt)
+
+    elif agent == AgentName.GEMINI:
+        # Gemini reads stdin natively; -p "" makes it ignore stdin.
+        # Only pass -p when using arg mode with actual content.
+        if not use_stdin:
+            if prompt_flag:
+                cmd_parts.extend(["-p", prompt])
+            else:
+                cmd_parts.append(prompt)
+
     if debug_raw:
-        print(json.dumps({"debug_cmd": cmd_parts}))
+        print(json.dumps({"debug_cmd": cmd_parts, "prompt_len": len(prompt)}))
+
+    env = _cli_env()
+
     result = subprocess.run(
         cmd_parts,
+        input=prompt if use_stdin else None,
         capture_output=True,
         text=True,
         check=False,
         timeout=timeout_s,
+        env=env,
     )
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "Agent CLI failed")
+        detail = result.stderr.strip() or result.stdout.strip()[:200] or "Agent CLI failed"
+        raise RuntimeError(detail)
     return result.stdout
 
 
@@ -315,28 +386,15 @@ _JOB_SPEC: dict[str, dict[str, str | dict[str, str]]] = {
             " --disable-slash-commands --setting-sources user"
             ' --settings \'{"forceLoginMethod": "claudeai", "disableAllHooks": true}\''
         ),
-        "model_flags": {
-            "fast": "--model haiku",
-            "med": "--model sonnet",
-            "slow": "--model opus",
-        },
+        "model_flags": _AGENT_MODEL_FLAGS["claude"],
     },
     "gemini": {
         "flags": "--yolo",
-        "model_flags": {
-            "fast": "-m gemini-2.5-flash-lite",
-            "med": "-m gemini-3-flash-preview",
-            "slow": "-m gemini-3-pro-preview",
-        },
+        "model_flags": _AGENT_MODEL_FLAGS["gemini"],
     },
     "codex": {
         "flags": "--dangerously-bypass-approvals-and-sandbox",
-        "model_flags": {
-            "fast": "-m gpt-5.3-codex --config model_reasoning_effort='low'",
-            "med": "-m gpt-5.3-codex --config model_reasoning_effort='medium'",
-            "slow": "-m gpt-5.3-codex --config model_reasoning_effort='high'",
-            "deep": "-m gpt-5.3-codex --config model_reasoning_effort='xhigh'",
-        },
+        "model_flags": _AGENT_MODEL_FLAGS["codex"],
         "exec_subcommand": "exec",
     },
 }
@@ -374,13 +432,13 @@ def run_job(
 
     exec_subcommand = str(spec.get("exec_subcommand", "") or "")
     if exec_subcommand:
-        cmd_parts.append(exec_subcommand)
+        cmd_parts.extend(shlex.split(exec_subcommand))
     if model_flag:
         cmd_parts.extend(shlex.split(model_flag))
 
     cmd_parts.extend(["-p", prompt])
 
-    env = os.environ.copy()
+    env = _cli_env()
     env["TELECLAUDE_JOB_ROLE"] = role
 
     result = subprocess.run(
@@ -403,6 +461,7 @@ def run_once(
     schema: dict[str, object],  # guard: loose-dict - JSON schema
     tools: str | None = None,
     mcp_tools: str | None = None,
+    input_mode: Literal["stdin", "arg"] = "stdin",
     debug_raw: bool = False,
     timeout_s: int | None = None,
 ) -> dict[str, object]:  # guard: loose-dict - Agent response with embedded result
@@ -422,6 +481,7 @@ def run_once(
         schema,
         tools=tools,
         mcp_tools=mcp_tools,
+        input_mode=input_mode,
         debug_raw=debug_raw,
         timeout_s=timeout_s,
     )
@@ -492,21 +552,33 @@ def main() -> int:
         "--mcp-tools",
         help='MCP tools list. "" disables. Omit to allow all.',
     )
-    parser.add_argument("--prompt", required=True, help="User prompt")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--prompt", help="User prompt string")
+    group.add_argument("--prompt-file", help="Path to file containing user prompt")
+
     parser.add_argument("--schema-json", help="JSON schema string (required if no --schema-file)")
     parser.add_argument("--schema-file", help="Path to JSON schema file (required if no --schema-file)")
     args = parser.parse_args()
 
     try:
+        input_mode: Literal["stdin", "arg"] = "arg"
+        if args.prompt_file:
+            prompt = Path(args.prompt_file).read_text(encoding="utf-8")
+            input_mode = "stdin"
+        else:
+            prompt = args.prompt
+            input_mode = "arg"
+
         schema = _load_schema(args.schema_json, args.schema_file)
         payload = run_once(
             agent=args.agent,
             thinking_mode=args.thinking_mode,
             system=args.system,
-            prompt=args.prompt,
+            prompt=prompt,
             schema=schema,
             tools=args.tools,
             mcp_tools=args.mcp_tools,
+            input_mode=input_mode,
         )
         print(json.dumps(payload))
         return 0

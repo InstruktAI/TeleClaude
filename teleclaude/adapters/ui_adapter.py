@@ -23,8 +23,8 @@ from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents, UiCommands
-from teleclaude.core.feature_flags import is_threaded_output_enabled
-from teleclaude.core.feedback import get_last_feedback
+from teleclaude.core.feature_flags import is_threaded_output_enabled_for_session
+from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.models import (
     CleanupTrigger,
     MessageMetadata,
@@ -314,7 +314,7 @@ class UiAdapter(BaseAdapter):
         Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
         # Suppress standard poller output when threaded output experiment is enabled.
-        if is_threaded_output_enabled(session.active_agent):
+        if is_threaded_output_enabled_for_session(session):
             logger.debug(
                 "[UI_SEND_OUTPUT] Standard output suppressed for session %s (threaded output experiment active)",
                 session.session_id[:8],
@@ -388,17 +388,15 @@ class UiAdapter(BaseAdapter):
         with "..." continuity markers.
         """
         # 1. Get current offset and ID
-        telegram_meta = session.get_metadata().get_ui().get_telegram()
-
-        char_offset = telegram_meta.char_offset
+        char_offset = session.char_offset
         output_message_id = session.output_message_id
 
         # 2. Slice text to get the "active" portion
         # If text is shorter than offset (e.g. restart?), reset offset
         if len(text) < char_offset:
             char_offset = 0
-            telegram_meta.char_offset = 0
-            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+            session.char_offset = 0
+            await db.update_session(session.session_id, char_offset=0)
 
         active_text = text[char_offset:]
         if not active_text and output_message_id:
@@ -478,8 +476,8 @@ class UiAdapter(BaseAdapter):
 
             # Update state for next message
             new_offset = char_offset + split_idx
-            telegram_meta.char_offset = new_offset
-            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+            session.char_offset = new_offset
+            await db.update_session(session.session_id, char_offset=new_offset)
             # Clear output_message_id via dedicated column (not adapter_metadata blob)
             await db.set_output_message_id(session.session_id, None)
             session.output_message_id = None  # Keep in-memory session consistent
@@ -765,13 +763,13 @@ class UiAdapter(BaseAdapter):
             await self.client.update_channel_title(session, display_title)
             logger.info("Synced display title to UiAdapters for session %s: %s", session_id[:8], display_title)
 
-        # Handle feedback output updates (check both raw and summary fields).
-        # Only dispatch feedback to the adapter whose key matches last_input_origin.
-        # This prevents Telegram from receiving feedback when the user is interacting
-        # via TUI/CLI/API/MCP — each adapter instance only sends feedback for sessions
+        # Handle output summary updates (check both raw and summary fields).
+        # Only dispatch output to the adapter whose key matches last_input_origin.
+        # This prevents Telegram from receiving output when the user is interacting
+        # via TUI/CLI/API/MCP — each adapter instance only sends output for sessions
         # that originated from IT.
         feedback_updated = (
-            SessionField.LAST_FEEDBACK_RECEIVED.value in updated_fields or "last_feedback_summary" in updated_fields
+            SessionField.LAST_OUTPUT_RAW.value in updated_fields or "last_output_summary" in updated_fields
         )
         if (
             feedback_updated
@@ -779,7 +777,7 @@ class UiAdapter(BaseAdapter):
             and session.last_input_origin == self.ADAPTER_KEY
         ):
             # Use helper to get appropriate feedback based on config
-            feedback = get_last_feedback(session) or ""
+            feedback = get_last_output_summary(session) or ""
             if feedback:
                 logger.debug(
                     "Feedback emit: session=%s origin=%s adapter=%s len=%d",

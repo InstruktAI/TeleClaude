@@ -30,6 +30,7 @@ description: 'Safety rules for git operations and handling uncommitted work.'
 
 ## Enforcement
 
+- **Git wrapper** (`~/.teleclaude/bin/git`): A PATH-based binary wrapper prepended to all agent tmux sessions via `tmux_bridge.py`. Blocks `stash`, `checkout`, `restore`, `clean`, and `reset --hard/--merge/--keep` at the shell level, below AI reasoning. Agents cannot bypass this.
 - Never discard or overwrite uncommitted work unless told to.
 - Do not stop, reroute, or escalate solely because unrelated files are dirty.
 - Agent instruction artifacts must not include stash workflows.

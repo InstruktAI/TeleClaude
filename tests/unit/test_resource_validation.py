@@ -429,6 +429,14 @@ class TestValidateThirdPartyDocs:
         codes = [w["code"] for w in get_warnings()]
         assert "third_party_source_invalid" in codes
 
+    def test_markdown_link_accepted(self, tmp_path: Path) -> None:
+        tp = tmp_path / "docs" / "third-party" / "lib" / "feature.md"
+        tp.parent.mkdir(parents=True)
+        tp.write_text("# Feature\n\n## Sources\n\n- [Discord Developer Portal](https://discord.com/developers/docs)\n")
+        validate_third_party_docs(tmp_path)
+        codes = [w["code"] for w in get_warnings()]
+        assert "third_party_source_invalid" not in codes
+
 
 # ---------------------------------------------------------------------------
 # Full pipeline validation

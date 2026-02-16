@@ -111,6 +111,56 @@ def test_agent_activity_tool_done_signals_timer_reset() -> None:
     assert session_id not in state.sessions.active_tool
 
 
+def test_set_animation_mode() -> None:
+    """SET_ANIMATION_MODE intent should update animation mode if valid."""
+    state = TuiState()
+    assert state.animation_mode == "periodic"
+
+    # Valid modes
+    reduce_state(state, Intent(IntentType.SET_ANIMATION_MODE, {"mode": "party"}))
+    assert state.animation_mode == "party"
+
+    reduce_state(state, Intent(IntentType.SET_ANIMATION_MODE, {"mode": "off"}))
+    assert state.animation_mode == "off"
+
+    # Invalid mode should be ignored
+    reduce_state(state, Intent(IntentType.SET_ANIMATION_MODE, {"mode": "invalid"}))
+    assert state.animation_mode == "off"
+
+
+def test_set_config_subtab() -> None:
+    """SET_CONFIG_SUBTAB intent should update config subtab if valid."""
+    state = TuiState()
+    assert state.config.active_subtab == "adapters"
+
+    # Valid subtabs
+    reduce_state(state, Intent(IntentType.SET_CONFIG_SUBTAB, {"subtab": "people"}))
+    assert state.config.active_subtab == "people"
+
+    reduce_state(state, Intent(IntentType.SET_CONFIG_SUBTAB, {"subtab": "validate"}))
+    assert state.config.active_subtab == "validate"
+
+    # Invalid subtab should be ignored
+    reduce_state(state, Intent(IntentType.SET_CONFIG_SUBTAB, {"subtab": "invalid"}))
+    assert state.config.active_subtab == "validate"
+
+
+def test_set_config_guided_mode() -> None:
+    """SET_CONFIG_GUIDED_MODE intent should update guided mode enabled state."""
+    state = TuiState()
+    assert state.config.guided_mode is False
+
+    reduce_state(state, Intent(IntentType.SET_CONFIG_GUIDED_MODE, {"enabled": True}))
+    assert state.config.guided_mode is True
+
+    reduce_state(state, Intent(IntentType.SET_CONFIG_GUIDED_MODE, {"enabled": False}))
+    assert state.config.guided_mode is False
+
+    # Invalid type should be ignored
+    reduce_state(state, Intent(IntentType.SET_CONFIG_GUIDED_MODE, {"enabled": "yes"}))  # type: ignore
+    assert state.config.guided_mode is False
+
+
 def test_agent_activity_agent_stop_clears_temp_and_sets_output() -> None:
     """agent_stop should clear temp/input highlights and set permanent output."""
     state = TuiState()

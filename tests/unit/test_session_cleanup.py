@@ -324,6 +324,8 @@ async def test_cleanup_session_resources_uses_to_thread_for_rmtree(monkeypatch, 
 
     monkeypatch.setattr(session_cleanup.asyncio, "to_thread", fake_to_thread)
     monkeypatch.setattr(session_cleanup, "get_session_output_dir", lambda _sid: tmp_path)
+    monkeypatch.setattr("teleclaude.core.session_cleanup.pop_listeners", AsyncMock(return_value=[]))
+    monkeypatch.setattr("teleclaude.core.session_cleanup.cleanup_caller_listeners", AsyncMock(return_value=0))
     adapter_client = SimpleNamespace(delete_channel=AsyncMock())
     session = SimpleNamespace(session_id="sess-1")
 

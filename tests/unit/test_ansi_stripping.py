@@ -156,6 +156,8 @@ async def test_agent_coordinator_handle_agent_stop_strips_ansi(monkeypatch):
     from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
 
     monkeypatch.setattr(config.terminal, "strip_ansi", True)
+    monkeypatch.setattr("teleclaude.core.agent_coordinator.notify_stop", AsyncMock(return_value=0))
+    monkeypatch.setattr("teleclaude.core.agent_coordinator.notify_input_request", AsyncMock(return_value=0))
 
     client = MagicMock()
     tts = MagicMock()
@@ -181,13 +183,13 @@ async def test_agent_coordinator_handle_agent_stop_strips_ansi(monkeypatch):
 
         await coordinator.handle_agent_stop(context)
 
-        # Verify stored value is clean (check first call which contains last_feedback_received)
+        # Verify stored value is clean (check first call which contains last_output_raw)
         calls = mock_db.update_session.call_args_list
-        # Find the call that has last_feedback_received
-        feedback_call = next((c for c in calls if "last_feedback_received" in c.kwargs), None)
-        assert feedback_call is not None, "Expected update_session call with last_feedback_received"
-        assert feedback_call.kwargs["last_feedback_received"] == "Success!"
-        assert "\x1b[" not in feedback_call.kwargs["last_feedback_received"]
+        # Find the call that has last_output_raw
+        feedback_call = next((c for c in calls if "last_output_raw" in c.kwargs), None)
+        assert feedback_call is not None, "Expected update_session call with last_output_raw"
+        assert feedback_call.kwargs["last_output_raw"] == "Success!"
+        assert "\x1b[" not in feedback_call.kwargs["last_output_raw"]
 
 
 @pytest.mark.asyncio

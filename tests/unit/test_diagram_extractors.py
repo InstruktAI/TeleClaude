@@ -42,7 +42,10 @@ def test_extract_runtime_matrix_regression() -> None:
     )
 
     assert "claude --> feat_hook_normalization" in mermaid
-    assert "codex --> feat_transcript_path" in mermaid
+    assert "codex --> feat_hook_normalization" in mermaid
+    assert "codex --> feat_session_tracking" in mermaid
+    assert "codex --> feat_prompt_capture" in mermaid
+    assert "codex --> feat_notification_capture" in mermaid
     assert "codex --> feat_transcript_discovery" not in mermaid
     assert "claude --> feat_hook_stop_blocking" in mermaid
     assert "codex --> feat_hook_stop_blocking" not in mermaid

@@ -16,9 +16,9 @@ import json
 import os
 import urllib.parse
 import urllib.request
-from typing import TypedDict
 
 from instrukt_ai_logging import configure_logging, get_logger
+from typing_extensions import TypedDict
 
 from teleclaude.constants import MAIN_MODULE
 

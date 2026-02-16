@@ -4,11 +4,12 @@ This module defines which tools are available to different agent roles.
 Filtering only applies when a role marker is present and role == worker.
 """
 
-from typing import TypedDict
+from typing_extensions import TypedDict
 
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
     HUMAN_ROLE_CONTRIBUTOR,
+    HUMAN_ROLE_CUSTOMER,
     HUMAN_ROLE_MEMBER,
     HUMAN_ROLE_NEWCOMER,
     ROLE_WORKER,
@@ -22,6 +23,7 @@ WORKER_EXCLUDED_TOOLS = {
     "teleclaude__start_session",
     "teleclaude__send_message",
     "teleclaude__run_agent_command",
+    "teleclaude__escalate",
 }
 
 # Member tool access policy.
@@ -29,6 +31,7 @@ MEMBER_EXCLUDED_TOOLS = {
     "teleclaude__deploy",
     "teleclaude__end_session",
     "teleclaude__mark_agent_status",
+    "teleclaude__escalate",
 }
 
 # Unauthorized tool access policy (read-only).
@@ -47,7 +50,18 @@ UNAUTHORIZED_EXCLUDED_TOOLS = {
     "teleclaude__set_dependencies",
     "teleclaude__mark_agent_status",
     "teleclaude__mark_agent_unavailable",
+    "teleclaude__escalate",
 }
+
+CUSTOMER_EXCLUDED_TOOLS: set[str] = (
+    UNAUTHORIZED_EXCLUDED_TOOLS
+    | {
+        "teleclaude__list_sessions",
+        "teleclaude__list_todos",
+        "teleclaude__publish",
+        "teleclaude__channels_list",
+    }
+) - {"teleclaude__escalate"}
 
 
 class ToolSpec(TypedDict, total=False):
@@ -62,7 +76,10 @@ def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[s
     if role == ROLE_WORKER:
         excluded.update(WORKER_EXCLUDED_TOOLS)
 
-    if human_role in {HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER}:
+    if human_role == HUMAN_ROLE_CUSTOMER:
+        excluded.update(CUSTOMER_EXCLUDED_TOOLS)
+        return excluded
+    elif human_role in {HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER}:
         excluded.update(MEMBER_EXCLUDED_TOOLS)
     elif human_role is None:
         excluded.update(UNAUTHORIZED_EXCLUDED_TOOLS)

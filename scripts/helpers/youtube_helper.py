@@ -25,12 +25,13 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Coroutine, Mapping, TypedDict, cast
+from typing import Any, Coroutine, Mapping, cast
 
 import dateparser  # pylint: disable=import-error
 from aiohttp import ClientSession
 from munch import munchify  # pylint: disable=import-error
 from pydantic import BaseModel
+from typing_extensions import TypedDict
 from youtube_transcript_api import YouTubeTranscriptApi  # pylint: disable=import-error
 
 # Inline type aliases (originally from teleclaude.core.models)

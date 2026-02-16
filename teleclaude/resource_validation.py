@@ -18,10 +18,11 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Mapping, TypedDict
+from typing import Mapping
 
 import frontmatter
 import yaml
+from typing_extensions import TypedDict
 
 from teleclaude.types.todos import TodoState
 
@@ -29,7 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from teleclaude.constants import TAXONOMY_TYPES, TYPE_SUFFIX  # noqa: E402
+from teleclaude.constants import AUDIENCE_VALUES, TAXONOMY_TYPES, TYPE_SUFFIX  # noqa: E402
 from teleclaude.snippet_validation import (  # noqa: E402
     expected_snippet_id_for_path,
     load_domains,
@@ -345,6 +346,12 @@ def validate_snippet(path: Path, content: str, project_root: Path, *, domains: s
             snippet_id=parsed_id.value(),
         )
 
+    raw_audience = meta.get("audience")
+    if isinstance(raw_audience, list):
+        for val in raw_audience:
+            if not isinstance(val, str) or val not in AUDIENCE_VALUES:
+                _warn("snippet_invalid_audience_value", path=str(path), value=str(val))
+
     _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
     _validate_snippet_sections(path, lines, meta, domains=domains)
@@ -549,6 +556,17 @@ def _validate_snippet_sections(
             if not isinstance(meta.get(field), str) or not meta.get(field):
                 _warn("snippet_missing_frontmatter_field", path=str(path), field=field)
 
+    audience_val = meta.get("audience")
+    if audience_val is not None:
+        from teleclaude.constants import AUDIENCE_VALUES
+
+        if isinstance(audience_val, list):
+            for av in audience_val:
+                if av not in AUDIENCE_VALUES:
+                    _warn("snippet_invalid_audience_value", path=str(path), value=str(av))
+        else:
+            _warn("snippet_invalid_audience_type", path=str(path))
+
     snippet_type = meta.get("type") if isinstance(meta.get("type"), str) else None
     if not snippet_type:
         snippet_type = _infer_type_from_path(path)
@@ -596,6 +614,15 @@ def _is_web_url(value: str) -> bool:
     return value.startswith("http://") or value.startswith("https://")
 
 
+_MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\((https?://[^)]+)\)$")
+
+
+def _extract_markdown_link_url(value: str) -> str | None:
+    """Extract URL from a markdown link like [text](https://...)."""
+    m = _MARKDOWN_LINK_RE.match(value)
+    return m.group(2) if m else None
+
+
 def _check_url_alive(url: str, *, timeout: int = 8) -> bool:
     headers = {"User-Agent": "TeleClaude/1.0"}
     try:
@@ -636,9 +663,13 @@ def validate_third_party_docs(project_root: Path) -> None:
         for source in sources:
             if _is_context7_id(source):
                 continue
-            if _is_web_url(source):
-                if not _check_url_alive(source):
-                    _warn("third_party_source_unreachable", path=str(path), source=source)
+            url = source
+            md_url = _extract_markdown_link_url(source)
+            if md_url:
+                url = md_url
+            if _is_web_url(url):
+                if not _check_url_alive(url):
+                    _warn("third_party_source_unreachable", path=str(path), source=url)
                 continue
             _warn("third_party_source_invalid", path=str(path), source=source)
 

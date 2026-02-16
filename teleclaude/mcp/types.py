@@ -1,7 +1,8 @@
 """TypedDict definitions and exceptions for MCP tools."""
 
 from datetime import datetime
-from typing import NotRequired, TypedDict
+
+from typing_extensions import NotRequired, TypedDict
 
 from teleclaude.types import SystemStats
 

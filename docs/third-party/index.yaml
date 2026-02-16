@@ -1,5 +1,37 @@
 snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/third-party
 snippets:
+- id: third-party/a2a-protocol/agent-card
+  description: A2A Agent Card
+  scope: project
+  path: a2a-protocol/agent-card.md
+- id: third-party/a2a-protocol/api-methods
+  description: A2A API Methods
+  scope: project
+  path: a2a-protocol/api-methods.md
+- id: third-party/a2a-protocol/mcp-integration
+  description: A2A and MCP Integration
+  scope: project
+  path: a2a-protocol/mcp-integration.md
+- id: third-party/a2a-protocol/overview
+  description: A2A Protocol Overview
+  scope: project
+  path: a2a-protocol/overview.md
+- id: third-party/a2a-protocol/python-sdk
+  description: A2A Python SDK
+  scope: project
+  path: a2a-protocol/python-sdk.md
+- id: third-party/a2a-protocol/task-lifecycle
+  description: A2A Task Lifecycle
+  scope: project
+  path: a2a-protocol/task-lifecycle.md
+- id: third-party/a2ui/overview
+  description: A2UI Protocol Overview
+  scope: project
+  path: a2ui/overview.md
+- id: third-party/ag-ui/overview
+  description: AG-UI Protocol Overview
+  scope: project
+  path: ag-ui/overview.md
 - id: third-party/claude-code/commands
   description: Claude Code Commands
   scope: project

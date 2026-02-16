@@ -210,9 +210,10 @@ STEP 2 - START BACKGROUND TIMER:
 Bash(command="sleep 300", run_in_background=true)
 Save the returned task_id.
 
-STEP 3 - STOP:
+STEP 3 - WAIT:
 Tell the user: "Dispatched session <session_id>. Waiting for completion."
-STOP responding. Do NOT call any more tools.
+Do NOT call any more tools UNTIL one of the events below fires.
+When an event fires, you MUST immediately act on it — do NOT wait for user input.
 
 WHAT HAPPENS NEXT (one of these will occur):
 
@@ -221,9 +222,12 @@ A) NOTIFICATION ARRIVES (worker completed):
    - Follow WHEN WORKER COMPLETES below
 
 B) TIMER COMPLETES (no notification after 5 minutes):
-   - Use TaskOutput(task_id=<task_id>) to confirm timer finished
+   THIS IS YOUR ACTIVATION TRIGGER. You MUST act immediately:
    - Check on the session: teleclaude__get_session_data(computer="local", session_id="<session_id>", tail_chars=2000)
-   - Based on session status, decide next action
+   - If still running: reset timer (sleep 300, run_in_background=true) and WAIT again
+   - If completed/idle: follow WHEN WORKER COMPLETES below
+   - If stuck/errored: intervene or escalate to user
+   Do NOT stop after checking — either reset the timer or execute completion steps.
 
 C) YOU SEND ANOTHER MESSAGE TO THE AGENT BECAUSE IT NEEDS FEEDBACK OR HELP:
    - Cancel the old timer: KillShell(shell_id=<task_id>)
@@ -417,6 +421,11 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateV
     Returns:
         Updated state dict
     """
+    if status in (PhaseStatus.COMPLETE.value, PhaseStatus.APPROVED.value):
+        is_complete, error = is_clerical_complete(cwd, slug, phase)
+        if not is_complete:
+            raise RuntimeError(f"Clerical check failed: {error}")
+
     state = read_phase_state(cwd, slug)
     state[phase] = status
     if phase == PhaseName.REVIEW.value:
@@ -837,17 +846,7 @@ def detect_circular_dependency(deps: dict[str, list[str]], slug: str, new_deps: 
 
 
 def parse_impl_plan_done(cwd: str, slug: str) -> bool:
-    """Check if implementation plan tasks are all done.
-
-    Reads todos/{slug}/implementation-plan.md and checks for unchecked items.
-
-    Supports two formats:
-    1. Group-based: `## Group N` headers - only checks Groups 1-4
-    2. Any other format - checks for ANY unchecked `- [ ]` items
-
-    Returns:
-        True if NO unchecked items found, False otherwise.
-    """
+    """Check if implementation plan tasks are all done."""
     impl_plan_path = Path(cwd) / "todos" / slug / "implementation-plan.md"
     if not impl_plan_path.exists():
         return False
@@ -875,6 +874,42 @@ def parse_impl_plan_done(cwd: str, slug: str) -> bool:
             return False
 
     return True
+
+
+def is_clerical_complete(cwd: str, slug: str, phase: str) -> tuple[bool, str]:
+    """Verify if the human-readable evidence matches the requested phase transition.
+
+    Args:
+        cwd: Project root or worktree root
+        slug: Work item slug
+        phase: Target phase (build, review)
+
+    Returns:
+        Tuple of (is_complete, error_message)
+    """
+    todo_dir = Path(cwd) / "todos" / slug
+    if phase == PhaseName.BUILD.value:
+        if not parse_impl_plan_done(cwd, slug):
+            return False, f"Implementation plan for '{slug}' has unchecked tasks."
+        checklist_path = todo_dir / "quality-checklist.md"
+        if checklist_path.exists():
+            content = read_text_sync(checklist_path)
+            build_section = re.search(r"## Build Gates \(Builder\)(.*?)##", content, re.DOTALL)
+            if build_section and UNCHECKED_TASK_MARKER in build_section.group(1):
+                return False, f"Build gates in quality-checklist.md for '{slug}' are not fully checked."
+
+    if phase == PhaseName.REVIEW.value:
+        review_path = todo_dir / "review-findings.md"
+        if not review_path.exists():
+            return False, f"Review findings for '{slug}' are missing (review-findings.md not found)."
+        checklist_path = todo_dir / "quality-checklist.md"
+        if checklist_path.exists():
+            content = read_text_sync(checklist_path)
+            review_section = re.search(r"## Review Gates \(Reviewer\)(.*?)##", content, re.DOTALL)
+            if review_section and UNCHECKED_TASK_MARKER in review_section.group(1):
+                return False, f"Review gates in quality-checklist.md for '{slug}' are not fully checked."
+
+    return True, ""
 
 
 def check_review_status(cwd: str, slug: str) -> str:
@@ -1165,6 +1200,106 @@ def get_stash_entries(cwd: str) -> list[str]:
 def has_git_stash_entries(cwd: str) -> bool:
     """Return True when repository stash contains one or more entries."""
     return bool(get_stash_entries(cwd))
+
+
+# ---------------------------------------------------------------------------
+# Finalize lock — serializes merges to main across parallel orchestrators
+# ---------------------------------------------------------------------------
+
+_FINALIZE_LOCK_NAME = ".finalize-lock"
+_FINALIZE_LOCK_STALE_MINUTES = 30
+
+
+def _finalize_lock_path(cwd: str) -> Path:
+    return Path(cwd) / "todos" / _FINALIZE_LOCK_NAME
+
+
+def acquire_finalize_lock(cwd: str, slug: str, session_id: str) -> str | None:
+    """Acquire the finalize lock. Returns None on success, error message on failure."""
+    lock_path = _finalize_lock_path(cwd)
+    if lock_path.exists():
+        try:
+            lock_data = json.loads(lock_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            # Corrupt lock — treat as stale
+            lock_path.unlink(missing_ok=True)
+        else:
+            from datetime import datetime, timezone
+
+            acquired_at = lock_data.get("acquired_at", "")
+            holding_session = lock_data.get("session_id", "unknown")
+            holding_slug = lock_data.get("slug", "unknown")
+
+            # Check staleness by timestamp
+            try:
+                lock_time = datetime.fromisoformat(acquired_at)
+                age_minutes = (datetime.now(timezone.utc) - lock_time).total_seconds() / 60
+                if age_minutes > _FINALIZE_LOCK_STALE_MINUTES:
+                    logger.warning(
+                        "Breaking stale finalize lock (age=%.0fm, slug=%s, session=%s)",
+                        age_minutes,
+                        holding_slug,
+                        holding_session[:8],
+                    )
+                    lock_path.unlink(missing_ok=True)
+                else:
+                    return (
+                        f"FINALIZE_LOCKED\n"
+                        f"Another finalize is in progress: slug={holding_slug}, "
+                        f"session={holding_session[:8]}, age={age_minutes:.0f}m.\n"
+                        f"Wait for it to complete or check if the session is still alive."
+                    )
+            except (ValueError, TypeError):
+                # Unparseable timestamp — stale
+                lock_path.unlink(missing_ok=True)
+
+    # Acquire
+    from datetime import datetime, timezone
+
+    lock_data = {
+        "slug": slug,
+        "session_id": session_id,
+        "acquired_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(json.dumps(lock_data, indent=2), encoding="utf-8")
+        logger.info("Finalize lock acquired: slug=%s, session=%s", slug, session_id[:8])
+        return None
+    except OSError as exc:
+        return f"FINALIZE_LOCK_ERROR\nFailed to acquire finalize lock: {exc}"
+
+
+def release_finalize_lock(cwd: str, session_id: str | None = None) -> bool:
+    """Release the finalize lock. If session_id is given, only release if it matches."""
+    lock_path = _finalize_lock_path(cwd)
+    if not lock_path.exists():
+        return True
+    if session_id:
+        try:
+            lock_data = json.loads(lock_path.read_text(encoding="utf-8"))
+            if lock_data.get("session_id") != session_id:
+                logger.debug(
+                    "Finalize lock held by different session (%s), not releasing",
+                    lock_data.get("session_id", "unknown")[:8],
+                )
+                return False
+        except (json.JSONDecodeError, OSError):
+            pass
+    lock_path.unlink(missing_ok=True)
+    logger.info("Finalize lock released (session=%s)", (session_id or "any")[:8])
+    return True
+
+
+def get_finalize_lock_holder(cwd: str) -> dict[str, str] | None:
+    """Return lock holder info or None if unlocked."""
+    lock_path = _finalize_lock_path(cwd)
+    if not lock_path.exists():
+        return None
+    try:
+        return json.loads(lock_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def ensure_worktree(cwd: str, slug: str) -> bool:
@@ -1535,7 +1670,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
         raise
 
 
-async def next_work(db: Db, slug: str | None, cwd: str) -> str:
+async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str | None = None) -> str:
     """Phase B state machine for deterministic builder work.
 
     Executes the build/review/fix/finalize cycle on prepared work items.
@@ -1545,11 +1680,25 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         db: Database instance
         slug: Optional explicit slug (resolved from roadmap if not provided)
         cwd: Current working directory (project root)
+        caller_session_id: Session ID of the calling orchestrator (for finalize lock)
 
     Returns:
         Plain text instructions for the orchestrator to execute
     """
     retry_call = f'teleclaude__next_work(slug="{slug}")' if slug else "teleclaude__next_work()"
+
+    # Release finalize lock ONLY if the locked item's finalize is confirmed complete.
+    # Finalize removes the slug from roadmap, so "not in roadmap" is the completion signal.
+    if caller_session_id:
+        lock_holder = get_finalize_lock_holder(cwd)
+        if lock_holder and lock_holder.get("session_id") == caller_session_id:
+            locked_slug = lock_holder.get("slug", "")
+            if locked_slug:
+                finalize_done = get_item_phase(cwd, locked_slug) == ItemPhase.DONE.value or not slug_in_roadmap(
+                    cwd, locked_slug
+                )
+                if finalize_done:
+                    release_finalize_lock(cwd, caller_session_id)
 
     async def _pick_agent(task_type: str) -> tuple[str, str] | str:
         try:
@@ -1748,11 +1897,16 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
         )
 
-    # 9. Review approved - dispatch finalize
+    # 9. Review approved - dispatch finalize (serialized via finalize lock)
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)
+    session_id = caller_session_id or "unknown"
+    lock_error = acquire_finalize_lock(cwd, resolved_slug, session_id)
+    if lock_error:
+        return lock_error
     selection = await _pick_agent("finalize")
     if isinstance(selection, str):
+        release_finalize_lock(cwd, session_id)
         return selection
     agent, mode = selection
     return format_tool_call(

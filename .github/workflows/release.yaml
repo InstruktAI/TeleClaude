@@ -9,54 +9,57 @@ on:
 
 jobs:
   release-analysis:
-    name: AI Release Analysis (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: AI Release Analysis
+    runs-on: [self-hosted, macOS, ARM64]
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
+      - name: Verify CLI credentials
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y tmux jq
+          errors=0
 
-      - name: Install system dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install tmux jq
+          # Claude: macOS Keychain
+          if ! security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1; then
+            echo "::error::Claude CLI credentials not found in Keychain. Run: claude login"
+            errors=$((errors + 1))
+          fi
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+          # Codex: ~/.codex/auth.json
+          if [ ! -f "$HOME/.codex/auth.json" ]; then
+            echo "::error::Codex credentials not found at ~/.codex/auth.json. Run: codex auth login"
+            errors=$((errors + 1))
+          fi
+
+          # Gemini: ~/.gemini/oauth_creds.json
+          if [ ! -f "$HOME/.gemini/oauth_creds.json" ]; then
+            echo "::error::Gemini credentials not found at ~/.gemini/oauth_creds.json. Run: gemini auth login"
+            errors=$((errors + 1))
+          fi
+
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::$errors CLI credential(s) missing — cannot run release analysis without OAuth"
+            exit 1
+          fi
+          echo "All CLI credentials verified"
 
       - name: Full TeleClaude Bootstrap
         run: make bootstrap-ci
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
-          TELEGRAM_SUPERGROUP_ID: ${{ secrets.TELEGRAM_SUPERGROUP_ID }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+
+      - name: Verify Agent Invocation Matrix
+        run: |
+          ./.venv/bin/python -m pytest tests/integration/test_agent_invocation_matrix.py \
+            -v --timeout=120
 
       - name: Prepare Analysis Context
         run: |
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           echo "LAST_TAG=$LAST_TAG" >> $GITHUB_ENV
           if [ -n "$LAST_TAG" ]; then
-            git diff $LAST_TAG..HEAD > release-diff.txt
+            git diff "$LAST_TAG"..HEAD > release-diff.txt
           else
             git ls-files > release-diff.txt
           fi
@@ -66,7 +69,7 @@ jobs:
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent claude --thinking-mode slow \
             --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
-          
+
           MANIFESTS:
           CLI: $(cat docs/project/spec/telec-cli-surface.md)
           MCP: $(cat docs/project/spec/mcp-tool-surface.md)
@@ -75,16 +78,14 @@ jobs:
 
           DIFF:
           $(cat release-diff.txt)" \
-            --schema-file docs/project/spec/release-report-schema.md > claude-report-${{ matrix.os }}.json
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+            --schema-file docs/project/spec/release-report-schema.md > claude-report.json
 
       - name: Codex Release Lane
         run: |
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent codex --thinking-mode slow \
             --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
-          
+
           MANIFESTS:
           CLI: $(cat docs/project/spec/telec-cli-surface.md)
           MCP: $(cat docs/project/spec/mcp-tool-surface.md)
@@ -93,16 +94,14 @@ jobs:
 
           DIFF:
           $(cat release-diff.txt)" \
-            --schema-file docs/project/spec/release-report-schema.md > codex-report-${{ matrix.os }}.json
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+            --schema-file docs/project/spec/release-report-schema.md > codex-report.json
 
       - name: Gemini Release Lane
         run: |
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent gemini --thinking-mode slow \
             --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
-          
+
           MANIFESTS:
           CLI: $(cat docs/project/spec/telec-cli-surface.md)
           MCP: $(cat docs/project/spec/mcp-tool-surface.md)
@@ -111,29 +110,100 @@ jobs:
 
           DIFF:
           $(cat release-diff.txt)" \
-            --schema-file docs/project/spec/release-report-schema.md > gemini-report-${{ matrix.os }}.json
-        env:
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+            --schema-file docs/project/spec/release-report-schema.md > gemini-report.json
 
       - name: Upload Reports
         uses: actions/upload-artifact@v4
         with:
-          name: ai-release-reports-${{ matrix.os }}
+          name: ai-release-reports
           path: |
-            claude-report-${{ matrix.os }}.json
-            codex-report-${{ matrix.os }}.json
-            gemini-report-${{ matrix.os }}.json
+            claude-report.json
+            codex-report.json
+            gemini-report.json
 
   release-arbitration:
     name: Consensus Arbiter
-    needs: release-analysis
-    runs-on: ubuntu-latest
+    needs: [release-analysis]
+    runs-on: [self-hosted, macOS, ARM64]
+    outputs:
+      release_authorized: ${{ steps.arbiter.outputs.release_authorized }}
+      target_version: ${{ steps.arbiter.outputs.target_version }}
     steps:
       - uses: actions/checkout@v4
-      - name: Download all reports
+        with:
+          fetch-depth: 0
+      - name: Download Reports
         uses: actions/download-artifact@v4
         with:
-          pattern: ai-release-reports-*
-          merge-multiple: true
-      - name: Arbiter pass
-        run: echo "Arbiter will consolidate reports from both OS matrix runs here."
+          name: ai-release-reports
+      - name: Run Consensus Arbiter
+        id: arbiter
+        run: |
+          echo "Reports collected for arbitration:"
+          ls -la *.json
+          echo "---"
+          set +e
+          ./.venv/bin/python scripts/release_consolidator.py \
+            --claude-report claude-report.json \
+            --codex-report codex-report.json \
+            --gemini-report gemini-report.json \
+            -o arbiter-decision.json
+          EXIT_CODE=$?
+          set -e
+          if [ "$EXIT_CODE" -eq 1 ]; then
+            echo "ERROR: Arbiter fatal error"
+            exit 1
+          fi
+          echo "release_authorized=$(jq -r '.release_authorized' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
+          echo "target_version=$(jq -r '.target_version' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
+      - name: Upload Decision
+        uses: actions/upload-artifact@v4
+        with:
+          name: arbiter-decision
+          path: arbiter-decision.json
+
+  authorized-tag:
+    name: Create Release Tag
+    needs: [release-arbitration]
+    runs-on: [self-hosted, macOS, ARM64]
+    if: ${{ needs.release-arbitration.outputs.release_authorized == 'true' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download Arbiter Decision
+        uses: actions/download-artifact@v4
+        with:
+          name: arbiter-decision
+      - name: Compute Next Version
+        id: version
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
+          CLEAN_VER="${LAST_TAG#v}"
+          CLEAN_VER="${CLEAN_VER%%-*}"
+          IFS='.' read -r major minor patch <<< "$CLEAN_VER"
+          BUMP="${{ needs.release-arbitration.outputs.target_version }}"
+          if [ "$BUMP" = "minor" ]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+          NEXT_TAG="v${major}.${minor}.${patch}"
+          echo "next_tag=$NEXT_TAG" >> "$GITHUB_OUTPUT"
+          echo "Computed next version: $NEXT_TAG (bump=$BUMP from $LAST_TAG)"
+      - name: Create Tag and Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEXT_TAG="${{ steps.version.outputs.next_tag }}"
+          CLASSIFICATION="${{ needs.release-arbitration.outputs.target_version }}"
+          jq -r --arg ver "$NEXT_TAG" --arg cls "$CLASSIFICATION" \
+            '"## AI Consensus Release\n\n**Version:** " + $ver + "\n**Classification:** " + $cls + "\n**Rationale:** " + .authoritative_rationale + "\n\n### Lane Summary\n" + (.lane_summary | to_entries | map("\(.key): \(.value)") | join(", ")) + "\n\n---\n*Release authorized by AI consensus arbiter.*"' \
+            arbiter-decision.json > release-notes.md
+          git tag "$NEXT_TAG"
+          git push origin "$NEXT_TAG"
+          gh release create "$NEXT_TAG" --title "$NEXT_TAG" --notes-file release-notes.md

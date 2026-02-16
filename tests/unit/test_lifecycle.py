@@ -43,8 +43,8 @@ async def test_warm_local_sessions_cache_seeds_cache(monkeypatch: pytest.MonkeyP
     mock_session.last_activity = None
     mock_session.last_message_sent = None
     mock_session.last_message_sent_at = None
-    mock_session.last_feedback_received = None
-    mock_session.last_feedback_received_at = None
+    mock_session.last_output_raw = None
+    mock_session.last_output_at = None
     mock_session.tmux_session_name = None
     mock_session.initiator_session_id = None
 

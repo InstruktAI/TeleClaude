@@ -44,7 +44,7 @@ stateDiagram-v2
 - `todos/roadmap.md` - Work item registry with priorities
 - `todos/{slug}/requirements.md` - Feature requirements
 - `todos/{slug}/implementation-plan.md` - Technical design
-- `todos/{slug}/state.json` - Phase tracking (build, review, docstrings, snippets)
+- `todos/{slug}/state.json` - Phase tracking (build, review)
 - `todos/{slug}/deferrals.md` - Identified technical debt
 
 **Outputs:**
@@ -61,6 +61,7 @@ stateDiagram-v2
 - **Dependency Blocking**: Cannot claim item until all dependencies complete.
 - **Phase Ordering**: Phases progress sequentially; no phase skipping.
 - **Git Requirement**: All work items must be in git for worktree accessibility.
+- **Finalize Serialization**: Only one finalize may run at a time across all orchestrators, enforced by a session-bound file lock (`todos/.finalize-lock`).
 
 ## Primary flows
 
@@ -86,21 +87,38 @@ flowchart TD
 ```mermaid
 flowchart TD
     Start[next_work called]
+    ReleaseLock{Caller holds<br/>finalize lock<br/>for done item?}
     CheckState{Read state.json}
     Build{Build<br/>complete?}
     Review{Review<br/>status?}
     Fix{Fix<br/>needed?}
-    Finalize[Finalize]
+    AcquireLock{Acquire<br/>finalize lock}
+    Finalize[Dispatch Finalize]
 
-    Start --> CheckState
+    Start --> ReleaseLock
+    ReleaseLock -->|Yes| Release[Release lock]
+    ReleaseLock -->|No| CheckState
+    Release --> CheckState
     CheckState --> Build
     Build -->|No| DispatchBuilder[Dispatch builder AI]
     Build -->|Yes| Review
     Review -->|Pending| DispatchReviewer[Dispatch reviewer AI]
     Review -->|Changes| Fix
-    Review -->|Approved| Finalize
+    Review -->|Approved| AcquireLock
+    AcquireLock -->|Acquired| Finalize
+    AcquireLock -->|Held| LOCKED[Return FINALIZE_LOCKED]
     Fix --> DispatchFixer[Dispatch fixer AI]
 ```
+
+### Finalize Lock
+
+Multiple orchestrators may reach the finalize step concurrently for different slugs. A session-bound file lock (`todos/.finalize-lock`) serializes merges to main:
+
+- **Acquire**: `next_work()` step 9 acquires the lock with the orchestrator's `caller_session_id` before dispatching a finalize worker.
+- **Release (completion)**: On re-entry, `next_work()` checks if the locked slug is done (phase=DONE or removed from roadmap) and releases only then.
+- **Release (session death)**: `cleanup_session_resources()` releases the lock if the dying session holds it.
+- **Release (stale)**: If the lock is older than 30 minutes, `acquire_finalize_lock()` breaks it as a safety valve.
+- **Concurrency safety**: The lock file contains `session_id`; only the holding session can release it.
 
 ### 3. Dependency Resolution
 
@@ -140,3 +158,5 @@ sequenceDiagram
 - **Stale Artifacts**: Requirements updated but plan not regenerated. Reviewer catches mismatch; fix manually.
 - **Worker Crash**: Dispatched AI never completes. Orchestrator must timeout and retry or escalate.
 - **Phase Mark Failure**: mark_phase tool fails due to uncommitted changes. Worker must commit before marking.
+- **Finalize Lock Contention**: Another orchestrator holds the finalize lock. Returns `FINALIZE_LOCKED` with holder info. Orchestrator waits and retries.
+- **Stale Finalize Lock**: Holding session died without cleanup. Lock broken after 30 minutes by the next acquire attempt.

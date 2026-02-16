@@ -148,13 +148,6 @@ snippets:
   scope: project
   path: docs/general/procedure/maintenance/log-bug-hunter.md
   source_project: TeleClaude
-- id: general/procedure/maintenance/merge-runner
-  description: Serialized merge procedure that promotes approved worktree branches
-    into main through an isolated merge workspace.
-  type: procedure
-  scope: project
-  path: docs/general/procedure/maintenance/merge-runner.md
-  source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare
   description: Orchestration procedure for next-prepare. Routes work to draft or gate
     procedures with strict phase separation.
@@ -445,8 +438,7 @@ snippets:
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle-overview
   description: Deterministic software development lifecycle with prepare, build, review,
-    fix, documentation, finalize, and maintenance phases. Serial workflow managed
-    by Orchestrator.
+    fix, finalize, and maintenance phases. Serial workflow managed by Orchestrator.
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle-overview.md
@@ -463,12 +455,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/deferrals.md
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/documentation/overview
-  description: Documentation phase ensuring inline docstrings and docs match the code.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/documentation/overview.md
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/documentation/sync-docs
   description: Sync docs and indexes after documentation changes.

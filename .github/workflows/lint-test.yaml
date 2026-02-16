@@ -5,52 +5,28 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   lint-test:
-    name: Lint and Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    
+    name: Lint and Test
+    runs-on: [self-hosted, macOS, ARM64]
+    env:
+      TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
+      TELECLAUDE_ENV_PATH: tests/integration/.env
+      INSTRUKT_AI_LOG_ROOT: /tmp/teleclaude-logs
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y tmux jq socat ffmpeg
-
-      - name: Install system dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install tmux jq socat ffmpeg
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
       - name: Full TeleClaude Bootstrap
         run: make bootstrap-ci
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
-          TELEGRAM_SUPERGROUP_ID: ${{ secrets.TELEGRAM_SUPERGROUP_ID }}
+        timeout-minutes: 5
 
       - name: Run lint
         run: ./tools/lint.sh
+        timeout-minutes: 5
 
       - name: Run tests
         run: ./tools/test.sh
-        env:
-          TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
-          TELECLAUDE_ENV_PATH: tests/integration/.env
+        timeout-minutes: 10

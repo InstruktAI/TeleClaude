@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import gc
+import os
 import sys
-import types
+from pathlib import Path
 
-from teleclaude.entrypoints import mcp_wrapper as _impl
+# Bootstrap: re-exec under the project venv when system Python is resolved.
+_VENV_PYTHON = Path(__file__).resolve().parents[1] / ".venv" / "bin" / "python3"
+if _VENV_PYTHON.is_file() and Path(sys.executable).resolve() != _VENV_PYTHON.resolve():
+    os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
+
+import gc  # noqa: E402
+import types  # noqa: E402
+
+from teleclaude.entrypoints import mcp_wrapper as _impl  # noqa: E402
 
 main = _impl.main
 

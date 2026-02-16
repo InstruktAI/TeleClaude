@@ -25,6 +25,7 @@ from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.next_machine.core import release_finalize_lock
 from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_listeners
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 
@@ -61,8 +62,13 @@ async def cleanup_session_resources(
     """
     session_id = session.session_id
 
+    # Release any finalize lock held by this session (prevents stale locks on session death).
+    project_path = getattr(session, "project_path", None)
+    if project_path:
+        release_finalize_lock(project_path, session_id)
+
     # Remove listeners waiting on this session (target listeners)
-    target_listeners = pop_listeners(session_id)
+    target_listeners = await pop_listeners(session_id)
     if target_listeners:
         logger.debug(
             "Cleaned up %d listener(s) for terminated target session %s",
@@ -71,7 +77,7 @@ async def cleanup_session_resources(
         )
 
     # Clean up any listeners this session registered (as a caller waiting for other sessions)
-    cleanup_caller_listeners(session_id)
+    await cleanup_caller_listeners(session_id)
 
     if delete_channel:
         # Delete channel/topic in all adapters (broadcasts to observers)

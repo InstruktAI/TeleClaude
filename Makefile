@@ -80,8 +80,13 @@ test-unit:
 
 test-e2e:
 	@echo "Running integration/e2e tests..."
-	@. .venv/bin/activate && pytest tests/integration/ -v --timeout=5
+	@. .venv/bin/activate && pytest tests/integration/ -v --timeout=5 -m "not expensive"
 	@echo "✓ Integration tests passed"
+
+test-agents:
+	@echo "Running agent invocation matrix (real LLM calls)..."
+	@. .venv/bin/activate && pytest tests/integration/test_agent_invocation_matrix.py -v -m expensive -o "addopts="
+	@echo "✓ Agent matrix tests passed"
 
 test-all:
 	@echo "Running all tests..."
@@ -158,7 +163,6 @@ bootstrap:
 
 bootstrap-ci:
 	@./bin/install.sh --ci
-	@$(MAKE) build-artifacts
 
 onboard:
 	@telec onboard

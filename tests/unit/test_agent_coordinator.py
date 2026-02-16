@@ -15,6 +15,19 @@ from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStop
 from teleclaude.core.models import Session
 
 
+@pytest.fixture(autouse=True)
+def _mock_session_listeners(monkeypatch):
+    """Mock session_listeners functions that now require DB."""
+    monkeypatch.setattr(
+        "teleclaude.core.agent_coordinator.notify_stop",
+        AsyncMock(return_value=0),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.agent_coordinator.notify_input_request",
+        AsyncMock(return_value=0),
+    )
+
+
 @pytest.fixture
 def mock_client():
     client = MagicMock()
@@ -443,7 +456,7 @@ async def test_handle_agent_stop_codex_skips_backfill_when_submit_already_record
         native_log_file="/tmp/transcript.jsonl",
         last_message_sent="test, say hi",
         last_message_sent_at=now,
-        last_feedback_received_at=now - timedelta(seconds=2),
+        last_output_at=now - timedelta(seconds=2),
     )
 
     with (
@@ -505,7 +518,7 @@ async def test_handle_agent_stop_skips_whitespace_only_agent_output(coordinator)
         coordinator.tts_manager.speak.assert_not_awaited()
 
         # Verify update_session was called but without feedback fields (whitespace-only output)
-        assert not any("last_feedback_received" in c.kwargs for c in mock_db.update_session.await_args_list)
+        assert not any("last_output_raw" in c.kwargs for c in mock_db.update_session.await_args_list)
 
 
 @pytest.mark.asyncio

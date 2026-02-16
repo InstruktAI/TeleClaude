@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, cast
 
 from teleclaude.constants import FIELD_ADAPTER_METADATA, FIELD_COMMAND, FIELD_COMPUTER
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
-from teleclaude.core.feedback import get_last_feedback
+from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
@@ -136,6 +136,7 @@ class TelegramAdapterMetadata:
     output_suppressed: bool = False
     parse_mode: Optional[str] = None
     char_offset: int = 0
+    user_id: Optional[int] = None
 
 
 @dataclass
@@ -273,6 +274,12 @@ class SessionAdapterMetadata:
                 output_suppressed = bool(tg_raw.get("output_suppressed", False))
                 parse_mode = str(tg_raw.get("parse_mode")) if tg_raw.get("parse_mode") else None
                 char_offset = int(tg_raw.get("char_offset", 0))
+                tg_user_id_val: object = tg_raw.get("user_id")
+                tg_user_id: int | None = None
+                if isinstance(tg_user_id_val, int):
+                    tg_user_id = tg_user_id_val
+                elif isinstance(tg_user_id_val, str) and tg_user_id_val.isdigit():
+                    tg_user_id = int(tg_user_id_val)
                 telegram_metadata = TelegramAdapterMetadata(
                     topic_id=topic_id,
                     output_message_id=output_message_id,
@@ -280,6 +287,7 @@ class SessionAdapterMetadata:
                     output_suppressed=output_suppressed,
                     parse_mode=parse_mode,
                     char_offset=char_offset,
+                    user_id=tg_user_id,
                 )
 
             discord_raw = data_obj.get("discord")
@@ -419,8 +427,8 @@ class SessionField(Enum):
     SUBDIR = "subdir"
     LAST_MESSAGE_SENT = "last_message_sent"
     LAST_MESSAGE_SENT_AT = "last_message_sent_at"
-    LAST_FEEDBACK_RECEIVED = "last_feedback_received"
-    LAST_FEEDBACK_RECEIVED_AT = "last_feedback_received_at"
+    LAST_OUTPUT_RAW = "last_output_raw"
+    LAST_OUTPUT_AT = "last_output_at"
     LAST_TOOL_DONE_AT = "last_tool_done_at"
     LAST_TOOL_USE_AT = "last_tool_use_at"
     LAST_CHECKPOINT_AT = "last_checkpoint_at"
@@ -461,9 +469,9 @@ class Session:  # pylint: disable=too-many-instance-attributes
     tui_capture_started: bool = False
     last_message_sent: Optional[str] = None
     last_message_sent_at: Optional[datetime] = None
-    last_feedback_received: Optional[str] = None
-    last_feedback_received_at: Optional[datetime] = None
-    last_feedback_summary: Optional[str] = None
+    last_output_raw: Optional[str] = None
+    last_output_at: Optional[datetime] = None
+    last_output_summary: Optional[str] = None
     last_output_digest: Optional[str] = None
     last_tool_done_at: Optional[datetime] = None
     last_tool_use_at: Optional[datetime] = None
@@ -472,6 +480,13 @@ class Session:  # pylint: disable=too-many-instance-attributes
     human_email: Optional[str] = None
     human_role: Optional[str] = None
     lifecycle_status: str = "active"
+    last_memory_extraction_at: Optional[datetime] = None
+    help_desk_processed_at: Optional[datetime] = None
+    relay_status: Optional[str] = None
+    relay_discord_channel_id: Optional[str] = None
+    relay_started_at: Optional[datetime] = None
+    transcript_files: str = "[]"
+    char_offset: int = 0
 
     def get_metadata(self) -> SessionAdapterMetadata:
         """Get session adapter metadata."""
@@ -486,8 +501,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
             data["last_activity"] = self.last_activity.isoformat()
         if self.last_message_sent_at:
             data["last_message_sent_at"] = self.last_message_sent_at.isoformat()
-        if self.last_feedback_received_at:
-            data["last_feedback_received_at"] = self.last_feedback_received_at.isoformat()
+        if self.last_output_at:
+            data["last_output_at"] = self.last_output_at.isoformat()
         if self.last_tool_done_at:
             data["last_tool_done_at"] = self.last_tool_done_at.isoformat()
         if self.last_tool_use_at:
@@ -496,6 +511,12 @@ class Session:  # pylint: disable=too-many-instance-attributes
             data["last_checkpoint_at"] = self.last_checkpoint_at.isoformat()
         if self.closed_at:
             data["closed_at"] = self.closed_at.isoformat()
+        if self.last_memory_extraction_at:
+            data["last_memory_extraction_at"] = self.last_memory_extraction_at.isoformat()
+        if self.help_desk_processed_at:
+            data["help_desk_processed_at"] = self.help_desk_processed_at.isoformat()
+        if self.relay_started_at:
+            data["relay_started_at"] = self.relay_started_at.isoformat()
         data["lifecycle_status"] = self.lifecycle_status
         adapter_meta = self.adapter_metadata
         if isinstance(adapter_meta, dict):
@@ -526,11 +547,9 @@ class Session:  # pylint: disable=too-many-instance-attributes
             else last_message_sent_at_raw
         )
 
-        last_feedback_received_at_raw = data.get("last_feedback_received_at")
-        last_feedback_received_at = (
-            parse_iso_datetime(last_feedback_received_at_raw)
-            if isinstance(last_feedback_received_at_raw, str)
-            else last_feedback_received_at_raw
+        last_output_at_raw = data.get("last_output_at")
+        last_output_at = (
+            parse_iso_datetime(last_output_at_raw) if isinstance(last_output_at_raw, str) else last_output_at_raw
         )
         last_tool_done_at_raw = data.get("last_tool_done_at")
         last_tool_done_at = (
@@ -595,19 +614,28 @@ class Session:  # pylint: disable=too-many-instance-attributes
             last_message_sent_at=ensure_utc(last_message_sent_at)
             if isinstance(last_message_sent_at, datetime)
             else None,
-            last_feedback_received=_get_optional_str("last_feedback_received"),
-            last_feedback_received_at=ensure_utc(last_feedback_received_at)
-            if isinstance(last_feedback_received_at, datetime)
-            else None,
+            last_output_raw=_get_optional_str("last_output_raw"),
+            last_output_at=ensure_utc(last_output_at) if isinstance(last_output_at, datetime) else None,
             last_tool_done_at=ensure_utc(last_tool_done_at) if isinstance(last_tool_done_at, datetime) else None,
             last_tool_use_at=ensure_utc(last_tool_use_at) if isinstance(last_tool_use_at, datetime) else None,
             last_checkpoint_at=ensure_utc(last_checkpoint_at) if isinstance(last_checkpoint_at, datetime) else None,
-            last_feedback_summary=_get_optional_str("last_feedback_summary"),
+            last_output_summary=_get_optional_str("last_output_summary"),
             last_output_digest=_get_optional_str("last_output_digest"),
             working_slug=_get_optional_str("working_slug"),
             human_email=_get_optional_str("human_email"),
             human_role=_get_optional_str("human_role"),
             lifecycle_status=str(data.get("lifecycle_status") or "active"),
+            last_memory_extraction_at=parse_iso_datetime(data.get("last_memory_extraction_at"))
+            if isinstance(data.get("last_memory_extraction_at"), str)
+            else None,
+            help_desk_processed_at=parse_iso_datetime(data.get("help_desk_processed_at"))
+            if isinstance(data.get("help_desk_processed_at"), str)
+            else None,
+            relay_status=_get_optional_str("relay_status"),
+            relay_discord_channel_id=_get_optional_str("relay_discord_channel_id"),
+            relay_started_at=parse_iso_datetime(data.get("relay_started_at"))
+            if isinstance(data.get("relay_started_at"), str)
+            else None,
         )
 
 
@@ -834,10 +862,8 @@ class SessionSummary:
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
             last_input=session.last_message_sent,
             last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
-            last_output_summary=get_last_feedback(session),
-            last_output_summary_at=(
-                session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None
-            ),
+            last_output_summary=get_last_output_summary(session),
+            last_output_summary_at=(session.last_output_at.isoformat() if session.last_output_at else None),
             last_output_digest=session.last_output_digest,
             native_session_id=session.native_session_id,
             tmux_session_name=session.tmux_session_name,

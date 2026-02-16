@@ -12,7 +12,9 @@ import subprocess
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Mapping, Optional, TypedDict
+from typing import Mapping, Optional
+
+from typing_extensions import TypedDict
 
 from teleclaude.constants import (
     CHECKPOINT_BLAST_RADIUS_THRESHOLD,
@@ -1049,12 +1051,11 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         for obs in result.observations:
             lines.append(f"- {obs}")
 
-    lines.append("")
-    lines.append("Docs check: If relevant, update existing docs or add a new doc.")
-
     # Capture reminder
     lines.append("")
-    lines.append('Finish the steps above. Then capture "aha moment" memories if needed.')
+    lines.append("Docs check: If relevant, update existing docs or add a new doc.")
+    lines.append("")
+    lines.append("Finish the steps above.")
     lines.append("")
     lines.append(response_policy)
     lines.append("")

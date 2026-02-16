@@ -86,6 +86,13 @@ snippets:
   scope: project
   path: docs/project/design/architecture/feature-flags.md
   source_project: TeleClaude
+- id: project/design/architecture/help-desk-platform
+  description: Help desk platform with identity-scoped memory, admin relay channels,
+    escalation, internal channels, and operator workspace.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/help-desk-platform.md
+  source_project: TeleClaude
 - id: project/design/architecture/jobs-runner
   description: 'Scheduled job runner: architecture, job contract, and configuration
     surface.'
@@ -352,6 +359,12 @@ snippets:
   scope: project
   path: docs/project/procedure/deploy.md
   source_project: TeleClaude
+- id: project/procedure/host-health-checks
+  description: Diagnostic checks for macOS host health on TeleClaude computers.
+  type: procedure
+  scope: project
+  path: docs/project/procedure/host-health-checks.md
+  source_project: TeleClaude
 - id: project/procedure/multi-computer-setup
   description: Guide for setting up a distributed TeleClaude network.
   type: procedure
@@ -376,6 +389,12 @@ snippets:
   scope: project
   path: docs/project/procedure/rsync-development.md
   source_project: TeleClaude
+- id: project/procedure/runner-operations
+  description: Self-hosted GitHub Actions runner lifecycle, diagnostics, and recovery.
+  type: procedure
+  scope: project
+  path: docs/project/procedure/runner-operations.md
+  source_project: TeleClaude
 - id: project/procedure/service-management
   description: Standard commands for managing the TeleClaude daemon service.
   type: procedure
@@ -395,7 +414,7 @@ snippets:
   path: docs/project/procedure/ssh-agent-keychain.md
   source_project: TeleClaude
 - id: project/procedure/troubleshooting
-  description: Operational runbooks for diagnosing and recovering TeleClaude incidents.
+  description: Operational runbooks for TeleClaude incidents and infrastructure failures.
   type: procedure
   scope: project
   path: docs/project/procedure/troubleshooting.md

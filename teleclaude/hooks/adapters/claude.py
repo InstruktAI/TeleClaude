@@ -1,18 +1,41 @@
-"""Claude hook adapter - normalizes Claude Code payloads to internal schema."""
+"""Claude hook adapter."""
 
 from __future__ import annotations
 
-from teleclaude.hooks.adapters.models import NormalizedHookPayload
-from teleclaude.hooks.utils.parse_helpers import get_str
+import argparse
+import json
+
+from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 
 
-# guard: loose-dict-func - External hook payload is dynamic JSON from agent CLI.
-def normalize_payload(event_type: str, data: dict[str, object]) -> NormalizedHookPayload:
-    """Map Claude external fields to internal schema."""
-    _ = event_type
-    return NormalizedHookPayload(
-        session_id=get_str(data, "session_id"),
-        transcript_path=get_str(data, "transcript_path"),
-        prompt=get_str(data, "prompt"),
-        message=get_str(data, "message"),
-    )
+class ClaudeAdapter:
+    """Hook adapter for Claude Code CLI."""
+
+    agent_name: str = "claude"
+    mint_events: frozenset[AgentHookEventType] = frozenset({AgentHookEvents.AGENT_SESSION_START})
+    supports_hook_checkpoint: bool = True
+
+    def parse_input(self, args: argparse.Namespace) -> tuple[str, str, dict[str, object]]:  # guard: loose-dict
+        """Read JSON from stdin, event_type from args."""
+        from teleclaude.hooks import receiver
+
+        event_type: str = args.event_type
+        raw_input, raw_data = receiver._read_stdin()
+        return raw_input, event_type, raw_data
+
+    def normalize_payload(self, data: dict[str, object]) -> dict[str, object]:  # guard: loose-dict
+        """Identity: Claude already uses canonical field names."""
+        return data
+
+    def format_checkpoint_response(self, reason: str) -> str | None:
+        return json.dumps({"decision": "block", "reason": reason})
+
+    def format_memory_injection(self, context: str) -> str:
+        return json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": context,
+                }
+            }
+        )

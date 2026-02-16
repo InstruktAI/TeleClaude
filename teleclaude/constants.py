@@ -43,7 +43,10 @@ HUMAN_ROLE_ADMIN = "admin"
 HUMAN_ROLE_MEMBER = "member"
 HUMAN_ROLE_CONTRIBUTOR = "contributor"
 HUMAN_ROLE_NEWCOMER = "newcomer"
-HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER)
+HUMAN_ROLE_CUSTOMER = "customer"
+HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER)
+
+AUDIENCE_VALUES = ("admin", "member", "help-desk", "public")
 
 
 class ResultStatus(str, Enum):
@@ -345,10 +348,9 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "restricted": "--full-auto --search",
         },
         "model_flags": {
-            "fast": "-m gpt-5.3-codex --config model_reasoning_effort='low'",
-            "med": "-m gpt-5.3-codex --config model_reasoning_effort='medium'",
-            "slow": "-m gpt-5.3-codex --config model_reasoning_effort='high'",
-            "deep": "-m gpt-5.3-codex --config model_reasoning_effort='xhigh'",
+            "fast": "-m gpt-5.3-codex-spark --config model_reasoning_effort='medium'",
+            "med": "-m gpt-5.3-codex-spark --config model_reasoning_effort='high'",
+            "slow": "-m gpt-5.3-codex-spark --config model_reasoning_effort='xhigh'",
         },
         "exec_subcommand": "exec",
         "interactive_flag": "",

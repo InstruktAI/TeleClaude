@@ -38,11 +38,11 @@ async def up(db: aiosqlite.Connection) -> None:
                 tui_capture_started INTEGER DEFAULT 0,
                 last_message_sent TEXT,
                 last_message_sent_at TEXT,
-                last_feedback_received TEXT,
-                last_feedback_received_at TEXT,
+                last_output_raw TEXT,
+                last_output_at TEXT,
                 working_slug TEXT,
                 lifecycle_status TEXT DEFAULT 'active',
-                last_feedback_summary TEXT
+                last_output_summary TEXT
             )
             """
         )
@@ -74,11 +74,11 @@ async def up(db: aiosqlite.Connection) -> None:
                 tui_capture_started,
                 last_message_sent,
                 last_message_sent_at,
-                last_feedback_received,
-                last_feedback_received_at,
+                last_output_raw,
+                last_output_at,
                 working_slug,
                 lifecycle_status,
-                last_feedback_summary
+                last_output_summary
             )
             SELECT
                 session_id,
@@ -106,11 +106,11 @@ async def up(db: aiosqlite.Connection) -> None:
                 tui_capture_started,
                 last_message_sent,
                 last_message_sent_at,
-                last_feedback_received,
-                last_feedback_received_at,
+                last_output_raw,
+                last_output_at,
                 working_slug,
                 lifecycle_status,
-                last_feedback_summary
+                last_output_summary
             FROM sessions
             """
         )

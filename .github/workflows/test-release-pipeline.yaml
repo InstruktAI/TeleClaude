@@ -1,0 +1,123 @@
+name: Test Release Pipeline
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release.yaml'
+      - '.github/workflows/test-release-pipeline.yaml'
+      - 'scripts/release_consolidator.py'
+      - 'tests/fixtures/release-simulation/**'
+
+jobs:
+  simulate:
+    name: Scenario — ${{ matrix.scenario }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [unanimous, split, override]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Stage Fixtures
+        run: |
+          cp tests/fixtures/release-simulation/scenarios/${{ matrix.scenario }}/claude.json claude-report.json
+          cp tests/fixtures/release-simulation/scenarios/${{ matrix.scenario }}/codex.json codex-report.json
+          cp tests/fixtures/release-simulation/scenarios/${{ matrix.scenario }}/gemini.json gemini-report.json
+
+      - name: Run Arbiter
+        run: |
+          python scripts/release_consolidator.py \
+            --claude-report claude-report.json \
+            --codex-report codex-report.json \
+            --gemini-report gemini-report.json \
+            -o arbiter-decision.json
+
+      - name: Assert Decision
+        run: |
+          EXPECTED_AUTH=$(jq -r '."${{ matrix.scenario }}".release_authorized' tests/fixtures/release-simulation/expected.json)
+          EXPECTED_VER=$(jq -r '."${{ matrix.scenario }}".target_version' tests/fixtures/release-simulation/expected.json)
+          EXPECTED_RATIONALE=$(jq -r '."${{ matrix.scenario }}".rationale_contains' tests/fixtures/release-simulation/expected.json)
+
+          ACTUAL_AUTH=$(jq -r '.release_authorized' arbiter-decision.json)
+          ACTUAL_VER=$(jq -r '.target_version' arbiter-decision.json)
+          ACTUAL_RATIONALE=$(jq -r '.authoritative_rationale' arbiter-decision.json)
+
+          echo "Expected: authorized=$EXPECTED_AUTH version=$EXPECTED_VER rationale contains '$EXPECTED_RATIONALE'"
+          echo "Actual:   authorized=$ACTUAL_AUTH version=$ACTUAL_VER rationale='$ACTUAL_RATIONALE'"
+
+          FAILED=0
+
+          if [ "$ACTUAL_AUTH" != "$EXPECTED_AUTH" ]; then
+            echo "FAIL: release_authorized mismatch: expected=$EXPECTED_AUTH actual=$ACTUAL_AUTH"
+            FAILED=1
+          fi
+
+          if [ "$ACTUAL_VER" != "$EXPECTED_VER" ]; then
+            echo "FAIL: target_version mismatch: expected=$EXPECTED_VER actual=$ACTUAL_VER"
+            FAILED=1
+          fi
+
+          if ! echo "$ACTUAL_RATIONALE" | grep -qi "$EXPECTED_RATIONALE"; then
+            echo "FAIL: rationale does not contain '$EXPECTED_RATIONALE'"
+            FAILED=1
+          fi
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo "::error::Scenario ${{ matrix.scenario }} assertions failed"
+            exit 1
+          fi
+
+          echo "PASS: Scenario ${{ matrix.scenario }}"
+
+      - name: Generate Release Notes (Unanimous only)
+        if: matrix.scenario == 'unanimous'
+        run: |
+          NEXT_TAG="v0.1.6"
+          CLASSIFICATION=$(jq -r '.target_version' arbiter-decision.json)
+
+          jq -r --arg ver "$NEXT_TAG" --arg cls "$CLASSIFICATION" \
+            '"## AI Consensus Release\n\n**Version:** " + $ver + "\n**Classification:** " + $cls + "\n**Rationale:** " + .authoritative_rationale + "\n\n### Lane Summary\n" + (.lane_summary | to_entries | map("\(.key): \(.value)") | join(", ")) + "\n\n---\n*Release authorized by AI consensus arbiter.*"' \
+            arbiter-decision.json > release-notes.md
+
+          echo "--- Generated release-notes.md ---"
+          cat release-notes.md
+
+          # Assert content
+          grep -q "Rationale:" release-notes.md || { echo "FAIL: missing Rationale"; exit 1; }
+          grep -q "Lane Summary" release-notes.md || { echo "FAIL: missing Lane Summary"; exit 1; }
+          grep -q "claude: patch" release-notes.md || { echo "FAIL: missing claude lane"; exit 1; }
+          echo "PASS: Release notes contain expected content"
+
+      - name: Version Bump Dry-Run (Unanimous only)
+        if: matrix.scenario == 'unanimous'
+        run: |
+          # Simulate version bump logic from release.yaml
+          LAST_TAG="v0.1.5"
+          CLEAN_VER="${LAST_TAG#v}"
+          CLEAN_VER="${CLEAN_VER%%-*}"
+          IFS='.' read -r major minor patch <<< "$CLEAN_VER"
+
+          BUMP=$(jq -r '.target_version' arbiter-decision.json)
+          if [ "$BUMP" = "minor" ]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+          NEXT_TAG="v${major}.${minor}.${patch}"
+
+          echo "Version bump: $LAST_TAG -> $NEXT_TAG (bump=$BUMP)"
+
+          if [ "$NEXT_TAG" != "v0.1.6" ]; then
+            echo "FAIL: Expected v0.1.6, got $NEXT_TAG"
+            exit 1
+          fi
+
+          echo "PASS: Version bump correct"

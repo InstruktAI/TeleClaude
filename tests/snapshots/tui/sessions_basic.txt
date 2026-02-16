@@ -2,5 +2,5 @@
 📁 ~/TeleClaude (1)
 [1] ▼ claude/slow  "Bootstrap"
     [] sess-1 / -
-    [] in: ls
+    []  in: ls
     [] out: ok

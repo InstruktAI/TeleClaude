@@ -82,15 +82,15 @@ def detect_adapter_features(agent_names: list[str]) -> dict[str, list[str]]:
 
         if "def normalize_payload" in content:
             detected.add("hook_normalization")
-        if "session_id=" in content:
+        if "session_id=" in content or '"session_id"' in content:
             detected.add("session_tracking")
-        if "transcript_path=" in content:
+        if "transcript_path=" in content or '"transcript_path"' in content:
             detected.add("transcript_path")
         if "_discover_transcript_path" in content:
             detected.add("transcript_discovery")
-        if "prompt=" in content:
+        if "prompt=" in content or '"prompt"' in content:
             detected.add("prompt_capture")
-        if "message=" in content:
+        if "message=" in content or '"message"' in content:
             detected.add("notification_capture")
 
         features[agent] = sorted(detected)
@@ -150,16 +150,16 @@ def parse_agent_protocol_features(tree: ast.Module) -> dict[str, list[str]]:
 
 
 def detect_checkpoint_blocking_features(agent_names: list[str]) -> dict[str, bool]:
-    """Detect whether runtime can block hook stop events in receiver checkpoint path."""
+    """Detect whether runtime can block hook stop events via adapter checkpoint support."""
     blocking: dict[str, bool] = {agent: True for agent in agent_names}
-    if not HOOK_RECEIVER_PATH.exists():
-        return blocking
 
-    content = HOOK_RECEIVER_PATH.read_text(encoding="utf-8")
-
-    # Concrete path in _maybe_checkpoint_output: codex exits early and cannot block via hook JSON.
-    if "if agent == AgentName.CODEX.value:" in content and "Codex does not support hook blocking" in content:
-        blocking["codex"] = False
+    for agent in agent_names:
+        adapter_path = HOOK_ADAPTERS_DIR / f"{agent}.py"
+        if not adapter_path.exists():
+            continue
+        content = adapter_path.read_text(encoding="utf-8")
+        if "supports_hook_checkpoint: bool = False" in content:
+            blocking[agent] = False
 
     return blocking
 

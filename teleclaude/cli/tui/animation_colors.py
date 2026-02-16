@@ -46,10 +46,27 @@ class AgentPalette(ColorPalette):
         super().__init__(f"agent_{agent_name}")
         agent_cfg = AGENT_COLORS.get(agent_name, AGENT_COLORS["claude"])
         self.color_pairs = [
+            agent_cfg["subtle"],
             agent_cfg["muted"],
             agent_cfg["normal"],
             agent_cfg["highlight"],
         ]
+
+    def get(self, index: int) -> int:
+        return self.color_pairs[index % len(self.color_pairs)]
+
+    def __len__(self) -> int:
+        return len(self.color_pairs)
+
+
+class SectionPalette(ColorPalette):
+    """Section-specific palette using spectrum color pairs."""
+
+    def __init__(self, section_name: str, color_indices: list[int]):
+        super().__init__(section_name)
+        # Map 0-6 indices to spectrum pairs 30-36
+        # Red=0(30), Yellow=1(31), Green=2(32), Cyan=3(33), Blue=4(34), Magenta=5(35), White=6(36)
+        self.color_pairs = [30 + i for i in color_indices]
 
     def get(self, index: int) -> int:
         return self.color_pairs[index % len(self.color_pairs)]
@@ -104,3 +121,14 @@ palette_registry.register(SpectrumPalette())
 palette_registry.register(AgentPalette("claude"))
 palette_registry.register(AgentPalette("gemini"))
 palette_registry.register(AgentPalette("codex"))
+
+# Section Palettes
+# Indices: Red=0, Yellow=1, Green=2, Cyan=3, Blue=4, Magenta=5, White=6
+palette_registry.register(SectionPalette("telegram", [4, 6]))  # Blue, White
+palette_registry.register(SectionPalette("whatsapp", [2, 6]))  # Green, White (I6)
+palette_registry.register(SectionPalette("discord", [4, 5, 6]))  # Blue, Magenta, White
+palette_registry.register(SectionPalette("ai_keys", [2, 1]))  # Green, Yellow
+palette_registry.register(SectionPalette("people", [6]))  # White
+palette_registry.register(SectionPalette("notifications", [1, 6]))  # Yellow, White
+palette_registry.register(SectionPalette("environment", [2, 3]))  # Green, Cyan
+palette_registry.register(SectionPalette("validate", [2, 0]))  # Green, Red

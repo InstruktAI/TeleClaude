@@ -40,6 +40,8 @@ discord:
   guild_id: ${DISCORD_GUILD_ID}
   # Forum channel ID (Discord channel type 15). Each session gets one thread.
   help_desk_channel_id: ${DISCORD_HELP_DESK_CHANNEL_ID}
+  # Forum channel ID for escalation threads (admin relay).
+  escalation_channel_id: ${DISCORD_ESCALATION_CHANNEL_ID}
 
 # Agent binaries are resolved internally by platform policy:
 # macOS: ~/Applications/{Claude,Gemini,Codex}Launcher.app/...
@@ -56,6 +58,15 @@ ui:
   animations_enabled: true # Enable banner/logo animations
   animations_periodic_interval: 60 # Seconds between periodic animations
   animations_subset: [] # Empty list = all animations. Specify names to filter (e.g., ["FullSpectrumCycle", "LetterWave"])
+  # Preview/pane theming modes:
+  #   - full: vivid terminal palette with explicit contrast fg and pane tinting (legacy alias for agent_plus)
+  #   - semi: agent-aware tinted highlights while preserving native terminal foreground (legacy alias for agent)
+  #   - highlight: highlight-only preview treatment; native terminal foreground
+  #   - highlight2: two-cell highlight-only treatment
+  #   - agent: theme agent colors for pane foregrounds
+  #   - agent_plus: agent colors + stronger accent treatment
+  #   - off: pure native terminal rendering with muted/normal bg only
+  pane_theming_mode: full
 
 # Speech-to-Text Configuration
 stt:

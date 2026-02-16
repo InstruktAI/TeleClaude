@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TypedDict
 
 import pytest
 import yaml
+from typing_extensions import TypedDict
 
 from teleclaude import context_selector
 

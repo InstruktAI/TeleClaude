@@ -23,12 +23,13 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Literal, NotRequired, TypedDict, cast
+from typing import Callable, Literal, cast
 
 import frontmatter
 import yaml
 from frontmatter import Post
 from frontmatter.default_handlers import YAMLHandler
+from typing_extensions import NotRequired, TypedDict
 
 # Allow running from any working directory by anchoring imports at repo root.
 _REPO_ROOT = Path(__file__).resolve().parents[1]

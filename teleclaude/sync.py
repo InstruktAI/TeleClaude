@@ -33,7 +33,8 @@ def sync(
 
     Returns True if successful, False if validation errors occurred.
     """
-    _repair_broken_docs_links(project_root)
+    if not validate_only:
+        _repair_broken_docs_links(project_root)
     clear_warnings()
     errors: list[str] = []
 

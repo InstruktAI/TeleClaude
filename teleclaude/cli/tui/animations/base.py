@@ -18,18 +18,21 @@ class Animation(ABC):
         is_big: bool,
         duration_seconds: float,
         speed_ms: int = 100,
+        target: str | None = None,
     ):
         """
         Args:
             palette: Color palette to use
-            is_big: True for big banner, False for small logo
+            is_big: True for big banner, False for small logo (deprecated, use target)
             duration_seconds: Total duration of the animation
             speed_ms: Milliseconds per frame (defaults to 100ms)
+            target: Target render area name (e.g., "banner", "logo", "config_banner")
         """
         self.palette = palette
         self.is_big = is_big
         self.duration_frames = int(duration_seconds * 1000 / speed_ms)
         self.speed_ms = speed_ms
+        self.target = target or ("banner" if is_big else "logo")
 
     @abstractmethod
     def update(self, frame: int) -> Dict[Tuple[int, int], int]:

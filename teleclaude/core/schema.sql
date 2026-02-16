@@ -27,11 +27,19 @@ CREATE TABLE IF NOT EXISTS sessions (
     tui_capture_started INTEGER DEFAULT 0,
     last_message_sent TEXT,
     last_message_sent_at TEXT,
-    last_feedback_received TEXT,
-    last_feedback_received_at TEXT,
-    last_feedback_summary TEXT,  -- LLM-generated summary of last_feedback_received
+    last_output_raw TEXT,
+    last_output_at TEXT,
+    last_output_summary TEXT,  -- LLM-generated summary of last_output_raw
     working_slug TEXT,  -- Slug of work item this session is working on (from state machine)
-    lifecycle_status TEXT DEFAULT 'active'
+    lifecycle_status TEXT DEFAULT 'active',
+    last_memory_extraction_at TEXT,
+    help_desk_processed_at TEXT,
+    relay_status TEXT,
+    relay_discord_channel_id TEXT,
+    relay_started_at TEXT,
+    human_email TEXT,
+    human_role TEXT,
+    transcript_files TEXT DEFAULT '[]'  -- JSON array of transcript file paths (chain for multi-file sessions)
     -- No unique constraint on (computer_name, tmux_session_name): tmux enforces
     -- its own name uniqueness, and headless sessions have NULL tmux_session_name.
 );
@@ -131,6 +139,7 @@ CREATE TABLE IF NOT EXISTS memory_observations (
     files_modified TEXT,
     prompt_number INTEGER,
     discovery_tokens INTEGER DEFAULT 0,
+    identity_key TEXT,
     created_at TEXT NOT NULL,
     created_at_epoch INTEGER NOT NULL
 );
@@ -138,6 +147,7 @@ CREATE TABLE IF NOT EXISTS memory_observations (
 CREATE INDEX IF NOT EXISTS idx_memory_obs_project ON memory_observations(project, created_at_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_obs_session ON memory_observations(memory_session_id);
 CREATE INDEX IF NOT EXISTS idx_memory_obs_type ON memory_observations(type);
+CREATE INDEX IF NOT EXISTS idx_memory_obs_identity ON memory_observations(project, identity_key);
 
 -- Memory summaries
 CREATE TABLE IF NOT EXISTS memory_summaries (
@@ -191,3 +201,15 @@ CREATE TABLE IF NOT EXISTS webhook_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_webhook_outbox_status ON webhook_outbox(status);
 CREATE INDEX IF NOT EXISTS idx_webhook_outbox_next_attempt ON webhook_outbox(next_attempt_at);
+
+-- Session listeners for durable PUB-SUB stop notifications
+-- Survives daemon restarts (previously in-memory only)
+CREATE TABLE IF NOT EXISTS session_listeners (
+    target_session_id TEXT NOT NULL,
+    caller_session_id TEXT NOT NULL,
+    caller_tmux_session TEXT NOT NULL,
+    registered_at TEXT NOT NULL,
+    PRIMARY KEY (target_session_id, caller_session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_session_listeners_caller
+    ON session_listeners(caller_session_id);

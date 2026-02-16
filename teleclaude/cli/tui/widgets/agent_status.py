@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from teleclaude.cli.models import AgentAvailabilityInfo
-from teleclaude.cli.tui.theme import AGENT_COLORS
+from teleclaude.cli.tui.theme import get_agent_status_color_pair
 
 AgentStatus = Literal["available", "degraded", "unavailable"]
 
@@ -49,8 +49,7 @@ def build_agent_render_spec(
     degraded = is_agent_degraded(info)
     available = selectable and not degraded
 
-    agent_colors = AGENT_COLORS.get(agent, {"muted": 0, "normal": 0})
-    color_pair_id = agent_colors["normal"] if selectable else agent_colors["muted"]
+    color_pair_id = get_agent_status_color_pair(agent=agent, muted=not selectable)
 
     if degraded:
         text = f"{agent} ~"

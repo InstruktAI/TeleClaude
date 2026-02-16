@@ -27,6 +27,8 @@ from teleclaude.api_models import (
     CreateSessionResponseDTO,
     FileUploadRequest,
     KeysRequest,
+    MessageDTO,
+    PersonDTO,
     ProjectDTO,
     ProjectsInitialDataDTO,
     ProjectsInitialEventDTO,
@@ -35,6 +37,7 @@ from teleclaude.api_models import (
     SendMessageRequest,
     SessionClosedDataDTO,
     SessionClosedEventDTO,
+    SessionMessagesDTO,
     SessionsInitialDataDTO,
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
@@ -72,6 +75,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+API_TCP_HOST = "127.0.0.1"
+API_TCP_PORT = int(os.getenv("API_TCP_PORT", "8420"))
 API_WS_PING_INTERVAL_S = 20.0
 API_WS_PING_TIMEOUT_S = 20.0
 API_TIMEOUT_KEEP_ALIVE_S = 5
@@ -111,9 +116,19 @@ class APIServer:
         from teleclaude.hooks.api_routes import router as hooks_router
 
         self.app.include_router(hooks_router)
+
+        from teleclaude.channels.api_routes import router as channels_router
+
+        self.app.include_router(channels_router)
+
+        from teleclaude.api.streaming import router as streaming_router
+
+        self.app.include_router(streaming_router)
         self.socket_path = socket_path or API_SOCKET_PATH
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None
+        self._tcp_server: uvicorn.Server | None = None
+        self._tcp_server_task: asyncio.Task[object] | None = None
         self._metrics_task: asyncio.Task[object] | None = None
         self._watch_task: asyncio.Task[object] | None = None
         self._inflight_requests: dict[int, tuple[str, float]] = {}
@@ -217,6 +232,7 @@ class APIServer:
             tool_name=context.tool_name,
             tool_preview=context.tool_preview,
             summary=context.summary,
+            timestamp=context.timestamp,
         )
         self._broadcast_payload("agent_activity", dto.model_dump(exclude_none=True))
 
@@ -644,6 +660,78 @@ class APIServer:
                 logger.error("revive_session failed for session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to revive session: {e}") from e
 
+        @self.app.get("/sessions/{session_id}/messages")
+        async def get_session_messages(  # pyright: ignore
+            session_id: str,
+            since: str | None = Query(None, description="ISO 8601 UTC timestamp; only messages after this time"),
+            include_tools: bool = Query(False, description="Include tool_use/tool_result entries"),
+            include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
+        ) -> SessionMessagesDTO:
+            """Get structured messages from a session's transcript files."""
+            from teleclaude.core.agents import AgentName
+            from teleclaude.utils.transcript import extract_messages_from_chain
+
+            try:
+                session = await db.get_session(session_id)
+                if not session:
+                    raise HTTPException(status_code=404, detail="Session not found")
+
+                # Build file chain: transcript_files (historical) + native_log_file (current)
+                chain: list[str] = []
+                if session.transcript_files:
+                    try:
+                        stored = json.loads(session.transcript_files)
+                        if isinstance(stored, list):
+                            chain = [str(p) for p in stored if p]
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                if session.native_log_file and session.native_log_file not in chain:
+                    chain.append(session.native_log_file)
+
+                if not chain:
+                    return SessionMessagesDTO(
+                        session_id=session_id,
+                        agent=session.active_agent,
+                        messages=[],
+                    )
+
+                # Determine agent for parser selection
+                try:
+                    agent_name = AgentName.from_str(session.active_agent or "claude")
+                except ValueError:
+                    agent_name = AgentName.CLAUDE
+
+                raw_messages = extract_messages_from_chain(
+                    chain,
+                    agent_name,
+                    since=since,
+                    include_tools=include_tools,
+                    include_thinking=include_thinking,
+                )
+
+                messages = [
+                    MessageDTO(
+                        role=str(m.get("role", "assistant")),
+                        type=str(m.get("type", "text")),
+                        text=str(m.get("text", "")),
+                        timestamp=str(m["timestamp"]) if m.get("timestamp") else None,
+                        entry_index=int(m.get("entry_index", 0)),
+                        file_index=int(m.get("file_index", 0)),
+                    )
+                    for m in raw_messages
+                ]
+
+                return SessionMessagesDTO(
+                    session_id=session_id,
+                    agent=session.active_agent,
+                    messages=messages,
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error("get_session_messages failed (session=%s): %s", session_id, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to get messages: {e}") from e
+
         @self.app.get("/computers")
         async def list_computers() -> list[ComputerDTO]:  # pyright: ignore
             """List available computers (local + cached remote computers)."""
@@ -785,13 +873,28 @@ class APIServer:
 
             return result
 
+        @self.app.get("/api/people")
+        async def list_people() -> list[PersonDTO]:  # pyright: ignore
+            """List people from global config (safe subset only)."""
+            try:
+                from teleclaude.cli.config_handlers import get_global_config
+
+                global_cfg = get_global_config()
+                return [PersonDTO(name=p.name, email=p.email, role=p.role) for p in global_cfg.people]
+            except Exception as e:
+                logger.error("list_people failed: %s", e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to list people: {e}") from e
+
         @self.app.get("/settings")
         async def get_settings() -> SettingsDTO:  # pyright: ignore
             """Return current mutable runtime settings."""
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
             state = self.runtime_settings.get_state()
-            return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))
+            return SettingsDTO(
+                tts=TTSSettingsDTO(enabled=state.tts.enabled),
+                pane_theming_mode=state.pane_theming_mode,
+            )
 
         @self.app.patch("/settings")
         async def patch_settings(body: dict[str, PatchBodyValue] = Body(...)) -> SettingsDTO:  # pyright: ignore
@@ -803,7 +906,10 @@ class APIServer:
             try:
                 typed_patch = RuntimeSettings.parse_patch(body)
                 state = self.runtime_settings.patch(typed_patch)
-                return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))
+                return SettingsDTO(
+                    tts=TTSSettingsDTO(enabled=state.tts.enabled),
+                    pane_theming_mode=state.pane_theming_mode,
+                )
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
 
@@ -1451,6 +1557,65 @@ class APIServer:
 
         logger.info("API server listening on %s", self.socket_path)
 
+        # Start TCP server on localhost:8420
+        await self._start_tcp_server()
+
+    async def _start_tcp_server(self) -> None:
+        """Start TCP server for web interface access."""
+        if self._tcp_server_task and not self._tcp_server_task.done():
+            logger.warning("TCP server already running; skipping start")
+            return
+
+        tcp_config = uvicorn.Config(
+            self.app,
+            host=API_TCP_HOST,
+            port=API_TCP_PORT,
+            log_level="warning",
+            ws_ping_interval=API_WS_PING_INTERVAL_S,
+            ws_ping_timeout=API_WS_PING_TIMEOUT_S,
+            timeout_keep_alive=API_TIMEOUT_KEEP_ALIVE_S,
+        )
+        self._tcp_server = uvicorn.Server(tcp_config)
+        tcp_server = self._tcp_server
+
+        serve_coro = tcp_server._serve() if hasattr(tcp_server, "_serve") else tcp_server.serve()
+        self._tcp_server_task = asyncio.create_task(serve_coro)
+        self._tcp_server_task.add_done_callback(lambda t, s=tcp_server: self._on_tcp_server_task_done(t, s))
+
+        max_retries = 50
+        for _ in range(max_retries):
+            if tcp_server.started:
+                break
+            if self._tcp_server_task.done():
+                exc = self._tcp_server_task.exception()
+                logger.error("TCP server exited during startup: %s", exc)
+                return
+            await asyncio.sleep(0.1)
+
+        if tcp_server.started:
+            logger.info("TCP server listening on %s:%d", API_TCP_HOST, API_TCP_PORT)
+        else:
+            logger.error("TCP server failed to start within timeout")
+
+    def _on_tcp_server_task_done(
+        self,
+        task: asyncio.Task[object],
+        server: uvicorn.Server | None = None,
+    ) -> None:
+        """Handle TCP server exit."""
+        if not self._running:
+            return
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            return
+        server_ref = server or self._tcp_server
+        should_exit = getattr(server_ref, "should_exit", None) if server_ref else None
+        if exc:
+            logger.error("TCP server task crashed: %s (should_exit=%s)", exc, should_exit, exc_info=True)
+        elif not should_exit:
+            logger.error("TCP server task exited unexpectedly (should_exit=%s)", should_exit)
+
     async def restart_server(self) -> None:
         """Restart uvicorn server without tearing down server state."""
         await self._stop_server()
@@ -1464,8 +1629,11 @@ class APIServer:
         self._on_server_exit = handler
 
     async def _stop_server(self) -> None:
-        """Stop uvicorn server task safely."""
-        # Stop server gracefully if started, cancel if still starting
+        """Stop uvicorn server tasks safely (Unix socket + TCP)."""
+        # Stop TCP server first
+        await self._stop_tcp_server()
+
+        # Stop Unix socket server
         server = self.server
         if server:
             logger.debug(
@@ -1496,6 +1664,30 @@ class APIServer:
             except Exception as e:
                 # Suppress errors during teardown (socket already gone, etc.)
                 logger.debug("Error during server shutdown: %s", e)
+
+    async def _stop_tcp_server(self) -> None:
+        """Stop TCP server task safely."""
+        tcp_server = self._tcp_server
+        if tcp_server:
+            if tcp_server.started:
+                tcp_server.should_exit = True
+            elif self._tcp_server_task:
+                self._tcp_server_task.cancel()
+
+        if self._tcp_server_task:
+            try:
+                await asyncio.wait_for(self._tcp_server_task, timeout=API_STOP_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                logger.warning("Timed out stopping TCP server; cancelling task")
+                self._tcp_server_task.cancel()
+                try:
+                    await self._tcp_server_task
+                except asyncio.CancelledError:
+                    pass
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.debug("Error during TCP server shutdown: %s", e)
 
     def _start_metrics_task(self) -> None:
         """Start periodic API server metrics logging."""

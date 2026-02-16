@@ -11,7 +11,9 @@ import curses
 import os
 import re
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from typing import TYPE_CHECKING, Callable
 
 from instrukt_ai_logging import get_logger
@@ -27,13 +29,18 @@ from teleclaude.cli.models import ComputerInfo as ApiComputerInfo
 from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
-from teleclaude.cli.tui.state import DocStickyInfo, Intent, IntentType, PreviewState, TuiState
+from teleclaude.cli.tui.state import Intent, IntentType, PreviewState, TuiState
 from teleclaude.cli.tui.state_store import load_sticky_state, save_sticky_state
 from teleclaude.cli.tui.theme import (
-    AGENT_COLORS,
+    get_agent_highlight_attr,
+    get_agent_normal_attr,
     get_agent_preview_selected_bg_attr,
     get_agent_preview_selected_focus_attr,
+    get_agent_subtle_attr,
+    get_peaceful_muted_attr,
+    get_peaceful_normal_attr,
     get_sticky_badge_attr,
+    should_apply_session_theming,
 )
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
@@ -49,6 +56,11 @@ from teleclaude.cli.tui.tree import (
 )
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NodeType, NotificationLevel, StickySessionInfo
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
+from teleclaude.cli.tui.views.interaction import (
+    TreeInteractionAction,
+    TreeInteractionDecision,
+    TreeInteractionState,
+)
 from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
 from teleclaude.paths import TUI_STATE_PATH as _TUI_STATE_PATH
 
@@ -148,6 +160,83 @@ def _temp_output_placeholder_text(active_agent: str | None, tool_preview: str | 
     return _thinking_placeholder_text()
 
 
+class _SessionInputKind(str, Enum):
+    """Normalized session interaction kinds."""
+
+    NONE = "none"
+    PREVIEW = "preview"
+    CLEAR_PREVIEW = "clear_preview"
+    ACTIVATE = "activate"
+    TOGGLE_STICKY = "toggle_sticky"
+    CLEAR_STICKY_PREVIEW = "clear_sticky_preview"
+
+
+@dataclass(frozen=True)
+class _SessionInputIntent:
+    """Internal session interaction intent for a selected row."""
+
+    item: SessionNode
+    kind: _SessionInputKind
+    now: float
+    request_focus: bool = False
+    clear_preview: bool = False
+    force_sticky_preview: bool = False
+
+
+@dataclass(frozen=True)
+class _SessionRenderSegment:
+    """Single immutable segment in a rendered line."""
+
+    text: str
+    attr: int
+
+
+@dataclass(frozen=True)
+class _SessionBadgeComponent:
+    """Badge subcomponent with isolated style semantics."""
+
+    text: str
+    attr: int
+    selected: bool = False
+
+    def render(self) -> _SessionRenderSegment:
+        """Return the concrete render segment for this badge."""
+        return _SessionRenderSegment(self.text, self.attr | (curses.A_BOLD if self.selected else 0))
+
+
+@dataclass(frozen=True)
+class _SessionHeaderModel:
+    """Header model split into isolated visual components."""
+
+    leading_segments: tuple[_SessionRenderSegment, ...]
+    badge: _SessionBadgeComponent
+    body_segments: tuple[_SessionRenderSegment, ...]
+
+    @property
+    def segments(self) -> tuple[_SessionRenderSegment, ...]:
+        """Flatten components into a draw-ready ordered segment stream."""
+        return (*self.leading_segments, self.badge.render(), *self.body_segments)
+
+
+@dataclass(frozen=True)
+class _SessionDetailModel:
+    """Single detail row model for expanded sessions."""
+
+    text: str
+    attr: int
+    suffix_text: str = ""
+    suffix_attr: int = 0
+
+
+@dataclass(frozen=True)
+class _SessionRowModel:
+    """Full declarative model for one logical session row."""
+
+    header: _SessionHeaderModel
+    details: tuple[_SessionDetailModel, ...]
+    is_collapsed: bool
+
+
 class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     """View 1: Sessions - project-centric tree with AI-to-AI nesting."""
 
@@ -197,11 +286,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_rendered_range: tuple[int, int] = (0, 0)
         self._last_click_time: dict[int, float] = {}  # screen_row -> timestamp
         self._double_click_threshold = 0.4  # seconds
+        self._preview_interaction_state = TreeInteractionState()
         self._space_double_press_threshold = 0.65  # seconds
-        self._last_space_press_time: float | None = None
-        self._last_space_session_id: str | None = None
-        self._space_double_press_guard_session_id: str | None = None
-        self._space_double_press_guard_until: float | None = None
         self._pending_select_session_id: str | None = None
         self._pending_select_source: str | None = None
         self._pending_activate_request: Intent | None = None
@@ -216,6 +302,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._last_detected_pane_id: str | None = None
         self._we_caused_focus: bool = False
         self._initial_layout_done: bool = False
+        self._state_hydration_complete: bool = False
         # Auto-clear timer for currently watched preview session.
         self._viewing_timer_session: str | None = None
         self._viewing_timer_expires: float | None = None
@@ -273,10 +360,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     def _selection_method(self, value: str) -> None:
         self.state.sessions.selection_method = value
 
-    @property
-    def _prep_sticky_previews(self) -> list[DocStickyInfo]:
-        return self.state.preparation.sticky_previews
-
     async def refresh(
         self,
         computers: list[ApiComputerInfo],
@@ -298,7 +381,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         )
 
         previous_selection = self._get_selected_key()
-        last_summary_before = dict(self.state.sessions.last_summary)
+        last_output_summary_before = dict(self.state.sessions.last_output_summary)
 
         # Store sessions for child lookup
         self._sessions = sessions
@@ -312,9 +395,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         for session in sessions:
             summary = (session.last_output_summary or "").strip()
             if summary:
-                self.state.sessions.last_summary[session.session_id] = summary
+                self.state.sessions.last_output_summary[session.session_id] = summary
 
-        if self.state.sessions.last_summary != last_summary_before:
+        if self.state.sessions.last_output_summary != last_output_summary_before:
             save_sticky_state(self.state)
         # Store computers for SSH connection lookup
         self._computers = computers
@@ -375,16 +458,16 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 else:
                     self._restore_selection(previous_selection)
         else:
-            if self.state.sessions.selected_session_id:
+            if self._state_hydration_complete:
+                self._restore_selection(previous_selection)
+            elif self.state.sessions.selected_session_id:
                 self._restore_selection(("session", self.state.sessions.selected_session_id))
             else:
                 self._restore_selection(previous_selection)
         if self.pane_manager.is_available and not self._initial_layout_done:
-            has_expected_panes = bool(
-                self.sticky_sessions or self._preview or self._prep_sticky_previews or self.state.preparation.preview
-            )
+            has_expected_panes = bool(self.sticky_sessions or self._preview or self.state.preparation.preview)
             panes_missing = False
-            if self.sticky_sessions or self._prep_sticky_previews:
+            if self.sticky_sessions:
                 if not self.pane_manager.state.sticky_pane_ids:
                     panes_missing = True
             if self._preview or self.state.preparation.preview:
@@ -393,6 +476,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if has_expected_panes and panes_missing:
                 self.controller.apply_layout(focus=False)
                 self._initial_layout_done = True
+        self._state_hydration_complete = True
         self._maybe_activate_ready_session()
 
     def request_select_session(self, session_id: str, *, source: str | None = None) -> bool:
@@ -748,11 +832,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self.flat_items = self._flatten_tree(nodes, base_depth=0)
         logger.debug("Flattened to %d items", len(self.flat_items))
 
-        if self.state.sessions.selected_session_id:
-            for idx, item in enumerate(self.flat_items):
-                if is_session_node(item) and item.data.session.session_id == self.state.sessions.selected_session_id:
-                    self._select_index(idx)
-                    break
         # Reset selection if out of bounds
         if self.selected_index >= len(self.flat_items):
             self._select_index(0)
@@ -977,7 +1056,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             self._start_session_for_project(stdscr, item.data)
         elif is_session_node(item):
             # Activate session (same behavior as clicking)
-            self._enqueue_preview_request(item, request_focus=True)
+            self._handle_session_interaction(
+                _SessionInputIntent(
+                    item=item,
+                    kind=_SessionInputKind.ACTIVATE,
+                    now=time.perf_counter(),
+                    request_focus=True,
+                )
+            )
             logger.trace(
                 "sessions_enter",
                 item_type="session",
@@ -1017,7 +1103,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 existing_idx = i
                 break
 
-        if existing_idx is None and (len(self.sticky_sessions) + len(self._prep_sticky_previews)) >= 5:
+        if existing_idx is None and len(self.sticky_sessions) >= 5:
             if self.notify:
                 self.notify("Maximum 5 sticky sessions", NotificationLevel.WARNING)
             logger.warning("Cannot add sticky session %s: maximum 5 reached", session_id[:8])
@@ -1041,37 +1127,162 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if self._preview:
             self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
 
-    def _record_space_press(self, session_id: str, now: float) -> None:
-        """Track the latest space-activation target for debounce."""
-        self._last_space_press_time = now
-        self._last_space_session_id = session_id
+    @property
+    def _space_double_press_threshold(self) -> float:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.double_press_threshold
 
-    def _handle_sticky_toggle_gesture(self, selected: SessionNode, *, now: float) -> None:
-        """Handle sticky-toggle interactions (double-space/double-click).
+    @_space_double_press_threshold.setter
+    def _space_double_press_threshold(self, value: float) -> None:
+        self._preview_interaction_state.double_press_threshold = value
 
-        Sticky rows clear active preview before toggling.
-        Non-sticky rows schedule sticky-aware preview after toggling on.
-        """
+    @property
+    def _last_space_press_time(self) -> float | None:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.last_press_time
+
+    @_last_space_press_time.setter
+    def _last_space_press_time(self, value: float | None) -> None:
+        self._preview_interaction_state.last_press_time = value
+
+    @property
+    def _last_space_session_id(self) -> str | None:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.last_press_item_id
+
+    @_last_space_session_id.setter
+    def _last_space_session_id(self, value: str | None) -> None:
+        self._preview_interaction_state.last_press_item_id = value
+
+    @property
+    def _space_double_press_guard_session_id(self) -> str | None:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.double_press_guard_item_id
+
+    @_space_double_press_guard_session_id.setter
+    def _space_double_press_guard_session_id(self, value: str | None) -> None:
+        self._preview_interaction_state.double_press_guard_item_id = value
+
+    @property
+    def _space_double_press_guard_until(self) -> float | None:
+        """Compatibility alias for interaction state."""
+        return self._preview_interaction_state.double_press_guard_until
+
+    @_space_double_press_guard_until.setter
+    def _space_double_press_guard_until(self, value: float | None) -> None:
+        self._preview_interaction_state.double_press_guard_until = value
+
+    def _build_preview_interaction(
+        self,
+        selected: SessionNode,
+        *,
+        now: float,
+        allow_sticky_toggle: bool,
+    ) -> _SessionInputIntent:
+        """Build normalized preview intent from user interaction."""
+        session_id = selected.data.session.session_id
+        is_sticky = self._is_sticky_session_id(session_id)
+        decision: TreeInteractionDecision = self._preview_interaction_state.decide_preview_action(
+            session_id,
+            now,
+            is_sticky=is_sticky,
+            allow_sticky_toggle=allow_sticky_toggle,
+        )
+
+        if decision.action == TreeInteractionAction.NONE:
+            logger.debug("handle_space_preview_input: guard active for %s", session_id[:8])
+            return _SessionInputIntent(selected, _SessionInputKind.NONE, now=now)
+
+        if decision.action == TreeInteractionAction.CLEAR_STICKY_PREVIEW:
+            return _SessionInputIntent(selected, _SessionInputKind.CLEAR_STICKY_PREVIEW, now=now)
+
+        if decision.action == TreeInteractionAction.TOGGLE_STICKY:
+            logger.debug(
+                "handle_space_preview_input: double-press detected, toggling sticky for %s",
+                session_id[:8],
+            )
+            return _SessionInputIntent(
+                selected,
+                _SessionInputKind.TOGGLE_STICKY,
+                now=now,
+                clear_preview=decision.clear_preview,
+            )
+
+        if (
+            decision.action == TreeInteractionAction.PREVIEW
+            and self._preview
+            and self._preview.session_id == session_id
+        ):
+            return _SessionInputIntent(selected, _SessionInputKind.CLEAR_PREVIEW, now=now)
+
+        return _SessionInputIntent(selected, _SessionInputKind.PREVIEW, now=now)
+
+    def _build_click_preview_interaction(self, selected: SessionNode, *, now: float) -> _SessionInputIntent:
+        """Build normalized preview intent for single-click interactions."""
+        return self._build_preview_interaction(selected, now=now, allow_sticky_toggle=False)
+
+    def _build_space_preview_interaction(self, selected: SessionNode, *, now: float) -> _SessionInputIntent:
+        """Build normalized preview intent for keyboard-space interactions."""
+        return self._build_preview_interaction(selected, now=now, allow_sticky_toggle=True)
+
+    def _build_sticky_toggle_interaction(
+        self,
+        selected: SessionNode,
+        *,
+        now: float,
+        clear_preview: bool = False,
+    ) -> _SessionInputIntent:
+        """Build normalized intent for explicit sticky toggle gestures."""
+        return _SessionInputIntent(
+            item=selected,
+            kind=_SessionInputKind.TOGGLE_STICKY,
+            now=now,
+            clear_preview=clear_preview,
+        )
+
+    def _handle_session_interaction(self, interaction: _SessionInputIntent) -> None:
+        """Dispatch a normalized interaction to a concrete state transition."""
+        if interaction.kind == _SessionInputKind.NONE:
+            return
+
+        selected = interaction.item
         session = selected.data.session
         session_id = session.session_id
-        was_sticky = self._is_sticky_session_id(session_id)
-
+        is_sticky = self._is_sticky_session_id(session_id)
+        self._sync_selected_session_id(source="user")
         self._set_selection_method("click")
         self._clear_pending_activation()
-        self._mark_space_double_press_guard(session_id, now)
 
-        if was_sticky:
+        if interaction.kind == _SessionInputKind.TOGGLE_STICKY:
+            if interaction.clear_preview:
+                self._clear_active_preview()
+            self._preview_interaction_state.mark_double_press_guard(session_id, interaction.now)
+            self._toggle_sticky(session_id, active_agent=session.active_agent)
+            if not is_sticky:
+                self._enqueue_preview_request(
+                    selected,
+                    request_focus=False,
+                    clear_preview=False,
+                    force_sticky_preview=True,
+                )
+            return
+
+        if interaction.kind == _SessionInputKind.CLEAR_STICKY_PREVIEW:
             self._clear_active_preview()
+            return
 
-        self._toggle_sticky(session_id, active_agent=session.active_agent)
+        if interaction.kind == _SessionInputKind.CLEAR_PREVIEW:
+            self._clear_active_preview()
+            return
 
-        if not was_sticky:
+        if interaction.kind in {_SessionInputKind.PREVIEW, _SessionInputKind.ACTIVATE}:
             self._enqueue_preview_request(
                 selected,
-                request_focus=False,
-                clear_preview=False,
-                force_sticky_preview=True,
+                request_focus=interaction.request_focus,
+                clear_preview=interaction.clear_preview,
+                force_sticky_preview=interaction.force_sticky_preview,
             )
+            return
 
     def _preview_activation_request(
         self,
@@ -1230,70 +1441,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._pending_activate_at = None
         self._pending_focus_session_id = None
         self._pending_ready_session_id = None
-
-    def _is_space_double_press_guarded(self, session_id: str, now: float) -> bool:
-        """Return True if a recent double-space guard blocks repeated immediate activation."""
-        if self._space_double_press_guard_session_id != session_id:
-            return False
-        guard_until = self._space_double_press_guard_until
-        if guard_until is None:
-            return False
-        if now >= guard_until:
-            self._space_double_press_guard_session_id = None
-            self._space_double_press_guard_until = None
-            return False
-        return True
-
-    def _mark_space_double_press_guard(self, session_id: str, now: float) -> None:
-        """Block a second/third-space preview activation for the same session."""
-        self._space_double_press_guard_session_id = session_id
-        self._space_double_press_guard_until = now + self._space_double_press_threshold
-
-    def _handle_space_preview_input(self, selected: SessionNode, *, now: float | None = None) -> None:
-        """Handle a Space-like activation gesture on a selected session.
-
-        Single call schedules non-focusing preview.
-        Back-to-back calls within threshold toggle sticky state.
-        """
-        if now is None:
-            now = time.perf_counter()
-        session_id = selected.data.session.session_id
-        is_sticky = self._is_sticky_session_id(session_id)
-        # Keep tree selection state in sync for keyboard-driven highlighting.
-        self._sync_selected_session_id(source="user")
-        if self._is_space_double_press_guarded(session_id, now):
-            logger.debug("handle_space_preview_input: guard active for %s", session_id[:8])
-            return
-        if (
-            self._last_space_session_id == session_id
-            and self._last_space_press_time is not None
-            and now - self._last_space_press_time < self._space_double_press_threshold
-        ):
-            logger.debug(
-                "handle_space_preview_input: double-press detected, toggling sticky for %s",
-                session_id[:8],
-            )
-            self._last_space_session_id = None
-            self._last_space_press_time = None
-            self._handle_sticky_toggle_gesture(selected, now=now)
-            # Keep first-space preview intent; do not dispatch a second activation.
-            return
-
-        # Keep sticky rows out of normal preview highlight styling, but still allow
-        # double-press sticky toggle by recording the gesture timestamp.
-        if is_sticky:
-            self._clear_active_preview()
-            self._record_space_press(session_id, now)
-            self._clear_pending_activation()
-            return
-
-        self._record_space_press(session_id, now)
-        self._clear_pending_activation()
-        self._set_selection_method("click")
-        # Single-space/click previews the row while staying non-focusing.
-        # Sticky panes stay put; preview updates are only visual/contextual.
-        self._enqueue_preview_request(selected, request_focus=False, clear_preview=False)
-        return
 
     def apply_pending_activation(self) -> None:
         """Apply any deferred activation once per loop tick."""
@@ -1591,11 +1738,16 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return
 
         if key == ord(" "):
-            # Space key previews selected session without taking input focus.
-            # A second quick Space toggles sticky for that session.
+            # Space toggles preview for the selected session without taking input focus.
+            # A second quick Space still performs sticky-toggle for that session.
             if is_session_node(selected):
                 logger.debug("handle_key: space preview for session")
-                self._handle_space_preview_input(selected, now=time.perf_counter())
+                self._handle_session_interaction(
+                    self._build_space_preview_interaction(
+                        selected,
+                        now=time.perf_counter(),
+                    )
+                )
             else:
                 logger.debug("handle_key: ' ' ignored, not on a session")
             return
@@ -1669,7 +1821,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Handle double-click on session nodes
         if is_double_click and is_session_node(item):
-            self._clear_pending_activation()
             session_id = item.data.session.session_id
             logger.debug("Double-click: toggled sticky for %s", session_id[:8])
 
@@ -1681,19 +1832,21 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             )
             # Select the item but don't activate (sticky toggle is the action)
             self._select_index(item_idx, source="user")
-            self._set_selection_method("click")
-            self._handle_sticky_toggle_gesture(item, now=time.perf_counter())
+            self._handle_session_interaction(
+                self._build_sticky_toggle_interaction(
+                    item,
+                    now=time.perf_counter(),
+                )
+            )
             return True
 
         # SINGLE CLICK - select and update preview context only.
         self._select_index(item_idx, source="user")
-        self._set_selection_method("click")
-        self._clear_pending_activation()
 
         # Keep click in tree-only mode; activation/focus remains explicit (Enter/space).
         if is_session_node(item):
             now = time.perf_counter()
-            self._handle_space_preview_input(item, now=now)
+            self._handle_session_interaction(self._build_click_preview_interaction(item, now=now))
 
         logger.trace(
             "sessions_click",
@@ -1788,7 +1941,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         idx = session_display.display_index
 
         # Child indentation: 2 spaces per nesting level
-        # Parent (depth 2) = 0, Child (depth 3) = 2, Grandchild (depth 4) = 4
+        # Parent (depth 2) = 0, Child (depth 3) = 2, Grandchild (depth 4) = 4.
         child_indent = " " * (max(0, item.depth - 2) * 2)
 
         # Collapse indicator
@@ -1822,14 +1975,21 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
             input_time = _format_time(last_input_at)
-            line3 = f"{detail_indent}[{input_time}] in: {input_text}"
+            line3 = f"{detail_indent}[{input_time}]  in: {input_text}"
             lines.append(line3[:width])
 
-        # Line 4: Last output — driven by activity events, not session record
-        last_output = self.state.sessions.last_summary.get(session_id, "")
+        # Line 4: Last output — driven by activity events, not session record.
+        # Rule: once the session has had activity, this row must ALWAYS be present.
+        # It can only be updated, never removed.
+        last_output = self.state.sessions.last_output_summary.get(session_id, "")
         has_input_highlight = session_id in self.state.sessions.input_highlights
         has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
-        activity_time = _format_time(session.last_activity)
+        has_output_highlight = session_id in self.state.sessions.output_highlights
+        has_activity = session_id in self.state.sessions.last_activity_at
+        event_activity_at = self.state.sessions.last_activity_at.get(session_id)
+        activity_time = _format_time(event_activity_at or session.last_activity)
+        summary_at = self.state.sessions.last_output_summary_at.get(session_id) or session.last_output_summary_at
+        output_time = _format_time(summary_at) if summary_at else activity_time
         if has_temp_output_highlight:
             tool_preview = self.state.sessions.active_tool.get(session_id)
             line4 = (
@@ -1842,7 +2002,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             lines.append(line4[:width])
         elif last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            line4 = f"{detail_indent}[{activity_time}] out: {output_text}"
+            line4 = f"{detail_indent}[{output_time}] out: {output_text}"
+            lines.append(line4[:width])
+        elif has_output_highlight or has_activity:
+            line4 = f"{detail_indent}[{activity_time}] out: {_working_placeholder_text()}"
             lines.append(line4[:width])
 
         return lines
@@ -1989,9 +2152,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         Returns:
             Number of lines used (1-3 depending on content and collapsed state)
         """
-
         if remaining <= 0:
             return 0
+
+        row_model = self._build_session_row_model(item=item, selected=selected)
 
         def _safe_addstr(target_row: int, text: str, attr: int) -> None:
             line = text[:width].ljust(width)
@@ -2000,42 +2164,81 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             except curses.error as e:
                 logger.warning("curses error rendering session line at row %d: %s", target_row, e)
 
-        def _safe_addstr_with_italic_suffix(
-            target_row: int,
-            prefix_text: str,
-            suffix_text: str,
-            *,
-            prefix_attr: int,
-            suffix_attr: int,
-        ) -> None:
-            """Render one line where only suffix_text is italicized."""
+        def _safe_addstr_with_italic_suffix(detail: _SessionDetailModel, target_row: int) -> None:
+            """Render detail with optional italic suffix overlay."""
+            if not detail.suffix_text:
+                try:
+                    stdscr.addstr(target_row, 0, detail.text[:width], detail.attr)  # type: ignore[attr-defined]
+                except curses.error as e:
+                    logger.warning("curses error rendering session line at row %d: %s", target_row, e)
+                return
+            prefix_text = detail.text
+            suffix_text = detail.suffix_text
             combined = f"{prefix_text}{suffix_text}"
             line = combined[:width].ljust(width)
             try:
-                stdscr.addstr(target_row, 0, line, prefix_attr)  # type: ignore[attr-defined]
+                stdscr.addstr(target_row, 0, line, detail.attr)  # type: ignore[attr-defined]
                 prefix_len = min(len(prefix_text), width)
                 available_for_suffix = max(0, width - prefix_len)
                 suffix_visible = suffix_text[:available_for_suffix]
                 if suffix_visible:
-                    stdscr.addstr(target_row, prefix_len, suffix_visible, suffix_attr)  # type: ignore[attr-defined]
+                    stdscr.addstr(target_row, prefix_len, suffix_visible, detail.suffix_attr)  # type: ignore[attr-defined]
             except curses.error as e:
                 logger.warning("curses error rendering session line at row %d: %s", target_row, e)
 
+        def _paint_header_segments(row_segments: tuple[_SessionRenderSegment, ...]) -> None:
+            col = 0
+            for segment in row_segments:
+                if col >= width:
+                    break
+                segment_text = segment.text[: max(0, width - col)]
+                if not segment_text:
+                    continue
+                stdscr.addstr(row, col, segment_text, segment.attr)  # type: ignore[attr-defined]
+                col += len(segment_text)
+
+        try:
+            if hasattr(stdscr, "attrset"):
+                stdscr.attrset(0)  # type: ignore[attr-defined]
+            if hasattr(stdscr, "move") and hasattr(stdscr, "clrtoeol"):
+                try:
+                    stdscr.move(row, 0)
+                    stdscr.clrtoeol()
+                except curses.error:
+                    pass
+            _paint_header_segments(row_model.header.segments)
+        except curses.error:
+            pass
+
+        if row_model.is_collapsed:
+            return 1
+
+        lines_used = 1
+        if lines_used >= remaining:
+            return lines_used
+
+        # Render detail lines from the declarative model.
+        for detail_line in row_model.details:
+            if lines_used >= remaining:
+                break
+            if detail_line.suffix_text:
+                _safe_addstr_with_italic_suffix(detail_line, row + lines_used)
+            else:
+                _safe_addstr(row + lines_used, detail_line.text, detail_line.attr)
+
+            lines_used += 1
+
+        return lines_used
+
+    def _build_session_row_model(self, *, item: SessionNode, selected: bool) -> _SessionRowModel:
+        """Build a pure model for a session row and its detail lines."""
         session_display = item.data
         session = session_display.session
         session_id = session.session_id
         is_collapsed = session_id in self.collapsed_sessions
 
-        agent = session.active_agent or "?"
-        mode = session.thinking_mode or "?"
-        title = session.title
-        idx = session_display.display_index
-
-        # Child indentation: 2 spaces per nesting level
-        # Parent (depth 2) = 0, Child (depth 3) = 2, Grandchild (depth 4) = 4
+        # Keep tree indentation and sticky badge as separate semantic children.
         child_indent = " " * (max(0, item.depth - 2) * 2)
-
-        # Check if this session is sticky
         is_sticky = any(s.session_id == session_id for s in self.sticky_sessions)
         sticky_position = None
         if is_sticky:
@@ -2044,39 +2247,33 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                     sticky_position = i + 1
                     break
 
-        # Get agent color pairs (muted, normal, highlight)
-        agent_colors = AGENT_COLORS[agent]
-        muted_pair = agent_colors["muted"]
-        normal_pair = agent_colors["normal"]
-        highlight_pair = agent_colors["highlight"]
-        muted_attr = curses.color_pair(muted_pair) if muted_pair else curses.A_DIM
-        normal_attr = curses.color_pair(normal_pair) if normal_pair else 0
-        highlight_attr = curses.color_pair(highlight_pair) if highlight_pair else curses.A_BOLD
+        agent = session.active_agent or "?"
+        mode = session.thinking_mode or "?"
+        title = session.title
+        idx = session_display.display_index
+
+        if should_apply_session_theming():
+            subtle_attr = get_agent_subtle_attr(agent)
+            normal_attr = get_agent_normal_attr(agent)
+            highlight_attr = get_agent_highlight_attr(agent)
+        else:
+            subtle_attr = get_peaceful_muted_attr()
+            normal_attr = get_peaceful_normal_attr()
+            highlight_attr = curses.A_BOLD
 
         status_raw = session.status or ""
         status_normalized = status_raw.strip().lower()
         is_headless = status_normalized.startswith("headless") or not session.tmux_session_name
-        header_attr = muted_attr if is_headless else normal_attr
+        header_attr = subtle_attr if is_headless else normal_attr
 
         is_previewed = bool(self._preview and self._preview.session_id == session_id and not is_sticky)
         preview_title_attr = highlight_attr if is_previewed else header_attr
-        preview_bold_attr = curses.A_BOLD if is_previewed and not is_headless else 0
         if is_previewed:
             # Keep previewed rows visibly distinct even when not actively selected.
             preview_title_attr = get_agent_preview_selected_bg_attr(agent)
 
-        # Sticky sessions use the [N] badge without inheriting row selection/preview styles.
-        if is_sticky and sticky_position is not None:
-            idx_text = f"[{sticky_position}]"
-            idx_attr = get_sticky_badge_attr()
-        else:
-            idx_text = f"[{idx}]"
-            idx_attr = header_attr
-
-        badge_attr = idx_attr | (curses.A_BOLD if selected else 0)
-
         if selected and is_previewed:
-            selected_focus_attr = get_agent_preview_selected_focus_attr(agent) | preview_bold_attr
+            selected_focus_attr = get_agent_preview_selected_focus_attr(agent)
         elif selected:
             selected_focus_attr = get_agent_preview_selected_focus_attr(agent) | curses.A_BOLD
         else:
@@ -2084,119 +2281,138 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         selected_header_attr = selected_focus_attr if selected else preview_title_attr
         title_attr = selected_header_attr if selected else preview_title_attr
-        # Collapse indicator
+
+        # Domain A: sticky badge has fixed colors and never inherits row highlight background.
+        # Only selection contributes bold.
+        if is_sticky and sticky_position is not None:
+            idx_text = f"[{sticky_position}]"
+            idx_attr = get_sticky_badge_attr()
+            badge = _SessionBadgeComponent(
+                text=idx_text,
+                attr=idx_attr,
+                selected=selected,
+            )
+        else:
+            idx_text = f"[{idx}]"
+            badge = _SessionBadgeComponent(
+                text=idx_text,
+                attr=header_attr,
+                selected=selected,
+            )
+
+        # Collapse indicator and row segments follow row-level semantics.
         collapse_indicator = "▶" if is_collapsed else "▼"
 
-        # Line 1: [idx] ▶/▼ agent/mode  [subdir]  "title"
-        # Render child indent + [idx] with special attr if sticky, then rest with title_attr
-        # Subdir (if present) uses normal fg to stand out from agent-colored text
-        try:
-            col = 0
-            # Render child indent first
-            if child_indent:
-                stdscr.addstr(row, col, child_indent, header_attr)  # type: ignore[attr-defined]
-                col += len(child_indent)
-            stdscr.addstr(
-                row,
-                col,
-                idx_text,
-                badge_attr,
-            )  # type: ignore[attr-defined]
-            col += len(idx_text)
-            agent_part = f" {collapse_indicator} {agent}/{mode}"
-            stdscr.addstr(row, col, agent_part[: width - col], title_attr)  # type: ignore[attr-defined]
-            col += len(agent_part)
-            if session.subdir and col < width:
-                subdir_display = session.subdir.removeprefix("trees/")
-                subdir_text = f" {subdir_display} "
-                subdir_attr = selected_header_attr if selected else (preview_title_attr if is_previewed else 0)
-                stdscr.addstr(row, col, subdir_text[: width - col], subdir_attr)  # type: ignore[attr-defined]
-                col += len(subdir_text)
-                title_text = f'"{title}" '
-            else:
-                title_text = f'  "{title}" '
-            if col < width:
-                stdscr.addstr(row, col, title_text[: width - col], title_attr)  # type: ignore[attr-defined]
-        except curses.error:
-            pass  # Ignore if line doesn't fit
+        leading_segments: list[_SessionRenderSegment] = []
+        if child_indent:
+            leading_indent_attr = 0 if is_sticky else header_attr
+            leading_segments.append(_SessionRenderSegment(child_indent, leading_indent_attr))
+        else:
+            leading_segments.append(_SessionRenderSegment(" ", 0))
 
-        # If collapsed, only show title line
-        if is_collapsed:
-            return 1
+        body_segments: list[_SessionRenderSegment] = []
+        body_segments.append(_SessionRenderSegment(" ", title_attr))
+        body_segments.append(_SessionRenderSegment(f"{collapse_indicator} {agent}/{mode}", title_attr))
 
-        lines_used = 1
-        if lines_used >= remaining:
-            return lines_used
+        if session.subdir:
+            subdir_display = session.subdir.removeprefix("trees/")
+            subdir_text = f" {subdir_display} "
+            subdir_attr = selected_header_attr if selected else (preview_title_attr if is_previewed else 0)
+            body_segments.append(_SessionRenderSegment(subdir_text, subdir_attr))
+            title_text = f'"{title}" '
+        else:
+            title_text = f'  "{title}" '
 
-        # Detail lines: child indentation + 4 spaces (expansion offset)
+        body_segments.append(_SessionRenderSegment(title_text, title_attr))
+
+        # Detail lines are separate view children.
         detail_indent = child_indent + "    "
+        details: list[_SessionDetailModel] = []
 
-        # Line 2 (expanded only): ID + last activity time
+        # Expanded line 2: session id + last activity
         activity_time = _format_time(session.last_activity)
         native_session_id = session.native_session_id or "-"
         line2 = f"{detail_indent}[{activity_time}] {session_id} / {native_session_id}"
-        _safe_addstr(row + lines_used, line2, header_attr)
-        lines_used += 1
-        if lines_used >= remaining:
-            return lines_used
+        details.append(_SessionDetailModel(line2, header_attr))
 
-        # Determine which field is "active" (highlight) based on centralized state
+        # Determine which field is active based on centralized state
         has_input_highlight = session_id in self.state.sessions.input_highlights
         has_temp_output_highlight = session_id in self.state.sessions.temp_output_highlights
         has_output_highlight = session_id in self.state.sessions.output_highlights or has_temp_output_highlight
         input_attr = highlight_attr if has_input_highlight else normal_attr
         output_attr = highlight_attr if has_output_highlight else normal_attr
 
-        # Line 3: Last input (only if content exists)
         last_input = (session.last_input or "").strip()
         last_input_at = session.last_input_at
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
             input_time = _format_time(last_input_at)
-            line3 = f"{detail_indent}[{input_time}] in: {input_text}"
-            _safe_addstr(row + lines_used, line3, input_attr)
-            lines_used += 1
-            if lines_used >= remaining:
-                return lines_used
+            line3 = f"{detail_indent}[{input_time}]  in: {input_text}"
+            details.append(_SessionDetailModel(line3, input_attr))
 
-        # Line 4: Last output — driven by activity events, not session record
-        last_output = self.state.sessions.last_summary.get(session_id, "")
-        activity_time = _format_time(session.last_activity)
+        last_output = self.state.sessions.last_output_summary.get(session_id, "")
+        has_activity = session_id in self.state.sessions.last_activity_at
+        event_activity_at = self.state.sessions.last_activity_at.get(session_id)
+        activity_time = _format_time(event_activity_at or session.last_activity)
+        summary_at = self.state.sessions.last_output_summary_at.get(session_id) or session.last_output_summary_at
+        output_time = _format_time(summary_at) if summary_at else activity_time
         if has_temp_output_highlight:
             italic_attr = getattr(curses, "A_ITALIC", 0)
             prefix_text = f"{detail_indent}[{activity_time}] out: "
             tool_preview = self.state.sessions.active_tool.get(session_id)
             placeholder_text = _temp_output_placeholder_text(session.active_agent, tool_preview)
             if italic_attr:
-                _safe_addstr_with_italic_suffix(
-                    row + lines_used,
-                    prefix_text,
-                    placeholder_text,
-                    prefix_attr=output_attr,
-                    suffix_attr=output_attr | italic_attr,
+                details.append(
+                    _SessionDetailModel(
+                        prefix_text,
+                        output_attr,
+                        suffix_text=placeholder_text,
+                        suffix_attr=output_attr | italic_attr | curses.A_BOLD,
+                    )
                 )
             else:
-                _safe_addstr(row + lines_used, f"{prefix_text}{placeholder_text}", output_attr)
-            lines_used += 1
+                details.append(_SessionDetailModel(f"{prefix_text}{placeholder_text}", output_attr | curses.A_BOLD))
         elif has_input_highlight:
             italic_attr = getattr(curses, "A_ITALIC", 0)
             prefix_text = f"{detail_indent}[{activity_time}] out: "
             placeholder_text = _working_placeholder_text()
             if italic_attr:
-                _safe_addstr_with_italic_suffix(
-                    row + lines_used,
-                    prefix_text,
-                    placeholder_text,
-                    prefix_attr=output_attr,
-                    suffix_attr=output_attr | italic_attr,
+                details.append(
+                    _SessionDetailModel(
+                        prefix_text,
+                        output_attr,
+                        suffix_text=placeholder_text,
+                        suffix_attr=output_attr | italic_attr | curses.A_BOLD,
+                    )
                 )
             else:
-                _safe_addstr(row + lines_used, f"{prefix_text}{placeholder_text}", output_attr)
-            lines_used += 1
+                details.append(_SessionDetailModel(f"{prefix_text}{placeholder_text}", output_attr | curses.A_BOLD))
         elif last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            line4 = f"{detail_indent}[{activity_time}] out: {output_text}"
-            _safe_addstr(row + lines_used, line4, output_attr)
-            lines_used += 1
+            line4 = f"{detail_indent}[{output_time}] out: {output_text}"
+            details.append(_SessionDetailModel(line4, output_attr))
+        elif has_output_highlight or has_activity:
+            italic_attr = getattr(curses, "A_ITALIC", 0)
+            prefix_text = f"{detail_indent}[{activity_time}] out: "
+            placeholder_text = _working_placeholder_text()
+            if italic_attr:
+                details.append(
+                    _SessionDetailModel(
+                        prefix_text,
+                        output_attr,
+                        suffix_text=placeholder_text,
+                        suffix_attr=output_attr | italic_attr | curses.A_BOLD,
+                    )
+                )
+            else:
+                details.append(_SessionDetailModel(f"{prefix_text}{placeholder_text}", output_attr | curses.A_BOLD))
 
-        return lines_used
+        return _SessionRowModel(
+            header=_SessionHeaderModel(
+                leading_segments=tuple(leading_segments),
+                badge=badge,
+                body_segments=tuple(body_segments),
+            ),
+            details=tuple(details),
+            is_collapsed=is_collapsed,
+        )

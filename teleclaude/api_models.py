@@ -133,6 +133,16 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
         )
 
 
+class PersonDTO(BaseModel):  # type: ignore[explicit-any]
+    """DTO for person info (safe subset — no credentials)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    email: str | None = None
+    role: Literal["admin", "member", "contributor", "newcomer"] = "member"
+
+
 class ComputerDTO(BaseModel):  # type: ignore[explicit-any]
     """DTO for computer info."""
 
@@ -332,6 +342,7 @@ class AgentActivityEventDTO(BaseModel):  # type: ignore[explicit-any]
     tool_name: str | None = None
     tool_preview: str | None = None
     summary: str | None = None
+    timestamp: str | None = None
 
 
 class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]
@@ -342,12 +353,16 @@ class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]
     enabled: bool = False
 
 
+PaneThemingMode = Literal["off", "highlight", "highlight2", "agent", "agent_plus", "full", "semi"]
+
+
 class SettingsDTO(BaseModel):  # type: ignore[explicit-any]
     """Runtime settings response."""
 
     model_config = ConfigDict(frozen=True)
 
     tts: TTSSettingsDTO
+    pane_theming_mode: PaneThemingMode = "full"
 
 
 class TTSSettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
@@ -364,3 +379,27 @@ class SettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     tts: TTSSettingsPatchDTO | None = None
+    pane_theming_mode: PaneThemingMode | None = None
+
+
+class MessageDTO(BaseModel):  # type: ignore[explicit-any]
+    """A single structured message from a session transcript."""
+
+    model_config = ConfigDict(frozen=True)
+
+    role: Literal["user", "assistant", "system"]
+    type: Literal["text", "compaction", "tool_use", "tool_result", "thinking"]
+    text: str
+    timestamp: str | None = None
+    entry_index: int = 0
+    file_index: int = 0
+
+
+class SessionMessagesDTO(BaseModel):  # type: ignore[explicit-any]
+    """Response for GET /sessions/{session_id}/messages."""
+
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+    agent: str | None = None
+    messages: list[MessageDTO] = Field(default_factory=list)

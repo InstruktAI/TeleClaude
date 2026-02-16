@@ -233,6 +233,9 @@ def test_mark_phase_updates_state():
     """mark_phase updates state and returns updated dict."""
     with tempfile.TemporaryDirectory() as tmpdir:
         slug = "test-slug"
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "implementation-plan.md").write_text("- [x] Task 1\n- [x] Task 2\n")
 
         with patch("teleclaude.core.next_machine.core.Repo"):
             result = mark_phase(tmpdir, slug, "build", "complete")
@@ -408,6 +411,7 @@ def test_mark_phase_review_approved_clears_unresolved_findings():
                 }
             )
         )
+        (state_dir / "review-findings.md").write_text("# Findings\n- R1-F1\n")
 
         result = mark_phase(tmpdir, slug, "review", "approved")
 
