@@ -1,0 +1,51 @@
+{
+  "name": "teleclaude-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:push": "drizzle-kit push",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@assistant-ui/react": "^0.12",
+    "@assistant-ui/react-markdown": "^0.12",
+    "@auth/drizzle-adapter": "^1",
+    "better-sqlite3": "^11",
+    "class-variance-authority": "^0.7",
+    "clsx": "^2",
+    "drizzle-orm": "^0.38",
+    "lucide-react": "^0.468",
+    "next": "15.3",
+    "next-auth": "5.0.0-beta.25",
+    "nodemailer": "^6",
+    "react": "^19",
+    "react-dom": "^19",
+    "tailwind-merge": "^3",
+    "yaml": "^2",
+    "zod": "^3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7",
+    "@types/node": "^22",
+    "@types/nodemailer": "^6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "drizzle-kit": "^0.30",
+    "tailwindcss": "^4",
+    "tw-animate-css": "^1",
+    "typescript": "^5.7"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "sharp"
+    ]
+  }
+}

@@ -1,0 +1,62 @@
+"use client";
+
+import {
+  ThreadPrimitive,
+  ComposerPrimitive,
+  MessagePrimitive,
+} from "@assistant-ui/react";
+
+export function ThreadView() {
+  return (
+    <ThreadPrimitive.Root className="flex h-full flex-col">
+      <ThreadPrimitive.Viewport className="flex flex-1 flex-col overflow-y-auto px-4 pt-8">
+        <ThreadPrimitive.Empty>
+          <div className="flex flex-1 items-center justify-center">
+            <p className="text-muted-foreground text-sm">
+              Send a message to start
+            </p>
+          </div>
+        </ThreadPrimitive.Empty>
+
+        <ThreadPrimitive.Messages
+          components={{
+            UserMessage,
+            AssistantMessage,
+          }}
+        />
+      </ThreadPrimitive.Viewport>
+
+      <div className="border-t bg-background p-4">
+        <ComposerPrimitive.Root className="flex items-end gap-2">
+          <ComposerPrimitive.Input
+            placeholder="Type a message..."
+            className="flex-1 resize-none rounded-lg border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <ComposerPrimitive.Send className="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            Send
+          </ComposerPrimitive.Send>
+        </ComposerPrimitive.Root>
+      </div>
+    </ThreadPrimitive.Root>
+  );
+}
+
+function UserMessage() {
+  return (
+    <MessagePrimitive.Root className="mb-4 flex justify-end">
+      <div className="max-w-[80%] rounded-lg bg-primary px-4 py-2 text-primary-foreground">
+        <MessagePrimitive.Content />
+      </div>
+    </MessagePrimitive.Root>
+  );
+}
+
+function AssistantMessage() {
+  return (
+    <MessagePrimitive.Root className="mb-4 flex justify-start">
+      <div className="max-w-[80%] rounded-lg bg-muted px-4 py-2">
+        <MessagePrimitive.Content />
+      </div>
+    </MessagePrimitive.Root>
+  );
+}

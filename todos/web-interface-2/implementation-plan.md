@@ -20,37 +20,34 @@ Adopt assistant-ui as the web UI while making Next.js API routes the public cont
 
 ### Task 1: Create frontend scaffold with assistant-ui
 
-**Deliverables**
-
-- `frontend/` Next.js app (App Router).
-- assistant-ui runtime wiring and base thread page.
+- [x] `frontend/` Next.js 15 app (App Router, standalone output).
+- [x] Tailwind CSS + shadcn/ui configured.
+- [x] assistant-ui packages installed.
+- [x] Base layout with root provider.
 
 **Notes**
 
 - Use assistant-ui integration patterns from local repo examples.
-- Prefer `init` into existing structure if feasible; otherwise scaffold and adapt.
+- pnpm as package manager.
 
 ### Task 2: Add runtime provider + chat page
 
-**Deliverables**
-
-- Runtime provider component using assistant-ui runtime hook.
-- Chat page rendering thread UI.
+- [ ] Runtime provider component using assistant-ui transport runtime.
+- [ ] Chat page rendering thread UI at `/(chat)`.
+- [ ] Wired to `/api/chat` route.
 
 **Notes**
 
-- Initial runtime can target `/api/chat` route in frontend app.
+- Use `useAssistantTransportRuntime` or `useChatRuntime` pattern.
 - Keep component boundaries clean so thread/session UI can evolve in phase 3/4.
 
 ### Task 3: Implement Next.js API facade routes
 
-**Deliverables**
-
-- Route handlers under `frontend/app/api/**` for:
-  - chat submit/stream
-  - people list
-  - session create/list
-  - message send
+- [ ] `frontend/lib/proxy/daemon-client.ts` — daemon HTTP client (Unix socket).
+- [ ] `POST /api/chat` — proxy to daemon session message + stream relay.
+- [ ] `GET /api/people` — resolve people from config (native mode).
+- [ ] `GET /api/sessions` + `POST /api/sessions` — proxy to daemon.
+- [ ] `POST /api/sessions/[id]/messages` — proxy to daemon message send.
 
 **Implementation contract**
 
@@ -61,11 +58,13 @@ Adopt assistant-ui as the web UI while making Next.js API routes the public cont
 
 ### Task 4: Identity normalization at web boundary
 
-**Deliverables**
-
-- Session/auth middleware in Next.js.
-- Identity resolver for current user.
-- Trusted identity headers attached to forwarded daemon requests.
+- [ ] NextAuth v5 configuration with email OTP provider.
+- [ ] Drizzle ORM + SQLite for auth session storage.
+- [ ] signIn callback rejects emails not in people config.
+- [ ] Session callback enriches with role from people config.
+- [ ] Login page with people selector and OTP flow.
+- [ ] Auth middleware protecting routes.
+- [ ] Trusted identity headers on daemon proxy requests.
 
 **Rules**
 
@@ -74,23 +73,13 @@ Adopt assistant-ui as the web UI while making Next.js API routes the public cont
 
 ### Task 5: Route map + migration status tracking
 
-**Deliverables**
-
-- `todos/web-interface-2/route-map.md` (new).
-- Table columns: `public route`, `daemon target`, `mode(proxy/hybrid/native)`, `owner`, `notes`.
+- [ ] `todos/web-interface-2/route-map.md` updated with actual implementation status.
 
 ### Task 6: Verification and guardrails
 
-**Deliverables**
-
-- Minimal integration checks for proxy route behavior.
-- Logging around proxy forwarding with redaction.
-
-**Checks**
-
-- Browser calls only Next.js routes.
-- Upstream failure surfaces clear error to UI.
-- Streaming path remains functional.
+- [ ] Proxy logging with request ID, latency, upstream status.
+- [ ] Secret/token redaction in logs.
+- [ ] Error normalization for upstream failures.
 
 ## Proposed File Targets
 
