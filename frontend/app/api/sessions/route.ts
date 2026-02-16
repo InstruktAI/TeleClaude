@@ -67,8 +67,7 @@ export async function POST(request: NextRequest) {
         title,
         initial_message,
         human_email: session.user.email,
-        human_role:
-          "role" in session.user ? (session.user.role as string) : undefined,
+        human_role: session.user.role,
       },
       headers: buildIdentityHeaders(session),
     });
