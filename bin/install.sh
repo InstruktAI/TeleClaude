@@ -403,10 +403,12 @@ PY
         MAIN_CHECKOUT="$HOME/Workspace/InstruktAI/TeleClaude"
         cp -a "$MAIN_CHECKOUT/.venv" "$INSTALL_DIR/.venv"
         # Repoint editable install paths to CI checkout directory.
-        find "$INSTALL_DIR/.venv" -name "*.pth" -exec \
-            sed -i '' "s|$MAIN_CHECKOUT|$INSTALL_DIR|g" {} +
-        find "$INSTALL_DIR/.venv" -name "direct_url.json" -exec \
-            sed -i '' "s|$MAIN_CHECKOUT|$INSTALL_DIR|g" {} +
+        # The editable finder .py has hardcoded MAPPING/NAMESPACES paths.
+        find "$INSTALL_DIR/.venv" -path "*/site-packages/__editable__*" \
+            \( -name "*.py" -o -name "*.pth" -o -name "direct_url.json" \) \
+            -exec sed -i '' "s|$MAIN_CHECKOUT|$INSTALL_DIR|g" {} +
+        # Clear cached .pyc so Python picks up the rewritten finder.
+        find "$INSTALL_DIR/.venv" -path "*/__pycache__/__editable__*" -name "*.pyc" -delete
     elif [ "$CI_MODE" = true ]; then
         # Fallback: try frozen sync (requires uv.lock in checkout).
         (cd "$INSTALL_DIR" && uv sync --frozen "${sync_args[@]}")
