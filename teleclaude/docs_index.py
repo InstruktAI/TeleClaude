@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Mapping, NotRequired, TypedDict
+from typing import Mapping
 
 import frontmatter
 import yaml
 from instrukt_ai_logging import get_logger
+from typing_extensions import NotRequired, TypedDict
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.constants import TYPE_SUFFIX

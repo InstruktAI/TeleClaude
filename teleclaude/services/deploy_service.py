@@ -7,9 +7,9 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import TypedDict
 
 from instrukt_ai_logging import get_logger
+from typing_extensions import TypedDict
 
 from teleclaude.config import config
 from teleclaude.transport.redis_transport import RedisTransport

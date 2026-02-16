@@ -6,7 +6,7 @@ import os
 import types
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable, TypedDict, cast
+from typing import TYPE_CHECKING, Awaitable, Callable, cast
 
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -15,6 +15,7 @@ from mcp.server import Server
 from mcp.server.lowlevel import NotificationOptions
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, TextContent, Tool
+from typing_extensions import TypedDict
 
 from teleclaude.config import config
 from teleclaude.constants import MCP_SOCKET_PATH, ResultStatus

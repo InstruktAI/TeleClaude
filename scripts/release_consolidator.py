@@ -17,7 +17,9 @@ import json
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Literal
+
+from typing_extensions import TypedDict
 
 
 class ContractChange(TypedDict, total=False):

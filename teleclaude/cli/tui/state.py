@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal, TypedDict, cast
+from typing import Literal, cast
 
 from instrukt_ai_logging import get_logger
+from typing_extensions import TypedDict
 
 from teleclaude.cli.tui.types import StickySessionInfo
 

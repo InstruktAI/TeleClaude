@@ -12,7 +12,9 @@ import subprocess
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Mapping, Optional, TypedDict
+from typing import Mapping, Optional
+
+from typing_extensions import TypedDict
 
 from teleclaude.constants import (
     CHECKPOINT_BLAST_RADIUS_THRESHOLD,

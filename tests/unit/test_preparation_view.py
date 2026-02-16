@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
-from typing import TypedDict
 from unittest.mock import Mock
+
+from typing_extensions import TypedDict
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 

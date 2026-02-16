@@ -4,7 +4,7 @@ This module defines which tools are available to different agent roles.
 Filtering only applies when a role marker is present and role == worker.
 """
 
-from typing import TypedDict
+from typing_extensions import TypedDict
 
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,

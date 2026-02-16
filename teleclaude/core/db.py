@@ -6,12 +6,13 @@ import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional, TypedDict
+from typing import TYPE_CHECKING, Literal, Optional
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
+from typing_extensions import TypedDict
 
 from teleclaude.config import config
 from teleclaude.constants import DB_IN_MEMORY

@@ -13,10 +13,11 @@ import shlex
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Awaitable, Callable, Optional, TypedDict, TypeVar, cast
+from typing import Awaitable, Callable, Optional, TypeVar, cast
 
 import psutil
 from instrukt_ai_logging import get_logger
+from typing_extensions import TypedDict
 
 from teleclaude.config import WORKING_DIR, config
 from teleclaude.constants import HUMAN_ROLE_ADMIN

@@ -6,7 +6,8 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TypedDict
+
+from typing_extensions import TypedDict
 
 
 class JobStateDict(TypedDict, total=False):

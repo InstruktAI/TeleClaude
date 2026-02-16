@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
-from typing import Optional, TypedDict
+from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
 from telegram import InlineKeyboardButton
+from typing_extensions import TypedDict
 
 from teleclaude.adapters.telegram.callback_handlers import CallbackHandlersMixin
 from teleclaude.adapters.telegram_adapter import TelegramAdapter

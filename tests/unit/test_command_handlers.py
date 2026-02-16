@@ -4,10 +4,11 @@ import json
 import os
 import tempfile
 from datetime import datetime, timezone
-from typing import Awaitable, TypedDict, cast
+from typing import Awaitable, cast
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
+from typing_extensions import TypedDict
 
 from teleclaude.config import AgentConfig
 from teleclaude.core import command_handlers

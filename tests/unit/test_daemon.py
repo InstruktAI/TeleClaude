@@ -5,10 +5,11 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
+from typing_extensions import TypedDict
 
 from teleclaude.core.origins import InputOrigin
 

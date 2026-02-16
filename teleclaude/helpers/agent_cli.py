@@ -21,7 +21,9 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Literal
+
+from typing_extensions import TypedDict
 
 # Anchor imports at repo root for teleclaude constants access.
 _REPO_ROOT = Path(__file__).resolve().parents[2]

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TypedDict
 
 import pytest
+from typing_extensions import TypedDict
 
 from teleclaude.cli import telec
 

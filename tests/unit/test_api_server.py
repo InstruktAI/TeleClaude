@@ -1,11 +1,11 @@
 """Unit tests for API server endpoints."""
 
 import uuid
-from typing import TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from typing_extensions import TypedDict
 
 from teleclaude.api_server import APIServer
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo

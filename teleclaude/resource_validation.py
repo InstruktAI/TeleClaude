@@ -18,10 +18,11 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Mapping, TypedDict
+from typing import Mapping
 
 import frontmatter
 import yaml
+from typing_extensions import TypedDict
 
 from teleclaude.types.todos import TodoState
 

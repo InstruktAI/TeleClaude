@@ -18,10 +18,11 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import MutableMapping, TypedDict
+from typing import MutableMapping
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import configure_logging, get_logger
+from typing_extensions import TypedDict
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.mcp.protocol import McpMethod
