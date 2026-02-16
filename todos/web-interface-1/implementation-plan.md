@@ -35,7 +35,7 @@ Stateless converter — takes JSONL entry, yields SSE event strings.
 
 **Verification:** Unit tests with sample JSONL entries.
 
-## Task 4: People list endpoint
+## [x] Task 4: People list endpoint
 
 **File:** `teleclaude/api_server.py`
 

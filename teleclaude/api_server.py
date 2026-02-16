@@ -28,6 +28,7 @@ from teleclaude.api_models import (
     FileUploadRequest,
     KeysRequest,
     MessageDTO,
+    PersonDTO,
     ProjectDTO,
     ProjectsInitialDataDTO,
     ProjectsInitialEventDTO,
@@ -871,6 +872,18 @@ class APIServer:
                     )
 
             return result
+
+        @self.app.get("/api/people")
+        async def list_people() -> list[PersonDTO]:  # pyright: ignore
+            """List people from global config (safe subset only)."""
+            try:
+                from teleclaude.cli.config_handlers import get_global_config
+
+                global_cfg = get_global_config()
+                return [PersonDTO(name=p.name, email=p.email, role=p.role) for p in global_cfg.people]
+            except Exception as e:
+                logger.error("list_people failed: %s", e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to list people: {e}") from e
 
         @self.app.get("/settings")
         async def get_settings() -> SettingsDTO:  # pyright: ignore

@@ -133,6 +133,16 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
         )
 
 
+class PersonDTO(BaseModel):  # type: ignore[explicit-any]
+    """DTO for person info (safe subset — no credentials)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    email: str | None = None
+    role: Literal["admin", "member", "contributor", "newcomer"] = "member"
+
+
 class ComputerDTO(BaseModel):  # type: ignore[explicit-any]
     """DTO for computer info."""
 
