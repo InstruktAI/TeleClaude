@@ -312,7 +312,7 @@ run_macos_setup_action() {
         return 0
     fi
 
-    local cmd=("$INSTALL_DIR/.venv/bin/python" "-m" "teleclaude.entrypoints.macos_setup" "--project-root" "$INSTALL_DIR")
+    local cmd=(env "PYTHONPATH=$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "-m" "teleclaude.entrypoints.macos_setup" "--project-root" "$INSTALL_DIR")
     if [ "$CI_MODE" = true ]; then
         cmd+=("--skip-build")
     fi

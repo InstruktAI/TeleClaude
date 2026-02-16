@@ -401,24 +401,16 @@ PY
         # network calls (Little Snitch blocks uv HTTPS on mozmini).
         print_info "Reusing main checkout .venv for CI..."
         MAIN_CHECKOUT="$HOME/Workspace/InstruktAI/TeleClaude"
-        # Ensure clean target (prior CI run may leave stale .venv).
+        # Symlink to main checkout's venv — avoids copy issues and
+        # ensures all packages (including git deps) are available.
         rm -rf "$INSTALL_DIR/.venv"
-        cp -a "$MAIN_CHECKOUT/.venv" "$INSTALL_DIR/.venv"
-        # Repoint editable install paths to CI checkout directory.
-        find "$INSTALL_DIR/.venv" -path "*/site-packages/__editable__*" \
-            \( -name "*.py" -o -name "*.pth" -o -name "direct_url.json" \) \
-            -exec sed -i '' "s|$MAIN_CHECKOUT|$INSTALL_DIR|g" {} +
-        find "$INSTALL_DIR/.venv" -path "*/__pycache__/__editable__*" -name "*.pyc" -delete
-        # Diagnostic: verify venv import works.
-        "$INSTALL_DIR/.venv/bin/python" -c "
-import sys
-print('Python:', sys.version)
-print('Path:', sys.path)
-import importlib.util
-for mod in ['instrukt_ai_logging', 'teleclaude']:
-    spec = importlib.util.find_spec(mod)
-    print(f'{mod}: {spec}')
-" || true
+        ln -s "$MAIN_CHECKOUT/.venv" "$INSTALL_DIR/.venv"
+        # Verify the venv works with a quick import test.
+        "$INSTALL_DIR/.venv/bin/python" -c "import instrukt_ai_logging; print('venv OK')" || {
+            print_error "Main checkout .venv is broken, falling back to uv sync"
+            rm -f "$INSTALL_DIR/.venv"
+            (cd "$INSTALL_DIR" && uv sync --frozen "${sync_args[@]}")
+        }
     elif [ "$CI_MODE" = true ]; then
         # Fallback: try frozen sync (requires uv.lock in checkout).
         (cd "$INSTALL_DIR" && uv sync --frozen "${sync_args[@]}")
