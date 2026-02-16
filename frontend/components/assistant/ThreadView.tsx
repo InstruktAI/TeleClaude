@@ -11,6 +11,9 @@ import { ThinkingBlock } from "@/components/parts/ThinkingBlock";
 import { ToolCallBlock } from "@/components/parts/ToolCallBlock";
 import { FileLink } from "@/components/parts/FileLink";
 import { StatusIndicator } from "@/components/parts/StatusIndicator";
+// TODO: Wire ArtifactCard for data-send-result parts
+// Requires research into assistant-ui custom data part registration API
+// import { ArtifactCard } from "@/components/parts/ArtifactCard";
 
 function ThreadStatus() {
   const thread = useThread();
@@ -80,6 +83,12 @@ function AssistantMessage() {
             tools: {
               Fallback: ToolCallBlock,
             },
+            // TODO: Register ArtifactCard for data-send-result parts
+            // The assistant-ui StandardComponents type doesn't expose a direct
+            // registration path for custom data parts. Needs investigation into:
+            // - useMessagePartData<T>() hook pattern
+            // - Custom content part handlers
+            // - Extension points for non-standard part types
           }}
         />
       </div>
