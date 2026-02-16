@@ -385,9 +385,9 @@ PY
         fi
     done
 
-    # On Apple Silicon macOS, install local MLX dependencies so Parakeet STT
-    # and MLX TTS run in-process (no CLI fallback required).
-    if [ "$OS" = "macos" ] && [ "$(uname -m)" = "arm64" ]; then
+    # On Apple Silicon macOS (non-CI), install local MLX dependencies so
+    # Parakeet STT and MLX TTS run in-process (no CLI fallback required).
+    if [ "$CI_MODE" = false ] && [ "$OS" = "macos" ] && [ "$(uname -m)" = "arm64" ]; then
         if has_optional_extra "mlx"; then
             sync_args+=(--extra "mlx")
         else
@@ -396,7 +396,13 @@ PY
     fi
 
     print_info "Syncing Python environment with uv..."
-    (cd "$INSTALL_DIR" && uv sync "${sync_args[@]}")
+    if [ "$CI_MODE" = true ]; then
+        # CI on self-hosted runner: use frozen lockfile to avoid network
+        # calls (Little Snitch blocks uv HTTPS on mozmini).
+        (cd "$INSTALL_DIR" && uv sync --frozen "${sync_args[@]}")
+    else
+        (cd "$INSTALL_DIR" && uv sync "${sync_args[@]}")
+    fi
 
     if [ ! -d "$INSTALL_DIR/.venv" ]; then
         print_error "uv sync did not create .venv"

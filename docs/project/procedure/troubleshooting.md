@@ -1,5 +1,5 @@
 ---
-description: 'Operational runbooks for diagnosing and recovering TeleClaude incidents.'
+description: 'Operational runbooks for TeleClaude incidents and infrastructure failures.'
 id: 'project/procedure/troubleshooting'
 scope: 'project'
 type: 'procedure'
@@ -229,6 +229,266 @@ If restart is not enough, use:
 - No new `Received SIGTERM signal...` lines in the verification window.
 - No sustained connection-refused bursts in MCP/API logs.
 - API socket remains present and healthy in `make status`.
+
+## Infrastructure & Environment
+
+These runbooks cover failures outside TeleClaude itself — host OS, network, CI runners — that silently stall operations without producing TeleClaude-level errors.
+
+### Runbook: Ephemeral port exhaustion (macOS)
+
+#### Symptom
+
+- Network calls fail with "Can't assign requested address" or ETIMEDOUT.
+- `curl https://github.com` hangs or fails despite Wi-Fi/Ethernet being connected.
+- GitHub Actions runner shows "Failed to connect" in logs but launchd reports service as running.
+
+#### Likely causes
+
+- TCP sockets stuck in TIME_WAIT exhaust the ephemeral port range.
+- macOS default range is 49152–65535 (only ~16K ports). High-throughput services (Docker builds, runners, CI) can saturate this.
+
+#### Fast checks
+
+1. Count TIME_WAIT sockets:
+   ```bash
+   netstat -an | grep TIME_WAIT | wc -l
+   ```
+   Problem threshold: >10,000.
+2. Check current port range:
+   ```bash
+   sysctl net.inet.ip.portrange.first net.inet.ip.portrange.last
+   ```
+
+#### Recover
+
+1. Expand ephemeral port range (immediate, survives until reboot):
+   ```bash
+   sudo sysctl -w net.inet.ip.portrange.first=10000
+   ```
+2. Verify with `curl https://github.com`.
+3. For persistence across reboots, add to `/etc/sysctl.conf`:
+   ```
+   net.inet.ip.portrange.first=10000
+   ```
+
+#### Verify
+
+- `curl https://github.com` returns 200.
+- `sysctl net.inet.ip.portrange.first` shows 10000.
+- Affected services (runner, Docker) resume normal operation.
+
+### Runbook: Self-hosted GitHub Actions runner silently offline
+
+#### Symptom
+
+- CI jobs stay in "queued" state indefinitely.
+- `gh run view <id> --json jobs` shows status `queued` with no runner assignment.
+- The runner host reports launchd service as running.
+
+#### Likely causes
+
+- Network failure on the runner host (see port exhaustion above).
+- Runner process crashed but launchd did not restart it.
+- Runner labels mismatch between workflow `runs-on` and registered labels.
+
+#### Fast checks
+
+1. SSH to runner host and check service:
+   ```bash
+   ssh morriz@mozmini.local 'cd ~/Apps/actions-runner && ./svc.sh status'
+   ```
+2. Check runner logs for connection errors:
+   ```bash
+   ssh morriz@mozmini.local 'tail -50 ~/Apps/actions-runner/_diag/Runner_*.log | grep -i "error\|fail\|connect"'
+   ```
+3. Verify network:
+   ```bash
+   ssh morriz@mozmini.local 'curl -s -o /dev/null -w "%{http_code}" https://github.com'
+   ```
+4. Check registered labels on GitHub:
+   ```bash
+   gh api orgs/InstruktAI/actions/runners --jq '.runners[] | {name, labels: [.labels[].name]}'
+   ```
+
+#### Recover
+
+1. Fix underlying network issue first (if port exhaustion, see runbook above).
+2. Restart runner service:
+   ```bash
+   ssh morriz@mozmini.local 'cd ~/Apps/actions-runner && ./svc.sh stop && ./svc.sh start'
+   ```
+3. Confirm runner connects:
+   ```bash
+   ssh morriz@mozmini.local 'tail -20 ~/Apps/actions-runner/_diag/Runner_*.log | grep -i "connect\|listen"'
+   ```
+
+#### Verify
+
+- `gh api orgs/InstruktAI/actions/runners` shows runner status `online`.
+- Queued jobs start executing.
+
+### Runbook: Little Snitch blocks git/python HTTPS connections
+
+#### Symptom
+
+- `git clone` or `git fetch` hangs for 5 minutes then fails with "Failed to connect to github.com port 443 after 300004 ms: Timeout was reached".
+- `python3` HTTPS requests time out.
+- `curl https://github.com` works (200).
+- CI checkout step hangs indefinitely.
+
+#### Likely causes
+
+- Little Snitch has per-application rules. `/usr/bin/curl` is allowed, but `git-remote-https` and `python3` are not.
+- Little Snitch may be in "Silent Mode - Deny" which silently blocks unmatched connections.
+
+#### Fast checks
+
+1. Test which binaries can reach GitHub:
+   ```bash
+   ssh morriz@mozmini.local 'curl -s -o /dev/null -w "%{http_code}" https://github.com'  # Should work
+   ssh morriz@mozmini.local 'GIT_TERMINAL_PROMPT=0 git ls-remote --heads https://github.com/InstruktAI/TeleClaude 2>&1 | head -3'  # Will hang if blocked
+   ```
+2. Confirm Little Snitch is running:
+   ```bash
+   ssh morriz@mozmini.local 'pgrep -fl "Little Snitch"'
+   ```
+
+#### Recover
+
+**Immediate (SSH bypass):** Configure git to use SSH instead of HTTPS:
+
+```bash
+ssh morriz@mozmini.local 'git config --global url."git@github.com:".insteadOf "https://github.com/"'
+```
+
+Requires a passphrase-less SSH key (`~/.ssh/id_ci_runner`) registered with GitHub.
+
+**Proper fix (requires physical access to Mac Mini):**
+
+1. Open Little Snitch → Settings → Security → enable "Allow access via Terminal"
+2. Then add rules via CLI:
+   ```bash
+   sudo /Applications/Little\ Snitch.app/Contents/Components/littlesnitch export-model > /tmp/backup.lsbackup
+   # Edit JSON to add allow rules for git-remote-https and python3
+   sudo /Applications/Little\ Snitch.app/Contents/Components/littlesnitch restore-model --preserve-terminal-access /tmp/backup.lsbackup
+   ```
+3. Or import a `.lsrules` file (see `/tmp/teleclaude-git-allow.lsrules` on mozmini).
+
+#### Verify
+
+- `git clone --depth=1 https://github.com/InstruktAI/TeleClaude /tmp/test && rm -rf /tmp/test` completes within seconds.
+- CI checkout step completes.
+
+### Runbook: Runner label mismatch
+
+#### Symptom
+
+- Jobs stay queued even though the runner is online.
+- Runner logs show it is connected but not picking up jobs.
+
+#### Likely causes
+
+- Workflow `runs-on` specifies labels the runner does not have.
+- MozMini has custom labels `[self-hosted, macOS, ARM64]` — not the macOS defaults `[self-hosted, OSX, Arm64]`.
+
+#### Fast checks
+
+1. Compare workflow labels with runner labels:
+   ```bash
+   gh api orgs/InstruktAI/actions/runners --jq '.runners[] | {name, labels: [.labels[].name]}'
+   ```
+2. Check what the queued job requested:
+   ```bash
+   gh run view <run-id> --json jobs --jq '.jobs[].labels'
+   ```
+
+#### Recover
+
+1. Update workflow `runs-on` to match registered labels, OR
+2. Update runner labels via GitHub UI (Settings → Actions → Runners → edit labels).
+
+#### Verify
+
+- Queued jobs start executing after label correction.
+
+### Runbook: DNS resolution failure
+
+#### Symptom
+
+- `curl` and `git` operations fail with "Could not resolve host".
+- Network interfaces show connected.
+
+#### Likely causes
+
+- Router/ISP DNS outage.
+- `/etc/resolv.conf` or macOS DNS settings misconfigured.
+- mDNS conflicts on local network.
+
+#### Fast checks
+
+1. ```bash
+   ssh morriz@mozmini.local 'nslookup github.com'
+   ```
+2. ```bash
+   ssh morriz@mozmini.local 'scutil --dns | head -20'
+   ```
+3. Try public DNS directly:
+   ```bash
+   ssh morriz@mozmini.local 'nslookup github.com 1.1.1.1'
+   ```
+
+#### Recover
+
+1. If public DNS works but system DNS doesn't, add fallback:
+   ```bash
+   ssh morriz@mozmini.local 'sudo networksetup -setdnsservers "Ethernet" 1.1.1.1 8.8.8.8'
+   ```
+2. Flush DNS cache:
+   ```bash
+   ssh morriz@mozmini.local 'sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder'
+   ```
+
+#### Verify
+
+- `nslookup github.com` resolves immediately.
+- `curl https://github.com` returns 200.
+
+### Runbook: Disk space exhaustion
+
+#### Symptom
+
+- Builds fail with "No space left on device".
+- Docker images and build caches accumulate silently.
+
+#### Fast checks
+
+1. ```bash
+   ssh morriz@mozmini.local 'df -h /'
+   ```
+2. Largest consumers:
+   ```bash
+   ssh morriz@mozmini.local 'du -sh ~/Library/Caches /tmp ~/Apps/actions-runner/_work 2>/dev/null | sort -rh'
+   ```
+3. Docker specifically:
+   ```bash
+   ssh morriz@mozmini.local 'docker system df 2>/dev/null'
+   ```
+
+#### Recover
+
+1. Docker cleanup:
+   ```bash
+   ssh morriz@mozmini.local 'docker system prune -af --volumes'
+   ```
+2. Runner work directory cleanup (only if no jobs running):
+   ```bash
+   ssh morriz@mozmini.local 'rm -rf ~/Apps/actions-runner/_work/_temp/*'
+   ```
+
+#### Verify
+
+- `df -h /` shows >20% free.
+- Builds complete successfully.
 
 ## Incident Trail For Next AI
 

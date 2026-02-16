@@ -414,7 +414,7 @@ snippets:
   path: docs/project/procedure/ssh-agent-keychain.md
   source_project: TeleClaude
 - id: project/procedure/troubleshooting
-  description: Operational runbooks for diagnosing and recovering TeleClaude incidents.
+  description: Operational runbooks for TeleClaude incidents and infrastructure failures.
   type: procedure
   scope: project
   path: docs/project/procedure/troubleshooting.md
