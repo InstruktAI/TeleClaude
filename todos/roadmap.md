@@ -20,7 +20,6 @@
 
 Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon produces AI SDK UIMessage Stream (SSE) from session transcripts and live output. Frontend uses `useChat` with `DefaultChatTransport`. Auth via NextAuth email OTP (6-digit code, Brevo SMTP adopted from ai-chatbot). Session-to-person metadata binding with visibility routing. React components for each UIMessage part type (reasoning, tool-call, text, custom data parts for send_result artifacts and file links).
 
-- web-interface-1 (after: session-messages-api, help-desk) — Daemon SSE Plumbing
 - web-interface-2 (after: web-interface-1) — Next.js Scaffold & Auth
 - web-interface-3 (after: web-interface-2) — Chat Interface & Part Rendering
 - web-interface-4 (after: web-interface-3) — Session Management & Role-Based Access
