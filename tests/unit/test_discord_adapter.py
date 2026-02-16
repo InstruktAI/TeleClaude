@@ -518,3 +518,61 @@ async def test_escalation_creates_thread_in_escalation_forum() -> None:
 
     assert thread_id == 999888
     assert "Alice" in escalation_forum.created_names
+
+
+# =========================================================================
+# Close Channel Tests
+# =========================================================================
+
+
+class FakeDeletableThread:
+    """Thread mock that supports delete."""
+
+    def __init__(self, thread_id: int, parent_id: int) -> None:
+        self.id = thread_id
+        self.parent = SimpleNamespace(id=parent_id)
+        self.deleted = False
+
+    async def delete(self) -> None:
+        self.deleted = True
+
+
+@pytest.mark.asyncio
+async def test_discord_close_channel_deletes_thread() -> None:
+    """close_channel deletes the Discord thread (not archives)."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+
+    session = _build_session()
+    discord_meta = session.get_metadata().get_ui().get_discord()
+    discord_meta.thread_id = 555111
+
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    thread = FakeDeletableThread(thread_id=555111, parent_id=444999)
+    fake_client.channels[555111] = thread
+    adapter._client = fake_client
+
+    result = await adapter.close_channel(session)
+
+    assert result is True
+    assert thread.deleted is True
+
+
+# =========================================================================
+# Threaded Output Metadata Tests
+# =========================================================================
+
+
+def test_discord_build_metadata_for_thread_no_markdownv2() -> None:
+    """Discord _build_metadata_for_thread returns metadata without MarkdownV2."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+
+    metadata = adapter._build_metadata_for_thread()
+    assert metadata.parse_mode is None

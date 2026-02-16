@@ -107,23 +107,23 @@ The threaded output mechanism is proven — it runs in production for Gemini on 
 
 ### Task 5.1: Tests
 
-- [ ] Unit test: `is_threaded_output_enabled` works for Claude (not just Gemini)
-- [ ] Unit test: `is_threaded_output_enabled_for_session` returns True for any Discord-origin session
-- [ ] Unit test: `char_offset` read/write in `send_threaded_output` works without Telegram metadata
-- [ ] Unit test: Discord `close_channel` deletes thread (not archives)
-- [ ] Unit test: existing Gemini threaded output still works (regression)
-- [ ] Unit test: standard poller output still works for Telegram non-threaded sessions
-- [ ] Run `make test`
+- [x] Unit test: `is_threaded_output_enabled` works for Claude (not just Gemini)
+- [x] Unit test: `is_threaded_output_enabled_for_session` returns True for any Discord-origin session
+- [x] Unit test: `char_offset` read/write in `send_threaded_output` works without Telegram metadata
+- [x] Unit test: Discord `close_channel` deletes thread (not archives)
+- [x] Unit test: existing Gemini threaded output still works (regression)
+- [x] Unit test: standard poller output still works for Telegram non-threaded sessions
+- [x] Run `make test`
 
 ### Task 5.2: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 6: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)
