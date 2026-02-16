@@ -11,11 +11,12 @@
 
 ## Review Gates (Reviewer)
 
-- [ ] Code matches requirements — FR6 (custom data parts) and reconnection unmet; see review-findings.md
-- [ ] Part components handle missing/malformed data gracefully — ArtifactCard dead code, no stream error handling
-- [ ] No security vulnerabilities introduced — C1: XSS via dangerouslySetInnerHTML in ArtifactCard
+- [ ] Code matches requirements — FR6 and reconnection deferred (documented); FR5 dark mode highlight broken (C2)
+- [ ] Part components handle missing/malformed data gracefully — error banner never clears (I1)
+- [ ] No security vulnerabilities introduced — C1: dompurify missing from package.json (latent, ArtifactCard is dead code)
 - [x] Streaming transport works end-to-end — SSE streaming via useChatRuntime correctly wired
 - [x] Session picker loads and navigates correctly — SessionPicker fetches /api/sessions, navigates via URL params
+- [x] Documented deferrals justified — ArtifactCard wiring, StatusIndicator events, reconnection all documented with rationale
 
 ## Finalize Gates (Finalizer)
 

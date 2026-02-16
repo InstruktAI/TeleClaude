@@ -1,189 +1,151 @@
 # Review Findings: web-interface-3
 
 **Branch:** `web-interface-3`
-**Commits reviewed:** 7 (`49a0e369..740fd385`)
-**TypeScript compilation:** PASSES
-**Review round:** 1
+**Commits reviewed:** 15 (`49a0e369..87edcd29`)
+**Review round:** 2
+
+---
+
+## Round 2 Assessment
+
+Round 1 identified 1 critical, 6 important, and 7 suggestion-level findings. Fixes were applied in commits `dd6428e7..87edcd29`. This round evaluates those fixes and identifies new issues introduced by the fix commits.
+
+### Round 1 Fix Evaluation
+
+| R1 Issue                       | Fix Status                     | R2 Assessment                                                                   |
+| ------------------------------ | ------------------------------ | ------------------------------------------------------------------------------- |
+| **C1: XSS in ArtifactCard**    | DOMPurify added (dd6428e7)     | **Incomplete** — `dompurify` package missing from `package.json` (see C1 below) |
+| **I4: Stream error handling**  | onError + banner (04b055d7)    | **Incomplete** — error banner never clears (see I1 below)                       |
+| **I5: Dark mode theme**        | CSS media queries (5a687432)   | **Incomplete** — invalid CSS `@import` nesting (see C2 below)                   |
+| **I6: Unused props**           | Renamed to `_props` (ef4390a2) | ✅ Complete                                                                     |
+| **I1: ArtifactCard wiring**    | Documented as TODO (0cd76579)  | ✅ Acceptable deferral — requires framework API research                        |
+| **I2: StatusIndicator wiring** | Documented as TODO (9275b909)  | ✅ Acceptable deferral — requires custom SSE event interception                 |
+| **I3: Reconnection**           | Gap analysis doc (756b2c29)    | ✅ Acceptable deferral — documented with Phase 4 recommendation                 |
 
 ---
 
 ## Critical
 
-### C1: XSS via `dangerouslySetInnerHTML` in ArtifactCard
+### C1: Missing `dompurify` dependency
 
-**File:** `frontend/components/parts/ArtifactCard.tsx:30`
+**File:** `frontend/components/parts/ArtifactCard.tsx:5`
 
 ```tsx
-dangerouslySetInnerHTML={{ __html: content }}
+import DOMPurify from 'dompurify';
 ```
 
-Raw HTML from the SSE stream is injected into the DOM without sanitization. The `content` field originates from the daemon's `send_result` tool call (AI-generated output). Even behind auth, prompt injection or compromised sessions could produce script tags or event handlers.
+The C1 XSS fix added `DOMPurify.sanitize()` but `dompurify` was never added to `package.json`. Confirmed: the package does not exist in `node_modules`. The import compiles only because ArtifactCard is dead code (not in the import graph of any page), so Next.js never resolves the module.
 
-**Fix:** Sanitize with `DOMPurify.sanitize(content)` before injection, or remove the HTML rendering path entirely.
+When ArtifactCard is wired in (Phase 4), this will cause a build failure.
 
-**Note:** This component is currently dead code (see I1), so the XSS is latent, not actively exploitable. But it must be fixed before the component is wired in.
+**Fix:** `pnpm add dompurify && pnpm add -D @types/dompurify`
+
+### C2: Invalid CSS — `@import` nested inside `@media`
+
+**File:** `frontend/styles/highlight-theme.css:1-9`
+
+```css
+@media (prefers-color-scheme: light) {
+  @import 'highlight.js/styles/github.css';
+}
+@media (prefers-color-scheme: dark) {
+  @import 'highlight.js/styles/github-dark-dimmed.css';
+}
+```
+
+Per the CSS specification, `@import` must appear at the top level of a stylesheet before any other rules. Nesting `@import` inside `@media` blocks is invalid CSS. The PostCSS config only includes `@tailwindcss/postcss` — no `postcss-import` plugin that might handle this non-standard pattern. Browsers will ignore the nested imports, meaning neither theme loads.
+
+**Fix:** Use top-level `@import` with media query condition:
+
+```css
+@import 'highlight.js/styles/github.css' (prefers-color-scheme: light);
+@import 'highlight.js/styles/github-dark-dimmed.css' (prefers-color-scheme: dark);
+```
 
 ---
 
 ## Important
 
-### I1: ArtifactCard is dead code -- FR6 unmet
+### I1: Error banner never clears in MyRuntimeProvider
 
-**File:** `frontend/components/parts/ArtifactCard.tsx` (entire file)
+**File:** `frontend/components/assistant/MyRuntimeProvider.tsx:16-46`
 
-ArtifactCard is implemented but never imported or registered in `ThreadView.tsx`'s `MessagePrimitive.Content` components map. The assistant-ui framework renders `data` type parts as `null` when no component is registered. `data-send-result` custom parts from the SSE stream will be silently dropped.
+The `onError` callback sets error state, but `setError(null)` is never called anywhere. Once a transient stream error occurs:
 
-**Requirement:** FR6 explicitly states `"data-send-result" renders as an <ArtifactCard>`.
+- The banner persists even after the stream recovers
+- Switching sessions (new `sessionId` prop) does not clear it
+- No dismiss button exists
+- Users see a stale error for the remainder of the page lifecycle
 
-**Action:** Either wire the component via the `Data` part mechanism (may require `useMessagePartData<T>()` or a custom data part handler), or explicitly defer to a follow-up with documented rationale.
-
-### I2: StatusIndicator does not reflect session-level status events
-
-**File:** `frontend/components/assistant/ThreadView.tsx:15-18`
-
-```tsx
-const status = thread.isRunning ? 'streaming' : 'idle';
-```
-
-The `StatusIndicator` supports four states (`streaming`, `idle`, `closed`, `error`) but `ThreadStatus` only derives two based on `thread.isRunning`. The `closed` and `error` config entries are dead code paths. FR6 requires `data-session-status` events to update the indicator.
-
-**Action:** Wire `data-session-status` SSE events into state, or defer with rationale.
-
-### I3: Reconnection with `since_timestamp` not implemented
-
-**Requirement:** FR5 (Reconnection) -- "Use `since_timestamp` on reconnect to avoid replaying full history."
-
-Grep for `since_timestamp`, `sinceTimestamp`, `since_time` across `frontend/` returns zero matches. Implementation plan Task 7 is marked `[x]` complete with the note "If assistant-ui/AI SDK handles reconnection natively, this may not need custom logic." However, no verification was documented.
-
-**Action:** Verify whether the AI SDK transport handles reconnection natively. If it does, document the finding. If not, implement or explicitly defer with rationale.
-
-### I4: No stream error handling in MyRuntimeProvider
-
-**File:** `frontend/components/assistant/MyRuntimeProvider.tsx:25`
-
-The `useChatRuntime` hook accepts an `onError` callback (via `ChatInit.onError`), but none is provided. When the SSE stream fails (network drop, 503, expired session), the error is swallowed by SDK defaults. The user sees the stream silently stop with no feedback. No React error boundary exists in the component tree.
-
-**Action:** Add `onError` callback to surface stream errors to the user. Consider adding a `(chat)/error.tsx` boundary.
-
-### I5: No dark mode syntax highlighting theme
-
-**File:** `frontend/components/parts/MarkdownContent.tsx:6`
+**Fix:** At minimum, clear error when `sessionId` changes:
 
 ```tsx
-import 'highlight.js/styles/github.css';
+useEffect(() => {
+  setError(null);
+}, [sessionId]);
 ```
 
-Only the light-mode theme is imported. The app uses `dark:prose-invert` (line 14), indicating dark mode support. Code blocks will have light background in dark mode, making text unreadable.
-
-**Action:** Import a dark-mode-compatible theme (e.g., `github-dark-dimmed`) or conditionally load both themes with media queries.
-
-### I6: Unused `props` parameter in MarkdownContent
-
-**File:** `frontend/components/parts/MarkdownContent.tsx:9`
-
-```tsx
-export function MarkdownContent(props: TextMessagePartProps) {
-```
-
-The `props` parameter (containing `text`, `type`, `status`) is never used. `MarkdownTextPrimitive` reads text from React context, not props. The parameter exists to satisfy the `TextMessagePartComponent` type signature. This violates "no unused variables" policy.
-
-**Action:** Rename to `_props` or destructure unused fields to signal intent.
+And add a dismiss button to the error banner.
 
 ---
 
-## Suggestions
+## Suggestions (carried from R1, still applicable)
 
-### S1: SessionPicker URL encoding
+- **S1:** SessionPicker URL encoding — `encodeURIComponent` for session_id
+- **S2:** StatusIndicator accessibility — `aria-label` on status dot
+- **S3:** FileLink href validation — guard against `javascript:` URIs
+- **S6:** SessionPicker error state — add retry button
 
-**File:** `frontend/components/SessionPicker.tsx:64`
+---
 
-`session_id` is interpolated into the URL without `encodeURIComponent`. Low risk (UUIDs are safe characters) but a defense-in-depth improvement.
+## Documented Deferrals (Accepted)
 
-### S2: StatusIndicator accessibility
+The following gaps from R1 are documented with clear rationale and recommended for Phase 4:
 
-**File:** `frontend/components/parts/StatusIndicator.tsx:21`
-
-The colored dot `<span>` has no `aria-label` or `role`. Screen readers won't convey the status independently.
-
-### S3: FileLink href validation
-
-**File:** `frontend/components/parts/FileLink.tsx:11`
-
-`data` is used as `href` without validation. A `javascript:` URI guard (allowlist `data:`, `blob:`, `https:`) would be prudent.
-
-### S4: Session type naming collision
-
-**Files:** `frontend/components/SessionPicker.tsx:6` and `frontend/types/next-auth.d.ts:4`
-
-Two unrelated `Session` interfaces. Rename SessionPicker's to `AgentSession` to disambiguate.
-
-### S5: No runtime validation at API boundary
-
-**File:** `frontend/components/SessionPicker.tsx:25-26`
-
-`res.json()` returns `any`. No runtime check that objects conform to `Session`. Mismatched daemon field names would produce broken UI silently.
-
-### S6: SessionPicker error state is a dead end
-
-**File:** `frontend/components/SessionPicker.tsx:41-46`
-
-Error is displayed but no retry button or contextual action. 401 errors don't hint at re-login.
-
-### S7: Collapsible pattern duplication
-
-**Files:** `ThinkingBlock.tsx`, `ToolCallBlock.tsx`
-
-Both duplicate the expand/collapse toggle pattern. Consider extracting a `CollapsibleSection` primitive if more collapsible types are added in Phase 4.
+1. **ArtifactCard wiring (FR6 partial)** — assistant-ui lacks a direct registration path for custom data parts. TODO in `ThreadView.tsx:14-16` with research pointers.
+2. **StatusIndicator session-status events (FR6 partial)** — requires intercepting custom SSE events outside the message flow. TODO in `ThreadView.tsx:20-26`.
+3. **Reconnection with `since_timestamp`** — no native SDK support. Gap analysis at `frontend/docs/reconnection-gap.md`.
 
 ---
 
 ## Plan Alignment
 
-| Requirement                                                        | Status                                                            |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------- |
-| FR1: Streaming transport                                           | Met                                                               |
-| FR2: Session selection                                             | Met                                                               |
-| FR3: Reasoning parts                                               | Met                                                               |
-| FR4: Tool call parts                                               | Met                                                               |
-| FR5: Text/markdown parts                                           | Met                                                               |
-| FR6: Custom data parts (`data-send-result`, `data-session-status`) | **Not met** -- ArtifactCard dead code, StatusIndicator incomplete |
-| FR7: File parts                                                    | Met                                                               |
-| FR8: Chat input                                                    | Met                                                               |
-| Reconnection (`since_timestamp`)                                   | **Not met** -- no implementation, no documented deferral          |
+| Requirement                      | Status                                           |
+| -------------------------------- | ------------------------------------------------ |
+| FR1: Streaming transport         | Met                                              |
+| FR2: Session selection           | Met                                              |
+| FR3: Reasoning parts             | Met                                              |
+| FR4: Tool call parts             | Met                                              |
+| FR5: Text/markdown parts         | Met (pending C2 CSS fix for dark mode highlight) |
+| FR6: Custom data parts           | Deferred — documented with rationale             |
+| FR7: File parts                  | Met                                              |
+| FR8: Chat input                  | Met                                              |
+| Reconnection (`since_timestamp`) | Deferred — documented with rationale             |
 
 ---
 
 ## Fixes Applied
 
-### Round 1 Fixes (Commits dd6428e7 - 756b2c29)
+### Round 1 Fixes (Commits dd6428e7 - 87edcd29)
 
-| Issue                          | Status        | Commit   | Notes                                                                                        |
-| ------------------------------ | ------------- | -------- | -------------------------------------------------------------------------------------------- |
-| **C1: XSS in ArtifactCard**    | ✅ Fixed      | dd6428e7 | Added DOMPurify sanitization for HTML content                                                |
-| **I6: Unused props**           | ✅ Fixed      | ef4390a2 | Renamed to `_props` to signal intentionally unused                                           |
-| **I5: Dark mode theme**        | ✅ Fixed      | 5a687432 | Added conditional highlight.js themes via CSS media queries                                  |
-| **I4: Stream error handling**  | ✅ Fixed      | 04b055d7 | Added onError callback with user-visible error banner                                        |
-| **I1: ArtifactCard wiring**    | 📝 Documented | 0cd76579 | Requires research into assistant-ui custom data part API - added TODO with details           |
-| **I2: StatusIndicator wiring** | 📝 Documented | 9275b909 | Requires custom SSE event interception - added TODO with details                             |
-| **I3: Reconnection**           | 📝 Documented | 756b2c29 | Verified no native SDK support - created gap analysis document recommending Phase 4 deferral |
-
-### Summary
-
-- **Critical issues resolved**: XSS sanitization in place
-- **Non-blocking issues resolved**: Dark mode syntax highlighting, unused props, stream error handling
-- **Documented gaps**: ArtifactCard/StatusIndicator wiring requires framework API research; reconnection requires custom implementation
-
-All fixes verified with TypeScript compilation and passed pre-commit hooks (lint, format).
+| Issue                          | Status        | Commit   | Notes                                                            |
+| ------------------------------ | ------------- | -------- | ---------------------------------------------------------------- |
+| **C1: XSS in ArtifactCard**    | ⚠️ Incomplete | dd6428e7 | DOMPurify.sanitize() added but package missing from package.json |
+| **I6: Unused props**           | ✅ Fixed      | ef4390a2 | Renamed to `_props`                                              |
+| **I5: Dark mode theme**        | ⚠️ Incomplete | 5a687432 | Invalid CSS @import nesting — themes don't load                  |
+| **I4: Stream error handling**  | ⚠️ Incomplete | 04b055d7 | onError added but error banner never clears                      |
+| **I1: ArtifactCard wiring**    | 📝 Documented | 0cd76579 | Phase 4 deferral                                                 |
+| **I2: StatusIndicator wiring** | 📝 Documented | 9275b909 | Phase 4 deferral                                                 |
+| **I3: Reconnection**           | 📝 Documented | 756b2c29 | Phase 4 deferral with gap analysis                               |
 
 ---
 
 ## Verdict: REQUEST CHANGES
 
-**Blocking issues:**
+**Blocking (must fix):**
 
-1. ~~C1: XSS in ArtifactCard must be fixed (sanitize or remove HTML path)~~ ✅ FIXED
-2. I1+I2: FR6 gap -- either wire ArtifactCard + StatusIndicator to data parts, or document as explicit deferrals ⚠️ DOCUMENTED (requires framework API research)
-3. I3: Reconnection -- verify SDK behavior or document as explicit deferral ✅ DOCUMENTED (Phase 4 deferral recommended)
-4. ~~I4: Stream error handling -- users must see feedback on failures~~ ✅ FIXED
+1. **C1:** Add `dompurify` (and `@types/dompurify`) to `package.json`
+2. **C2:** Fix CSS `@import` syntax — use top-level imports with media conditions
+3. **I1:** Add error clearing mechanism to MyRuntimeProvider (at minimum on sessionId change + dismiss button)
 
-**Non-blocking but should fix:** ~~I5 (dark mode theme)~~ ✅ FIXED, ~~I6 (unused props)~~ ✅ FIXED
+**Non-blocking:** S1, S2, S3, S6 remain open suggestions for future improvement.
