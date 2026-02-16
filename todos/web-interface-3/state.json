@@ -1,8 +1,17 @@
 {
+  "phase": "in_progress",
+  "build": "complete",
+  "review": "changes_requested",
+  "deferrals_processed": false,
   "breakdown": {
     "assessed": true,
     "todos": []
   },
+  "review_round": 1,
+  "max_review_rounds": 3,
+  "review_baseline_commit": "740fd385",
+  "unresolved_findings": ["C1", "I1", "I2", "I3", "I4", "I5", "I6"],
+  "resolved_findings": [],
   "dor": {
     "last_assessed_at": "2026-02-09T17:00:00Z",
     "score": 7,
@@ -15,6 +24,5 @@
       "requirements_updated": false,
       "implementation_plan_updated": false
     }
-  },
-  "phase": "pending"
+  }
 }

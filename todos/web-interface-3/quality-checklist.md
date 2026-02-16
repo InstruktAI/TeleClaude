@@ -11,11 +11,11 @@
 
 ## Review Gates (Reviewer)
 
-- [ ] Code matches requirements
-- [ ] Part components handle missing/malformed data gracefully
-- [ ] No security vulnerabilities introduced
-- [ ] Streaming transport works end-to-end
-- [ ] Session picker loads and navigates correctly
+- [ ] Code matches requirements — FR6 (custom data parts) and reconnection unmet; see review-findings.md
+- [ ] Part components handle missing/malformed data gracefully — ArtifactCard dead code, no stream error handling
+- [ ] No security vulnerabilities introduced — C1: XSS via dangerouslySetInnerHTML in ArtifactCard
+- [x] Streaming transport works end-to-end — SSE streaming via useChatRuntime correctly wired
+- [x] Session picker loads and navigates correctly — SessionPicker fetches /api/sessions, navigates via URL params
 
 ## Finalize Gates (Finalizer)
 
