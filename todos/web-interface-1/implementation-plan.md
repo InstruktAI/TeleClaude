@@ -4,7 +4,7 @@
 
 Add daemon-side SSE infrastructure for the web interface.
 
-## Task 1: TCP port binding
+## [x] Task 1: TCP port binding
 
 **File:** `teleclaude/api_server.py`
 
