@@ -343,13 +343,16 @@ class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]
     enabled: bool = False
 
 
+PaneThemingMode = Literal["off", "highlight", "highlight2", "agent", "agent_plus", "full", "semi"]
+
+
 class SettingsDTO(BaseModel):  # type: ignore[explicit-any]
     """Runtime settings response."""
 
     model_config = ConfigDict(frozen=True)
 
     tts: TTSSettingsDTO
-    pane_theming_mode: Literal["full", "semi", "off"] = "full"
+    pane_theming_mode: PaneThemingMode = "full"
 
 
 class TTSSettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
@@ -366,4 +369,4 @@ class SettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     tts: TTSSettingsPatchDTO | None = None
-    pane_theming_mode: Literal["full", "semi", "off"] | None = None
+    pane_theming_mode: PaneThemingMode | None = None

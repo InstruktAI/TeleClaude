@@ -8,6 +8,7 @@ import asyncio
 import curses
 import os
 import queue
+import random
 import signal
 import sys
 import time
@@ -37,7 +38,7 @@ from teleclaude.cli.models import (
     ComputerInfo as ApiComputerInfo,
 )
 from teleclaude.cli.tui.animation_colors import palette_registry
-from teleclaude.cli.tui.animation_engine import AnimationEngine
+from teleclaude.cli.tui.animation_engine import AnimationEngine, AnimationPriority
 from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger, StateDrivenTrigger
 from teleclaude.cli.tui.animations.config import (
     ErrorAnimation,
@@ -226,6 +227,7 @@ class TelecApp:
         self.agent_availability: dict[str, AgentAvailabilityInfo] = {}
         self.tts_enabled: bool = False
         self.pane_theming_mode: str = get_pane_theming_mode()
+        self._pane_mode_pending_patch: bool = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self.focus = FocusContext()  # Shared focus across views
         self.notification: Notification | None = None
@@ -328,15 +330,20 @@ class TelecApp:
             subscriptions=["sessions", "projects", "todos"],
         )
 
-    def _apply_pane_theming_mode(self, mode: str) -> None:
+    def _apply_pane_theming_mode(self, mode: str, *, from_api: bool = False) -> None:
         """Apply pane mode override and refresh pane colors."""
-        if mode == self.pane_theming_mode:
-            return
-
         try:
             normalized = normalize_pane_theming_mode(mode)
         except ValueError:
             logger.warning("Ignoring unknown pane_theming_mode: %s", mode)
+            return
+
+        if normalized == self.pane_theming_mode:
+            if from_api:
+                self._pane_mode_pending_patch = False
+            return
+
+        if from_api and self._pane_mode_pending_patch:
             return
 
         self.pane_theming_mode = normalized
@@ -351,6 +358,7 @@ class TelecApp:
         cycle = PANE_THEMING_MODE_CYCLE
         index = get_pane_theming_mode_level(self.pane_theming_mode)
         next_mode = cycle[(index + 1) % len(cycle)]
+        self._pane_mode_pending_patch = True
         self._apply_pane_theming_mode(next_mode)
 
         if self._loop:
@@ -414,7 +422,7 @@ class TelecApp:
 
             # Update TTS state from settings
             self.tts_enabled = settings.tts.enabled
-            self._apply_pane_theming_mode(settings.pane_theming_mode)
+            self._apply_pane_theming_mode(settings.pane_theming_mode, from_api=True)
 
             # Refresh ALL views with data (not just current)
             for view_num, view in self.views.items():
@@ -762,11 +770,62 @@ class TelecApp:
             self.animation_engine.is_enabled = False
         else:
             self.animation_engine.is_enabled = True
-
-        if mode == "party":
-            self.periodic_trigger.interval_sec = 10
-        else:
             self.periodic_trigger.interval_sec = config.ui.animations_periodic_interval
+
+    def _maybe_play_party_animation(self) -> None:
+        """Play continuous animations in party mode.
+
+        Called from the render loop so it doesn't depend on the async
+        event loop being pumped. Starts a new animation whenever the
+        banner slot is idle.
+        """
+        banner_slot = self.animation_engine._targets.get("banner")
+        if banner_slot and banner_slot.animation is not None:
+            return  # Animation still playing
+
+        from teleclaude.cli.tui.animation_triggers import filter_animations
+        from teleclaude.cli.tui.animations.general import GENERAL_ANIMATIONS
+
+        palette = palette_registry.get("spectrum")
+        filtered = filter_animations(GENERAL_ANIMATIONS, self.periodic_trigger.animations_subset)
+        if not filtered or not palette:
+            return
+
+        anim_cls = random.choice(filtered)
+        self.animation_engine.play(
+            anim_cls(palette=palette, is_big=True, duration_seconds=random.uniform(3, 6)),
+            priority=AnimationPriority.PERIODIC,
+        )
+
+        # Also play on logo
+        small_compatible = [cls for cls in filtered if cls.supports_small]
+        if small_compatible:
+            anim_cls_small = random.choice(small_compatible)
+            self.animation_engine.play(
+                anim_cls_small(palette=palette, is_big=False, duration_seconds=random.uniform(3, 6)),
+                priority=AnimationPriority.PERIODIC,
+            )
+
+    def _cycle_animation_mode(self) -> None:
+        """Cycle animation mode: periodic -> party -> off -> periodic."""
+        modes = ["periodic", "party", "off"]
+        current = self.state.animation_mode
+        try:
+            next_mode = modes[(modes.index(current) + 1) % len(modes)]
+        except ValueError:
+            next_mode = "periodic"
+
+        self.controller.dispatch(Intent(IntentType.SET_ANIMATION_MODE, {"mode": next_mode}))
+        self._apply_animation_mode()
+        save_sticky_state(self.state)
+
+        if self.footer:
+            self.footer.animation_mode = next_mode
+
+        msg = f"Animation mode: {next_mode.upper()}"
+        level = NotificationLevel.INFO if next_mode != "off" else NotificationLevel.WARNING
+        self.notify(msg, level)
+        logger.debug("Animation mode toggled to %s", next_mode)
 
     def run(self, stdscr: CursesWindow) -> None:
         """Main event loop.
@@ -986,6 +1045,8 @@ class TelecApp:
                             logger.debug("TTS toggled to %s via footer click", self.tts_enabled)
                         elif clicked == "pane_theming_mode":
                             self._cycle_pane_theming_mode()
+                        elif clicked == "animation_mode":
+                            self._cycle_animation_mode()
                     # Check if a tab was clicked
                     elif self.tab_bar.handle_click(my, mx) is not None:
                         clicked_tab = self.tab_bar.handle_click(my, mx)
@@ -1144,25 +1205,7 @@ class TelecApp:
 
         # Animation mode toggle
         elif key == ord("m"):
-            modes = ["periodic", "party", "off"]
-            current = self.state.animation_mode
-            try:
-                next_mode = modes[(modes.index(current) + 1) % len(modes)]
-            except ValueError:
-                next_mode = "periodic"
-
-            self.controller.dispatch(Intent(IntentType.SET_ANIMATION_MODE, {"mode": next_mode}))
-            self._apply_animation_mode()
-            save_sticky_state(self.state)
-
-            # Update footer if it exists
-            if self.footer:
-                self.footer.animation_mode = next_mode
-
-            msg = f"Animation mode: {next_mode.upper()}"
-            level = NotificationLevel.INFO if next_mode != "off" else NotificationLevel.WARNING
-            self.notify(msg, level)
-            logger.debug("Animation mode toggled to %s", next_mode)
+            self._cycle_animation_mode()
 
         # View-specific actions
         else:
@@ -1246,6 +1289,11 @@ class TelecApp:
 
         # Update animations
         self.animation_engine.update()
+
+        # Party mode: play continuous back-to-back animations directly
+        # (bypasses async periodic trigger which depends on event loop pumping)
+        if self.state.animation_mode == "party":
+            self._maybe_play_party_animation()
 
         # Calculate pane counts (1 TUI pane + session panes)
         total_panes = 1  # TUI pane

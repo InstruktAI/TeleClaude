@@ -3,18 +3,20 @@
 import curses
 import unicodedata
 from datetime import datetime
+from typing import Literal, TypeAlias, cast
 
 from teleclaude.cli.models import AgentAvailabilityInfo
 from teleclaude.cli.tui.theme import (
+    AGENT_COLORS,
     PANE_THEMING_MODE_FULL,
     PANE_THEMING_MODE_OFF,
-    get_agent_preview_selected_bg_attr,
-    get_agent_preview_selected_focus_attr,
     get_agent_status_color_pair,
     get_pane_theming_mode_level,
     normalize_pane_theming_mode,
 )
 from teleclaude.cli.tui.widgets.agent_status import build_agent_render_spec
+
+KnownAgent: TypeAlias = Literal["claude", "gemini", "codex"]
 
 
 class Footer:
@@ -26,7 +28,7 @@ class Footer:
         tts_enabled: bool = False,
         animation_mode: str = "periodic",
         pane_theming_mode: str = PANE_THEMING_MODE_FULL,
-        pane_theming_agent: str = "codex",
+        pane_theming_agent: KnownAgent = "codex",
     ):
         self.agent_availability = agent_availability
         self.tts_enabled = tts_enabled
@@ -35,16 +37,20 @@ class Footer:
         self.pane_theming_agent = pane_theming_agent
         self._tts_col_start: int = -1
         self._tts_col_end: int = -1
+        self._anim_col_start: int = -1
+        self._anim_col_end: int = -1
         self._pane_theming_col_start: int = -1
         self._pane_theming_col_end: int = -1
 
     @staticmethod
-    def _normalize_agent(agent: str) -> str:
-        """Normalize agent label and fall back to codex."""
-        normalized = (agent or "codex").strip().lower()
-        return normalized if normalized else "codex"
+    def _normalize_agent(agent: str) -> KnownAgent:
+        """Normalize agent label and fail for unknown values."""
+        normalized = agent.strip().lower()
+        if normalized not in {"claude", "gemini", "codex"}:
+            raise ValueError(f"Unknown agent for footer theming contract: {agent!r}")
+        return cast(KnownAgent, normalized)
 
-    def _format_pane_mode_cells(self, mode: str, *, agent: str) -> list[tuple[str, int]]:
+    def _format_pane_mode_cells(self, mode: str, *, agent: KnownAgent) -> list[tuple[str, int]]:
         """Return a multi-cell ASCII indicator pattern for pane coloring mode."""
         try:
             normalized = normalize_pane_theming_mode(mode)
@@ -53,31 +59,45 @@ class Footer:
             level = 0
         else:
             level = get_pane_theming_mode_level(normalized)
-        safe_agent = self._normalize_agent(agent)
+        try:
+            safe_agent = self._normalize_agent(agent)
+        except ValueError:
+            safe_agent = "codex"
 
-        outline_attr = get_agent_status_color_pair(safe_agent, muted=True) | curses.A_DIM | curses.A_REVERSE
-        base_cell_fill_attr = get_agent_preview_selected_bg_attr(safe_agent)
-        accent_cell_fill_attr = get_agent_preview_selected_focus_attr(safe_agent)
-        separator_attr = curses.A_DIM
-        # Four indicator cells, each with an outline and a one-cell "fill".
-        # Level drives the number of filled cells:
-        # 0 = off, 1..4 = progressively deeper emphasis.
+        outline_attr = get_agent_status_color_pair(safe_agent, muted=True) | curses.A_DIM
+        ui_highlight_attr = AGENT_COLORS[safe_agent]["highlight"]
+        agent_fill_attrs = tuple(AGENT_COLORS[agent_name]["normal"] for agent_name in ("claude", "gemini", "codex"))
+        accent_fill = AGENT_COLORS["codex"]["highlight"]
+
+        if level == 0:
+            fill_attrs: tuple[int, ...] = ()
+        elif level == 1:
+            fill_attrs = (ui_highlight_attr,)
+        elif level == 2:
+            fill_attrs = (ui_highlight_attr, ui_highlight_attr)
+        elif level == 3:
+            fill_attrs = agent_fill_attrs
+        else:
+            fill_attrs = (*agent_fill_attrs, accent_fill)
+
+        # Four indicator cells, each rendered as one box.
+        # Level drives how many boxes are filled from left to right:
+        # 0 = off, 1..4 = progressively stronger emphasis.
         cells: list[tuple[str, int]] = []
         for box_idx in range(4):
-            is_filled = box_idx < level
-            if is_filled:
-                fill_attr = base_cell_fill_attr if box_idx < 2 else accent_cell_fill_attr
+            if box_idx < len(fill_attrs):
+                fill_attr = curses.color_pair(fill_attrs[box_idx])
             else:
                 fill_attr = outline_attr
-            cells.extend([("[", outline_attr), (" ", fill_attr), ("]", outline_attr)])
-            if box_idx < 3:
-                cells.append((" ", separator_attr))
+            cells.append(("◼" if box_idx < len(fill_attrs) else "◻", fill_attr))
         return cells
 
     def render(self, stdscr: object, row: int, width: int) -> None:
         """Render footer with left-aligned agent availability and right-aligned icons."""
         self._tts_col_start = -1
         self._tts_col_end = -1
+        self._anim_col_start = -1
+        self._anim_col_end = -1
         self._pane_theming_col_start = -1
         self._pane_theming_col_end = -1
 
@@ -159,13 +179,15 @@ class Footer:
             stdscr.addstr(row, self._tts_col_start, tts_text, tts_attr)  # type: ignore[attr-defined]
 
             anim_attr = curses.A_NORMAL if self.animation_mode != "off" else curses.A_DIM
-            anim_col = self._tts_col_end + icon_gap
-            stdscr.addstr(row, anim_col, anim_text, anim_attr)  # type: ignore[attr-defined]
+            self._anim_col_start = self._tts_col_end + icon_gap
+            self._anim_col_end = self._anim_col_start + anim_width
+            stdscr.addstr(row, self._anim_col_start, anim_text, anim_attr)  # type: ignore[attr-defined]
 
         except curses.error:
-            # Restore clickable targets only if draw succeeded.
             self._tts_col_start = -1
             self._tts_col_end = -1
+            self._anim_col_start = -1
+            self._anim_col_end = -1
             self._pane_theming_col_start = -1
             self._pane_theming_col_end = -1
             return
@@ -176,18 +198,21 @@ class Footer:
             self._pane_theming_col_end = -1
             self._tts_col_start = -1
             self._tts_col_end = -1
+            self._anim_col_start = -1
+            self._anim_col_end = -1
 
     def handle_click(self, col: int) -> str | None:
         """Check if a click at the given column hits a footer icon.
 
         Returns:
-            "tts" for the TTS icon, "pane_theming_mode" for color mode icon,
-            or None when nothing is hit.
+            "tts", "pane_theming_mode", "animation_mode", or None.
         """
         if self._pane_theming_col_start <= col < self._pane_theming_col_end:
             return "pane_theming_mode"
         if self._tts_col_start <= col < self._tts_col_end:
             return "tts"
+        if self._anim_col_start <= col < self._anim_col_end:
+            return "animation_mode"
         return None
 
     def _format_countdown(self, until: str) -> str:

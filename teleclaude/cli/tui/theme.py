@@ -391,8 +391,6 @@ def init_colors() -> None:
         curses.init_pair(42, 16, -1)  # Gemini highlight
         curses.init_pair(43, 16, -1)  # Codex highlight
 
-        # Preview rows are initialized after mode branch to keep theme-driven shade math centralized.
-
     # Disabled/unavailable
     curses.init_pair(10, curses.COLOR_WHITE, -1)
 
@@ -915,6 +913,21 @@ def get_agent_status_color_pair(agent: str, *, muted: bool) -> int:
     return AGENT_COLORS[safe_agent][key]
 
 
+def get_agent_subtle_attr(agent: str) -> int:
+    """Get curses attribute for subtle agent tint (default row tint)."""
+    return curses.color_pair(AGENT_COLORS[_safe_agent(agent)]["subtle"])
+
+
+def get_agent_normal_attr(agent: str) -> int:
+    """Get curses attribute for normal agent row text."""
+    return curses.color_pair(AGENT_COLORS[_safe_agent(agent)]["normal"])
+
+
+def get_agent_highlight_attr(agent: str) -> int:
+    """Get curses attribute for highlighted agent emphasis."""
+    return curses.color_pair(AGENT_COLORS[_safe_agent(agent)]["highlight"])
+
+
 def get_pane_theming_mode() -> str:
     """Return effective pane theming mode from config.
 
@@ -940,6 +953,32 @@ def get_pane_theming_mode_level(mode: str | None = None) -> int:
     """Return 0..4 numeric level for the current or supplied pane theming mode."""
     canonical_mode = normalize_pane_theming_mode(mode if mode is not None else get_pane_theming_mode())
     return _PANE_THEMING_MODE_TO_LEVEL[canonical_mode]
+
+
+def get_pane_theming_row_style_level(mode: str | None = None) -> int:
+    """Return row-style level used by tree/panel renderers.
+
+    The tree style intentionally uses fewer semantic states than the raw cycle:
+    0 -> peaceful/off
+    1 -> highlight-only
+    2 -> extended highlight
+    3 -> semi/partial
+    4 -> full
+    """
+    mode_level = get_pane_theming_mode_level(mode)
+    return mode_level
+
+
+def should_apply_session_theming(level: int | None = None) -> bool:
+    """Whether session pane foreground should use agent colors instead of terminal default."""
+    pane_level = get_pane_theming_mode_level() if level is None else level
+    return pane_level in (1, 3, 4)
+
+
+def should_apply_paint_pane_theming(level: int | None = None) -> bool:
+    """Whether paint payload panes should apply agent-themed foreground text."""
+    pane_level = get_pane_theming_mode_level() if level is None else level
+    return pane_level == 3
 
 
 def normalize_pane_theming_mode(mode: str) -> str:
@@ -987,12 +1026,16 @@ def get_agent_preview_selected_bg_attr(agent: str) -> int:
         Curses attribute for agent-specific preview selection style.
     """
     safe_agent = _safe_agent(agent)
-    level = get_pane_theming_mode_level()
-    if level == 0:
+    style_level = get_pane_theming_row_style_level()
+    if style_level == 0:
         pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF[safe_agent]
-    elif level <= 2:
+    elif style_level == 1:
         pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS_HIGHLIGHT[safe_agent]
-    elif level == 3:
+    elif style_level == 2:
+        # Level 2 intentionally reverts to native/peaceful output on the tree layer,
+        # while still advancing the external footer indicator state.
+        pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF[safe_agent]
+    elif style_level == 3:
         pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS_SEMI[safe_agent]
     else:
         pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS[safe_agent]
@@ -1009,12 +1052,16 @@ def get_agent_preview_selected_focus_attr(agent: str) -> int:
         Curses attribute for agent-specific focused preview row.
     """
     safe_agent = _safe_agent(agent)
-    level = get_pane_theming_mode_level()
-    if level == 0:
+    style_level = get_pane_theming_row_style_level()
+    if style_level == 0:
         pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF[safe_agent]
-    elif level <= 2:
+    elif style_level == 1:
         pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_HIGHLIGHT[safe_agent]
-    elif level == 3:
+    elif style_level == 2:
+        # Level 2 intentionally reverts to native/peaceful output on the tree layer,
+        # while still advancing the external footer indicator state.
+        pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF[safe_agent]
+    elif style_level == 3:
         pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_SEMI[safe_agent]
     else:
         pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS[safe_agent]

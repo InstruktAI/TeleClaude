@@ -32,10 +32,13 @@ from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.state import Intent, IntentType, PreviewState, TuiState
 from teleclaude.cli.tui.state_store import load_sticky_state, save_sticky_state
 from teleclaude.cli.tui.theme import (
-    AGENT_COLORS,
+    get_agent_highlight_attr,
+    get_agent_normal_attr,
     get_agent_preview_selected_bg_attr,
     get_agent_preview_selected_focus_attr,
+    get_agent_subtle_attr,
     get_sticky_badge_attr,
+    should_apply_session_theming,
 )
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
@@ -2247,18 +2250,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         title = session.title
         idx = session_display.display_index
 
-        # Get agent color pairs (subtle, muted, normal, highlight)
-        agent_colors = AGENT_COLORS.get(agent)
-        if agent_colors is None:
-            agent_colors = AGENT_COLORS.get("codex")
-        if agent_colors is None:
-            agent_colors = next(iter(AGENT_COLORS.values()))
-        subtle_pair = agent_colors["subtle"]
-        normal_pair = agent_colors["normal"]
-        highlight_pair = agent_colors["highlight"]
-        subtle_attr = curses.color_pair(subtle_pair) if subtle_pair else curses.A_DIM
-        normal_attr = curses.color_pair(normal_pair) if normal_pair else 0
-        highlight_attr = curses.color_pair(highlight_pair) if highlight_pair else curses.A_BOLD
+        if should_apply_session_theming():
+            subtle_attr = get_agent_subtle_attr(agent)
+            normal_attr = get_agent_normal_attr(agent)
+            highlight_attr = get_agent_highlight_attr(agent)
+        else:
+            subtle_attr = curses.A_DIM
+            normal_attr = curses.A_NORMAL
+            highlight_attr = curses.A_BOLD
 
         status_raw = session.status or ""
         status_normalized = status_raw.strip().lower()

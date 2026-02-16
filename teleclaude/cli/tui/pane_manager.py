@@ -580,7 +580,7 @@ class TmuxPaneManager:
                 is_tree_selected=self._is_tree_selected_session(active_spec.session_id),
             )
         else:
-            self._set_doc_pane_background(self.state.parent_pane_id)
+            self._set_doc_pane_background(self.state.parent_pane_id, agent=active_spec.active_agent)
 
     def _layout_is_unchanged(self) -> bool:
         signature = self._compute_layout_signature()
@@ -713,7 +713,7 @@ class TmuxPaneManager:
                 is_tree_selected=self._is_tree_selected_session(spec.session_id),
             )
         else:
-            self._set_doc_pane_background(pane_id)
+            self._set_doc_pane_background(pane_id, agent=spec.active_agent)
 
     def _is_tree_selected_session(self, session_id: str) -> bool:
         """Return True if this session row should get the lighter tree-selected haze."""
@@ -734,20 +734,23 @@ class TmuxPaneManager:
             agent: Agent name for color calculation
             is_tree_selected: Use lighter haze when the tree focus selected row matches.
         """
-        mode_level = theme.get_pane_theming_mode_level()
-        use_native_fg = mode_level <= 2
+        apply_override = theme.should_apply_paint_pane_theming()
 
-        # Inactive pane should communicate state through background haze only.
-        if is_tree_selected:
-            bg_color = theme.get_agent_pane_selected_background(agent)
+        if apply_override:
+            if is_tree_selected:
+                bg_color = theme.get_agent_pane_selected_background(agent)
+            else:
+                bg_color = theme.get_agent_pane_inactive_background(agent)
+            pane_fg_color = f"colour{theme.get_agent_normal_color(agent)}"
+            terminal_bg = theme.get_agent_pane_active_background(agent)
+            active_pane_fg_color = pane_fg_color
         else:
-            bg_color = theme.get_agent_pane_inactive_background(agent)
-        pane_fg_color = f"colour{theme.get_agent_normal_color(agent)}" if not use_native_fg else "default"
-        self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg={pane_fg_color},bg={bg_color}")
+            bg_color = "default"
+            pane_fg_color = "default"
+            terminal_bg = "default"
+            active_pane_fg_color = "default"
 
-        # Use explicit active pane background (no haze) to avoid inheriting window-style haze.
-        terminal_bg = theme.get_agent_pane_active_background(agent)
-        active_pane_fg_color = f"colour{theme.get_agent_normal_color(agent)}" if not use_native_fg else "default"
+        self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg={pane_fg_color},bg={bg_color}")
         self._run_tmux(
             "set",
             "-p",
@@ -770,34 +773,41 @@ class TmuxPaneManager:
         if not self._tui_pane_id or not self._get_pane_exists(self._tui_pane_id):
             return
 
-        inactive_bg = theme.get_tui_inactive_background()
-        terminal_bg = theme.get_terminal_background()
+        if theme.should_apply_session_theming():
+            inactive_bg = theme.get_tui_inactive_background()
+            terminal_bg = theme.get_terminal_background()
+        else:
+            inactive_bg = "default"
+            terminal_bg = "default"
+
         self._run_tmux("set", "-p", "-t", self._tui_pane_id, "window-style", f"fg=default,bg={inactive_bg}")
         self._run_tmux("set", "-p", "-t", self._tui_pane_id, "window-active-style", f"fg=default,bg={terminal_bg}")
         # Keep tc_tui split borders visually neutral; global tmux theme remains untouched.
-        self._run_tmux(
-            "set",
-            "-w",
-            "-t",
-            self._tui_pane_id,
-            "pane-border-style",
-            f"fg={inactive_bg},bg={inactive_bg}",
-        )
-        self._run_tmux(
-            "set",
-            "-w",
-            "-t",
-            self._tui_pane_id,
-            "pane-active-border-style",
-            f"fg={inactive_bg},bg={inactive_bg}",
-        )
+        if inactive_bg != "default":
+            border_style = f"fg={inactive_bg},bg={inactive_bg}"
+        else:
+            border_style = "default"
+        self._run_tmux("set", "-w", "-t", self._tui_pane_id, "pane-border-style", border_style)
+        self._run_tmux("set", "-w", "-t", self._tui_pane_id, "pane-active-border-style", border_style)
 
-    def _set_doc_pane_background(self, pane_id: str) -> None:
-        """Apply neutral styling for doc preview panes (glow/less)."""
-        inactive_bg = theme.get_tui_inactive_background()
-        terminal_bg = theme.get_terminal_background()
-        self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg=default,bg={inactive_bg}")
-        self._run_tmux("set", "-p", "-t", pane_id, "window-active-style", f"fg=default,bg={terminal_bg}")
+    def _set_doc_pane_background(self, pane_id: str, *, agent: str = "") -> None:
+        """Apply styling for doc preview panes (glow/less).
+
+        In native mode, both foreground and background are delegated to terminal
+        defaults. In paint-theming mode, pane-specific agent colors are applied.
+        """
+        use_paint_theming = theme.should_apply_paint_pane_theming()
+        if use_paint_theming:
+            pane_fg_color = f"colour{theme.get_agent_normal_color(agent)}" if agent else "default"
+            inactive_bg = theme.get_tui_inactive_background()
+            terminal_bg = theme.get_terminal_background()
+        else:
+            pane_fg_color = "default"
+            inactive_bg = "default"
+            terminal_bg = "default"
+
+        self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg={pane_fg_color},bg={inactive_bg}")
+        self._run_tmux("set", "-p", "-t", pane_id, "window-active-style", f"fg={pane_fg_color},bg={terminal_bg}")
 
     def reapply_agent_colors(self) -> None:
         """Re-apply agent-colored backgrounds and status bars to all session panes.
@@ -824,7 +834,7 @@ class TmuxPaneManager:
                     is_tree_selected=self._is_tree_selected_session(spec.session_id),
                 )
             else:
-                self._set_doc_pane_background(pane_id)
+                self._set_doc_pane_background(pane_id, agent=spec.active_agent)
             reapplied_panes.add(pane_id)
 
         # Re-apply colors to active session pane
@@ -839,7 +849,7 @@ class TmuxPaneManager:
                         is_tree_selected=self._is_tree_selected_session(self._active_spec.session_id),
                     )
                 else:
-                    self._set_doc_pane_background(pane_id)
+                    self._set_doc_pane_background(pane_id, agent=self._active_spec.active_agent)
                 reapplied_panes.add(pane_id)
 
         # Fallback: style any remaining tracked panes from session mapping.

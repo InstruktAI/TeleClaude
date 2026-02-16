@@ -74,8 +74,8 @@ def test_hide_sessions_kills_existing_panes_and_clears_state():
     assert mock_run.call_args_list[0].args == ("kill-pane", "-t", "%10")
 
 
-def test_set_pane_background_keeps_constant_fg_across_focus():
-    """Session pane foreground should remain constant across active/inactive styles."""
+def test_set_pane_background_overrides_only_at_paint_theming_level():
+    """Session panes get agent fg+bg only when paint theming is active (level 3)."""
     with patch.dict(os.environ, {"TMUX": "1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
@@ -83,6 +83,7 @@ def test_set_pane_background_keeps_constant_fg_across_focus():
     mock_run = Mock(return_value="")
     with (
         patch.object(manager, "_run_tmux", mock_run),
+        patch.object(theme, "should_apply_paint_pane_theming", return_value=True),
         patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
         patch.object(theme, "get_agent_pane_active_background", return_value="#000000"),
         patch.object(theme, "get_agent_normal_color", return_value=222),
@@ -94,8 +95,8 @@ def test_set_pane_background_keeps_constant_fg_across_focus():
     assert ("set", "-p", "-t", "%9", "window-active-style", "fg=colour222,bg=#000000") in style_calls
 
 
-def test_set_pane_background_uses_selected_haze_for_tree_selection():
-    """Selected tree sessions should use the lighter tree selection haze."""
+def test_set_pane_background_native_when_paint_theming_off():
+    """Session panes use native defaults when paint theming is off."""
     with patch.dict(os.environ, {"TMUX": "1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
@@ -103,8 +104,28 @@ def test_set_pane_background_uses_selected_haze_for_tree_selection():
     mock_run = Mock(return_value="")
     with (
         patch.object(manager, "_run_tmux", mock_run),
+        patch.object(theme, "should_apply_paint_pane_theming", return_value=False),
+    ):
+        manager._set_pane_background("%9", "tc_test", "claude")
+
+    style_calls = [call.args for call in mock_run.call_args_list if call.args[:4] == ("set", "-p", "-t", "%9")]
+    assert ("set", "-p", "-t", "%9", "window-style", "fg=default,bg=default") in style_calls
+    assert ("set", "-p", "-t", "%9", "window-active-style", "fg=default,bg=default") in style_calls
+
+
+def test_set_pane_background_uses_selected_haze_for_tree_selection():
+    """Selected tree sessions should use the lighter tree selection haze when paint theming is on."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    mock_run = Mock(return_value="")
+    with (
+        patch.object(manager, "_run_tmux", mock_run),
+        patch.object(theme, "should_apply_paint_pane_theming", return_value=True),
         patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
         patch.object(theme, "get_agent_pane_selected_background", return_value="#060606") as get_selected,
+        patch.object(theme, "get_agent_pane_active_background", return_value="#000000"),
         patch.object(theme, "get_agent_normal_color", return_value=222),
     ):
         manager._set_pane_background("%9", "tc_test", "claude", is_tree_selected=True)
@@ -123,8 +144,51 @@ def test_doc_pane_background_is_applied_for_non_session_specs():
     mock_run = Mock(return_value="")
     with (
         patch.object(manager, "_run_tmux", mock_run),
+        patch.object(theme, "should_apply_paint_pane_theming", return_value=False),
         patch.object(theme, "get_tui_inactive_background", return_value="#e8e2d0"),
         patch.object(theme, "get_terminal_background", return_value="#fdf6e3"),
+    ):
+        manager._set_doc_pane_background("%42")
+
+    style_calls = [call.args for call in mock_run.call_args_list if call.args[:4] == ("set", "-p", "-t", "%42")]
+    assert ("set", "-p", "-t", "%42", "window-style", "fg=default,bg=default") in style_calls
+    assert ("set", "-p", "-t", "%42", "window-active-style", "fg=default,bg=default") in style_calls
+
+
+def test_doc_pane_background_is_tinted_when_paint_theming_is_enabled():
+    """Doc/preview panes should use agent colors in paint-theming mode."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    mock_run = Mock(return_value="")
+    with (
+        patch.object(manager, "_run_tmux", mock_run),
+        patch.object(theme, "should_apply_paint_pane_theming", return_value=True),
+        patch.object(theme, "get_tui_inactive_background", return_value="#e8e2d0"),
+        patch.object(theme, "get_terminal_background", return_value="#fdf6e3"),
+        patch.object(theme, "get_agent_normal_color", return_value=222),
+    ):
+        manager._set_doc_pane_background("%42", agent="claude")
+
+    style_calls = [call.args for call in mock_run.call_args_list if call.args[:4] == ("set", "-p", "-t", "%42")]
+    assert ("set", "-p", "-t", "%42", "window-style", "fg=colour222,bg=#e8e2d0") in style_calls
+    assert ("set", "-p", "-t", "%42", "window-active-style", "fg=colour222,bg=#fdf6e3") in style_calls
+
+
+def test_doc_pane_background_uses_native_foreground_for_anonymous_paints_in_theming_mode():
+    """Doc/paint panes without explicit agent should keep native fg even when paint theming is on."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    mock_run = Mock(return_value="")
+    with (
+        patch.object(manager, "_run_tmux", mock_run),
+        patch.object(theme, "should_apply_paint_pane_theming", return_value=True),
+        patch.object(theme, "get_tui_inactive_background", return_value="#e8e2d0"),
+        patch.object(theme, "get_terminal_background", return_value="#fdf6e3"),
+        patch.object(theme, "get_agent_normal_color", return_value=222),
     ):
         manager._set_doc_pane_background("%42")
 
@@ -156,8 +220,8 @@ def test_reapply_agent_colors_fallback_styles_tracked_session_panes():
     set_session_bg.assert_called_once_with("%77", "tc_sid-1", "claude", is_tree_selected=False)
 
 
-def test_set_tui_pane_background_sets_neutral_window_border_styles():
-    """TUI layout should neutralize window border colors locally."""
+def test_set_tui_pane_background_applies_haze_when_session_theming_on():
+    """TUI pane gets haze when session theming is active (levels 1, 3, 4)."""
     with patch.dict(os.environ, {"TMUX": "1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
@@ -166,6 +230,7 @@ def test_set_tui_pane_background_sets_neutral_window_border_styles():
     with (
         patch.object(manager, "_run_tmux", mock_run),
         patch.object(manager, "_get_pane_exists", return_value=True),
+        patch.object(theme, "should_apply_session_theming", return_value=True),
         patch.object(theme, "get_tui_inactive_background", return_value="#e8e2d0"),
         patch.object(theme, "get_terminal_background", return_value="#fdf6e3"),
     ):
@@ -175,6 +240,27 @@ def test_set_tui_pane_background_sets_neutral_window_border_styles():
     assert ("set", "-p", "-t", "%1", "window-active-style", "fg=default,bg=#fdf6e3") in calls
     assert ("set", "-w", "-t", "%1", "pane-border-style", "fg=#e8e2d0,bg=#e8e2d0") in calls
     assert ("set", "-w", "-t", "%1", "pane-active-border-style", "fg=#e8e2d0,bg=#e8e2d0") in calls
+
+
+def test_set_tui_pane_background_native_when_session_theming_off():
+    """TUI pane uses native defaults when session theming is off (levels 0, 2)."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    mock_run = Mock(return_value="")
+    with (
+        patch.object(manager, "_run_tmux", mock_run),
+        patch.object(manager, "_get_pane_exists", return_value=True),
+        patch.object(theme, "should_apply_session_theming", return_value=False),
+    ):
+        manager._set_tui_pane_background()
+
+    calls = [call.args for call in mock_run.call_args_list]
+    assert ("set", "-p", "-t", "%1", "window-style", "fg=default,bg=default") in calls
+    assert ("set", "-p", "-t", "%1", "window-active-style", "fg=default,bg=default") in calls
+    assert ("set", "-w", "-t", "%1", "pane-border-style", "default") in calls
+    assert ("set", "-w", "-t", "%1", "pane-active-border-style", "default") in calls
 
 
 def test_render_layout_split_windows_do_not_capture_focus_with_d_flag():

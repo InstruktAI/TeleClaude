@@ -70,9 +70,13 @@ class ConfigComponent(ABC):
         pass
 
     def notify_animation_change(self) -> None:
-        """Helper to emit current animation state."""
+        """Helper to emit current animation state.
+
+        Uses section-specific target so config animations render within
+        their own pane area, not the main banner.
+        """
         self.callback.on_animation_context_change(
-            target="banner",
+            target=self.get_section_id(),
             section_id=self.get_section_id(),
             state=self.get_animation_state(),
             progress=self.get_progress(),
