@@ -396,9 +396,15 @@ PY
     fi
 
     print_info "Syncing Python environment with uv..."
-    if [ "$CI_MODE" = true ]; then
-        # CI on self-hosted runner: use frozen lockfile to avoid network
-        # calls (Little Snitch blocks uv HTTPS on mozmini).
+    if [ "$CI_MODE" = true ] && [ -d "$HOME/Workspace/InstruktAI/TeleClaude/.venv" ]; then
+        # CI on self-hosted runner: reuse main checkout's venv to avoid
+        # network calls (Little Snitch blocks uv HTTPS on mozmini).
+        print_info "Reusing main checkout .venv for CI..."
+        cp -a "$HOME/Workspace/InstruktAI/TeleClaude/.venv" "$INSTALL_DIR/.venv"
+        # Reinstall project editable so paths point to CI checkout.
+        (cd "$INSTALL_DIR" && uv pip install -e . --offline --no-deps)
+    elif [ "$CI_MODE" = true ]; then
+        # Fallback: try frozen sync (requires uv.lock in checkout).
         (cd "$INSTALL_DIR" && uv sync --frozen "${sync_args[@]}")
     else
         (cd "$INSTALL_DIR" && uv sync "${sync_args[@]}")
