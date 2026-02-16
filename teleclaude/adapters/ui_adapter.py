@@ -23,7 +23,7 @@ from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents, UiCommands
-from teleclaude.core.feature_flags import is_threaded_output_enabled
+from teleclaude.core.feature_flags import is_threaded_output_enabled_for_session
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.models import (
     CleanupTrigger,
@@ -314,7 +314,7 @@ class UiAdapter(BaseAdapter):
         Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
         # Suppress standard poller output when threaded output experiment is enabled.
-        if is_threaded_output_enabled(session.active_agent):
+        if is_threaded_output_enabled_for_session(session):
             logger.debug(
                 "[UI_SEND_OUTPUT] Standard output suppressed for session %s (threaded output experiment active)",
                 session.session_id[:8],

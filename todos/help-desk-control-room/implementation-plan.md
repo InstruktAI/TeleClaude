@@ -48,19 +48,19 @@ The threaded output mechanism is proven — it runs in production for Gemini on 
 
 **File(s):** `teleclaude/core/feature_flags.py`
 
-- [ ] Remove `if normalized_agent != AgentName.GEMINI.value: return False`
-- [ ] `is_threaded_output_enabled` should check experiment config for the agent, without agent-name restriction
-- [ ] If no agent specified in experiment config agents list (empty/None), experiment applies to all agents
+- [x] Remove `if normalized_agent != AgentName.GEMINI.value: return False`
+- [x] `is_threaded_output_enabled` should check experiment config for the agent, without agent-name restriction
+- [x] If no agent specified in experiment config agents list (empty/None), experiment applies to all agents
 
 ### Task 2.2: Add Discord adapter gate
 
 **File(s):** `teleclaude/core/feature_flags.py`
 
-- [ ] Add `is_threaded_output_enabled_for_session(session)` that checks both:
+- [x] Add `is_threaded_output_enabled_for_session(session)` that checks both:
   - Experiment flag (existing mechanism)
   - OR session's origin adapter is Discord
-- [ ] If origin is Discord, threaded output is on — no channel-specific gating needed
-- [ ] Update callers (`AgentCoordinator`, `UiAdapter`, `AdapterClient`) to use the session-aware check where session is available
+- [x] If origin is Discord, threaded output is on — no channel-specific gating needed
+- [x] Update callers (`AgentCoordinator`, `UiAdapter`, `AdapterClient`) to use the session-aware check where session is available
 
 ---
 
