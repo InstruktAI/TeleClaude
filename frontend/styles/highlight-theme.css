@@ -1,0 +1,5 @@
+/* Light mode syntax highlighting */
+@import 'highlight.js/styles/github.css' (prefers-color-scheme: light);
+
+/* Dark mode syntax highlighting */
+@import 'highlight.js/styles/github-dark-dimmed.css' (prefers-color-scheme: dark);

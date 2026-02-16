@@ -1,47 +1,64 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useMemo, useCallback, useState, useEffect } from "react";
+import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import {
-  AssistantRuntimeProvider,
-  useLocalRuntime,
-  type ChatModelAdapter,
-} from "@assistant-ui/react";
+  useChatRuntime,
+  AssistantChatTransport,
+} from "@assistant-ui/react-ai-sdk";
 
-const chatModelAdapter: ChatModelAdapter = {
-  async *run({ messages, abortSignal }) {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: messages.map((m) => ({
-          role: m.role,
-          content:
-            m.content
-              ?.filter((p) => p.type === "text")
-              .map((p) => p.text)
-              .join("\n") ?? "",
-        })),
+interface Props {
+  sessionId: string;
+  children: ReactNode;
+}
+
+export function MyRuntimeProvider({ sessionId, children }: Props) {
+  const [error, setError] = useState<string | null>(null);
+
+  const handleError = useCallback((err: Error) => {
+    console.error("Chat stream error:", err);
+    setError(err.message || "An error occurred with the chat stream");
+  }, []);
+
+  // Clear error when session changes
+  useEffect(() => {
+    setError(null);
+  }, [sessionId]);
+
+  const transport = useMemo(
+    () =>
+      new AssistantChatTransport({
+        api: "/api/chat",
+        body: { sessionId },
       }),
-      signal: abortSignal,
-    });
+    [sessionId],
+  );
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Request failed" }));
-      throw new Error(err.error ?? `HTTP ${res.status}`);
-    }
-
-    const data = await res.json();
-    yield {
-      content: [{ type: "text" as const, text: data.message ?? data.text ?? JSON.stringify(data) }],
-    };
-  },
-};
-
-export function MyRuntimeProvider({ children }: { children: ReactNode }) {
-  const runtime = useLocalRuntime(chatModelAdapter);
+  const runtime = useChatRuntime({
+    transport,
+    onError: handleError,
+  });
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      {error && (
+        <div
+          className="bg-destructive/10 text-destructive px-4 py-2 mb-4 rounded-md border border-destructive/20 flex justify-between items-start gap-2"
+          role="alert"
+        >
+          <div className="flex-1">
+            <p className="text-sm font-medium">Stream Error</p>
+            <p className="text-xs mt-1">{error}</p>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            className="text-destructive hover:text-destructive/80 shrink-0 text-sm font-medium"
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {children}
     </AssistantRuntimeProvider>
   );

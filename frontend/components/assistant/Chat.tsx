@@ -3,9 +3,13 @@
 import { MyRuntimeProvider } from "./MyRuntimeProvider";
 import { ThreadView } from "./ThreadView";
 
-export default function Chat() {
+interface Props {
+  sessionId: string;
+}
+
+export default function Chat({ sessionId }: Props) {
   return (
-    <MyRuntimeProvider>
+    <MyRuntimeProvider sessionId={sessionId}>
       <ThreadView />
     </MyRuntimeProvider>
   );
