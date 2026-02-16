@@ -1001,7 +1001,7 @@ async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
     # "deep" is parsed as thinking_mode, so user_args is empty -> interactive=False
     assert mock_get_agent_command.call_args == (
         ("codex",),
-        {"thinking_mode": "deep", "interactive": False, "profile": "default"},
+        {"thinking_mode": "deep", "interactive": False, "profile": "restricted"},
     )
     command = mock_execute_calls[0][0][1]
     assert "codex -m deep" in command

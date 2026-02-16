@@ -1623,7 +1623,7 @@ async def end_session(
 
 def _get_session_profile(session: Session) -> str:
     """Determine agent profile based on human role."""
-    if session.human_role:
+    if session.human_role == HUMAN_ROLE_ADMIN:
         return "default"
     return "restricted"
 
