@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import {
   useChatRuntime,
@@ -13,12 +13,16 @@ interface Props {
 }
 
 export function MyRuntimeProvider({ sessionId, children }: Props) {
-  const runtime = useChatRuntime({
-    transport: new AssistantChatTransport({
-      api: "/api/chat",
-      body: { sessionId },
-    }),
-  });
+  const transport = useMemo(
+    () =>
+      new AssistantChatTransport({
+        api: "/api/chat",
+        body: { sessionId },
+      }),
+    [sessionId],
+  );
+
+  const runtime = useChatRuntime({ transport });
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
