@@ -5,9 +5,17 @@
     "todos": []
   },
   "dor": {
-    "score": 0,
+    "score": 6,
     "status": "needs_work",
-    "last_assessed_at": "2026-02-13T12:00:00Z"
+    "schema_version": 1,
+    "blockers": [],
+    "actions_taken": [
+      "Drafted requirements from roadmap entry and architecture doc",
+      "Drafted implementation plan based on existing Telegram supergroup and Discord adapter patterns",
+      "Identified discord.py forum tag API as needing verification",
+      "Flagged help-desk-whatsapp dependency as potentially over-strict"
+    ],
+    "last_assessed_at": "2026-02-16T12:00:00Z"
   },
   "build": "pending",
   "review": "pending",

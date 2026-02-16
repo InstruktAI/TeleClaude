@@ -19,9 +19,7 @@
     "help-desk-whatsapp",
     "help-desk-discord"
   ],
-  "help-desk-discord": [
-    "help-desk-research"
-  ],
+  "help-desk-discord": [],
   "help-desk-whatsapp": [
     "help-desk-research"
   ],
