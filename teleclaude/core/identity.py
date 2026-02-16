@@ -10,7 +10,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import PersonEntry
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionAdapterMetadata
@@ -47,10 +47,10 @@ class IdentityResolver:
 
     @staticmethod
     def _normalize_role(role: str) -> str:
-        """Normalize known configured roles to runtime access roles."""
-        if role == HUMAN_ROLE_ADMIN:
-            return HUMAN_ROLE_ADMIN
-        return HUMAN_ROLE_MEMBER
+        """Validate role against known roles, defaulting unknown to customer."""
+        if role in HUMAN_ROLES:
+            return role
+        return HUMAN_ROLE_CUSTOMER
 
     def _load_config(self) -> None:
         """Load global and per-person configuration to build lookup maps."""

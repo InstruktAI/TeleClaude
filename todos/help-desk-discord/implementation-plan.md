@@ -29,7 +29,7 @@ Fix the Discord routing layer and operational pipeline gaps identified in the po
 
 ---
 
-### Task 2: Fix `_normalize_role` (R2, R15)
+### [x] Task 2: Fix `_normalize_role` (R2, R15)
 
 **File:** `teleclaude/core/identity.py`
 
