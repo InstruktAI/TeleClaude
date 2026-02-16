@@ -6,7 +6,7 @@ import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github.css";
 import type { TextMessagePartProps } from "@assistant-ui/react";
 
-export function MarkdownContent(props: TextMessagePartProps) {
+export function MarkdownContent(_props: TextMessagePartProps) {
   return (
     <MarkdownTextPrimitive
       remarkPlugins={[remarkGfm]}
