@@ -23,11 +23,14 @@ Integration:
 
 from __future__ import annotations
 
+import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from jobs.base import Job, JobResult
+
+logger = logging.getLogger(__name__)
 
 # Ensure repo root is in path for imports
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -140,6 +143,20 @@ class SessionMemoryExtractionJob(Job):
         # Step 6: Update bookkeeping timestamps
         now = datetime.now(timezone.utc)
         await self._update_bookkeeping(session_id, now)
+
+        # Step 7: Inject /compact into the session's tmux pane
+        tmux_name = getattr(session, "tmux_session_name", None)
+        if tmux_name:
+            try:
+                from teleclaude.core.tmux_bridge import send_keys_existing_tmux
+
+                delivered = await send_keys_existing_tmux(tmux_name, "/compact", send_enter=True)
+                if delivered:
+                    logger.info("Injected /compact into session %s (tmux: %s)", session_id[:8], tmux_name)
+                else:
+                    logger.warning("Tmux session %s not found for /compact injection", tmux_name)
+            except Exception:  # noqa: BLE001 - best-effort compact injection
+                logger.warning("Failed to inject /compact into session %s", session_id[:8])
 
     async def _read_transcript_delta(
         self,

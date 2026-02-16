@@ -147,7 +147,7 @@ Cross-adapter relay deferred. Customers stay on their original adapter; convergi
 
 ---
 
-### Task 8: Wire `/compact` injection into extraction job (R7)
+### [x] Task 8: Wire `/compact` injection into extraction job (R7)
 
 **File:** `jobs/session_memory_extraction.py`
 
