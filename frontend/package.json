@@ -21,6 +21,7 @@
     "better-sqlite3": "^11",
     "class-variance-authority": "^0.7",
     "clsx": "^2",
+    "dompurify": "^3.3.1",
     "drizzle-orm": "^0.38",
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.468",
@@ -39,6 +40,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/better-sqlite3": "^7",
+    "@types/dompurify": "^3.2.0",
     "@types/node": "^22",
     "@types/nodemailer": "^6",
     "@types/react": "^19",
