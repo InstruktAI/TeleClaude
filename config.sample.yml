@@ -40,6 +40,8 @@ discord:
   guild_id: ${DISCORD_GUILD_ID}
   # Forum channel ID (Discord channel type 15). Each session gets one thread.
   help_desk_channel_id: ${DISCORD_HELP_DESK_CHANNEL_ID}
+  # Forum channel ID for escalation threads (admin relay).
+  escalation_channel_id: ${DISCORD_ESCALATION_CHANNEL_ID}
 
 # Agent binaries are resolved internally by platform policy:
 # macOS: ~/Applications/{Claude,Gemini,Codex}Launcher.app/...

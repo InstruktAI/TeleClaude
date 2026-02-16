@@ -474,6 +474,7 @@ class DiscordAdapter(UiAdapter):
                 "human_role": "customer",
                 "platform": "discord",
             },
+            auto_command="agent claude",
         )
         result = await get_command_service().create_session(create_cmd)
         session_id = str(result.get("session_id", ""))
