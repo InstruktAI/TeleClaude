@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.config import WORKING_DIR, config
+from teleclaude.config import config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.models import SessionAdapterMetadata
@@ -503,7 +503,7 @@ class DiscordAdapter(UiAdapter):
             getattr(author, "display_name", None) or getattr(author, "name", None) or f"discord-{user_id}"
         )
         create_cmd = CreateSessionCommand(
-            project_path=os.path.join(WORKING_DIR, "help-desk"),
+            project_path=config.computer.help_desk_dir,
             title=f"Discord: {display_name}",
             origin=InputOrigin.DISCORD.value,
             channel_metadata={

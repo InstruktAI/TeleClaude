@@ -60,7 +60,7 @@ Fix the Discord routing layer and operational pipeline gaps identified in the po
 
 ---
 
-### Task 3: Use `help_desk_dir` config (R3)
+### [x] Task 3: Use `help_desk_dir` config (R3)
 
 **File:** `teleclaude/adapters/discord_adapter.py`
 
