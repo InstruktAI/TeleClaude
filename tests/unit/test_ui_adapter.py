@@ -281,7 +281,7 @@ class TestSendOutputUpdate:
         await test_db.update_session(session.session_id, active_agent="codex")
         session = await test_db.get_session(session.session_id)
 
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=False):
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled_for_session", return_value=False):
             result = await adapter.send_output_update(
                 session,
                 "codex output",
@@ -334,7 +334,7 @@ class TestSendOutputUpdate:
         )
         session = await test_db.get_session(session.session_id)
 
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=False):
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled_for_session", return_value=False):
             await adapter.send_output_update(
                 session,
                 "normal output",
@@ -539,8 +539,7 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(char_offset=10))
-        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        await test_db.update_session(session.session_id, char_offset=10)
         await test_db.set_output_message_id(session.session_id, "msg-existing")
         session = await test_db.get_session(session.session_id)
 
@@ -559,8 +558,7 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(char_offset=1000))
-        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        await test_db.update_session(session.session_id, char_offset=1000)
         session = await test_db.get_session(session.session_id)
 
         result = await adapter.send_threaded_output(session, "short")
@@ -568,7 +566,7 @@ class TestSendThreadedOutput:
         assert result == "msg-123"
         # Offset should have been reset
         refreshed = await test_db.get_session(session.session_id)
-        assert refreshed.get_metadata().get_ui().get_telegram().char_offset == 0
+        assert refreshed.char_offset == 0
 
     async def test_continuity_marker_when_offset_nonzero(self, test_db):
         """Text with nonzero char_offset → adds "..." prefix."""
@@ -579,8 +577,7 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(char_offset=5))
-        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        await test_db.update_session(session.session_id, char_offset=5)
         session = await test_db.get_session(session.session_id)
 
         result = await adapter.send_threaded_output(session, "Hello World!")
@@ -602,8 +599,6 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata())
-        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
         # Create text that will overflow the 100-char limit (limit - 10 = 90 effective)
@@ -615,9 +610,9 @@ class TestSendThreadedOutput:
         assert len(adapter._send_calls) >= 2
         assert result is not None
 
-        # Verify char_offset was advanced in DB
+        # Verify char_offset was advanced in DB (session-level column)
         refreshed = await test_db.get_session(session.session_id)
-        assert refreshed.get_metadata().get_ui().get_telegram().char_offset > 0
+        assert refreshed.char_offset > 0
 
     async def test_overflow_preserves_markdown_escape_boundaries(self, test_db):
         """Telegram threaded overflow should not split between backslash and escaped char."""
@@ -687,7 +682,7 @@ class TestSendOutputUpdateSuppression:
         await test_db.update_session(session.session_id, active_agent="gemini")
         session = await test_db.get_session(session.session_id)
 
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=True):
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled_for_session", return_value=True):
             result = await adapter.send_output_update(session, "output text", time.time(), time.time())
 
         assert result is None
@@ -709,7 +704,7 @@ class TestSendOutputUpdateSuppression:
         )
         session = await test_db.get_session(session.session_id)
 
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=True):
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled_for_session", return_value=True):
             result = await adapter.send_output_update(session, "output text", time.time(), time.time())
 
         assert result is None
