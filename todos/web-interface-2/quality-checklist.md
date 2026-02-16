@@ -21,12 +21,12 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior — FR3 (streaming) fails, FR4 partial; see findings
+- [x] Deferrals justified and not hiding required scope — no deferrals file; none hidden
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
+- [ ] Critical issues resolved or explicitly blocked — 3 critical + 6 important findings open
+- [x] Test coverage and regression risk assessed — no frontend tests; high regression risk noted
 
 ## Finalize Gates (Finalizer)
 
