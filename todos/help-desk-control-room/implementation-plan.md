@@ -21,10 +21,10 @@ The threaded output mechanism is proven — it runs in production for Gemini on 
 
 **File(s):** `teleclaude/adapters/ui_adapter.py`
 
-- [ ] Replace `telegram_meta = session.get_metadata().get_ui().get_telegram()` with adapter-agnostic access
-- [ ] Read `char_offset` from the new location (session-level or shared metadata)
-- [ ] Write `char_offset` updates to the new location
-- [ ] Keep pagination logic unchanged — only the state access changes
+- [x] Replace `telegram_meta = session.get_metadata().get_ui().get_telegram()` with adapter-agnostic access
+- [x] Read `char_offset` from the new location (session-level or shared metadata)
+- [x] Write `char_offset` updates to the new location
+- [x] Keep pagination logic unchanged — only the state access changes
 
 ### Task 1.3: Update `AgentCoordinator` char_offset reset
 
