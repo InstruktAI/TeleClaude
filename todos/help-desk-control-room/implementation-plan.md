@@ -12,10 +12,10 @@ The threaded output mechanism is proven — it runs in production for Gemini on 
 
 **File(s):** `teleclaude/core/models.py`
 
-- [ ] Determine approach: session-level column (like `output_message_id`) or shared field in adapter metadata base
-- [ ] If session-level: add `char_offset: int = 0` to `Session` model
-- [ ] If shared metadata: add `char_offset` to a base that `TelegramAdapterMetadata` and `DiscordAdapterMetadata` both inherit
-- [ ] Keep `telegram_meta.char_offset` for backward compatibility during migration, but read from the new location
+- [x] Determine approach: session-level column (like `output_message_id`) or shared field in adapter metadata base
+- [x] If session-level: add `char_offset: int = 0` to `Session` model
+- [ ] ~~If shared metadata: add `char_offset` to a base that `TelegramAdapterMetadata` and `DiscordAdapterMetadata` both inherit~~ (N/A — chose session-level)
+- [x] Keep `telegram_meta.char_offset` for backward compatibility during migration, but read from the new location
 
 ### Task 1.2: Update `send_threaded_output` in UiAdapter
 
@@ -37,8 +37,8 @@ The threaded output mechanism is proven — it runs in production for Gemini on 
 
 **File(s):** `teleclaude/core/migrations/` (new migration)
 
-- [ ] Add `char_offset INTEGER DEFAULT 0` column to sessions table
-- [ ] Migrate existing `telegram_meta.char_offset` values to the new column for active sessions
+- [x] Add `char_offset INTEGER DEFAULT 0` column to sessions table
+- [x] Migrate existing `telegram_meta.char_offset` values to the new column for active sessions
 
 ---
 

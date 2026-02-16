@@ -60,6 +60,7 @@ class Session(SQLModel, table=True):
     relay_status: Optional[str] = None
     relay_discord_channel_id: Optional[str] = None
     relay_started_at: Optional[str] = None
+    char_offset: Optional[int] = 0
 
 
 class VoiceAssignment(SQLModel, table=True):
