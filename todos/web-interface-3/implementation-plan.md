@@ -150,7 +150,7 @@ function ChatPageInner() {
 
 **Verification:** Each component renders correctly with mock data; storybook-style isolation test or visual check.
 
-## [ ] Task 5: Register part components with assistant-ui
+## [x] Task 5: Register part components with assistant-ui
 
 **File:** `frontend/components/assistant/ThreadView.tsx`
 
