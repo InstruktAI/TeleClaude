@@ -163,7 +163,7 @@ bootstrap:
 
 bootstrap-ci:
 	@./bin/install.sh --ci
-	@$(MAKE) build-artifacts
+	@PYTHONPATH=$(CURDIR) .venv/bin/python -m teleclaude.cli.telec sync --warn-only
 
 onboard:
 	@telec onboard

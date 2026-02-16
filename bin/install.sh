@@ -396,9 +396,23 @@ PY
     fi
 
     print_info "Syncing Python environment with uv..."
-    if [ "$CI_MODE" = true ]; then
-        # CI on self-hosted runner: use frozen lockfile to avoid network
-        # calls (Little Snitch blocks uv HTTPS on mozmini).
+    if [ "$CI_MODE" = true ] && [ -d "$HOME/Workspace/InstruktAI/TeleClaude/.venv" ]; then
+        # CI on self-hosted runner: reuse main checkout's venv to avoid
+        # network calls (Little Snitch blocks uv HTTPS on mozmini).
+        print_info "Reusing main checkout .venv for CI..."
+        MAIN_CHECKOUT="$HOME/Workspace/InstruktAI/TeleClaude"
+        # Symlink to main checkout's venv — avoids copy issues and
+        # ensures all packages (including git deps) are available.
+        rm -rf "$INSTALL_DIR/.venv"
+        ln -s "$MAIN_CHECKOUT/.venv" "$INSTALL_DIR/.venv"
+        # Verify the venv works with a quick import test.
+        "$INSTALL_DIR/.venv/bin/python" -c "import instrukt_ai_logging; print('venv OK')" || {
+            print_error "Main checkout .venv is broken, falling back to uv sync"
+            rm -f "$INSTALL_DIR/.venv"
+            (cd "$INSTALL_DIR" && uv sync --frozen "${sync_args[@]}")
+        }
+    elif [ "$CI_MODE" = true ]; then
+        # Fallback: try frozen sync (requires uv.lock in checkout).
         (cd "$INSTALL_DIR" && uv sync --frozen "${sync_args[@]}")
     else
         (cd "$INSTALL_DIR" && uv sync "${sync_args[@]}")
