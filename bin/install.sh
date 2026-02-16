@@ -402,13 +402,20 @@ PY
         print_info "Reusing main checkout .venv for CI..."
         MAIN_CHECKOUT="$HOME/Workspace/InstruktAI/TeleClaude"
         cp -a "$MAIN_CHECKOUT/.venv" "$INSTALL_DIR/.venv"
+        # Debug: show venv structure so CI logs reveal version mismatches.
+        ls -la "$INSTALL_DIR/.venv/bin/python"* || true
+        cat "$INSTALL_DIR/.venv/pyvenv.cfg" || true
+        ls "$INSTALL_DIR/.venv/lib/" || true
         # Repoint editable install paths to CI checkout directory.
-        # The editable finder .py has hardcoded MAPPING/NAMESPACES paths.
+        MAIN_CHECKOUT_ESC=$(printf '%s\n' "$MAIN_CHECKOUT" | sed 's/[&/\]/\\&/g')
+        INSTALL_DIR_ESC=$(printf '%s\n' "$INSTALL_DIR" | sed 's/[&/\]/\\&/g')
         find "$INSTALL_DIR/.venv" -path "*/site-packages/__editable__*" \
             \( -name "*.py" -o -name "*.pth" -o -name "direct_url.json" \) \
             -exec sed -i '' "s|$MAIN_CHECKOUT|$INSTALL_DIR|g" {} +
         # Clear cached .pyc so Python picks up the rewritten finder.
         find "$INSTALL_DIR/.venv" -path "*/__pycache__/__editable__*" -name "*.pyc" -delete
+        # Verify: can the venv python import a third-party package?
+        "$INSTALL_DIR/.venv/bin/python" -c "import sys; print('Python:', sys.version); print('Path:', sys.path)" || true
     elif [ "$CI_MODE" = true ]; then
         # Fallback: try frozen sync (requires uv.lock in checkout).
         (cd "$INSTALL_DIR" && uv sync --frozen "${sync_args[@]}")
