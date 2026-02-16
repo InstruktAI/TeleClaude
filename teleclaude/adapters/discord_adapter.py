@@ -348,11 +348,23 @@ class DiscordAdapter(UiAdapter):
         if not isinstance(text, str) or not text.strip():
             return
 
+        # Guild verification: drop messages from other guilds
+        if self._guild_id is not None:
+            msg_guild_id = self._parse_optional_int(getattr(getattr(message, "guild", None), "id", None))
+            if msg_guild_id is not None and msg_guild_id != self._guild_id:
+                logger.debug("Ignoring message from guild %s (expected %s)", msg_guild_id, self._guild_id)
+                return
+
         # Check if this message is in a relay thread (escalation forum)
         channel = getattr(message, "channel", None)
         parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
         if parent_id and parent_id == config.discord.escalation_channel_id:
             await self._handle_relay_thread_message(message, text)
+            return
+
+        # Channel gating: only process messages from the help desk forum when configured
+        if not self._is_help_desk_message(message):
+            logger.debug("Ignoring message from non-help-desk channel")
             return
 
         try:
@@ -399,6 +411,32 @@ class DiscordAdapter(UiAdapter):
             self_user_id = getattr(getattr(self._client, "user", None), "id", None)
             if self_user_id is not None and self_user_id == getattr(author, "id", None):
                 return True
+        return False
+
+    def _is_help_desk_message(self, message: object) -> bool:
+        """Check if a message originates from the configured help desk forum.
+
+        When ``_help_desk_channel_id`` is not configured, all messages are
+        accepted (dev/test mode).  Otherwise the message must come from the
+        forum itself or from a thread whose parent is the forum.
+        """
+        if self._help_desk_channel_id is None:
+            return True
+
+        channel = getattr(message, "channel", None)
+        channel_id = self._parse_optional_int(getattr(channel, "id", None))
+        if channel_id == self._help_desk_channel_id:
+            return True
+
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
+        if parent_id == self._help_desk_channel_id:
+            return True
+
+        parent_obj = getattr(channel, "parent", None)
+        parent_obj_id = self._parse_optional_int(getattr(parent_obj, "id", None))
+        if parent_obj_id == self._help_desk_channel_id:
+            return True
+
         return False
 
     async def _resolve_or_create_session(self, message: object) -> "Session | None":

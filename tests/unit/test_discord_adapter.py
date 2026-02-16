@@ -229,3 +229,152 @@ async def test_discord_send_message_routes_to_thread() -> None:
 
     assert message_id == "7001"
     assert thread.sent_texts == ["Agent response"]
+
+
+# =========================================================================
+# Channel Gating Tests
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_discord_ignores_non_help_desk_channel() -> None:
+    """Messages from a random channel are silently dropped when help_desk_channel_id is set."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+        client.register_adapter("discord", adapter)
+
+    adapter._help_desk_channel_id = 333000
+
+    # Message from a non-help-desk channel (id=999888, no parent)
+    message = SimpleNamespace(
+        id=12345,
+        content="Hello",
+        author=SimpleNamespace(id=999001, bot=False, display_name="Alice", name="alice"),
+        channel=SimpleNamespace(id=999888, parent_id=None, parent=None),
+        guild=SimpleNamespace(id=202020),
+    )
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock()
+
+    with patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service):
+        await adapter._handle_on_message(message)
+
+    fake_command_service.create_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_discord_processes_help_desk_forum_thread() -> None:
+    """Messages from a thread in the help-desk forum create sessions."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+        client.register_adapter("discord", adapter)
+
+    adapter._help_desk_channel_id = 333000
+
+    session = _build_session()
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(side_effect=[[], []])
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": session.session_id})
+    fake_command_service.process_message = AsyncMock()
+
+    # Thread whose parent_id matches help_desk_channel_id
+    thread = FakeThread(thread_id=555111, parent_id=333000)
+    message = SimpleNamespace(
+        id=12345,
+        content="Need help",
+        author=SimpleNamespace(id=999001, bot=False, display_name="Alice", name="alice"),
+        channel=thread,
+        guild=SimpleNamespace(id=202020),
+    )
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
+        await adapter._handle_on_message(message)
+
+    fake_command_service.create_session.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_discord_ignores_wrong_guild() -> None:
+    """Messages from a different guild are silently dropped."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+        client.register_adapter("discord", adapter)
+
+    adapter._guild_id = 111000
+    adapter._help_desk_channel_id = 333000
+
+    # Message from a different guild
+    thread = FakeThread(thread_id=555111, parent_id=333000)
+    message = SimpleNamespace(
+        id=12345,
+        content="Hello",
+        author=SimpleNamespace(id=999001, bot=False, display_name="Alice", name="alice"),
+        channel=thread,
+        guild=SimpleNamespace(id=999999),  # Wrong guild
+    )
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock()
+
+    with patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service):
+        await adapter._handle_on_message(message)
+
+    fake_command_service.create_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_discord_accepts_all_channels_when_unconfigured() -> None:
+    """When help_desk_channel_id is None, all channels are accepted (dev/test mode)."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+        client.register_adapter("discord", adapter)
+
+    adapter._help_desk_channel_id = None  # Unconfigured
+
+    session = _build_session()
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(side_effect=[[], []])
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": session.session_id})
+    fake_command_service.process_message = AsyncMock()
+
+    message = SimpleNamespace(
+        id=12345,
+        content="Need help",
+        author=SimpleNamespace(id=999001, bot=False, display_name="Alice", name="alice"),
+        channel=SimpleNamespace(id=999888, parent_id=None, parent=None),
+        guild=SimpleNamespace(id=202020),
+    )
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
+        await adapter._handle_on_message(message)
+
+    fake_command_service.create_session.assert_awaited_once()
