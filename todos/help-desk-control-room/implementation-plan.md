@@ -30,8 +30,8 @@ The threaded output mechanism is proven — it runs in production for Gemini on 
 
 **File(s):** `teleclaude/core/agent_coordinator.py`
 
-- [ ] `handle_agent_stop` (line ~562): replace `telegram_meta.char_offset = 0` with adapter-agnostic reset
-- [ ] Use the same access pattern as Task 1.2
+- [x] `handle_agent_stop` (line ~562): replace `telegram_meta.char_offset = 0` with adapter-agnostic reset
+- [x] Use the same access pattern as Task 1.2
 
 ### Task 1.4: DB migration (if session-level approach)
 

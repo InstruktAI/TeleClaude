@@ -555,12 +555,10 @@ class AgentCoordinator:
         # Non-threaded sessions rely on the poller's output_message_id for in-place edits.
         session = await db.get_session(session_id)  # Refresh to get latest metadata
         if session and active_agent and is_threaded_output_enabled(str(active_agent)):
-            # Clear output_message_id via dedicated column (not adapter_metadata blob)
-            # to prevent concurrent adapter_metadata writes from clobbering it.
+            # Clear output_message_id and char_offset via dedicated columns
+            # to prevent concurrent adapter_metadata writes from clobbering values.
             await db.set_output_message_id(session_id, None)
-            telegram_meta = session.get_metadata().get_ui().get_telegram()
-            telegram_meta.char_offset = 0
-            await db.update_session(session_id, adapter_metadata=session.adapter_metadata)
+            await db.update_session(session_id, char_offset=0)
 
         # Clear turn-specific cursor at turn completion
         await db.update_session(session_id, last_tool_done_at=None)
