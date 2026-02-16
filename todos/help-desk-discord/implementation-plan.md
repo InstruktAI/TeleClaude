@@ -101,7 +101,7 @@ Fix the Discord routing layer and operational pipeline gaps identified in the po
 
 ---
 
-### Task 5: Verify escalation notification flow (R4)
+### [x] Task 5: Verify escalation notification flow (R4)
 
 **Files:** `teleclaude/mcp/handlers.py`, `teleclaude/adapters/discord_adapter.py`
 

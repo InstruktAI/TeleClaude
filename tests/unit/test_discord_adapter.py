@@ -486,3 +486,35 @@ async def test_relay_context_labels_admin_messages_correctly() -> None:
     assert len(messages) == 1
     assert messages[0]["role"] == "Admin"
     assert messages[0]["name"] == "AdminCarl"
+
+
+# =========================================================================
+# Escalation Tests
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_escalation_creates_thread_in_escalation_forum() -> None:
+    """create_escalation_thread creates a thread in the escalation forum channel."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    escalation_forum = FakeForumChannel(channel_id=888000, thread_id=999888)
+    fake_client.channels[888000] = escalation_forum
+    adapter._client = fake_client
+
+    with patch("teleclaude.adapters.discord_adapter.config") as mock_config:
+        mock_config.discord.escalation_channel_id = 888000
+        thread_id = await adapter.create_escalation_thread(
+            customer_name="Alice",
+            reason="Billing issue",
+            context_summary="Customer has billing question",
+            session_id="sess-123",
+        )
+
+    assert thread_id == 999888
+    assert "Alice" in escalation_forum.created_names
