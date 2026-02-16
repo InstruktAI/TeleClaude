@@ -36,7 +36,7 @@ cd frontend && pnpm add @assistant-ui/react-ai-sdk @ai-sdk/react ai react-markdo
 
 **Verification:** `pnpm build` succeeds with no type errors from new deps.
 
-## [ ] Task 2: Replace runtime provider with AI SDK bridge
+## [x] Task 2: Replace runtime provider with AI SDK bridge
 
 **File:** `frontend/components/assistant/MyRuntimeProvider.tsx`
 
@@ -72,7 +72,7 @@ Key points:
 
 **Verification:** Chat page loads without error; network tab shows SSE connection to `/api/chat`.
 
-## [ ] Task 3: Wire session ID from URL and add minimal session picker
+## [x] Task 3: Wire session ID from URL and add minimal session picker
 
 **Files:**
 
