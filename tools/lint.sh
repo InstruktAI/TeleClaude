@@ -29,7 +29,11 @@ echo "Running markdown validation"
 $RUN "${REPO_ROOT}/tools/lint/markdown.py"
 
 echo "Running resource validation"
-$RUN_M teleclaude.cli.telec sync --validate-only --project-root "${REPO_ROOT}"
+if [ "${CI:-}" = "true" ]; then
+    echo "  Skipped (CI: telec sync makes network calls)"
+else
+    $RUN_M teleclaude.cli.telec sync --validate-only --project-root "${REPO_ROOT}"
+fi
 
 echo "Running ruff format (check)"
 $RUFF format --check $dirs
