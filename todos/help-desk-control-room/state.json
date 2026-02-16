@@ -5,7 +5,7 @@
     "todos": []
   },
   "dor": {
-    "score": 7,
+    "score": 8,
     "status": "needs_work",
     "schema_version": 1,
     "blockers": [],
@@ -15,11 +15,14 @@
       "Rewrote artifacts after user feedback — control room = existing channels + threaded output",
       "Identified char_offset Telegram coupling as core technical blocker",
       "Confirmed help-desk-discord dependency is now delivered",
-      "Flagged help-desk-whatsapp dependency for removal",
       "Expanded scope: threaded output for ALL Discord sessions, not just help desk channels",
-      "Aligned implementation plan and DOR report with all-Discord scope"
+      "Full scope rewrite (v4): Discord admin observation layer, project channel mapping, personal workspaces, member channels, Telegram filtering, threaded-only output for Discord",
+      "Rewrote requirements.md with R1-R11 covering full vision",
+      "Rewrote implementation-plan.md with 7 phases matching all 11 requirements",
+      "Added routing model (v5): role-based channel resolution matrix, admin-on-help-desk invariant, response routing clarification",
+      "Gap analysis (v6): bidirectional observation threads, multi-channel fan-out (R12), observation thread inbound routing (R7), trusted_dirs registration (R5). 12 requirements, 13 tests."
     ],
-    "last_assessed_at": "2026-02-16T15:00:00Z"
+    "last_assessed_at": "2026-02-16T19:30:00Z"
   },
   "build": "pending",
   "review": "pending",
