@@ -400,9 +400,13 @@ PY
         # CI on self-hosted runner: reuse main checkout's venv to avoid
         # network calls (Little Snitch blocks uv HTTPS on mozmini).
         print_info "Reusing main checkout .venv for CI..."
-        cp -a "$HOME/Workspace/InstruktAI/TeleClaude/.venv" "$INSTALL_DIR/.venv"
-        # Reinstall project editable so paths point to CI checkout.
-        (cd "$INSTALL_DIR" && uv pip install -e . --offline --no-deps)
+        MAIN_CHECKOUT="$HOME/Workspace/InstruktAI/TeleClaude"
+        cp -a "$MAIN_CHECKOUT/.venv" "$INSTALL_DIR/.venv"
+        # Repoint editable install paths to CI checkout directory.
+        find "$INSTALL_DIR/.venv" -name "*.pth" -exec \
+            sed -i '' "s|$MAIN_CHECKOUT|$INSTALL_DIR|g" {} +
+        find "$INSTALL_DIR/.venv" -name "direct_url.json" -exec \
+            sed -i '' "s|$MAIN_CHECKOUT|$INSTALL_DIR|g" {} +
     elif [ "$CI_MODE" = true ]; then
         # Fallback: try frozen sync (requires uv.lock in checkout).
         (cd "$INSTALL_DIR" && uv sync --frozen "${sync_args[@]}")
