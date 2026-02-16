@@ -21,5 +21,5 @@
 
 ## Finalize Gates (Finalizer)
 
-- [ ] Merge to main
-- [ ] Delivery logged
+- [x] Merge to main
+- [x] Delivery logged
