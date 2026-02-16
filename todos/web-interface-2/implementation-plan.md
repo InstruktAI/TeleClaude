@@ -58,13 +58,13 @@ Adopt assistant-ui as the web UI while making Next.js API routes the public cont
 
 ### Task 4: Identity normalization at web boundary
 
-- [ ] NextAuth v5 configuration with email OTP provider.
-- [ ] Drizzle ORM + SQLite for auth session storage.
-- [ ] signIn callback rejects emails not in people config.
-- [ ] Session callback enriches with role from people config.
-- [ ] Login page with people selector and OTP flow.
-- [ ] Auth middleware protecting routes.
-- [ ] Trusted identity headers on daemon proxy requests.
+- [x] NextAuth v5 configuration with email OTP provider (Brevo SMTP, 6-digit codes, 3-min expiry).
+- [x] Drizzle ORM + SQLite for auth session storage (WAL mode).
+- [x] signIn callback rejects emails not in people config.
+- [x] Session callback enriches with role from people config.
+- [x] Login page with people selector and OTP flow.
+- [x] Auth middleware protecting routes (cookie-based edge check).
+- [x] Trusted identity headers on daemon proxy requests (`X-Web-User-*`).
 
 **Rules**
 
