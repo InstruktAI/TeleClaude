@@ -12,8 +12,8 @@ export function buildIdentityHeaders(
   if (session.user.name) {
     headers["X-Web-User-Name"] = session.user.name;
   }
-  if ("role" in session.user && session.user.role) {
-    headers["X-Web-User-Role"] = session.user.role as string;
+  if (session.user.role) {
+    headers["X-Web-User-Role"] = session.user.role;
   }
   return headers;
 }
