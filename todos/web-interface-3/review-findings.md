@@ -138,6 +138,14 @@ The following gaps from R1 are documented with clear rationale and recommended f
 | **I2: StatusIndicator wiring** | 📝 Documented | 9275b909 | Phase 4 deferral                                                 |
 | **I3: Reconnection**           | 📝 Documented | 756b2c29 | Phase 4 deferral with gap analysis                               |
 
+### Round 2 Fixes (Commits 7ec9a0c7 - 5767c4ea)
+
+| Issue                               | Status   | Commit   | Notes                                                                                   |
+| ----------------------------------- | -------- | -------- | --------------------------------------------------------------------------------------- |
+| **C1: Missing dompurify**           | ✅ Fixed | 7ec9a0c7 | Added `dompurify` and `@types/dompurify` to package.json                                |
+| **C2: Invalid CSS @import nesting** | ✅ Fixed | c4a07afb | Moved @import to top level with media query conditions                                  |
+| **I1: Error banner never clears**   | ✅ Fixed | 5767c4ea | Added useEffect to clear error on sessionId change + dismiss button for manual clearing |
+
 ---
 
 ## Verdict: REQUEST CHANGES
