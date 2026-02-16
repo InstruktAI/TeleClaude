@@ -25,7 +25,7 @@ export async function sendVerificationRequest(
     to: email,
     from: provider.from ?? "TeleClaude <noreply@teleclaude.dev>",
     subject: "Your TeleClaude login code",
-    text: `Your verification code is: ${token}\n\nThis code expires in 10 minutes.\n\nIf you did not request this code, please ignore this email.`,
+    text: `Your verification code is: ${token}\n\nThis code expires in 3 minutes.\n\nIf you did not request this code, please ignore this email.`,
     html: `
       <body style="background:#f4f4f5;margin:0;padding:40px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;">
@@ -37,7 +37,7 @@ export async function sendVerificationRequest(
                 <span style="font-size:36px;font-weight:700;letter-spacing:8px;color:#18181b;">${token}</span>
               </div>
               <p style="color:#a1a1aa;font-size:12px;margin:0;">
-                This code expires in 10 minutes.<br/>
+                This code expires in 3 minutes.<br/>
                 If you did not request this, ignore this email.
               </p>
             </td>
