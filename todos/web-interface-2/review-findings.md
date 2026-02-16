@@ -91,6 +91,17 @@
 
 ---
 
+## Fixes Applied (Round 2)
+
+| Finding | Fix                                               | Commit   | Verification |
+| ------- | ------------------------------------------------- | -------- | ------------ |
+| R2-C1   | Removed auth check from people route              | 60d3c64a | Hooks passed |
+| R2-I1   | Simplified role resolution to `session.user.role` | e44ebd3e | Hooks passed |
+
+**Status:** All Critical and Important issues addressed. Ready for re-review.
+
+---
+
 ## Round 1 History
 
 <details>
