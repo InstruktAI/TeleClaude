@@ -1851,3 +1851,253 @@ def extract_tool_calls_current_turn(
     except Exception:
         logger.debug("Tool-call extraction failed (fail-open)", exc_info=True)
         return TurnTimeline(tool_calls=[], has_data=False)
+
+
+# ---------------------------------------------------------------------------
+# Layer 3: Structured message extraction for Messages API
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class StructuredMessage:
+    """A single structured message extracted from a transcript entry."""
+
+    role: str  # "user" | "assistant" | "system"
+    type: str  # "text" | "compaction" | "tool_use" | "tool_result" | "thinking"
+    text: str
+    timestamp: Optional[str] = None
+    entry_index: int = 0
+    file_index: int = 0
+
+    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - API response serialization
+        """Serialize to JSON-compatible dict."""
+        return {
+            "role": self.role,
+            "type": self.type,
+            "text": self.text,
+            "timestamp": self.timestamp,
+            "entry_index": self.entry_index,
+            "file_index": self.file_index,
+        }
+
+
+def _is_compaction_entry(entry: dict[str, object], entry_index: int) -> bool:  # guard: loose-dict
+    """Detect Claude system entries that mark context compaction.
+
+    Claude system entries with a parentUuid (after the initial session start
+    entry at index 0) are compaction events.
+    """
+    if entry_index == 0:
+        return False
+    message = entry.get("message")
+    if not isinstance(message, dict):
+        return False
+    if message.get("role") != "system":
+        return False
+    # System entries with parentUuid indicate compaction
+    if "parentUuid" in entry:
+        return True
+    return False
+
+
+def extract_structured_messages(
+    transcript_path: str,
+    agent_name: AgentName,
+    *,
+    since: Optional[str] = None,
+    include_tools: bool = False,
+    include_thinking: bool = False,
+) -> list[StructuredMessage]:
+    """Extract structured messages from a single transcript file.
+
+    Uses existing _get_entries_for_agent() and _iter_*_entries() infrastructure.
+
+    Args:
+        transcript_path: Path to transcript file
+        agent_name: Agent name for iterator selection
+        since: Optional ISO 8601 UTC timestamp; only messages after this time
+        include_tools: Whether to include tool_use/tool_result entries
+        include_thinking: Whether to include thinking/reasoning blocks
+
+    Returns:
+        List of StructuredMessage objects in chronological order.
+    """
+    entries = _get_entries_for_agent(transcript_path, agent_name)
+    if entries is None:
+        return []
+
+    since_dt = _parse_timestamp(since) if since else None
+    messages: list[StructuredMessage] = []
+
+    for idx, entry in enumerate(entries):
+        entry_ts_str = entry.get("timestamp")
+        entry_ts: Optional[str] = None
+        if isinstance(entry_ts_str, str):
+            entry_ts = entry_ts_str
+            if since_dt:
+                entry_dt = _parse_timestamp(entry_ts_str)
+                if entry_dt and entry_dt <= since_dt:
+                    continue
+
+        # Compaction detection (Claude-specific)
+        if _is_compaction_entry(entry, idx):
+            messages.append(
+                StructuredMessage(
+                    role="system",
+                    type="compaction",
+                    text="Context compacted",
+                    timestamp=entry_ts,
+                    entry_index=idx,
+                )
+            )
+            continue
+
+        # Resolve message from entry
+        message = entry.get("message")
+        if not isinstance(message, dict) and entry.get("type") == "response_item":
+            payload = entry.get("payload")
+            if isinstance(payload, dict):
+                message = payload
+        if not isinstance(message, dict):
+            continue
+
+        role = message.get("role")
+        if not isinstance(role, str):
+            continue
+
+        content = message.get("content")
+
+        # User messages with tool_result-only content (Claude pattern)
+        if role == "user" and _is_user_tool_result_only_message(message):
+            if not include_tools:
+                continue
+            # Emit as tool_result entries
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_result":
+                        result_text = str(block.get("content", ""))
+                        messages.append(
+                            StructuredMessage(
+                                role="assistant",
+                                type="tool_result",
+                                text=result_text,
+                                timestamp=entry_ts,
+                                entry_index=idx,
+                            )
+                        )
+            continue
+
+        # Simple string content (user prompt)
+        if isinstance(content, str):
+            if role == "user":
+                messages.append(
+                    StructuredMessage(
+                        role="user",
+                        type="text",
+                        text=content,
+                        timestamp=entry_ts,
+                        entry_index=idx,
+                    )
+                )
+            continue
+
+        # Block-based content
+        if isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                block_type = block.get("type", "")
+
+                if block_type in ("text", "input_text", "output_text"):
+                    text = str(block.get("text", ""))
+                    if text.strip():
+                        msg_role = role if role in ("user", "assistant") else "assistant"
+                        messages.append(
+                            StructuredMessage(
+                                role=msg_role,
+                                type="text",
+                                text=text,
+                                timestamp=entry_ts,
+                                entry_index=idx,
+                            )
+                        )
+                elif block_type == "thinking":
+                    if include_thinking:
+                        thinking_text = str(block.get("thinking", ""))
+                        if thinking_text.strip():
+                            messages.append(
+                                StructuredMessage(
+                                    role="assistant",
+                                    type="thinking",
+                                    text=thinking_text,
+                                    timestamp=entry_ts,
+                                    entry_index=idx,
+                                )
+                            )
+                elif block_type == "tool_use":
+                    if include_tools:
+                        tool_name = str(block.get("name", "unknown"))
+                        tool_input = block.get("input", {})
+                        messages.append(
+                            StructuredMessage(
+                                role="assistant",
+                                type="tool_use",
+                                text=f"{tool_name}: {json.dumps(tool_input)}",
+                                timestamp=entry_ts,
+                                entry_index=idx,
+                            )
+                        )
+                elif block_type == "tool_result":
+                    if include_tools:
+                        result_text = str(block.get("content", ""))
+                        messages.append(
+                            StructuredMessage(
+                                role="assistant",
+                                type="tool_result",
+                                text=result_text,
+                                timestamp=entry_ts,
+                                entry_index=idx,
+                            )
+                        )
+
+    return messages
+
+
+def extract_messages_from_chain(
+    file_paths: list[str],
+    agent_name: AgentName,
+    *,
+    since: Optional[str] = None,
+    include_tools: bool = False,
+    include_thinking: bool = False,
+) -> list[dict[str, object]]:  # guard: loose-dict - API response messages
+    """Extract structured messages from a chain of transcript files.
+
+    Reads files in order (oldest first) and concatenates messages with file_index.
+
+    Args:
+        file_paths: Ordered list of transcript file paths (oldest first)
+        agent_name: Agent name for iterator selection
+        since: Optional ISO 8601 UTC timestamp filter
+        include_tools: Whether to include tool_use/tool_result entries
+        include_thinking: Whether to include thinking/reasoning blocks
+
+    Returns:
+        List of message dicts with file_index added, in chronological order.
+    """
+    all_messages: list[dict[str, object]] = []  # guard: loose-dict - API response
+
+    for file_idx, file_path in enumerate(file_paths):
+        file_messages = extract_structured_messages(
+            file_path,
+            agent_name,
+            since=since,
+            include_tools=include_tools,
+            include_thinking=include_thinking,
+        )
+        for msg in file_messages:
+            msg_dict = msg.to_dict()
+            msg_dict["file_index"] = file_idx
+            all_messages.append(msg_dict)
+
+    return all_messages
