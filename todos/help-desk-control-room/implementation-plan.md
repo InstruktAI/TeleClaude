@@ -97,9 +97,9 @@ The threaded output mechanism is proven — it runs in production for Gemini on 
 
 **File(s):** `teleclaude/core/adapter_client.py`
 
-- [ ] In `send_threaded_output`, change `broadcast=False` to `broadcast=True`
-- [ ] This allows Telegram-origin sessions to have their threaded output mirrored to Discord observer threads (and vice versa)
-- [ ] Observer broadcast is best-effort (existing pattern in `_broadcast_to_observers`)
+- [x] In `send_threaded_output`, change `broadcast=False` to `broadcast=True`
+- [x] This allows Telegram-origin sessions to have their threaded output mirrored to Discord observer threads (and vice versa)
+- [x] Observer broadcast is best-effort (existing pattern in `_broadcast_to_observers`)
 
 ---
 

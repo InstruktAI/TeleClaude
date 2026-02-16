@@ -414,7 +414,7 @@ class AdapterClient:
             session,
             "send_threaded_output",
             text,
-            broadcast=False,
+            broadcast=True,
             multi_message=multi_message,
         )
         return str(result) if result else None
