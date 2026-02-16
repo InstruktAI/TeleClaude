@@ -32,9 +32,9 @@ Adopt assistant-ui as the web UI while making Next.js API routes the public cont
 
 ### Task 2: Add runtime provider + chat page
 
-- [ ] Runtime provider component using assistant-ui transport runtime.
-- [ ] Chat page rendering thread UI at `/(chat)`.
-- [ ] Wired to `/api/chat` route.
+- [x] Runtime provider component using assistant-ui local runtime with ChatModelAdapter.
+- [x] Chat page rendering thread UI at `/(chat)`.
+- [x] Wired to `/api/chat` route.
 
 **Notes**
 
