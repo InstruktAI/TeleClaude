@@ -321,7 +321,11 @@ def _update_session_native_fields(
     native_log_file: str | None = None,
     native_session_id: str | None = None,
 ) -> None:
-    """Update native session fields directly on the session row."""
+    """Update native session fields directly on the session row.
+
+    When native_log_file changes and the previous value is non-empty,
+    the old path is appended to transcript_files before replacing native_log_file.
+    """
     if not native_log_file and not native_session_id:
         return
     from sqlmodel import Session as SqlSession
@@ -332,6 +336,21 @@ def _update_session_native_fields(
             return
         previous_native_session_id = row.native_session_id
         previous_native_log_file = row.native_log_file
+
+        # Chain accumulation: preserve old transcript path before replacing
+        transcript_changed = bool(
+            native_log_file and previous_native_log_file and previous_native_log_file != native_log_file
+        )
+        if transcript_changed:
+            chain: list[str] = []
+            try:
+                chain = json.loads(row.transcript_files or "[]")
+            except (json.JSONDecodeError, TypeError):
+                chain = []
+            if previous_native_log_file not in chain:
+                chain.append(previous_native_log_file)
+            row.transcript_files = json.dumps(chain)
+
         if native_log_file:
             row.native_log_file = native_log_file
         if native_session_id:
@@ -340,8 +359,8 @@ def _update_session_native_fields(
         session.commit()
 
         session_changed = bool(native_session_id and previous_native_session_id != native_session_id)
-        transcript_changed = bool(native_log_file and previous_native_log_file != native_log_file)
-        if not session_changed and not transcript_changed:
+        transcript_changed_log = bool(native_log_file and previous_native_log_file != native_log_file)
+        if not session_changed and not transcript_changed_log:
             return
 
         old_path = Path(previous_native_log_file).expanduser() if previous_native_log_file else None
@@ -359,7 +378,7 @@ def _update_session_native_fields(
             native_session_changed=session_changed,
             native_log_file_before=previous_native_log_file or "",
             native_log_file_after=native_log_file or "",
-            native_log_changed=transcript_changed,
+            native_log_changed=transcript_changed_log,
             old_path_exists=old_exists,
             new_path_exists=new_exists,
         )
