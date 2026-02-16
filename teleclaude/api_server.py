@@ -119,6 +119,10 @@ class APIServer:
         from teleclaude.channels.api_routes import router as channels_router
 
         self.app.include_router(channels_router)
+
+        from teleclaude.api.streaming import router as streaming_router
+
+        self.app.include_router(streaming_router)
         self.socket_path = socket_path or API_SOCKET_PATH
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None

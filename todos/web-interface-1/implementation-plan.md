@@ -12,7 +12,7 @@ Add `localhost:8420` TCP binding alongside Unix socket in `APIServer.start()`.
 
 **Verification:** `curl http://localhost:8420/health` returns OK.
 
-## Task 2: SSE streaming endpoint
+## [x] Task 2: SSE streaming endpoint
 
 **File:** `teleclaude/api/streaming.py` (new)
 
@@ -43,7 +43,7 @@ Stateless converter — takes JSONL entry, yields SSE event strings.
 
 **Verification:** Returns correct list.
 
-## Task 5: Message ingestion
+## [x] Task 5: Message ingestion
 
 Part of SSE endpoint — when `messages` present, extract user text, call `send_keys`.
 
