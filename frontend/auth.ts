@@ -63,20 +63,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const person = findPersonByEmail(user.email);
         if (person) {
           session.user.name = person.name;
-          (session as SessionWithRole).user.role = person.role;
+          session.user.role = person.role;
         }
       }
       return session;
     },
   },
 });
-
-interface SessionWithRole {
-  user: {
-    id: string;
-    name?: string | null;
-    email?: string | null;
-    image?: string | null;
-    role?: string;
-  };
-}
