@@ -2,6 +2,7 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import DOMPurify from "dompurify";
 
 interface ArtifactCardProps {
   data: {
@@ -16,6 +17,9 @@ export function ArtifactCard({ data }: ArtifactCardProps) {
 
   if (!content) return null;
 
+  const sanitizedHtml =
+    output_format === "html" ? DOMPurify.sanitize(content) : null;
+
   return (
     <div className="my-2 rounded-lg border bg-card">
       {caption && (
@@ -27,7 +31,7 @@ export function ArtifactCard({ data }: ArtifactCardProps) {
         {output_format === "html" ? (
           <div
             className="prose prose-sm dark:prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ __html: content }}
+            dangerouslySetInnerHTML={{ __html: sanitizedHtml! }}
           />
         ) : (
           <div className="prose prose-sm dark:prose-invert max-w-none">
