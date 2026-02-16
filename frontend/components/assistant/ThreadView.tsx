@@ -4,15 +4,27 @@ import {
   ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
+  useThread,
 } from "@assistant-ui/react";
 import { MarkdownContent } from "@/components/parts/MarkdownContent";
 import { ThinkingBlock } from "@/components/parts/ThinkingBlock";
 import { ToolCallBlock } from "@/components/parts/ToolCallBlock";
 import { FileLink } from "@/components/parts/FileLink";
+import { StatusIndicator } from "@/components/parts/StatusIndicator";
+
+function ThreadStatus() {
+  const thread = useThread();
+  const status = thread.isRunning ? "streaming" : "idle";
+  return <StatusIndicator status={status} />;
+}
 
 export function ThreadView() {
   return (
     <ThreadPrimitive.Root className="flex h-full flex-col">
+      <div className="flex items-center justify-end border-b px-4 py-1.5">
+        <ThreadStatus />
+      </div>
+
       <ThreadPrimitive.Viewport className="flex flex-1 flex-col overflow-y-auto px-4 pt-8">
         <ThreadPrimitive.Empty>
           <div className="flex flex-1 items-center justify-center">

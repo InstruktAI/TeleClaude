@@ -162,7 +162,7 @@ Unknown part types are silently skipped.
 
 **Verification:** Real daemon stream renders correctly with all part types visible and properly styled.
 
-## [ ] Task 6: Enhance chat input
+## [x] Task 6: Enhance chat input
 
 **File:** `frontend/components/assistant/ThreadView.tsx`
 
@@ -175,7 +175,7 @@ The existing `ComposerPrimitive.Input` and `ComposerPrimitive.Send` handle basic
 
 **Verification:** Type message, press Enter, message appears in daemon session, response streams back.
 
-## [ ] Task 7: Handle reconnection with since_timestamp
+## [x] Task 7: Handle reconnection with since_timestamp
 
 **File:** `frontend/components/assistant/MyRuntimeProvider.tsx`
 
@@ -185,7 +185,7 @@ If assistant-ui/AI SDK handles reconnection natively, this may not need custom l
 
 **Verification:** Simulate network drop; on reconnect, no duplicate messages appear.
 
-## [ ] Task 8: Status indicator in chat header
+## [x] Task 8: Status indicator in chat header
 
 **File:** `frontend/app/(chat)/page.tsx`
 
