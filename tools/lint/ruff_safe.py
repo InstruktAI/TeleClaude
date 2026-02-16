@@ -58,7 +58,13 @@ def main(argv: list[str]) -> int:
         print("ruff-safe: no Python targets after filtering; skipping ruff", file=sys.stderr)
         return 0
 
-    cmd = ["uv", "run", "--quiet", "ruff", "check", *options, *kept]
+    # Use venv ruff directly if available (avoids uv network calls in CI).
+    script_dir = Path(__file__).resolve().parent.parent.parent
+    venv_ruff = script_dir / ".venv" / "bin" / "ruff"
+    if venv_ruff.exists():
+        cmd = [str(venv_ruff), "check", *options, *kept]
+    else:
+        cmd = ["uv", "run", "--quiet", "ruff", "check", *options, *kept]
     return subprocess.call(cmd)
 
 
