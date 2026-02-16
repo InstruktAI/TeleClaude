@@ -26,7 +26,7 @@ Add `localhost:8420` TCP binding alongside Unix socket in `APIServer.start()`.
 
 **Verification:** SSE events received via curl.
 
-## Task 3: Transcript-to-SSE converter
+## [x] Task 3: Transcript-to-SSE converter
 
 **File:** `teleclaude/api/transcript_converter.py` (new)
 
