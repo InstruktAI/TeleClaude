@@ -369,10 +369,10 @@ def init_colors() -> None:
         curses.init_pair(8, 110, -1)  # Muted: CadetBlue (subdued text)
         curses.init_pair(9, 153, -1)  # Normal: LightSlateGrey (default text)
 
-        # Highlight: terminal bg color on agent bg (badge style)
-        curses.init_pair(41, 16, _AGENT_NORMAL_DARK["claude"])
-        curses.init_pair(42, 16, _AGENT_NORMAL_DARK["gemini"])
-        curses.init_pair(43, 16, _AGENT_NORMAL_DARK["codex"])
+        # Highlight: agent normal color + bold (activity emphasis with agent identity)
+        curses.init_pair(41, _AGENT_NORMAL_DARK["claude"], -1)
+        curses.init_pair(42, _AGENT_NORMAL_DARK["gemini"], -1)
+        curses.init_pair(43, _AGENT_NORMAL_DARK["codex"], -1)
 
     else:
         # Claude (terra/brown tones)
@@ -390,10 +390,10 @@ def init_colors() -> None:
         curses.init_pair(8, 67, -1)  # Muted: steel blue (subdued text)
         curses.init_pair(9, 24, -1)  # Normal: deep steel blue (default text)
 
-        # Highlight: terminal bg color on agent bg (badge style)
-        curses.init_pair(41, 231, _AGENT_NORMAL_LIGHT["claude"])
-        curses.init_pair(42, 231, _AGENT_NORMAL_LIGHT["gemini"])
-        curses.init_pair(43, 231, _AGENT_NORMAL_LIGHT["codex"])
+        # Highlight: agent normal color + bold (activity emphasis with agent identity)
+        curses.init_pair(41, _AGENT_NORMAL_LIGHT["claude"], -1)
+        curses.init_pair(42, _AGENT_NORMAL_LIGHT["gemini"], -1)
+        curses.init_pair(43, _AGENT_NORMAL_LIGHT["codex"], -1)
 
     # Peaceful mode grays (level 0): neutral grayscale, no agent tint.
     if _is_dark_mode:
