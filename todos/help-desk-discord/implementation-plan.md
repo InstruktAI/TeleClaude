@@ -80,7 +80,7 @@ Fix the Discord routing layer and operational pipeline gaps identified in the po
 
 ---
 
-### Task 4: Fix relay context customer messages (R5)
+### [x] Task 4: Fix relay context customer messages (R5)
 
 **File:** `teleclaude/adapters/discord_adapter.py`
 

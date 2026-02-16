@@ -378,3 +378,111 @@ async def test_discord_accepts_all_channels_when_unconfigured() -> None:
         await adapter._handle_on_message(message)
 
     fake_command_service.create_session.assert_awaited_once()
+
+
+# =========================================================================
+# Relay Context Collection Tests
+# =========================================================================
+
+
+class FakeHistoryThread:
+    """Thread mock that supports async history iteration."""
+
+    def __init__(self, thread_id: int, messages: list[object]) -> None:
+        self.id = thread_id
+        self._messages = messages
+
+    def history(self, *, after: object = None, limit: int = 200) -> "FakeHistoryThread":
+        _ = after, limit
+        return self
+
+    def __aiter__(self):
+        return self._async_iter()
+
+    async def _async_iter(self):
+        for msg in self._messages:
+            yield msg
+
+
+@pytest.mark.asyncio
+async def test_relay_context_includes_customer_forwarded_messages() -> None:
+    """Bot-forwarded customer messages (matching pattern) appear as Customer in relay context."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+
+    # Bot-forwarded customer message
+    bot_msg = SimpleNamespace(
+        content="**Alice** (discord): I need help with my order",
+        author=SimpleNamespace(id=999, bot=True, display_name="teleclaude"),
+    )
+    # Admin message
+    admin_msg = SimpleNamespace(
+        content="Let me check that for you",
+        author=SimpleNamespace(id=111, bot=False, display_name="AdminBob"),
+    )
+
+    fake_thread = FakeHistoryThread(thread_id=555, messages=[bot_msg, admin_msg])
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    fake_client.channels[555] = fake_thread
+    adapter._client = fake_client
+
+    messages = await adapter._collect_relay_messages("555", since=None)
+
+    assert len(messages) == 2
+    assert messages[0]["role"] == "Customer"
+    assert messages[0]["name"] == "Alice"
+    assert messages[0]["content"] == "I need help with my order"
+    assert messages[1]["role"] == "Admin"
+    assert messages[1]["name"] == "AdminBob"
+
+
+@pytest.mark.asyncio
+async def test_relay_context_excludes_bot_system_messages() -> None:
+    """Bot messages that don't match the forwarding pattern are excluded."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+
+    # System bot message (no forwarding pattern)
+    system_msg = SimpleNamespace(
+        content="Initializing Help Desk session...",
+        author=SimpleNamespace(id=999, bot=True, display_name="teleclaude"),
+    )
+
+    fake_thread = FakeHistoryThread(thread_id=555, messages=[system_msg])
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    fake_client.channels[555] = fake_thread
+    adapter._client = fake_client
+
+    messages = await adapter._collect_relay_messages("555", since=None)
+    assert len(messages) == 0
+
+
+@pytest.mark.asyncio
+async def test_relay_context_labels_admin_messages_correctly() -> None:
+    """Non-bot messages in relay threads are labelled as Admin."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+
+    admin_msg = SimpleNamespace(
+        content="I've resolved the issue",
+        author=SimpleNamespace(id=111, bot=False, display_name="AdminCarl"),
+    )
+
+    fake_thread = FakeHistoryThread(thread_id=555, messages=[admin_msg])
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    fake_client.channels[555] = fake_thread
+    adapter._client = fake_client
+
+    messages = await adapter._collect_relay_messages("555", since=None)
+    assert len(messages) == 1
+    assert messages[0]["role"] == "Admin"
+    assert messages[0]["name"] == "AdminCarl"

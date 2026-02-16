@@ -738,8 +738,12 @@ class DiscordAdapter(UiAdapter):
 
         logger.info("Agent handback completed for session %s (thread %s)", session.session_id[:8], thread_id)
 
+    _FORWARDING_PATTERN: str = r"^\*\*(.+?)\*\* \((\w+)\): (.+)"
+
     async def _collect_relay_messages(self, thread_id: str, since: "datetime | None") -> list[dict[str, str]]:
         """Read all messages from a relay thread since the given timestamp."""
+        import re
+
         thread = await self._get_channel(int(thread_id))
         if not thread:
             return []
@@ -751,17 +755,31 @@ class DiscordAdapter(UiAdapter):
         messages: list[dict[str, str]] = []
         history_iter = cast(AsyncIterator[object], history_fn(after=since, limit=200))
         async for msg in history_iter:
-            if self._is_bot_message(msg):
-                continue
+            content = getattr(msg, "content", "") or ""
             author = getattr(msg, "author", None)
+            is_bot = bool(getattr(author, "bot", False))
+
+            if is_bot:
+                # Bot-forwarded customer message: **Name** (platform): text
+                match = re.match(self._FORWARDING_PATTERN, content, re.DOTALL)
+                if match:
+                    messages.append(
+                        {
+                            "role": "Customer",
+                            "name": match.group(1),
+                            "content": match.group(3),
+                        }
+                    )
+                # Non-matching bot messages (system/notifications) are skipped
+                continue
+
+            # Non-bot messages in the relay thread are from admins
             name = getattr(author, "display_name", None) or "Unknown"
-            is_admin = not getattr(author, "bot", False)
-            role = "Admin" if is_admin else "Customer"
             messages.append(
                 {
-                    "role": role,
+                    "role": "Admin",
                     "name": name,
-                    "content": getattr(msg, "content", ""),
+                    "content": content,
                 }
             )
         return messages
