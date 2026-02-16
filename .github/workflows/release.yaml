@@ -46,14 +46,6 @@ jobs:
           fi
           echo "All CLI credentials verified"
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
       - name: Full TeleClaude Bootstrap
         run: make bootstrap-ci
 

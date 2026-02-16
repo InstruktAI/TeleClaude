@@ -359,6 +359,12 @@ snippets:
   scope: project
   path: docs/project/procedure/deploy.md
   source_project: TeleClaude
+- id: project/procedure/host-health-checks
+  description: Diagnostic checks for macOS host health on TeleClaude computers.
+  type: procedure
+  scope: project
+  path: docs/project/procedure/host-health-checks.md
+  source_project: TeleClaude
 - id: project/procedure/multi-computer-setup
   description: Guide for setting up a distributed TeleClaude network.
   type: procedure
@@ -382,6 +388,12 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/rsync-development.md
+  source_project: TeleClaude
+- id: project/procedure/runner-operations
+  description: Self-hosted GitHub Actions runner lifecycle, diagnostics, and recovery.
+  type: procedure
+  scope: project
+  path: docs/project/procedure/runner-operations.md
   source_project: TeleClaude
 - id: project/procedure/service-management
   description: Standard commands for managing the TeleClaude daemon service.
