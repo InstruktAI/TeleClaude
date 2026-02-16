@@ -13,11 +13,11 @@
 
 ## Review Gates (Reviewer)
 
-- [ ] Behavioral change correct: origin-present sessions route to origin only
-- [ ] Fallback correct: originless sessions still broadcast to all UI adapters
-- [ ] No observer broadcast for output updates
-- [ ] Existing tests cover recovery (missing thread, topic deleted, missing metadata)
-- [ ] No regressions in other routing methods
+- [x] Behavioral change correct: origin-present sessions route to origin only
+- [x] Fallback correct: originless sessions still broadcast to all UI adapters
+- [x] No observer broadcast for output updates
+- [x] Existing tests cover recovery (missing thread, topic deleted, missing metadata)
+- [x] No regressions in other routing methods
 
 ## Finalize Gates (Finalizer)
 
