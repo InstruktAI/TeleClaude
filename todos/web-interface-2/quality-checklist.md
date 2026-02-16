@@ -21,11 +21,11 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [x] Requirements traced to implemented behavior — FR3 (streaming) fails, FR4 partial; see findings
+- [x] Requirements traced to implemented behavior — FR1-5, NFR1-4 pass; login flow fails (R2-C1)
 - [x] Deferrals justified and not hiding required scope — no deferrals file; none hidden
 - [x] Findings written in `review-findings.md`
-- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
-- [ ] Critical issues resolved or explicitly blocked — 3 critical + 6 important findings open
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES (round 2)
+- [ ] Critical issues resolved or explicitly blocked — R2-C1 (people route auth) blocks login
 - [x] Test coverage and regression risk assessed — no frontend tests; high regression risk noted
 
 ## Finalize Gates (Finalizer)
