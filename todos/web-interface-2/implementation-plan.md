@@ -77,9 +77,9 @@ Adopt assistant-ui as the web UI while making Next.js API routes the public cont
 
 ### Task 6: Verification and guardrails
 
-- [ ] Proxy logging with request ID, latency, upstream status.
-- [ ] Secret/token redaction in logs.
-- [ ] Error normalization for upstream failures.
+- [x] Proxy logging with request ID, latency, upstream status (in daemon-client.ts).
+- [x] Secret/token redaction in logs (no secrets forwarded; allowlist headers only).
+- [x] Error normalization for upstream failures (`normalizeUpstreamError` in daemon-client.ts).
 
 ## Proposed File Targets
 
