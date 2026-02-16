@@ -43,11 +43,11 @@ Adopt assistant-ui as the web UI while making Next.js API routes the public cont
 
 ### Task 3: Implement Next.js API facade routes
 
-- [ ] `frontend/lib/proxy/daemon-client.ts` — daemon HTTP client (Unix socket).
-- [ ] `POST /api/chat` — proxy to daemon session message + stream relay.
-- [ ] `GET /api/people` — resolve people from config (native mode).
-- [ ] `GET /api/sessions` + `POST /api/sessions` — proxy to daemon.
-- [ ] `POST /api/sessions/[id]/messages` — proxy to daemon message send.
+- [x] `frontend/lib/proxy/daemon-client.ts` — daemon HTTP client (Unix socket).
+- [x] `POST /api/chat` — proxy to daemon chat/stream endpoint.
+- [x] `GET /api/people` — resolve people from config (native mode).
+- [x] `GET /api/sessions` + `POST /api/sessions` — proxy to daemon.
+- [x] `POST /api/sessions/[id]/messages` — proxy to daemon message send.
 
 **Implementation contract**
 
