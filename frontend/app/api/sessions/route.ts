@@ -46,14 +46,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  let body;
   try {
-    const body = await request.json();
+    body = await request.json();
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Invalid JSON in request body" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const { computer, title, initial_message } = body;
 
     const res = await daemonRequest({
       method: "POST",
       path: "/sessions",
       body: {
-        ...body,
+        computer,
+        title,
+        initial_message,
         human_email: session.user.email,
         human_role:
           "role" in session.user ? (session.user.role as string) : undefined,
