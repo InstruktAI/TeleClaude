@@ -229,3 +229,292 @@ async def test_discord_send_message_routes_to_thread() -> None:
 
     assert message_id == "7001"
     assert thread.sent_texts == ["Agent response"]
+
+
+# =========================================================================
+# Channel Gating Tests
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_discord_ignores_non_help_desk_channel() -> None:
+    """Messages from a random channel are silently dropped when help_desk_channel_id is set."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+        client.register_adapter("discord", adapter)
+
+    adapter._help_desk_channel_id = 333000
+
+    # Message from a non-help-desk channel (id=999888, no parent)
+    message = SimpleNamespace(
+        id=12345,
+        content="Hello",
+        author=SimpleNamespace(id=999001, bot=False, display_name="Alice", name="alice"),
+        channel=SimpleNamespace(id=999888, parent_id=None, parent=None),
+        guild=SimpleNamespace(id=202020),
+    )
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock()
+
+    with patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service):
+        await adapter._handle_on_message(message)
+
+    fake_command_service.create_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_discord_processes_help_desk_forum_thread() -> None:
+    """Messages from a thread in the help-desk forum create sessions."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+        client.register_adapter("discord", adapter)
+
+    adapter._help_desk_channel_id = 333000
+
+    session = _build_session()
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(side_effect=[[], []])
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": session.session_id})
+    fake_command_service.process_message = AsyncMock()
+
+    # Thread whose parent_id matches help_desk_channel_id
+    thread = FakeThread(thread_id=555111, parent_id=333000)
+    message = SimpleNamespace(
+        id=12345,
+        content="Need help",
+        author=SimpleNamespace(id=999001, bot=False, display_name="Alice", name="alice"),
+        channel=thread,
+        guild=SimpleNamespace(id=202020),
+    )
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
+        await adapter._handle_on_message(message)
+
+    fake_command_service.create_session.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_discord_ignores_wrong_guild() -> None:
+    """Messages from a different guild are silently dropped."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+        client.register_adapter("discord", adapter)
+
+    adapter._guild_id = 111000
+    adapter._help_desk_channel_id = 333000
+
+    # Message from a different guild
+    thread = FakeThread(thread_id=555111, parent_id=333000)
+    message = SimpleNamespace(
+        id=12345,
+        content="Hello",
+        author=SimpleNamespace(id=999001, bot=False, display_name="Alice", name="alice"),
+        channel=thread,
+        guild=SimpleNamespace(id=999999),  # Wrong guild
+    )
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock()
+
+    with patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service):
+        await adapter._handle_on_message(message)
+
+    fake_command_service.create_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_discord_accepts_all_channels_when_unconfigured() -> None:
+    """When help_desk_channel_id is None, all channels are accepted (dev/test mode)."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+        client.register_adapter("discord", adapter)
+
+    adapter._help_desk_channel_id = None  # Unconfigured
+
+    session = _build_session()
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(side_effect=[[], []])
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": session.session_id})
+    fake_command_service.process_message = AsyncMock()
+
+    message = SimpleNamespace(
+        id=12345,
+        content="Need help",
+        author=SimpleNamespace(id=999001, bot=False, display_name="Alice", name="alice"),
+        channel=SimpleNamespace(id=999888, parent_id=None, parent=None),
+        guild=SimpleNamespace(id=202020),
+    )
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
+        await adapter._handle_on_message(message)
+
+    fake_command_service.create_session.assert_awaited_once()
+
+
+# =========================================================================
+# Relay Context Collection Tests
+# =========================================================================
+
+
+class FakeHistoryThread:
+    """Thread mock that supports async history iteration."""
+
+    def __init__(self, thread_id: int, messages: list[object]) -> None:
+        self.id = thread_id
+        self._messages = messages
+
+    def history(self, *, after: object = None, limit: int = 200) -> "FakeHistoryThread":
+        _ = after, limit
+        return self
+
+    def __aiter__(self):
+        return self._async_iter()
+
+    async def _async_iter(self):
+        for msg in self._messages:
+            yield msg
+
+
+@pytest.mark.asyncio
+async def test_relay_context_includes_customer_forwarded_messages() -> None:
+    """Bot-forwarded customer messages (matching pattern) appear as Customer in relay context."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+
+    # Bot-forwarded customer message
+    bot_msg = SimpleNamespace(
+        content="**Alice** (discord): I need help with my order",
+        author=SimpleNamespace(id=999, bot=True, display_name="teleclaude"),
+    )
+    # Admin message
+    admin_msg = SimpleNamespace(
+        content="Let me check that for you",
+        author=SimpleNamespace(id=111, bot=False, display_name="AdminBob"),
+    )
+
+    fake_thread = FakeHistoryThread(thread_id=555, messages=[bot_msg, admin_msg])
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    fake_client.channels[555] = fake_thread
+    adapter._client = fake_client
+
+    messages = await adapter._collect_relay_messages("555", since=None)
+
+    assert len(messages) == 2
+    assert messages[0]["role"] == "Customer"
+    assert messages[0]["name"] == "Alice"
+    assert messages[0]["content"] == "I need help with my order"
+    assert messages[1]["role"] == "Admin"
+    assert messages[1]["name"] == "AdminBob"
+
+
+@pytest.mark.asyncio
+async def test_relay_context_excludes_bot_system_messages() -> None:
+    """Bot messages that don't match the forwarding pattern are excluded."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+
+    # System bot message (no forwarding pattern)
+    system_msg = SimpleNamespace(
+        content="Initializing Help Desk session...",
+        author=SimpleNamespace(id=999, bot=True, display_name="teleclaude"),
+    )
+
+    fake_thread = FakeHistoryThread(thread_id=555, messages=[system_msg])
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    fake_client.channels[555] = fake_thread
+    adapter._client = fake_client
+
+    messages = await adapter._collect_relay_messages("555", since=None)
+    assert len(messages) == 0
+
+
+@pytest.mark.asyncio
+async def test_relay_context_labels_admin_messages_correctly() -> None:
+    """Non-bot messages in relay threads are labelled as Admin."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+
+    admin_msg = SimpleNamespace(
+        content="I've resolved the issue",
+        author=SimpleNamespace(id=111, bot=False, display_name="AdminCarl"),
+    )
+
+    fake_thread = FakeHistoryThread(thread_id=555, messages=[admin_msg])
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    fake_client.channels[555] = fake_thread
+    adapter._client = fake_client
+
+    messages = await adapter._collect_relay_messages("555", since=None)
+    assert len(messages) == 1
+    assert messages[0]["role"] == "Admin"
+    assert messages[0]["name"] == "AdminCarl"
+
+
+# =========================================================================
+# Escalation Tests
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_escalation_creates_thread_in_escalation_forum() -> None:
+    """create_escalation_thread creates a thread in the escalation forum channel."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    escalation_forum = FakeForumChannel(channel_id=888000, thread_id=999888)
+    fake_client.channels[888000] = escalation_forum
+    adapter._client = fake_client
+
+    with patch("teleclaude.adapters.discord_adapter.config") as mock_config:
+        mock_config.discord.escalation_channel_id = 888000
+        thread_id = await adapter.create_escalation_thread(
+            customer_name="Alice",
+            reason="Billing issue",
+            context_summary="Customer has billing question",
+            session_id="sess-123",
+        )
+
+    assert thread_id == 999888
+    assert "Alice" in escalation_forum.created_names

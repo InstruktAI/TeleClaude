@@ -1259,7 +1259,10 @@ class MCPHandlersMixin:
             thread_id,
             customer_name,
         )
-        return f"Escalation created. Admin notified via Discord thread {thread_id}. Relay is now active."
+        return (
+            f"Escalation thread created in escalation forum (thread {thread_id}). "
+            "Admins subscribed to the channel will be notified by Discord. Relay is now active."
+        )
 
     # =========================================================================
     # Helper Methods

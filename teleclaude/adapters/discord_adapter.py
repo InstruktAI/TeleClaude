@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.config import WORKING_DIR, config
+from teleclaude.config import config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.models import SessionAdapterMetadata
@@ -348,11 +348,23 @@ class DiscordAdapter(UiAdapter):
         if not isinstance(text, str) or not text.strip():
             return
 
+        # Guild verification: drop messages from other guilds
+        if self._guild_id is not None:
+            msg_guild_id = self._parse_optional_int(getattr(getattr(message, "guild", None), "id", None))
+            if msg_guild_id is not None and msg_guild_id != self._guild_id:
+                logger.debug("Ignoring message from guild %s (expected %s)", msg_guild_id, self._guild_id)
+                return
+
         # Check if this message is in a relay thread (escalation forum)
         channel = getattr(message, "channel", None)
         parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
         if parent_id and parent_id == config.discord.escalation_channel_id:
             await self._handle_relay_thread_message(message, text)
+            return
+
+        # Channel gating: only process messages from the help desk forum when configured
+        if not self._is_help_desk_message(message):
+            logger.debug("Ignoring message from non-help-desk channel")
             return
 
         try:
@@ -399,6 +411,32 @@ class DiscordAdapter(UiAdapter):
             self_user_id = getattr(getattr(self._client, "user", None), "id", None)
             if self_user_id is not None and self_user_id == getattr(author, "id", None):
                 return True
+        return False
+
+    def _is_help_desk_message(self, message: object) -> bool:
+        """Check if a message originates from the configured help desk forum.
+
+        When ``_help_desk_channel_id`` is not configured, all messages are
+        accepted (dev/test mode).  Otherwise the message must come from the
+        forum itself or from a thread whose parent is the forum.
+        """
+        if self._help_desk_channel_id is None:
+            return True
+
+        channel = getattr(message, "channel", None)
+        channel_id = self._parse_optional_int(getattr(channel, "id", None))
+        if channel_id == self._help_desk_channel_id:
+            return True
+
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
+        if parent_id == self._help_desk_channel_id:
+            return True
+
+        parent_obj = getattr(channel, "parent", None)
+        parent_obj_id = self._parse_optional_int(getattr(parent_obj, "id", None))
+        if parent_obj_id == self._help_desk_channel_id:
+            return True
+
         return False
 
     async def _resolve_or_create_session(self, message: object) -> "Session | None":
@@ -465,7 +503,7 @@ class DiscordAdapter(UiAdapter):
             getattr(author, "display_name", None) or getattr(author, "name", None) or f"discord-{user_id}"
         )
         create_cmd = CreateSessionCommand(
-            project_path=os.path.join(WORKING_DIR, "help-desk"),
+            project_path=config.computer.help_desk_dir,
             title=f"Discord: {display_name}",
             origin=InputOrigin.DISCORD.value,
             channel_metadata={
@@ -700,8 +738,12 @@ class DiscordAdapter(UiAdapter):
 
         logger.info("Agent handback completed for session %s (thread %s)", session.session_id[:8], thread_id)
 
+    _FORWARDING_PATTERN: str = r"^\*\*(.+?)\*\* \((\w+)\): (.+)"
+
     async def _collect_relay_messages(self, thread_id: str, since: "datetime | None") -> list[dict[str, str]]:
         """Read all messages from a relay thread since the given timestamp."""
+        import re
+
         thread = await self._get_channel(int(thread_id))
         if not thread:
             return []
@@ -713,17 +755,31 @@ class DiscordAdapter(UiAdapter):
         messages: list[dict[str, str]] = []
         history_iter = cast(AsyncIterator[object], history_fn(after=since, limit=200))
         async for msg in history_iter:
-            if self._is_bot_message(msg):
-                continue
+            content = getattr(msg, "content", "") or ""
             author = getattr(msg, "author", None)
+            is_bot = bool(getattr(author, "bot", False))
+
+            if is_bot:
+                # Bot-forwarded customer message: **Name** (platform): text
+                match = re.match(self._FORWARDING_PATTERN, content, re.DOTALL)
+                if match:
+                    messages.append(
+                        {
+                            "role": "Customer",
+                            "name": match.group(1),
+                            "content": match.group(3),
+                        }
+                    )
+                # Non-matching bot messages (system/notifications) are skipped
+                continue
+
+            # Non-bot messages in the relay thread are from admins
             name = getattr(author, "display_name", None) or "Unknown"
-            is_admin = not getattr(author, "bot", False)
-            role = "Admin" if is_admin else "Customer"
             messages.append(
                 {
-                    "role": role,
+                    "role": "Admin",
                     "name": name,
-                    "content": getattr(msg, "content", ""),
+                    "content": content,
                 }
             )
         return messages

@@ -44,9 +44,10 @@ async def _dispatch_to_target(
             notification_channel=notification_channel,
             message_preview=message[:80],
         )
-        # Notification enqueue requires per-recipient routing via the NotificationRouter.
-        # The worker logs the intent; full delivery integration is deferred to daemon wiring.
-        logger.debug("Notification dispatch recorded", target=target)
+        from teleclaude.notifications.router import NotificationRouter
+
+        router = NotificationRouter()
+        await router.send_notification(channel=notification_channel, content=message)
 
     elif target_type == "command":
         project = target.get("project", "")

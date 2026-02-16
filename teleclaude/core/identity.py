@@ -10,7 +10,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import PersonEntry
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionAdapterMetadata
@@ -47,10 +47,10 @@ class IdentityResolver:
 
     @staticmethod
     def _normalize_role(role: str) -> str:
-        """Normalize known configured roles to runtime access roles."""
-        if role == HUMAN_ROLE_ADMIN:
-            return HUMAN_ROLE_ADMIN
-        return HUMAN_ROLE_MEMBER
+        """Validate role against known roles, defaulting unknown to customer."""
+        if role in HUMAN_ROLES:
+            return role
+        return HUMAN_ROLE_CUSTOMER
 
     def _load_config(self) -> None:
         """Load global and per-person configuration to build lookup maps."""
@@ -166,6 +166,8 @@ def derive_identity_key(adapter_metadata: SessionAdapterMetadata) -> str | None:
         return f"discord:{ui._discord.user_id}"
     if ui._telegram and getattr(ui._telegram, "user_id", None):
         return f"telegram:{ui._telegram.user_id}"
+    # TODO: Add web platform when WebAdapterMetadata is implemented:
+    #   if ui._web and ui._web.email: return f"web:{ui._web.email}"
     return None
 
 

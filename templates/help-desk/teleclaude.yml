@@ -1,3 +1,11 @@
 project:
   name: help-desk
   description: Help desk customer support workspace
+
+jobs:
+  help-desk-session-review:
+    schedule: "0 * * * *"  # hourly
+    description: Review and summarize recent help desk sessions
+  help-desk-intelligence:
+    schedule: "0 6 * * *"  # daily at 06:00
+    description: Aggregate help desk insights and trends
