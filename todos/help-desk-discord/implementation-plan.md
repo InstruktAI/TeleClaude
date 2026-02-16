@@ -129,7 +129,7 @@ Cross-adapter relay deferred. Customers stay on their original adapter; convergi
 
 ---
 
-### Task 7: Wire channel worker notification dispatch (R8)
+### [x] Task 7: Wire channel worker notification dispatch (R8)
 
 **File:** `teleclaude/channels/worker.py`
 
