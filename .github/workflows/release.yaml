@@ -8,239 +8,59 @@ on:
       - completed
 
 jobs:
-  claude-lane:
-    name: Claude Release Lane
-    runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Prepare Analysis Context
-        run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          echo "LAST_TAG=$LAST_TAG" >> $GITHUB_ENV
-          if [ -n "$LAST_TAG" ]; then
-            git diff "$LAST_TAG"..HEAD > release-diff.txt
-          else
-            git ls-files > release-diff.txt
-          fi
-
-      - name: Run Claude Inspector
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            You are a Meticulous Release Inspector for the TeleClaude project.
-
-            Read the following files to understand your task:
-            1. docs/project/spec/release-inspector-prompt.md — your full instructions
-            2. docs/project/spec/release-report-schema.md — the JSON schema your output must match
-
-            Read the public surface manifests:
-            3. docs/project/spec/telec-cli-surface.md
-            4. docs/project/spec/mcp-tool-surface.md
-            5. docs/project/spec/event-vocabulary.md
-            6. docs/project/spec/teleclaude-config.md
-
-            Read the diff to analyze:
-            7. release-diff.txt
-
-            Follow the release inspector prompt instructions exactly.
-            Classify the changes as "patch", "minor", or "none" per Semver 0.x policy.
-            Write ONLY valid JSON (no markdown fences, no extra text) to claude-report.json.
-            The JSON must match the release-report-schema.
-          claude_args: "--max-turns 10"
-
-      - name: Validate Report
-        run: |
-          if [ ! -f claude-report.json ]; then
-            echo "ERROR: claude-report.json was not created"
-            exit 1
-          fi
-          jq empty claude-report.json
-          echo "Report is valid JSON"
-          jq . claude-report.json
-
-      - name: Upload Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: claude-report
-          path: claude-report.json
-
-  codex-lane:
-    name: Codex Release Lane
-    runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Prepare Analysis Context
-        run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          echo "LAST_TAG=$LAST_TAG" >> $GITHUB_ENV
-          if [ -n "$LAST_TAG" ]; then
-            git diff "$LAST_TAG"..HEAD > release-diff.txt
-          else
-            git ls-files > release-diff.txt
-          fi
-
-      - name: Run Codex Inspector
-        uses: openai/codex-action@v1
-        with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt: |
-            You are a Meticulous Release Inspector for the TeleClaude project.
-
-            Read the following files to understand your task:
-            1. docs/project/spec/release-inspector-prompt.md — your full instructions
-            2. docs/project/spec/release-report-schema.md — the JSON schema your output must match
-
-            Read the public surface manifests:
-            3. docs/project/spec/telec-cli-surface.md
-            4. docs/project/spec/mcp-tool-surface.md
-            5. docs/project/spec/event-vocabulary.md
-            6. docs/project/spec/teleclaude-config.md
-
-            Read the diff to analyze:
-            7. release-diff.txt
-
-            Follow the release inspector prompt instructions exactly.
-            Classify the changes as "patch", "minor", or "none" per Semver 0.x policy.
-            Return ONLY valid JSON matching the release-report-schema. No markdown fences, no extra text.
-          output-file: codex-report.json
-          sandbox: read-only
-
-      - name: Validate Report
-        run: |
-          if [ ! -f codex-report.json ]; then
-            echo "ERROR: codex-report.json was not created"
-            exit 1
-          fi
-          jq empty codex-report.json
-          echo "Report is valid JSON"
-          jq . codex-report.json
-
-      - name: Upload Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: codex-report
-          path: codex-report.json
-
-  gemini-lane:
-    name: Gemini Release Lane
-    runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Gemini CLI
-        run: npm install -g @google/gemini-cli
-
-      - name: Prepare Analysis Context
-        run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          echo "LAST_TAG=$LAST_TAG" >> $GITHUB_ENV
-          if [ -n "$LAST_TAG" ]; then
-            git diff "$LAST_TAG"..HEAD > release-diff.txt
-          else
-            git ls-files > release-diff.txt
-          fi
-
-      - name: Run Gemini Inspector
-        run: |
-          gemini --yolo -p "You are a Meticulous Release Inspector for the TeleClaude project.
-
-          Read the following files to understand your task:
-          1. docs/project/spec/release-inspector-prompt.md — your full instructions
-          2. docs/project/spec/release-report-schema.md — the JSON schema your output must match
-
-          Read the public surface manifests:
-          3. docs/project/spec/telec-cli-surface.md
-          4. docs/project/spec/mcp-tool-surface.md
-          5. docs/project/spec/event-vocabulary.md
-          6. docs/project/spec/teleclaude-config.md
-
-          Read the diff to analyze:
-          7. release-diff.txt
-
-          Follow the release inspector prompt instructions exactly.
-          Classify the changes as 'patch', 'minor', or 'none' per Semver 0.x policy.
-          Write ONLY valid JSON (no markdown fences, no extra text) to gemini-report.json.
-          The JSON must match the release-report-schema."
-        env:
-          GEMINI_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-
-      - name: Validate Report
-        run: |
-          if [ ! -f gemini-report.json ]; then
-            echo "ERROR: gemini-report.json was not created"
-            exit 1
-          fi
-          jq empty gemini-report.json
-          echo "Report is valid JSON"
-          jq . gemini-report.json
-
-      - name: Upload Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: gemini-report
-          path: gemini-report.json
-
   release-analysis:
-    name: AI Release Analysis (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: AI Release Analysis
+    runs-on: [self-hosted, macOS, ARM64]
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Verify CLI credentials
+        run: |
+          errors=0
+
+          # Claude: macOS Keychain
+          if ! security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1; then
+            echo "::error::Claude CLI credentials not found in Keychain. Run: claude login"
+            errors=$((errors + 1))
+          fi
+
+          # Codex: ~/.codex/auth.json
+          if [ ! -f "$HOME/.codex/auth.json" ]; then
+            echo "::error::Codex credentials not found at ~/.codex/auth.json. Run: codex auth login"
+            errors=$((errors + 1))
+          fi
+
+          # Gemini: ~/.gemini/oauth_creds.json
+          if [ ! -f "$HOME/.gemini/oauth_creds.json" ]; then
+            echo "::error::Gemini credentials not found at ~/.gemini/oauth_creds.json. Run: gemini auth login"
+            errors=$((errors + 1))
+          fi
+
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::$errors CLI credential(s) missing — cannot run release analysis without OAuth"
+            exit 1
+          fi
+          echo "All CLI credentials verified"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y tmux jq
-
-      - name: Install system dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install tmux jq
-
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
       - name: Full TeleClaude Bootstrap
         run: make bootstrap-ci
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
-          TELEGRAM_SUPERGROUP_ID: ${{ secrets.TELEGRAM_SUPERGROUP_ID }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+
+      - name: Verify Agent Invocation Matrix
+        run: |
+          ./.venv/bin/python -m pytest tests/integration/test_agent_invocation_matrix.py \
+            -v --timeout=120
 
       - name: Prepare Analysis Context
         run: |
@@ -251,6 +71,22 @@ jobs:
           else
             git ls-files > release-diff.txt
           fi
+
+      - name: Claude Release Lane
+        run: |
+          ./.venv/bin/python -m teleclaude.helpers.agent_cli \
+            --agent claude --thinking-mode slow \
+            --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
+
+          MANIFESTS:
+          CLI: $(cat docs/project/spec/telec-cli-surface.md)
+          MCP: $(cat docs/project/spec/mcp-tool-surface.md)
+          Events: $(cat docs/project/spec/event-vocabulary.md)
+          Config: $(cat docs/project/spec/teleclaude-config.md)
+
+          DIFF:
+          $(cat release-diff.txt)" \
+            --schema-file docs/project/spec/release-report-schema.md > claude-report.json
 
       - name: Codex Release Lane
         run: |
@@ -266,9 +102,7 @@ jobs:
 
           DIFF:
           $(cat release-diff.txt)" \
-            --schema-file docs/project/spec/release-report-schema.md > codex-report-${{ matrix.os }}.json
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+            --schema-file docs/project/spec/release-report-schema.md > codex-report.json
 
       - name: Gemini Release Lane
         run: |
@@ -284,22 +118,21 @@ jobs:
 
           DIFF:
           $(cat release-diff.txt)" \
-            --schema-file docs/project/spec/release-report-schema.md > gemini-report-${{ matrix.os }}.json
-        env:
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+            --schema-file docs/project/spec/release-report-schema.md > gemini-report.json
 
       - name: Upload Reports
         uses: actions/upload-artifact@v4
         with:
-          name: ai-release-reports-${{ matrix.os }}
+          name: ai-release-reports
           path: |
-            codex-report-${{ matrix.os }}.json
-            gemini-report-${{ matrix.os }}.json
+            claude-report.json
+            codex-report.json
+            gemini-report.json
 
   release-arbitration:
     name: Consensus Arbiter
-    needs: [claude-lane, codex-lane, gemini-lane, release-analysis]
-    runs-on: ubuntu-latest
+    needs: [release-analysis]
+    runs-on: [self-hosted, macOS, ARM64]
     outputs:
       release_authorized: ${{ steps.arbiter.outputs.release_authorized }}
       target_version: ${{ steps.arbiter.outputs.target_version }}
@@ -307,27 +140,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Download Claude report
+      - name: Download Reports
         uses: actions/download-artifact@v4
         with:
-          name: claude-report
-      - name: Download Codex report
-        uses: actions/download-artifact@v4
-        with:
-          name: codex-report
-      - name: Download Gemini report
-        uses: actions/download-artifact@v4
-        with:
-          name: gemini-report
-      - name: Download other reports
-        uses: actions/download-artifact@v4
-        with:
-          pattern: ai-release-reports-*
-          merge-multiple: true
+          name: ai-release-reports
       - name: Run Consensus Arbiter
         id: arbiter
         run: |
@@ -335,7 +151,7 @@ jobs:
           ls -la *.json
           echo "---"
           set +e
-          python scripts/release_consolidator.py \
+          ./.venv/bin/python scripts/release_consolidator.py \
             --claude-report claude-report.json \
             --codex-report codex-report.json \
             --gemini-report gemini-report.json \
@@ -357,7 +173,7 @@ jobs:
   authorized-tag:
     name: Create Release Tag
     needs: [release-arbitration]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     if: ${{ needs.release-arbitration.outputs.release_authorized == 'true' }}
     permissions:
       contents: write
