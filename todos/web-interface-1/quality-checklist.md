@@ -13,11 +13,11 @@
 
 ## Review Gates (Reviewer)
 
-- [x] Code follows existing codebase patterns — overall yes, with noted type and naming deviations
-- [ ] No security vulnerabilities introduced — C1 (silent message discard is a UX/reliability issue)
-- [x] SSE wire protocol matches AI SDK v5 spec — converter output format is correct
-- [ ] Error handling is appropriate — C1 (silent discard), I1 (exception in generator)
-- [x] No connection leaks in streaming — idle timeout and session close detection are correct
+- [x] Code follows existing codebase patterns
+- [x] No security vulnerabilities introduced
+- [x] SSE wire protocol matches AI SDK v5 spec
+- [x] Error handling is appropriate — all round 1 C/I issues resolved
+- [x] No connection leaks in streaming — idle timeout and session close detection correct
 
 ## Finalize Gates (Finalizer)
 
