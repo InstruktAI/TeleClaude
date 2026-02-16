@@ -300,6 +300,19 @@ async def _create_tmux_session(
             )
             return False
 
+        # Strip NO_COLOR from the session environment as a safe default.
+        # The variable is inherited from the parent shell; removing it here
+        # lets CLIs emit colors.  The TUI pane manager may re-set NO_COLOR=1
+        # for peaceful theming levels (0, 1) when the pane is displayed.
+        try:
+            unset_cmd = [config.computer.tmux_binary, "set-environment", "-t", name, "-u", "NO_COLOR"]
+            unset_result = await asyncio.create_subprocess_exec(
+                *unset_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await communicate_with_timeout(unset_result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
+        except Exception:
+            pass  # Best-effort; color loss is cosmetic, not critical.
+
         # Ensure detach does NOT destroy the session (respect persistent TC sessions).
         try:
             option_cmd = [config.computer.tmux_binary, "set-option", "-t", name, "destroy-unattached", "off"]

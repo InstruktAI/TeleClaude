@@ -1,79 +1,81 @@
 # DOR Report: help-desk-control-room
 
-## Draft Assessment
+## Draft Assessment (v3)
 
-**Status:** Draft — not yet formally gated.
+**Status:** Draft — artifacts updated after user feedback on scope (all Discord, not help-desk-only).
+
+**Key corrections:**
+
+1. (v2) The first draft described a new "control room" Discord forum channel. Wrong. The existing Discord channels ARE the control room. The actual work is extending threaded output mode and decoupling it from Telegram-specific state.
+2. (v3) Threaded output scope expanded from "Discord help desk channels only" to "ALL Discord sessions" — the entire Discord experience uses threaded output, regardless of channel.
 
 ## Gate Analysis
 
 ### 1. Intent & Success — Strong
 
-The problem and outcome are explicit: Discord-based admin control room for unified session observation and intervention. Success criteria are concrete (thread creation, output mirroring, admin input routing, thread lifecycle). The "what" and "why" are captured in the roadmap entry and refined in requirements.
+Problem is explicit: threaded output is Gemini-only and Telegram-coupled. Outcome is concrete: threaded output for all Discord sessions, any channel, any agent. Success criteria are testable.
 
-### 2. Scope & Size — Needs Attention
+### 2. Scope & Size — Good
 
-The work touches config, adapter metadata, Discord adapter (create/update/close/message handling), database queries, and tests. All changes are localized to the Discord adapter and its supporting infrastructure. Fits a single AI session.
+Core changes:
 
-**Risk:** The dual-thread output routing (help desk thread + control room thread) adds complexity to `send_output_update`. May need careful handling to avoid blocking or rate limit issues.
+- `feature_flags.py`: remove Gemini hardcheck, add Discord adapter gate (~15 lines)
+- `models.py`: promote `char_offset` (~5 lines + migration)
+- `ui_adapter.py`: replace `telegram_meta.char_offset` access (~10 lines)
+- `agent_coordinator.py`: replace `telegram_meta.char_offset` reset (~3 lines)
+- `discord_adapter.py`: override `_build_metadata_for_thread`, fix `close_channel` (~15 lines)
+- `adapter_client.py`: toggle broadcast flag (~1 line)
+
+Fits a single session. No cross-cutting changes outside the adapter/coordinator layer.
 
 ### 3. Verification — Strong
 
-Each requirement has a clear test strategy:
-
-- Thread creation: unit test with mock Discord client
-- Output mirroring: unit test for dual-thread delivery
-- Admin intervention: unit test for message routing from control room thread
-- Graceful degradation: unit test with `control_room_channel_id = None`
-- Lifecycle: unit tests for title sync, close, delete
+Each requirement maps to clear unit tests. The existing `test_threaded_output_updates.py` provides patterns for new tests. Regression coverage exists for the Gemini/Telegram path.
 
 ### 4. Approach Known — Strong
 
-Three proven codebase patterns cover the entire scope:
+Threaded output is already production-proven for Gemini/Telegram. The implementation is:
 
-1. Telegram supergroup topic pattern (per-session topic, admin message routing)
-2. Discord help desk forum pattern (thread creation in forum channel)
-3. AdapterClient observer broadcast (fan-out output delivery)
+1. Remove artificial constraints (agent name, Telegram coupling)
+2. Add Discord adapter gate (origin is Discord → threaded output on)
+3. Fix lifecycle (close = delete)
 
-No new architectural patterns needed. The implementation is a composition of existing patterns.
+No new architectural patterns. All code paths exist; they just need to be unblocked.
 
-### 5. Research — Needs Verification
+### 5. Research — Satisfied
 
-Discord forum channel capabilities (tags, thread creation in forums) are used in the existing help desk implementation. However:
+No new third-party dependencies. Discord.py thread deletion is straightforward (`thread.delete()`). The existing codebase already creates and manages Discord forum threads.
 
-- **Forum tag management via discord.py** — Need to verify how to create/list/apply forum tags programmatically. The existing codebase uses `discord.py` but may not yet use tag APIs.
-- **Thread creation rate limits** — Discord imposes per-guild rate limits on thread creation. Need to verify limits are acceptable for session creation frequency.
+### 6. Dependencies & Preconditions — Resolved
 
-### 6. Dependencies & Preconditions — Open Question
-
-`dependencies.json` lists both `help-desk-discord` and `help-desk-whatsapp` as dependencies. The roadmap says `after: help-desk-discord` only.
-
-**Question:** Is the `help-desk-whatsapp` dependency correct? The control room mirrors ALL sessions regardless of adapter, so it doesn't strictly depend on WhatsApp being implemented. The dependency may be overly strict. Consider removing the WhatsApp dependency if it blocks scheduling.
+- `help-desk-discord` is now delivered — dependency satisfied
+- `help-desk-whatsapp` dependency removed from `dependencies.json`
+- Config: Discord adapter config (`guild_id`, `help_desk_channel_id`, `escalation_channel_id`) already in `config.yml`
+- Experiment: `experiments.yml` already exists and loads at startup
 
 ### 7. Integration Safety — Strong
 
-- Changes are additive: new config field, new metadata field, new behavior behind a config gate
-- `control_room_channel_id = None` (default) disables all new behavior
-- Existing help desk and escalation flows are untouched
-- Rollback: remove config value to disable
+- Adapter-gated: threaded output activates for all Discord-origin sessions (simple adapter check)
+- `close_channel` change affects only Discord adapter (Telegram behavior unchanged)
+- `char_offset` promotion is additive (keep backward compat with existing Telegram metadata)
+- Broadcast toggle is for observer adapters only (best-effort, doesn't affect origin delivery)
 
 ### 8. Tooling Impact — N/A
 
-No tooling or scaffolding changes.
+No scaffolding or tooling changes.
 
 ## Assumptions
 
-1. The Discord adapter is fully functional for help desk sessions before this work starts (depends on `help-desk-discord`)
-2. The `discord.py` library supports forum tag management (create, list, apply to threads)
-3. Discord's per-guild rate limits on thread creation are sufficient for expected session volumes
-4. One control room forum channel is enough (no need for per-project or per-computer separation)
+1. `help-desk-discord` delivery includes working thread creation in `help_desk_channel_id` and `escalation_channel_id`
+2. The `AgentCoordinator` handle_tool_done path works for Discord-origin sessions (session resolution, transcript reading)
+3. Discord.py `thread.delete()` is a simple async call (confirmed by existing `delete_channel` implementation)
+4. `char_offset` can be promoted to session-level without performance concerns (it's a simple integer)
 
 ## Open Questions
 
-1. **WhatsApp dependency:** Should `help-desk-whatsapp` remain as a blocker, or can the control room proceed independently? The control room works regardless of which adapters are enabled.
-2. **Forum tag API:** Does `discord.py` expose forum tag creation/management, or do tags need to be created manually by the admin?
-3. **Output format in control room:** Should control room threads show raw tmux output or formatted output? The Telegram supergroup shows the same formatted output as the user sees.
-4. **Thread archival policy:** When sessions end (72h sweep), should control room threads be archived (hidden but retrievable) or deleted? Archival preserves history; deletion keeps the forum clean.
+1. **`char_offset` approach:** Session-level column vs shared adapter metadata base? Session-level is simpler but adds a migration. Shared base is cleaner but more refactoring. Recommend session-level for simplicity.
+2. **Broadcast scope:** Should threaded output broadcast to ALL observer adapters? Recommend: yes, broadcast always (aligns with existing `send_message` broadcast behavior).
 
 ## Blockers
 
-None identified — all open questions have reasonable defaults that can be resolved during implementation.
+None. All dependencies are met, approach is known, implementation is bounded.

@@ -16,7 +16,6 @@
     "telegram-routing-contract-hardening"
   ],
   "help-desk-control-room": [
-    "help-desk-whatsapp",
     "help-desk-discord"
   ],
   "help-desk-discord": [],

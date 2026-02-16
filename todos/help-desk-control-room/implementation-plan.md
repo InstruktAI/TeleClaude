@@ -2,147 +2,127 @@
 
 ## Overview
 
-Extend the Discord adapter with a "control room" forum channel where all sessions are mirrored as threads. Leverage the existing `_broadcast_to_observers` fan-out in `AdapterClient` to deliver output to control room threads. Add admin intervention by handling messages in control room threads — same pattern as the Telegram adapter's supergroup topic message handling.
+Extend the threaded output experiment from Telegram/Gemini-only to all Discord sessions. This requires decoupling `char_offset` from Telegram metadata, opening the feature flag, and fixing the Discord thread lifecycle.
 
-The approach builds on three proven patterns:
+The threaded output mechanism is proven — it runs in production for Gemini on Telegram. The work here is removing artificial constraints (Gemini-only, Telegram-coupled state) and enabling it for the entire Discord experience.
 
-1. **Telegram supergroup topics** — Per-session forum topics with admin message routing (`channel_ops.py`, `input_handlers.py`)
-2. **Discord help desk forum** — Thread creation in a specific forum channel (`discord_adapter.py:create_channel`)
-3. **AdapterClient observer broadcast** — Fan-out output delivery to all registered UI adapters (`adapter_client.py:_broadcast_to_observers`)
+## Phase 1: Decouple `char_offset` from Telegram metadata
 
-## Phase 1: Configuration & Metadata
+### Task 1.1: Promote `char_offset` to session-level or shared adapter state
 
-### Task 1.1: Add `control_room_channel_id` to Discord config
+**File(s):** `teleclaude/core/models.py`
 
-**File(s):** `teleclaude/config/__init__.py`
+- [ ] Determine approach: session-level column (like `output_message_id`) or shared field in adapter metadata base
+- [ ] If session-level: add `char_offset: int = 0` to `Session` model
+- [ ] If shared metadata: add `char_offset` to a base that `TelegramAdapterMetadata` and `DiscordAdapterMetadata` both inherit
+- [ ] Keep `telegram_meta.char_offset` for backward compatibility during migration, but read from the new location
 
-- [ ] Add `control_room_channel_id: int | None` to `DiscordConfig` dataclass (after `escalation_channel_id`)
-- [ ] Add default `None` in `DEFAULT_CONFIG["discord"]`
-- [ ] Add parsing in the Discord config loading section (same `_parse_optional_int` pattern as `help_desk_channel_id`)
+### Task 1.2: Update `send_threaded_output` in UiAdapter
 
-### Task 1.2: Add `control_room_thread_id` to Discord adapter metadata
+**File(s):** `teleclaude/adapters/ui_adapter.py`
 
-**File(s):** `teleclaude/core/models.py` (or wherever `DiscordAdapterMetadata` is defined)
+- [ ] Replace `telegram_meta = session.get_metadata().get_ui().get_telegram()` with adapter-agnostic access
+- [ ] Read `char_offset` from the new location (session-level or shared metadata)
+- [ ] Write `char_offset` updates to the new location
+- [ ] Keep pagination logic unchanged — only the state access changes
 
-- [ ] Add `control_room_thread_id: Optional[int] = None` to `DiscordAdapterMetadata`
-- [ ] Ensure serialization/deserialization handles the new field
+### Task 1.3: Update `AgentCoordinator` char_offset reset
 
----
+**File(s):** `teleclaude/core/agent_coordinator.py`
 
-## Phase 2: Thread Creation & Lifecycle
+- [ ] `handle_agent_stop` (line ~562): replace `telegram_meta.char_offset = 0` with adapter-agnostic reset
+- [ ] Use the same access pattern as Task 1.2
 
-### Task 2.1: Create control room thread on session start
+### Task 1.4: DB migration (if session-level approach)
 
-**File(s):** `teleclaude/adapters/discord_adapter.py`
+**File(s):** `teleclaude/core/migrations/` (new migration)
 
-- [ ] In `create_channel` (or a new method called from `create_channel`), check if `control_room_channel_id` is configured
-- [ ] If configured, create a thread in the control room forum using the session's display title
-- [ ] Store the resulting thread ID in `adapter_metadata.ui.discord.control_room_thread_id`
-- [ ] Persist the updated metadata to the database
-- [ ] This runs alongside (not instead of) existing help desk thread creation — a customer session gets both threads
-
-### Task 2.2: Thread title sync
-
-**File(s):** `teleclaude/adapters/discord_adapter.py`
-
-- [ ] In `update_channel_title`, also update the control room thread title if `control_room_thread_id` exists
-- [ ] Best-effort: if the title update fails for the control room thread, log warning and continue
-
-### Task 2.3: Thread close on session end
-
-**File(s):** `teleclaude/adapters/discord_adapter.py`
-
-- [ ] In `close_channel`, also close/archive the control room thread if it exists
-- [ ] In `delete_channel`, also delete the control room thread if it exists
+- [ ] Add `char_offset INTEGER DEFAULT 0` column to sessions table
+- [ ] Migrate existing `telegram_meta.char_offset` values to the new column for active sessions
 
 ---
 
-## Phase 3: Output Mirroring
+## Phase 2: Open Feature Flag
 
-### Task 3.1: Route output to control room thread
+### Task 2.1: Remove Gemini hardcheck
 
-**File(s):** `teleclaude/adapters/discord_adapter.py`
+**File(s):** `teleclaude/core/feature_flags.py`
 
-- [ ] In `send_output_update` and `send_message`, ensure output is delivered to the control room thread
-- [ ] For Discord-origin sessions: output already goes to the origin thread; additionally send to control room thread
-- [ ] For non-Discord-origin sessions: the `_broadcast_to_observers` fan-out delivers output to the Discord adapter, which should route to the control room thread
-- [ ] The Discord adapter's `_run_ui_lane` / `ensure_channel` mechanism creates the control room thread lazily if it doesn't exist yet
+- [ ] Remove `if normalized_agent != AgentName.GEMINI.value: return False`
+- [ ] `is_threaded_output_enabled` should check experiment config for the agent, without agent-name restriction
+- [ ] If no agent specified in experiment config agents list (empty/None), experiment applies to all agents
 
-### Task 3.2: Handle dual-thread output routing
+### Task 2.2: Add Discord adapter gate
 
-**File(s):** `teleclaude/adapters/discord_adapter.py`
+**File(s):** `teleclaude/core/feature_flags.py`
 
-- [ ] When a session has both a help desk thread and a control room thread, output must go to both
-- [ ] The help desk thread gets the customer-facing formatted output
-- [ ] The control room thread gets the same output (admins see exactly what the customer sees)
-- [ ] Ensure `send_output_update` sends to both threads without blocking on either
-
----
-
-## Phase 4: Admin Intervention
-
-### Task 4.1: Detect and route admin messages in control room threads
-
-**File(s):** `teleclaude/adapters/discord_adapter.py`
-
-- [ ] In `_handle_on_message`, add detection for messages in control room threads
-- [ ] Detection: check if the message's channel/thread parent is `control_room_channel_id`
-- [ ] Resolve session from the thread ID via reverse lookup (Task 4.2)
-- [ ] Route admin message to session via `ProcessMessageCommand` (same pattern as Telegram topic message handling)
-- [ ] If session has `relay_status == "active"`, send a notice in the thread informing the admin to use the relay/escalation thread instead
-
-### Task 4.2: Reverse lookup — control room thread to session
-
-**File(s):** `teleclaude/core/db.py`
-
-- [ ] Add query method to find session by `control_room_thread_id` in Discord adapter metadata
-- [ ] Use the same `get_sessions_by_adapter_metadata` pattern as existing `topic_id` lookups
-- [ ] Return the active session (not stopped/deleted)
+- [ ] Add `is_threaded_output_enabled_for_session(session)` that checks both:
+  - Experiment flag (existing mechanism)
+  - OR session's origin adapter is Discord
+- [ ] If origin is Discord, threaded output is on — no channel-specific gating needed
+- [ ] Update callers (`AgentCoordinator`, `UiAdapter`, `AdapterClient`) to use the session-aware check where session is available
 
 ---
 
-## Phase 5: Forum Tags
+## Phase 3: Discord Adapter Changes
 
-### Task 5.1: Ensure forum tags on adapter startup
-
-**File(s):** `teleclaude/adapters/discord_adapter.py`
-
-- [ ] On Discord adapter startup (in `start` or initialization), check the control room forum for existing tags
-- [ ] Create missing tags from the set: `help-desk`, `internal`, `maintenance`
-- [ ] Cache tag IDs for use during thread creation
-- [ ] Skip gracefully if control room channel is not configured
-
-### Task 5.2: Apply tags on thread creation
+### Task 3.1: Override `_build_metadata_for_thread` for Discord
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] When creating a control room thread (Task 2.1), determine the appropriate tag
-- [ ] Tag logic: help desk project → `help-desk`; admin/member sessions → `internal`; jobs → `maintenance`
-- [ ] Apply the tag to the thread using Discord's `applied_tags` parameter
+- [ ] Override `_build_metadata_for_thread()` to return `MessageMetadata()` without MarkdownV2 parse mode
+- [ ] Discord uses standard markdown, not Telegram MarkdownV2
+
+### Task 3.2: Fix `close_channel` to delete thread
+
+**File(s):** `teleclaude/adapters/discord_adapter.py`
+
+- [ ] Change `close_channel` from `archived=True, locked=True` to `thread.delete()`
+- [ ] Align with `delete_channel` behavior — both delete the thread
+- [ ] When 72h sweep fires close event, the Discord thread is removed
+
+### Task 3.3: Discord adapter `ensure_channel` for threaded output
+
+**File(s):** `teleclaude/adapters/discord_adapter.py`
+
+- [ ] Verify `ensure_channel` works correctly for Discord sessions when called from `_run_ui_lane`
+- [ ] The thread must exist before threaded output messages are sent
+- [ ] For non-Discord-origin sessions observed via broadcast: `ensure_channel` should create a control room thread if applicable
 
 ---
 
-## Phase 6: Validation
+## Phase 4: Cross-Platform Broadcast
 
-### Task 6.1: Tests
+### Task 4.1: Enable threaded output broadcast to observers
 
-- [ ] Unit test: control room thread created when session starts with `control_room_channel_id` configured
-- [ ] Unit test: no control room thread when config is not set (graceful degradation)
-- [ ] Unit test: output delivered to both help desk thread and control room thread for customer sessions
-- [ ] Unit test: admin message in control room thread routes to session
-- [ ] Unit test: relay conflict — admin warned when intervening in relayed session
-- [ ] Unit test: thread closed when session ends
-- [ ] Unit test: thread title updates when session title changes
+**File(s):** `teleclaude/core/adapter_client.py`
+
+- [ ] In `send_threaded_output`, change `broadcast=False` to `broadcast=True`
+- [ ] This allows Telegram-origin sessions to have their threaded output mirrored to Discord observer threads (and vice versa)
+- [ ] Observer broadcast is best-effort (existing pattern in `_broadcast_to_observers`)
+
+---
+
+## Phase 5: Validation
+
+### Task 5.1: Tests
+
+- [ ] Unit test: `is_threaded_output_enabled` works for Claude (not just Gemini)
+- [ ] Unit test: `is_threaded_output_enabled_for_session` returns True for any Discord-origin session
+- [ ] Unit test: `char_offset` read/write in `send_threaded_output` works without Telegram metadata
+- [ ] Unit test: Discord `close_channel` deletes thread (not archives)
+- [ ] Unit test: existing Gemini threaded output still works (regression)
+- [ ] Unit test: standard poller output still works for Telegram non-threaded sessions
 - [ ] Run `make test`
 
-### Task 6.2: Quality Checks
+### Task 5.2: Quality Checks
 
 - [ ] Run `make lint`
 - [ ] Verify no unchecked implementation tasks remain
 
 ---
 
-## Phase 7: Review Readiness
+## Phase 6: Review Readiness
 
 - [ ] Confirm requirements are reflected in code changes
 - [ ] Confirm implementation tasks are all marked `[x]`

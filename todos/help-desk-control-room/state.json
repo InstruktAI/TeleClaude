@@ -5,17 +5,21 @@
     "todos": []
   },
   "dor": {
-    "score": 6,
+    "score": 7,
     "status": "needs_work",
     "schema_version": 1,
     "blockers": [],
     "actions_taken": [
-      "Drafted requirements from roadmap entry and architecture doc",
-      "Drafted implementation plan based on existing Telegram supergroup and Discord adapter patterns",
-      "Identified discord.py forum tag API as needing verification",
-      "Flagged help-desk-whatsapp dependency as potentially over-strict"
+      "Drafted requirements from roadmap entry (v1 — wrong concept)",
+      "Deep-dived threaded output mechanism, feature flags, adapter coupling",
+      "Rewrote artifacts after user feedback — control room = existing channels + threaded output",
+      "Identified char_offset Telegram coupling as core technical blocker",
+      "Confirmed help-desk-discord dependency is now delivered",
+      "Flagged help-desk-whatsapp dependency for removal",
+      "Expanded scope: threaded output for ALL Discord sessions, not just help desk channels",
+      "Aligned implementation plan and DOR report with all-Discord scope"
     ],
-    "last_assessed_at": "2026-02-16T12:00:00Z"
+    "last_assessed_at": "2026-02-16T15:00:00Z"
   },
   "build": "pending",
   "review": "pending",

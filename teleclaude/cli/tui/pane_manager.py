@@ -765,6 +765,14 @@ class TmuxPaneManager:
         # Embedded session panes should not render tmux status bars.
         self._run_tmux("set", "-t", tmux_session_name, "status", "off")
 
+        # Enforce NO_COLOR for peaceful levels (0, 1) to suppress CLI colors;
+        # unset for richer levels (2+) so CLIs can emit full color output.
+        level = theme.get_pane_theming_mode_level()
+        if level <= 1:
+            self._run_tmux("set-environment", "-t", tmux_session_name, "NO_COLOR", "1")
+        else:
+            self._run_tmux("set-environment", "-t", tmux_session_name, "-u", "NO_COLOR")
+
         # Override color 236 (message box backgrounds) for specific agents
         # if agent == "codex" and theme.get_current_mode():  # dark mode
         #     # Use color 237 (slightly lighter gray) for Codex message boxes

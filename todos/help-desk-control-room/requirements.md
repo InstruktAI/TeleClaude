@@ -2,91 +2,92 @@
 
 ## Goal
 
-Establish a Discord-based admin control room where all AI sessions — regardless of origin platform or project — are mirrored as forum threads. Admins observe session activity in real-time and can intervene by sending messages directly in threads.
-
-This addresses a key limitation of the Telegram supergroup model: all sessions share one flat topic list with no categorization. Discord's richer channel hierarchy (categories, forums, tags) enables organized admin observation with clear separation between help desk and internal sessions.
+Enable threaded output mode for the entire Discord experience — all sessions, all agents. The same proven pattern currently running for Gemini on Telegram, extended to every Discord session. The existing Discord channel structure IS the control room; no new channels are needed.
 
 ## Problem
 
-- Telegram mirrors all sessions as forum topics in one supergroup — no categorization by type
-- Discord only handles help desk customer sessions (via `help_desk_channel_id`) and escalations (via `escalation_channel_id`)
-- Admins have no Discord-based visibility into internal/admin sessions
-- There is no unified cross-platform observation surface — sessions are only visible on their origin adapter
+- Threaded output mode is hardcoded to Gemini-only (`is_threaded_output_enabled` checks `AgentName.GEMINI`)
+- `send_threaded_output` in `UiAdapter` is coupled to `telegram_meta.char_offset` — won't work for Discord
+- `AgentCoordinator` also directly references `telegram_meta.char_offset` when clearing turn state
+- Discord `close_channel` archives+locks threads instead of deleting them; for help desk sessions, close should delete
+- The existing Discord help desk channels (customer-sessions + escalations) already have thread-per-session and admin message routing — but output is the standard poller mode (one big edited message), not per-turn threaded messages
 
 ## Intended Outcome
 
-A single Discord forum channel serves as the admin control room:
-
-- Every session gets a thread, regardless of origin platform (Telegram, Discord, API, MCP)
-- Session output is mirrored to the thread in real-time via the existing adapter observer broadcast (`_broadcast_to_observers`)
-- Admins can type in any thread to send input to the session
-- Discord forum tags categorize threads by session type (help-desk, internal, maintenance)
-- The control room is separate from and does not interfere with the customer-facing help desk forum
+- Threaded output mode is the default for ALL Discord sessions, regardless of channel or agent
+- `char_offset` pagination state is adapter-agnostic (not hardcoded to Telegram metadata)
+- Discord threads are deleted (not archived) when sessions close
+- Admins see per-turn output in Discord threads — same experience as the Telegram Gemini experiment
 
 ## Requirements
 
-### R1: Control room Discord forum channel
+### R1: Decouple `char_offset` from Telegram metadata
 
-**Config:** `teleclaude/config/__init__.py`
+**Files:** `teleclaude/core/models.py`, `teleclaude/adapters/ui_adapter.py`, `teleclaude/core/agent_coordinator.py`
 
-- Add `control_room_channel_id: int | None` to `DiscordConfig`
-- When not configured, all control room behavior is silently skipped (graceful degradation)
-- The control room forum is a standard Discord forum channel; the admin creates it manually and configures the ID
+- `char_offset` must be accessible per-adapter, not only from `telegram_meta`
+- Either promote `char_offset` to session-level (like `output_message_id` was promoted) or add it to a shared base in adapter metadata that both Telegram and Discord metadata implement
+- `send_threaded_output` in UiAdapter must read/write `char_offset` without assuming Telegram
+- `AgentCoordinator.handle_agent_stop` must reset `char_offset` without assuming Telegram
 
-### R2: Per-session thread creation
+### R2: Open threaded output feature flag beyond Gemini
 
-**Files:** `teleclaude/adapters/discord_adapter.py`, adapter metadata models
+**Files:** `teleclaude/core/feature_flags.py`, `experiments.yml`
 
-- When a session starts and `control_room_channel_id` is configured, create a thread in the control room forum
-- Thread title matches the session display title (same format as Telegram supergroup topics)
-- Store the control room thread ID in adapter metadata (`control_room_thread_id`)
-- Help desk customer sessions get BOTH a help desk thread (customer-facing) and a control room thread (admin observation) — these are independent
+- Remove the `AgentName.GEMINI` hardcheck in `is_threaded_output_enabled`
+- Threaded output should be gateable by experiment config, not by hardcoded agent name
+- The experiment config already supports an `agents` list — if agents list includes the active agent, enable it
 
-### R3: Output mirroring to control room threads
+### R3: Enable threaded output for ALL Discord sessions
 
-- Session output appears in the control room thread in near real-time
-- For sessions originating from Discord: output goes to origin thread + control room thread
-- For sessions originating from other platforms: the existing `_broadcast_to_observers` fan-out delivers output to the Discord adapter as an observer, which routes to the control room thread
-- Rate limiting: respect Discord API limits; if output updates are throttled, the last state wins (same pattern as existing output)
+**Files:** `teleclaude/core/feature_flags.py`, `teleclaude/adapters/discord_adapter.py`
 
-### R4: Admin intervention via control room threads
+- ALL Discord sessions use threaded output mode — no channel-specific gating
+- The gate logic is simple: if the session's origin adapter is Discord, threaded output is on
+- This applies to all agents (Claude, Gemini, Codex) on Discord
+- The Discord adapter's `_build_metadata_for_thread()` override should return appropriate metadata for Discord (no MarkdownV2 parse mode — Discord uses standard markdown)
 
-**Files:** `teleclaude/adapters/discord_adapter.py`, `teleclaude/core/db.py`
+### R4: Discord close_channel = delete thread
 
-- Admin messages in control room threads are routed to the session's tmux pane via `ProcessMessageCommand`
-- Reverse lookup: resolve session from `control_room_thread_id` in adapter metadata
-- Relay conflict: if the session has an active relay (`relay_status == "active"`), warn the admin in the thread that the session is in relay mode and intervention goes through the relay thread instead
-- Admin identity: messages in control room threads are attributed to the admin who sent them
+**Files:** `teleclaude/adapters/discord_adapter.py`
 
-### R5: Thread lifecycle management
+- `close_channel` should delete the Discord thread, not archive+lock it
+- When a session closes (72h sweep), the adapter receives a close event — the thread is deleted
+- `delete_channel` remains for permanent cleanup (same behavior — delete)
+- This matches the user's expectation: closed = gone from Discord
 
-- Thread title updates when session title changes (via `update_channel_title`)
-- Thread is closed when session ends (via `close_channel` — 72h sweep or manual stop)
-- Thread can be archived/deleted when session is deleted (via `delete_channel`)
+### R5: AdapterClient threaded output broadcast
 
-### R6: Forum tag categorization
+**Files:** `teleclaude/core/adapter_client.py`
 
-- On adapter startup, ensure forum tags exist in the control room channel
-- Tags: `help-desk`, `internal`, `maintenance` (minimum set)
-- Tag assignment: determined by session context — help desk project sessions get `help-desk`; admin/member sessions get `internal`; job/maintenance sessions get `maintenance`
+- Currently `send_threaded_output` in AdapterClient uses `broadcast=False` — only origin adapter
+- For admin observation: threaded output from Telegram-origin sessions should also appear in Discord control room threads (and vice versa)
+- Change to broadcast to observer adapters so cross-platform mirroring works
 
 ## Out of Scope
 
-- **Replacing Telegram supergroup** — Telegram observation continues as-is
-- **Customer interaction via control room** — control room is admin-only; customers use the help desk forum
-- **Historical session import** — only new sessions get control room threads
-- **Per-computer separation** — all sessions share one control room forum (future enhancement)
-- **Custom admin commands in threads** — admin only sends text input; no slash commands in control room threads
+- New Discord channels or forums — the existing channel structure is sufficient
+- WhatsApp adapter integration — comes later as a separate todo
+- Forum tags / thread categorization — nice-to-have, not part of this delivery
 
 ## Constraints
 
-- Must not break existing Telegram adapter behavior
+- Must not break existing Telegram threaded output (Gemini experiment)
+- Must not break standard poller output for sessions that don't use threaded mode
 - Must not break existing Discord help desk or escalation flows
-- Must handle Discord API rate limits on thread creation and message posting
-- Admin intervention in control room must not conflict with direct session interaction from other adapters (input is additive, not exclusive)
+- `char_offset` migration must be backward-compatible (existing sessions with Telegram char_offset must keep working)
+
+## Success Criteria
+
+- [ ] Threaded output works for ALL Discord sessions (any channel, any agent)
+- [ ] `char_offset` is not coupled to `telegram_meta` — works for any adapter
+- [ ] Existing Gemini threaded output on Telegram still works
+- [ ] Discord threads are deleted (not archived) when sessions close
+- [ ] Admin typing in a Discord thread sends input to the session (already works — verify not broken)
+- [ ] Standard poller output still works for Telegram non-Gemini sessions
 
 ## Risks
 
-- Discord rate limits on thread creation could slow down session starts during high-activity periods
-- Sessions with high output frequency may hit Discord message rate limits (mitigated by existing throttling in `send_output_update`)
-- Multiple admins typing in the same control room thread could create confusing multi-input scenarios (same risk as Telegram supergroup — accepted)
+- Promoting `char_offset` to session-level may require a DB migration if stored as a column
+- Changing `close_channel` to delete could surprise admins if they expect to find archived threads (mitigated: help desk threads are ephemeral by nature)
+- Discord message rate limits when threaded output sends many messages per turn (mitigated: existing pagination in `send_threaded_output`)

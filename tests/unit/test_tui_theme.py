@@ -42,17 +42,38 @@ def test_preview_selected_bg_uses_off_for_state_0_and_2(monkeypatch) -> None:
     monkeypatch.setattr(curses, "color_pair", lambda pair_id: pair_id)
 
     for mode_level in (0, 2):
-        assert get_agent_preview_selected_bg_attr("claude") == AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF["claude"]
-        assert get_agent_preview_selected_focus_attr("claude") == AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF["claude"]
+        assert (
+            get_agent_preview_selected_bg_attr("claude")
+            == AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF["claude"] | curses.A_BOLD
+        )
+        assert (
+            get_agent_preview_selected_focus_attr("claude")
+            == AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF["claude"] | curses.A_BOLD
+        )
 
     for mode_level in (1,):
-        assert get_agent_preview_selected_bg_attr("claude") == AGENT_PREVIEW_SELECTED_BG_PAIRS_HIGHLIGHT["claude"]
-        assert get_agent_preview_selected_focus_attr("claude") == AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_HIGHLIGHT["claude"]
+        assert (
+            get_agent_preview_selected_bg_attr("claude")
+            == AGENT_PREVIEW_SELECTED_BG_PAIRS_HIGHLIGHT["claude"] | curses.A_BOLD
+        )
+        assert (
+            get_agent_preview_selected_focus_attr("claude")
+            == AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_HIGHLIGHT["claude"] | curses.A_BOLD
+        )
 
     for mode_level in (3,):
-        assert get_agent_preview_selected_bg_attr("claude") == AGENT_PREVIEW_SELECTED_BG_PAIRS_SEMI["claude"]
-        assert get_agent_preview_selected_focus_attr("claude") == AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_SEMI["claude"]
+        assert (
+            get_agent_preview_selected_bg_attr("claude")
+            == AGENT_PREVIEW_SELECTED_BG_PAIRS_SEMI["claude"] | curses.A_BOLD
+        )
+        assert (
+            get_agent_preview_selected_focus_attr("claude")
+            == AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_SEMI["claude"] | curses.A_BOLD
+        )
 
     for mode_level in (4,):
-        assert get_agent_preview_selected_bg_attr("claude") == AGENT_PREVIEW_SELECTED_BG_PAIRS["claude"]
-        assert get_agent_preview_selected_focus_attr("claude") == AGENT_PREVIEW_SELECTED_FOCUS_PAIRS["claude"]
+        assert get_agent_preview_selected_bg_attr("claude") == AGENT_PREVIEW_SELECTED_BG_PAIRS["claude"] | curses.A_BOLD
+        assert (
+            get_agent_preview_selected_focus_attr("claude")
+            == AGENT_PREVIEW_SELECTED_FOCUS_PAIRS["claude"] | curses.A_BOLD
+        )

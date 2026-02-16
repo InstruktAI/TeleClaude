@@ -168,33 +168,6 @@ _AGENT_NORMAL_LIGHT = {"claude": 94, "gemini": 90, "codex": 24}
 _AGENT_HIGHLIGHT_DARK = {"claude": 231, "gemini": 231, "codex": 231}
 _AGENT_HIGHLIGHT_LIGHT = {"claude": 16, "gemini": 16, "codex": 16}
 
-_XTERM_PALETTE_CACHE: dict[int, tuple[int, int, int]] = {}
-_HEX_TO_XTERM_COLOR_CACHE: dict[str, int] = {}
-
-# Color-pace weights for shade derivation from foreground/background theme colors.
-_PREVIEW_DEFAULT_SHADE_WEIGHT = 0.22
-_PREVIEW_MUTED_SHADE_WEIGHT = 0.45
-
-# ANSI base colors for the first 16 entries in the standard 256-color xterm palette.
-_XTERM_ANSI_16: tuple[tuple[int, int, int], ...] = (
-    (0, 0, 0),
-    (128, 0, 0),
-    (0, 128, 0),
-    (128, 128, 0),
-    (0, 0, 128),
-    (128, 0, 128),
-    (0, 128, 128),
-    (192, 192, 192),
-    (128, 128, 128),
-    (255, 0, 0),
-    (0, 255, 0),
-    (255, 255, 0),
-    (0, 0, 255),
-    (255, 0, 255),
-    (0, 255, 255),
-    (255, 255, 255),
-)
-
 _APPLE_DARK_LABEL = "Dark"
 _DEFAULT_AGENT = "codex"
 
@@ -369,10 +342,10 @@ def init_colors() -> None:
         curses.init_pair(8, 110, -1)  # Muted: CadetBlue (subdued text)
         curses.init_pair(9, 153, -1)  # Normal: LightSlateGrey (default text)
 
-        # Highlight: agent normal color + bold (activity emphasis with agent identity)
-        curses.init_pair(41, _AGENT_NORMAL_DARK["claude"], -1)
-        curses.init_pair(42, _AGENT_NORMAL_DARK["gemini"], -1)
-        curses.init_pair(43, _AGENT_NORMAL_DARK["codex"], -1)
+        # Highlight: pure white for activity bursts (maximum contrast)
+        curses.init_pair(41, 231, -1)  # Claude highlight
+        curses.init_pair(42, 231, -1)  # Gemini highlight
+        curses.init_pair(43, 231, -1)  # Codex highlight
 
     else:
         # Claude (terra/brown tones)
@@ -390,18 +363,18 @@ def init_colors() -> None:
         curses.init_pair(8, 67, -1)  # Muted: steel blue (subdued text)
         curses.init_pair(9, 24, -1)  # Normal: deep steel blue (default text)
 
-        # Highlight: agent normal color + bold (activity emphasis with agent identity)
-        curses.init_pair(41, _AGENT_NORMAL_LIGHT["claude"], -1)
-        curses.init_pair(42, _AGENT_NORMAL_LIGHT["gemini"], -1)
-        curses.init_pair(43, _AGENT_NORMAL_LIGHT["codex"], -1)
+        # Highlight: pure black for activity bursts (maximum contrast)
+        curses.init_pair(41, 16, -1)  # Claude highlight
+        curses.init_pair(42, 16, -1)  # Gemini highlight
+        curses.init_pair(43, 16, -1)  # Codex highlight
 
     # Peaceful mode grays (level 0): neutral grayscale, no agent tint.
     if _is_dark_mode:
-        curses.init_pair(_PEACEFUL_NORMAL_PAIR_ID, 252, -1)  # 80% gray
-        curses.init_pair(_PEACEFUL_MUTED_PAIR_ID, 247, -1)  # 60% gray
+        curses.init_pair(_PEACEFUL_NORMAL_PAIR_ID, 250, -1)  # 70% gray
+        curses.init_pair(_PEACEFUL_MUTED_PAIR_ID, 240, -1)  # 40% gray
     else:
-        curses.init_pair(_PEACEFUL_NORMAL_PAIR_ID, 236, -1)  # 20% gray (inverted)
-        curses.init_pair(_PEACEFUL_MUTED_PAIR_ID, 242, -1)  # 40% gray (inverted)
+        curses.init_pair(_PEACEFUL_NORMAL_PAIR_ID, 238, -1)  # 30% gray
+        curses.init_pair(_PEACEFUL_MUTED_PAIR_ID, 244, -1)  # 60% gray
 
     # Disabled/unavailable
     curses.init_pair(10, curses.COLOR_WHITE, -1)
@@ -466,52 +439,48 @@ def init_colors() -> None:
         curses.init_pair(25, 28, -1)  # Green (ready)
         curses.init_pair(26, 136, -1)  # Yellow (active)
 
-    preview_pair_values = {
-        "claude": _derive_theme_preview_text_shades("claude"),
-        "gemini": _derive_theme_preview_text_shades("gemini"),
-        "codex": _derive_theme_preview_text_shades("codex"),
-    }
-    for agent, text_shades in preview_pair_values.items():
-        _highlight_pair, default_pair, muted_pair = text_shades
+    # Terminal background as text color gives inverted badge rows.
+    _term_bg_fg = 16 if _is_dark_mode else 231
 
-        # Full mode uses muted background with native terminal foreground (keeps text
-        # palette intact while emphasizing the selection background).
+    for agent in AGENT_COLORS:
+        # Full mode: terminal-bg text on agent muted/normal background.
         curses.init_pair(
             AGENT_PREVIEW_SELECTED_BG_PAIRS[agent],
-            default_pair,
+            _term_bg_fg,
             get_agent_muted_color(agent),
         )
         curses.init_pair(
             AGENT_PREVIEW_SELECTED_FOCUS_PAIRS[agent],
-            -1,
+            _term_bg_fg,
             get_agent_normal_color(agent),
         )
 
-        # Semi mode derives a softer preview treatment from theme-derived foreground shades.
+        # Semi mode: same inversion on agent muted/normal background.
         curses.init_pair(
             AGENT_PREVIEW_SELECTED_BG_PAIRS_SEMI[agent],
-            muted_pair,
+            _term_bg_fg,
             get_agent_muted_color(agent),
         )
         curses.init_pair(
             AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_SEMI[agent],
-            -1,
+            _term_bg_fg,
             get_agent_normal_color(agent),
         )
 
-        # Off mode uses terminal-native default colors with no forced preview emphasis.
-        curses.init_pair(AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF[agent], -1, -1)
-        curses.init_pair(AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF[agent], -1, -1)
+        # Off mode: neutral gray highlights with terminal-bg text for crisp inversion.
+        # 50% gray bg for preview, 70% gray bg for focus — same in both color schemes.
+        curses.init_pair(AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF[agent], _term_bg_fg, 244)  # 50% gray
+        curses.init_pair(AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF[agent], _term_bg_fg, 250)  # 70% gray
 
-        # Highlight mode is focused visual feedback with brighter foreground emphasis.
+        # Highlight mode: same inversion on agent muted/normal background.
         curses.init_pair(
             AGENT_PREVIEW_SELECTED_BG_PAIRS_HIGHLIGHT[agent],
-            _highlight_pair,
+            _term_bg_fg,
             get_agent_muted_color(agent),
         )
         curses.init_pair(
             AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_HIGHLIGHT[agent],
-            get_agent_highlight_color(agent),
+            _term_bg_fg,
             get_agent_normal_color(agent),
         )
 
@@ -715,87 +684,6 @@ def _rgb_to_hex(r: int, g: int, b: int) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
-def _xterm_palette() -> dict[int, tuple[int, int, int]]:
-    """Build a 256-color xterm palette table (lazily)."""
-    if _XTERM_PALETTE_CACHE:
-        return _XTERM_PALETTE_CACHE
-
-    for idx, color in enumerate(_XTERM_ANSI_16):
-        _XTERM_PALETTE_CACHE[idx] = color
-
-    cube_levels = (0, 95, 135, 175, 215, 255)
-    for i_r, r in enumerate(cube_levels):
-        for i_g, g in enumerate(cube_levels):
-            for i_b, b in enumerate(cube_levels):
-                idx = 16 + (36 * i_r) + (6 * i_g) + i_b
-                _XTERM_PALETTE_CACHE[idx] = (r, g, b)
-
-    for gray_idx in range(24):
-        idx = 232 + gray_idx
-        gray = 8 + (10 * gray_idx)
-        _XTERM_PALETTE_CACHE[idx] = (gray, gray, gray)
-
-    return _XTERM_PALETTE_CACHE
-
-
-def _hex_to_xterm_color(hex_color: str) -> int:
-    """Approximate an xterm-256 color index from a hex color.
-
-    This uses nearest-neighbor on the fixed xterm 256 palette.
-    """
-    normalized = hex_color.lower().strip()
-    if normalized in _HEX_TO_XTERM_COLOR_CACHE:
-        return _HEX_TO_XTERM_COLOR_CACHE[normalized]
-
-    r, g, b = _hex_to_rgb(normalized)
-    curses_colors = getattr(curses, "COLORS", 256)
-    max_color = max(0, min(int(curses_colors) - 1, 255))
-    palette = _xterm_palette()
-
-    best_idx = 16
-    best_dist = float("inf")
-
-    for idx, (pr, pg, pb) in palette.items():
-        if idx > max_color:
-            continue
-        # Weighted distance approximates perceived luminance sensitivity.
-        dist = (0.299 * (r - pr) ** 2) + (0.587 * (g - pg) ** 2) + (0.114 * (b - pb) ** 2)
-        if dist < best_dist:
-            best_dist = dist
-            best_idx = idx
-
-    _HEX_TO_XTERM_COLOR_CACHE[normalized] = best_idx
-    return best_idx
-
-
-def _agent_theme_hex_color(agent: str) -> str:
-    """Get theme-facing xterm-like hex base color for the agent."""
-    safe_agent = _safe_agent(agent)
-    if _is_dark_mode:
-        return _AGENT_HEX_COLORS_DARK[safe_agent]
-    return _AGENT_HEX_COLORS_LIGHT[safe_agent]
-
-
-def _derive_theme_preview_text_shades(agent: str) -> tuple[int, int, int]:
-    """Derive preview text shades (highlight, default, muted) from theme colors.
-
-    Returns:
-        Tuple with color indices (highlight, default, muted), where default and muted
-        are increasingly softer variants.
-    """
-    base_hex = _agent_theme_hex_color(agent)
-    base = _agent_theme_hex_color(agent)
-    background_hex = get_terminal_background()
-    highlight_hex = base_hex
-    default_hex = blend_colors(base, background_hex, _PREVIEW_DEFAULT_SHADE_WEIGHT)
-    muted_hex = blend_colors(base, background_hex, _PREVIEW_MUTED_SHADE_WEIGHT)
-    return (
-        _hex_to_xterm_color(highlight_hex),
-        _hex_to_xterm_color(default_hex),
-        _hex_to_xterm_color(muted_hex),
-    )
-
-
 def blend_colors(base_hex: str, agent_hex: str, percentage: float) -> str:
     """Blend two colors with a configurable percentage.
 
@@ -936,8 +824,8 @@ def get_agent_normal_attr(agent: str) -> int:
 
 
 def get_agent_highlight_attr(agent: str) -> int:
-    """Get curses attribute for highlighted agent emphasis (bold + agent color)."""
-    return curses.color_pair(AGENT_COLORS[_safe_agent(agent)]["highlight"]) | curses.A_BOLD
+    """Get curses attribute for highlighted agent emphasis."""
+    return curses.color_pair(AGENT_COLORS[_safe_agent(agent)]["highlight"])
 
 
 def get_peaceful_normal_attr() -> int:
@@ -1049,19 +937,15 @@ def get_agent_preview_selected_bg_attr(agent: str) -> int:
     """
     safe_agent = _safe_agent(agent)
     style_level = get_pane_theming_row_style_level()
-    if style_level == 0:
-        pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF[safe_agent]
-    elif style_level == 1:
+    if style_level in (0, 2):
+        return curses.color_pair(AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF[safe_agent]) | curses.A_BOLD
+    if style_level == 1:
         pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS_HIGHLIGHT[safe_agent]
-    elif style_level == 2:
-        # Level 2 intentionally reverts to native/peaceful output on the tree layer,
-        # while still advancing the external footer indicator state.
-        pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF[safe_agent]
     elif style_level == 3:
         pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS_SEMI[safe_agent]
     else:
         pair_id = AGENT_PREVIEW_SELECTED_BG_PAIRS[safe_agent]
-    return curses.color_pair(pair_id)
+    return curses.color_pair(pair_id) | curses.A_BOLD
 
 
 def get_agent_preview_selected_focus_attr(agent: str) -> int:
@@ -1075,19 +959,15 @@ def get_agent_preview_selected_focus_attr(agent: str) -> int:
     """
     safe_agent = _safe_agent(agent)
     style_level = get_pane_theming_row_style_level()
-    if style_level == 0:
-        pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF[safe_agent]
-    elif style_level == 1:
+    if style_level in (0, 2):
+        return curses.color_pair(AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF[safe_agent]) | curses.A_BOLD
+    if style_level == 1:
         pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_HIGHLIGHT[safe_agent]
-    elif style_level == 2:
-        # Level 2 intentionally reverts to native/peaceful output on the tree layer,
-        # while still advancing the external footer indicator state.
-        pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF[safe_agent]
     elif style_level == 3:
         pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_SEMI[safe_agent]
     else:
         pair_id = AGENT_PREVIEW_SELECTED_FOCUS_PAIRS[safe_agent]
-    return curses.color_pair(pair_id)
+    return curses.color_pair(pair_id) | curses.A_BOLD
 
 
 def get_terminal_background() -> str:
