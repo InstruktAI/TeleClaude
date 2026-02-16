@@ -171,7 +171,7 @@ async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
 
     with (
         patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
-        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=True),
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled_for_session", return_value=True),
         patch("teleclaude.core.agent_coordinator.render_agent_output") as mock_render,
         patch("teleclaude.core.agent_coordinator.get_assistant_messages_since") as mock_get_messages,
         patch("teleclaude.core.agent_coordinator.count_renderable_assistant_blocks", return_value=2),
@@ -197,20 +197,20 @@ async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
         # 2. Should clear output_message_id via dedicated column write
         mock_set_output_msg.assert_called_once_with(session_id, None)
 
-        # 3. Verify DB updates: adapter_metadata (char_offset reset) and cursor clear
+        # 3. Verify DB updates: char_offset reset (session-level) and cursor clear
         calls = mock_update_session.call_args_list
 
-        meta_update_found = False
+        char_offset_reset_found = False
         cursor_clear_found = False
 
         for call in calls:
             _, kwargs = call
-            if "adapter_metadata" in kwargs:
-                meta_update_found = True
+            if "char_offset" in kwargs and kwargs["char_offset"] == 0:
+                char_offset_reset_found = True
             if "last_tool_done_at" in kwargs and kwargs["last_tool_done_at"] is None:
                 cursor_clear_found = True
 
-        assert meta_update_found, "Should persist adapter_metadata (char_offset reset)"
+        assert char_offset_reset_found, "Should reset char_offset to 0 via session-level column"
         assert cursor_clear_found, "Should clear turn cursor"
 
 

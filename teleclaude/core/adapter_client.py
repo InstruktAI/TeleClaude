@@ -16,7 +16,7 @@ from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.feature_flags import is_threaded_output_enabled
+from teleclaude.core.feature_flags import is_threaded_output_enabled_for_session
 from teleclaude.core.models import (
     ChannelMetadata,
     CleanupTrigger,
@@ -414,7 +414,7 @@ class AdapterClient:
             session,
             "send_threaded_output",
             text,
-            broadcast=False,
+            broadcast=True,
             multi_message=multi_message,
         )
         return str(result) if result else None
@@ -506,7 +506,7 @@ class AdapterClient:
         # The experiment config and active_agent are both known at session creation —
         # no need to wait for output_message_id (which created a startup race condition
         # where the first poller output leaked through the standard path).
-        if is_threaded_output_enabled(session.active_agent):
+        if is_threaded_output_enabled_for_session(session):
             logger.debug(
                 "[OUTPUT_ROUTE] Standard output suppressed for session %s (threaded output experiment active)",
                 session.session_id[:8],

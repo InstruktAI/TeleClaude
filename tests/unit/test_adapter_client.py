@@ -615,7 +615,7 @@ async def test_send_output_update_non_gemini_not_suppressed_when_experiment_glob
         active_agent="codex",
     )
 
-    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=False):
+    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled_for_session", return_value=False):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
     assert result == "msg"
@@ -842,7 +842,7 @@ async def test_delete_channel_always_broadcasts():
 
 @pytest.mark.asyncio
 async def test_send_threaded_output_routes_through_route_to_ui():
-    """send_threaded_output should route via _route_to_ui with broadcast=False."""
+    """send_threaded_output should route via _route_to_ui with broadcast=True."""
     client = AdapterClient()
     telegram = DummyTelegramAdapter(client)
     telegram.send_threaded_output = AsyncMock(return_value="threaded-msg-1")  # type: ignore[assignment]
@@ -867,8 +867,8 @@ async def test_send_threaded_output_routes_through_route_to_ui():
 
 
 @pytest.mark.asyncio
-async def test_send_threaded_output_no_broadcast_to_observers():
-    """send_threaded_output must NOT broadcast to observer adapters."""
+async def test_send_threaded_output_broadcasts_to_observers():
+    """send_threaded_output broadcasts to observer adapters for cross-platform mirroring."""
     client = AdapterClient()
 
     telegram = DummyTelegramAdapter(client)
@@ -881,9 +881,9 @@ async def test_send_threaded_output_no_broadcast_to_observers():
     client.register_adapter("slack", slack)
 
     session = Session(
-        session_id="session-threaded-no-broadcast",
+        session_id="session-threaded-broadcast",
         computer_name="test",
-        tmux_session_name="tc_threaded_nb",
+        tmux_session_name="tc_threaded_bc",
         last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Session",
     )
@@ -895,7 +895,7 @@ async def test_send_threaded_output_no_broadcast_to_observers():
 
     assert result == "tg-threaded"
     telegram.send_threaded_output.assert_awaited_once()
-    slack.send_threaded_output.assert_not_awaited()
+    slack.send_threaded_output.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -974,7 +974,7 @@ async def test_send_output_update_suppressed_when_threaded_active():
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata()),
     )
 
-    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=True):
+    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled_for_session", return_value=True):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
     assert result is None
@@ -1001,7 +1001,7 @@ async def test_send_output_update_suppressed_when_threaded_active_no_output_mess
         ),
     )
 
-    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled", return_value=True):
+    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled_for_session", return_value=True):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
     assert result is None

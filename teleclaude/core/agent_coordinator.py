@@ -39,7 +39,11 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     UserPromptSubmitPayload,
 )
-from teleclaude.core.feature_flags import is_threaded_output_enabled, is_threaded_output_include_tools_enabled
+from teleclaude.core.feature_flags import (
+    is_threaded_output_enabled,
+    is_threaded_output_enabled_for_session,
+    is_threaded_output_include_tools_enabled,
+)
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import notify_input_request, notify_stop
@@ -475,9 +479,6 @@ class AgentCoordinator:
         )
 
         # 1. Extract turn artifacts and persist with a single ordered activity update.
-        active_agent = (session.active_agent if session else None) or (
-            payload.raw.get("agent_name") if payload.raw else None
-        )
         input_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         feedback_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         emit_codex_submit_backfill = False
@@ -554,13 +555,11 @@ class AgentCoordinator:
         # Clear threaded output state for this turn (only for threaded sessions).
         # Non-threaded sessions rely on the poller's output_message_id for in-place edits.
         session = await db.get_session(session_id)  # Refresh to get latest metadata
-        if session and active_agent and is_threaded_output_enabled(str(active_agent)):
-            # Clear output_message_id via dedicated column (not adapter_metadata blob)
-            # to prevent concurrent adapter_metadata writes from clobbering it.
+        if session and is_threaded_output_enabled_for_session(session):
+            # Clear output_message_id and char_offset via dedicated columns
+            # to prevent concurrent adapter_metadata writes from clobbering values.
             await db.set_output_message_id(session_id, None)
-            telegram_meta = session.get_metadata().get_ui().get_telegram()
-            telegram_meta.char_offset = 0
-            await db.update_session(session_id, adapter_metadata=session.adapter_metadata)
+            await db.update_session(session_id, char_offset=0)
 
         # Clear turn-specific cursor at turn completion
         await db.update_session(session_id, last_tool_done_at=None)
@@ -632,8 +631,8 @@ class AgentCoordinator:
         if not agent_key:
             return False
 
-        # Check if experiment is enabled for this agent (Gemini only).
-        is_enabled = is_threaded_output_enabled(agent_key)
+        # Check if threaded output is enabled (experiment flag or Discord origin).
+        is_enabled = is_threaded_output_enabled_for_session(session) or is_threaded_output_enabled(agent_key)
         logger.debug("Evaluating incremental output", session=session_id[:8], agent=agent_key, is_enabled=is_enabled)
 
         if not is_enabled:
