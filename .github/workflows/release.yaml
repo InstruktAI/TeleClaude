@@ -10,7 +10,7 @@ on:
 jobs:
   release-analysis:
     name: AI Release Analysis
-    runs-on: [self-hosted, OSX, ARM64]
+    runs-on: [self-hosted, macOS, ARM64]
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
@@ -132,7 +132,7 @@ jobs:
   release-arbitration:
     name: Consensus Arbiter
     needs: [release-analysis]
-    runs-on: [self-hosted, OSX, ARM64]
+    runs-on: [self-hosted, macOS, ARM64]
     outputs:
       release_authorized: ${{ steps.arbiter.outputs.release_authorized }}
       target_version: ${{ steps.arbiter.outputs.target_version }}
@@ -173,7 +173,7 @@ jobs:
   authorized-tag:
     name: Create Release Tag
     needs: [release-arbitration]
-    runs-on: [self-hosted, OSX, ARM64]
+    runs-on: [self-hosted, macOS, ARM64]
     if: ${{ needs.release-arbitration.outputs.release_authorized == 'true' }}
     permissions:
       contents: write
