@@ -105,7 +105,7 @@ function ChatPageInner() {
 
 **Verification:** Opening `/` shows session picker; clicking a session loads the chat; URL updates with sessionId.
 
-## [ ] Task 4: Build UIMessage part components
+## [x] Task 4: Build UIMessage part components
 
 **Directory:** `frontend/components/parts/`
 
