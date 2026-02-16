@@ -70,24 +70,24 @@ The threaded output mechanism is proven — it runs in production for Gemini on 
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Override `_build_metadata_for_thread()` to return `MessageMetadata()` without MarkdownV2 parse mode
-- [ ] Discord uses standard markdown, not Telegram MarkdownV2
+- [x] Override `_build_metadata_for_thread()` to return `MessageMetadata()` without MarkdownV2 parse mode
+- [x] Discord uses standard markdown, not Telegram MarkdownV2
 
 ### Task 3.2: Fix `close_channel` to delete thread
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Change `close_channel` from `archived=True, locked=True` to `thread.delete()`
-- [ ] Align with `delete_channel` behavior — both delete the thread
-- [ ] When 72h sweep fires close event, the Discord thread is removed
+- [x] Change `close_channel` from `archived=True, locked=True` to `thread.delete()`
+- [x] Align with `delete_channel` behavior — both delete the thread
+- [x] When 72h sweep fires close event, the Discord thread is removed
 
 ### Task 3.3: Discord adapter `ensure_channel` for threaded output
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Verify `ensure_channel` works correctly for Discord sessions when called from `_run_ui_lane`
-- [ ] The thread must exist before threaded output messages are sent
-- [ ] For non-Discord-origin sessions observed via broadcast: `ensure_channel` should create a control room thread if applicable
+- [x] Verify `ensure_channel` works correctly for Discord sessions when called from `_run_ui_lane`
+- [x] The thread must exist before threaded output messages are sent
+- [x] For non-Discord-origin sessions observed via broadcast: `ensure_channel` should create a control room thread if applicable
 
 ---
 

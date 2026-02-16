@@ -122,6 +122,20 @@ class DiscordAdapter(UiAdapter):
             raise AdapterError(f"{label} is not callable")
         return cast(Callable[..., Awaitable[object]], fn)
 
+    async def ensure_channel(self, session: "Session", title: str) -> "Session":
+        discord_meta = session.get_metadata().get_ui().get_discord()
+        if discord_meta.thread_id is not None:
+            return session
+
+        if self._help_desk_channel_id is not None:
+            from teleclaude.core.models import ChannelMetadata
+
+            await self.create_channel(session, title, ChannelMetadata(origin=False))
+            refreshed = await db.get_session(session.session_id)
+            return refreshed or session
+
+        return session
+
     async def create_channel(self, session: "Session", title: str, metadata: "ChannelMetadata") -> str:
         _ = metadata
         if self._client is None:
@@ -175,15 +189,15 @@ class DiscordAdapter(UiAdapter):
         thread = await self._get_channel(discord_meta.thread_id)
         if thread is None:
             return False
-        raw_edit_fn = getattr(thread, "edit", None)
-        if raw_edit_fn is None:
+        raw_delete_fn = getattr(thread, "delete", None)
+        if raw_delete_fn is None:
             return False
-        edit_fn = self._require_async_callable(raw_edit_fn, label="Discord thread edit")
+        delete_fn = self._require_async_callable(raw_delete_fn, label="Discord thread delete")
         try:
-            await edit_fn(archived=True, locked=True)
+            await delete_fn()
             return True
         except Exception as exc:
-            logger.warning("Failed to close Discord thread %s: %s", discord_meta.thread_id, exc)
+            logger.warning("Failed to delete Discord thread %s: %s", discord_meta.thread_id, exc)
             return False
 
     async def reopen_channel(self, session: "Session") -> bool:
@@ -290,6 +304,11 @@ class DiscordAdapter(UiAdapter):
         if message_id is None:
             raise AdapterError("Discord send_file returned message without id")
         return str(message_id)
+
+    def _build_metadata_for_thread(self) -> "MessageMetadata":
+        from teleclaude.core.models import MessageMetadata
+
+        return MessageMetadata(parse_mode=None)
 
     async def discover_peers(self) -> list["PeerInfo"]:
         return []
