@@ -531,9 +531,14 @@ class UiAdapter(BaseAdapter):
             success = await self.edit_message(session, existing_id, footer_text, metadata=metadata)
             if success:
                 return existing_id
-            # Edit failed (stale message) — clear and fall through to send new
-            logger.debug("[FOOTER] Edit failed for session=%s, creating new", session.session_id[:8])
+            # Edit failed (stale message) — clear tracked ID and skip.
+            # Do NOT fall back to sending a new message here; the next
+            # render cycle will create a fresh footer naturally.
+            logger.debug(
+                "[FOOTER] Edit failed for session=%s, clearing stale id %s", session.session_id[:8], existing_id
+            )
             await self._clear_footer_message_id(session)
+            return None
 
         new_id = await self.send_message(session, footer_text, metadata=metadata)
         logger.debug("[FOOTER] send_message returned %s for session=%s", new_id, session.session_id[:8])
