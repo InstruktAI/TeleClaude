@@ -10,10 +10,10 @@
 
 ## Review Gates (Reviewer)
 
-- [ ] Code matches requirements
-- [ ] No regressions in existing functionality
-- [ ] Error handling adequate
-- [ ] Types accurate and complete
+- [x] Code matches requirements — R1-R9 covered; R6 partial (no syntax highlight/zoom/preview per plan scope)
+- [x] No regressions in existing functionality — all changes additive, Fallback preserved
+- [x] Error handling adequate — 3 Important findings noted, none blocking
+- [x] Types accurate and complete — discriminated union sound; 3 type improvement suggestions noted
 
 ## Finalize Gates (Finalizer)
 
