@@ -443,7 +443,7 @@ def build_context_output(
     elif human_role == "customer":
         _allowed_audiences = {"public", "help-desk"}
     elif human_role == "member":
-        _allowed_audiences = {"admin", "member", "help-desk", "public"}
+        _allowed_audiences = {"internal", "public", "help-desk", "member"}
     else:
         _allowed_audiences = None  # unknown role -> see everything
 

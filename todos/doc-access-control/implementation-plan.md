@@ -60,7 +60,7 @@ Add `clearance: str | None` field to `SnippetEntry`. This is informational in th
 
 ---
 
-## Task 2: Update `context_selector.py` audience filter
+## [x] Task 2: Update `context_selector.py` audience filter
 
 **File:** `teleclaude/context_selector.py` — `build_context_output()`
 
