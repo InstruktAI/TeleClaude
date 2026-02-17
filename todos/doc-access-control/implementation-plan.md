@@ -123,7 +123,7 @@ Implementation:
 
 ---
 
-## Task 5: Documentation and example tagging
+## [x] Task 5: Documentation and example tagging
 
 1. Update the doc snippet authoring schema snippet (`general/spec/snippet-authoring-schema`) to document the `clearance` field and its valid values (`public`, `internal`, `admin`).
 2. Tag at least one existing admin-only snippet with `clearance: admin` as a live example.

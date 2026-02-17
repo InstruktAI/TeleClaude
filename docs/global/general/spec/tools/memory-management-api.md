@@ -3,6 +3,7 @@ id: 'general/spec/tools/memory-management-api'
 type: 'spec'
 scope: 'global'
 description: 'Canonical curl signatures for writing and retrieving memory through the daemon API.'
+clearance: 'admin'
 ---
 
 # Memory Management API Tool — Spec

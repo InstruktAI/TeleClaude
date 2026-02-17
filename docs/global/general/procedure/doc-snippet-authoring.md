@@ -27,7 +27,7 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 
 1. Interpret the request through taxonomy: decide the correct type and scope.
 2. Author top-down: broader context should point to narrower details, not the other way around.
-3. Add frontmatter (id, type, scope, description).
+3. Add frontmatter (id, type, scope, description). Set `clearance` if the snippet should be restricted: `admin` for ops/credentials, `public` for customer-facing content. Omit for the default `internal` level.
 4. Write H1 title with correct type suffix.
 5. Add Required reads if the snippet depends on other snippets.
 6. Add all required sections for the taxonomy type.
