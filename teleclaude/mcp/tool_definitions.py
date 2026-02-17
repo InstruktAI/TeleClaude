@@ -11,6 +11,153 @@ from mcp.types import Tool
 
 from teleclaude.constants import TAXONOMY_TYPES
 
+# --- Widget expression JSON Schema building blocks ---
+
+_SECTION_COMMON: dict[str, object] = {  # guard: loose-dict - JSON Schema properties
+    "label": {"type": "string", "description": "Section heading above content."},
+    "variant": {
+        "type": "string",
+        "enum": ["default", "info", "success", "warning", "error", "muted"],
+        "description": "Visual treatment.",
+    },
+    "id": {"type": "string", "description": "Section reference ID."},
+}
+
+_INPUT_FIELD_SCHEMA: dict[str, object] = {  # guard: loose-dict - JSON Schema
+    "type": "object",
+    "properties": {
+        "name": {"type": "string", "description": "Field identifier."},
+        "label": {"type": "string", "description": "Display label."},
+        "input": {
+            "type": "string",
+            "enum": ["text", "select", "checkbox", "number", "date"],
+            "description": "Input type.",
+        },
+        "options": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Options for select inputs.",
+        },
+        "required": {"type": "boolean"},
+        "placeholder": {"type": "string"},
+        "default": {"type": "string"},
+        "helpText": {"type": "string"},
+        "disabled": {"type": "boolean"},
+        "readonly": {"type": "boolean"},
+        "width": {"type": "string", "enum": ["half", "full"]},
+    },
+    "required": ["name", "label", "input"],
+}
+
+_BUTTON_SCHEMA: dict[str, object] = {  # guard: loose-dict - JSON Schema
+    "type": "object",
+    "properties": {
+        "label": {"type": "string", "description": "Button text."},
+        "action": {"type": "string", "description": "Action identifier sent on click."},
+        "style": {"type": "string", "enum": ["primary", "secondary", "destructive"]},
+        "icon": {"type": "string"},
+        "disabled": {"type": "boolean"},
+        "confirm": {"type": "string", "description": "Confirmation prompt before action."},
+    },
+    "required": ["label", "action"],
+}
+
+
+def _section_variant(
+    const_type: str,
+    extra_props: dict[str, object],  # guard: loose-dict - JSON Schema properties
+    extra_required: list[str] | None = None,
+) -> dict[str, object]:  # guard: loose-dict - JSON Schema object
+    """Build a oneOf variant for a section type with common fields."""
+    props: dict[str, object] = {  # guard: loose-dict - JSON Schema properties
+        "type": {"type": "string", "const": const_type},
+        **_SECTION_COMMON,
+        **extra_props,
+    }
+    required = ["type"] + (extra_required or [])
+    return {"type": "object", "properties": props, "required": required}
+
+
+_SECTION_ITEMS_SCHEMA: dict[str, object] = {  # guard: loose-dict - JSON Schema oneOf discriminator
+    "oneOf": [
+        _section_variant(
+            "text",
+            {
+                "content": {"type": "string", "description": "Markdown text content."},
+            },
+            ["content"],
+        ),
+        _section_variant(
+            "input",
+            {
+                "fields": {"type": "array", "items": _INPUT_FIELD_SCHEMA, "description": "Form fields."},
+            },
+            ["fields"],
+        ),
+        _section_variant(
+            "actions",
+            {
+                "buttons": {"type": "array", "items": _BUTTON_SCHEMA, "description": "Action buttons."},
+                "layout": {
+                    "type": "string",
+                    "enum": ["horizontal", "vertical"],
+                    "description": "Button layout direction.",
+                },
+            },
+            ["buttons"],
+        ),
+        _section_variant(
+            "image",
+            {
+                "src": {"type": "string", "description": "Image source path."},
+                "alt": {"type": "string", "description": "Alt text."},
+                "width": {"type": "number"},
+                "height": {"type": "number"},
+                "caption": {"type": "string"},
+            },
+            ["src"],
+        ),
+        _section_variant(
+            "table",
+            {
+                "headers": {"type": "array", "items": {"type": "string"}, "description": "Column headers."},
+                "rows": {
+                    "type": "array",
+                    "items": {"type": "array", "items": {"type": ["string", "number"]}},
+                    "description": "Table data rows.",
+                },
+                "caption": {"type": "string"},
+                "sortable": {"type": "boolean"},
+                "filterable": {"type": "boolean"},
+                "maxRows": {"type": "number"},
+            },
+            ["headers", "rows"],
+        ),
+        _section_variant(
+            "file",
+            {
+                "path": {"type": "string", "description": "File path within session workspace."},
+                "size": {"type": "number"},
+                "mime": {"type": "string"},
+                "preview": {"type": "boolean"},
+            },
+            ["path"],
+        ),
+        _section_variant(
+            "code",
+            {
+                "content": {"type": "string", "description": "Code content."},
+                "language": {"type": "string", "description": "Programming language."},
+                "title": {"type": "string"},
+                "collapsible": {"type": "boolean"},
+                "lineNumbers": {"type": "boolean"},
+            },
+            ["content"],
+        ),
+        _section_variant("divider", {}),
+    ],
+}
+
 # Reusable instruction for AI-to-AI session management (appended to tool descriptions)
 REMOTE_AI_TIMER_INSTRUCTION = (
     "**After dispatching:** "
@@ -775,135 +922,8 @@ def get_tool_definitions() -> list[Tool]:
                             },
                             "sections": {
                                 "type": "array",
-                                "description": "Ordered content sections.",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "type": {
-                                            "type": "string",
-                                            "enum": [
-                                                "text",
-                                                "input",
-                                                "actions",
-                                                "image",
-                                                "table",
-                                                "file",
-                                                "code",
-                                                "divider",
-                                            ],
-                                            "description": "Section type discriminator.",
-                                        },
-                                        "label": {
-                                            "type": "string",
-                                            "description": "Section heading above the content.",
-                                        },
-                                        "variant": {
-                                            "type": "string",
-                                            "enum": ["default", "info", "success", "warning", "error", "muted"],
-                                            "description": "Visual treatment for the section.",
-                                        },
-                                        "id": {
-                                            "type": "string",
-                                            "description": "Section reference ID.",
-                                        },
-                                        "content": {
-                                            "type": "string",
-                                            "description": "Text/code content (for text and code sections).",
-                                        },
-                                        "language": {
-                                            "type": "string",
-                                            "description": "Programming language (for code sections).",
-                                        },
-                                        "fields": {
-                                            "type": "array",
-                                            "description": "Form fields (for input sections).",
-                                            "items": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "name": {"type": "string", "description": "Field identifier."},
-                                                    "label": {"type": "string", "description": "Display label."},
-                                                    "input": {
-                                                        "type": "string",
-                                                        "enum": ["text", "select", "checkbox", "number", "date"],
-                                                        "description": "Input type.",
-                                                    },
-                                                    "options": {
-                                                        "type": "array",
-                                                        "items": {"type": "string"},
-                                                        "description": "Options for select inputs.",
-                                                    },
-                                                    "required": {"type": "boolean"},
-                                                    "placeholder": {"type": "string"},
-                                                    "default": {"type": "string"},
-                                                    "helpText": {"type": "string"},
-                                                    "disabled": {"type": "boolean"},
-                                                    "readonly": {"type": "boolean"},
-                                                    "width": {
-                                                        "type": "string",
-                                                        "enum": ["half", "full"],
-                                                    },
-                                                },
-                                                "required": ["name", "label", "input"],
-                                            },
-                                        },
-                                        "buttons": {
-                                            "type": "array",
-                                            "description": "Action buttons (for actions sections).",
-                                            "items": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "label": {"type": "string", "description": "Button text."},
-                                                    "action": {
-                                                        "type": "string",
-                                                        "description": "Action identifier sent on click.",
-                                                    },
-                                                    "style": {
-                                                        "type": "string",
-                                                        "enum": ["primary", "secondary", "destructive"],
-                                                    },
-                                                    "icon": {"type": "string"},
-                                                    "disabled": {"type": "boolean"},
-                                                    "confirm": {
-                                                        "type": "string",
-                                                        "description": "Confirmation prompt before action.",
-                                                    },
-                                                },
-                                                "required": ["label", "action"],
-                                            },
-                                        },
-                                        "layout": {
-                                            "type": "string",
-                                            "enum": ["horizontal", "vertical"],
-                                            "description": "Button layout (for actions sections).",
-                                        },
-                                        "src": {
-                                            "type": "string",
-                                            "description": "Image source path (for image sections).",
-                                        },
-                                        "alt": {
-                                            "type": "string",
-                                            "description": "Alt text (for image sections).",
-                                        },
-                                        "headers": {
-                                            "type": "array",
-                                            "items": {"type": "string"},
-                                            "description": "Column headers (for table sections).",
-                                        },
-                                        "rows": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "array",
-                                                "items": {"type": ["string", "number"]},
-                                            },
-                                            "description": "Table rows (for table sections).",
-                                        },
-                                        "path": {
-                                            "type": "string",
-                                            "description": "File path (for file sections).",
-                                        },
-                                    },
-                                    "required": ["type"],
-                                },
+                                "description": "Ordered content sections. Each section is discriminated by its 'type' field.",
+                                "items": _SECTION_ITEMS_SCHEMA,
                             },
                             "footer": {
                                 "type": "string",
