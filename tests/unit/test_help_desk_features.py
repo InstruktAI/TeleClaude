@@ -236,7 +236,7 @@ class TestAudienceFiltering:
         assert "member-guide" not in result
 
     def test_member_sees_public_and_member(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Member role sees admin, member, public, help-desk snippets."""
+        """Member role sees member, public, help-desk snippets but NOT admin-only."""
         project_root, global_snippets_root = self._setup_snippets(tmp_path)
         monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
 
@@ -248,7 +248,7 @@ class TestAudienceFiltering:
 
         assert "public-faq" in result
         assert "member-guide" in result
-        assert "admin-only" in result
+        assert "admin-only" not in result
 
     def test_admin_sees_everything(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Admin role sees all snippets regardless of audience."""
