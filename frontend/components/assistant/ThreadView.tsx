@@ -10,6 +10,10 @@ import { MarkdownContent } from "@/components/parts/MarkdownContent";
 import { ThinkingBlock } from "@/components/parts/ThinkingBlock";
 import { ToolCallBlock } from "@/components/parts/ToolCallBlock";
 import { FileLink } from "@/components/parts/FileLink";
+import {
+  RenderWidgetUI,
+  AskUserQuestionUI,
+} from "@/app/components/widgets";
 import { StatusIndicator } from "@/components/parts/StatusIndicator";
 // TODO: Wire ArtifactCard for data-send-result parts
 // Requires research into assistant-ui custom data part registration API
@@ -87,6 +91,10 @@ function AssistantMessage() {
             Reasoning: ThinkingBlock,
             File: FileLink,
             tools: {
+              by_name: {
+                teleclaude__render_widget: RenderWidgetUI,
+                AskUserQuestion: AskUserQuestionUI,
+              },
               Fallback: ToolCallBlock,
             },
             // TODO: Register ArtifactCard for data-send-result parts

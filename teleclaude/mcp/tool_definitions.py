@@ -11,6 +11,153 @@ from mcp.types import Tool
 
 from teleclaude.constants import TAXONOMY_TYPES
 
+# --- Widget expression JSON Schema building blocks ---
+
+_SECTION_COMMON: dict[str, object] = {  # guard: loose-dict - JSON Schema properties
+    "label": {"type": "string", "description": "Section heading above content."},
+    "variant": {
+        "type": "string",
+        "enum": ["default", "info", "success", "warning", "error", "muted"],
+        "description": "Visual treatment.",
+    },
+    "id": {"type": "string", "description": "Section reference ID."},
+}
+
+_INPUT_FIELD_SCHEMA: dict[str, object] = {  # guard: loose-dict - JSON Schema
+    "type": "object",
+    "properties": {
+        "name": {"type": "string", "description": "Field identifier."},
+        "label": {"type": "string", "description": "Display label."},
+        "input": {
+            "type": "string",
+            "enum": ["text", "select", "checkbox", "number", "date"],
+            "description": "Input type.",
+        },
+        "options": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Options for select inputs.",
+        },
+        "required": {"type": "boolean"},
+        "placeholder": {"type": "string"},
+        "default": {"type": "string"},
+        "helpText": {"type": "string"},
+        "disabled": {"type": "boolean"},
+        "readonly": {"type": "boolean"},
+        "width": {"type": "string", "enum": ["half", "full"]},
+    },
+    "required": ["name", "label", "input"],
+}
+
+_BUTTON_SCHEMA: dict[str, object] = {  # guard: loose-dict - JSON Schema
+    "type": "object",
+    "properties": {
+        "label": {"type": "string", "description": "Button text."},
+        "action": {"type": "string", "description": "Action identifier sent on click."},
+        "style": {"type": "string", "enum": ["primary", "secondary", "destructive"]},
+        "icon": {"type": "string"},
+        "disabled": {"type": "boolean"},
+        "confirm": {"type": "string", "description": "Confirmation prompt before action."},
+    },
+    "required": ["label", "action"],
+}
+
+
+def _section_variant(
+    const_type: str,
+    extra_props: dict[str, object],  # guard: loose-dict - JSON Schema properties
+    extra_required: list[str] | None = None,
+) -> dict[str, object]:  # guard: loose-dict - JSON Schema object
+    """Build a oneOf variant for a section type with common fields."""
+    props: dict[str, object] = {  # guard: loose-dict - JSON Schema properties
+        "type": {"type": "string", "const": const_type},
+        **_SECTION_COMMON,
+        **extra_props,
+    }
+    required = ["type"] + (extra_required or [])
+    return {"type": "object", "properties": props, "required": required}
+
+
+_SECTION_ITEMS_SCHEMA: dict[str, object] = {  # guard: loose-dict - JSON Schema oneOf discriminator
+    "oneOf": [
+        _section_variant(
+            "text",
+            {
+                "content": {"type": "string", "description": "Markdown text content."},
+            },
+            ["content"],
+        ),
+        _section_variant(
+            "input",
+            {
+                "fields": {"type": "array", "items": _INPUT_FIELD_SCHEMA, "description": "Form fields."},
+            },
+            ["fields"],
+        ),
+        _section_variant(
+            "actions",
+            {
+                "buttons": {"type": "array", "items": _BUTTON_SCHEMA, "description": "Action buttons."},
+                "layout": {
+                    "type": "string",
+                    "enum": ["horizontal", "vertical"],
+                    "description": "Button layout direction.",
+                },
+            },
+            ["buttons"],
+        ),
+        _section_variant(
+            "image",
+            {
+                "src": {"type": "string", "description": "Image source path."},
+                "alt": {"type": "string", "description": "Alt text."},
+                "width": {"type": "number"},
+                "height": {"type": "number"},
+                "caption": {"type": "string"},
+            },
+            ["src"],
+        ),
+        _section_variant(
+            "table",
+            {
+                "headers": {"type": "array", "items": {"type": "string"}, "description": "Column headers."},
+                "rows": {
+                    "type": "array",
+                    "items": {"type": "array", "items": {"type": ["string", "number"]}},
+                    "description": "Table data rows.",
+                },
+                "caption": {"type": "string"},
+                "sortable": {"type": "boolean"},
+                "filterable": {"type": "boolean"},
+                "maxRows": {"type": "number"},
+            },
+            ["headers", "rows"],
+        ),
+        _section_variant(
+            "file",
+            {
+                "path": {"type": "string", "description": "File path within session workspace."},
+                "size": {"type": "number"},
+                "mime": {"type": "string"},
+                "preview": {"type": "boolean"},
+            },
+            ["path"],
+        ),
+        _section_variant(
+            "code",
+            {
+                "content": {"type": "string", "description": "Code content."},
+                "language": {"type": "string", "description": "Programming language."},
+                "title": {"type": "string"},
+                "collapsible": {"type": "boolean"},
+                "lineNumbers": {"type": "boolean"},
+            },
+            ["content"],
+        ),
+        _section_variant("divider", {}),
+    ],
+}
+
 # Reusable instruction for AI-to-AI session management (appended to tool descriptions)
 REMOTE_AI_TIMER_INSTRUCTION = (
     "**After dispatching:** "
@@ -708,6 +855,90 @@ def get_tool_definitions() -> list[Tool]:
                         "description": "Optional project name to filter channels.",
                     },
                 },
+            },
+        ),
+        Tool(
+            name="teleclaude__render_widget",
+            title="TeleClaude: Render Widget",
+            description=(
+                "Render a rich widget expression in the user's interface. "
+                "The expression format is a universal JSON structure that adapters translate into native UI. "
+                "Web renders rich interactive components; Telegram receives a text summary + file attachments; "
+                "terminal gets a text summary.\n\n"
+                "**Expression format:**\n"
+                "`data` is an object with:\n"
+                "- `name` (string, optional): library slug for storage/discovery (e.g., 'person-details-form'). "
+                "Triggers automatic library storage.\n"
+                "- `title` (string, optional): display heading.\n"
+                "- `description` (string, optional): agent-facing description (not rendered).\n"
+                "- `hints` (object, optional): freeform rendering hints (animation, theme, compact, etc.).\n"
+                "- `sections` (array, required): ordered content sections.\n"
+                "- `footer` (string, optional): closing text.\n"
+                "- `status` (string, optional): visual treatment: info, success, warning, error.\n\n"
+                "**Section types:**\n"
+                "- `text`: `{ type: 'text', content: string }` — markdown text block.\n"
+                "- `input`: `{ type: 'input', fields: [{ name, label, input: 'text'|'select'|'checkbox'|'number'|'date', "
+                "options?: string[], required?: boolean }] }` — dynamic form.\n"
+                "- `actions`: `{ type: 'actions', layout?: 'horizontal'|'vertical', "
+                "buttons: [{ label, style?: 'primary'|'secondary'|'destructive', action: string }] }` — action buttons.\n"
+                "- `image`: `{ type: 'image', src: string, alt?: string }` — inline image.\n"
+                "- `table`: `{ type: 'table', headers: string[], rows: (string|number)[][] }` — data table.\n"
+                "- `file`: `{ type: 'file', path: string, label?: string }` — file download.\n"
+                "- `code`: `{ type: 'code', language?: string, content: string }` — syntax-highlighted code.\n"
+                "- `divider`: `{ type: 'divider' }` — horizontal separator.\n\n"
+                "All section types support optional `label` (heading), `variant` (info/success/warning/error/muted), "
+                "and `id` (reference) fields.\n"
+                "Unknown section types are rendered as collapsed JSON in web, skipped in text summary."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "TeleClaude session UUID",
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "The widget expression object.",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": (
+                                    "Library slug for storage/discovery (e.g., 'person-details-form'). "
+                                    "Triggers automatic library storage."
+                                ),
+                            },
+                            "title": {
+                                "type": "string",
+                                "description": "Display heading for the widget card.",
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Agent-facing description (not rendered). Stored with library entries.",
+                            },
+                            "hints": {
+                                "type": "object",
+                                "description": "Freeform rendering hints. Renderers pick what they support: animation, theme, compact, collapsible, etc.",
+                            },
+                            "sections": {
+                                "type": "array",
+                                "description": "Ordered content sections. Each section is discriminated by its 'type' field.",
+                                "items": _SECTION_ITEMS_SCHEMA,
+                            },
+                            "footer": {
+                                "type": "string",
+                                "description": "Closing text below all sections.",
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": ["info", "success", "warning", "error"],
+                                "description": "Visual treatment for the whole card.",
+                            },
+                        },
+                        "required": ["sections"],
+                    },
+                },
+                "required": ["session_id", "data"],
             },
         ),
         Tool(

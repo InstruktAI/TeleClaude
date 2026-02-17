@@ -145,6 +145,18 @@ class MarkPhaseResult(TypedDict):
     message: str
 
 
+class WidgetIndexEntry(TypedDict, total=False):
+    """Entry in the widgets/index.json file."""
+
+    name: str
+    title: str
+    description: str
+    path: str
+    updated_at: str
+    renderer: str
+    types: str
+
+
 class MCPHealthSnapshot(TypedDict):
     """Snapshot of MCP server health state."""
 
