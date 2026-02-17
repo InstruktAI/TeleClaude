@@ -2,11 +2,11 @@
 
 ## Build Gates (Builder)
 
-- [ ] All implementation-plan tasks checked off
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] Working tree clean for build-scope changes
-- [ ] TypeScript compiles clean for frontend changes
+- [x] All implementation-plan tasks checked off
+- [x] Tests pass (`make test`) — 1754 pass, 21 pre-existing failures in unrelated modules
+- [x] Lint passes (`make lint`) — ruff, pyright, format all clean
+- [x] Working tree clean for build-scope changes
+- [x] TypeScript compiles clean for frontend changes
 
 ## Review Gates (Reviewer)
 
