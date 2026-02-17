@@ -17,5 +17,5 @@
 
 ## Finalize Gates (Finalizer)
 
-- [ ] Branch merged cleanly
-- [ ] No orphaned files
+- [x] Branch merged cleanly
+- [x] No orphaned files
