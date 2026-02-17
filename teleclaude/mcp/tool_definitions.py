@@ -711,6 +711,217 @@ def get_tool_definitions() -> list[Tool]:
             },
         ),
         Tool(
+            name="teleclaude__render_widget",
+            title="TeleClaude: Render Widget",
+            description=(
+                "Render a rich widget expression in the user's interface. "
+                "The expression format is a universal JSON structure that adapters translate into native UI. "
+                "Web renders rich interactive components; Telegram receives a text summary + file attachments; "
+                "terminal gets a text summary.\n\n"
+                "**Expression format:**\n"
+                "`data` is an object with:\n"
+                "- `name` (string, optional): library slug for storage/discovery (e.g., 'person-details-form'). "
+                "Triggers automatic library storage.\n"
+                "- `title` (string, optional): display heading.\n"
+                "- `description` (string, optional): agent-facing description (not rendered).\n"
+                "- `hints` (object, optional): freeform rendering hints (animation, theme, compact, etc.).\n"
+                "- `sections` (array, required): ordered content sections.\n"
+                "- `footer` (string, optional): closing text.\n"
+                "- `status` (string, optional): visual treatment: info, success, warning, error.\n\n"
+                "**Section types:**\n"
+                "- `text`: `{ type: 'text', content: string }` — markdown text block.\n"
+                "- `input`: `{ type: 'input', fields: [{ name, label, input: 'text'|'select'|'checkbox'|'number'|'date', "
+                "options?: string[], required?: boolean }] }` — dynamic form.\n"
+                "- `actions`: `{ type: 'actions', layout?: 'horizontal'|'vertical', "
+                "buttons: [{ label, style?: 'primary'|'secondary'|'destructive', action: string }] }` — action buttons.\n"
+                "- `image`: `{ type: 'image', src: string, alt?: string }` — inline image.\n"
+                "- `table`: `{ type: 'table', headers: string[], rows: (string|number)[][] }` — data table.\n"
+                "- `file`: `{ type: 'file', path: string, label?: string }` — file download.\n"
+                "- `code`: `{ type: 'code', language?: string, content: string }` — syntax-highlighted code.\n"
+                "- `divider`: `{ type: 'divider' }` — horizontal separator.\n\n"
+                "All section types support optional `label` (heading), `variant` (info/success/warning/error/muted), "
+                "and `id` (reference) fields.\n"
+                "Unknown section types are rendered as collapsed JSON in web, skipped in text summary."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "TeleClaude session UUID",
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "The widget expression object.",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": (
+                                    "Library slug for storage/discovery (e.g., 'person-details-form'). "
+                                    "Triggers automatic library storage."
+                                ),
+                            },
+                            "title": {
+                                "type": "string",
+                                "description": "Display heading for the widget card.",
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Agent-facing description (not rendered). Stored with library entries.",
+                            },
+                            "hints": {
+                                "type": "object",
+                                "description": "Freeform rendering hints. Renderers pick what they support: animation, theme, compact, collapsible, etc.",
+                            },
+                            "sections": {
+                                "type": "array",
+                                "description": "Ordered content sections.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "type": {
+                                            "type": "string",
+                                            "enum": [
+                                                "text",
+                                                "input",
+                                                "actions",
+                                                "image",
+                                                "table",
+                                                "file",
+                                                "code",
+                                                "divider",
+                                            ],
+                                            "description": "Section type discriminator.",
+                                        },
+                                        "label": {
+                                            "type": "string",
+                                            "description": "Section heading above the content.",
+                                        },
+                                        "variant": {
+                                            "type": "string",
+                                            "enum": ["default", "info", "success", "warning", "error", "muted"],
+                                            "description": "Visual treatment for the section.",
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Section reference ID.",
+                                        },
+                                        "content": {
+                                            "type": "string",
+                                            "description": "Text/code content (for text and code sections).",
+                                        },
+                                        "language": {
+                                            "type": "string",
+                                            "description": "Programming language (for code sections).",
+                                        },
+                                        "fields": {
+                                            "type": "array",
+                                            "description": "Form fields (for input sections).",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "name": {"type": "string", "description": "Field identifier."},
+                                                    "label": {"type": "string", "description": "Display label."},
+                                                    "input": {
+                                                        "type": "string",
+                                                        "enum": ["text", "select", "checkbox", "number", "date"],
+                                                        "description": "Input type.",
+                                                    },
+                                                    "options": {
+                                                        "type": "array",
+                                                        "items": {"type": "string"},
+                                                        "description": "Options for select inputs.",
+                                                    },
+                                                    "required": {"type": "boolean"},
+                                                    "placeholder": {"type": "string"},
+                                                    "default": {"type": "string"},
+                                                    "helpText": {"type": "string"},
+                                                    "disabled": {"type": "boolean"},
+                                                    "readonly": {"type": "boolean"},
+                                                    "width": {
+                                                        "type": "string",
+                                                        "enum": ["half", "full"],
+                                                    },
+                                                },
+                                                "required": ["name", "label", "input"],
+                                            },
+                                        },
+                                        "buttons": {
+                                            "type": "array",
+                                            "description": "Action buttons (for actions sections).",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "label": {"type": "string", "description": "Button text."},
+                                                    "action": {
+                                                        "type": "string",
+                                                        "description": "Action identifier sent on click.",
+                                                    },
+                                                    "style": {
+                                                        "type": "string",
+                                                        "enum": ["primary", "secondary", "destructive"],
+                                                    },
+                                                    "icon": {"type": "string"},
+                                                    "disabled": {"type": "boolean"},
+                                                    "confirm": {
+                                                        "type": "string",
+                                                        "description": "Confirmation prompt before action.",
+                                                    },
+                                                },
+                                                "required": ["label", "action"],
+                                            },
+                                        },
+                                        "layout": {
+                                            "type": "string",
+                                            "enum": ["horizontal", "vertical"],
+                                            "description": "Button layout (for actions sections).",
+                                        },
+                                        "src": {
+                                            "type": "string",
+                                            "description": "Image source path (for image sections).",
+                                        },
+                                        "alt": {
+                                            "type": "string",
+                                            "description": "Alt text (for image sections).",
+                                        },
+                                        "headers": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": "Column headers (for table sections).",
+                                        },
+                                        "rows": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "array",
+                                                "items": {"type": ["string", "number"]},
+                                            },
+                                            "description": "Table rows (for table sections).",
+                                        },
+                                        "path": {
+                                            "type": "string",
+                                            "description": "File path (for file sections).",
+                                        },
+                                    },
+                                    "required": ["type"],
+                                },
+                            },
+                            "footer": {
+                                "type": "string",
+                                "description": "Closing text below all sections.",
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": ["info", "success", "warning", "error"],
+                                "description": "Visual treatment for the whole card.",
+                            },
+                        },
+                        "required": ["sections"],
+                    },
+                },
+                "required": ["session_id", "data"],
+            },
+        ),
+        Tool(
             name="teleclaude__escalate",
             title="Escalate to Admin",
             description=(

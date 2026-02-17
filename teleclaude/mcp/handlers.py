@@ -51,6 +51,7 @@ from teleclaude.mcp.types import (
     SessionInfo,
     StartSessionResult,
     StopNotificationsResult,
+    WidgetIndexEntry,
 )
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types import SystemStats
@@ -1196,6 +1197,200 @@ class MCPHandlersMixin:
             return []
         redis_client = await transport._get_redis()
         return await list_channels(redis_client, project)
+
+    # =========================================================================
+    # Widget Tools
+    # =========================================================================
+
+    async def teleclaude__render_widget(
+        self,
+        session_id: str,
+        data: dict[str, object],  # guard: loose-dict - Widget expression blob
+    ) -> str:
+        """Render a widget expression: generate text summary, fanout to adapters, store named widgets."""
+        session = await db.get_session(session_id)
+        if not session:
+            return f"Error: Session {session_id} not found"
+
+        title = str(data.get("title", ""))
+        sections = data.get("sections", [])
+        footer = str(data.get("footer", ""))
+        widget_name = data.get("name")
+
+        if not isinstance(sections, list):
+            return "Error: sections must be an array"
+
+        # Generate text summary by walking sections
+        summary_parts: list[str] = []
+        if title:
+            summary_parts.append(f"**{title}**\n")
+
+        file_paths: list[str] = []
+
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            section_type = str(section.get("type", ""))
+            label = section.get("label")
+            if label:
+                summary_parts.append(f"_{label}_")
+
+            if section_type == "text":
+                content = str(section.get("content", ""))
+                if content:
+                    summary_parts.append(content)
+            elif section_type == "input":
+                fields = section.get("fields", [])
+                if isinstance(fields, list):
+                    field_names = []
+                    for f in fields:
+                        if isinstance(f, dict):
+                            field_names.append(str(f.get("label", f.get("name", "field"))))
+                    if field_names:
+                        summary_parts.append(f"Form fields: {', '.join(field_names)}")
+            elif section_type == "actions":
+                buttons = section.get("buttons", [])
+                if isinstance(buttons, list):
+                    btn_labels = []
+                    for b in buttons:
+                        if isinstance(b, dict):
+                            btn_labels.append(str(b.get("label", "button")))
+                    if btn_labels:
+                        summary_parts.append(f"Actions: [{'] ['.join(btn_labels)}]")
+            elif section_type == "image":
+                src = str(section.get("src", ""))
+                alt = str(section.get("alt", "image"))
+                summary_parts.append(f"[Image: {alt}]")
+                if src:
+                    file_paths.append(src)
+            elif section_type == "table":
+                headers = section.get("headers", [])
+                rows = section.get("rows", [])
+                if isinstance(headers, list) and isinstance(rows, list):
+                    summary_parts.append(f"Table: {len(headers)} columns, {len(rows)} rows")
+            elif section_type == "file":
+                path = str(section.get("path", ""))
+                file_label = str(section.get("label", path))
+                summary_parts.append(f"File: {file_label}")
+                if path:
+                    file_paths.append(path)
+            elif section_type == "code":
+                lang = str(section.get("language", ""))
+                content = str(section.get("content", ""))
+                lang_label = f" ({lang})" if lang else ""
+                preview = content[:100] + "..." if len(content) > 100 else content
+                summary_parts.append(f"Code{lang_label}:\n```\n{preview}\n```")
+            elif section_type == "divider":
+                summary_parts.append("---")
+            else:
+                summary_parts.append(f"[{section_type}: {json.dumps(section)[:80]}]")
+
+        if footer:
+            summary_parts.append(f"\n{footer}")
+
+        text_summary = "\n".join(summary_parts)
+
+        # Send text summary to non-web adapters (Telegram, terminal)
+        try:
+            await self.client.send_message(
+                session=session,
+                text=telegramify_markdown(text_summary),
+                metadata=MessageMetadata(parse_mode="MarkdownV2"),
+                ephemeral=True,
+            )
+        except Exception as e:
+            logger.warning("Widget text summary send failed, retrying plain: %s", e)
+            try:
+                await self.client.send_message(
+                    session=session,
+                    text=text_summary,
+                    metadata=MessageMetadata(),
+                    ephemeral=True,
+                )
+            except Exception as fallback_err:
+                logger.error("Widget text summary send failed: %s", fallback_err)
+
+        # Send files for image/file sections
+        from teleclaude.core.session_utils import get_session_output_dir
+
+        workspace = get_session_output_dir(session_id)
+        for rel_path in file_paths:
+            abs_path = workspace / rel_path
+            if abs_path.exists() and abs_path.is_file():
+                try:
+                    await self.client.send_file(
+                        session=session,
+                        file_path=str(abs_path),
+                        caption=rel_path,
+                    )
+                except Exception as e:
+                    logger.warning("Widget file send failed for %s: %s", rel_path, e)
+
+        # Library collection: store named widgets
+        if widget_name and isinstance(widget_name, str):
+            try:
+                await self._store_widget(session, str(widget_name), data)
+            except Exception as e:
+                logger.warning("Widget library storage failed for %s: %s", widget_name, e)
+
+        return text_summary
+
+    async def _store_widget(
+        self,
+        session: object,
+        name: str,
+        data: dict[str, object],  # guard: loose-dict - Widget expression blob
+    ) -> None:
+        """Store a named widget to the widgets library."""
+        # Determine widgets directory (project-scoped if session has project_path)
+        widgets_dir: Path | None = None
+        if hasattr(session, "project_path") and getattr(session, "project_path"):
+            project_path = Path(str(getattr(session, "project_path")))
+            if project_path.is_dir():
+                widgets_dir = project_path / "widgets"
+        if not widgets_dir:
+            widgets_dir = Path.home() / ".teleclaude" / "widgets"
+
+        widgets_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write widget JSON
+        widget_path = widgets_dir / f"{name}.json"
+        widget_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        # Update index
+        index_path = widgets_dir / "index.json"
+        index: list[WidgetIndexEntry] = []
+        if index_path.exists():
+            try:
+                raw = json.loads(index_path.read_text(encoding="utf-8"))
+                if isinstance(raw, list):
+                    index = [WidgetIndexEntry(**e) for e in raw if isinstance(e, dict)]
+            except (json.JSONDecodeError, OSError):
+                index = []
+
+        # Update or add entry
+        now = datetime.now(timezone.utc).isoformat()
+        entry = WidgetIndexEntry(
+            name=name,
+            title=str(data.get("title", "")),
+            description=str(data.get("description", "")),
+            path=str(widget_path),
+            updated_at=now,
+        )
+        # Preserve renderer/types fields if they exist in existing entry
+        existing = next((e for e in index if e.get("name") == name), None)
+        if existing:
+            renderer = existing.get("renderer")
+            types_ref = existing.get("types")
+            if renderer:
+                entry["renderer"] = renderer
+            if types_ref:
+                entry["types"] = types_ref
+            index = [e for e in index if e.get("name") != name]
+        index.append(entry)
+
+        index_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+        logger.info("Widget stored: %s -> %s", name, widget_path)
 
     # =========================================================================
     # Escalation

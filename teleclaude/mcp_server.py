@@ -63,6 +63,7 @@ class ToolName(str, Enum):
     MARK_AGENT_UNAVAILABLE = "teleclaude__mark_agent_unavailable"
     PUBLISH = "teleclaude__publish"
     CHANNELS_LIST = "teleclaude__channels_list"
+    RENDER_WIDGET = "teleclaude__render_widget"
     ESCALATE = "teleclaude__escalate"
 
 
@@ -587,6 +588,19 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 project = self._str_arg(arguments, "project") or None
                 return self._json_response(await self.teleclaude__channels_list(project))
 
+            async def _handle_render_widget() -> list[TextContent]:
+                data_obj = arguments.get("data") if arguments else None
+                data = data_obj if isinstance(data_obj, dict) else {}
+                return [
+                    TextContent(
+                        type="text",
+                        text=await self.teleclaude__render_widget(
+                            self._str_arg(arguments, "session_id"),
+                            data,
+                        ),
+                    )
+                ]
+
             async def _handle_escalate() -> list[TextContent]:
                 return [
                     TextContent(
@@ -624,6 +638,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 ToolName.MARK_AGENT_UNAVAILABLE: _handle_mark_agent_status,
                 ToolName.PUBLISH: _handle_publish,
                 ToolName.CHANNELS_LIST: _handle_channels_list,
+                ToolName.RENDER_WIDGET: _handle_render_widget,
                 ToolName.ESCALATE: _handle_escalate,
             }
 
