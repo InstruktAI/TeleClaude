@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "lib": ["ES2022"],
+    "outDir": "./dist/cli",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["cli/**/*.ts", "cli/**/*.tsx", "lib/**/*.ts"],
+  "exclude": ["node_modules", "app/**/*", ".next/**/*"]
+}
