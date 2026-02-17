@@ -102,7 +102,7 @@ Currently, Phase 2 content retrieval does not re-check audience for explicitly r
 
 ---
 
-## Task 4: CLI config command gating
+## [x] Task 4: CLI config command gating
 
 **File:** `teleclaude/cli/` — find and update config command handlers
 
