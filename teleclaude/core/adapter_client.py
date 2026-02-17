@@ -22,6 +22,7 @@ from teleclaude.core.models import (
     CleanupTrigger,
     MessageMetadata,
 )
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.core.session_utils import get_display_title_for_session
 from teleclaude.transport.redis_transport import RedisTransport
@@ -538,6 +539,10 @@ class AdapterClient:
         sends to all UI adapters except the origin via _broadcast_to_observers,
         which routes through _run_ui_lane for ensure_channel resilience.
         """
+        _NON_INTERACTIVE = {InputOrigin.MCP.value, InputOrigin.HOOK.value}
+        if origin in _NON_INTERACTIVE:
+            return
+
         from teleclaude.utils.markdown import escape_markdown_v2
 
         origin_display = "TUI" if origin.lower() == "api" else origin.upper()
