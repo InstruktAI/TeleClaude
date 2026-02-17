@@ -151,3 +151,134 @@ def test_phase1_returns_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     assert "PHASE 1" in output
     assert "test/base" in output
     assert "A base snippet" in output
+
+
+# ---------------------------------------------------------------------------
+# Clearance / audience filtering tests
+# ---------------------------------------------------------------------------
+
+
+def _setup_multi_clearance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """Create a fixture with admin, internal, and public snippets."""
+    project_root = tmp_path / "project"
+    global_root = tmp_path / "global"
+    global_snippets_root = global_root / "agents" / "docs"
+
+    _write(
+        project_root / "docs" / "test" / "admin-only.md",
+        "---\nid: test/admin-only\ntype: policy\nscope: project\ndescription: Admin secret\n---\n\nAdmin content.\n",
+    )
+    _write(
+        project_root / "docs" / "test" / "internal.md",
+        "---\nid: test/internal\ntype: policy\nscope: project\ndescription: Internal doc\n---\n\nInternal content.\n",
+    )
+    _write(
+        project_root / "docs" / "test" / "public.md",
+        "---\nid: test/public\ntype: policy\nscope: project\ndescription: Public doc\n---\n\nPublic content.\n",
+    )
+
+    _write_index(
+        project_root / "docs" / "project" / "index.yaml",
+        project_root,
+        [
+            {
+                "id": "test/admin-only",
+                "description": "Admin secret",
+                "type": "policy",
+                "scope": "project",
+                "path": "docs/test/admin-only.md",
+                "audience": ["admin"],
+            },
+            {
+                "id": "test/internal",
+                "description": "Internal doc",
+                "type": "policy",
+                "scope": "project",
+                "path": "docs/test/internal.md",
+                "audience": ["member", "internal", "admin"],
+            },
+            {
+                "id": "test/public",
+                "description": "Public doc",
+                "type": "policy",
+                "scope": "project",
+                "path": "docs/test/public.md",
+                "audience": ["public", "help-desk", "member", "internal", "admin"],
+            },
+        ],
+    )
+    _write_index(global_snippets_root / "index.yaml", global_root, [])
+    monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
+    return project_root, global_snippets_root
+
+
+def test_admin_sees_all_snippets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Admin role sees all snippets in Phase 1 index."""
+    project_root, _ = _setup_multi_clearance(tmp_path, monkeypatch)
+    output = context_selector.build_context_output(
+        snippet_ids=None, areas=[], project_root=project_root, human_role="admin"
+    )
+    assert "test/admin-only" in output
+    assert "test/internal" in output
+    assert "test/public" in output
+
+
+def test_member_sees_internal_and_public(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Member role sees internal and public, but not admin-only."""
+    project_root, _ = _setup_multi_clearance(tmp_path, monkeypatch)
+    output = context_selector.build_context_output(
+        snippet_ids=None, areas=[], project_root=project_root, human_role="member"
+    )
+    assert "test/admin-only" not in output
+    assert "test/internal" in output
+    assert "test/public" in output
+
+
+def test_customer_sees_only_public(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Customer role only sees public snippets."""
+    project_root, _ = _setup_multi_clearance(tmp_path, monkeypatch)
+    output = context_selector.build_context_output(
+        snippet_ids=None, areas=[], project_root=project_root, human_role="customer"
+    )
+    assert "test/admin-only" not in output
+    assert "test/internal" not in output
+    assert "test/public" in output
+
+
+def test_no_role_sees_everything(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No human_role (None) sees all snippets — matches admin behavior."""
+    project_root, _ = _setup_multi_clearance(tmp_path, monkeypatch)
+    output = context_selector.build_context_output(
+        snippet_ids=None, areas=[], project_root=project_root, human_role=None
+    )
+    assert "test/admin-only" in output
+    assert "test/internal" in output
+    assert "test/public" in output
+
+
+def test_phase2_access_denied_for_forbidden_snippet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Phase 2 request for a snippet above caller's clearance returns access-denied."""
+    project_root, _ = _setup_multi_clearance(tmp_path, monkeypatch)
+    output = context_selector.build_context_output(
+        snippet_ids=["test/admin-only"],
+        areas=[],
+        project_root=project_root,
+        human_role="customer",
+    )
+    assert "access: denied" in output
+    assert "test/admin-only" in output
+    assert "Admin content." not in output
+
+
+def test_phase2_access_denied_does_not_block_allowed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Phase 2 with a mix of allowed and denied snippets returns content for allowed."""
+    project_root, _ = _setup_multi_clearance(tmp_path, monkeypatch)
+    output = context_selector.build_context_output(
+        snippet_ids=["test/public", "test/admin-only"],
+        areas=[],
+        project_root=project_root,
+        human_role="customer",
+    )
+    assert "Public content." in output
+    assert "access: denied" in output
+    assert "Admin content." not in output
