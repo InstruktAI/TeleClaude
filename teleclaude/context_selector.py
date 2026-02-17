@@ -461,6 +461,8 @@ def build_context_output(
             )
         return True
 
+    # Track all loaded IDs before filtering to distinguish "unknown" from "access denied" in Phase 2
+    all_loaded_ids = {s.snippet_id for s in snippets}
     snippets = [snippet for snippet in snippets if _include_snippet(snippet)]
 
     # Load baseline IDs if baseline_only mode is requested
@@ -527,14 +529,17 @@ def build_context_output(
     third_party_by_id = {e.snippet_id: e for e in third_party_entries}
     valid_ids.update(third_party_by_id.keys())
 
-    invalid_ids = [sid for sid in (snippet_ids or []) if sid not in valid_ids]
-    if invalid_ids:
-        return f"ERROR: Unknown snippet IDs: {', '.join(invalid_ids)}"
+    # Separate unknown IDs from access-denied IDs
+    denied_ids = [sid for sid in (snippet_ids or []) if sid not in valid_ids and sid in all_loaded_ids]
+    unknown_ids = [sid for sid in (snippet_ids or []) if sid not in valid_ids and sid not in all_loaded_ids]
+    if unknown_ids:
+        return f"ERROR: Unknown snippet IDs: {', '.join(unknown_ids)}"
 
-    # Separate taxonomy and third-party selections
+    # Separate taxonomy and third-party selections (exclude denied IDs)
     selected_ids = list(snippet_ids or [])
-    taxonomy_ids = [sid for sid in selected_ids if sid not in third_party_by_id]
-    third_party_ids = [sid for sid in selected_ids if sid in third_party_by_id]
+    allowed_ids = [sid for sid in selected_ids if sid not in denied_ids]
+    taxonomy_ids = [sid for sid in allowed_ids if sid not in third_party_by_id]
+    third_party_ids = [sid for sid in allowed_ids if sid in third_party_by_id]
 
     resolved = _resolve_requires(taxonomy_ids, snippets, global_snippets_root=global_snippets_root)
     _write_test_output(
@@ -619,5 +624,19 @@ def build_context_output(
                 ).strip()
             )
             parts.append(body.lstrip("\n"))
+
+    # Emit access-denied notices for snippets the caller's role cannot see
+    for sid in denied_ids:
+        parts.append(
+            "\n".join(
+                [
+                    "---",
+                    f"id: {sid}",
+                    "access: denied",
+                    "reason: Insufficient clearance for current session role.",
+                    "---",
+                ]
+            ).strip()
+        )
 
     return "\n".join(parts)

@@ -81,7 +81,7 @@ else:
 
 ---
 
-## Task 3: Phase 2 access denial for forbidden snippets
+## [x] Task 3: Phase 2 access denial for forbidden snippets
 
 **File:** `teleclaude/context_selector.py`
 
