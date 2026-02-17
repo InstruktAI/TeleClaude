@@ -123,6 +123,11 @@ class DiscordAdapter(UiAdapter):
         return cast(Callable[..., Awaitable[object]], fn)
 
     async def ensure_channel(self, session: "Session", title: str) -> "Session":
+        # Re-read from DB to prevent stale in-memory metadata from concurrent lanes
+        fresh = await db.get_session(session.session_id)
+        if fresh:
+            session = fresh
+
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is not None:
             return session
@@ -135,6 +140,28 @@ class DiscordAdapter(UiAdapter):
             return refreshed or session
 
         return session
+
+    # --- Per-adapter output message tracking ---
+    # Discord uses adapter_metadata instead of the shared DB column
+    # to prevent cross-adapter races with Telegram.
+
+    async def _get_output_message_id(self, session: "Session") -> str | None:
+        fresh = await db.get_session(session.session_id)
+        if fresh:
+            return fresh.get_metadata().get_ui().get_discord().output_message_id
+        return session.get_metadata().get_ui().get_discord().output_message_id
+
+    async def _store_output_message_id(self, session: "Session", message_id: str) -> None:
+        meta = session.get_metadata().get_ui().get_discord()
+        meta.output_message_id = message_id
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        logger.debug("Stored discord output_message_id: session=%s message_id=%s", session.session_id[:8], message_id)
+
+    async def _clear_output_message_id(self, session: "Session") -> None:
+        meta = session.get_metadata().get_ui().get_discord()
+        meta.output_message_id = None
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        logger.debug("Cleared discord output_message_id: session=%s", session.session_id[:8])
 
     async def create_channel(self, session: "Session", title: str, metadata: "ChannelMetadata") -> str:
         _ = metadata

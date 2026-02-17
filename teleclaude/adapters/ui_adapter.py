@@ -105,12 +105,15 @@ class UiAdapter(BaseAdapter):
     async def _get_output_message_id(self, session: "Session") -> Optional[str]:
         """Get output_message_id from top-level DB column.
 
-        Uses the dedicated DB column (not adapter_metadata blob) to avoid
-        lost-update races from concurrent adapter_metadata writes.
+        Always re-reads from DB to prevent stale in-memory values when
+        concurrent UI lanes deliver output for the same session.
 
         Returns:
             message_id or None if not set
         """
+        fresh = await db.get_session(session.session_id)
+        if fresh:
+            session.output_message_id = fresh.output_message_id
         return session.output_message_id
 
     async def _store_output_message_id(self, session: "Session", message_id: str) -> None:

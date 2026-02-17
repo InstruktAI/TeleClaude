@@ -147,6 +147,7 @@ class DiscordAdapterMetadata:
     guild_id: Optional[int] = None
     channel_id: Optional[int] = None
     thread_id: Optional[int] = None
+    output_message_id: Optional[str] = None
 
 
 @dataclass
@@ -303,11 +304,14 @@ class SessionAdapterMetadata:
 
                 raw_user_id = discord_raw.get("user_id")
                 user_id = str(raw_user_id) if raw_user_id is not None else None
+                raw_output_msg = discord_raw.get("output_message_id")
+                discord_output_message_id = str(raw_output_msg) if raw_output_msg is not None else None
                 discord_metadata = DiscordAdapterMetadata(
                     user_id=user_id,
                     guild_id=_get_int_or_none("guild_id"),
                     channel_id=_get_int_or_none("channel_id"),
                     thread_id=_get_int_or_none("thread_id"),
+                    output_message_id=discord_output_message_id,
                 )
 
             redis_raw = data_obj.get("redis")

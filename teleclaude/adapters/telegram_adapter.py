@@ -168,6 +168,11 @@ class TelegramAdapter(
         self._register_simple_command_handlers()
 
     async def ensure_channel(self, session: Session, title: str) -> Session:
+        # Re-read from DB to prevent stale in-memory metadata from concurrent lanes
+        fresh = await db.get_session(session.session_id)
+        if fresh:
+            session = fresh
+
         telegram_meta = session.get_metadata().get_ui().get_telegram()
         logger.debug(
             "[TG_ENSURE] session=%s telegram_meta=present topic_id=%s",
