@@ -279,25 +279,18 @@ class AdapterClient:
             return cast(Awaitable[object], getattr(adapter, method)(lane_session, *args, **kwargs))
 
         if not origin_ui:
-            if broadcast:
-                logger.info("[ROUTING] Broadcast (no origin): session=%s method=%s", session.session_id[:8], method)
-                results = await self._broadcast_to_ui_adapters(session, method, make_task)
-                for _, result in results:
-                    if isinstance(result, Exception):
-                        continue
-                    if result:  # first truthy wins
-                        return result
-                return None
-            # No origin, no broadcast — pick first available UI adapter
+            # No UI origin — pick first available UI adapter. Never broadcast.
             ui_adapters = self._ui_adapters()
             if not ui_adapters:
+                logger.warning("[ROUTING] No UI adapters for session=%s method=%s", session.session_id[:8], method)
                 return None
             first_type, first_adapter = ui_adapters[0]
             logger.debug(
-                "[ROUTING] Single adapter (no origin, broadcast=False): session=%s method=%s adapter=%s",
+                "[ROUTING] Fallback to %s (no UI origin): session=%s method=%s origin=%s",
+                first_type,
                 session.session_id[:8],
                 method,
-                first_type,
+                session.last_input_origin,
             )
             return await self._run_ui_lane(session, first_type, first_adapter, make_task)
 
