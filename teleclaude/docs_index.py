@@ -26,6 +26,14 @@ __all__ = ["load_domains"]
 
 logger = get_logger(__name__)
 
+# Clearance hierarchy: maps a clearance level to the audience values that can see it.
+CLEARANCE_TO_AUDIENCE: dict[str, list[str]] = {
+    "public": ["public", "help-desk", "member", "internal", "admin"],
+    "internal": ["member", "internal", "admin"],
+    "admin": ["admin"],
+}
+DEFAULT_CLEARANCE = "internal"
+
 _H1_LINE = re.compile(r"^#\s+")
 
 
@@ -104,6 +112,7 @@ class SnippetEntry(TypedDict):
     path: str
     source_project: NotRequired[str]
     audience: NotRequired[list[str]]
+    clearance: NotRequired[str]
 
 
 class IndexPayload(TypedDict):
@@ -565,9 +574,18 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             "scope": snippet_scope,
             "path": relative_path,
         }
+        # Derive effective audience from clearance/audience frontmatter.
+        # Priority: explicit audience > clearance lookup > default clearance.
         raw_audience = metadata.get("audience")
+        raw_clearance = metadata.get("clearance")
         if isinstance(raw_audience, list) and all(isinstance(a, str) for a in raw_audience):
             entry["audience"] = raw_audience
+        elif isinstance(raw_clearance, str) and raw_clearance in CLEARANCE_TO_AUDIENCE:
+            entry["audience"] = CLEARANCE_TO_AUDIENCE[raw_clearance]
+            entry["clearance"] = raw_clearance
+        else:
+            entry["audience"] = CLEARANCE_TO_AUDIENCE[DEFAULT_CLEARANCE]
+            entry["clearance"] = DEFAULT_CLEARANCE
         snippets.append(entry)
 
     snippets.sort(key=lambda e: e["id"])
