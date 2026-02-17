@@ -945,6 +945,12 @@ async def handle_voice(
     if session:
         await client.pre_handle_command(session, cmd.origin)
 
+    # Update origin BEFORE sending feedback so routing targets the correct adapter.
+    # Without this, stale last_input_origin (e.g. "api" from TUI) causes feedback
+    # to broadcast and track wrong message_ids, preventing cleanup.
+    if cmd.origin:
+        await db.update_session(cmd.session_id, last_input_origin=cmd.origin)
+
     async def _send_status(
         session_id: str,
         message: str,
@@ -958,7 +964,7 @@ async def handle_voice(
             session,
             message,
             metadata=metadata,
-            cleanup_trigger=CleanupTrigger.NEXT_TURN,
+            cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
         )
 
     async def _delete_feedback(session_id: str, message_id: str) -> None:
