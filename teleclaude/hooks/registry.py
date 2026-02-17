@@ -43,14 +43,25 @@ class ContractRegistry:
         return result
 
     def match(self, event: HookEvent) -> list[Contract]:
-        """Find all active contracts matching an event."""
-        return [c for c in self._cache.values() if c.active and match_event(event, c)]
+        """Find all active, non-expired contracts matching an event."""
+        return [c for c in self._cache.values() if c.active and not c.is_expired and match_event(event, c)]
+
+    async def sweep_expired(self) -> int:
+        """Deactivate expired contracts. Returns count of swept contracts."""
+        swept = 0
+        for contract in list(self._cache.values()):
+            if contract.active and contract.is_expired:
+                await self.deactivate(contract.id)
+                swept += 1
+        if swept:
+            logger.info("Swept %d expired contracts", swept)
+        return swept
 
     async def list_contracts(
         self, property_name: str | None = None, property_value: str | None = None
     ) -> list[Contract]:
         """List active contracts, optionally filtered by property interest."""
-        contracts = [c for c in self._cache.values() if c.active]
+        contracts = [c for c in self._cache.values() if c.active and not c.is_expired]
         if property_name:
             filtered = []
             for c in contracts:

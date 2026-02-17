@@ -72,7 +72,14 @@ class Contract:
     properties: dict[str, PropertyCriterion] = field(default_factory=dict)
     active: bool = True
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    expires_at: str | None = None  # ISO 8601 UTC; None = never expires
     source: str = "api"  # "config", "api", "programmatic"
+
+    @property
+    def is_expired(self) -> bool:
+        if self.expires_at is None:
+            return False
+        return datetime.now(timezone.utc) >= datetime.fromisoformat(self.expires_at)
 
     def to_json(self) -> str:
         """Serialize to JSON for DB storage."""
@@ -84,6 +91,7 @@ class Contract:
             "properties": {k: asdict(v) for k, v in self.properties.items()},
             "active": self.active,
             "created_at": self.created_at,
+            "expires_at": self.expires_at,
             "source": self.source,
         }
         return json.dumps(d)
@@ -104,5 +112,6 @@ class Contract:
             properties=properties,
             active=d.get("active", True),
             created_at=d.get("created_at", ""),
+            expires_at=d.get("expires_at"),
             source=d.get("source", "api"),
         )

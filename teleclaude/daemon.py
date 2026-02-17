@@ -1562,7 +1562,25 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.webhook_delivery_task = asyncio.create_task(delivery_worker.run(self.shutdown_event))
         self.webhook_delivery_task.add_done_callback(self._log_background_task_exception("webhook_delivery"))
         self._webhook_delivery_worker = delivery_worker
+        self._contract_registry = contract_registry
+
+        # Start contract TTL sweep (every 60s)
+        self._contract_sweep_task = asyncio.create_task(self._contract_sweep_loop())
+        self._contract_sweep_task.add_done_callback(self._log_background_task_exception("contract_sweep"))
+
         logger.info("Webhook service initialized (%d contracts loaded)", len(contract_registry._cache))
+
+    async def _contract_sweep_loop(self) -> None:
+        """Periodically deactivate expired contracts."""
+        while not self.shutdown_event.is_set():
+            try:
+                await asyncio.sleep(60)
+                if hasattr(self, "_contract_registry") and self._contract_registry:
+                    await self._contract_registry.sweep_expired()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.error("Contract sweep failed", exc_info=True)
 
     async def start(self) -> None:
         """Start the daemon."""

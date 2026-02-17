@@ -84,6 +84,30 @@ class TestContract:
         assert contract.target.handler == "my_handler"
         assert contract.target.url is None
 
+    def test_contract_ttl_roundtrip(self) -> None:
+        contract = Contract(
+            id="ttl-1",
+            target=Target(handler="h"),
+            expires_at="2099-01-01T00:00:00+00:00",
+        )
+        json_str = contract.to_json()
+        restored = Contract.from_json(json_str)
+        assert restored.expires_at == "2099-01-01T00:00:00+00:00"
+        assert not restored.is_expired
+
+    def test_contract_expired(self) -> None:
+        contract = Contract(
+            id="expired-1",
+            target=Target(handler="h"),
+            expires_at="2020-01-01T00:00:00+00:00",
+        )
+        assert contract.is_expired is True
+
+    def test_contract_no_expiry(self) -> None:
+        contract = Contract(id="perm-1", target=Target(handler="h"))
+        assert contract.expires_at is None
+        assert contract.is_expired is False
+
 
 # ── Matcher tests ────────────────────────────────────────────────────
 
@@ -379,6 +403,49 @@ class TestContractRegistry:
         assert len(matches) == 1
         assert matches[0].id == "c1"
 
+    def test_match_excludes_expired_contracts(self) -> None:
+        from teleclaude.hooks.registry import ContractRegistry
+
+        registry = ContractRegistry()
+        registry._cache["active"] = Contract(
+            id="active",
+            target=Target(handler="h1"),
+            source_criterion=PropertyCriterion(match="agent"),
+        )
+        registry._cache["expired"] = Contract(
+            id="expired",
+            target=Target(handler="h2"),
+            source_criterion=PropertyCriterion(match="agent"),
+            expires_at="2020-01-01T00:00:00+00:00",
+        )
+
+        event = HookEvent.now(source="agent", type="test")
+        matches = registry.match(event)
+        assert len(matches) == 1
+        assert matches[0].id == "active"
+
+    @pytest.mark.asyncio
+    async def test_sweep_expired_deactivates_contracts(self) -> None:
+        from teleclaude.hooks.registry import ContractRegistry
+
+        registry = ContractRegistry()
+        registry._cache["active"] = Contract(
+            id="active",
+            target=Target(handler="h1"),
+            expires_at="2099-01-01T00:00:00+00:00",
+        )
+        registry._cache["expired"] = Contract(
+            id="expired",
+            target=Target(handler="h2"),
+            expires_at="2020-01-01T00:00:00+00:00",
+        )
+
+        registry.deactivate = AsyncMock(return_value=True)
+        swept = await registry.sweep_expired()
+
+        assert swept == 1
+        registry.deactivate.assert_called_once_with("expired")
+
     def test_list_properties_vocabulary(self) -> None:
         from teleclaude.hooks.registry import ContractRegistry
 
@@ -614,6 +681,41 @@ class TestWebhookApiRoutes:
                 properties={},
             )
             await api_routes.create_contract(req)
+
+    @pytest.mark.asyncio
+    async def test_create_contract_with_ttl(self, monkeypatch) -> None:
+        from teleclaude.hooks import api_routes
+
+        class Registry:
+            async def register(self, contract: object) -> None:
+                self.last = contract
+
+        registry = Registry()
+        monkeypatch.setattr(api_routes, "_contract_registry", registry)
+
+        req = api_routes.CreateContractRequest(
+            id="ttl-test",
+            target={"handler": "h"},
+            ttl_seconds=180,
+        )
+        resp = await api_routes.create_contract(req)
+        assert resp.expires_at is not None
+        assert not registry.last.is_expired
+
+    @pytest.mark.asyncio
+    async def test_create_contract_with_zero_ttl_rejected(self, monkeypatch) -> None:
+        from teleclaude.hooks import api_routes
+
+        monkeypatch.setattr(api_routes, "_contract_registry", MagicMock())
+
+        with pytest.raises(HTTPException) as exc_info:
+            req = api_routes.CreateContractRequest(
+                id="bad-ttl",
+                target={"handler": "h"},
+                ttl_seconds=0,
+            )
+            await api_routes.create_contract(req)
+        assert exc_info.value.status_code == 422
 
     @pytest.mark.asyncio
     async def test_list_contracts_hides_secret(self, monkeypatch) -> None:
