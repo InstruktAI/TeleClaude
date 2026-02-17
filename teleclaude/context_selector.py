@@ -437,13 +437,13 @@ def build_context_output(
     if not project_domain_roots:
         project_domain_roots = {d: project_root / "docs" for d in domain_config.keys()}
 
-    # Audience filtering based on human_role
+    # Audience filtering based on human_role (1:1 with clearance levels)
     if not human_role or human_role == "admin":
         _allowed_audiences: set[str] | None = None  # see everything
-    elif human_role == "customer":
-        _allowed_audiences = {"public", "help-desk"}
     elif human_role == "member":
-        _allowed_audiences = {"internal", "public", "help-desk", "member"}
+        _allowed_audiences = {"public", "member"}
+    elif human_role in ("customer", "public"):
+        _allowed_audiences = {"public"}
     else:
         _allowed_audiences = None  # unknown role -> see everything
 

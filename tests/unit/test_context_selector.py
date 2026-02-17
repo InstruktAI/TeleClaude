@@ -159,7 +159,7 @@ def test_phase1_returns_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
 
 def _setup_multi_clearance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
-    """Create a fixture with admin, internal, and public snippets."""
+    """Create a fixture with admin, member, and public clearance snippets."""
     project_root = tmp_path / "project"
     global_root = tmp_path / "global"
     global_snippets_root = global_root / "agents" / "docs"
@@ -169,8 +169,8 @@ def _setup_multi_clearance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> t
         "---\nid: test/admin-only\ntype: policy\nscope: project\ndescription: Admin secret\n---\n\nAdmin content.\n",
     )
     _write(
-        project_root / "docs" / "test" / "internal.md",
-        "---\nid: test/internal\ntype: policy\nscope: project\ndescription: Internal doc\n---\n\nInternal content.\n",
+        project_root / "docs" / "test" / "member-doc.md",
+        "---\nid: test/member-doc\ntype: policy\nscope: project\ndescription: Member doc\n---\n\nMember content.\n",
     )
     _write(
         project_root / "docs" / "test" / "public.md",
@@ -190,12 +190,12 @@ def _setup_multi_clearance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> t
                 "audience": ["admin"],
             },
             {
-                "id": "test/internal",
-                "description": "Internal doc",
+                "id": "test/member-doc",
+                "description": "Member doc",
                 "type": "policy",
                 "scope": "project",
-                "path": "docs/test/internal.md",
-                "audience": ["member", "internal", "admin"],
+                "path": "docs/test/member-doc.md",
+                "audience": ["member", "admin"],
             },
             {
                 "id": "test/public",
@@ -203,7 +203,7 @@ def _setup_multi_clearance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> t
                 "type": "policy",
                 "scope": "project",
                 "path": "docs/test/public.md",
-                "audience": ["public", "help-desk", "member", "internal", "admin"],
+                "audience": ["public", "member", "admin"],
             },
         ],
     )
@@ -219,7 +219,7 @@ def test_admin_sees_all_snippets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         snippet_ids=None, areas=[], project_root=project_root, human_role="admin"
     )
     assert "test/admin-only" in output
-    assert "test/internal" in output
+    assert "test/member-doc" in output
     assert "test/public" in output
 
 
@@ -230,7 +230,7 @@ def test_member_sees_internal_and_public(tmp_path: Path, monkeypatch: pytest.Mon
         snippet_ids=None, areas=[], project_root=project_root, human_role="member"
     )
     assert "test/admin-only" not in output
-    assert "test/internal" in output
+    assert "test/member-doc" in output
     assert "test/public" in output
 
 
@@ -241,7 +241,7 @@ def test_customer_sees_only_public(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         snippet_ids=None, areas=[], project_root=project_root, human_role="customer"
     )
     assert "test/admin-only" not in output
-    assert "test/internal" not in output
+    assert "test/member-doc" not in output
     assert "test/public" in output
 
 
@@ -252,7 +252,7 @@ def test_no_role_sees_everything(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         snippet_ids=None, areas=[], project_root=project_root, human_role=None
     )
     assert "test/admin-only" in output
-    assert "test/internal" in output
+    assert "test/member-doc" in output
     assert "test/public" in output
 
 

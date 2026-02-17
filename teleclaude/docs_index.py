@@ -26,13 +26,13 @@ __all__ = ["load_domains"]
 
 logger = get_logger(__name__)
 
-# Clearance hierarchy: maps a clearance level to the audience values that can see it.
+# Clearance hierarchy: 1:1 with roles. The clearance value IS the minimum role.
 CLEARANCE_TO_AUDIENCE: dict[str, list[str]] = {
-    "public": ["public", "help-desk", "member", "internal", "admin"],
-    "internal": ["member", "internal", "admin"],
+    "public": ["public", "member", "admin"],
+    "member": ["member", "admin"],
     "admin": ["admin"],
 }
-DEFAULT_CLEARANCE = "internal"
+DEFAULT_CLEARANCE = "member"
 
 _H1_LINE = re.compile(r"^#\s+")
 

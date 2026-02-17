@@ -22,7 +22,7 @@ Frontmatter (required for all snippets):
 
 Frontmatter (optional):
 
-- `clearance` — minimum clearance level to view the snippet: `public`, `internal`, or `admin`. Defaults to `internal` when omitted. Determines which roles can see the snippet via `get_context`. Prefer `clearance` over `audience` for simple access control.
+- `clearance` — minimum role to view the snippet: `public`, `member`, or `admin`. Defaults to `member` when omitted. Maps 1:1 to roles. Prefer `clearance` over `audience` for simple access control.
 - `audience` — explicit audience array (overrides `clearance` when set). Use only when `clearance` cannot express the desired visibility.
 
 Document structure:
@@ -62,7 +62,7 @@ Global snippets are distributed to `~/.teleclaude/docs/` and available to all pr
 
 - `type`: principle, concept, policy, procedure, design, spec (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
 - `scope`: global, domain, project.
-- `clearance`: public, internal, admin. Hierarchy: `public` (everyone) < `internal` (member + admin) < `admin` (admin only). Default: `internal`.
+- `clearance`: public, member, admin. Hierarchy: `public` (everyone) < `member` (member + admin) < `admin` (admin only). Default: `member`.
 
 ## Known caveats
 

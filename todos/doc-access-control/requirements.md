@@ -2,7 +2,7 @@
 
 ## Problem
 
-`teleclaude__get_context` returns all doc snippets to all agents regardless of the caller's role. When public-facing agents (help desk, onboarding bots) are introduced, they must not receive admin/ops/internal documentation. The current `audience` field and `human_role` session metadata provide the foundation — this work wires them together with a cleaner clearance hierarchy and extends coverage to tool gating.
+`teleclaude__get_context` returns all doc snippets to all agents regardless of the caller's role. Public-facing agents must not receive admin or member documentation. The current `audience` field and `human_role` session metadata provide the foundation — this work wires them together with a 1:1 clearance-to-role mapping.
 
 ## Background & Codebase Reality
 
@@ -11,10 +11,10 @@ The system already has:
 - `Session.human_role` (`admin` | `customer` | `member` | null) stored in the DB.
 - `audience` array field on snippets, parsed into `SnippetEntry.audience`.
 - `_include_snippet()` in `context_selector.py` filtering snippets by `human_role → _allowed_audiences`.
-- Current audience filter: `customer → {"public", "help-desk"}`, `member → {"admin", "member", "help-desk", "public"}`, `admin → None` (all).
-- Default snippet `audience: ['admin']` — all existing snippets without explicit audience are admin-only.
 
-**Gap:** The `audience` multi-array is expressive but requires snippet authors to know every role name. A hierarchical `clearance` single-value field is needed as a simpler authoring interface.
+**Simplification:** Clearance values map 1:1 to roles. No abstract audience concepts (`internal`, `help-desk`). The clearance value IS the minimum role required.
+
+Note: `customer` in the DB is treated as equivalent to `public` (rename is a separate migration).
 
 ---
 
@@ -22,47 +22,47 @@ The system already has:
 
 ### FR1: `clearance` frontmatter field on snippets
 
-Add a `clearance` field to the snippet frontmatter schema. It is a single value representing the minimum required agent clearance to see the snippet.
+Add a `clearance` field to the snippet frontmatter schema. It is a single value — the minimum role required to see the snippet.
 
-Clearance hierarchy (most restrictive → least restrictive):
+Three clearance levels, 1:1 with roles:
 
-| `clearance` value | Visible to roles                     |
-| ----------------- | ------------------------------------ |
-| `admin`           | admin only                           |
-| `internal`        | member + admin                       |
-| `public`          | customer + member + admin (everyone) |
+| `clearance` value | Visible to roles              |
+| ----------------- | ----------------------------- |
+| `admin`           | admin only                    |
+| `member`          | member + admin                |
+| `public`          | public + member + admin (all) |
 
-**Default when omitted:** `internal` — backward-compatible; no snippet is accidentally public-facing.
+**Default when omitted:** `member` — backward-compatible; no snippet is accidentally public-facing.
 
-`clearance` and `audience` must coexist:
+`clearance` and `audience` coexist:
 
-- When `clearance` is set and `audience` is not explicitly set, derive `audience` from the clearance hierarchy table above.
+- When `clearance` is set and `audience` is not explicitly set, derive `audience` from the clearance table above.
 - When both are set, `audience` takes precedence (explicit overrides derived).
-- When neither is set, default to `clearance: internal` (then derive `audience`).
+- When neither is set, default to `clearance: member` (then derive `audience`).
 
 ### FR2: Role hierarchy
 
-Three roles, no further subdivision needed:
+Three roles only: `admin`, `member`, `public` (stored as `customer` in DB until renamed).
 
-| `human_role`   | `_allowed_audiences`                            |
-| -------------- | ----------------------------------------------- |
-| `admin` / null | None (no filter, sees everything)               |
-| `member`       | `{"internal", "public", "help-desk", "member"}` |
-| `customer`     | `{"public", "help-desk"}`                       |
+| `human_role`        | `_allowed_audiences`   |
+| ------------------- | ---------------------- |
+| `admin` / null      | None (sees everything) |
+| `member`            | `{"public", "member"}` |
+| `customer`/`public` | `{"public"}`           |
 
 ### FR3: `get_context` clearance filtering
 
-`teleclaude__get_context` must filter snippet index entries by the caller's session `human_role`. The existing Phase 1 index and Phase 2 content retrieval must both honor the derived `_allowed_audiences`.
+`teleclaude__get_context` must filter snippet index entries by the caller's session `human_role`. Both Phase 1 index and Phase 2 content retrieval must honor `_allowed_audiences`.
 
 - Phase 1: snippets whose derived `audience` does not intersect `_allowed_audiences` are excluded from the index.
-- Phase 2: if a requested snippet ID is not allowed by the caller's role, return an empty or access-denied entry (do not silently return content).
-- No snippet with `clearance: admin` must appear in a `customer` or `member` agent's index.
+- Phase 2: if a requested snippet ID is not allowed by the caller's role, return an access-denied entry (do not silently return content).
+- No snippet with `clearance: admin` must appear in a `public`/`customer` or `member` agent's index.
 
 ### FR4: Config CLI tool gating
 
-Config-modifying CLI subcommands must reject calls from sessions whose `human_role` is `customer`. The guarded commands are those that mutate state: `telec config people`, `telec config env set`, and similar destructive config operations.
+Config-modifying CLI subcommands must reject calls from sessions whose `human_role` is `customer`/`public`. The guarded commands are those that mutate state: `telec config people`, `telec config env set`, and similar destructive config operations.
 
-Enforcement mechanism: add role check at the CLI handler level (not MCP tool filtering, which is a separate layer). A `customer` session invoking a guarded command receives a clear error message: `"Permission denied: this operation requires member or higher clearance."`.
+Enforcement: role check at the CLI handler level. A `customer`/`public` session invoking a guarded command receives: `"Permission denied: this operation requires member or higher clearance."`.
 
 Read-only config commands (`telec config show`, status queries) are not gated.
 
@@ -70,34 +70,36 @@ Read-only config commands (`telec config show`, status queries) are not gated.
 
 Do not perform bulk retagging of existing snippets. Migration rules:
 
-1. The new default `clearance: internal` means all existing snippets (no explicit `clearance`) are treated as `internal` — they remain invisible to `customer` agents, which is the safe default.
-2. Snippet authors explicitly tag `public` only for content intended for help-desk/customer-facing agents.
-3. Admin-only content (e.g., itsUP API credentials, destructive procedures) must be explicitly tagged `clearance: admin`.
-4. The existing `audience` field on snippets that already have it must continue to be respected without change.
+1. The new default `clearance: member` means all existing snippets (no explicit `clearance`) are treated as member-visible — they remain invisible to `public`/`customer` agents, which is the safe default.
+2. Snippet authors explicitly tag `clearance: public` only for content intended for public-facing agents.
+3. Admin-only content must be explicitly tagged `clearance: admin`.
+4. The existing `audience` field on snippets that already have it continues to be respected.
 
 ---
 
 ## Non-Functional Requirements
 
-- No performance regression in `get_context` — clearance derivation happens at index build time (not at query time).
-- Schema is backward-compatible: adding `clearance` to existing snippets is optional; omitting it defaults to `internal`.
+- No performance regression in `get_context` — clearance derivation happens at index build time.
+- Schema is backward-compatible: adding `clearance` is optional; omitting defaults to `member`.
 - No new user-facing migration step required; `telec sync` picks up `clearance` fields automatically.
 
 ---
 
 ## Success Criteria
 
-1. A `customer`-role session calling `teleclaude__get_context` only receives snippets tagged `clearance: public` (or equivalent `audience`).
+1. A `public`/`customer`-role session calling `teleclaude__get_context` only receives snippets tagged `clearance: public` (or equivalent `audience`).
 2. An `admin`-role session receives all snippets (unchanged from current behavior).
-3. A `member`-role session receives all snippets tagged `clearance: internal` or `clearance: public` (and any with matching explicit `audience`).
-4. An existing snippet with no `clearance` field is treated as `clearance: internal` and is invisible to `customer` sessions.
-5. `telec config people` invoked from a `customer` session returns a clear permission error.
+3. A `member`-role session receives snippets tagged `clearance: member` or `clearance: public`.
+4. An existing snippet with no `clearance` field is treated as `clearance: member` and is invisible to `public`/`customer` sessions.
+5. `telec config people` invoked from a `customer`/`public` session returns a clear permission error.
 6. `telec sync` correctly derives and stores `audience` from `clearance` in the index YAML.
 
 ---
 
 ## Out of Scope
 
-- MCP tool-level filtering by role (separate policy layer, already partially handled by existing MCP connection management).
+- MCP tool-level filtering by role (separate policy layer).
 - Retroactive retagging of all existing snippets (FR5 explicitly defers this).
 - UI for clearance management — all tagging is via frontmatter edits.
+- Renaming `customer` → `public` in DB schema (separate migration todo).
+- Removing `newcomer` role from config schema (separate cleanup todo).
