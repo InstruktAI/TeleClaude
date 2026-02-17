@@ -2,11 +2,11 @@
 
 ## Build Gates (Builder)
 
-- [ ] All implementation-plan tasks checked off
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] Working tree clean (build-scope changes committed)
-- [ ] Commits exist for each task
+- [x] All implementation-plan tasks checked off
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] Working tree clean (build-scope changes committed)
+- [x] Commits exist for each task
 
 ## Review Gates (Reviewer)
 
