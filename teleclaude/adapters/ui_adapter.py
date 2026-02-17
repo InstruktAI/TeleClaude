@@ -8,6 +8,7 @@ UI adapters provide:
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -68,6 +69,10 @@ class UiAdapter(BaseAdapter):
 
     # Platform message size limit (subclasses can override)
     max_message_size: int = UI_MESSAGE_MAX_CHARS
+
+    # Per-session lock to serialize output delivery and prevent concurrent
+    # lanes from racing on output_message_id reads/writes.
+    _output_delivery_locks: dict[str, asyncio.Lock] = {}
 
     def __init__(self, client: "AdapterClient") -> None:
         """Initialize UiAdapter and register event listeners.
@@ -195,26 +200,35 @@ class UiAdapter(BaseAdapter):
         multi_message: bool = False,
         status_line: str = "",
     ) -> Optional[str]:
-        """Unified output delivery: dedup, edit/send, footer management."""
-        # 1. Digest-based dedup
-        display_digest = sha256(text.encode("utf-8")).hexdigest()
-        if session.last_output_digest == display_digest:
-            return await self._get_output_message_id(session)
+        """Unified output delivery: dedup, edit/send, footer management.
 
-        # 2. Try edit existing
-        if await self._try_edit_output_message(session, text, metadata):
-            await db.update_session(session.session_id, last_output_digest=display_digest)
-            await self._send_footer(session, status_line=status_line)
-            return await self._get_output_message_id(session)
+        Serialized per session to prevent concurrent UI lanes from racing
+        on output_message_id reads/writes (which creates duplicate messages).
+        """
+        sid = session.session_id
+        if sid not in self._output_delivery_locks:
+            self._output_delivery_locks[sid] = asyncio.Lock()
 
-        # 3. Edit failed → cleanup footer, send new, send footer below
-        await self._cleanup_footer_if_present(session)
-        new_id = await self.send_message(session, text, metadata=metadata, multi_message=multi_message)
-        if new_id:
-            await self._store_output_message_id(session, new_id)
-            await db.update_session(session.session_id, last_output_digest=display_digest)
-            await self._send_footer(session, status_line=status_line)
-        return new_id
+        async with self._output_delivery_locks[sid]:
+            # 1. Digest-based dedup
+            display_digest = sha256(text.encode("utf-8")).hexdigest()
+            if session.last_output_digest == display_digest:
+                return await self._get_output_message_id(session)
+
+            # 2. Try edit existing
+            if await self._try_edit_output_message(session, text, metadata):
+                await db.update_session(session.session_id, last_output_digest=display_digest)
+                await self._send_footer(session, status_line=status_line)
+                return await self._get_output_message_id(session)
+
+            # 3. Edit failed → cleanup footer, send new, send footer below
+            await self._cleanup_footer_if_present(session)
+            new_id = await self.send_message(session, text, metadata=metadata, multi_message=multi_message)
+            if new_id:
+                await self._store_output_message_id(session, new_id)
+                await db.update_session(session.session_id, last_output_digest=display_digest)
+                await self._send_footer(session, status_line=status_line)
+            return new_id
 
     async def _try_edit_output_message(self, session: "Session", text: str, metadata: MessageMetadata) -> bool:
         """Try to edit existing output message, clear message_id if edit fails.
