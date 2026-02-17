@@ -351,7 +351,7 @@ class AdapterClient:
             failed = 0
             for msg_id in pending:
                 try:
-                    ok = await self.delete_message(session, msg_id)
+                    ok = await self.delete_message(session, msg_id, broadcast=False)
                     if ok:
                         deleted += 1
                     else:
@@ -434,17 +434,26 @@ class AdapterClient:
         result = await self._route_to_ui(session, "edit_message", message_id, text)
         return bool(result)
 
-    async def delete_message(self, session: "Session", message_id: str) -> bool:
-        """Delete message in ALL UiAdapters (origin + observers).
+    async def delete_message(
+        self,
+        session: "Session",
+        message_id: str,
+        *,
+        broadcast: bool = True,
+    ) -> bool:
+        """Delete message in UI adapters.
 
         Args:
             session: Session object
             message_id: Platform-specific message ID
+            broadcast: If True (default), delete from origin + observers.
+                       If False, delete from origin only. Use False for
+                       platform-specific IDs (feedback cleanup).
 
         Returns:
             True if origin deletion succeeded
         """
-        result = await self._route_to_ui(session, "delete_message", message_id)
+        result = await self._route_to_ui(session, "delete_message", message_id, broadcast=broadcast)
         return bool(result)
 
     async def send_file(

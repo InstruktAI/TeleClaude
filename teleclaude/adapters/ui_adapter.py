@@ -680,7 +680,6 @@ class UiAdapter(BaseAdapter):
                 session,
                 message,
                 metadata=metadata,
-                cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
             )
 
         # Delegate to utility module

@@ -964,7 +964,7 @@ async def handle_voice(
             session,
             message,
             metadata=metadata,
-            cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
+            cleanup_trigger=CleanupTrigger.NEXT_TURN,
         )
 
     async def _delete_feedback(session_id: str, message_id: str) -> None:
@@ -972,7 +972,7 @@ async def handle_voice(
         if not session:
             logger.warning("Session %s not found for voice delete", session_id[:8])
             return
-        await client.delete_message(session, str(message_id))
+        await client.delete_message(session, str(message_id), broadcast=False)
 
     context = VoiceEventContext(
         session_id=cmd.session_id,
@@ -996,7 +996,7 @@ async def handle_voice(
     if cmd.message_id:
         session = await db.get_session(cmd.session_id)
         if session:
-            await client.delete_message(session, str(cmd.message_id))
+            await client.delete_message(session, str(cmd.message_id), broadcast=False)
 
     await process_message(
         ProcessMessageCommand(session_id=cmd.session_id, text=transcribed, origin=cmd.origin),
