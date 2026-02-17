@@ -512,6 +512,13 @@ snippets:
   scope: project
   path: docs/project/spec/mcp-tool-surface.md
   source_project: TeleClaude
+- id: project/spec/messaging
+  description: "Messaging tools for Telegram, Discord, and email delivery \u2014 hooks,\
+    \ files, widgets, and escalation."
+  type: spec
+  scope: project
+  path: docs/project/spec/messaging.md
+  source_project: TeleClaude
 - id: project/spec/release-inspector-prompt
   description: Canonical prompt for AI release inspectors.
   type: spec
