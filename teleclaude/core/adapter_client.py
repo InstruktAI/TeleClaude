@@ -279,14 +279,27 @@ class AdapterClient:
             return cast(Awaitable[object], getattr(adapter, method)(lane_session, *args, **kwargs))
 
         if not origin_ui:
-            logger.info("[ROUTING] Broadcast (no origin): session=%s method=%s", session.session_id[:8], method)
-            results = await self._broadcast_to_ui_adapters(session, method, make_task)
-            for _, result in results:
-                if isinstance(result, Exception):
-                    continue
-                if result:  # first truthy wins
-                    return result
-            return None
+            if broadcast:
+                logger.info("[ROUTING] Broadcast (no origin): session=%s method=%s", session.session_id[:8], method)
+                results = await self._broadcast_to_ui_adapters(session, method, make_task)
+                for _, result in results:
+                    if isinstance(result, Exception):
+                        continue
+                    if result:  # first truthy wins
+                        return result
+                return None
+            # No origin, no broadcast — pick first available UI adapter
+            ui_adapters = self._ui_adapters()
+            if not ui_adapters:
+                return None
+            first_type, first_adapter = ui_adapters[0]
+            logger.debug(
+                "[ROUTING] Single adapter (no origin, broadcast=False): session=%s method=%s adapter=%s",
+                session.session_id[:8],
+                method,
+                first_type,
+            )
+            return await self._run_ui_lane(session, first_type, first_adapter, make_task)
 
         # Route origin through _run_ui_lane for ensure_channel resilience
         origin_type = session.last_input_origin or "unknown"
@@ -408,14 +421,14 @@ class AdapterClient:
     ) -> str | None:
         """Send threaded output via UI adapters (edit if exists, else new).
 
-        Always routes through _run_ui_lane to guarantee ensure_channel runs,
-        which handles thread-gone resilience (topic deleted from Telegram, etc.).
+        Routes to origin only (no broadcast) — streaming output is an
+        edit-in-place operation with platform-specific message IDs.
         """
         result = await self._route_to_ui(
             session,
             "send_threaded_output",
             text,
-            broadcast=True,
+            broadcast=False,
             multi_message=multi_message,
         )
         return str(result) if result else None
