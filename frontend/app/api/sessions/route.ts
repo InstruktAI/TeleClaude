@@ -57,15 +57,19 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { computer, title, initial_message } = body;
+    const { computer, project_path, agent, thinking_mode, launch_kind, title, message } = body;
 
     const res = await daemonRequest({
       method: "POST",
       path: "/sessions",
       body: {
         computer,
+        project_path,
+        agent,
+        thinking_mode,
+        launch_kind,
         title,
-        initial_message,
+        initial_message: message,
         human_email: session.user.email,
         human_role: session.user.role,
       },
