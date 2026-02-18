@@ -23,9 +23,9 @@ Ownership:
 
 - [x] Requirements traced to implemented behavior
 - [x] Deferrals justified and not hiding required scope
-- [x] Findings written in `review-findings.md`
-- [x] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
+- [x] Findings written in `review-findings.md` (round 2)
+- [x] Verdict recorded: REQUEST CHANGES
+- [ ] Critical issues resolved or explicitly blocked (C4, C5 open)
 - [x] Test coverage and regression risk assessed
 
 ## Finalize Gates (Finalizer)

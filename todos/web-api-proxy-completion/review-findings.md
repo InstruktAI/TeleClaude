@@ -1,136 +1,133 @@
 # Review Findings: web-api-proxy-completion
 
-**Review round:** 1
+**Review round:** 2
 **Verdict:** REQUEST CHANGES
+
+---
+
+## Round 1 Recap
+
+Round 1 found 3 critical, 4 important, and 2 suggestion issues. Fixes were applied for C1–C3, I1–I4 (see commits `a9a09a54`, `ec92f018`, `50f38365`, `480682b3`, `d9454b7c`). Round 2 re-verifies those fixes and evaluates any regressions.
+
+### Round 1 Fix Verification
+
+| Finding                          | Status                        | Notes                                                                                                       |
+| -------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| C1 (ownership enforcement)       | **Regression** — see C4 below | Fix introduced `GET /sessions/{id}` metadata fetch, but this daemon endpoint does not exist                 |
+| C2 (CacheInvalidation unmounted) | **Verified**                  | `CacheInvalidation.tsx` mounted in chat layout (`ec92f018`)                                                 |
+| C3 (WS cookie name)              | **Verified**                  | `extractSessionToken()` returns `{ token, cookieName }`, passed through to `validateSession()` (`50f38365`) |
+| I1 (auth-guards dead code)       | **Verified**                  | `requireAdmin()` imported in settings and agent-restart routes (`480682b3`)                                 |
+| I2 (route map outdated)          | **Verified**                  | `web-api-facade.md` updated with all 15 routes + WS bridge (`d9454b7c`)                                     |
+| I3 (test coverage gaps)          | **Partial**                   | Mock divergence fixed, ownership tests added; remaining gaps carried forward as I7                          |
+| I4 (WS fetch timeout)            | **Verified**                  | `AbortSignal.timeout(5000)` added (`50f38365`)                                                              |
 
 ---
 
 ## Critical
 
-### C1: Missing ownership enforcement on DELETE and revive routes
+### C4: Ownership metadata fetch targets non-existent daemon endpoint
 
-**Files:** `frontend/app/api/sessions/[id]/route.ts:7-48`, `frontend/app/api/sessions/[id]/revive/route.ts:6-45`
+**Files:** `frontend/app/api/sessions/[id]/route.ts:20-24`, `frontend/app/api/sessions/[id]/revive/route.ts:19-23`
 
-FR3 requires: "Non-admin users can only end their own sessions" and the implementation plan marks DELETE as "(auth + ownership check)" and revive as "(auth + ownership check)". Both routes authenticate but perform no ownership check — any authenticated user can delete or revive any session.
+The C1 fix introduced a `GET /sessions/${id}` call to fetch session metadata for ownership enforcement. **This endpoint does not exist on the daemon.** The daemon's session routes are:
 
-`requireOwnership()` in `auth-guards.ts` was written for exactly this purpose but is never imported. The routes need to fetch the session metadata from daemon, extract `human_email`, and gate on ownership before forwarding the destructive action.
+- `GET /sessions` — list all sessions
+- `DELETE /sessions/{session_id}` — end a session
+- `POST /sessions/{session_id}/message|keys|voice|file|agent-restart|revive` — actions
+- `GET /sessions/{session_id}/messages` — message history
 
-### C2: `useCacheInvalidation()` never mounted — WS-driven cache invalidation is dead code
+There is no `GET /sessions/{session_id}` single-session fetch. FastAPI returns **405 Method Not Allowed** (the path matches the DELETE route but not GET). The proxy interprets `status >= 400` as failure and returns the error — meaning **both DELETE and revive routes are completely broken for all users**.
 
-**Files:** `frontend/lib/ws/useCacheInvalidation.ts`, `frontend/app/(chat)/layout.tsx`
+**Fix options:**
 
-FR5 / Stream 5 Task 5.3 requires WS events to invalidate React Query caches. The `useCacheInvalidation()` hook is correctly implemented but never called anywhere in the component tree. The chat layout mounts `QueryProvider` and `WebSocketProvider` but no component invokes `useCacheInvalidation()`.
+1. Use `GET /sessions` (list endpoint) and filter by `session_id` client-side — `SessionSummaryDTO` includes `human_email`.
+2. Add a `GET /sessions/{session_id}` endpoint to the daemon (out of scope per requirements, but may be the cleaner long-term solution).
 
-Fix: Create a thin client component that calls the hook and mount it inside the layout (between `WebSocketProvider` and `{children}`).
+### C5: Ownership metadata fetch outside try/catch — unhandled 500 on daemon-down
 
-### C3: WS session cookie name not preserved for production
+**Files:** `frontend/app/api/sessions/[id]/route.ts:20-30`, `frontend/app/api/sessions/[id]/revive/route.ts:19-29`
 
-**File:** `frontend/server.ts:89-101`
+The `daemonRequest()` call for ownership metadata sits **before** the try/catch block. If the daemon is unreachable, `daemonRequest()` throws (confirmed: `daemon-client.ts:57-63` rejects with an Error on connection failure). This produces an unhandled exception → 500 response instead of the expected 503 from `normalizeUpstreamError`.
 
-`extractSessionToken()` correctly checks both `authjs.session-token` and `__Secure-authjs.session-token`, but `validateSession()` always forwards the token as `authjs.session-token`. In production HTTPS, NextAuth sets the `__Secure-` prefixed cookie. The self-loop fetch to `/api/auth/session` sends the wrong cookie name, causing NextAuth to return an empty session — all WS upgrades fail with 401 in production.
-
-Fix: Track which cookie name was found in `extractSessionToken()` and pass it through to `validateSession()` so the cookie header matches what NextAuth expects.
+**Fix:** Move the metadata fetch inside the existing try/catch, or wrap it in its own error handler that returns 503.
 
 ---
 
 ## Important
 
-### I1: `auth-guards.ts` is dead code
+### I5: DELETE route missing required `computer` query parameter
 
-**File:** `frontend/lib/proxy/auth-guards.ts`
+**File:** `frontend/app/api/sessions/[id]/route.ts:32-38`
 
-`requireAdmin()` and `requireOwnership()` are well-implemented but never imported. Routes inline admin checks manually (e.g., `settings/route.ts:48`, `agent-restart/route.ts:15`). This creates logic drift risk — the centralized guards should be used instead of inlining.
+The daemon's `DELETE /sessions/{session_id}` endpoint requires `computer: str = Query(...)` as a mandatory query parameter. The proxy DELETE handler does not forward any query parameters from the incoming request. The daemon will reject the call with 422 Unprocessable Entity.
 
-### I2: `web-api-facade.md` route map not updated
+**Fix:** Forward `request.nextUrl.searchParams` to the daemon request path, or extract and validate `computer` from the incoming query string.
 
-**File:** `docs/project/design/architecture/web-api-facade.md`
+### I6: WS bridge teardown race condition — daemon connection leak
 
-Success criteria require: "web-api-facade route map updated to reflect completed proxy surface." The route map still shows only the original 5 routes. The 10 new routes plus the WS bridge are missing from the Public Contract table.
+**File:** `frontend/lib/proxy/ws-bridge.ts`
 
-### I3: Test coverage gaps
+If `connectToDaemon()` is in-flight when the client disconnects and `cleanup()` fires, the pending daemon WebSocket will complete connection after cleanup runs but never be closed. The `daemon.on("open")` handler should check `if (!client.running)` before proceeding with subscription replay, and close the daemon socket if the client has already disconnected.
+
+### I7: Test coverage gaps remain significant
 
 **File:** `frontend/lib/__tests__/proxy-routes.test.ts`
 
-- 8 of the new proxy routes have zero test coverage (projects, todos, agents/availability, messages GET/POST, revive, sessions GET/POST)
-- Zero WebSocket bridge test coverage (server.ts, ws-bridge.ts)
-- Identity headers (`X-Web-User-*`) never asserted on any `daemonRequest` call
-- Ownership check untested (follows from C1 — the feature is missing)
-- `normalizeUpstreamError` mock diverges from real implementation (uses "Upstream error" vs "Upstream service error")
+7 of 11 handler variants still have zero test coverage:
 
-### I4: WS self-loop session validation lacks timeout
+- `GET /api/projects` — untested
+- `GET /api/todos` — untested
+- `GET /api/agents/availability` — untested
+- `GET /api/sessions/{id}/messages` — untested
+- `POST /api/sessions/{id}/messages` — untested
+- `POST /api/sessions/{id}/revive` — untested (ownership flow also untested)
+- `GET /api/sessions` — untested
 
-**File:** `frontend/server.ts:97`
+Additionally:
 
-The `fetch()` call in `validateSession()` has no timeout. Under load or if the Next.js server is slow to respond, hung upgrade handlers accumulate. Add `signal: AbortSignal.timeout(5000)`.
+- `extractSessionToken()` in `server.ts` has no unit tests
+- Identity headers (`X-Web-User-Email/Name/Role`) are never asserted on any `daemonRequest` mock call
+- WS bridge (`ws-bridge.ts`, `server.ts` upgrade handling) has zero test coverage
+- Frontend hooks and `CacheInvalidation` component have no tests
 
 ---
 
 ## Suggestions
 
-### S1: `node:url` `parse()` is deprecated
+### S1 (carry-over): `url.parse()` deprecated in `server.ts`
 
 **File:** `frontend/server.ts:14,28,35`
 
-`url.parse()` is deprecated since Node.js 11. Use `new URL(req.url, \`http://\${req.headers.host}\`)` instead.
+`url.parse()` is deprecated since Node.js 11. Use `new URL(req.url, \`http://${req.headers.host}\`)` instead.
 
-### S2: Use `requireAdmin()` from auth-guards in settings and agent-restart routes
+### S3: WS event `subscribe` types should be `WsEventType[]` not `string[]`
 
-**Files:** `frontend/app/api/settings/route.ts:48`, `frontend/app/api/sessions/[id]/agent-restart/route.ts:15`
+**File:** `frontend/lib/ws/types.ts`
 
-Replace inlined `session.user.role !== "admin"` checks with `requireAdmin(session)` from `auth-guards.ts` to centralize the admin check logic.
+The `subscribe` field accepts `string[]` but events are dispatched by `WsEventType`. Using the union type prevents typos and enables exhaustiveness checking.
+
+### S4: `"preparation_initial"` not handled in cache invalidation switch
+
+**File:** `frontend/lib/ws/useCacheInvalidation.ts`
+
+The WS event type union includes `"preparation_initial"` but the switch statement in `useCacheInvalidation` does not handle it. If emitted by the daemon, the event is silently dropped. Either handle it or add a comment explaining why it's intentionally skipped.
+
+### S5: `role?: string` should be `HumanRole` in next-auth type augmentation
+
+**File:** `frontend/types/next-auth.d.ts`
+
+The `role` field on the session user is typed as `string` but the codebase has a `HumanRole` union type. Using the narrow type ensures compile-time safety for role checks.
 
 ---
 
 ## Summary
 
-| Severity    | Count |
-| ----------- | ----- |
-| Critical    | 3     |
-| Important   | 4     |
-| Suggestions | 2     |
+| Severity    | Count | Blocking |
+| ----------- | ----- | -------- |
+| Critical    | 2     | Yes      |
+| Important   | 3     | No\*     |
+| Suggestions | 4     | No       |
 
-The three critical issues are blockers: missing ownership enforcement (C1) is a security gap where any user can delete any session; dead cache invalidation (C2) means FR5 real-time updates don't work; and the cookie name bug (C3) breaks all WebSocket connections in production. All must be fixed before this can ship.
+\* I5 (missing `computer` param) will cause runtime 422 errors on DELETE but is not a security issue. I7 (test gaps) is tracked for awareness.
 
----
-
-## Fixes Applied
-
-### C1 — Ownership enforcement on DELETE and revive
-
-**Fix:** Both routes now fetch session metadata (`GET /sessions/{id}`) to extract `human_email`, then call `requireOwnership(session, ownerEmail)` before proceeding. Admins bypass the check.
-**Commits:** `a9a09a54`
-**Tests:** Added owner allowed, non-owner 403, and admin bypass test cases.
-
-### C2 — useCacheInvalidation never mounted
-
-**Fix:** Created `frontend/lib/ws/CacheInvalidation.tsx` (thin client component) and mounted it inside `WebSocketProvider` in the chat layout.
-**Commit:** `ec92f018`
-
-### C3 — WS cookie name not preserved for production
-
-**Fix:** `extractSessionToken()` now returns `{ token, cookieName }`. The call site passes `cookieName` through to `validateSession()` which uses it in the cookie header.
-**Commit:** `50f38365`
-
-### I1 — auth-guards.ts dead code
-
-**Fix:** Replaced inline `session.user.role !== "admin"` checks in `settings/route.ts` and `agent-restart/route.ts` with `requireAdmin(session)` from `auth-guards.ts`.
-**Commit:** `480682b3`
-
-### I2 — web-api-facade.md route map outdated
-
-**Fix:** Updated Public Contract table to include all 15 routes + WS bridge with auth guard annotations.
-**Commit:** `d9454b7c`
-
-### I3 — Test coverage gaps (partial)
-
-**Fix:** Fixed `normalizeUpstreamError` mock divergence ("Upstream error" → "Upstream service error"). Added ownership check tests for DELETE route (owner, non-owner, admin bypass).
-**Commit:** `a9a09a54`
-**Note:** Remaining gaps (projects, todos, agents/availability, messages, revive, sessions GET/POST, WS bridge, identity header assertions) were not addressed in this pass.
-
-### I4 — WS fetch lacks timeout
-
-**Fix:** Added `signal: AbortSignal.timeout(5000)` to the `fetch()` call in `validateSession()`.
-**Commit:** `50f38365`
-
-**Tests:** PASSING (200/200)
-**Lint:** PASSING
+C4 is the primary blocker: the ownership enforcement added in round 1 targets a daemon endpoint that doesn't exist, making DELETE and revive routes non-functional. C5 compounds this by leaving the fetch unguarded against connection failures. Both must be fixed before this can ship.
