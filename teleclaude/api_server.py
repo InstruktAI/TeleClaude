@@ -1307,6 +1307,16 @@ class APIServer:
                 # Send current sessions from cache for this computer
                 if self.cache:
                     cached_sessions = self.cache.get_sessions(computer)
+                    # Apply role-based visibility filtering using WS connection headers
+                    email = websocket.headers.get("x-web-user-email")
+                    role = websocket.headers.get("x-web-user-role")
+                    if email and role != "admin":
+                        if role == "member":
+                            cached_sessions = [
+                                s for s in cached_sessions if s.human_email == email or s.visibility == "shared"
+                            ]
+                        else:
+                            cached_sessions = [s for s in cached_sessions if s.human_email == email]
                     sessions = [SessionSummaryDTO.from_core(s, computer=s.computer) for s in cached_sessions]
                     event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions, computer=computer))
                     await websocket.send_json(event.model_dump(exclude_none=True))
