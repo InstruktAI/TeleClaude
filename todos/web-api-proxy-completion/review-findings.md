@@ -120,6 +120,17 @@ The `role` field on the session user is typed as `string` but the codebase has a
 
 ---
 
+## Round 2 Fixes Applied
+
+| Finding                                 | Fix                                                                                                                       | Commit     |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| C4 (non-existent GET /sessions/{id})    | Switched to `GET /sessions` list + client-side filter by `session_id` in both DELETE and revive routes                    | `2cfbf0a7` |
+| C5 (ownership fetch outside try/catch)  | Moved entire metadata fetch + ownership check inside the existing try/catch block                                         | `2cfbf0a7` |
+| I5 (missing `computer` param on DELETE) | Confirmed forwarded; no change needed (was already present from round 1)                                                  | —          |
+| I6 (WS bridge teardown race)            | Added `if (!client.running)` guard in `daemon.on("open")` — closes in-flight daemon socket if client already disconnected | `2cfbf0a7` |
+
+---
+
 ## Summary
 
 | Severity    | Count | Blocking |
