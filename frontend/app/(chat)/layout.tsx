@@ -1,5 +1,6 @@
 import { QueryProvider } from "@/lib/query/QueryProvider";
 import { WebSocketProvider } from "@/lib/ws/WebSocketProvider";
+import { CacheInvalidation } from "@/lib/ws/CacheInvalidation";
 
 export default function ChatLayout({
   children,
@@ -8,7 +9,10 @@ export default function ChatLayout({
 }) {
   return (
     <QueryProvider>
-      <WebSocketProvider>{children}</WebSocketProvider>
+      <WebSocketProvider>
+        <CacheInvalidation />
+        {children}
+      </WebSocketProvider>
     </QueryProvider>
   );
 }
