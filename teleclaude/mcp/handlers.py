@@ -1000,7 +1000,7 @@ class MCPHandlersMixin:
                 test_csv_path = str(
                     Path(effective_root).expanduser().resolve() / ".agents" / "tests" / "runs" / "get-context.csv"
                 )
-        # Resolve human_role for audience filtering
+        # Resolve human_role for role filtering
         human_role: str | None = None
         if caller_session_id:
             caller_session = await db.get_session(caller_session_id)

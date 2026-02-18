@@ -23,12 +23,6 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 - web-api-proxy-completion (after: web-interface-3) — WebSocket bridge, REST proxy expansion, auth enforcement, frontend state integration
 - web-interface-4 (after: web-interface-3) — Session Management & Role-Based Access
 
-## Documentation Access Control
-
-- doc-access-control
-
-Role-based `clearance` frontmatter for doc snippets (`public`/`internal`/`ops`/`admin`). Filters `get_context` results by the calling agent's role. Default `internal` for backward compatibility. Required for gating admin-only specs (e.g., itsUP API) away from public-facing agents.
-
 ## Rolling Session Titles
 
 - rolling-session-titles

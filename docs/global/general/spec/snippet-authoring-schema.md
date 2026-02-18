@@ -20,6 +20,10 @@ Frontmatter (required for all snippets):
 - `scope` — `global`, `domain`, or `project`.
 - `description` — short summary of the snippet's purpose.
 
+Frontmatter (optional):
+
+- `role` — minimum role to view the snippet: `public`, `member`, or `admin`. Defaults to `member` when omitted.
+
 Document structure:
 
 - H1 title with type suffix (e.g., `# Session Lifecycle — Design`).
@@ -57,6 +61,7 @@ Global snippets are distributed to `~/.teleclaude/docs/` and available to all pr
 
 - `type`: principle, concept, policy, procedure, design, spec (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
 - `scope`: global, domain, project.
+- `role`: public, member, admin. Hierarchy: `public` (everyone) < `member` (member + admin) < `admin` (admin only). Default: `member`.
 
 ## Known caveats
 

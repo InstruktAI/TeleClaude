@@ -30,7 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from teleclaude.constants import AUDIENCE_VALUES, TAXONOMY_TYPES, TYPE_SUFFIX  # noqa: E402
+from teleclaude.constants import TAXONOMY_TYPES, TYPE_SUFFIX  # noqa: E402
 from teleclaude.snippet_validation import (  # noqa: E402
     expected_snippet_id_for_path,
     load_domains,
@@ -346,11 +346,12 @@ def validate_snippet(path: Path, content: str, project_root: Path, *, domains: s
             snippet_id=parsed_id.value(),
         )
 
-    raw_audience = meta.get("audience")
-    if isinstance(raw_audience, list):
-        for val in raw_audience:
-            if not isinstance(val, str) or val not in AUDIENCE_VALUES:
-                _warn("snippet_invalid_audience_value", path=str(path), value=str(val))
+    raw_role = meta.get("role")
+    if raw_role is not None:
+        from teleclaude.constants import ROLE_VALUES
+
+        if not isinstance(raw_role, str) or raw_role not in ROLE_VALUES:
+            _warn("snippet_invalid_role_value", path=str(path), value=str(raw_role))
 
     _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
@@ -556,16 +557,12 @@ def _validate_snippet_sections(
             if not isinstance(meta.get(field), str) or not meta.get(field):
                 _warn("snippet_missing_frontmatter_field", path=str(path), field=field)
 
-    audience_val = meta.get("audience")
-    if audience_val is not None:
-        from teleclaude.constants import AUDIENCE_VALUES
+    role_val = meta.get("role")
+    if role_val is not None:
+        from teleclaude.constants import ROLE_VALUES
 
-        if isinstance(audience_val, list):
-            for av in audience_val:
-                if av not in AUDIENCE_VALUES:
-                    _warn("snippet_invalid_audience_value", path=str(path), value=str(av))
-        else:
-            _warn("snippet_invalid_audience_type", path=str(path))
+        if not isinstance(role_val, str) or role_val not in ROLE_VALUES:
+            _warn("snippet_invalid_role_value", path=str(path), value=str(role_val))
 
     snippet_type = meta.get("type") if isinstance(meta.get("type"), str) else None
     if not snippet_type:
