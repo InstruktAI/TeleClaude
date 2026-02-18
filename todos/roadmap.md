@@ -38,6 +38,18 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 - mcp-migration-delete-mcp (after: mcp-migration-agent-config) — Phase 5: Delete all MCP server code, wrapper, handlers, definitions (~3,400 lines)
 - mcp-migration-doc-updates (after: mcp-migration-delete-mcp) — Phase 6: Update architecture and policy docs, rewrite MCP references
 
+## Gathering Ceremony
+
+> Procedure: `docs/global/general/procedure/gathering.md`
+>
+> Agents convene to collectively sense, reflect, and plan through the breath cycle.
+> The gathering is the same regardless of rhythm — only the scope of attention changes.
+> Influenced by Art of Hosting methodology.
+
+- gathering-rhythm-subprocedures — Sub-procedures for daily, weekly, monthly rhythms (opening questions, round structure, harvest types)
+- gathering-trail-files — Initial trail persistence layer (`gatherings/{rhythm}.md`)
+- start-gathering-tool (after: gathering-rhythm-subprocedures) — Daemon tool: spawn peer sessions, fan-out messages, talking piece tracking, HITL participation
+
 ## Demo Celebration System
 
 - next-demo
