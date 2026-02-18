@@ -1,15 +1,22 @@
 {
   "phase": "in_progress",
   "build": "complete",
-  "review": "pending",
+  "review": "approved",
   "deferrals_processed": false,
   "breakdown": {
     "assessed": false,
     "todos": []
   },
-  "review_round": 0,
+  "review_round": 2,
   "max_review_rounds": 3,
-  "review_baseline_commit": "",
+  "review_baseline_commit": "ada76a3d142c67a9d299fe4f0072d9d2b6d17490",
   "unresolved_findings": [],
-  "resolved_findings": []
+  "resolved_findings": [
+    "audience-to-role-refactor",
+    "cli-guard-public",
+    "no-role-default-admin",
+    "bootstrap-cleanup",
+    "bootstrap-test-signature",
+    "docs-clearance-to-role"
+  ]
 }
