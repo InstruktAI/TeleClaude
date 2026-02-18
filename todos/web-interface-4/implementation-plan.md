@@ -229,7 +229,7 @@ WebSocket URL: `ws://localhost:8420/ws` (daemon TCP port) or proxied through Nex
 
 ## Phase 5: Admin dashboard
 
-- [ ] ### Task 5.1: Dashboard page
+- [x] ### Task 5.1: Dashboard page
 
 **Files:**
 
@@ -251,7 +251,7 @@ Data: combine `GET /api/computers` + `GET /api/sessions` (admin sees all).
 
 **Verification:** Dashboard shows accurate data. Non-admin redirected.
 
-- [ ] ### Task 5.2: Dashboard middleware/guard
+- [x] ### Task 5.2: Dashboard middleware/guard
 
 **File:** `frontend/middleware.ts` (modify)
 
