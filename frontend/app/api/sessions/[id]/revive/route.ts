@@ -15,36 +15,39 @@ export async function POST(
 
   const { id } = await params;
 
-  // Fetch session metadata to enforce ownership
-  const metaRes = await daemonRequest({
-    method: "GET",
-    path: `/sessions/${encodeURIComponent(id)}`,
-    headers: buildIdentityHeaders(session),
-  });
-
-  if (metaRes.status === 404) {
-    return NextResponse.json({ error: "Session not found" }, { status: 404 });
-  }
-
-  if (metaRes.status >= 400) {
-    return NextResponse.json(
-      normalizeUpstreamError(metaRes.status, metaRes.body),
-      { status: metaRes.status },
-    );
-  }
-
-  let ownerEmail: string | null = null;
   try {
-    const meta = JSON.parse(metaRes.body) as { human_email?: string };
-    ownerEmail = meta.human_email ?? null;
-  } catch {
-    // malformed response — deny
-  }
+    // GET /sessions/{id} does not exist on the daemon; list all and filter by session_id
+    const metaRes = await daemonRequest({
+      method: "GET",
+      path: "/sessions",
+      headers: buildIdentityHeaders(session),
+    });
 
-  const ownershipErr = requireOwnership(session, ownerEmail);
-  if (ownershipErr) return ownershipErr;
+    if (metaRes.status >= 400) {
+      return NextResponse.json(
+        normalizeUpstreamError(metaRes.status, metaRes.body),
+        { status: metaRes.status },
+      );
+    }
 
-  try {
+    let ownerEmail: string | null = null;
+    try {
+      const sessions = JSON.parse(metaRes.body) as Array<{
+        session_id: string;
+        human_email?: string;
+      }>;
+      const found = sessions.find((s) => s.session_id === id);
+      if (!found) {
+        return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      }
+      ownerEmail = found.human_email ?? null;
+    } catch {
+      // malformed response — deny
+    }
+
+    const ownershipErr = requireOwnership(session, ownerEmail);
+    if (ownershipErr) return ownershipErr;
+
     const res = await daemonRequest({
       method: "POST",
       path: `/sessions/${encodeURIComponent(id)}/revive`,

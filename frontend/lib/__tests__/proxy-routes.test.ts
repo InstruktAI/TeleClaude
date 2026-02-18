@@ -194,12 +194,12 @@ describe("DELETE /api/sessions/[id]", () => {
 
   it("proxies DELETE to daemon for session owner", async () => {
     mockAuth.mockResolvedValue(makeSession() as never);
-    // First call: GET /sessions/abc (metadata), second call: DELETE
+    // First call: GET /sessions (list), second call: DELETE
     mockDaemonRequest
       .mockResolvedValueOnce({
         status: 200,
         headers: {},
-        body: JSON.stringify({ human_email: "test@example.com" }),
+        body: JSON.stringify([{ session_id: "abc", human_email: "test@example.com" }]),
       })
       .mockResolvedValueOnce({
         status: 200,
@@ -228,7 +228,7 @@ describe("DELETE /api/sessions/[id]", () => {
     mockDaemonRequest.mockResolvedValueOnce({
       status: 200,
       headers: {},
-      body: JSON.stringify({ human_email: "other@example.com" }),
+      body: JSON.stringify([{ session_id: "abc", human_email: "other@example.com" }]),
     });
     const { DELETE } = await import("@/app/api/sessions/[id]/route");
     const req = makeRequest(
@@ -241,13 +241,31 @@ describe("DELETE /api/sessions/[id]", () => {
     expect(res.status).toBe(403);
   });
 
+  it("returns 404 when session is not in the list", async () => {
+    mockAuth.mockResolvedValue(makeSession() as never);
+    mockDaemonRequest.mockResolvedValueOnce({
+      status: 200,
+      headers: {},
+      body: JSON.stringify([{ session_id: "other-id", human_email: "test@example.com" }]),
+    });
+    const { DELETE } = await import("@/app/api/sessions/[id]/route");
+    const req = makeRequest(
+      "http://localhost:3000/api/sessions/abc",
+      "DELETE",
+    );
+    const res = await DELETE(req, {
+      params: Promise.resolve({ id: "abc" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
   it("allows admin to DELETE any session", async () => {
     mockAuth.mockResolvedValue(makeSession({ role: "admin" }) as never);
     mockDaemonRequest
       .mockResolvedValueOnce({
         status: 200,
         headers: {},
-        body: JSON.stringify({ human_email: "other@example.com" }),
+        body: JSON.stringify([{ session_id: "abc", human_email: "other@example.com" }]),
       })
       .mockResolvedValueOnce({
         status: 200,

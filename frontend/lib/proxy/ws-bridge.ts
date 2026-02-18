@@ -58,6 +58,11 @@ function connectToDaemon(client: BridgeClient): void {
   const daemon = createDaemonConnection();
 
   daemon.on("open", () => {
+    // Client may have disconnected while daemon connection was in-flight
+    if (!client.running) {
+      daemon.close();
+      return;
+    }
     client.daemon = daemon;
     client.backoff = INITIAL_BACKOFF_MS;
     replaySubscriptions(client);
