@@ -710,6 +710,7 @@ class StartSessionArgs:
     agent: str = "claude"
     thinking_mode: ThinkingMode = ThinkingMode.SLOW
     caller_session_id: Optional[str] = None
+    direct: bool = False
 
     @classmethod
     def from_mcp(
@@ -735,6 +736,9 @@ class StartSessionArgs:
             raise ValueError(f"thinking_mode must be one of: {', '.join(sorted(allowed_modes))}")
         thinking_mode = ThinkingMode(thinking_mode_raw)
 
+        direct_raw = arguments.get("direct", False)
+        direct = bool(direct_raw) if direct_raw is not None else False
+
         return cls(
             computer=str(arguments["computer"]),
             project_path=str(arguments["project_path"]),
@@ -743,6 +747,7 @@ class StartSessionArgs:
             agent=agent,
             thinking_mode=thinking_mode,
             caller_session_id=caller_session_id,
+            direct=direct,
         )
 
 

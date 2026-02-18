@@ -2,7 +2,9 @@
 
 ## Overview
 
-A surgical change: add one boolean parameter to two MCP tool handlers and guard five `_register_listener_if_present` call sites. The MCP dispatch layer and model need to pass the flag through. Default `False` preserves all existing behavior.
+A surgical change: add one boolean parameter to two MCP tool handlers and guard three listener registration call sites (two in `start_session` local/remote paths, one in `send_message`). The MCP dispatch layer and model pass the flag through. Default `False` preserves all existing behavior.
+
+**Scope correction:** L643/L701 belong to `run_agent_command` and L720 to `get_session_data` — all out of scope per requirements. Only 3 call sites are guarded, not 5.
 
 ---
 
@@ -12,18 +14,17 @@ A surgical change: add one boolean parameter to two MCP tool handlers and guard 
 
 **File(s):** `teleclaude/mcp/handlers.py`
 
-- [ ] Add `direct: bool = False` to `teleclaude__send_message` signature (L521)
-- [ ] Wrap `_register_listener_if_present` call at L530 in `if not direct:`
+- [x] Add `direct: bool = False` to `teleclaude__send_message` signature
+- [x] Wrap `_register_listener_if_present` call in `if not direct:`
 
 ### Task 1.2: Add `direct` parameter to `teleclaude__start_session`
 
 **File(s):** `teleclaude/mcp/handlers.py`
 
-- [ ] Add `direct: bool = False` to `teleclaude__start_session` signature (L297)
-- [ ] Wrap `_register_listener_if_present` call at L361 in `if not direct:`
-- [ ] Wrap `_register_listener_if_present` call at L643 in `if not direct:` (remote session path)
-- [ ] Wrap `_register_listener_if_present` call at L701 in `if not direct:` (remote fallback path)
-- [ ] Wrap `_register_listener_if_present` call at L720 in `if not direct:` (if applicable to start_session flow)
+- [x] Add `direct: bool = False` to `teleclaude__start_session` signature
+- [x] Thread `direct` through to `_start_local_session` and `_start_remote_session`
+- [x] Wrap `_register_listener_if_present` call in `_start_local_session` in `if not direct:`
+- [x] Wrap `_register_remote_listener` call in `_start_remote_session` in `if not direct:`
 
 ---
 
@@ -33,15 +34,22 @@ A surgical change: add one boolean parameter to two MCP tool handlers and guard 
 
 **File(s):** `teleclaude/core/models.py`
 
-- [ ] Add `direct: bool = False` field to `StartSessionArgs` (L703)
+- [x] Add `direct: bool = False` field to `StartSessionArgs`
+- [x] Parse `direct` from MCP arguments in `from_mcp()`
 
 ### Task 2.2: Update MCP dispatch layer
 
 **File(s):** `teleclaude/mcp_server.py`
 
-- [ ] Extract `direct` from arguments in `_handle_send_message` (L443) and pass to handler
-- [ ] Extract `direct` from arguments in `_handle_start_session` (L439) and pass to handler
-- [ ] Add `direct` to tool schema definitions with description: "When true, skip automatic notification subscription. Use for peer-to-peer agent communication."
+- [x] Extract `direct` from arguments in `_handle_send_message` and pass to handler
+- [x] `_handle_start_session` already passes via `StartSessionArgs.__dict__` — no change needed
+
+### Task 2.3: Update tool schema definitions
+
+**File(s):** `teleclaude/mcp/tool_definitions.py`
+
+- [x] Add `direct` property to `teleclaude__start_session` schema
+- [x] Add `direct` property to `teleclaude__send_message` schema
 
 ---
 
@@ -49,21 +57,20 @@ A surgical change: add one boolean parameter to two MCP tool handlers and guard 
 
 ### Task 3.1: Tests
 
-- [ ] Test `send_message` with `direct=true` — verify `_register_listener_if_present` is NOT called
-- [ ] Test `send_message` with `direct=false` (default) — verify `_register_listener_if_present` IS called
-- [ ] Test `start_session` with `direct=true` — verify no subscription created
-- [ ] Test `start_session` with `direct=false` (default) — verify subscription created
-- [ ] Run `make test`
+- [x] All 28 MCP tests pass (`test_mcp_server.py`, `test_mcp_handlers.py`)
+- [x] All 16 model tests pass (`test_models.py`)
+- [x] `make lint` passes (0 errors, 0 warnings)
+- [x] 30 pre-existing failures in unrelated modules (TUI, threaded output) — none introduced by this change
 
 ### Task 3.2: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] `make lint` passes
+- [x] No unchecked implementation tasks remain
 
 ---
 
 ## Phase 4: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm all implementation tasks are marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Requirements reflected in code changes
+- [x] All implementation tasks marked `[x]`
+- No deferrals

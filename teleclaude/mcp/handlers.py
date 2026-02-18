@@ -303,19 +303,21 @@ class MCPHandlersMixin:
         caller_session_id: str | None = None,
         agent: str = "claude",
         thinking_mode: ThinkingMode = ThinkingMode.SLOW,
+        direct: bool = False,
     ) -> StartSessionResult:
         """Create session on local or remote computer."""
         logger.debug(
-            "teleclaude__start_session: computer=%s, is_local=%s",
+            "teleclaude__start_session: computer=%s, is_local=%s, direct=%s",
             computer,
             self._is_local_computer(computer),
+            direct,
         )
         if self._is_local_computer(computer):
             return await self._start_local_session(
-                project_path, title, message, caller_session_id, agent, thinking_mode
+                project_path, title, message, caller_session_id, agent, thinking_mode, direct
             )
         return await self._start_remote_session(
-            computer, project_path, title, message, caller_session_id, agent, thinking_mode
+            computer, project_path, title, message, caller_session_id, agent, thinking_mode, direct
         )
 
     async def _start_local_session(
@@ -326,6 +328,7 @@ class MCPHandlersMixin:
         caller_session_id: str | None = None,
         agent: str = "claude",
         thinking_mode: ThinkingMode = ThinkingMode.SLOW,
+        direct: bool = False,
     ) -> StartSessionResult:
         """Create session on local computer directly via command service."""
         cmds = get_command_service()
@@ -358,7 +361,8 @@ class MCPHandlersMixin:
             return {"status": "error", "message": f"Local session creation failed: {error_msg}"}
 
         logger.info("Local session created: %s", session_id[:8])
-        await self._register_listener_if_present(session_id, caller_session_id)
+        if not direct:
+            await self._register_listener_if_present(session_id, caller_session_id)
 
         # Start agent in background if message provided (None = skip agent start entirely)
         if message is not None:
@@ -390,6 +394,7 @@ class MCPHandlersMixin:
         caller_session_id: str | None = None,
         agent: str = "claude",
         thinking_mode: ThinkingMode = ThinkingMode.SLOW,
+        direct: bool = False,
     ) -> StartSessionResult:
         """Create session on remote computer via Redis transport."""
         if not await self._is_computer_online(computer):
@@ -429,7 +434,8 @@ class MCPHandlersMixin:
 
             logger.info("Remote session created: %s on %s", remote_session_id[:8], computer)
 
-            await self._register_remote_listener(str(remote_session_id), caller_session_id)
+            if not direct:
+                await self._register_remote_listener(str(remote_session_id), caller_session_id)
 
             # Start agent if message provided (None = skip agent start entirely)
             if message is not None:
@@ -524,10 +530,12 @@ class MCPHandlersMixin:
         session_id: str,
         message: str,
         caller_session_id: str | None = None,
+        direct: bool = False,
     ) -> AsyncIterator[str]:
         """Send message to an AI agent session."""
         try:
-            await self._register_listener_if_present(session_id, caller_session_id)
+            if not direct:
+                await self._register_listener_if_present(session_id, caller_session_id)
             origin = await self._resolve_origin(caller_session_id)
 
             if self._is_local_computer(computer):

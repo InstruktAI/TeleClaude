@@ -441,6 +441,8 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 return self._json_response(await self.teleclaude__start_session(**args.__dict__))
 
             async def _handle_send_message() -> list[TextContent]:
+                direct_raw = arguments.get("direct", False) if arguments else False
+                direct = bool(direct_raw) if direct_raw is not None else False
                 chunks = [
                     chunk
                     async for chunk in self.teleclaude__send_message(
@@ -448,6 +450,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                         self._str_arg(arguments, "session_id"),
                         self._str_arg(arguments, "message"),
                         caller_session_id,
+                        direct,
                     )
                 ]
                 return [TextContent(type="text", text="".join(chunks))]

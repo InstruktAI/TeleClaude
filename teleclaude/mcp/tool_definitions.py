@@ -381,6 +381,14 @@ def get_tool_definitions() -> list[Tool]:
                             "If omitted, starts an interactive session waiting for user input."
                         ),
                     },
+                    "direct": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "When true, skip automatic notification subscription. "
+                            "Use for peer-to-peer agent communication where neither agent supervises the other."
+                        ),
+                    },
                 },
                 "required": ["computer", "project_path", "title"],
             },
@@ -410,6 +418,14 @@ def get_tool_definitions() -> list[Tool]:
                     "message": {
                         "type": "string",
                         "description": "Message to send to the agent session",
+                    },
+                    "direct": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "When true, skip automatic notification subscription. "
+                            "Use for peer-to-peer agent communication where neither agent supervises the other."
+                        ),
                     },
                 },
                 "required": ["computer", "session_id", "message"],
