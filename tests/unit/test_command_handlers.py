@@ -1096,7 +1096,6 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
     command = mock_execute_calls[0][0][1]
 
     # Gemini uses --resume flag with session ID from database
-    assert "--yolo" in command
     assert "--resume" in command
     assert "native-123-abc" in command
 

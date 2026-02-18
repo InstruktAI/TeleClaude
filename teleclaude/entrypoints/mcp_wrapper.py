@@ -50,9 +50,9 @@ _TRACE_LEVEL = getattr(logging, "TRACE", logging.DEBUG)
 logger.setLevel(_TRACE_LEVEL)
 
 MCP_SOCKET = "/tmp/teleclaude.sock"
-# Map parameter names to env var names. Special value None means use os.getcwd()
+# Map parameter names to env var names. Special value None means use custom injection logic.
 CONTEXT_TO_INJECT: dict[str, str | None] = {
-    PARAM_CWD: None,  # Special: inject os.getcwd()
+    PARAM_CWD: None,  # Special: inject _PROJECT_ROOT (not os.getcwd())
     PARAM_CALLER_SESSION_ID: None,  # Special: inject from TMPDIR/teleclaude_session_id
 }
 RECONNECT_DELAY = 5
@@ -473,9 +473,10 @@ def inject_context(params: MutableMapping[str, object]) -> MutableMapping[str, o
         if has_value:
             continue
         if env_var is None:
-            # Special case: cwd uses os.getcwd()
+            # cwd = TeleClaude project root (not os.getcwd(), which would be
+            # the calling agent's project when invoked from another repo).
             if param_name == PARAM_CWD:
-                arguments[param_name] = os.getcwd()
+                arguments[param_name] = str(_PROJECT_ROOT)
         else:
             env_value = os.environ.get(env_var)
             if env_value:

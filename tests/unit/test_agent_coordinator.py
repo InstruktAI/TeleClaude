@@ -80,7 +80,6 @@ async def test_handle_agent_stop_experiment_enabled(coordinator, mock_client):
         patch("teleclaude.core.agent_coordinator.render_agent_output") as mock_render,
         patch("teleclaude.core.agent_coordinator.get_assistant_messages_since") as mock_get_messages,
         patch("teleclaude.core.agent_coordinator.count_renderable_assistant_blocks") as mock_count_blocks,
-        patch("teleclaude.core.agent_coordinator.telegramify_markdown") as mock_telegramify,
         patch("teleclaude.core.agent_coordinator.db.update_session", new_callable=AsyncMock) as mock_update_session,
         patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_summarize,
         patch("teleclaude.core.agent_coordinator.extract_last_agent_message") as mock_extract,
@@ -92,7 +91,6 @@ async def test_handle_agent_stop_experiment_enabled(coordinator, mock_client):
         ]
         mock_count_blocks.return_value = 2
         mock_render.return_value = ("Summary message", None)
-        mock_telegramify.return_value = "Summary message"
         mock_summarize.return_value = ("Title", "Summary")
         mock_extract.return_value = "last message"
 

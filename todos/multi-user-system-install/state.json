@@ -4,18 +4,29 @@
   "review": "pending",
   "deferrals_processed": false,
   "breakdown": {
-    "assessed": false,
-    "todos": []
+    "assessed": true,
+    "todos": [
+      "multi-user-identity",
+      "multi-user-sessions",
+      "multi-user-admin-audit",
+      "multi-user-config",
+      "multi-user-service",
+      "multi-user-migration"
+    ]
   },
   "dor": {
-    "last_assessed_at": null,
-    "score": 0,
+    "last_assessed_at": "2026-02-18T12:00:00Z",
+    "score": 4,
     "status": "needs_work",
     "schema_version": 1,
-    "blockers": [],
+    "blockers": [
+      "Scope too large for single session — must split into 6 sub-todos",
+      "SO_PEERCRED/LOCAL_PEERCRED Python API research incomplete",
+      "Database decision pending: SQLite vs PostgreSQL"
+    ],
     "actions_taken": {
-      "requirements_updated": false,
-      "implementation_plan_updated": false
+      "requirements_updated": true,
+      "implementation_plan_updated": true
     }
   },
   "review_round": 0,

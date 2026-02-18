@@ -44,6 +44,7 @@ async def test_voice_transcription_executes_command(session_manager: Db) -> None
     client.send_message = AsyncMock()
     client.delete_message = AsyncMock()
     client.broadcast_user_input = AsyncMock()
+    client.break_threaded_turn = AsyncMock()
 
     start_polling = AsyncMock()
 

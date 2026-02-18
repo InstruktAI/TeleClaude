@@ -277,8 +277,8 @@ async def test_adapter_client_discover_peers_multiple_adapters():
 
 
 @pytest.mark.asyncio
-async def test_route_to_ui_skips_exceptions_without_origin():
-    """Originless routing returns None (fail-fast, no fallback)."""
+async def test_route_to_ui_raises_for_non_ui_origin():
+    """Non-UI origin raises ValueError (design-by-contract)."""
     client = AdapterClient()
     ok_adapter = DummyTelegramAdapter(client, send_message_return="123")
     failing_adapter = DummyFailingAdapter(client, error=TimeoutError("Timed out"))
@@ -298,9 +298,8 @@ async def test_route_to_ui_skips_exceptions_without_origin():
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=session)
     with patch("teleclaude.core.adapter_client.db", mock_db):
-        result = await client.send_message(session, "hello", ephemeral=False)
-    # "api" is not a UI adapter — fail-fast returns None
-    assert result is None
+        with pytest.raises(ValueError, match="does not resolve to a UI adapter"):
+            await client.send_message(session, "hello", ephemeral=False)
 
 
 @pytest.mark.asyncio
@@ -508,8 +507,8 @@ async def test_send_output_update_missing_thread_recovers_via_adapter():
 
 
 @pytest.mark.asyncio
-async def test_send_output_update_non_ui_origin_returns_none():
-    """Non-UI origin (api) returns None — no fallback routing."""
+async def test_send_output_update_non_ui_origin_raises():
+    """Non-UI origin (api) raises ValueError (design-by-contract)."""
     client = AdapterClient()
     client.register_adapter(
         "telegram",
@@ -530,8 +529,8 @@ async def test_send_output_update_non_ui_origin_returns_none():
     mock_db = AsyncMock()
     mock_db.get_pending_deletions = AsyncMock(return_value=[])
     with patch("teleclaude.core.adapter_client.db", mock_db):
-        result = await client.send_output_update(session, "output", 0.0, 0.0)
-    assert result is None
+        with pytest.raises(ValueError, match="does not resolve to a UI adapter"):
+            await client.send_output_update(session, "output", 0.0, 0.0)
 
 
 @pytest.mark.asyncio
@@ -716,6 +715,7 @@ async def test_send_message_persistent_not_tracked():
     )
 
     mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
     with patch("teleclaude.core.adapter_client.db", mock_db):
         # ephemeral=False should NOT track for deletion
         await client.send_message(session, "hello", ephemeral=False)
@@ -724,8 +724,8 @@ async def test_send_message_persistent_not_tracked():
 
 
 @pytest.mark.asyncio
-async def test_send_message_notice_returns_none_when_missing_origin():
-    """Notices return None when last_input_origin is missing (fail-fast)."""
+async def test_send_message_notice_raises_when_missing_origin():
+    """Notices raise ValueError when last_input_origin is missing (design-by-contract)."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -744,11 +744,8 @@ async def test_send_message_notice_returns_none_when_missing_origin():
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=session)
     with patch("teleclaude.core.adapter_client.db", mock_db):
-        message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
-
-    assert message_id is None
-    assert telegram_adapter.sent_messages == []
-    assert slack_adapter.sent_messages == []
+        with pytest.raises(ValueError, match="has no last_input_origin"):
+            await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
 
 @pytest.mark.asyncio
@@ -780,8 +777,8 @@ async def test_send_message_notice_does_not_broadcast_to_observers():
 
 
 @pytest.mark.asyncio
-async def test_send_message_notice_api_origin_returns_none():
-    """Notices return None when last_input_origin is api (not a UI adapter)."""
+async def test_send_message_notice_api_origin_raises():
+    """Notices raise ValueError when last_input_origin is api (not a UI adapter)."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -798,10 +795,8 @@ async def test_send_message_notice_api_origin_returns_none():
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=session)
     with patch("teleclaude.core.adapter_client.db", mock_db):
-        message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
-
-    assert message_id is None
-    assert telegram_adapter.sent_messages == []
+        with pytest.raises(ValueError, match="does not resolve to a UI adapter"):
+            await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
 
 @pytest.mark.asyncio
