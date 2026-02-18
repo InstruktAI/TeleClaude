@@ -36,7 +36,7 @@ Filter is applied after the existing session merge logic (local + remote cache).
 
 **Verification:** Admin user sees all sessions; member sees only own; contributor sees only own.
 
-- [ ] ### Task 1.2: Access check on session-scoped endpoints
+- [x] ### Task 1.2: Access check on session-scoped endpoints
 
 **File:** `teleclaude/api_server.py`
 

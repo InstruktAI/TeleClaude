@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from typing import AsyncIterator, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict, Field
@@ -240,8 +240,12 @@ async def _stream_sse(
 
 
 @router.post("/stream")
-async def chat_stream(request: ChatStreamRequest) -> StreamingResponse:
+async def chat_stream(http_request: Request, request: ChatStreamRequest) -> StreamingResponse:
     """SSE streaming endpoint for the web interface."""
+    from teleclaude.api.session_access import check_session_access
+
+    await check_session_access(http_request, request.session_id)
+
     # Validate session exists before creating streaming response
     session = await db.get_session(request.session_id)
     if not session:

@@ -536,10 +536,14 @@ class APIServer:
 
         @self.app.delete("/sessions/{session_id}")
         async def end_session(  # pyright: ignore
+            request: "Request",
             session_id: str,
             computer: str = Query(...),  # noqa: ARG001 - For API consistency, only local sessions supported
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """End session - local sessions only (remote session management via MCP tools)."""
+            from teleclaude.api.session_access import check_session_access
+
+            await check_session_access(request, session_id, require_owner=True)
             try:
                 metadata = self._metadata()
                 cmd = CommandMapper.map_api_input(
@@ -555,11 +559,15 @@ class APIServer:
 
         @self.app.post("/sessions/{session_id}/message")
         async def send_message_endpoint(  # pyright: ignore
+            http_request: "Request",
             session_id: str,
             request: SendMessageRequest,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send message to session."""
+            from teleclaude.api.session_access import check_session_access
+
+            await check_session_access(http_request, session_id)
             try:
                 metadata = self._metadata()
                 cmd = CommandMapper.map_api_input(
@@ -721,12 +729,16 @@ class APIServer:
 
         @self.app.get("/sessions/{session_id}/messages")
         async def get_session_messages(  # pyright: ignore
+            request: "Request",
             session_id: str,
             since: str | None = Query(None, description="ISO 8601 UTC timestamp; only messages after this time"),
             include_tools: bool = Query(False, description="Include tool_use/tool_result entries"),
             include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
         ) -> SessionMessagesDTO:
             """Get structured messages from a session's transcript files."""
+            from teleclaude.api.session_access import check_session_access
+
+            await check_session_access(request, session_id)
             from teleclaude.core.agents import AgentName
             from teleclaude.utils.transcript import extract_messages_from_chain
 
