@@ -26,13 +26,24 @@ Define the web boundary where Next.js route handlers are the only public API for
 
 The stable public surface is the Next.js API namespace (`/api/*` in frontend app), not daemon URLs.
 
-| Public Route                      | Initial Mode | Upstream                       |
-| --------------------------------- | ------------ | ------------------------------ |
-| `POST /api/chat`                  | `proxy`      | daemon stream endpoint         |
-| `GET /api/people`                 | `proxy`      | daemon people endpoint         |
-| `GET /api/sessions`               | `proxy`      | daemon sessions endpoint       |
-| `POST /api/sessions`              | `proxy`      | daemon create session endpoint |
-| `POST /api/sessions/:id/messages` | `proxy`      | daemon message ingest endpoint |
+| Public Route                           | Mode    | Auth Guard             | Upstream                           |
+| -------------------------------------- | ------- | ---------------------- | ---------------------------------- |
+| `POST /api/chat`                       | `proxy` | auth                   | daemon stream endpoint             |
+| `GET /api/people`                      | `proxy` | auth                   | daemon people endpoint             |
+| `GET /api/computers`                   | `proxy` | auth                   | daemon computers endpoint          |
+| `GET /api/sessions`                    | `proxy` | auth                   | daemon sessions endpoint           |
+| `POST /api/sessions`                   | `proxy` | auth                   | daemon create session endpoint     |
+| `DELETE /api/sessions/:id`             | `proxy` | auth + ownership       | daemon delete session endpoint     |
+| `POST /api/sessions/:id/revive`        | `proxy` | auth + ownership       | daemon revive session endpoint     |
+| `POST /api/sessions/:id/agent-restart` | `proxy` | auth + admin           | daemon agent-restart endpoint      |
+| `POST /api/sessions/:id/messages`      | `proxy` | auth                   | daemon message ingest endpoint     |
+| `GET /api/sessions/:id/messages`       | `proxy` | auth                   | daemon messages list endpoint      |
+| `GET /api/projects`                    | `proxy` | auth                   | daemon projects endpoint           |
+| `GET /api/todos`                       | `proxy` | auth                   | daemon todos endpoint              |
+| `GET /api/agents/availability`         | `proxy` | auth                   | daemon agent availability endpoint |
+| `GET /api/settings`                    | `proxy` | auth                   | daemon settings endpoint           |
+| `PATCH /api/settings`                  | `proxy` | auth + admin           | daemon settings endpoint           |
+| `WebSocket /api/ws`                    | `proxy` | auth (cookie validate) | daemon WebSocket bridge            |
 
 ## Data/Transport Strategy
 
