@@ -9,14 +9,15 @@
   },
   "dor": {
     "last_assessed_at": "2026-02-18",
-    "score": 0,
-    "status": "needs_work",
+    "score": 8,
+    "status": "pass",
     "schema_version": 1,
     "blockers": [],
     "actions_taken": {
       "requirements_updated": true,
       "implementation_plan_updated": true,
-      "dor_report_updated": true
+      "dor_report_updated": true,
+      "gate_validated": true
     }
   },
   "review_round": 0,

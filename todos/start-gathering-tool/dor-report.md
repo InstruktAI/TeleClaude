@@ -1,78 +1,113 @@
 # DOR Report: start-gathering-tool
 
-## Draft Assessment
+## Gate Verdict
+
+**Score: 8/10 — PASS**
+
+Assessed: 2026-02-18 (gate phase)
 
 ### Gate 1: Intent & Success — PASS
 
-Intent is clear: build the daemon-side tool that orchestrates gathering ceremonies. The input.md captures the full communication model (handshake, fan-out, injection), the talking piece with thought heartbeats, HITL participation, and the procedure update dependency. Requirements.md refines this into concrete success criteria with testable conditions.
+Intent is explicit: build the daemon-side `start_gathering` MCP tool that orchestrates gathering ceremonies. Three artifacts align:
 
-### Gate 2: Scope & Size — NEEDS ATTENTION
+- `input.md`: full design spec — communication model (handshake-only, daemon fan-out), talking piece with thought heartbeats, harvester role, breath structure, HITL, history signals, procedure update dependency.
+- `requirements.md`: 15 testable success criteria, scoped in/out boundaries, key files, constraints, risks.
+- `implementation-plan.md`: 9 tasks with data models, orchestrator loop, build sequence, risk mitigations.
 
-This is a substantial piece of work: new MCP tool, in-memory state management, output monitoring, fan-out delivery, talking piece logic with timers, heartbeat injection, pass detection, phase management with breath structure, harvester role, history search during seed preparation, HITL support, and tests. Nine implementation tasks.
+No ambiguity in what or why.
 
-**Risk**: May push context limits in a single AI session. The mitigation is that the tasks are well-sequenced and the codebase patterns are established (the fan-out is modeled after `_notify_listeners`, injection uses `send_keys_existing_tmux`, monitoring uses `capture_pane`). A builder with the implementation plan should be able to execute without heavy exploration.
+### Gate 2: Scope & Size — PASS (conditional)
 
-**Recommendation**: Keep as single todo for now. If the gate reviewer judges it too large, split into: (a) gathering state + MCP tool + session spawning + nested guard, (b) communication fabric + talking piece + heartbeats + phase management + harvester, (c) HITL + history search + tests.
+Nine implementation tasks across one new module (`teleclaude/core/gathering.py`) plus MCP wiring. This is the largest single todo in the pipeline.
+
+**Why it passes:** Every task maps to a proven codebase pattern (verified):
+
+- `_start_local_session(direct=True)` — confirmed at `handlers.py:323`, `direct` flag skips listener registration at line 364.
+- `send_keys_existing_tmux` — confirmed in `tmux_bridge.py`, used by 16 files.
+- `capture_pane` — confirmed in `output_poller.py`, used by 14 files.
+- `_active_pollers` with `asyncio.Lock` — confirmed at `polling_coordinator.py:618-640`, exact pattern for gathering state.
+- `_notify_listeners` / `deliver_listener_message` — confirmed in `session_listeners.py` and `tmux_delivery.py`.
+
+The builder needs minimal exploration — the plan provides data models, function signatures, and the orchestrator loop. Tasks are sequential with clear boundaries.
+
+**Conditional:** If a builder exhausts context before completing all 9 tasks, the natural split point is after Task 4 (communication fabric + talking piece). Tasks 5-9 (HITL, phase management, history search, guard, tests) can become a follow-up todo. This split should be decided during build, not now.
 
 ### Gate 3: Verification — PASS
 
-Success criteria are concrete and testable (15 conditions in requirements.md). Unit tests for state management, pass detection, phase transitions, breath structure, and attribution formatting. Integration tests (mocked tmux) for the full lifecycle including phase announcements, harvester signal, and history search invocation. Observable behavior: spawned sessions receive seed messages with identity assignment, speaking agent's output appears in all other sessions with attribution, harvester receives all messages but never holds the piece.
+15 success criteria in requirements.md, all testable:
+
+- Unit tests: state CRUD, pass detection (positive + negative), attribution formatting, beat advancement, phase transitions, breath structure.
+- Integration tests (mocked tmux): full lifecycle through all phases, fan-out delivery, heartbeat injection, early pass, harvester signal, nested guard.
+- Observable: `make test`, `make lint`.
+
+Edge cases identified: feedback loop prevention (baseline snapshot), pass detection false positives (conservative phrase matching), output monitoring latency (N+1 seconds).
 
 ### Gate 4: Approach Known — PASS
 
-Every component maps to an existing codebase pattern:
+All components verified against codebase:
 
-- Session spawning: `_start_local_session(direct=True)` — proven path
-- Fan-out delivery: `_notify_listeners` loop in `session_listeners.py` — exact pattern
-- Message injection: `tmux_bridge.send_keys_existing_tmux` — proven primitive
-- Output monitoring: `OutputPoller.poll()` / `capture_pane` — established infrastructure
-- In-memory state: `_active_pollers` pattern in `polling_coordinator.py` — asyncio.Lock-protected dict
-- Timer-based injection: `asyncio.sleep` + `send_keys` — straightforward
-- Phase management: Round counting with phase announcements — no new primitives needed
-- Harvester: Same fan-out recipient logic, excluded from speaker order — data model concern only
-- History search: `history.py --agent all <keywords>` — existing CLI tool, shell invocation during seed prep
+| Component         | Pattern source                                                   | Verified        |
+| ----------------- | ---------------------------------------------------------------- | --------------- |
+| Session spawning  | `_start_local_session(direct=True)` at handlers.py:323           | Yes             |
+| Fan-out delivery  | `_notify_listeners` in session_listeners.py                      | Yes             |
+| Message injection | `send_keys_existing_tmux` in tmux_bridge.py                      | Yes             |
+| Output monitoring | `OutputPoller.poll()` / `capture_pane` in output_poller.py       | Yes             |
+| In-memory state   | `_active_pollers` + `_poller_lock` in polling_coordinator.py:618 | Yes             |
+| Timer injection   | `asyncio.sleep` + `send_keys`                                    | Straightforward |
+| Phase management  | Round counting — no new primitives                               | Straightforward |
+| Harvester         | Data model concern — excluded from speaker_order                 | Straightforward |
+| History search    | `history.py --agent all` — existing CLI                          | Yes             |
 
-No architectural unknowns. The output diff/baseline mechanism is new but simple in concept.
+The output diff/baseline mechanism is new but conceptually simple and well-specified.
+
+**Minor correction:** DOR draft said "asyncio.Lock-protected dict" — actual pattern is `asyncio.Lock`-protected `set`. The gathering will use a `dict`, same lock pattern. No material impact.
 
 ### Gate 5: Research Complete — PASS (N/A)
 
-No third-party dependencies. All infrastructure is internal.
+No third-party dependencies. All infrastructure is internal. Art of Hosting third-party docs are already delivered and are reference material, not a build dependency.
 
 ### Gate 6: Dependencies & Preconditions — PASS
 
-- `direct=true` flag: delivered in 6157a769
-- Gathering procedure doc: delivered in c12738c3
-- Rhythm sub-procedures: listed as dependency in roadmap, but the tool accepts parameters directly — it doesn't need the sub-procedure docs to be built. The sub-procedures just provide defaults.
+| Dependency                                             | Status                                                                                                                  |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `direct=true` flag on `send_message` / `start_session` | Delivered: 6157a769. Verified at handlers.py:331,397                                                                    |
+| Gathering procedure doc                                | Delivered: c12738c3                                                                                                     |
+| Rhythm sub-procedures                                  | Soft dependency. Tool accepts all params directly. Sub-procedures provide operational defaults, not build prerequisites |
+| Agent Direct Conversation procedure update             | Out of scope (separate doc-only todo)                                                                                   |
+
+The roadmap declares `after: gathering-rhythm-subprocedures` — this is an operational dependency (defaults), not a build blocker. The tool is fully buildable without it.
 
 ### Gate 7: Integration Safety — PASS
 
-The gathering tool is entirely additive:
+Entirely additive:
 
-- New MCP tool handler (no changes to existing tools)
-- New state module (`teleclaude/core/gathering.py`)
-- Uses existing tmux primitives without modifying them
-- Sessions spawned with `direct=true` have no notification side effects
+- New MCP tool handler — no changes to existing handlers.
+- New module `teleclaude/core/gathering.py` — no modifications to existing modules.
+- Uses existing tmux primitives read-only (no signature changes).
+- Sessions spawned with `direct=true` — no notification side effects.
 
-Rollback: remove the tool handler and state module. No other code is affected.
+Rollback: remove the tool handler and state module. Zero blast radius.
 
 ### Gate 8: Tooling Impact — PASS (N/A)
 
 No tooling or scaffolding changes.
 
-## Open Questions
+## Open Questions (non-blocking)
 
-1. **Micro-pulse content**: What exactly goes in the heartbeat's signal refresh? For v1, proposed: participant count, gathering phase, rounds remaining. Richer pulse deferred.
-2. **Human session resolution**: How exactly is the human's tmux session resolved? If invoked from Telegram, the caller's session IS the human's session. Needs verification against the adapter layer.
-3. **Beat interval tuning**: Proposed 60s beats. May need adjustment after first live gathering. The tool accepts this as a parameter, so it's configurable.
+1. **Micro-pulse content**: For v1, proposed: participant count, gathering phase, rounds remaining. Richer pulse (channel activity, pipeline state) deferred. **Non-blocking** — the micro-pulse is a string parameter, easily extended.
+2. **Human session resolution**: The human's tmux session is resolved from the caller's session. When invoked from Telegram, the caller's session IS the human's session. **Non-blocking** — builder can verify against adapter layer during Task 5.
+3. **Beat interval tuning**: 60s beats proposed. Tool accepts as parameter. **Non-blocking** — tunable at runtime.
 
-## Assumptions
+## Assumptions (validated)
 
-- Gatherings are ephemeral — in-memory state is acceptable (no SQLite table needed)
-- The 1-second tmux send-keys delay is acceptable for conversational pace
-- Output diffing via baseline snapshot is sufficient for feedback loop prevention
-- Pattern matching for pass detection is conservative enough to avoid false positives
-- The daemon process is stable during the ~15-30 minute duration of a typical gathering
+- Gatherings are ephemeral — in-memory state acceptable. Confirmed: no persistence requirement in input.md, requirements.md explicitly states "gatherings are ephemeral."
+- 1-second tmux send-keys delay acceptable — requirements.md documents expected latency (~N seconds per message).
+- Baseline snapshot sufficient for feedback loop prevention — well-specified in requirements.md output monitoring design section.
+- Pass detection pattern matching conservative enough — requirements.md specifies phrase-level matching, not word-level.
+- Daemon stable for ~15-30 minute gathering duration — reasonable given typical daemon uptime.
 
 ## Verdict
 
-**Draft assessment: likely PASS** pending gate reviewer confirmation on scope (Gate 2). All other gates are satisfied. The work is well-defined, the approach maps cleanly to existing patterns, and the risk profile is low.
+**PASS — score 8/10.** All eight gates satisfied. Scope is at the upper bound but justified by pattern coverage and well-sequenced tasks. The conditional split point (after Task 4) provides a safety valve if context is exhausted during build. Three open questions are non-blocking and resolvable during implementation.
+
+Ready for build phase.
