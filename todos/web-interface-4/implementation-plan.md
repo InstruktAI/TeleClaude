@@ -201,7 +201,7 @@ New proxy routes:
 
 ## Phase 4: WebSocket real-time updates
 
-- [ ] ### Task 4.1: WebSocket client hook
+- [x] ### Task 4.1: WebSocket client hook
 
 **File:** `frontend/hooks/useWebSocket.ts` (new)
 
@@ -216,7 +216,7 @@ WebSocket URL: `ws://localhost:8420/ws` (daemon TCP port) or proxied through Nex
 
 **Verification:** Connects, reconnects on drop.
 
-- [ ] ### Task 4.2: Real-time session list updates
+- [x] ### Task 4.2: Real-time session list updates
 
 **File:** `frontend/components/SessionList.tsx` (modify)
 
