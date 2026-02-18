@@ -21,6 +21,8 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
 
   const [computers, setComputers] = useState<ComputerInfo[]>([]);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState(false);
   const [computer, setComputer] = useState("");
   const [projectPath, setProjectPath] = useState("");
   const [agent, setAgent] = useState<AgentName>("claude");
@@ -33,30 +35,45 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
   // Fetch computers on open
   useEffect(() => {
     if (!open) return;
-    fetch("/api/computers")
+    const controller = new AbortController();
+    fetch("/api/computers", { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data: ComputerInfo[]) => {
         setComputers(data);
-        if (data.length > 0 && !computer) {
-          const local = data.find((c) => c.is_local);
-          setComputer(local?.name ?? data[0].name);
+        if (data.length > 0) {
+          setComputer((prev) => {
+            if (prev) return prev;
+            const local = data.find((c) => c.is_local);
+            return local?.name ?? data[0].name;
+          });
         }
       })
-      .catch(() => setComputers([]));
-  }, [open, computer]);
+      .catch((err) => { if (err.name !== "AbortError") setComputers([]); });
+    return () => controller.abort();
+  }, [open]);
 
   // Fetch projects when computer changes
   useEffect(() => {
     if (!computer) return;
     setProjects([]);
     setProjectPath("");
-    fetch(`/api/projects?computer=${encodeURIComponent(computer)}`)
+    setProjectsLoading(true);
+    setProjectsError(false);
+    const controller = new AbortController();
+    fetch(`/api/projects?computer=${encodeURIComponent(computer)}`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data: ProjectInfo[]) => {
         setProjects(data);
         if (data.length > 0) setProjectPath(data[0].path);
+        setProjectsLoading(false);
       })
-      .catch(() => setProjects([]));
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          setProjectsError(true);
+          setProjectsLoading(false);
+        }
+      });
+    return () => controller.abort();
   }, [computer]);
 
   function reset() {
@@ -149,10 +166,12 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
               value={projectPath}
               onChange={(e) => setProjectPath(e.target.value)}
               className="rounded-md border bg-background px-3 py-2 text-sm"
-              disabled={projects.length === 0}
+              disabled={projectsLoading || projectsError || projects.length === 0}
             >
-              {projects.length === 0 && (
-                <option value="">Loading...</option>
+              {projectsLoading && <option value="">Loading...</option>}
+              {projectsError && <option value="">Failed to load projects</option>}
+              {!projectsLoading && !projectsError && projects.length === 0 && (
+                <option value="">No projects available</option>
               )}
               {projects.map((p) => (
                 <option key={p.path} value={p.path}>
