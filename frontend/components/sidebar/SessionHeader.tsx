@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Brain, Sparkles, Code2, Square } from "lucide-react";
 import { useState } from "react";
@@ -46,8 +46,10 @@ interface Props {
 
 export function SessionHeader({ sessionId }: Props) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [ending, setEnding] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [endError, setEndError] = useState<string | null>(null);
 
   const { data: sessions } = useQuery({
     queryKey: ["sessions"],
@@ -59,6 +61,7 @@ export function SessionHeader({ sessionId }: Props) {
   async function handleEndSession() {
     if (!session) return;
     setEnding(true);
+    setEndError(null);
     try {
       const computer = session.computer ?? "local";
       const res = await fetch(
@@ -66,8 +69,14 @@ export function SessionHeader({ sessionId }: Props) {
         { method: "DELETE" },
       );
       if (res.ok) {
+        await queryClient.invalidateQueries({ queryKey: ["sessions"] });
         router.push("/");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setEndError(data.error ?? `Failed to end session (HTTP ${res.status})`);
       }
+    } catch {
+      setEndError("Failed to end session");
     } finally {
       setEnding(false);
       setConfirmEnd(false);
@@ -91,6 +100,9 @@ export function SessionHeader({ sessionId }: Props) {
       )}
       {statusBadge(session.status)}
       <div className="ml-auto flex items-center gap-1">
+        {endError && (
+          <span className="text-xs text-destructive">{endError}</span>
+        )}
         {confirmEnd ? (
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground">End session?</span>
@@ -102,7 +114,7 @@ export function SessionHeader({ sessionId }: Props) {
               {ending ? "Ending..." : "Yes"}
             </button>
             <button
-              onClick={() => setConfirmEnd(false)}
+              onClick={() => { setConfirmEnd(false); setEndError(null); }}
               className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
             >
               No
