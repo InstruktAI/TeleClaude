@@ -18,10 +18,11 @@ vi.mock("@/auth", () => ({
 vi.mock("@/lib/proxy/daemon-client", () => ({
   daemonRequest: vi.fn(),
   normalizeUpstreamError: vi.fn((status: number, body: string) => {
-    let message = "Upstream error";
+    let message = "Upstream service error";
     try {
       const parsed = JSON.parse(body);
       if (parsed.detail) message = String(parsed.detail);
+      else if (parsed.message) message = String(parsed.message);
     } catch {
       // not JSON
     }
@@ -191,8 +192,20 @@ describe("DELETE /api/sessions/[id]", () => {
     expect(res.status).toBe(401);
   });
 
-  it("proxies DELETE to daemon", async () => {
+  it("proxies DELETE to daemon for session owner", async () => {
     mockAuth.mockResolvedValue(makeSession() as never);
+    // First call: GET /sessions/abc (metadata), second call: DELETE
+    mockDaemonRequest
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ human_email: "test@example.com" }),
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ ok: true }),
+      });
     const { DELETE } = await import("@/app/api/sessions/[id]/route");
     const req = makeRequest(
       "http://localhost:3000/api/sessions/abc",
@@ -208,6 +221,48 @@ describe("DELETE /api/sessions/[id]", () => {
         path: "/sessions/abc",
       }),
     );
+  });
+
+  it("returns 403 when non-owner tries to DELETE another user's session", async () => {
+    mockAuth.mockResolvedValue(makeSession() as never);
+    mockDaemonRequest.mockResolvedValueOnce({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ human_email: "other@example.com" }),
+    });
+    const { DELETE } = await import("@/app/api/sessions/[id]/route");
+    const req = makeRequest(
+      "http://localhost:3000/api/sessions/abc",
+      "DELETE",
+    );
+    const res = await DELETE(req, {
+      params: Promise.resolve({ id: "abc" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("allows admin to DELETE any session", async () => {
+    mockAuth.mockResolvedValue(makeSession({ role: "admin" }) as never);
+    mockDaemonRequest
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ human_email: "other@example.com" }),
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ ok: true }),
+      });
+    const { DELETE } = await import("@/app/api/sessions/[id]/route");
+    const req = makeRequest(
+      "http://localhost:3000/api/sessions/abc",
+      "DELETE",
+    );
+    const res = await DELETE(req, {
+      params: Promise.resolve({ id: "abc" }),
+    });
+    expect(res.status).toBe(200);
   });
 });
 
