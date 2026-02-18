@@ -27,5 +27,5 @@
 
 ## Finalize Gates (Finalizer)
 
-- [ ] Branch ready for merge
-- [ ] Delivery log updated
+- [x] Branch ready for merge
+- [x] Delivery log updated
