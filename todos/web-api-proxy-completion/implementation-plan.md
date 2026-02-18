@@ -19,23 +19,23 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 
 **File(s):** `frontend/app/api/ws/route.ts`
 
-- [ ] Create Next.js route handler that upgrades HTTP to WebSocket
-- [ ] Validate auth on upgrade via NextAuth `auth()` -- reject with 401 if unauthenticated
-- [ ] On successful auth, connect to daemon WS at `ws://127.0.0.1:8420/ws`
-- [ ] Bridge messages bidirectionally: browser -> daemon, daemon -> browser
-- [ ] Inject identity context (`X-Web-User-*` headers) into initial connection or subscription messages
-- [ ] Handle daemon disconnect: close browser connection with appropriate close code
-- [ ] Handle browser disconnect: close daemon connection, clean up
+- [x] Create Next.js route handler that upgrades HTTP to WebSocket
+- [x] Validate auth on upgrade via NextAuth `auth()` -- reject with 401 if unauthenticated
+- [x] On successful auth, connect to daemon WS at `ws://127.0.0.1:8420/ws`
+- [x] Bridge messages bidirectionally: browser -> daemon, daemon -> browser
+- [x] Inject identity context (`X-Web-User-*` headers) into initial connection or subscription messages
+- [x] Handle daemon disconnect: close browser connection with appropriate close code
+- [x] Handle browser disconnect: close daemon connection, clean up
 
 ### Task 1.3: Add daemon-side reconnection logic
 
 **File(s):** `frontend/app/api/ws/route.ts` (or `frontend/lib/proxy/ws-bridge.ts`)
 
-- [ ] Detect daemon WS disconnect (close event, error event)
-- [ ] Implement exponential backoff reconnection (1s, 2s, 4s, max 30s)
-- [ ] On reconnect: replay active subscriptions to daemon
-- [ ] Track subscription state per browser client for replay
-- [ ] Send reconnection status to browser client (custom message type)
+- [x] Detect daemon WS disconnect (close event, error event)
+- [x] Implement exponential backoff reconnection (1s, 2s, 4s, max 30s)
+- [x] On reconnect: replay active subscriptions to daemon
+- [x] Track subscription state per browser client for replay
+- [x] Send reconnection status to browser client (custom message type)
 
 ### Task 1.4: Test WebSocket bridge
 
