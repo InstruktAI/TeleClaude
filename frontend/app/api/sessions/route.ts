@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
         thinking_mode,
         launch_kind,
         title,
-        initial_message: message,
+        message,
         human_email: session.user.email,
         human_role: session.user.role,
       },
