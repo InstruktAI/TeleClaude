@@ -67,7 +67,7 @@ Apply to:
 
 ## Phase 2: Sidebar layout
 
-- [ ] ### Task 2.1: Layout restructure
+- [x] ### Task 2.1: Layout restructure
 
 **Files:**
 
@@ -93,7 +93,7 @@ Remove `SessionPicker` from page.tsx — its functionality moves into the sideba
 
 **Verification:** Sidebar visible on all chat pages. Main area fills remaining width.
 
-- [ ] ### Task 2.2: Session list component
+- [x] ### Task 2.2: Session list component
 
 **File:** `frontend/components/SessionList.tsx` (new)
 
@@ -118,7 +118,7 @@ Status badges:
 
 **Verification:** Sessions render with correct metadata. Selection highlights correctly.
 
-- [ ] ### Task 2.3: Responsive sidebar
+- [x] ### Task 2.3: Responsive sidebar
 
 **File:** `frontend/components/Sidebar.tsx`
 
