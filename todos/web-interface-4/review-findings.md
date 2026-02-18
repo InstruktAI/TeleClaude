@@ -118,3 +118,26 @@ No circular dependency risk exists. Move to top-level import for clarity and con
 **File:** `frontend/components/sidebar/Sidebar.tsx:35-41`
 
 Mobile overlay lacks keyboard focus trapping. Screen reader and keyboard users can interact with content behind the drawer.
+
+---
+
+## Fixes Applied
+
+| Issue                                                  | Fix                                                                                                                                | Commit     |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| C1: `visibility` not mapped through `_to_core_session` | Added `visibility: Optional[str]` field to `core.models.Session` dataclass and mapped `row.visibility` in `Db._to_core_session`    | `52780e12` |
+| C2: POST proxy drops 5 of 7 fields                     | Updated proxy to forward `project_path`, `agent`, `thinking_mode`, `launch_kind`; aligned field name `message` → `initial_message` | `1280e864` |
+| I1: `/keys`, `/voice`, `/file` lack access checks      | Added `check_session_access` call to all three session-scoped input endpoints                                                      | `c270b40c` |
+| I2: WebSocket `sessions_initial` skips role filtering  | Inline member/admin visibility filter in `_send_initial_state` using `websocket.headers`                                           | `81d6a0a6` |
+| I3: `handleEndSession` silently swallows errors        | Added `endError` state; shows error message on 4xx/5xx response                                                                    | `5b58b713` |
+| I4: No cache invalidation after session delete         | Added `queryClient.invalidateQueries({ queryKey: ["sessions"] })` before router push                                               | `5b58b713` |
+| I5: `fetchSessions` duplicated across 3 components     | Extracted to `frontend/lib/api/sessions.ts`; updated all three consumers                                                           | `eddbea8b` |
+| I6: Fetch effects lack AbortController                 | Added `AbortController` with cleanup to both `useEffect` hooks in `NewSessionDialog`                                               | `2188d9c2` |
+| I7: Projects "Loading..." permanent on error           | Added separate `projectsLoading`/`projectsError` state; shows "Failed to load projects"                                            | `2188d9c2` |
+| I8: No tests for session access control                | Created `tests/unit/test_session_access.py` with 9 tests — all passing                                                             | `cf602c29` |
+| I9: `SessionPicker.tsx` dead code                      | Deleted file                                                                                                                       | `16be2697` |
+
+**Tests:** 9 new tests PASSING. 772 existing tests PASSING. 7 pre-existing failures unaffected.
+**Lint:** PASSING on all commits.
+
+Ready for re-review.
