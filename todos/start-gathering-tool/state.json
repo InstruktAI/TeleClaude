@@ -17,7 +17,8 @@
       "requirements_updated": true,
       "implementation_plan_updated": true,
       "dor_report_updated": true,
-      "gate_validated": true
+      "gate_validated": true,
+      "re_gated_after_scope_expansion": true
     }
   },
   "review_round": 0,
