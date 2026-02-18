@@ -22,7 +22,7 @@
 - [x] Code follows existing patterns and conventions — R1 I5/I9/S4 fixed; lazy imports (S3) non-blocking
 - [x] No security vulnerabilities introduced — R1 C1/I1/I2/I8 fixed; access model verified
 - [x] Error handling is consistent with existing proxy routes — R1 I3/I4/I6/I7 fixed
-- [ ] TypeScript types match Python API models — R2 C1: proxy sends `initial_message`, daemon expects `message`
+- [x] TypeScript types match Python API models — R2 C1 fixed in cb391d49; S1-S4 non-blocking follow-up
 - [x] No breaking changes to existing functionality — TUI/MCP unaffected (header guard correct)
 
 ## Finalize Gates (Finalizer)
