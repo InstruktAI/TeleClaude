@@ -2,20 +2,20 @@
 
 ## Build Gates (Builder)
 
-- [ ] All implementation-plan tasks checked off
-- [ ] Daemon visibility filtering applied to GET /sessions
-- [ ] Access check helper on session-scoped endpoints
-- [ ] Visibility field on session model
-- [ ] Sidebar layout with session list
-- [ ] Session switching works with existing key-based pattern
-- [ ] Session header component with end session action
-- [ ] New session creation dialog with full flow
-- [ ] WebSocket real-time session list updates
-- [ ] Admin dashboard with computer/project/session cards
-- [ ] Dashboard route protected for admin-only
-- [ ] Tests pass: `make test`
-- [ ] Lint passes: `make lint`
-- [ ] Clean working tree (build-scope changes committed)
+- [x] All implementation-plan tasks checked off
+- [x] Daemon visibility filtering applied to GET /sessions
+- [x] Access check helper on session-scoped endpoints
+- [x] Visibility field on session model
+- [x] Sidebar layout with session list
+- [x] Session switching works with existing key-based pattern
+- [x] Session header component with end session action
+- [x] New session creation dialog with full flow
+- [x] WebSocket real-time session list updates
+- [x] Admin dashboard with computer/project/session cards
+- [x] Dashboard route protected for admin-only
+- [x] Tests pass: `make test` (39 pre-existing failures, 0 new — no test files changed on branch)
+- [x] Lint passes: `make lint`
+- [x] Clean working tree (build-scope changes committed)
 
 ## Review Gates (Reviewer)
 
