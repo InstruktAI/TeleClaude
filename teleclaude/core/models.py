@@ -148,6 +148,7 @@ class DiscordAdapterMetadata:
     guild_id: Optional[int] = None
     channel_id: Optional[int] = None
     thread_id: Optional[int] = None
+    all_sessions_thread_id: Optional[int] = None
     output_message_id: Optional[str] = None
     badge_sent: bool = False
     char_offset: int = 0
@@ -315,6 +316,7 @@ class SessionAdapterMetadata:
                     guild_id=_get_int_or_none("guild_id"),
                     channel_id=_get_int_or_none("channel_id"),
                     thread_id=_get_int_or_none("thread_id"),
+                    all_sessions_thread_id=_get_int_or_none("all_sessions_thread_id"),
                     output_message_id=discord_output_message_id,
                     badge_sent=bool(discord_raw.get("badge_sent", False)),
                     char_offset=int(discord_raw.get("char_offset", 0)),

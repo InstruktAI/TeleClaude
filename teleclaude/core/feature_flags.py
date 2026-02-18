@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 THREADED_OUTPUT_EXPERIMENT = "ui_threaded_agent_stop_output"
 THREADED_OUTPUT_INCLUDE_TOOLS_EXPERIMENT = "ui_threaded_agent_stop_output_include_tools"
+DISCORD_PROJECT_FORUM_MIRRORING = "discord_project_forum_mirroring"
 
 
 def _normalize_agent(agent_key: str | None) -> str | None:
@@ -42,6 +43,11 @@ def is_threaded_output_enabled_for_session(session: "Session") -> bool:
     if session.last_input_origin == AdapterType.DISCORD.value:
         return True
     return is_threaded_output_enabled(session.active_agent)
+
+
+def is_discord_project_forum_mirroring_enabled() -> bool:
+    """Return True when project-scoped Discord forum mirroring is enabled."""
+    return config.is_experiment_enabled(DISCORD_PROJECT_FORUM_MIRRORING)
 
 
 def is_threaded_output_include_tools_enabled(agent_key: str | None) -> bool:

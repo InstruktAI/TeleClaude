@@ -174,6 +174,7 @@ class DiscordConfig:
     guild_id: int | None
     help_desk_channel_id: int | None
     escalation_channel_id: int | None
+    all_sessions_channel_id: int | None
 
 
 @dataclass
@@ -350,6 +351,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "guild_id": None,
         "help_desk_channel_id": None,
         "escalation_channel_id": None,
+        "all_sessions_channel_id": None,
     },
     "creds": {
         "telegram": None,
@@ -660,6 +662,11 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             ),
             escalation_channel_id=(
                 _parse_optional_int(discord_raw.get("escalation_channel_id")) if isinstance(discord_raw, dict) else None
+            ),
+            all_sessions_channel_id=(
+                _parse_optional_int(discord_raw.get("all_sessions_channel_id"))
+                if isinstance(discord_raw, dict)
+                else None
             ),
         ),
         creds=CredsConfig(telegram=tg_creds),

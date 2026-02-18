@@ -61,6 +61,9 @@ class DiscordAdapter(UiAdapter):
         self._help_desk_channel_id = config.discord.help_desk_channel_id or self._parse_optional_int(
             os.getenv("DISCORD_HELP_DESK_CHANNEL_ID")
         )
+        self._all_sessions_channel_id = config.discord.all_sessions_channel_id or self._parse_optional_int(
+            os.getenv("DISCORD_ALL_SESSIONS_CHANNEL_ID")
+        )
         self._gateway_task: asyncio.Task[object] | None = None
         self._ready_event = asyncio.Event()
         self._client: DiscordClientLike | None = None
@@ -134,14 +137,35 @@ class DiscordAdapter(UiAdapter):
         if discord_meta.thread_id is not None:
             return session
 
-        if self._help_desk_channel_id is not None:
-            from teleclaude.core.models import ChannelMetadata
+        # Route to the correct forum based on session type
+        target_forum_id = self._resolve_target_forum(session)
+        if target_forum_id is None:
+            return session
 
-            await self.create_channel(session, title, ChannelMetadata(origin=False))
-            refreshed = await db.get_session(session.session_id)
-            return refreshed or session
+        from teleclaude.core.models import ChannelMetadata
 
-        return session
+        await self.create_channel(session, title, ChannelMetadata(origin=False))
+        refreshed = await db.get_session(session.session_id)
+
+        # Future: project-scoped forum mirroring (gated by discord_project_forum_mirroring experiment)
+        # if is_discord_project_forum_mirroring_enabled():
+        #     await self._mirror_to_project_forum(session, title)
+
+        return refreshed or session
+
+    def _resolve_target_forum(self, session: "Session") -> int | None:
+        """Determine which Discord forum this session's thread belongs in."""
+        if self._is_customer_session(session):
+            return self._help_desk_channel_id
+        return self._all_sessions_channel_id
+
+    def _is_customer_session(self, session: "Session") -> bool:
+        """Check if session is customer-facing."""
+        if session.human_role == "customer":
+            return True
+        if session.last_input_origin == "discord" and self._help_desk_channel_id is not None:
+            return session.human_role is None or session.human_role == "customer"
+        return False
 
     # --- Per-adapter output message tracking ---
     # Discord uses adapter_metadata instead of the shared DB column
@@ -175,15 +199,16 @@ class DiscordAdapter(UiAdapter):
         if discord_meta.thread_id is not None:
             return str(discord_meta.thread_id)
 
-        if self._help_desk_channel_id is not None:
-            forum = await self._get_channel(self._help_desk_channel_id)
+        target_forum_id = self._resolve_target_forum(session)
+        if target_forum_id is not None:
+            forum = await self._get_channel(target_forum_id)
             if forum is None:
-                raise AdapterError(f"Discord help desk channel {self._help_desk_channel_id} not found")
+                raise AdapterError(f"Discord forum channel {target_forum_id} not found")
             if not self._is_forum_channel(forum):
-                raise AdapterError(f"Discord channel {self._help_desk_channel_id} is not a Forum Channel")
+                raise AdapterError(f"Discord channel {target_forum_id} is not a Forum Channel")
 
             thread_id = await self._create_forum_thread(forum, title=title)
-            discord_meta.channel_id = self._help_desk_channel_id
+            discord_meta.channel_id = target_forum_id
             discord_meta.thread_id = thread_id
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
             return str(thread_id)
@@ -782,6 +807,97 @@ class DiscordAdapter(UiAdapter):
     @staticmethod
     def _is_forum_channel(channel: object) -> bool:
         return "forum" in type(channel).__name__.lower()
+
+    # =========================================================================
+    # Stale Thread Cleanup
+    # =========================================================================
+
+    async def cleanup_stale_resources(self) -> int:
+        """Scan Discord forums and clean up orphan/stale threads."""
+        if self._client is None:
+            return 0
+
+        cleaned = 0
+        for forum_id, match_field in [
+            (self._help_desk_channel_id, "thread_id"),
+            (self._all_sessions_channel_id, "thread_id"),
+            (config.discord.escalation_channel_id, "relay"),
+        ]:
+            if forum_id is None:
+                continue
+            cleaned += await self._cleanup_forum_threads(forum_id, match_field)
+
+        return cleaned
+
+    async def _cleanup_forum_threads(self, forum_id: int, match_type: str) -> int:
+        """Scan a single forum for orphan/stale threads and delete them.
+
+        Collects both active and archived threads, then deletes any
+        that have no corresponding active session in the database.
+        """
+        forum = await self._get_channel(forum_id)
+        if forum is None or not self._is_forum_channel(forum):
+            return 0
+
+        # Collect active threads
+        all_threads: list[object] = []
+        active_threads = getattr(forum, "threads", None)
+        if isinstance(active_threads, list):
+            all_threads.extend(active_threads)
+
+        # Collect archived threads
+        archived_fn = getattr(forum, "archived_threads", None)
+        if callable(archived_fn):
+            try:
+                archived_iter = cast(AsyncIterator[object], archived_fn(limit=100))
+                async for thread in archived_iter:
+                    all_threads.append(thread)
+            except Exception as exc:
+                logger.debug("Failed to fetch archived threads for forum %s: %s", forum_id, exc)
+
+        cleaned = 0
+        for thread in all_threads:
+            thread_id = self._parse_optional_int(getattr(thread, "id", None))
+            if thread_id is None:
+                continue
+
+            ownership = await self._thread_ownership(thread_id, match_type)
+            if ownership != "closed":
+                # "active" → keep, "unknown" → not ours, skip
+                continue
+
+            try:
+                delete_fn = self._require_async_callable(getattr(thread, "delete", None), label="thread delete")
+                await delete_fn()
+                cleaned += 1
+                logger.info("Deleted orphan Discord thread %s in forum %s", thread_id, forum_id)
+            except Exception as exc:
+                logger.warning("Failed to delete thread %s: %s", thread_id, exc)
+
+            await asyncio.sleep(0.5)
+
+        return cleaned
+
+    async def _thread_ownership(self, thread_id: int, match_type: str) -> str:
+        """Classify a Discord thread's ownership.
+
+        Returns:
+            "active"  — thread belongs to a live session, keep it
+            "closed"  — thread belongs to a closed session, safe to delete
+            "unknown" — no session record found, not ours, leave it alone
+        """
+        if match_type == "relay":
+            session = await db.get_session_by_field("relay_discord_channel_id", str(thread_id))
+            if session is None:
+                return "unknown"
+            return "active" if session.relay_status == "active" else "closed"
+
+        sessions = await db.get_sessions_by_adapter_metadata("discord", "thread_id", thread_id, include_closed=True)
+        if not sessions:
+            return "unknown"
+        if any(s.closed_at is None for s in sessions):
+            return "active"
+        return "closed"
 
     # =========================================================================
     # Relay Methods

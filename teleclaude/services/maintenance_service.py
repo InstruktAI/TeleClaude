@@ -8,6 +8,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import get_agent_command
@@ -55,6 +56,7 @@ class MaintenanceService:
                 await session_cleanup.cleanup_orphan_mcp_wrappers()
                 await db.cleanup_stale_voice_assignments()
                 await self._check_idle_compaction()
+                await self._cleanup_adapter_resources()
 
             except asyncio.CancelledError:
                 break
@@ -193,6 +195,17 @@ class MaintenanceService:
                 idle_seconds=idle_duration.total_seconds(),
                 human_role=session.human_role,
             )
+
+    async def _cleanup_adapter_resources(self) -> None:
+        """Run cleanup on each registered UI adapter."""
+        for adapter_type, adapter in self._client.adapters.items():
+            if isinstance(adapter, UiAdapter):
+                try:
+                    cleaned = await adapter.cleanup_stale_resources()
+                    if cleaned > 0:
+                        logger.info("Adapter %s cleaned %d stale resources", adapter_type, cleaned)
+                except Exception as exc:
+                    logger.warning("Adapter %s cleanup failed: %s", adapter_type, exc)
 
     async def ensure_tmux_session(self, session: Session) -> bool:
         working_dir = resolve_working_dir(session.project_path, session.subdir)

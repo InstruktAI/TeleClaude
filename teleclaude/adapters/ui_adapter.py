@@ -88,6 +88,10 @@ class UiAdapter(BaseAdapter):
 
     # === Adapter Metadata Helpers ===
 
+    async def cleanup_stale_resources(self) -> int:
+        """Clean up adapter-specific stale resources. Returns count of cleaned items."""
+        return 0
+
     async def ensure_channel(self, session: "Session", title: str) -> "Session":
         """Ensure adapter-specific channel exists (default no-op)."""
         _ = title
