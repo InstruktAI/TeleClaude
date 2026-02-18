@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.docs_index import CLEARANCE_TO_AUDIENCE, DEFAULT_CLEARANCE, build_index_payload
+from teleclaude.docs_index import DEFAULT_ROLE, build_index_payload
 
 
 def _write(path: Path, content: str) -> None:
@@ -42,48 +42,46 @@ def test_sync_resources_resolves_requires(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Clearance-to-audience derivation tests
+# Role derivation tests
 # ---------------------------------------------------------------------------
 
 
-def test_clearance_public_derives_full_audience(tmp_path: Path) -> None:
-    """Snippet with clearance: public gets audience visible to all roles."""
+def test_role_public_stored_in_index(tmp_path: Path) -> None:
+    """Snippet with role: public stores that role in the index entry."""
     project_root = tmp_path
     snippets_root = project_root / "docs"
 
     _write(
         snippets_root / "domain" / "faq.md",
         "---\nid: domain/faq\ntype: spec\nscope: project\n"
-        "description: Public FAQ\nclearance: public\n---\n# FAQ\n\nFAQ content\n",
+        "description: Public FAQ\nrole: public\n---\n# FAQ\n\nFAQ content\n",
     )
     _write(snippets_root / "baseline" / "identity.md", "# Baseline\n")
 
     payload = build_index_payload(project_root, snippets_root)
     entry = next(e for e in payload["snippets"] if e["id"] == "domain/faq")
-    assert entry["audience"] == CLEARANCE_TO_AUDIENCE["public"]
-    assert entry.get("clearance") == "public"
+    assert entry.get("role") == "public"
 
 
-def test_clearance_admin_derives_admin_only_audience(tmp_path: Path) -> None:
-    """Snippet with clearance: admin only visible to admin."""
+def test_role_admin_stored_in_index(tmp_path: Path) -> None:
+    """Snippet with role: admin stores that role in the index entry."""
     project_root = tmp_path
     snippets_root = project_root / "docs"
 
     _write(
         snippets_root / "domain" / "secrets.md",
         "---\nid: domain/secrets\ntype: spec\nscope: project\n"
-        "description: Admin secrets\nclearance: admin\n---\n# Secrets\n\nSecret content\n",
+        "description: Admin secrets\nrole: admin\n---\n# Secrets\n\nSecret content\n",
     )
     _write(snippets_root / "baseline" / "identity.md", "# Baseline\n")
 
     payload = build_index_payload(project_root, snippets_root)
     entry = next(e for e in payload["snippets"] if e["id"] == "domain/secrets")
-    assert entry["audience"] == ["admin"]
-    assert entry.get("clearance") == "admin"
+    assert entry.get("role") == "admin"
 
 
-def test_no_clearance_defaults_to_member(tmp_path: Path) -> None:
-    """Snippet without clearance or audience defaults to member clearance."""
+def test_no_role_defaults_to_member(tmp_path: Path) -> None:
+    """Snippet without role defaults to member."""
     project_root = tmp_path
     snippets_root = project_root / "docs"
 
@@ -95,25 +93,4 @@ def test_no_clearance_defaults_to_member(tmp_path: Path) -> None:
 
     payload = build_index_payload(project_root, snippets_root)
     entry = next(e for e in payload["snippets"] if e["id"] == "domain/guide")
-    assert entry["audience"] == CLEARANCE_TO_AUDIENCE[DEFAULT_CLEARANCE]
-    assert entry.get("clearance") == DEFAULT_CLEARANCE
-
-
-def test_explicit_audience_overrides_clearance(tmp_path: Path) -> None:
-    """Explicit audience array takes precedence over clearance derivation."""
-    project_root = tmp_path
-    snippets_root = project_root / "docs"
-
-    _write(
-        snippets_root / "domain" / "custom.md",
-        "---\nid: domain/custom\ntype: spec\nscope: project\n"
-        "description: Custom audience\naudience:\n  - public\n  - member\n"
-        "clearance: admin\n---\n# Custom\n\nCustom content\n",
-    )
-    _write(snippets_root / "baseline" / "identity.md", "# Baseline\n")
-
-    payload = build_index_payload(project_root, snippets_root)
-    entry = next(e for e in payload["snippets"] if e["id"] == "domain/custom")
-    # Explicit audience wins over clearance
-    assert entry["audience"] == ["public", "member"]
-    assert "clearance" not in entry
+    assert entry.get("role") == DEFAULT_ROLE

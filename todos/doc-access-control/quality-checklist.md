@@ -10,11 +10,11 @@
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements met (FR1–FR5)
-- [ ] No regressions in existing audience filtering
-- [ ] Access-denied notice for forbidden Phase 2 requests
-- [ ] CLI gating error message is clear and actionable
-- [ ] Snippet schema docs updated with clearance field
+- [x] Requirements met (FR1–FR5)
+- [x] No regressions in existing role filtering
+- [x] Access-denied notice for forbidden Phase 2 requests
+- [x] CLI gating error message is clear and actionable
+- [x] Snippet schema docs updated with role field
 
 ## Finalize Gates (Finalizer)
 

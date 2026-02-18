@@ -51,8 +51,8 @@ def _check_customer_guard() -> None:
         from teleclaude.core.db import get_session_field_sync
 
         role = get_session_field_sync(config.database.path, session_id, "human_role")
-        if role == "customer":
-            print("Error: Permission denied. This operation requires member or higher clearance.")
+        if role in ("customer", "public"):
+            print("Error: Permission denied. This operation requires member role or higher.")
             raise SystemExit(1)
     except SystemExit:
         raise

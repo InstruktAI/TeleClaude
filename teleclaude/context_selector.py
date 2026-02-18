@@ -10,7 +10,7 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
-from teleclaude.docs_index import extract_required_reads
+from teleclaude.docs_index import ROLE_RANK, extract_required_reads
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.utils import resolve_project_config_path
@@ -27,7 +27,7 @@ class SnippetMeta:
     snippet_type: str
     scope: str
     path: Path
-    audience: tuple[str, ...] = ("admin",)
+    role: str = "admin"
 
 
 @dataclass(frozen=True)
@@ -235,11 +235,8 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
         path = Path(raw_path).expanduser()
         if not path.is_absolute():
             path = (root_path / path).resolve()
-        raw_audience = item.get("audience")
-        if isinstance(raw_audience, list) and all(isinstance(a, str) for a in raw_audience):
-            audience = tuple(raw_audience)
-        else:
-            audience = ("admin",)
+        raw_role = item.get("role")
+        role = raw_role if isinstance(raw_role, str) else "admin"
         entries.append(
             SnippetMeta(
                 snippet_id=snippet_id,
@@ -247,7 +244,7 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
                 snippet_type=snippet_type,
                 scope=scope,
                 path=path,
-                audience=audience,
+                role=role,
             )
         )
 
@@ -437,20 +434,17 @@ def build_context_output(
     if not project_domain_roots:
         project_domain_roots = {d: project_root / "docs" for d in domain_config.keys()}
 
-    # Audience filtering based on human_role (1:1 with clearance levels)
-    if not human_role or human_role == "admin":
-        _allowed_audiences: set[str] | None = None  # see everything
-    elif human_role == "member":
-        _allowed_audiences = {"public", "member"}
-    elif human_role in ("customer", "public"):
-        _allowed_audiences = {"public"}
-    else:
-        _allowed_audiences = None  # unknown role -> see everything
+    # Role filtering: caller's role rank must be >= snippet's required role rank.
+    # No role → public (least privilege). Admin access must be explicit.
+    _caller_role = human_role or "public"
+    if _caller_role in ("customer",):
+        _caller_role = "public"
+    _role_rank = ROLE_RANK.get(_caller_role, 0)
 
     def _include_snippet(snippet: SnippetMeta) -> bool:
-        if _allowed_audiences is not None:
-            if not any(a in _allowed_audiences for a in snippet.audience):
-                return False
+        snippet_rank = ROLE_RANK.get(snippet.role)
+        if snippet_rank is not None and _role_rank < snippet_rank:
+            return False
         if global_snippets_root in snippet.path.parents:
             if snippet.snippet_id.startswith("general/"):
                 return True
@@ -633,7 +627,7 @@ def build_context_output(
                     "---",
                     f"id: {sid}",
                     "access: denied",
-                    "reason: Insufficient clearance for current session role.",
+                    "reason: Insufficient role for current session.",
                     "---",
                 ]
             ).strip()

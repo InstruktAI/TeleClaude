@@ -1,6 +1,6 @@
 """Unit tests for help desk platform features.
 
-Covers identity key derivation, customer role tool filtering, audience-filtered
+Covers identity key derivation, customer role tool filtering, role-filtered
 context selection, channel consumer, bootstrap cleanup, relay sanitization,
 and channel API route guards.
 """
@@ -136,7 +136,7 @@ class SnippetPayload(TypedDict):
     type: str
     scope: str
     path: str
-    audience: list[str]
+    role: str
 
 
 def _write(path: Path, content: str) -> None:
@@ -157,11 +157,11 @@ def _write_index(
     index_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
 
-class TestAudienceFiltering:
-    """Tests for audience-based snippet filtering in build_context_output."""
+class TestRoleFiltering:
+    """Tests for role-based snippet filtering in build_context_output."""
 
     def _setup_snippets(self, tmp_path: Path) -> tuple[Path, Path]:
-        """Create a project with admin-only and public snippets."""
+        """Create a project with admin-only, member, and public role snippets."""
         project_root = tmp_path / "project"
         global_root = tmp_path / "global"
         global_snippets_root = global_root / "agents" / "docs"
@@ -173,17 +173,17 @@ class TestAudienceFiltering:
         _write(
             admin_path,
             "---\nid: project/policy/admin-only\ntype: policy\nscope: project\n"
-            "description: Admin only\naudience: [admin]\n---\n\nSecret admin content.\n",
+            "description: Admin only\nrole: admin\n---\n\nSecret admin content.\n",
         )
         _write(
             public_path,
             "---\nid: project/policy/public-faq\ntype: policy\nscope: project\n"
-            "description: Public FAQ\naudience: [public]\n---\n\nPublic content.\n",
+            "description: Public FAQ\nrole: public\n---\n\nPublic content.\n",
         )
         _write(
             member_path,
             "---\nid: project/policy/member-guide\ntype: policy\nscope: project\n"
-            "description: Member guide\naudience: [member]\n---\n\nMember content.\n",
+            "description: Member guide\nrole: member\n---\n\nMember content.\n",
         )
 
         _write_index(
@@ -196,7 +196,7 @@ class TestAudienceFiltering:
                     "type": "policy",
                     "scope": "project",
                     "path": "docs/project/policy/admin-only.md",
-                    "audience": ["admin"],
+                    "role": "admin",
                 },
                 {
                     "id": "project/policy/public-faq",
@@ -204,7 +204,7 @@ class TestAudienceFiltering:
                     "type": "policy",
                     "scope": "project",
                     "path": "docs/project/policy/public-faq.md",
-                    "audience": ["public"],
+                    "role": "public",
                 },
                 {
                     "id": "project/policy/member-guide",
@@ -212,7 +212,7 @@ class TestAudienceFiltering:
                     "type": "policy",
                     "scope": "project",
                     "path": "docs/project/policy/member-guide.md",
-                    "audience": ["member"],
+                    "role": "member",
                 },
             ],
         )
@@ -221,7 +221,7 @@ class TestAudienceFiltering:
         return project_root, global_snippets_root
 
     def test_customer_sees_only_public(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Customer role sees only public/help-desk snippets."""
+        """Customer role sees only public snippets."""
         project_root, global_snippets_root = self._setup_snippets(tmp_path)
         monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
 
@@ -236,7 +236,7 @@ class TestAudienceFiltering:
         assert "member-guide" not in result
 
     def test_member_sees_public_and_member(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Member role sees member, public, help-desk snippets but NOT admin-only."""
+        """Member role sees member and public snippets but NOT admin-only."""
         project_root, global_snippets_root = self._setup_snippets(tmp_path)
         monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
 
@@ -251,7 +251,7 @@ class TestAudienceFiltering:
         assert "admin-only" not in result
 
     def test_admin_sees_everything(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Admin role sees all snippets regardless of audience."""
+        """Admin role sees all snippets regardless of role level."""
         project_root, global_snippets_root = self._setup_snippets(tmp_path)
         monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
 
@@ -265,8 +265,8 @@ class TestAudienceFiltering:
         assert "member-guide" in result
         assert "admin-only" in result
 
-    def test_newcomer_sees_like_member(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Newcomer role sees same content as member."""
+    def test_unknown_role_sees_only_public(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Unrecognized role defaults to public — least privilege."""
         project_root, global_snippets_root = self._setup_snippets(tmp_path)
         monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
 
@@ -277,7 +277,8 @@ class TestAudienceFiltering:
         )
 
         assert "public-faq" in result
-        assert "member-guide" in result
+        assert "member-guide" not in result
+        assert "admin-only" not in result
 
 
 # =========================================================================
@@ -341,38 +342,28 @@ class TestBootstrapCleanup:
 
     def test_cleanup_on_git_failure(self, tmp_path: Path) -> None:
         """Bootstrap removes partial directory when git commands fail."""
-        from teleclaude.project_setup.help_desk_bootstrap import bootstrap_help_desk
+        import subprocess
 
-        template_dir = tmp_path / "teleclaude" / "templates" / "help-desk"
-        template_dir.mkdir(parents=True)
-        (template_dir / "README.md").write_text("# Help Desk\n")
+        from teleclaude.project_setup.help_desk_bootstrap import bootstrap_help_desk
 
         help_desk_dir = tmp_path / "help-desk"
 
         with (
-            patch("teleclaude.project_setup.help_desk_bootstrap._resolve_help_desk_dir") as mock_resolve,
-            patch("subprocess.run") as mock_run,
+            patch("teleclaude.project_setup.help_desk_bootstrap._resolve_help_desk_dir", return_value=help_desk_dir),
+            patch("teleclaude.project_setup.help_desk_bootstrap.shutil.copytree", side_effect=lambda s, d: d.mkdir()),
+            patch(
+                "teleclaude.project_setup.help_desk_bootstrap.subprocess.run",
+                side_effect=[
+                    None,  # git init
+                    None,  # git add
+                    subprocess.CalledProcessError(1, "git commit"),
+                ],
+            ),
+            patch("teleclaude.project_setup.init_flow.init_project"),
         ):
-            mock_resolve.return_value = help_desk_dir
-            # First call (git init) succeeds, second (git add) fails
-            mock_run.side_effect = [
-                MagicMock(returncode=0),
-                MagicMock(returncode=0),
-                Exception("git commit failed"),
-            ]
-            # subprocess.run with check=True raises CalledProcessError
-            import subprocess
-
-            mock_run.side_effect = [
-                None,  # git init succeeds
-                None,  # git add succeeds
-                subprocess.CalledProcessError(1, "git commit"),
-            ]
-
             with pytest.raises(subprocess.CalledProcessError):
-                bootstrap_help_desk(tmp_path / "teleclaude")
+                bootstrap_help_desk()
 
-            # Directory should be cleaned up
             assert not help_desk_dir.exists()
 
     def test_idempotent_skip_existing(self, tmp_path: Path) -> None:
@@ -385,7 +376,7 @@ class TestBootstrapCleanup:
         with patch("teleclaude.project_setup.help_desk_bootstrap._resolve_help_desk_dir") as mock_resolve:
             mock_resolve.return_value = help_desk_dir
             # Should not raise, just skip
-            bootstrap_help_desk(tmp_path / "teleclaude")
+            bootstrap_help_desk()
 
         assert help_desk_dir.exists()
 

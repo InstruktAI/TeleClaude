@@ -22,17 +22,14 @@ from teleclaude.constants import TYPE_SUFFIX
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.snippet_validation import load_domains  # noqa: F401 — re-exported for callers
 
-__all__ = ["load_domains"]
+__all__ = ["DEFAULT_ROLE", "ROLE_LEVELS", "ROLE_RANK", "load_domains"]
 
 logger = get_logger(__name__)
 
-# Clearance hierarchy: 1:1 with roles. The clearance value IS the minimum role.
-CLEARANCE_TO_AUDIENCE: dict[str, list[str]] = {
-    "public": ["public", "member", "admin"],
-    "member": ["member", "admin"],
-    "admin": ["admin"],
-}
-DEFAULT_CLEARANCE = "member"
+# Role hierarchy: the minimum role required to see a snippet.
+ROLE_LEVELS = ("public", "member", "admin")
+ROLE_RANK: dict[str, int] = {level: i for i, level in enumerate(ROLE_LEVELS)}
+DEFAULT_ROLE = "member"
 
 _H1_LINE = re.compile(r"^#\s+")
 
@@ -111,8 +108,7 @@ class SnippetEntry(TypedDict):
     scope: str
     path: str
     source_project: NotRequired[str]
-    audience: NotRequired[list[str]]
-    clearance: NotRequired[str]
+    role: NotRequired[str]
 
 
 class IndexPayload(TypedDict):
@@ -574,18 +570,12 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             "scope": snippet_scope,
             "path": relative_path,
         }
-        # Derive effective audience from clearance/audience frontmatter.
-        # Priority: explicit audience > clearance lookup > default clearance.
-        raw_audience = metadata.get("audience")
-        raw_clearance = metadata.get("clearance")
-        if isinstance(raw_audience, list) and all(isinstance(a, str) for a in raw_audience):
-            entry["audience"] = raw_audience
-        elif isinstance(raw_clearance, str) and raw_clearance in CLEARANCE_TO_AUDIENCE:
-            entry["audience"] = CLEARANCE_TO_AUDIENCE[raw_clearance]
-            entry["clearance"] = raw_clearance
+        # Store role from frontmatter, or default.
+        raw_role = metadata.get("role")
+        if isinstance(raw_role, str) and raw_role in ROLE_RANK:
+            entry["role"] = raw_role
         else:
-            entry["audience"] = CLEARANCE_TO_AUDIENCE[DEFAULT_CLEARANCE]
-            entry["clearance"] = DEFAULT_CLEARANCE
+            entry["role"] = DEFAULT_ROLE
         snippets.append(entry)
 
     snippets.sort(key=lambda e: e["id"])

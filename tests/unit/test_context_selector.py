@@ -82,6 +82,7 @@ def test_phase2_returns_snippet_content(tmp_path: Path, monkeypatch: pytest.Monk
         snippet_ids=["software-development/concepts/role"],
         areas=["concept"],
         project_root=project_root,
+        human_role="admin",
     )
 
     assert "software-development/concepts/role" in output
@@ -146,6 +147,7 @@ def test_phase1_returns_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         snippet_ids=None,
         areas=["policy"],
         project_root=project_root,
+        human_role="admin",
     )
 
     assert "PHASE 1" in output
@@ -154,12 +156,12 @@ def test_phase1_returns_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
 
 # ---------------------------------------------------------------------------
-# Clearance / audience filtering tests
+# Role-based filtering tests
 # ---------------------------------------------------------------------------
 
 
-def _setup_multi_clearance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
-    """Create a fixture with admin, member, and public clearance snippets."""
+def _setup_multi_role(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """Create a fixture with admin, member, and public role snippets."""
     project_root = tmp_path / "project"
     global_root = tmp_path / "global"
     global_snippets_root = global_root / "agents" / "docs"
@@ -187,7 +189,7 @@ def _setup_multi_clearance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> t
                 "type": "policy",
                 "scope": "project",
                 "path": "docs/test/admin-only.md",
-                "audience": ["admin"],
+                "role": "admin",
             },
             {
                 "id": "test/member-doc",
@@ -195,7 +197,7 @@ def _setup_multi_clearance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> t
                 "type": "policy",
                 "scope": "project",
                 "path": "docs/test/member-doc.md",
-                "audience": ["member", "admin"],
+                "role": "member",
             },
             {
                 "id": "test/public",
@@ -203,7 +205,7 @@ def _setup_multi_clearance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> t
                 "type": "policy",
                 "scope": "project",
                 "path": "docs/test/public.md",
-                "audience": ["public", "member", "admin"],
+                "role": "public",
             },
         ],
     )
@@ -214,7 +216,7 @@ def _setup_multi_clearance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> t
 
 def test_admin_sees_all_snippets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Admin role sees all snippets in Phase 1 index."""
-    project_root, _ = _setup_multi_clearance(tmp_path, monkeypatch)
+    project_root, _ = _setup_multi_role(tmp_path, monkeypatch)
     output = context_selector.build_context_output(
         snippet_ids=None, areas=[], project_root=project_root, human_role="admin"
     )
@@ -223,9 +225,9 @@ def test_admin_sees_all_snippets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert "test/public" in output
 
 
-def test_member_sees_internal_and_public(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Member role sees internal and public, but not admin-only."""
-    project_root, _ = _setup_multi_clearance(tmp_path, monkeypatch)
+def test_member_sees_member_and_public(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Member role sees member and public, but not admin-only."""
+    project_root, _ = _setup_multi_role(tmp_path, monkeypatch)
     output = context_selector.build_context_output(
         snippet_ids=None, areas=[], project_root=project_root, human_role="member"
     )
@@ -235,8 +237,8 @@ def test_member_sees_internal_and_public(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 def test_customer_sees_only_public(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Customer role only sees public snippets."""
-    project_root, _ = _setup_multi_clearance(tmp_path, monkeypatch)
+    """Customer/public role only sees public snippets."""
+    project_root, _ = _setup_multi_role(tmp_path, monkeypatch)
     output = context_selector.build_context_output(
         snippet_ids=None, areas=[], project_root=project_root, human_role="customer"
     )
@@ -245,20 +247,20 @@ def test_customer_sees_only_public(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert "test/public" in output
 
 
-def test_no_role_sees_everything(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """No human_role (None) sees all snippets — matches admin behavior."""
-    project_root, _ = _setup_multi_clearance(tmp_path, monkeypatch)
+def test_no_role_sees_only_public(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No role (None) defaults to public — least privilege."""
+    project_root, _ = _setup_multi_role(tmp_path, monkeypatch)
     output = context_selector.build_context_output(
         snippet_ids=None, areas=[], project_root=project_root, human_role=None
     )
-    assert "test/admin-only" in output
-    assert "test/member-doc" in output
+    assert "test/admin-only" not in output
+    assert "test/member-doc" not in output
     assert "test/public" in output
 
 
 def test_phase2_access_denied_for_forbidden_snippet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Phase 2 request for a snippet above caller's clearance returns access-denied."""
-    project_root, _ = _setup_multi_clearance(tmp_path, monkeypatch)
+    """Phase 2 request for a snippet above caller's role returns access-denied."""
+    project_root, _ = _setup_multi_role(tmp_path, monkeypatch)
     output = context_selector.build_context_output(
         snippet_ids=["test/admin-only"],
         areas=[],
@@ -272,7 +274,7 @@ def test_phase2_access_denied_for_forbidden_snippet(tmp_path: Path, monkeypatch:
 
 def test_phase2_access_denied_does_not_block_allowed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Phase 2 with a mix of allowed and denied snippets returns content for allowed."""
-    project_root, _ = _setup_multi_clearance(tmp_path, monkeypatch)
+    project_root, _ = _setup_multi_role(tmp_path, monkeypatch)
     output = context_selector.build_context_output(
         snippet_ids=["test/public", "test/admin-only"],
         areas=[],
