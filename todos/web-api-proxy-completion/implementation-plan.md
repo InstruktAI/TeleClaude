@@ -12,8 +12,8 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 
 **File(s):** `frontend/package.json`
 
-- [ ] `pnpm add ws` and `pnpm add -D @types/ws`
-- [ ] Verify `pnpm build` succeeds
+- [x] `pnpm add ws` and `pnpm add -D @types/ws`
+- [x] Verify `pnpm build` succeeds
 
 ### Task 1.2: Implement WebSocket route handler
 
@@ -61,11 +61,11 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 - `frontend/app/api/sessions/[id]/agent-restart/route.ts` -- new
 - `frontend/app/api/sessions/[id]/revive/route.ts` -- new
 
-- [ ] `DELETE /api/sessions/[id]` -> `DELETE /sessions/{id}` (auth + ownership check)
-- [ ] `GET /api/sessions/[id]/messages` -> `GET /sessions/{id}/messages` (auth)
-- [ ] `POST /api/sessions/[id]/agent-restart` -> `POST /sessions/{id}/agent-restart` (admin-only)
-- [ ] `POST /api/sessions/[id]/revive` -> `POST /sessions/{id}/revive` (auth + ownership check)
-- [ ] All routes: auth check, identity headers, `daemonRequest()`, error passthrough
+- [x] `DELETE /api/sessions/[id]` -> `DELETE /sessions/{id}` (auth + ownership check)
+- [x] `GET /api/sessions/[id]/messages` -> `GET /sessions/{id}/messages` (auth)
+- [x] `POST /api/sessions/[id]/agent-restart` -> `POST /sessions/{id}/agent-restart` (admin-only)
+- [x] `POST /api/sessions/[id]/revive` -> `POST /sessions/{id}/revive` (auth + ownership check)
+- [x] All routes: auth check, identity headers, `daemonRequest()`, error passthrough
 
 ### Task 2.2: Resource list routes
 
@@ -76,19 +76,19 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 - `frontend/app/api/todos/route.ts` -- new
 - `frontend/app/api/agents/availability/route.ts` -- new
 
-- [ ] `GET /api/computers` -> `GET /computers` (auth)
-- [ ] `GET /api/projects` -> `GET /projects` (auth)
-- [ ] `GET /api/todos` -> `GET /todos` (auth)
-- [ ] `GET /api/agents/availability` -> `GET /agents/availability` (auth)
-- [ ] All routes: auth check, identity headers, `daemonRequest()`, error passthrough
+- [x] `GET /api/computers` -> `GET /computers` (auth)
+- [x] `GET /api/projects` -> `GET /projects` (auth)
+- [x] `GET /api/todos` -> `GET /todos` (auth)
+- [x] `GET /api/agents/availability` -> `GET /agents/availability` (auth)
+- [x] All routes: auth check, identity headers, `daemonRequest()`, error passthrough
 
 ### Task 2.3: Settings routes
 
 **File(s):** `frontend/app/api/settings/route.ts` -- new
 
-- [ ] `GET /api/settings` -> `GET /settings` (auth)
-- [ ] `PATCH /api/settings` -> `PATCH /settings` (admin-only, field allowlist)
-- [ ] Settings PATCH: allowlist specific fields to prevent injection of unexpected keys
+- [x] `GET /api/settings` -> `GET /settings` (auth)
+- [x] `PATCH /api/settings` -> `PATCH /settings` (admin-only, field allowlist)
+- [x] Settings PATCH: allowlist specific fields to prevent injection of unexpected keys
 
 ### Task 2.4: Test REST proxy routes
 

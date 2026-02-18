@@ -4,28 +4,16 @@ import { auth } from "@/auth";
 import { daemonRequest, normalizeUpstreamError } from "@/lib/proxy/daemon-client";
 import { buildIdentityHeaders } from "@/lib/proxy/identity-headers";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET() {
   const session = await auth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id } = await params;
-  const searchParams = request.nextUrl.searchParams;
-  const qs = new URLSearchParams();
-  for (const key of ["since", "include_tools", "include_thinking"]) {
-    const val = searchParams.get(key);
-    if (val) qs.set(key, val);
-  }
-  const queryStr = qs.toString() ? `?${qs.toString()}` : "";
-
   try {
     const res = await daemonRequest({
       method: "GET",
-      path: `/sessions/${encodeURIComponent(id)}/messages${queryStr}`,
+      path: "/settings",
       headers: buildIdentityHeaders(session),
     });
 
@@ -41,10 +29,7 @@ export async function GET(
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error(
-      `[api/sessions/${id}/messages GET] daemon unreachable:`,
-      (err as Error).message,
-    );
+    console.error("[api/settings GET] daemon unreachable:", (err as Error).message);
     return NextResponse.json(
       { error: "Service unavailable" },
       { status: 503 },
@@ -52,32 +37,47 @@ export async function GET(
   }
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+const ALLOWED_SETTINGS_KEYS = new Set(["tts", "pane_theming_mode"]);
+
+export async function PATCH(request: NextRequest) {
   const session = await auth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id } = await params;
+  if (session.user.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
-  let body;
+  let body: Record<string, unknown>;
   try {
     body = await request.json();
-  } catch (err) {
+  } catch {
     return NextResponse.json(
       { error: "Invalid JSON in request body" },
       { status: 400 },
     );
   }
 
+  const filtered: Record<string, unknown> = {};
+  for (const key of Object.keys(body)) {
+    if (ALLOWED_SETTINGS_KEYS.has(key)) {
+      filtered[key] = body[key];
+    }
+  }
+
+  if (Object.keys(filtered).length === 0) {
+    return NextResponse.json(
+      { error: "No valid settings fields provided" },
+      { status: 400 },
+    );
+  }
+
   try {
     const res = await daemonRequest({
-      method: "POST",
-      path: `/sessions/${encodeURIComponent(id)}/message`,
-      body,
+      method: "PATCH",
+      path: "/settings",
+      body: filtered,
       headers: buildIdentityHeaders(session),
     });
 
@@ -93,10 +93,7 @@ export async function POST(
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error(
-      `[api/sessions/${id}/messages POST] daemon unreachable:`,
-      (err as Error).message,
-    );
+    console.error("[api/settings PATCH] daemon unreachable:", (err as Error).message);
     return NextResponse.json(
       { error: "Service unavailable" },
       { status: 503 },
