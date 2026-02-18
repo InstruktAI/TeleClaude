@@ -583,11 +583,15 @@ class APIServer:
 
         @self.app.post("/sessions/{session_id}/keys")
         async def send_keys_endpoint(  # pyright: ignore
+            http_request: "Request",
             session_id: str,
             request: KeysRequest,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send key command to session."""
+            from teleclaude.api.session_access import check_session_access
+
+            await check_session_access(http_request, session_id)
             try:
                 metadata = self._metadata()
                 args: list[str] = []
@@ -606,11 +610,15 @@ class APIServer:
 
         @self.app.post("/sessions/{session_id}/voice")
         async def send_voice_endpoint(  # pyright: ignore
+            http_request: "Request",
             session_id: str,
             request: VoiceInputRequest,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send voice input to session."""
+            from teleclaude.api.session_access import check_session_access
+
+            await check_session_access(http_request, session_id)
             try:
                 metadata = self._metadata()
                 cmd = CommandMapper.map_api_input(
@@ -632,11 +640,15 @@ class APIServer:
 
         @self.app.post("/sessions/{session_id}/file")
         async def send_file_endpoint(  # pyright: ignore
+            http_request: "Request",
             session_id: str,
             request: FileUploadRequest,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send file input to session."""
+            from teleclaude.api.session_access import check_session_access
+
+            await check_session_access(http_request, session_id)
             try:
                 metadata = self._metadata()
                 cmd = CommandMapper.map_api_input(
