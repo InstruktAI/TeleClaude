@@ -10,7 +10,7 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
-from teleclaude.docs_index import extract_required_reads
+from teleclaude.docs_index import ROLE_RANK, extract_required_reads
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.utils import resolve_project_config_path
@@ -27,7 +27,7 @@ class SnippetMeta:
     snippet_type: str
     scope: str
     path: Path
-    audience: tuple[str, ...] = ("admin",)
+    role: str = "admin"
 
 
 @dataclass(frozen=True)
@@ -235,11 +235,8 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
         path = Path(raw_path).expanduser()
         if not path.is_absolute():
             path = (root_path / path).resolve()
-        raw_audience = item.get("audience")
-        if isinstance(raw_audience, list) and all(isinstance(a, str) for a in raw_audience):
-            audience = tuple(raw_audience)
-        else:
-            audience = ("admin",)
+        raw_role = item.get("role")
+        role = raw_role if isinstance(raw_role, str) else "admin"
         entries.append(
             SnippetMeta(
                 snippet_id=snippet_id,
@@ -247,7 +244,7 @@ def _load_index(index_path: Path) -> list[SnippetMeta]:
                 snippet_type=snippet_type,
                 scope=scope,
                 path=path,
-                audience=audience,
+                role=role,
             )
         )
 
@@ -437,20 +434,17 @@ def build_context_output(
     if not project_domain_roots:
         project_domain_roots = {d: project_root / "docs" for d in domain_config.keys()}
 
-    # Audience filtering based on human_role
-    if not human_role or human_role == "admin":
-        _allowed_audiences: set[str] | None = None  # see everything
-    elif human_role == "customer":
-        _allowed_audiences = {"public", "help-desk"}
-    elif human_role == "member":
-        _allowed_audiences = {"admin", "member", "help-desk", "public"}
-    else:
-        _allowed_audiences = None  # unknown role -> see everything
+    # Role filtering: caller's role rank must be >= snippet's required role rank.
+    # No role → public (least privilege). Admin access must be explicit.
+    _caller_role = human_role or "public"
+    if _caller_role in ("customer",):
+        _caller_role = "public"
+    _role_rank = ROLE_RANK.get(_caller_role, 0)
 
     def _include_snippet(snippet: SnippetMeta) -> bool:
-        if _allowed_audiences is not None:
-            if not any(a in _allowed_audiences for a in snippet.audience):
-                return False
+        snippet_rank = ROLE_RANK.get(snippet.role)
+        if snippet_rank is not None and _role_rank < snippet_rank:
+            return False
         if global_snippets_root in snippet.path.parents:
             if snippet.snippet_id.startswith("general/"):
                 return True
@@ -461,6 +455,8 @@ def build_context_output(
             )
         return True
 
+    # Track all loaded IDs before filtering to distinguish "unknown" from "access denied" in Phase 2
+    all_loaded_ids = {s.snippet_id for s in snippets}
     snippets = [snippet for snippet in snippets if _include_snippet(snippet)]
 
     # Load baseline IDs if baseline_only mode is requested
@@ -527,14 +523,17 @@ def build_context_output(
     third_party_by_id = {e.snippet_id: e for e in third_party_entries}
     valid_ids.update(third_party_by_id.keys())
 
-    invalid_ids = [sid for sid in (snippet_ids or []) if sid not in valid_ids]
-    if invalid_ids:
-        return f"ERROR: Unknown snippet IDs: {', '.join(invalid_ids)}"
+    # Separate unknown IDs from access-denied IDs
+    denied_ids = [sid for sid in (snippet_ids or []) if sid not in valid_ids and sid in all_loaded_ids]
+    unknown_ids = [sid for sid in (snippet_ids or []) if sid not in valid_ids and sid not in all_loaded_ids]
+    if unknown_ids:
+        return f"ERROR: Unknown snippet IDs: {', '.join(unknown_ids)}"
 
-    # Separate taxonomy and third-party selections
+    # Separate taxonomy and third-party selections (exclude denied IDs)
     selected_ids = list(snippet_ids or [])
-    taxonomy_ids = [sid for sid in selected_ids if sid not in third_party_by_id]
-    third_party_ids = [sid for sid in selected_ids if sid in third_party_by_id]
+    allowed_ids = [sid for sid in selected_ids if sid not in denied_ids]
+    taxonomy_ids = [sid for sid in allowed_ids if sid not in third_party_by_id]
+    third_party_ids = [sid for sid in allowed_ids if sid in third_party_by_id]
 
     resolved = _resolve_requires(taxonomy_ids, snippets, global_snippets_root=global_snippets_root)
     _write_test_output(
@@ -619,5 +618,19 @@ def build_context_output(
                 ).strip()
             )
             parts.append(body.lstrip("\n"))
+
+    # Emit access-denied notices for snippets the caller's role cannot see
+    for sid in denied_ids:
+        parts.append(
+            "\n".join(
+                [
+                    "---",
+                    f"id: {sid}",
+                    "access: denied",
+                    "reason: Insufficient role for current session.",
+                    "---",
+                ]
+            ).strip()
+        )
 
     return "\n".join(parts)

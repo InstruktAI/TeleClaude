@@ -28,6 +28,39 @@ from teleclaude.cli.config_handlers import (
 from teleclaude.config.schema import PersonEntry, TelegramCreds
 
 
+def _check_customer_guard() -> None:
+    """Block customer-role sessions from mutating config commands.
+
+    Reads session ID from $TMPDIR/teleclaude_session_id and checks human_role
+    via sync DB lookup. Skips check when not in a session context.
+    """
+    tmpdir = os.environ.get("TMPDIR", "")
+    if not tmpdir:
+        return
+    marker = Path(tmpdir) / "teleclaude_session_id"
+    if not marker.exists():
+        return
+    try:
+        session_id = marker.read_text(encoding="utf-8").strip()
+    except Exception:
+        return
+    if not session_id:
+        return
+    try:
+        from teleclaude.config import config
+        from teleclaude.core.db import get_session_field_sync
+
+        role = get_session_field_sync(config.database.path, session_id, "human_role")
+        if role in ("customer", "public"):
+            print("Error: Permission denied. This operation requires member role or higher.")
+            raise SystemExit(1)
+    except SystemExit:
+        raise
+    except Exception:
+        # DB unavailable or session not found — allow (fail open for human terminals)
+        pass
+
+
 @dataclass
 class PersonInfo:
     """JSON-serializable person record."""
@@ -132,6 +165,7 @@ def _parse_kv_args(args: list[str]) -> dict[str, str]:
 
 
 def _people_add(args: list[str], use_json: bool) -> None:
+    _check_customer_guard()
     opts = _parse_kv_args(args)
     name = opts.get("name")
     if not name:
@@ -165,6 +199,7 @@ def _people_add(args: list[str], use_json: bool) -> None:
 
 
 def _people_edit(args: list[str], use_json: bool) -> None:
+    _check_customer_guard()
     if not args:
         print("Error: person name required")
         raise SystemExit(1)
@@ -231,6 +266,7 @@ def _people_edit(args: list[str], use_json: bool) -> None:
 
 
 def _people_remove(args: list[str], use_json: bool) -> None:
+    _check_customer_guard()
     if not args:
         print("Error: person name required")
         raise SystemExit(1)
@@ -309,6 +345,7 @@ def _env_list(use_json: bool) -> None:
 
 
 def _env_set(pairs: list[str], use_json: bool) -> None:
+    _check_customer_guard()
     if not pairs:
         print("Error: provide KEY=VALUE pairs")
         raise SystemExit(1)
@@ -358,6 +395,7 @@ def _write_env_var(env_file: Path, name: str, value: str) -> None:
 
 
 def _handle_notify(args: list[str]) -> None:
+    _check_customer_guard()
     use_json = "--json" in args
     args = [a for a in args if a != "--json"]
 
@@ -433,6 +471,7 @@ def _handle_validate(args: list[str]) -> None:
 
 
 def _handle_invite(args: list[str]) -> None:
+    _check_customer_guard()
     use_json = "--json" in args
     args_clean = [a for a in args if a != "--json"]
 

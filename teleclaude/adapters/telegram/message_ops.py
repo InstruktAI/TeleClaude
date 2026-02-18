@@ -131,6 +131,26 @@ class MessageOperationsMixin:
         reply_markup = metadata.reply_markup
         parse_mode = metadata.parse_mode
 
+        # Special handling for transcription messages (raw text -> Telegram MarkdownV2)
+        if metadata.is_transcription:
+            from teleclaude.utils.markdown import escape_markdown_v2
+
+            # Expected format: Transcribed text:\n\n"{text}"
+            prefix = 'Transcribed text:\n\n"'
+            if text.startswith(prefix) and text.endswith('"'):
+                content = text[len(prefix) : -1]
+                escaped_content = escape_markdown_v2(content)
+                from teleclaude.config import config
+
+                computer_name = config.computer.name
+                # Bold header + Plain content (no italics)
+                text = f'*TELEGRAM @ {computer_name}:*\n\n"{escaped_content}"'
+                parse_mode = "MarkdownV2"
+            else:
+                # Fallback: just escape the whole thing
+                text = escape_markdown_v2(text)
+                parse_mode = "MarkdownV2"
+
         # Truncation is a platform constraint (Telegram max 4096)
         from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 

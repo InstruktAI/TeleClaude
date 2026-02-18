@@ -20,7 +20,6 @@ from teleclaude.core.db import db
 from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.models import MessageMetadata
 from teleclaude.stt.backends import BACKENDS, STTBackend
-from teleclaude.utils.markdown import escape_markdown_v2
 
 if TYPE_CHECKING:
     pass
@@ -187,10 +186,11 @@ async def handle_voice(
     # Voice message accepted - transcribe and forward through message pipeline.
 
     # Send transcribing status if notice channel is available
+    # Mark as "next_notice" so it is cleaned up when transcribed text arrives
     msg_id = await send_message(
         session_id,
         "🎤 Transcribing...",
-        MessageMetadata(parse_mode=None),
+        MessageMetadata(parse_mode=None, cleanup_trigger="next_notice"),
     )
     if msg_id is None:
         logger.info(
@@ -220,13 +220,14 @@ async def handle_voice(
         )
         return None
 
-    # Send transcribed text back to UI (quoted + italics)
-    escaped_text = escape_markdown_v2(text)
-    transcribed_message = f'*Transcribed text:*\n\n_"{escaped_text}"_'
+    # Send transcribed text back to UI (Raw).
+    # Adapters will format/escape based on is_transcription flag.
+    transcribed_message = f'Transcribed text:\n\n"{text}"'
+    # Mark as "next_turn" so it persists as user input until next turn
     await send_message(
         session_id,
         transcribed_message,
-        MessageMetadata(parse_mode="MarkdownV2"),
+        MessageMetadata(parse_mode=None, is_transcription=True, cleanup_trigger="next_turn"),
     )
 
     if msg_id is not None and delete_message is not None:

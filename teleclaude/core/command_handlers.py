@@ -945,6 +945,12 @@ async def handle_voice(
     if session:
         await client.pre_handle_command(session, cmd.origin)
 
+    # Update origin BEFORE sending feedback so routing targets the correct adapter.
+    # Without this, stale last_input_origin (e.g. "api" from TUI) causes feedback
+    # to broadcast and track wrong message_ids, preventing cleanup.
+    if cmd.origin:
+        await db.update_session(cmd.session_id, last_input_origin=cmd.origin)
+
     async def _send_status(
         session_id: str,
         message: str,
@@ -958,7 +964,6 @@ async def handle_voice(
             session,
             message,
             metadata=metadata,
-            cleanup_trigger=CleanupTrigger.NEXT_TURN,
         )
 
     async def _delete_feedback(session_id: str, message_id: str) -> None:
@@ -966,7 +971,7 @@ async def handle_voice(
         if not session:
             logger.warning("Session %s not found for voice delete", session_id[:8])
             return
-        await client.delete_message(session, str(message_id))
+        await client.delete_message(session, str(message_id), broadcast=False)
 
     context = VoiceEventContext(
         session_id=cmd.session_id,
@@ -990,7 +995,15 @@ async def handle_voice(
     if cmd.message_id:
         session = await db.get_session(cmd.session_id)
         if session:
-            await client.delete_message(session, str(cmd.message_id))
+            await client.delete_message(session, str(cmd.message_id), broadcast=False)
+
+    logger.debug("Forwarding transcribed voice to agent: %s...", transcribed[:50])
+
+    # Reset threaded output state to ensure "Transcribed text" acts as a visual boundary.
+    # The next agent output will start a fresh message block at the bottom.
+    session = await db.get_session(cmd.session_id)
+    if session:
+        await client.break_threaded_turn(session)
 
     await process_message(
         ProcessMessageCommand(session_id=cmd.session_id, text=transcribed, origin=cmd.origin),

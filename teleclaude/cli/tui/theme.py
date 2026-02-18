@@ -591,17 +591,17 @@ _LIGHT_MODE_PAPER_BG = "#fdf6e3"
 # Configurable haze percentages (0.0 to 1.0) per UI state.
 # Agent preview pane states:
 # Inactive panes should stay clearly distinct from active ones.
-_AGENT_PANE_INACTIVE_HAZE_PERCENTAGE = 0.18
+_AGENT_PANE_INACTIVE_HAZE_PERCENTAGE = 0.12 if not _is_dark_mode else 0.24
 # Tree-selected pane gets a lighter visual cue while remaining distinct.
-_AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE = 0.08
+_AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE = 0.04 if not _is_dark_mode else 0.08
 _AGENT_PANE_ACTIVE_HAZE_PERCENTAGE = 0.0
 
 # Status-like background accents:
 _AGENT_STATUS_HAZE_PERCENTAGE = 0.06
 
 # TUI pane inactive haze, split out for mode-specific tuning.
-_TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT = 0.06
-_TUI_INACTIVE_HAZE_PERCENTAGE_DARK = 0.12
+_TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT = 0.04
+_TUI_INACTIVE_HAZE_PERCENTAGE_DARK = 0.08
 # Terminal background hint weight: keep TUI palette stable while honoring terminal tone.
 _TERMINAL_HINT_WEIGHT = 0.35
 # Guardrails to reject hints that conflict with the current mode.

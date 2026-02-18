@@ -162,6 +162,47 @@ class UiAdapter(BaseAdapter):
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
             logger.debug("Cleared footer_message_id: session=%s", session.session_id[:8])
 
+    async def _get_badge_sent(self, session: "Session") -> bool:
+        """Check if session badge has been sent."""
+        fresh = await db.get_session(session.session_id)
+        if fresh:
+            # Sync local session metadata
+            session.adapter_metadata = fresh.adapter_metadata
+
+        if self.ADAPTER_KEY == "telegram":
+            return session.get_metadata().get_ui().get_telegram().badge_sent
+        if self.ADAPTER_KEY == "discord":
+            return session.get_metadata().get_ui().get_discord().badge_sent
+        return False
+
+    async def _set_badge_sent(self, session: "Session", value: bool) -> None:
+        """Update session badge sent status."""
+        if self.ADAPTER_KEY == "telegram":
+            session.get_metadata().get_ui().get_telegram().badge_sent = value
+        elif self.ADAPTER_KEY == "discord":
+            session.get_metadata().get_ui().get_discord().badge_sent = value
+        else:
+            return
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+
+    def _get_char_offset(self, session: "Session") -> int:
+        """Get adapter-specific char offset."""
+        if self.ADAPTER_KEY == "telegram":
+            return session.get_metadata().get_ui().get_telegram().char_offset
+        if self.ADAPTER_KEY == "discord":
+            return session.get_metadata().get_ui().get_discord().char_offset
+        return 0
+
+    async def _set_char_offset(self, session: "Session", value: int) -> None:
+        """Set adapter-specific char offset."""
+        if self.ADAPTER_KEY == "telegram":
+            session.get_metadata().get_ui().get_telegram().char_offset = value
+        elif self.ADAPTER_KEY == "discord":
+            session.get_metadata().get_ui().get_discord().char_offset = value
+        else:
+            return
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+
     async def _cleanup_footer_if_present(self, session: "Session") -> None:
         """Delete and clear any tracked threaded footer message."""
         previous_footer_id = await self._get_footer_message_id(session)
@@ -178,6 +219,11 @@ class UiAdapter(BaseAdapter):
             )
         finally:
             await self._clear_footer_message_id(session)
+
+    async def _move_badge_to_bottom(self, session: "Session") -> None:
+        """Move the session badge to the absolute bottom of the thread."""
+        await self._cleanup_footer_if_present(session)
+        await self._send_footer(session)
 
     async def _clear_output_message_id(self, session: "Session") -> None:
         """Clear output_message_id in dedicated DB column.
@@ -404,43 +450,68 @@ class UiAdapter(BaseAdapter):
         Handles message length limits by splitting into multiple messages
         with "..." continuity markers.
         """
-        # 1. Get current offset and ID
-        char_offset = session.char_offset
-        output_message_id = session.output_message_id
+        # Convert raw Markdown to platform-specific format (e.g. Telegram escaping)
+        # BEFORE any processing. char_offset tracks the CONVERTED text.
+        text = self._convert_markdown_for_platform(text)
+
+        # HARD CLEANUP: Ensure no footer exists in threaded mode.
+        await self._cleanup_footer_if_present(session)
+
+        # 1. Get current offset and ID.
+        # Sync with global char_offset reset signal (from agent_coordinator).
+        if session.char_offset == 0:
+            await self._set_char_offset(session, 0)
+
+        char_offset = self._get_char_offset(session)
+        output_message_id = await self._get_output_message_id(session)
 
         # 2. Slice text to get the "active" portion
         # If text is shorter than offset (e.g. restart?), reset offset
         if len(text) < char_offset:
             char_offset = 0
-            session.char_offset = 0
-            await db.update_session(session.session_id, char_offset=0)
+            await self._set_char_offset(session, 0)
 
         active_text = text[char_offset:]
         if not active_text and output_message_id:
             # No new text, nothing to do
             return output_message_id
 
-        # 3. Add continuity markers (escaped for MarkdownV2 when parse_mode requires it)
-        is_markup_v2 = self._build_metadata_for_thread().parse_mode == "MarkdownV2"
-        ellipsis = "\\.\\.\\." if is_markup_v2 else "..."
-        continuation_prefix = continuation_prefix_for_markdown_v2_state(_continuation_state) if is_markup_v2 else ""
-        body_text = f"{continuation_prefix}{active_text}"
-        display_text = body_text
-        prefix = ""
-        if char_offset > 0:
-            prefix = f"{ellipsis} "
-            display_text = f"{prefix}{body_text}"
+        # 3. Session Badge (Header)
+        # Send ONLY if badge hasn't been sent yet for this session.
+        # This is a static, one-time "Badge" message to identify the session context.
+        if not await self._get_badge_sent(session):
+            badge_text = self._build_session_id_lines(session)
+            if badge_text:
+                # Use client.send_message to ensure fan-out to all adapters.
+                # Mark untracked (ephemeral=False) to keep in history.
+                await self.client.send_message(
+                    session,
+                    badge_text,
+                    metadata=MessageMetadata(parse_mode=None),
+                    cleanup_trigger=CleanupTrigger.NEXT_TURN,
+                    ephemeral=False,  # Static log entry
+                )
+                await self._set_badge_sent(session, True)
 
-        # 4. Check for overflow
-        # Reserve space for suffix " <ellipsis>" if needed
+        # 4. Add continuity markers
+        # Continuity markers (...) are disabled for threaded mode.
+        is_markup_v2 = self._build_metadata_for_thread().parse_mode == "MarkdownV2"
+        continuation_prefix = continuation_prefix_for_markdown_v2_state(_continuation_state) if is_markup_v2 else ""
+
+        # Body contains continuation prefix + active source text
+        body_text = f"{continuation_prefix}{active_text}"
+
+        # Display text is just the body
+        display_text = body_text
+
+        # 5. Check for overflow
         limit = self.max_message_size - 10
 
         if len(display_text) > limit:
             # --- OVERFLOW: SEAL AND SPLIT ---
 
-            # Calculate how much actual text fits (subtracting prefix)
-            suffix = f" {ellipsis}"
-            available_for_content = limit - len(prefix) - len(suffix)
+            # Calculate how much actual text fits
+            available_for_content = limit
             if available_for_content <= 0:
                 available_for_content = 1
 
@@ -452,8 +523,12 @@ class UiAdapter(BaseAdapter):
                     max_chars=available_for_content,
                     suffix="",
                 )
+
+                # consumed_display is the amount of body_text consumed.
+                # Remove continuation_prefix length to get source text consumed.
                 consumed_prefix = min(consumed_display, len(continuation_prefix))
                 split_idx = consumed_display - consumed_prefix
+
                 if split_idx <= 0 and active_text:
                     # Ensure forward progress under pathological inputs.
                     split_idx = min(len(active_text), available_for_content)
@@ -462,22 +537,21 @@ class UiAdapter(BaseAdapter):
                         max_chars=available_for_content,
                         suffix="",
                     )
+
                 consumed_source = active_text[:split_idx]
                 next_state = scan_markdown_v2_state(consumed_source, initial_state=_continuation_state)
             else:
                 # Find split point (smart truncate on space)
                 candidate = active_text[:available_for_content]
                 last_space = candidate.rfind(" ")
-                if last_space > (len(candidate) * 0.8):  # Only split on space if it's near the end
+                if last_space > (len(candidate) * 0.8):
                     split_idx = last_space
                 else:
-                    split_idx = available_for_content  # Hard split if no good space
+                    split_idx = available_for_content
                 chunk = active_text[:split_idx]
                 next_state = _continuation_state
-            sealed_text = f"{prefix}{chunk}{suffix}"
 
-            # Clean up footer before sealing so it doesn't sit between sealed and new message
-            await self._cleanup_footer_if_present(session)
+            sealed_text = chunk
 
             # Commit this chunk
             seal_metadata = self._build_metadata_for_thread()
@@ -489,12 +563,10 @@ class UiAdapter(BaseAdapter):
                 )
                 if new_id:
                     await self._store_output_message_id(session, new_id)
-                    await self._send_footer(session)
 
             # Update state for next message
             new_offset = char_offset + split_idx
-            session.char_offset = new_offset
-            await db.update_session(session.session_id, char_offset=new_offset)
+            await self._set_char_offset(session, new_offset)
             # Clear output_message_id via dedicated column (not adapter_metadata blob)
             await db.set_output_message_id(session.session_id, None)
             session.output_message_id = None  # Keep in-memory session consistent
@@ -517,6 +589,10 @@ class UiAdapter(BaseAdapter):
 
     async def _send_footer(self, session: "Session", status_line: str = "") -> Optional[str]:
         """Send or edit footer message below output."""
+        # Disable floating footer for threaded sessions (header strategy).
+        if is_threaded_output_enabled_for_session(session):
+            return None
+
         footer_text = self._build_footer_text(session, status_line=status_line)
         metadata = self._build_footer_metadata(session)
 
@@ -531,9 +607,14 @@ class UiAdapter(BaseAdapter):
             success = await self.edit_message(session, existing_id, footer_text, metadata=metadata)
             if success:
                 return existing_id
-            # Edit failed (stale message) — clear and fall through to send new
-            logger.debug("[FOOTER] Edit failed for session=%s, creating new", session.session_id[:8])
+            # Edit failed (stale message) — clear tracked ID and skip.
+            # Do NOT fall back to sending a new message here; the next
+            # render cycle will create a fresh footer naturally.
+            logger.debug(
+                "[FOOTER] Edit failed for session=%s, clearing stale id %s", session.session_id[:8], existing_id
+            )
             await self._clear_footer_message_id(session)
+            return None
 
         new_id = await self.send_message(session, footer_text, metadata=metadata)
         logger.debug("[FOOTER] send_message returned %s for session=%s", new_id, session.session_id[:8])
@@ -680,7 +761,6 @@ class UiAdapter(BaseAdapter):
                 session,
                 message,
                 metadata=metadata,
-                cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
             )
 
         # Delegate to utility module

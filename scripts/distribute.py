@@ -463,6 +463,7 @@ def _iter_project_agent_masters(project_root: Path) -> list[Path]:
         ".git",
         ".agents",
         ".history",
+        "templates",
         "trees",
         "__pycache__",
         "dist",

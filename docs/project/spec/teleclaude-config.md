@@ -37,6 +37,11 @@ environment_variables:
   - GOOGLE_API_KEY
   - TELECLAUDE_LOG_LEVEL
   - REDIS_URL
+  - SMTP_HOST
+  - SMTP_PORT
+  - SMTP_USER
+  - SMTP_PASS
+  - EMAIL_FROM
 ```
 
 ## Constraints

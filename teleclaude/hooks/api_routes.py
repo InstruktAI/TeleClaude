@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -38,6 +39,7 @@ class CreateContractRequest(BaseModel):
     source_criterion: dict[str, Any] | None = None  # guard: loose-dict - Pydantic request DTO accepts arbitrary JSON
     type_criterion: dict[str, Any] | None = None  # guard: loose-dict - Pydantic request DTO accepts arbitrary JSON
     properties: dict[str, dict[str, Any]] = {}  # guard: loose-dict - Pydantic request DTO accepts arbitrary JSON
+    ttl_seconds: int | None = None  # time-to-live; None = permanent
 
 
 class ContractResponse(BaseModel):
@@ -50,6 +52,7 @@ class ContractResponse(BaseModel):
     target: dict[str, str | None] = {}  # guard: loose-dict - Pydantic response DTO
     active: bool = True
     created_at: str = ""
+    expires_at: str | None = None
     source: str = "api"
 
 
@@ -65,6 +68,7 @@ def _contract_to_response(contract: Contract) -> ContractResponse:
         target={"handler": contract.target.handler, "url": contract.target.url, "secret": None},
         active=contract.active,
         created_at=contract.created_at,
+        expires_at=contract.expires_at,
         source=contract.source,
     )
 
@@ -112,12 +116,19 @@ async def create_contract(req: CreateContractRequest) -> ContractResponse:
     type_criterion = PropertyCriterion(**req.type_criterion) if req.type_criterion else None
     properties = {k: PropertyCriterion(**v) for k, v in req.properties.items()}
 
+    expires_at: str | None = None
+    if req.ttl_seconds is not None:
+        if req.ttl_seconds <= 0:
+            raise HTTPException(status_code=422, detail="ttl_seconds must be positive")
+        expires_at = (datetime.now(timezone.utc) + timedelta(seconds=req.ttl_seconds)).isoformat()
+
     contract = Contract(
         id=req.id,
         target=target,
         source_criterion=source_criterion,
         type_criterion=type_criterion,
         properties=properties,
+        expires_at=expires_at,
         source="api",
     )
 

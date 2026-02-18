@@ -507,9 +507,39 @@ def ensure_codex_mcp_config(content: str, repo_root: Path) -> str:
     return content
 
 
+def resolve_main_repo_root(start: Path | None = None) -> Path:
+    """Resolve the main git repository root, even from a worktree.
+
+    In a worktree, .git is a file containing 'gitdir: <path>' pointing to
+    main_repo/.git/worktrees/<name>. This reads that file to find the main repo.
+    Pure filesystem — no subprocess, no external deps.
+    """
+    if start is None:
+        start = Path(__file__).resolve().parents[2]
+    current = start
+    while current != current.parent:
+        git_path = current / ".git"
+        if git_path.is_dir():
+            return current
+        if git_path.is_file():
+            try:
+                content = git_path.read_text().strip()
+            except OSError:
+                return current
+            if content.startswith("gitdir:"):
+                gitdir = Path(content.split(":", 1)[1].strip())
+                if not gitdir.is_absolute():
+                    gitdir = (current / gitdir).resolve()
+                for parent in gitdir.parents:
+                    if parent.name == ".git":
+                        return parent.parent
+            return current
+        current = current.parent
+    return start
+
+
 def main() -> None:
-    # Repo root is parent of the teleclaude package directory.
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = resolve_main_repo_root()
     print(f"Configuring hooks from repo: {repo_root}")
 
     configure_claude(repo_root)

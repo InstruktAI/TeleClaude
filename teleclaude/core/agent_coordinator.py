@@ -53,7 +53,6 @@ from teleclaude.services.headless_snapshot_service import HeadlessSnapshotServic
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils import strip_ansi_codes
-from teleclaude.utils.markdown import telegramify_markdown
 from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
     extract_last_agent_message,
@@ -386,9 +385,7 @@ class AgentCoordinator:
                     incoming_input[:50],
                 )
 
-        update_kwargs: dict[str, object] = {  # guard: loose-dict - Dynamic session updates
-            "last_input_origin": InputOrigin.HOOK.value,
-        }
+        update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         if should_update_last_message:
             update_kwargs.update(
                 {
@@ -411,6 +408,12 @@ class AgentCoordinator:
             session_id[:8],
             prompt_text[:50],
         )
+
+        # Reset threaded output state on user input.
+        # This seals the previous agent output block, ensuring the next response
+        # starts a fresh message (append-only flow).
+        if is_threaded_output_enabled_for_session(session):
+            await self.client.break_threaded_turn(session)
 
         # Emit activity event for UI updates.
         # Synthetic Codex prompts are still real input events.
@@ -490,7 +493,6 @@ class AgentCoordinator:
             input_update_kwargs.update(
                 {
                     "last_message_sent": input_text[:200],
-                    "last_input_origin": InputOrigin.HOOK.value,
                 }
             )
             if input_timestamp:
@@ -599,10 +601,13 @@ class AgentCoordinator:
         session = await db.get_session(session_id)
         if session and session.last_tool_use_at:
             logger.debug("tool_use DB write skipped (already set) for session %s", session_id[:8])
-            return
-        now = datetime.now(timezone.utc)
-        await db.update_session(session_id, last_tool_use_at=now.isoformat())
-        logger.debug("tool_use recorded for session %s", session_id[:8])
+        elif session:
+            now = datetime.now(timezone.utc)
+            await db.update_session(session_id, last_tool_use_at=now.isoformat())
+            logger.debug("tool_use recorded for session %s", session_id[:8])
+
+        # Trigger incremental output update so the tool call (wrench) appears immediately.
+        await self._maybe_send_incremental_output(session_id, payload)
 
     async def handle_tool_done(self, context: AgentEventContext) -> None:
         """Handle tool_done event — tool execution completed, output available."""
@@ -656,6 +661,22 @@ class AgentCoordinator:
             transcript_path, agent_name, since_timestamp=session.last_tool_done_at
         )
 
+        # Force a turn break if a new user message is detected in the transcript.
+        # This handles races where the agent starts outputting before the
+        # user_prompt_submit hook has been processed.
+        if session.output_message_id and session.last_tool_done_at:
+            user_msg = extract_last_user_message_with_timestamp(transcript_path, agent_name)
+            if user_msg:
+                _, user_ts = user_msg
+                # If user message is newer than our last rendered assistant block, break the block.
+                if user_ts and user_ts > session.last_tool_done_at:
+                    logger.info("New turn detected in transcript; forcing fresh message block for %s", session_id[:8])
+                    await self.client.break_threaded_turn(session)
+                    # Refresh session to reflect cleared state
+                    session = await db.get_session(session_id)
+                    if not session:
+                        return False
+
         # Decide between clean (single-block) and standard (multi-block) rendering
         # using the number of renderable blocks, not message objects. Gemini often
         # emits multiple events (thinking/tool/text) inside a single assistant message.
@@ -700,8 +721,7 @@ class AgentCoordinator:
 
         if not message:
             # Activity detected but no renderable text (e.g. empty thinking blocks or hidden tool output).
-            # Use a placeholder to ensure the UI shows liveness (and the footer updates).
-            message = "_..._"
+            return False
 
         if message:
             logger.info(
@@ -711,8 +731,9 @@ class AgentCoordinator:
                 is_multi,
             )
             try:
-                # Keep Telegram MarkdownV2 formatting for both renderers.
-                formatted_message = telegramify_markdown(message)
+                # Pass raw Markdown to adapter. The adapter handles platform-specific
+                # conversion (e.g. Telegram MarkdownV2 escaping) internally.
+                formatted_message = message
 
                 # Skip if content unchanged since last send.
                 display_digest = sha256(formatted_message.encode("utf-8")).hexdigest()

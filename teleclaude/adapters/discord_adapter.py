@@ -6,6 +6,8 @@ import asyncio
 import contextlib
 import importlib
 import os
+import tempfile
+from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Protocol, cast
 
@@ -18,7 +20,7 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.models import SessionAdapterMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.types.commands import CreateSessionCommand, ProcessMessageCommand
+from teleclaude.types.commands import CreateSessionCommand, HandleVoiceCommand, ProcessMessageCommand
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -272,6 +274,18 @@ class DiscordAdapter(UiAdapter):
         multi_message: bool = False,
     ) -> str:
         _ = multi_message
+
+        # Format transcribed text with delimiters (Discord compaction workaround)
+        if metadata and metadata.is_transcription:
+            prefix = 'Transcribed text:\n\n"'
+            if text.startswith(prefix) and text.endswith('"'):
+                content = text[len(prefix) : -1]
+                computer_name = config.computer.name
+                # Bold header, plain content (no italics), bottom dash
+                text = f'**DISCORD @ {computer_name}:**\n\n"{content}"\n---'
+
+        logger.debug("[DISCORD SEND] text=%r", text[:100])
+
         destination = await self._resolve_destination_channel(session, metadata=metadata)
         send_fn = self._require_async_callable(getattr(destination, "send", None), label="Discord channel send")
         sent = await send_fn(text)
@@ -288,6 +302,7 @@ class DiscordAdapter(UiAdapter):
         *,
         metadata: "MessageMetadata | None" = None,
     ) -> bool:
+        logger.debug("[DISCORD EDIT] text=%r", text[:100])
         try:
             message = await self._fetch_destination_message(session, message_id, metadata=metadata)
         except AdapterError:
@@ -390,10 +405,6 @@ class DiscordAdapter(UiAdapter):
         if self._is_bot_message(message):
             return
 
-        text = getattr(message, "content", None)
-        if not isinstance(text, str) or not text.strip():
-            return
-
         # Guild verification: drop messages from other guilds
         if self._guild_id is not None:
             msg_guild_id = self._parse_optional_int(getattr(getattr(message, "guild", None), "id", None))
@@ -405,12 +416,24 @@ class DiscordAdapter(UiAdapter):
         channel = getattr(message, "channel", None)
         parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
         if parent_id and parent_id == config.discord.escalation_channel_id:
-            await self._handle_relay_thread_message(message, text)
+            text = getattr(message, "content", None)
+            if isinstance(text, str) and text.strip():
+                await self._handle_relay_thread_message(message, text)
             return
 
         # Channel gating: only process messages from the help desk forum when configured
         if not self._is_help_desk_message(message):
             logger.debug("Ignoring message from non-help-desk channel")
+            return
+
+        # Voice/audio attachment — handle before the text guard
+        audio_attachment = self._extract_audio_attachment(message)
+        if audio_attachment is not None:
+            await self._handle_voice_attachment(message, audio_attachment)
+            return
+
+        text = getattr(message, "content", None)
+        if not isinstance(text, str) or not text.strip():
             return
 
         try:
@@ -484,6 +507,64 @@ class DiscordAdapter(UiAdapter):
             return True
 
         return False
+
+    # =========================================================================
+    # Voice / Audio Handling
+    # =========================================================================
+
+    @staticmethod
+    def _extract_audio_attachment(message: object) -> object | None:
+        """Return the first audio attachment from a Discord message, or None."""
+        attachments = getattr(message, "attachments", None)
+        if not attachments:
+            return None
+        for attachment in attachments:
+            content_type = getattr(attachment, "content_type", None) or ""
+            if content_type.startswith("audio/"):
+                return attachment
+        return None
+
+    async def _handle_voice_attachment(self, message: object, attachment: object) -> None:
+        """Download a voice/audio attachment and dispatch it for transcription."""
+        try:
+            session = await self._resolve_or_create_session(message)
+        except Exception as exc:
+            logger.error("Discord session resolution failed for voice: %s", exc, exc_info=True)
+            return
+        if not session:
+            return
+
+        message_id = str(getattr(message, "id", ""))
+
+        # Derive file extension from the attachment filename or default to .ogg
+        filename = getattr(attachment, "filename", None) or "voice.ogg"
+        ext = Path(filename).suffix or ".ogg"
+
+        temp_dir = Path(tempfile.gettempdir()) / "teleclaude_voice"
+        temp_dir.mkdir(exist_ok=True)
+        temp_file_path = temp_dir / f"voice_{message_id}{ext}"
+
+        try:
+            save_fn = self._require_async_callable(getattr(attachment, "save", None), label="Discord attachment save")
+            await save_fn(temp_file_path)
+            logger.info("Downloaded Discord voice message to: %s", temp_file_path)
+
+            # Discord exposes duration (seconds) on audio attachments
+            raw_duration = getattr(attachment, "duration", None)
+            duration = float(raw_duration) if raw_duration is not None else None
+
+            await get_command_service().handle_voice(
+                HandleVoiceCommand(
+                    session_id=session.session_id,
+                    file_path=str(temp_file_path),
+                    duration=duration,
+                    message_id=message_id,
+                    origin=InputOrigin.DISCORD.value,
+                )
+            )
+        except Exception as exc:
+            error_msg = str(exc) if str(exc).strip() else "Unknown error"
+            logger.error("Failed to process Discord voice message: %s", error_msg, exc_info=True)
 
     async def _resolve_or_create_session(self, message: object) -> "Session | None":
         user_id = str(getattr(getattr(message, "author", None), "id", ""))

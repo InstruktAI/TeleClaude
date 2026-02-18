@@ -44,21 +44,25 @@ def bootstrap_help_desk() -> None:
     # Copy templates
     shutil.copytree(template_dir, help_desk_dir)
 
-    # git init
-    subprocess.run(["git", "init"], cwd=help_desk_dir, check=True, capture_output=True)
+    try:
+        # git init
+        subprocess.run(["git", "init"], cwd=help_desk_dir, check=True, capture_output=True)
 
-    # Run telec init inside the new directory
-    from teleclaude.project_setup.init_flow import init_project
+        # Run telec init inside the new directory
+        from teleclaude.project_setup.init_flow import init_project
 
-    init_project(help_desk_dir)
+        init_project(help_desk_dir)
 
-    # Initial commit
-    subprocess.run(["git", "add", "."], cwd=help_desk_dir, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-m", "Initial help desk scaffold"],
-        cwd=help_desk_dir,
-        check=True,
-        capture_output=True,
-    )
+        # Initial commit
+        subprocess.run(["git", "add", "."], cwd=help_desk_dir, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial help desk scaffold"],
+            cwd=help_desk_dir,
+            check=True,
+            capture_output=True,
+        )
+    except Exception:
+        shutil.rmtree(help_desk_dir, ignore_errors=True)
+        raise
 
     logger.info("help_desk_bootstrap_complete", path=str(help_desk_dir))
