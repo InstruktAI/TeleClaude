@@ -19,11 +19,11 @@
 
 ## Review Gates (Reviewer)
 
-- [ ] Code follows existing patterns and conventions
-- [ ] No security vulnerabilities introduced
-- [ ] Error handling is consistent with existing proxy routes
-- [ ] TypeScript types match Python API models
-- [ ] No breaking changes to existing functionality
+- [ ] Code follows existing patterns and conventions — fetchSessions triplicated (I5), lazy imports inconsistent (S4), dead SessionPicker.tsx (I9)
+- [ ] No security vulnerabilities introduced — visibility not mapped through core Session (C1), /keys /voice /file lack access checks (I1), WS sessions_initial skips filtering (I2)
+- [ ] Error handling is consistent with existing proxy routes — DELETE error swallowed (I3), no cache invalidation after delete (I4), projects loading forever on error (I7)
+- [ ] TypeScript types match Python API models — types align, but proxy drops fields (C2)
+- [ ] No breaking changes to existing functionality — TUI/MCP unaffected (header guard correct)
 
 ## Finalize Gates (Finalizer)
 
