@@ -44,6 +44,12 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 
 After every finalize, produce a stored demo artifact — a rich five-act presentation of what was built. Users browse and watch demos at their leisure. Includes `/next-demo` command, `demos/` artifact storage, orchestration wiring (between finalize and cleanup), widget rendering, and lifecycle doc updates.
 
+## Agent Direct Conversation
+
+- direct-conversation-flag
+
+Add `direct` boolean parameter to `teleclaude__send_message` and `teleclaude__start_session`. When true, skip listener registration for clean peer-to-peer agent communication without automatic notification subscriptions.
+
 ## Rolling Session Titles
 
 - rolling-session-titles

@@ -21,6 +21,19 @@
   "help-desk-whatsapp": [
     "help-desk-research"
   ],
+  "mcp-migration-agent-config": [
+    "mcp-migration-context-integration"
+  ],
+  "mcp-migration-context-integration": [
+    "mcp-migration-tc-cli",
+    "mcp-migration-tool-spec-docs"
+  ],
+  "mcp-migration-delete-mcp": [
+    "mcp-migration-agent-config"
+  ],
+  "mcp-migration-doc-updates": [
+    "mcp-migration-delete-mcp"
+  ],
   "person-identity-auth-2": [
     "person-identity-auth-1"
   ],

@@ -78,6 +78,14 @@ snippets:
   path: docs/general/principle/autonomy.md
   role: member
   source_project: TeleClaude
+- id: general/principle/breath
+  description: The rhythm of divergence, hold, and convergence that underlies all
+    creative and engineering work.
+  type: principle
+  scope: global
+  path: docs/general/principle/breath.md
+  role: member
+  source_project: TeleClaude
 - id: general/principle/continuity
   description: Agent identity persists through evidence, not sensation. Read the proof
     of who you are.
@@ -138,6 +146,14 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/agent-artifact-authoring.md
+  role: member
+  source_project: TeleClaude
+- id: general/procedure/agent-direct-conversation
+  description: Peer-to-peer agent messaging via session IDs, severing notification
+    subscriptions, with strict message discipline.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/agent-direct-conversation.md
   role: member
   source_project: TeleClaude
 - id: general/procedure/agent-job-hygiene
@@ -521,6 +537,14 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/deferrals.md
+  role: member
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/demo
+  description: Celebrate delivered work with a visual demo presented by the AI. Mandatory
+    after every finalize.
+  type: procedure
+  scope: project
+  path: docs/software-development/procedure/lifecycle/demo.md
   role: member
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/documentation/sync-docs
