@@ -138,26 +138,26 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 
 **File(s):** `frontend/lib/ws/WebSocketProvider.tsx`, `frontend/lib/ws/useWebSocket.ts`
 
-- [ ] Create `WebSocketProvider` that manages a single WS connection per authenticated session
-- [ ] `useWebSocket()` hook exposes: `status`, `subscribe()`, `unsubscribe()`, `lastEvent`
-- [ ] Connection states: `connecting`, `connected`, `reconnecting`, `disconnected`
-- [ ] Auto-connect on mount, auto-disconnect on unmount
-- [ ] Reconnection with exponential backoff (mirrors server-side logic)
+- [x] Create `WebSocketProvider` that manages a single WS connection per authenticated session
+- [x] `useWebSocket()` hook exposes: `status`, `subscribe()`, `unsubscribe()`, `lastEvent`
+- [x] Connection states: `connecting`, `connected`, `reconnecting`, `disconnected`
+- [x] Auto-connect on mount, auto-disconnect on unmount
+- [x] Reconnection with exponential backoff (mirrors server-side logic)
 
 ### Task 4.2: Event type definitions
 
 **File(s):** `frontend/lib/ws/types.ts`
 
-- [ ] Define TypeScript types for daemon WS messages: subscription request/response, session events, computer events, error messages
-- [ ] Match daemon's `SessionSummaryDTO`, `ComputerDTO` shapes
-- [ ] Type-safe event dispatcher
+- [x] Define TypeScript types for daemon WS messages: subscription request/response, session events, computer events, error messages
+- [x] Match daemon's `SessionSummaryDTO`, `ComputerDTO` shapes
+- [x] Type-safe event dispatcher
 
 ### Task 4.3: Integrate WebSocket provider into app layout
 
 **File(s):** `frontend/app/(chat)/layout.tsx`
 
-- [ ] Wrap authenticated layout with `<WebSocketProvider>`
-- [ ] Connection status available to all child components
+- [x] Wrap authenticated layout with `<WebSocketProvider>`
+- [x] Connection status available to all child components
 
 **Verification:** Browser connects to WS on login, receives real-time session events, reconnects after daemon restart.
 
