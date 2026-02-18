@@ -23,6 +23,9 @@ importers:
       '@auth/drizzle-adapter':
         specifier: ^1
         version: 1.11.1(nodemailer@6.10.1)
+      '@tanstack/react-query':
+        specifier: ^5.90.21
+        version: 5.90.21(react@19.2.4)
       ai:
         specifier: ^6.0.86
         version: 6.0.86(zod@3.25.76)
@@ -135,6 +138,9 @@ importers:
       tailwindcss:
         specifier: ^4
         version: 4.1.18
+      tsx:
+        specifier: ^4
+        version: 4.21.0
       tw-animate-css:
         specifier: ^1
         version: 1.4.0
@@ -143,7 +149,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.0.18
-        version: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+        version: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
 packages:
 
@@ -1657,6 +1663,14 @@ packages:
 
   '@tailwindcss/postcss@4.1.18':
     resolution: {integrity: sha512-Ce0GFnzAOuPyfV5SxjXGn0CubwGcuDB0zcdaPuCSzAa/2vII24JTkH+I6jcbXLb1ctjZMZZI6OjDaLPJQL1S0g==}
+
+  '@tanstack/query-core@5.90.20':
+    resolution: {integrity: sha512-OMD2HLpNouXEfZJWcKeVKUgQ5n+n3A2JFmBaScpNDUqSrQSjiveC7dKMe53uJUg1nDG16ttFPz2xfilz6i2uVg==}
+
+  '@tanstack/react-query@5.90.21':
+    resolution: {integrity: sha512-0Lu6y5t+tvlTJMTO7oh5NSpJfpg/5D41LlThfepTixPYkJ0sE2Jj0m0f6yYqujBwIXlId87e234+MxG3D3g7kg==}
+    peerDependencies:
+      react: ^18 || ^19
 
   '@tybys/wasm-util@0.10.1':
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
@@ -3943,6 +3957,11 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
+  tsx@4.21.0:
+    resolution: {integrity: sha512-5C1sg4USs1lfG0GFb2RLXsdpXqBSEhAaA/0kPL01wxzpMqLILNxIxIOKiILz+cdg/pLnOUxFYOR5yhHU666wbw==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
+
   tunnel-agent@0.6.0:
     resolution: {integrity: sha512-McnNiV1l8RYeY8tBgEpuodCC1mLUdbSN+CYBL7kJsJNInOP8UjDDEwdk6Mw60vdLLrr5NHKZhMAOSrR2NZuQ+w==}
 
@@ -5458,6 +5477,13 @@ snapshots:
       postcss: 8.5.6
       tailwindcss: 4.1.18
 
+  '@tanstack/query-core@5.90.20': {}
+
+  '@tanstack/react-query@5.90.21(react@19.2.4)':
+    dependencies:
+      '@tanstack/query-core': 5.90.20
+      react: 19.2.4
+
   '@tybys/wasm-util@0.10.1':
     dependencies:
       tslib: 2.8.1
@@ -5694,13 +5720,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.0.3
 
-  '@vitest/mocker@4.0.18(vite@7.3.1(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2))':
+  '@vitest/mocker@4.0.18(vite@7.3.1(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
       '@vitest/spy': 4.0.18
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 7.3.1(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+      vite: 7.3.1(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
   '@vitest/pretty-format@4.0.18':
     dependencies:
@@ -8213,6 +8239,13 @@ snapshots:
 
   tslib@2.8.1: {}
 
+  tsx@4.21.0:
+    dependencies:
+      esbuild: 0.27.3
+      get-tsconfig: 4.13.6
+    optionalDependencies:
+      fsevents: 2.3.3
+
   tunnel-agent@0.6.0:
     dependencies:
       safe-buffer: 5.2.1
@@ -8408,7 +8441,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@7.3.1(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2):
+  vite@7.3.1(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2):
     dependencies:
       esbuild: 0.27.3
       fdir: 6.5.0(picomatch@4.0.3)
@@ -8421,12 +8454,13 @@ snapshots:
       fsevents: 2.3.3
       jiti: 2.6.1
       lightningcss: 1.30.2
+      tsx: 4.21.0
       yaml: 2.8.2
 
-  vitest@4.0.18(@opentelemetry/api@1.9.0)(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2):
+  vitest@4.0.18(@opentelemetry/api@1.9.0)(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2):
     dependencies:
       '@vitest/expect': 4.0.18
-      '@vitest/mocker': 4.0.18(vite@7.3.1(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2))
+      '@vitest/mocker': 4.0.18(vite@7.3.1(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@vitest/pretty-format': 4.0.18
       '@vitest/runner': 4.0.18
       '@vitest/snapshot': 4.0.18
@@ -8443,7 +8477,7 @@ snapshots:
       tinyexec: 1.0.2
       tinyglobby: 0.2.15
       tinyrainbow: 3.0.3
-      vite: 7.3.1(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+      vite: 7.3.1(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@opentelemetry/api': 1.9.0

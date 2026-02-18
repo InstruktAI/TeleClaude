@@ -169,38 +169,38 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 
 **File(s):** `frontend/package.json`, `frontend/lib/query/QueryProvider.tsx`
 
-- [ ] `pnpm add @tanstack/react-query`
-- [ ] Create `QueryClientProvider` wrapper in app layout
-- [ ] Configure default stale time, retry, and error handling
+- [x] `pnpm add @tanstack/react-query`
+- [x] Create `QueryClientProvider` wrapper in app layout
+- [x] Configure default stale time, retry, and error handling
 
 ### Task 5.2: Data-fetching hooks
 
 **File(s):** `frontend/lib/hooks/useSessions.ts`, `useComputers.ts`, `useProjects.ts`, etc.
 
-- [ ] `useSessions()` -- fetches `GET /api/sessions`, cache key `['sessions']`
-- [ ] `useComputers()` -- fetches `GET /api/computers`, cache key `['computers']`
-- [ ] `useProjects(computer)` -- fetches `GET /api/projects?computer=X`, cache key `['projects', computer]`
-- [ ] `useTodos()` -- fetches `GET /api/todos`, cache key `['todos']`
-- [ ] `useAgentAvailability()` -- fetches `GET /api/agents/availability`
-- [ ] `useSettings()` -- fetches `GET /api/settings` (admin only)
+- [x] `useSessions()` -- fetches `GET /api/sessions`, cache key `['sessions']`
+- [x] `useComputers()` -- fetches `GET /api/computers`, cache key `['computers']`
+- [x] `useProjects(computer)` -- fetches `GET /api/projects?computer=X`, cache key `['projects', computer]`
+- [x] `useTodos()` -- fetches `GET /api/todos`, cache key `['todos']`
+- [x] `useAgentAvailability()` -- fetches `GET /api/agents/availability`
+- [x] `useSettings()` -- fetches `GET /api/settings` (admin only)
 
 ### Task 5.3: WebSocket-driven cache invalidation
 
 **File(s):** `frontend/lib/ws/useCacheInvalidation.ts`
 
-- [ ] Listen to WS events and invalidate corresponding React Query caches
-- [ ] `session_updated` / `session_created` / `session_closed` -> invalidate `['sessions']`
-- [ ] `computer_updated` -> invalidate `['computers']`
-- [ ] Avoid full refetch on every event: use granular invalidation
+- [x] Listen to WS events and invalidate corresponding React Query caches
+- [x] `session_updated` / `session_created` / `session_closed` -> invalidate `['sessions']`
+- [x] `computer_updated` -> invalidate `['computers']`
+- [x] Avoid full refetch on every event: use granular invalidation
 
 ### Task 5.4: Mutation hooks
 
 **File(s):** `frontend/lib/hooks/useSessionActions.ts`, etc.
 
-- [ ] `useEndSession(id)` -- calls `DELETE /api/sessions/[id]`, optimistic removal from cache
-- [ ] `useCreateSession()` -- calls `POST /api/sessions`, invalidates session list
-- [ ] `useAgentRestart(id)` -- calls `POST /api/sessions/[id]/agent-restart`
-- [ ] `useUpdateSettings()` -- calls `PATCH /api/settings`
+- [x] `useEndSession(id)` -- calls `DELETE /api/sessions/[id]`, optimistic removal from cache
+- [x] `useCreateSession()` -- calls `POST /api/sessions`, invalidates session list
+- [x] `useAgentRestart(id)` -- calls `POST /api/sessions/[id]/agent-restart`
+- [x] `useUpdateSettings()` -- calls `PATCH /api/settings`
 
 **Verification:** Frontend lists update in real-time via WS events; mutations reflect immediately via optimistic updates.
 
