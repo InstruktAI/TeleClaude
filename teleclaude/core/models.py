@@ -832,6 +832,7 @@ class SessionSummary:
     computer: Optional[str] = None
     human_email: Optional[str] = None
     human_role: Optional[str] = None
+    visibility: Optional[str] = "private"
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict - Serialization output
         return {
@@ -856,6 +857,7 @@ class SessionSummary:
             "computer": self.computer,
             "human_email": self.human_email,
             "human_role": self.human_role,
+            "visibility": self.visibility,
         }
 
     @classmethod
@@ -883,6 +885,7 @@ class SessionSummary:
             computer=computer,
             human_email=session.human_email,
             human_role=session.human_role,
+            visibility=getattr(session, "visibility", None) or "private",
         )
 
     @classmethod
@@ -918,6 +921,7 @@ class SessionSummary:
             computer=str(data.get("computer")) if data.get("computer") else None,
             human_email=str(data.get("human_email")) if data.get("human_email") else None,
             human_role=str(data.get("human_role")) if data.get("human_role") else None,
+            visibility=str(data.get("visibility")) if data.get("visibility") else "private",
         )
 
 

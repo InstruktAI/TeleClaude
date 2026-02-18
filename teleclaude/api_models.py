@@ -104,6 +104,7 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
     computer: str | None = None
     human_email: str | None = None
     human_role: str | None = None
+    visibility: str = "private"
 
     @classmethod
     def from_core(cls, summary: "SessionSummary", computer: str | None = None) -> "SessionSummaryDTO":
@@ -130,6 +131,7 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
             computer=computer,
             human_email=summary.human_email,
             human_role=summary.human_role,
+            visibility=summary.visibility or "private",
         )
 
 

@@ -62,6 +62,7 @@ class Session(SQLModel, table=True):
     relay_started_at: Optional[str] = None
     transcript_files: Optional[str] = "[]"
     char_offset: Optional[int] = 0
+    visibility: Optional[str] = "private"
 
 
 class VoiceAssignment(SQLModel, table=True):

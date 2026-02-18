@@ -20,7 +20,7 @@ Sidebar (persistent)          Main Area
 
 ## Phase 1: Daemon visibility enforcement
 
-### Task 1.1: Session visibility filtering on GET /sessions
+- [ ] ### Task 1.1: Session visibility filtering on GET /sessions
 
 **File:** `teleclaude/api_server.py`
 
@@ -36,7 +36,7 @@ Filter is applied after the existing session merge logic (local + remote cache).
 
 **Verification:** Admin user sees all sessions; member sees only own; contributor sees only own.
 
-### Task 1.2: Access check on session-scoped endpoints
+- [ ] ### Task 1.2: Access check on session-scoped endpoints
 
 **File:** `teleclaude/api_server.py`
 
@@ -55,7 +55,7 @@ Apply to:
 
 **Verification:** Non-owner gets 403 on stream, message send, and delete.
 
-### Task 1.3: Visibility field on session model
+- [x] ### Task 1.3: Visibility field on session model
 
 **File:** `teleclaude/core/models.py`, `teleclaude/db/helpers.py`
 
@@ -67,7 +67,7 @@ Apply to:
 
 ## Phase 2: Sidebar layout
 
-### Task 2.1: Layout restructure
+- [ ] ### Task 2.1: Layout restructure
 
 **Files:**
 
@@ -93,7 +93,7 @@ Remove `SessionPicker` from page.tsx — its functionality moves into the sideba
 
 **Verification:** Sidebar visible on all chat pages. Main area fills remaining width.
 
-### Task 2.2: Session list component
+- [ ] ### Task 2.2: Session list component
 
 **File:** `frontend/components/SessionList.tsx` (new)
 
@@ -118,7 +118,7 @@ Status badges:
 
 **Verification:** Sessions render with correct metadata. Selection highlights correctly.
 
-### Task 2.3: Responsive sidebar
+- [ ] ### Task 2.3: Responsive sidebar
 
 **File:** `frontend/components/Sidebar.tsx`
 
@@ -130,7 +130,7 @@ Status badges:
 
 ## Phase 3: Session switching and actions
 
-### Task 3.1: Session switching
+- [ ] ### Task 3.1: Session switching
 
 **File:** `frontend/app/(chat)/page.tsx` (modify)
 
@@ -145,7 +145,7 @@ No new code needed beyond sidebar integration — the existing key-based pattern
 
 **Verification:** Switching sessions shows correct messages. No stale streams.
 
-### Task 3.2: Session header
+- [ ] ### Task 3.2: Session header
 
 **File:** `frontend/components/SessionHeader.tsx` (new)
 
@@ -161,7 +161,7 @@ Data source: session metadata from `GET /sessions` (cached from sidebar fetch).
 
 **Verification:** Header shows correct session info. Updates on session switch.
 
-### Task 3.3: End session action
+- [ ] ### Task 3.3: End session action
 
 **File:** `frontend/components/SessionHeader.tsx`, `frontend/app/api/sessions/[id]/route.ts` (new)
 
@@ -173,7 +173,7 @@ Data source: session metadata from `GET /sessions` (cached from sidebar fetch).
 
 **Verification:** Session ends. Removed from sidebar. Chat area updates.
 
-### Task 3.4: New session creation dialog
+- [ ] ### Task 3.4: New session creation dialog
 
 **Files:**
 
@@ -201,7 +201,7 @@ New proxy routes:
 
 ## Phase 4: WebSocket real-time updates
 
-### Task 4.1: WebSocket client hook
+- [ ] ### Task 4.1: WebSocket client hook
 
 **File:** `frontend/hooks/useWebSocket.ts` (new)
 
@@ -216,7 +216,7 @@ WebSocket URL: `ws://localhost:8420/ws` (daemon TCP port) or proxied through Nex
 
 **Verification:** Connects, reconnects on drop.
 
-### Task 4.2: Real-time session list updates
+- [ ] ### Task 4.2: Real-time session list updates
 
 **File:** `frontend/components/SessionList.tsx` (modify)
 
@@ -229,7 +229,7 @@ WebSocket URL: `ws://localhost:8420/ws` (daemon TCP port) or proxied through Nex
 
 ## Phase 5: Admin dashboard
 
-### Task 5.1: Dashboard page
+- [ ] ### Task 5.1: Dashboard page
 
 **Files:**
 
@@ -251,7 +251,7 @@ Data: combine `GET /api/computers` + `GET /api/sessions` (admin sees all).
 
 **Verification:** Dashboard shows accurate data. Non-admin redirected.
 
-### Task 5.2: Dashboard middleware/guard
+- [ ] ### Task 5.2: Dashboard middleware/guard
 
 **File:** `frontend/middleware.ts` (modify)
 
