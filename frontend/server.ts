@@ -42,16 +42,16 @@ app.prepare().then(() => {
     // Validate auth by checking session cookie
     // NextAuth stores session in a cookie — extract and validate it
     const cookieHeader = req.headers.cookie ?? "";
-    const sessionToken = extractSessionToken(cookieHeader);
+    const extracted = extractSessionToken(cookieHeader);
 
-    if (!sessionToken) {
+    if (!extracted) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();
       return;
     }
 
     // Validate the session token by calling the NextAuth session API
-    const identity = await validateSession(sessionToken, req.headers.host);
+    const identity = await validateSession(extracted.token, extracted.cookieName, req.headers.host);
     if (!identity) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();
@@ -69,7 +69,9 @@ app.prepare().then(() => {
   });
 });
 
-function extractSessionToken(cookieHeader: string): string | null {
+function extractSessionToken(
+  cookieHeader: string,
+): { token: string; cookieName: string } | null {
   const cookies = cookieHeader.split(";").reduce(
     (acc, cookie) => {
       const [key, ...valParts] = cookie.trim().split("=");
@@ -79,15 +81,24 @@ function extractSessionToken(cookieHeader: string): string | null {
     {} as Record<string, string>,
   );
 
-  return (
-    cookies["authjs.session-token"] ??
-    cookies["__Secure-authjs.session-token"] ??
-    null
-  );
+  if (cookies["__Secure-authjs.session-token"]) {
+    return {
+      token: cookies["__Secure-authjs.session-token"],
+      cookieName: "__Secure-authjs.session-token",
+    };
+  }
+  if (cookies["authjs.session-token"]) {
+    return {
+      token: cookies["authjs.session-token"],
+      cookieName: "authjs.session-token",
+    };
+  }
+  return null;
 }
 
 async function validateSession(
   sessionToken: string,
+  cookieName: string,
   host: string | undefined,
 ): Promise<{ email: string; name?: string; role?: string } | null> {
   try {
@@ -96,8 +107,9 @@ async function validateSession(
     const baseUrl = `${protocol}://${host ?? `localhost:${port}`}`;
     const res = await fetch(`${baseUrl}/api/auth/session`, {
       headers: {
-        cookie: `authjs.session-token=${sessionToken}`,
+        cookie: `${cookieName}=${sessionToken}`,
       },
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!res.ok) return null;
