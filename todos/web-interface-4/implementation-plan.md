@@ -20,7 +20,7 @@ Sidebar (persistent)          Main Area
 
 ## Phase 1: Daemon visibility enforcement
 
-- [ ] ### Task 1.1: Session visibility filtering on GET /sessions
+- [x] ### Task 1.1: Session visibility filtering on GET /sessions
 
 **File:** `teleclaude/api_server.py`
 

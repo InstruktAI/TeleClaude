@@ -16,7 +16,7 @@ import time
 from typing import TYPE_CHECKING, Callable, Literal
 
 import uvicorn
-from fastapi import Body, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
@@ -90,6 +90,31 @@ API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 PatchBodyScalar = str | int | float | bool | None
 PatchBodyValue = PatchBodyScalar | list[PatchBodyScalar] | dict[str, PatchBodyScalar]
+
+
+def _filter_sessions_by_role(request: Request, sessions: list[SessionSummary]) -> list[SessionSummary]:
+    """Apply role-based visibility filtering to session list.
+
+    Only filters when identity headers are present (web interface).
+    TUI/MCP clients without headers see all sessions (existing behavior).
+    """
+    email = request.headers.get("x-web-user-email")
+    role = request.headers.get("x-web-user-role")
+
+    # No identity headers = TUI/MCP client, return all
+    if not email:
+        return sessions
+
+    # Admin sees everything
+    if role == "admin":
+        return sessions
+
+    # Member sees own + shared
+    if role == "member":
+        return [s for s in sessions if s.human_email == email or s.visibility == "shared"]
+
+    # Contributor/newcomer/unknown: own sessions only
+    return [s for s in sessions if s.human_email == email]
 
 
 class APIServer:
@@ -313,11 +338,16 @@ class APIServer:
 
         @self.app.get("/sessions")
         async def list_sessions(  # pyright: ignore
+            request: "Request",
             computer: str | None = None,
         ) -> list[SessionSummaryDTO]:
             """List sessions from local storage and remote cache.
 
+            Applies role-based filtering when identity headers are present
+            (web interface requests). TUI/MCP clients without headers see all.
+
             Args:
+                request: FastAPI request (for identity headers)
                 computer: Optional filter by computer name
 
             Returns:
@@ -330,10 +360,9 @@ class APIServer:
                 if not self.cache:
                     if computer and computer not in ("local", config.computer.name):
                         return []
-                    return [SessionSummaryDTO.from_core(s, computer=s.computer) for s in local_sessions]
-
-                # With cache, merge local + cached sessions
-                if computer:
+                    merged = local_sessions
+                elif computer:
+                    # With cache, merge local + cached sessions
                     cached_filtered = self.cache.get_sessions(computer)
                     if computer in ("local", config.computer.name):
                         by_id = {s.session_id: s for s in local_sessions}
@@ -348,6 +377,9 @@ class APIServer:
                     for s in cached_sessions:
                         by_id.setdefault(s.session_id, s)
                     merged = list(by_id.values())
+
+                # Role-based visibility filtering (only when identity headers present)
+                merged = _filter_sessions_by_role(request, merged)
 
                 return [SessionSummaryDTO.from_core(s, computer=s.computer) for s in merged]
             except Exception as e:
