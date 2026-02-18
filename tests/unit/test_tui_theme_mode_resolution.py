@@ -27,6 +27,9 @@ def test_is_dark_mode_uses_tmux_when_system_unknown(monkeypatch) -> None:
     monkeypatch.setattr(theme, "_get_env_appearance_mode", lambda: None)
     monkeypatch.setattr(theme, "_get_system_appearance_mode", lambda: None)
     monkeypatch.setattr(theme, "_get_tmux_appearance_mode", lambda: "dark")
+    # Force non-darwin so the tmux fallback path is reached (darwin short-circuits
+    # to the module-level cached value, skipping tmux intentionally).
+    monkeypatch.setattr(theme.sys, "platform", "linux")
 
     assert theme.is_dark_mode() is True
 
