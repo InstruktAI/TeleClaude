@@ -41,10 +41,10 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 
 **File(s):** `frontend/__tests__/ws-bridge.test.ts` (or equivalent)
 
-- [ ] Unit test: auth rejection on unauthenticated upgrade
-- [ ] Unit test: message bridging (browser -> daemon, daemon -> browser)
-- [ ] Unit test: daemon disconnect triggers browser close
-- [ ] Unit test: reconnection with subscription replay
+- [x] Unit test: auth rejection on unauthenticated upgrade
+- [x] Unit test: message bridging (browser -> daemon, daemon -> browser)
+- [x] Unit test: daemon disconnect triggers browser close
+- [x] Unit test: reconnection with subscription replay
 
 **Verification:** Browser can connect to `/api/ws`, subscribe to session events, and receive real-time updates.
 
@@ -94,11 +94,11 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 
 **File(s):** `frontend/__tests__/api-proxies.test.ts` (or per-route test files)
 
-- [ ] Test auth rejection (401) for each route
-- [ ] Test admin-only rejection (403) for settings PATCH and agent-restart
-- [ ] Test successful proxy passthrough (mock daemon responses)
-- [ ] Test error passthrough (daemon returns 404, 500, etc.)
-- [ ] Test session ownership check on DELETE
+- [x] Test auth rejection (401) for each route
+- [x] Test admin-only rejection (403) for settings PATCH and agent-restart
+- [x] Test successful proxy passthrough (mock daemon responses)
+- [x] Test error passthrough (daemon returns 404, 500, etc.)
+- [x] Test session ownership check on DELETE
 
 **Verification:** All 10 new routes respond correctly with auth, forward to daemon, and pass through errors.
 
@@ -124,9 +124,9 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 
 ### Task 3.3: Test authorization
 
-- [ ] Test admin route access by non-admin (403)
-- [ ] Test session ownership check (user A can't delete user B's session)
-- [ ] Test daemon rejects spoofed identity headers from external source
+- [x] Test admin route access by non-admin (403)
+- [x] Test session ownership check (user A can't delete user B's session)
+- [x] Test daemon rejects spoofed identity headers from external source
 
 **Verification:** Role-based and ownership-based access control enforced end-to-end.
 
