@@ -12,39 +12,39 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 
 **File(s):** `frontend/package.json`
 
-- [ ] `pnpm add ws` and `pnpm add -D @types/ws`
-- [ ] Verify `pnpm build` succeeds
+- [x] `pnpm add ws` and `pnpm add -D @types/ws`
+- [x] Verify `pnpm build` succeeds
 
 ### Task 1.2: Implement WebSocket route handler
 
 **File(s):** `frontend/app/api/ws/route.ts`
 
-- [ ] Create Next.js route handler that upgrades HTTP to WebSocket
-- [ ] Validate auth on upgrade via NextAuth `auth()` -- reject with 401 if unauthenticated
-- [ ] On successful auth, connect to daemon WS at `ws://127.0.0.1:8420/ws`
-- [ ] Bridge messages bidirectionally: browser -> daemon, daemon -> browser
-- [ ] Inject identity context (`X-Web-User-*` headers) into initial connection or subscription messages
-- [ ] Handle daemon disconnect: close browser connection with appropriate close code
-- [ ] Handle browser disconnect: close daemon connection, clean up
+- [x] Create Next.js route handler that upgrades HTTP to WebSocket
+- [x] Validate auth on upgrade via NextAuth `auth()` -- reject with 401 if unauthenticated
+- [x] On successful auth, connect to daemon WS at `ws://127.0.0.1:8420/ws`
+- [x] Bridge messages bidirectionally: browser -> daemon, daemon -> browser
+- [x] Inject identity context (`X-Web-User-*` headers) into initial connection or subscription messages
+- [x] Handle daemon disconnect: close browser connection with appropriate close code
+- [x] Handle browser disconnect: close daemon connection, clean up
 
 ### Task 1.3: Add daemon-side reconnection logic
 
 **File(s):** `frontend/app/api/ws/route.ts` (or `frontend/lib/proxy/ws-bridge.ts`)
 
-- [ ] Detect daemon WS disconnect (close event, error event)
-- [ ] Implement exponential backoff reconnection (1s, 2s, 4s, max 30s)
-- [ ] On reconnect: replay active subscriptions to daemon
-- [ ] Track subscription state per browser client for replay
-- [ ] Send reconnection status to browser client (custom message type)
+- [x] Detect daemon WS disconnect (close event, error event)
+- [x] Implement exponential backoff reconnection (1s, 2s, 4s, max 30s)
+- [x] On reconnect: replay active subscriptions to daemon
+- [x] Track subscription state per browser client for replay
+- [x] Send reconnection status to browser client (custom message type)
 
 ### Task 1.4: Test WebSocket bridge
 
 **File(s):** `frontend/__tests__/ws-bridge.test.ts` (or equivalent)
 
-- [ ] Unit test: auth rejection on unauthenticated upgrade
-- [ ] Unit test: message bridging (browser -> daemon, daemon -> browser)
-- [ ] Unit test: daemon disconnect triggers browser close
-- [ ] Unit test: reconnection with subscription replay
+- [x] Unit test: auth rejection on unauthenticated upgrade
+- [x] Unit test: message bridging (browser -> daemon, daemon -> browser)
+- [x] Unit test: daemon disconnect triggers browser close
+- [x] Unit test: reconnection with subscription replay
 
 **Verification:** Browser can connect to `/api/ws`, subscribe to session events, and receive real-time updates.
 
@@ -61,11 +61,11 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 - `frontend/app/api/sessions/[id]/agent-restart/route.ts` -- new
 - `frontend/app/api/sessions/[id]/revive/route.ts` -- new
 
-- [ ] `DELETE /api/sessions/[id]` -> `DELETE /sessions/{id}` (auth + ownership check)
-- [ ] `GET /api/sessions/[id]/messages` -> `GET /sessions/{id}/messages` (auth)
-- [ ] `POST /api/sessions/[id]/agent-restart` -> `POST /sessions/{id}/agent-restart` (admin-only)
-- [ ] `POST /api/sessions/[id]/revive` -> `POST /sessions/{id}/revive` (auth + ownership check)
-- [ ] All routes: auth check, identity headers, `daemonRequest()`, error passthrough
+- [x] `DELETE /api/sessions/[id]` -> `DELETE /sessions/{id}` (auth + ownership check)
+- [x] `GET /api/sessions/[id]/messages` -> `GET /sessions/{id}/messages` (auth)
+- [x] `POST /api/sessions/[id]/agent-restart` -> `POST /sessions/{id}/agent-restart` (admin-only)
+- [x] `POST /api/sessions/[id]/revive` -> `POST /sessions/{id}/revive` (auth + ownership check)
+- [x] All routes: auth check, identity headers, `daemonRequest()`, error passthrough
 
 ### Task 2.2: Resource list routes
 
@@ -76,29 +76,29 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 - `frontend/app/api/todos/route.ts` -- new
 - `frontend/app/api/agents/availability/route.ts` -- new
 
-- [ ] `GET /api/computers` -> `GET /computers` (auth)
-- [ ] `GET /api/projects` -> `GET /projects` (auth)
-- [ ] `GET /api/todos` -> `GET /todos` (auth)
-- [ ] `GET /api/agents/availability` -> `GET /agents/availability` (auth)
-- [ ] All routes: auth check, identity headers, `daemonRequest()`, error passthrough
+- [x] `GET /api/computers` -> `GET /computers` (auth)
+- [x] `GET /api/projects` -> `GET /projects` (auth)
+- [x] `GET /api/todos` -> `GET /todos` (auth)
+- [x] `GET /api/agents/availability` -> `GET /agents/availability` (auth)
+- [x] All routes: auth check, identity headers, `daemonRequest()`, error passthrough
 
 ### Task 2.3: Settings routes
 
 **File(s):** `frontend/app/api/settings/route.ts` -- new
 
-- [ ] `GET /api/settings` -> `GET /settings` (auth)
-- [ ] `PATCH /api/settings` -> `PATCH /settings` (admin-only, field allowlist)
-- [ ] Settings PATCH: allowlist specific fields to prevent injection of unexpected keys
+- [x] `GET /api/settings` -> `GET /settings` (auth)
+- [x] `PATCH /api/settings` -> `PATCH /settings` (admin-only, field allowlist)
+- [x] Settings PATCH: allowlist specific fields to prevent injection of unexpected keys
 
 ### Task 2.4: Test REST proxy routes
 
 **File(s):** `frontend/__tests__/api-proxies.test.ts` (or per-route test files)
 
-- [ ] Test auth rejection (401) for each route
-- [ ] Test admin-only rejection (403) for settings PATCH and agent-restart
-- [ ] Test successful proxy passthrough (mock daemon responses)
-- [ ] Test error passthrough (daemon returns 404, 500, etc.)
-- [ ] Test session ownership check on DELETE
+- [x] Test auth rejection (401) for each route
+- [x] Test admin-only rejection (403) for settings PATCH and agent-restart
+- [x] Test successful proxy passthrough (mock daemon responses)
+- [x] Test error passthrough (daemon returns 404, 500, etc.)
+- [x] Test session ownership check on DELETE
 
 **Verification:** All 10 new routes respond correctly with auth, forward to daemon, and pass through errors.
 
@@ -110,23 +110,23 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 
 **File(s):** `frontend/middleware.ts`
 
-- [ ] Ensure all `/api/*` routes (except `/api/auth`, `/api/people`) require auth
-- [ ] Add utility function `requireAdmin(session)` that returns 403 if not admin
-- [ ] Add utility function `requireOwnership(session, sessionId)` that checks `human_email` match
+- [x] Ensure all `/api/*` routes (except `/api/auth`, `/api/people`) require auth
+- [x] Add utility function `requireAdmin(session)` that returns 403 if not admin
+- [x] Add utility function `requireOwnership(session, sessionId)` that checks `human_email` match
 
 ### Task 3.2: Daemon-side identity header validation
 
 **File(s):** `teleclaude/api_server.py` (minimal change)
 
-- [ ] Add middleware/dependency that checks: if `X-Web-User-*` headers present, request must come from Unix socket or 127.0.0.1
-- [ ] Reject requests with identity headers from non-trusted sources with 403
-- [ ] Log rejected attempts at WARNING level
+- [x] Add middleware/dependency that checks: if `X-Web-User-*` headers present, request must come from Unix socket or 127.0.0.1
+- [x] Reject requests with identity headers from non-trusted sources with 403
+- [x] Log rejected attempts at WARNING level
 
 ### Task 3.3: Test authorization
 
-- [ ] Test admin route access by non-admin (403)
-- [ ] Test session ownership check (user A can't delete user B's session)
-- [ ] Test daemon rejects spoofed identity headers from external source
+- [x] Test admin route access by non-admin (403)
+- [x] Test session ownership check (user A can't delete user B's session)
+- [x] Test daemon rejects spoofed identity headers from external source
 
 **Verification:** Role-based and ownership-based access control enforced end-to-end.
 
@@ -138,26 +138,26 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 
 **File(s):** `frontend/lib/ws/WebSocketProvider.tsx`, `frontend/lib/ws/useWebSocket.ts`
 
-- [ ] Create `WebSocketProvider` that manages a single WS connection per authenticated session
-- [ ] `useWebSocket()` hook exposes: `status`, `subscribe()`, `unsubscribe()`, `lastEvent`
-- [ ] Connection states: `connecting`, `connected`, `reconnecting`, `disconnected`
-- [ ] Auto-connect on mount, auto-disconnect on unmount
-- [ ] Reconnection with exponential backoff (mirrors server-side logic)
+- [x] Create `WebSocketProvider` that manages a single WS connection per authenticated session
+- [x] `useWebSocket()` hook exposes: `status`, `subscribe()`, `unsubscribe()`, `lastEvent`
+- [x] Connection states: `connecting`, `connected`, `reconnecting`, `disconnected`
+- [x] Auto-connect on mount, auto-disconnect on unmount
+- [x] Reconnection with exponential backoff (mirrors server-side logic)
 
 ### Task 4.2: Event type definitions
 
 **File(s):** `frontend/lib/ws/types.ts`
 
-- [ ] Define TypeScript types for daemon WS messages: subscription request/response, session events, computer events, error messages
-- [ ] Match daemon's `SessionSummaryDTO`, `ComputerDTO` shapes
-- [ ] Type-safe event dispatcher
+- [x] Define TypeScript types for daemon WS messages: subscription request/response, session events, computer events, error messages
+- [x] Match daemon's `SessionSummaryDTO`, `ComputerDTO` shapes
+- [x] Type-safe event dispatcher
 
 ### Task 4.3: Integrate WebSocket provider into app layout
 
 **File(s):** `frontend/app/(chat)/layout.tsx`
 
-- [ ] Wrap authenticated layout with `<WebSocketProvider>`
-- [ ] Connection status available to all child components
+- [x] Wrap authenticated layout with `<WebSocketProvider>`
+- [x] Connection status available to all child components
 
 **Verification:** Browser connects to WS on login, receives real-time session events, reconnects after daemon restart.
 
@@ -169,38 +169,38 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 
 **File(s):** `frontend/package.json`, `frontend/lib/query/QueryProvider.tsx`
 
-- [ ] `pnpm add @tanstack/react-query`
-- [ ] Create `QueryClientProvider` wrapper in app layout
-- [ ] Configure default stale time, retry, and error handling
+- [x] `pnpm add @tanstack/react-query`
+- [x] Create `QueryClientProvider` wrapper in app layout
+- [x] Configure default stale time, retry, and error handling
 
 ### Task 5.2: Data-fetching hooks
 
 **File(s):** `frontend/lib/hooks/useSessions.ts`, `useComputers.ts`, `useProjects.ts`, etc.
 
-- [ ] `useSessions()` -- fetches `GET /api/sessions`, cache key `['sessions']`
-- [ ] `useComputers()` -- fetches `GET /api/computers`, cache key `['computers']`
-- [ ] `useProjects(computer)` -- fetches `GET /api/projects?computer=X`, cache key `['projects', computer]`
-- [ ] `useTodos()` -- fetches `GET /api/todos`, cache key `['todos']`
-- [ ] `useAgentAvailability()` -- fetches `GET /api/agents/availability`
-- [ ] `useSettings()` -- fetches `GET /api/settings` (admin only)
+- [x] `useSessions()` -- fetches `GET /api/sessions`, cache key `['sessions']`
+- [x] `useComputers()` -- fetches `GET /api/computers`, cache key `['computers']`
+- [x] `useProjects(computer)` -- fetches `GET /api/projects?computer=X`, cache key `['projects', computer]`
+- [x] `useTodos()` -- fetches `GET /api/todos`, cache key `['todos']`
+- [x] `useAgentAvailability()` -- fetches `GET /api/agents/availability`
+- [x] `useSettings()` -- fetches `GET /api/settings` (admin only)
 
 ### Task 5.3: WebSocket-driven cache invalidation
 
 **File(s):** `frontend/lib/ws/useCacheInvalidation.ts`
 
-- [ ] Listen to WS events and invalidate corresponding React Query caches
-- [ ] `session_updated` / `session_created` / `session_closed` -> invalidate `['sessions']`
-- [ ] `computer_updated` -> invalidate `['computers']`
-- [ ] Avoid full refetch on every event: use granular invalidation
+- [x] Listen to WS events and invalidate corresponding React Query caches
+- [x] `session_updated` / `session_created` / `session_closed` -> invalidate `['sessions']`
+- [x] `computer_updated` -> invalidate `['computers']`
+- [x] Avoid full refetch on every event: use granular invalidation
 
 ### Task 5.4: Mutation hooks
 
 **File(s):** `frontend/lib/hooks/useSessionActions.ts`, etc.
 
-- [ ] `useEndSession(id)` -- calls `DELETE /api/sessions/[id]`, optimistic removal from cache
-- [ ] `useCreateSession()` -- calls `POST /api/sessions`, invalidates session list
-- [ ] `useAgentRestart(id)` -- calls `POST /api/sessions/[id]/agent-restart`
-- [ ] `useUpdateSettings()` -- calls `PATCH /api/settings`
+- [x] `useEndSession(id)` -- calls `DELETE /api/sessions/[id]`, optimistic removal from cache
+- [x] `useCreateSession()` -- calls `POST /api/sessions`, invalidates session list
+- [x] `useAgentRestart(id)` -- calls `POST /api/sessions/[id]/agent-restart`
+- [x] `useUpdateSettings()` -- calls `PATCH /api/settings`
 
 **Verification:** Frontend lists update in real-time via WS events; mutations reflect immediately via optimistic updates.
 

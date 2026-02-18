@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Callable, Literal
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import (
@@ -271,6 +272,28 @@ class APIServer:
 
     def _setup_routes(self) -> None:
         """Set up all HTTP endpoints."""
+
+        _IDENTITY_HEADERS = {"x-web-user-email", "x-web-user-name", "x-web-user-role"}
+        _TRUSTED_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+        @self.app.middleware("http")
+        async def _validate_identity_headers(request, call_next):  # pyright: ignore
+            """Reject identity headers from non-trusted sources."""
+            has_identity = any(h in _IDENTITY_HEADERS for h in request.headers)
+            if has_identity:
+                client_host = request.client.host if request.client else None
+                # Unix socket connections have no client host (or show as empty)
+                is_trusted = client_host is None or client_host in _TRUSTED_HOSTS
+                if not is_trusted:
+                    logger.warning(
+                        "Rejected identity headers from untrusted source: %s",
+                        client_host,
+                    )
+                    return JSONResponse(
+                        {"detail": "Identity headers rejected: untrusted source"},
+                        status_code=403,
+                    )
+            return await call_next(request)
 
         @self.app.middleware("http")
         async def _track_requests(request, call_next):  # pyright: ignore
