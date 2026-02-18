@@ -2,7 +2,8 @@
 
 **Reviewer:** Claude (Opus 4.6)
 **Date:** 2026-02-18
-**Verdict:** APPROVE
+**Round:** 1
+**Verdict:** REQUEST CHANGES
 
 ---
 
@@ -12,37 +13,50 @@
 
 ## Important
 
-### 1. [FIXED] Replaced `audience` array with `role` field
+### 1. Documentation says `clearance`, code reads `role`
 
-The original build used an `audience` array expansion (`CLEARANCE_TO_AUDIENCE`) with set-intersection filtering. Replaced with a single `role` field and rank comparison. Simpler, no intermediate concepts.
+The code (`docs_index.py:574`, `resource_validation.py:349,560`, `context_selector.py`) reads `metadata.get("role")` from snippet frontmatter. However, four documentation files still instruct authors to use `clearance`:
 
-### 2. [FIXED] CLI guard only checked `customer`, not `public`
+- `docs/global/general/procedure/doc-snippet-authoring.md:30` — "Set `clearance` if the snippet should be restricted"
+- `docs/global/general/spec/snippet-authoring-schema.md:25-26,65` — documents `clearance` and `audience` fields
+- `docs/global/general/spec/tools/memory-management-api.md:6` — has `clearance: 'admin'` in frontmatter
+- `todos/roadmap.md:30` — "Role-based `clearance` frontmatter"
 
-`_check_customer_guard()` only checked `if role == "customer"`. Updated to `if role in ("customer", "public")`.
+**Impact:** The one tagged snippet (`memory-management-api.md`) has `clearance: 'admin'` which the code ignores. It gets indexed as `role: member` (the default) instead of `role: admin`, meaning member-level callers can see admin-only content. Any future snippets authored per the current docs will have the same problem.
 
-### 3. [FIXED] Roadmap used stale terminology
+**Fix:** Rename `clearance` to `role` in all four files. Remove the `audience` reference from `snippet-authoring-schema.md` (audience was fully replaced by role).
 
-`todos/roadmap.md` described levels as `public`/`internal`/`ops`/`admin`. Updated to `public`/`member`/`admin`.
+### 2. [FIXED in prior round] Replaced `audience` array with `role` field
 
-### 4. [FIXED] No-role sessions defaulted to admin access
+The original build used `CLEARANCE_TO_AUDIENCE` with set-intersection filtering. Replaced with a single `role` field and rank comparison.
 
-When `human_role` was `None`, the filter gave max rank (admin). Fixed to default to `public` (least privilege). Admin access must be explicit.
+### 3. [FIXED in prior round] CLI guard only checked `customer`, not `public`
 
-### 5. [FIXED] Bootstrap cleanup missing
+Updated to `if role in ("customer", "public")`.
 
-`bootstrap_help_desk()` had no try/except around git operations. A failed git commit left a partial directory behind. Added cleanup on failure.
+### 4. [FIXED in prior round] No-role sessions defaulted to admin access
 
-### 6. [FIXED] Bootstrap test called function with wrong signature
+Fixed to default to `public` (least privilege).
 
-Two tests passed a positional argument to `bootstrap_help_desk()` which takes no arguments. Fixed call sites.
+### 5. [FIXED in prior round] Bootstrap cleanup missing
+
+Added try/except with `shutil.rmtree` on failure.
+
+### 6. [FIXED in prior round] Bootstrap test called function with wrong signature
+
+Fixed call sites.
 
 ## Suggestions
 
-### 1. Rename `HUMAN_ROLE_CUSTOMER` to `HUMAN_ROLE_PUBLIC`
+### 1. Remove stale `audience` field from schema docs
 
-`teleclaude/constants.py` still defines `HUMAN_ROLE_CUSTOMER = "customer"`. The decided role name is `public`. This rename affects the DB schema — out of scope, tracked as follow-up.
+`snippet-authoring-schema.md:26` still documents an `audience` array field that no longer exists in the codebase. Should be removed entirely along with the "Prefer `clearance` over `audience`" guidance on line 25.
 
-### 2. Rename `human_role` to `role` on session model
+### 2. Rename `HUMAN_ROLE_CUSTOMER` to `HUMAN_ROLE_PUBLIC`
+
+`teleclaude/constants.py` still defines `HUMAN_ROLE_CUSTOMER = "customer"`. The decided role name is `public`. Out of scope — requires DB schema change.
+
+### 3. Rename `human_role` to `role` on session model
 
 The session field is still `human_role`. Should be just `role`. Separate refactor with DB migration.
 
@@ -52,8 +66,8 @@ The session field is still `human_role`. Should be just `role`. Separate refacto
 
 | Requirement                       | Status | Notes                                                                    |
 | --------------------------------- | ------ | ------------------------------------------------------------------------ |
-| FR1: `role` frontmatter field     | PASS   | Three levels (`public`, `member`, `admin`). Default `member`.            |
-| FR2: Role hierarchy               | PASS   | Rank comparison: admin(2) > member(1) > public(0). No role → public.     |
+| FR1: `role` frontmatter field     | FAIL   | Code correct, but docs instruct authors to use `clearance` instead.      |
+| FR2: Role hierarchy               | PASS   | Rank comparison: admin(2) > member(1) > public(0). No role -> public.    |
 | FR3: `get_context` role filtering | PASS   | Phase 1 index filtered. Phase 2 returns access-denied notice.            |
 | FR4: CLI config command gating    | PASS   | Mutating commands guarded for `customer` and `public` roles.             |
 | FR5: Gradual migration            | PASS   | Default `member` hides existing snippets from public. No bulk retagging. |
@@ -68,7 +82,22 @@ All 37 tests pass:
 - 2 bootstrap cleanup tests (`test_help_desk_features.py::TestBootstrapCleanup`)
 - 18 pre-existing tests (identity, tool filtering, channel, relay, etc.)
 
-## Fixes Applied During Review
+## Fixes Applied This Round (Round 2)
+
+### Important Issue 1 — Documentation says `clearance`, code reads `role`
+
+**Commit:** `7d87f967`
+
+- `docs/global/general/procedure/doc-snippet-authoring.md`: step 3 — `clearance` → `role`
+- `docs/global/general/spec/snippet-authoring-schema.md`: replaced `clearance` + `audience` fields with single `role` field; updated Allowed values section
+- `docs/global/general/spec/tools/memory-management-api.md`: frontmatter `clearance: 'admin'` → `role: admin`
+- `todos/roadmap.md`: description updated to `role` frontmatter
+
+Suggestion 1 (stale `audience` field) addressed in the same commit.
+
+---
+
+## Fixes Applied During Prior Review Round
 
 1. `teleclaude/docs_index.py` — replaced `CLEARANCE_TO_AUDIENCE` with `ROLE_RANK`
 2. `teleclaude/context_selector.py` — replaced `audience` tuple with `role` string, rank comparison
