@@ -6,6 +6,10 @@
 @docs/third-party/a2a-protocol/task-lifecycle.md
 @docs/third-party/a2ui/overview.md
 @docs/third-party/ag-ui/overview.md
+@docs/third-party/art-of-hosting/chaordic-design.md
+@docs/third-party/art-of-hosting/harvesting.md
+@docs/third-party/art-of-hosting/methods.md
+@docs/third-party/art-of-hosting/overview.md
 @docs/third-party/claude-code/commands.md
 @docs/third-party/claude-code/hooks.md
 @docs/third-party/claude-code/permissions.md

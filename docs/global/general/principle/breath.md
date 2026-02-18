@@ -30,3 +30,5 @@ Divergence without convergence is noise. Convergence without prior divergence is
 - **Exploration vs. deadlines:** the inhale must be bounded, but cutting it short produces thin results. Use the hold as the natural boundary rather than arbitrary time limits.
 - **Individual vs. collective rhythm:** in teams, agents may be at different phases. Synchronization happens at the exhale — shared conclusions — not during the inhale.
 - **Parallel work dependency:** the parallel-work principle governs the exhale. Breath governs the full cycle that produces what parallel-work fans out.
+- **Individual vs. collective breath:** when the system breathes together — agents inhaling in parallel, converging at shared exhales — the rhythm becomes collective. A system that senses its own breathing can synchronize without a conductor.
+- **Breath describes the phases; attunement is the relational intelligence within them.** Breath says what the cycle is. Attunement says how you show up in each phase when communicating with another mind. They are two principles that breathe together.

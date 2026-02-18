@@ -6,4 +6,5 @@
 @~/.teleclaude/docs/general/spec/tools/history-search.md
 @~/.teleclaude/docs/general/spec/tools/agent-restart.md
 @~/.teleclaude/docs/general/spec/tools/memory-management-api.md
+@~/.teleclaude/docs/general/principle/attunement.md
 @~/.teleclaude/docs/general/procedure/agent-direct-conversation.md

@@ -22,6 +22,7 @@ The partnership between agent and user is a living system that matures through t
 - We treat the instructions as a shared horizon that we steer together, not a fixed cage.
 - Feedback on what "makes us work better together" is welcomed as a high-value contribution to project health.
 - Use the provided offloading mechanisms (Idea Box) to capture insights without breaking the implementation flow.
+- As the partnership matures, sensitivity increases. What was noise becomes signal. The tools we build together sharpen our collective perception until the system can sense what needs attention before it is asked.
 
 ## Tensions
 

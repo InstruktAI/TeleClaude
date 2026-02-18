@@ -70,6 +70,15 @@ snippets:
   path: docs/general/policy/referencing-doc-snippets.md
   role: member
   source_project: TeleClaude
+- id: general/principle/attunement
+  description: "Sense which phase of the breath you are in \u2014 and communicate\
+    \ accordingly. The relational intelligence that makes the breath cycle work between\
+    \ minds."
+  type: principle
+  scope: global
+  path: docs/general/principle/attunement.md
+  role: member
+  source_project: TeleClaude
 - id: general/principle/autonomy
   description: The principle of autonomy for AI agents, emphasizing steady progress
     and independence.
@@ -140,6 +149,14 @@ snippets:
   path: docs/general/principle/priming.md
   role: member
   source_project: TeleClaude
+- id: general/principle/proprioception
+  description: "A distributed system that senses itself as a whole \u2014 not through\
+    \ monitoring, but through the ambient signals that flow between its parts."
+  type: principle
+  scope: global
+  path: docs/general/principle/proprioception.md
+  role: member
+  source_project: TeleClaude
 - id: general/procedure/agent-artifact-authoring
   description: Author agent artifacts (agents, skills, commands) that compile into
     tool-specific formats.
@@ -169,6 +186,14 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/doc-snippet-authoring.md
+  role: member
+  source_project: TeleClaude
+- id: general/procedure/gathering
+  description: The governing procedure for agents to collectively sense, reflect,
+    and plan through the breath cycle.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/gathering.md
   role: member
   source_project: TeleClaude
 - id: general/procedure/job-authoring

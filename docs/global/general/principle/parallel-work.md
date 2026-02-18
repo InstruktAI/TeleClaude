@@ -25,6 +25,7 @@ Independent work streams reduce end-to-end time while allowing deeper coverage. 
 - Offload self-contained sub-tasks to preserve the main thread’s context and reduce cognitive load.
 - Prefer background dispatch when possible so the primary agent remains available while work completes.
 - Summarize delegated work on return to avoid context bloat and keep decision trails clear.
+- Parallel agents are limbs of a single body. The coordination between them is not overhead — it is how the body knows where its hands are.
 
 ## Tensions
 

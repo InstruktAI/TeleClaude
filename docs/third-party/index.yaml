@@ -32,6 +32,22 @@ snippets:
   description: AG-UI Protocol Overview
   scope: project
   path: ag-ui/overview.md
+- id: third-party/art-of-hosting/chaordic-design
+  description: Art of Hosting
+  scope: project
+  path: art-of-hosting/chaordic-design.md
+- id: third-party/art-of-hosting/harvesting
+  description: Art of Hosting
+  scope: project
+  path: art-of-hosting/harvesting.md
+- id: third-party/art-of-hosting/methods
+  description: Art of Hosting
+  scope: project
+  path: art-of-hosting/methods.md
+- id: third-party/art-of-hosting/overview
+  description: Art of Hosting
+  scope: project
+  path: art-of-hosting/overview.md
 - id: third-party/claude-code/commands
   description: Claude Code Commands
   scope: project
