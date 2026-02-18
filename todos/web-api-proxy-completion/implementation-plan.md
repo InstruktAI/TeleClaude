@@ -110,17 +110,17 @@ Architecture decision: **thin proxy (Option C)** per research findings. No daemo
 
 **File(s):** `frontend/middleware.ts`
 
-- [ ] Ensure all `/api/*` routes (except `/api/auth`, `/api/people`) require auth
-- [ ] Add utility function `requireAdmin(session)` that returns 403 if not admin
-- [ ] Add utility function `requireOwnership(session, sessionId)` that checks `human_email` match
+- [x] Ensure all `/api/*` routes (except `/api/auth`, `/api/people`) require auth
+- [x] Add utility function `requireAdmin(session)` that returns 403 if not admin
+- [x] Add utility function `requireOwnership(session, sessionId)` that checks `human_email` match
 
 ### Task 3.2: Daemon-side identity header validation
 
 **File(s):** `teleclaude/api_server.py` (minimal change)
 
-- [ ] Add middleware/dependency that checks: if `X-Web-User-*` headers present, request must come from Unix socket or 127.0.0.1
-- [ ] Reject requests with identity headers from non-trusted sources with 403
-- [ ] Log rejected attempts at WARNING level
+- [x] Add middleware/dependency that checks: if `X-Web-User-*` headers present, request must come from Unix socket or 127.0.0.1
+- [x] Reject requests with identity headers from non-trusted sources with 403
+- [x] Log rejected attempts at WARNING level
 
 ### Task 3.3: Test authorization
 
