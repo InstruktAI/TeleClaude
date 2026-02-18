@@ -34,6 +34,24 @@
   "mcp-migration-doc-updates": [
     "mcp-migration-delete-mcp"
   ],
+  "multi-user-admin-audit": [
+    "multi-user-sessions"
+  ],
+  "multi-user-config": [
+    "multi-user-identity"
+  ],
+  "multi-user-migration": [
+    "multi-user-sessions",
+    "multi-user-service"
+  ],
+  "multi-user-service": [
+    "multi-user-db-abstraction",
+    "multi-user-config"
+  ],
+  "multi-user-sessions": [
+    "multi-user-db-abstraction",
+    "multi-user-identity"
+  ],
   "person-identity-auth-2": [
     "person-identity-auth-1"
   ],
@@ -50,6 +68,10 @@
   ],
   "release-workflow-foundation": [
     "release-manifests"
+  ],
+  "start-gathering-tool": [
+    "session-relay",
+    "gathering-rhythm-subprocedures"
   ],
   "role-based-notifications": [
     "person-identity-auth"

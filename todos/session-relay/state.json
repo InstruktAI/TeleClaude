@@ -12,13 +12,11 @@
     "score": 0,
     "status": "needs_work",
     "schema_version": 1,
-    "blockers": [
-      "Artifacts rewritten after split from session-relay — needs fresh gate"
-    ],
+    "blockers": [],
     "actions_taken": {
       "requirements_updated": true,
       "implementation_plan_updated": true,
-      "split_relay_to_session_relay": true
+      "split_from": "start-gathering-tool"
     }
   },
   "review_round": 0,

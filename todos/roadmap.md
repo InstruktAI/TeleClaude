@@ -38,6 +38,10 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 - mcp-migration-delete-mcp (after: mcp-migration-agent-config) — Phase 5: Delete all MCP server code, wrapper, handlers, definitions (~3,400 lines)
 - mcp-migration-doc-updates (after: mcp-migration-delete-mcp) — Phase 6: Update architecture and policy docs, rewrite MCP references
 
+## Session Relay
+
+- session-relay — Output relay between agent sessions: monitor via capture_pane, deliver delta to peers with attribution. Enables natural 1:1 conversations after send_message(direct=true) handshake.
+
 ## Gathering Ceremony
 
 > Procedure: `docs/global/general/procedure/gathering.md`
@@ -48,7 +52,7 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 
 - gathering-rhythm-subprocedures — Sub-procedures for daily, weekly, monthly rhythms (opening questions, round structure, harvest types)
 - gathering-trail-files — Initial trail persistence layer (`gatherings/{rhythm}.md`)
-- start-gathering-tool (after: gathering-rhythm-subprocedures) — Daemon tool: spawn peer sessions, fan-out messages, talking piece tracking, HITL participation
+- start-gathering-tool (after: session-relay, gathering-rhythm-subprocedures) — Gathering ceremony orchestrator: turn-managed relay, talking piece, heartbeats, phase management, harvester, HITL
 
 ## Demo Celebration System
 
@@ -61,6 +65,22 @@ After every finalize, produce a stored demo artifact — a rich five-act present
 - direct-conversation-flag
 
 Add `direct` boolean parameter to `teleclaude__send_message` and `teleclaude__start_session`. When true, skip listener registration for clean peer-to-peer agent communication without automatic notification subscriptions.
+
+## Multi-User System-Wide Installation
+
+> Architecture: `todos/multi-user-system-install/`
+>
+> System-wide TeleClaude with per-OS-user identity, role-scoped sessions, admin audit,
+> and dual database backends (SQLite for single-user, PostgreSQL for multi-user).
+> Parent todo is a design umbrella — all work happens in sub-todos below.
+
+- multi-user-db-abstraction — Phase 0: Configurable database engine (SQLite default, PostgreSQL opt-in), dialect-aware migrations
+- multi-user-identity — Phase 1: Unix socket peer credentials → OS user → TeleClaude person/role resolution
+- multi-user-sessions (after: multi-user-db-abstraction, multi-user-identity) — Phase 2: Session ownership columns, role-scoped visibility, owner badges in TUI
+- multi-user-admin-audit (after: multi-user-sessions) — Phase 3: Explicit transcript access with audit logging, admin observability UX
+- multi-user-config (after: multi-user-identity) — Phase 4: Config split into system/secrets/per-user layers
+- multi-user-service (after: multi-user-db-abstraction, multi-user-config) — Phase 5: Dedicated service user, launchd/systemd units, Docker Compose
+- multi-user-migration (after: multi-user-sessions, multi-user-service) — Phase 6: SQLite → PostgreSQL data migration, single-user → system-wide tooling
 
 ## Rolling Session Titles
 
