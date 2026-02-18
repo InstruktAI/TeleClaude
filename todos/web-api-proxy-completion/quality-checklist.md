@@ -24,8 +24,8 @@ Ownership:
 - [x] Requirements traced to implemented behavior
 - [x] Deferrals justified and not hiding required scope
 - [x] Findings written in `review-findings.md` (round 2)
-- [x] Verdict recorded: REQUEST CHANGES
-- [ ] Critical issues resolved or explicitly blocked (C4, C5 open)
+- [x] Verdict recorded: APPROVE (round 3 — all criticals resolved)
+- [x] Critical issues resolved (C4, C5 fixed in 2cfbf0a7; I7, S1–S5 non-blocking follow-up)
 - [x] Test coverage and regression risk assessed
 
 ## Finalize Gates (Finalizer)
