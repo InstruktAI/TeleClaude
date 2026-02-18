@@ -18,6 +18,6 @@
 
 ## Finalize Gates (Finalizer)
 
-- [ ] Branch merged or PR created
-- [ ] Delivery logged
-- [ ] Cleanup completed
+- [x] Branch merged or PR created
+- [x] Delivery logged
+- [x] Cleanup completed (orchestrator-owned: worktree, branch, todo folder)
