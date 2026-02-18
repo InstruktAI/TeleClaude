@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Brain, Sparkles, Code2 } from "lucide-react";
-import type { SessionInfo } from "@/lib/api/types";
+import { fetchSessions } from "@/lib/api/sessions";
 
 function agentIcon(agent: string | null | undefined) {
   switch (agent) {
@@ -35,12 +35,6 @@ function relativeTime(iso: string | null | undefined): string {
   return `${Math.floor(hours / 24)}d`;
 }
 
-async function fetchSessions(): Promise<SessionInfo[]> {
-  const res = await fetch("/api/sessions");
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  return Array.isArray(data) ? data : data.sessions ?? [];
-}
 
 export function SessionList() {
   const router = useRouter();

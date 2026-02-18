@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Brain, Sparkles, Code2, Square } from "lucide-react";
 import { useState } from "react";
+import { fetchSessions } from "@/lib/api/sessions";
 import type { SessionInfo } from "@/lib/api/types";
 
 function agentIcon(agent: string | null | undefined) {
@@ -33,12 +34,6 @@ function statusBadge(status: string) {
   );
 }
 
-async function fetchSessions(): Promise<SessionInfo[]> {
-  const res = await fetch("/api/sessions");
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  return Array.isArray(data) ? data : data.sessions ?? [];
-}
 
 interface Props {
   sessionId: string;

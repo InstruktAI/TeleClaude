@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { LayoutDashboard, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { ComputerCard } from "@/components/dashboard/ComputerCard";
-import type { ComputerInfo, SessionInfo, ProjectInfo } from "@/lib/api/types";
+import { fetchSessions } from "@/lib/api/sessions";
+import type { ComputerInfo, ProjectInfo } from "@/lib/api/types";
 
 async function fetchComputers(): Promise<ComputerInfo[]> {
   const res = await fetch("/api/computers");
@@ -12,12 +13,6 @@ async function fetchComputers(): Promise<ComputerInfo[]> {
   return res.json();
 }
 
-async function fetchSessions(): Promise<SessionInfo[]> {
-  const res = await fetch("/api/sessions");
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  return Array.isArray(data) ? data : data.sessions ?? [];
-}
 
 async function fetchProjectsForComputer(
   computer: string,
