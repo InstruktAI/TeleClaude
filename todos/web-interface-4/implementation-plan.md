@@ -130,7 +130,7 @@ Status badges:
 
 ## Phase 3: Session switching and actions
 
-- [ ] ### Task 3.1: Session switching
+- [x] ### Task 3.1: Session switching
 
 **File:** `frontend/app/(chat)/page.tsx` (modify)
 
@@ -145,7 +145,7 @@ No new code needed beyond sidebar integration — the existing key-based pattern
 
 **Verification:** Switching sessions shows correct messages. No stale streams.
 
-- [ ] ### Task 3.2: Session header
+- [x] ### Task 3.2: Session header
 
 **File:** `frontend/components/SessionHeader.tsx` (new)
 
@@ -161,7 +161,7 @@ Data source: session metadata from `GET /sessions` (cached from sidebar fetch).
 
 **Verification:** Header shows correct session info. Updates on session switch.
 
-- [ ] ### Task 3.3: End session action
+- [x] ### Task 3.3: End session action
 
 **File:** `frontend/components/SessionHeader.tsx`, `frontend/app/api/sessions/[id]/route.ts` (new)
 
@@ -173,7 +173,7 @@ Data source: session metadata from `GET /sessions` (cached from sidebar fetch).
 
 **Verification:** Session ends. Removed from sidebar. Chat area updates.
 
-- [ ] ### Task 3.4: New session creation dialog
+- [x] ### Task 3.4: New session creation dialog
 
 **Files:**
 
