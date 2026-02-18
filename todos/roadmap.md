@@ -27,7 +27,7 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 
 - doc-access-control
 
-Role-based `clearance` frontmatter for doc snippets (`public`/`member`/`admin`). Filters `get_context` results by the calling agent's role. Default `member` for backward compatibility. Required for gating admin-only specs (e.g., itsUP API) away from public-facing agents.
+Role-based `role` frontmatter for doc snippets (`public`/`member`/`admin`). Filters `get_context` results by the calling agent's role. Default `member` for backward compatibility. Required for gating admin-only specs (e.g., itsUP API) away from public-facing agents.
 
 ## Rolling Session Titles
 
