@@ -1,6 +1,6 @@
-# start_gathering Tool
+# Session Relay and Gathering Tool
 
-Daemon-side implementation of the gathering ceremony launcher and communication fabric. Minimal guidance with just the right amount of tooling — the talking piece and the turn are the only instruments. Everything else is the breath.
+Daemon-side implementation of the session relay (the core communication primitive) and the gathering ceremony launcher. The relay enables natural agent-to-agent conversation — both 1:1 direct and multi-party. The gathering layers ceremony on top: talking piece, breath structure, and harvest. Same technology, two use cases.
 
 ## Conceptual Foundation
 

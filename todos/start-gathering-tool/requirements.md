@@ -2,17 +2,24 @@
 
 ## Goal
 
-Build a daemon-side `start_gathering` tool that launches and orchestrates gathering ceremonies. The tool spawns peer agent sessions, manages a communication fabric that fans out each speaker's output to all participants, enforces talking piece turn order with thought heartbeats, and supports human-in-the-loop participation.
+Build a daemon-side communication fabric that relays agent output between participant sessions, and a `start_gathering` tool that orchestrates gathering ceremonies on top of it.
 
-This is the technical implementation of the gathering procedure (`docs/global/general/procedure/gathering.md`).
+The communication fabric is the core: monitor a session's output via `capture_pane`, deliver it to all other participant sessions via `send_keys_existing_tmux` with attribution. This relay serves two use cases:
+
+1. **1:1 direct conversations** — two agents talk naturally after a `send_message(direct=true)` handshake. Each agent's output is automatically relayed to the other. No tool calls after the handshake. The simplest case: 2 participants, no talking piece, no phases.
+2. **Multi-party gathering ceremonies** — N agents convene with a talking piece, breath structure, and a harvester. The ceremony layers turn enforcement, heartbeats, and phase management on top of the same relay.
+
+Today, `send_message` delivers to a session but there is no automatic relay of the response back. The existing notification system only sends "session finished, go check" signals — not the actual output. This todo closes that gap.
 
 ## Scope
 
 ### In scope
 
+- **Session relay** — the core primitive. Given a list of participant sessions, monitor each session's output and relay it to all other participants with attribution. Works for N=2 (1:1) through N=many (gathering). Baseline snapshot diffing prevents feedback loops.
+- **1:1 relay via `send_message`** — when `send_message(direct=true)` establishes a peer connection, the daemon starts a bidirectional relay between the two sessions. Both agents produce output naturally; the daemon handles delivery. No additional tool calls needed after the handshake.
 - **Gathering state model** — in-memory state tracking gathering lifecycle, participants, current speaker, beat counters
 - **`start_gathering` MCP tool** — spawns N sessions with `direct=true`, assigns each participant an identity (name + number), distributes seed message with full participant map and rhythm configuration
-- **Communication fabric** — daemon monitors speaking agent's output via `OutputPoller`/`capture_pane`, fans out to all other sessions with attribution headers using `tmux_bridge.send_keys_existing_tmux`
+- **Communication fabric** — the gathering's relay: daemon monitors speaking agent's output via `capture_pane`, fans out to all other sessions with attribution headers using `tmux_bridge.send_keys_existing_tmux`. Uses the session relay primitive with turn enforcement layered on top.
 - **Talking piece management** — enforces turn order, detects explicit pass directives ("I pass to [agent]"), advances to next speaker; harvester is excluded from the speaking order
 - **Thought heartbeats** — daemon injects grounding prompts into the speaking agent's session at configured intervals, with micro-pulse signal snapshot and beat counter
 - **Turn boundaries** — graceful close prompt on final beat ("Your turn is up. What would you like to say last?"), early pass honored at any beat
@@ -32,6 +39,33 @@ This is the technical implementation of the gathering procedure (`docs/global/ge
 - Persistent gathering history (gatherings are ephemeral; the trail captures the close synthesis)
 
 ## Communication Model
+
+### The relay primitive
+
+The core mechanism is the same for 1:1 and gathering:
+
+1. A list of participant sessions exists (2 for 1:1, N for gathering)
+2. The daemon monitors each active participant's output via `capture_pane`
+3. New output (delta beyond baseline) is delivered to all other participants with attribution: `"[Name] ([number]):\n\n[their words]"`
+4. Baseline resets after each delivery — prevents re-capturing injected content
+
+For 1:1, both participants are always "active" (no talking piece). For gatherings, only the current speaker is monitored.
+
+### 1:1 direct conversation
+
+When agent A calls `send_message(session_id=B, message="...", direct=true)`, the daemon:
+
+1. Delivers the message to B's session (existing behavior)
+2. Starts a bidirectional relay between A and B
+3. B responds naturally — its output is relayed to A with attribution
+4. A responds naturally — its output is relayed to B with attribution
+5. No further tool calls. The agents just talk.
+
+The relay ends when either session ends, or when one agent explicitly closes the conversation.
+
+The receiving agent does not need to know about the relay. From its perspective, it received a message (typed into its terminal) and it responds. The response appears in the peer's session. It's just a conversation.
+
+### Gathering communication
 
 Once the gathering is seeded, **`send_message` is never called again**. The tool call is the handshake. After that:
 
@@ -134,6 +168,16 @@ The human is a named participant with a number in the map. Their messages (typed
 The daemon tracks the human's heartbeats the same way. When it's their turn, heartbeat prompts are delivered to their session. The system does not distinguish between human and agent in mechanics — only in delivery channel.
 
 ## Success Criteria
+
+### Session relay (1:1)
+
+- [ ] `send_message(direct=true)` starts a bidirectional relay between caller and target sessions
+- [ ] Both agents' output is automatically relayed to the other with attribution
+- [ ] No additional tool calls required after the handshake — agents talk naturally
+- [ ] Baseline snapshot prevents feedback loops (injected content not re-captured)
+- [ ] Relay ends cleanly when either session ends
+
+### Gathering ceremony
 
 - [ ] `start_gathering(rhythm, participants, ...)` spawns N sessions with `direct=true` and delivers seed messages with identity assignment
 - [ ] Each participant's seed includes: name, number, role, full participant map, breath structure, rhythm, opening question, proprioception pulse

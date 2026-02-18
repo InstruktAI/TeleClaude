@@ -6,6 +6,7 @@
   "breakdown": {
     "assessed": true,
     "todos": [
+      "multi-user-db-abstraction",
       "multi-user-identity",
       "multi-user-sessions",
       "multi-user-admin-audit",
@@ -20,9 +21,10 @@
     "status": "needs_work",
     "schema_version": 1,
     "blockers": [
-      "Scope too large for single session — must split into 6 sub-todos",
+      "Scope too large for single session — must split into 7 sub-todos",
       "SO_PEERCRED/LOCAL_PEERCRED Python API research incomplete",
-      "Database decision pending: SQLite vs PostgreSQL"
+      "asyncpg + SQLAlchemy async engine research needed",
+      "Alembic vs hand-rolled migration runner decision pending"
     ],
     "actions_taken": {
       "requirements_updated": true,

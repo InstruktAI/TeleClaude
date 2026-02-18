@@ -2,33 +2,93 @@
 
 ## Approach
 
-Build the gathering tool as a new MCP handler in the existing handlers mixin, with gathering state managed in-memory using an asyncio-locked dictionary. Communication fabric reuses the proven `tmux_bridge` primitives (capture_pane for monitoring, send_keys_existing_tmux for delivery). The talking piece and heartbeat system uses asyncio tasks for timing.
+Build a session relay primitive that monitors output from participant sessions and delivers it to all other participants. Layer the gathering ceremony on top with talking piece, heartbeats, and phase management. The relay serves both 1:1 direct conversations and multi-party gatherings — same core mechanism, different orchestration.
 
 ## Architecture
 
 ```
-start_gathering (MCP tool)
+SessionRelay (core primitive)
+  |-- participants: list of (session_id, tmux_session_name, name, number)
+  |-- monitors: per-participant output polling via capture_pane
+  |-- fanout: delivers delta to all other participants with attribution
+  |-- baselines: per-participant snapshot for feedback loop prevention
   |
-  v
-GatheringState (in-memory, asyncio.Lock)
-  |-- participants: dict[int, Participant]  (number -> session info)
-  |-- current_speaker: int
-  |-- beats_remaining: int
-  |-- gathering_id: str (UUID)
-  |-- rhythm: str
-  |-- phase: "seeding" | "active" | "closed"
+  ├── 1:1 mode (via send_message(direct=true))
+  |     |-- bidirectional: both participants monitored simultaneously
+  |     |-- no turn enforcement, no phases
+  |     |-- relay ends when either session ends
   |
-  v
-GatheringOrchestrator (async background task)
-  |-- output_monitor: polls speaking session via capture_pane
-  |-- heartbeat_timer: asyncio.sleep-based beat injection
-  |-- fanout_delivery: loops send_keys_existing_tmux to all non-speaking participants
-  |-- pass_detector: pattern match on speaker output for pass directives
+  └── Gathering mode (via start_gathering)
+        |-- GatheringState (in-memory, asyncio.Lock)
+        |     |-- current_speaker, beats_remaining, phase, round
+        |-- GatheringOrchestrator (async background task)
+        |     |-- turn enforcement: only current speaker monitored
+        |     |-- heartbeat_timer: asyncio.sleep-based beat injection
+        |     |-- pass_detector: pattern match on speaker output
+        |     |-- phase management: inhale → hold → exhale → close
+        |-- harvester: receives all, speaks at close only
 ```
 
 ## Tasks
 
-### Task 1: Gathering state model
+### Task 1: Session relay primitive
+
+**Files:** `teleclaude/core/session_relay.py` (new)
+
+The core output monitoring and fan-out mechanism that serves both 1:1 and gathering:
+
+```python
+@dataclass
+class RelayParticipant:
+    session_id: str
+    tmux_session_name: str
+    name: str
+    number: int
+
+@dataclass
+class SessionRelay:
+    relay_id: str
+    participants: list[RelayParticipant]
+    baselines: dict[str, str]  # session_id -> pane baseline
+    active: bool = True
+
+# Module-level state
+_relays: dict[str, SessionRelay] = {}
+_relay_lock = asyncio.Lock()
+```
+
+Core functions:
+
+- `create_relay(participants) -> relay_id` — register a relay, initialize baselines
+- `stop_relay(relay_id)` — mark inactive, cancel monitoring tasks
+- `get_relay_for_session(session_id) -> relay_id | None` — lookup by participant
+- `_monitor_output(relay, participant)` — async task: poll `capture_pane`, compute delta, call `_fanout`
+- `_fanout(relay, sender, delta)` — format with attribution, deliver to all other participants via `send_keys_existing_tmux`
+- `_update_baseline(relay, session_id, new_content)` — reset after delivery
+
+The relay monitors ALL participants simultaneously (for 1:1 bidirectional mode). For gathering mode, the orchestrator controls which participant is monitored by starting/stopping individual monitor tasks.
+
+**Verify:** Unit tests for relay creation, fan-out delivery to N-1 participants, baseline snapshot prevents feedback loops.
+
+### Task 2: 1:1 relay via send_message
+
+**Files:** `teleclaude/mcp/handlers.py`, `teleclaude/core/session_relay.py`
+
+Wire the relay into `send_message(direct=true)`:
+
+1. When `send_message` is called with `direct=true` and the caller has a session:
+   - After delivering the message (existing behavior)
+   - Create a 2-participant relay between caller and target sessions
+   - Both sessions are monitored bidirectionally
+2. The relay runs as a background asyncio task
+3. Either agent's output is automatically relayed to the other with attribution
+4. Relay ends when either session ends (detected by `ProcessExited` from output poller)
+
+The receiving agent sees the message arrive (existing send_keys injection) and responds naturally. Its response is captured by the relay and injected into the sender's session. No tool calls. No wasted tokens. Just a conversation.
+
+**Verify:** send_message with direct=true starts relay, both directions work, relay cleans up on session end.
+
+### Task 3: Gathering state model
 
 **Files:** `teleclaude/core/gathering.py` (new)
 
@@ -76,7 +136,7 @@ Provide functions: `create_gathering`, `get_gathering`, `close_gathering`, `is_i
 
 **Verify:** Unit tests for state creation, lookup, guard check.
 
-### Task 2: MCP tool definition and handler
+### Task 4: MCP tool definition and handler
 
 **Files:** `teleclaude/mcp/tool_definitions.py`, `teleclaude/mcp_server.py`, `teleclaude/mcp/handlers.py`
 
@@ -109,9 +169,11 @@ Handler flow:
 
 **Verify:** Tool appears in MCP schema, handler creates sessions and state.
 
-### Task 3: Communication fabric — output monitoring and fan-out
+### Task 5: Gathering orchestrator — turn-managed relay
 
 **Files:** `teleclaude/core/gathering.py`
+
+The `GatheringOrchestrator` wraps the session relay with turn enforcement. Instead of monitoring all participants (as in 1:1), it controls which participant's monitor is active based on the talking piece.
 
 The `GatheringOrchestrator` background task:
 
@@ -150,9 +212,9 @@ async def run_gathering(gathering_id: str):
 3. For each: `await tmux_bridge.send_keys_existing_tmux(tmux_session, formatted_message, send_enter=True)`
 4. Account for 1-second delay per delivery (sequential, not parallel — tmux safety)
 
-**Verify:** Mock tmux bridge, verify fan-out delivers to all N-1 participants with correct attribution.
+**Verify:** Mock tmux bridge, verify turn-managed relay delivers only current speaker's output.
 
-### Task 4: Talking piece and heartbeat injection
+### Task 6: Talking piece and heartbeat injection
 
 **Files:** `teleclaude/core/gathering.py`
 
@@ -181,7 +243,7 @@ async def run_gathering(gathering_id: str):
 
 **Verify:** Timer fires at configured intervals, heartbeat prompts injected, pass detection works, final beat delivers close prompt.
 
-### Task 5: HITL participation
+### Task 7: HITL participation
 
 **Files:** `teleclaude/core/gathering.py`, `teleclaude/mcp/handlers.py`
 
@@ -195,7 +257,7 @@ For human participants:
 
 **Verify:** Human participant receives attributed messages, heartbeats fire during their turn.
 
-### Task 6: Phase management and harvester
+### Task 8: Phase management and harvester
 
 **Files:** `teleclaude/core/gathering.py`
 
@@ -215,7 +277,7 @@ For human participants:
 
 **Verify:** Phase transitions fire at correct round boundaries, harvester receives close signal.
 
-### Task 7: History search in seed preparation
+### Task 9: History search in seed preparation
 
 **Files:** `teleclaude/core/gathering.py`, `teleclaude/mcp/handlers.py`
 
@@ -230,7 +292,7 @@ This brings past conversations into the gathering's awareness sphere. Agents are
 
 **Verify:** History search runs during seed, results appear in the proprioception pulse.
 
-### Task 8: Nested gathering guard
+### Task 10: Nested gathering guard
 
 **Files:** `teleclaude/core/gathering.py`, `teleclaude/mcp/handlers.py`
 
@@ -241,11 +303,18 @@ Before creating a gathering:
 
 **Verify:** Attempting to start a nested gathering returns an error.
 
-### Task 9: Tests
+### Task 11: Tests
 
-**Files:** `tests/unit/test_gathering.py` (new), `tests/integration/test_gathering_tool.py` (new)
+**Files:** `tests/unit/test_session_relay.py` (new), `tests/unit/test_gathering.py` (new), `tests/integration/test_gathering_tool.py` (new)
 
-Unit tests:
+Unit tests — session relay:
+
+- Relay creation with N participants
+- Fan-out delivery to N-1 participants with attribution
+- Baseline snapshot prevents feedback loops (injected content not re-captured)
+- Relay cleanup on session end
+
+Unit tests — gathering:
 
 - Gathering state CRUD (create, lookup, close, guard, speakers vs harvester)
 - Pass directive detection (positive and negative cases)
@@ -256,6 +325,7 @@ Unit tests:
 
 Integration tests (with mocked tmux bridge):
 
+- 1:1 relay: send_message(direct=true) starts relay, bidirectional output delivery, cleanup on session end
 - Full gathering lifecycle: seed → inhale rounds → hold rounds → exhale rounds → harvester signal → close
 - Fan-out delivery to all participants including harvester
 - Heartbeat injection at correct intervals
@@ -268,17 +338,19 @@ Integration tests (with mocked tmux bridge):
 
 ## Build Sequence
 
-1. Task 1 (state model) — no dependencies
-2. Task 2 (MCP tool + handler) — depends on Task 1
-3. Task 3 (communication fabric) — depends on Task 1
-4. Task 4 (talking piece + heartbeats) — depends on Task 3
-5. Task 5 (HITL) — depends on Task 3, Task 4
-6. Task 6 (phase management + harvester) — depends on Task 3, Task 4
-7. Task 7 (history search in seed) — depends on Task 2
-8. Task 8 (nested guard) — depends on Task 1
-9. Task 9 (tests) — after each task, but bulk test suite at the end
+1. Task 1 (session relay primitive) — no dependencies. **This is the foundation.**
+2. Task 2 (1:1 relay via send_message) — depends on Task 1. **First usable deliverable: natural 1:1 conversations.**
+3. Task 3 (gathering state model) — depends on Task 1
+4. Task 4 (MCP tool + handler) — depends on Task 3
+5. Task 5 (gathering orchestrator) — depends on Task 1, Task 3
+6. Task 6 (talking piece + heartbeats) — depends on Task 5
+7. Task 7 (HITL) — depends on Task 5, Task 6
+8. Task 8 (phase management + harvester) — depends on Task 5, Task 6
+9. Task 9 (history search in seed) — depends on Task 4
+10. Task 10 (nested guard) — depends on Task 3
+11. Task 11 (tests) — after each task, but bulk test suite at the end
 
-Tasks 1 and 8 can be built in parallel. Tasks 3 and 4 are tightly coupled and sequential. Task 7 is independent of the communication fabric.
+Tasks 1-2 deliver the 1:1 use case independently. Tasks 3-10 build the gathering on top. The relay primitive is the shared foundation. If context is exhausted after Task 2, 1:1 conversations already work — the gathering tasks can be a follow-up.
 
 ## Risks and Mitigations
 
