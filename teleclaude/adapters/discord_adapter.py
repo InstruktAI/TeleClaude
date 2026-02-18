@@ -274,6 +274,18 @@ class DiscordAdapter(UiAdapter):
         multi_message: bool = False,
     ) -> str:
         _ = multi_message
+
+        # Format transcribed text with delimiters (Discord compaction workaround)
+        if metadata and metadata.is_transcription:
+            prefix = 'Transcribed text:\n\n"'
+            if text.startswith(prefix) and text.endswith('"'):
+                content = text[len(prefix) : -1]
+                computer_name = config.computer.name
+                # Bold header, plain content (no italics), bottom dash
+                text = f'**DISCORD @ {computer_name}:**\n\n"{content}"\n---'
+
+        logger.debug("[DISCORD SEND] text=%r", text[:100])
+
         destination = await self._resolve_destination_channel(session, metadata=metadata)
         send_fn = self._require_async_callable(getattr(destination, "send", None), label="Discord channel send")
         sent = await send_fn(text)
@@ -290,6 +302,7 @@ class DiscordAdapter(UiAdapter):
         *,
         metadata: "MessageMetadata | None" = None,
     ) -> bool:
+        logger.debug("[DISCORD EDIT] text=%r", text[:100])
         try:
             message = await self._fetch_destination_message(session, message_id, metadata=metadata)
         except AdapterError:

@@ -319,14 +319,12 @@ def _process_tool_use_block(
 
     guard: allow-string-compare
     """
-    tool_name = block.get("name", "unknown")
-    tool_input = block.get("input", {})
-    if not isinstance(tool_input, dict):
-        tool_input = {}
-    serialized_input = json.dumps(tool_input)
+    tool_name = str(block.get("name", "unknown"))
+    # Truncate at first newline, open paren, or open brace to ensure single-line name only
+    tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
     lines.append("")
-    # Use bold single-backtick monospace for tool invocations
-    lines.append(f"{time_prefix}🔧 **`{tool_name} {serialized_input}`**")
+    # Use bold single-backtick monospace for tool invocations (name only, no args)
+    lines.append(f"{time_prefix}🔧 **`{tool_name_safe}`**")
     return "tool_use"
 
 
@@ -414,17 +412,17 @@ def render_clean_agent_output(
                 if thinking:
                     if lines:
                         lines.append("")
-                    # Clean thinking: just italics, no headers
-                    lines.append(f"_{thinking}_")
+                    # Clean thinking: plain text, no headers
+                    lines.append(str(thinking))
                     emitted = True
             elif block_type == "tool_use":
-                tool_name = block.get("name", "unknown")
-                tool_input = block.get("input", {})
-                serialized = json.dumps(tool_input)
+                tool_name = str(block.get("name", "unknown"))
+                # Truncate at first newline, open paren, or open brace to ensure single-line name only
+                tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
                 if lines:
                     lines.append("")
-                # Clean tool use: bold single-backtick monospace
-                lines.append(f"🔧 **`{tool_name} {serialized}`**")
+                # Clean tool use: bold single-backtick monospace (name only, no args)
+                lines.append(f"🔧 **`{tool_name_safe}`**")
                 emitted = True
             # Tool results are completely omitted in this "clean" renderer
 
@@ -578,7 +576,8 @@ def _format_thinking(text: str) -> str:
         elif in_code_block or not line.strip():
             result_lines.append(line)
         else:
-            result_lines.append(f"*{line}*")
+            # Plain text thinking, no italics
+            result_lines.append(str(line))
 
     # Add blank line after thinking block
     result_lines.append("")

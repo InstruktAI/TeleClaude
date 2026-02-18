@@ -7,6 +7,67 @@ from pathlib import Path
 from teleclaude.install import install_hooks
 
 
+def test_resolve_main_repo_root_from_worktree(tmp_path):
+    """Worktree .git file is followed to find the main repo root."""
+    main_repo = tmp_path / "main-repo"
+    main_repo.mkdir()
+    (main_repo / ".git").mkdir()
+    (main_repo / ".git" / "worktrees" / "feature-x").mkdir(parents=True)
+
+    worktree = tmp_path / "trees" / "feature-x"
+    worktree.mkdir(parents=True)
+    gitdir = main_repo / ".git" / "worktrees" / "feature-x"
+    (worktree / ".git").write_text(f"gitdir: {gitdir}\n")
+
+    assert install_hooks.resolve_main_repo_root(worktree) == main_repo
+
+
+def test_resolve_main_repo_root_from_main_repo(tmp_path):
+    """Main repo .git directory is recognized directly."""
+    main_repo = tmp_path / "repo"
+    main_repo.mkdir()
+    (main_repo / ".git").mkdir()
+
+    assert install_hooks.resolve_main_repo_root(main_repo) == main_repo
+
+
+def test_resolve_main_repo_root_relative_gitdir(tmp_path):
+    """Relative gitdir paths in .git file are resolved correctly."""
+    main_repo = tmp_path / "main-repo"
+    main_repo.mkdir()
+    (main_repo / ".git").mkdir()
+    (main_repo / ".git" / "worktrees" / "feat").mkdir(parents=True)
+
+    worktree = main_repo / "trees" / "feat"
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text("gitdir: ../../.git/worktrees/feat\n")
+
+    assert install_hooks.resolve_main_repo_root(worktree) == main_repo
+
+
+def test_resolve_main_repo_root_fallback_no_git(tmp_path):
+    """Returns start path when no .git is found."""
+    bare_dir = tmp_path / "no-git"
+    bare_dir.mkdir()
+
+    assert install_hooks.resolve_main_repo_root(bare_dir) == bare_dir
+
+
+def test_configure_claude_never_embeds_worktree_path(tmp_path, monkeypatch):
+    """Hook commands always point to main repo receiver, never a worktree."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    real_repo = Path(__file__).resolve().parents[2]
+
+    install_hooks.configure_claude(real_repo)
+
+    claude_config = tmp_path / ".claude" / "settings.json"
+    data = json.loads(claude_config.read_text())
+    hook_cmd = data["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+
+    assert "trees/" not in hook_cmd
+    assert str(real_repo / "teleclaude" / "hooks" / "receiver.py") in hook_cmd
+
+
 def test_merge_hooks_replaces_existing_hook_definition():
     """Existing hooks for the same event are replaced by the new definition (deduped by command)."""
     existing_hooks = {

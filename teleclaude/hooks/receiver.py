@@ -14,19 +14,50 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
 
-# Bootstrap: agent CLIs call this hook from arbitrary directories where PATH may
-# resolve python3 to system Python (missing project deps). Re-exec under the
-# project venv when needed.
-_VENV_PYTHON = Path(__file__).resolve().parents[2] / ".venv" / "bin" / "python3"
+
+def _resolve_main_repo_root(start: Path) -> Path:
+    """Resolve the main git repository root, even when invoked from a worktree.
+
+    In a worktree, .git is a file containing 'gitdir: <path>' pointing to
+    main_repo/.git/worktrees/<name>. This reads that file to find the main repo.
+    Pure filesystem — no subprocess, no external deps.
+    """
+    current = start
+    while current != current.parent:
+        git_path = current / ".git"
+        if git_path.is_dir():
+            return current
+        if git_path.is_file():
+            try:
+                content = git_path.read_text().strip()
+            except OSError:
+                return current
+            if content.startswith("gitdir:"):
+                gitdir = Path(content.split(":", 1)[1].strip())
+                if not gitdir.is_absolute():
+                    gitdir = (current / gitdir).resolve()
+                # gitdir = main_repo/.git/worktrees/<name> — find the .git ancestor
+                for parent in gitdir.parents:
+                    if parent.name == ".git":
+                        return parent.parent
+            return current
+        current = current.parent
+    return start
+
+
+# Bootstrap: resolve main repo root (worktree-safe), then re-exec under the
+# project venv when needed. Agent CLIs call this hook from arbitrary directories
+# where PATH may resolve python3 to system Python (missing project deps).
+_REPO_ROOT = _resolve_main_repo_root(Path(__file__).resolve().parents[2])
+_VENV_PYTHON = _REPO_ROOT / ".venv" / "bin" / "python3"
 if _VENV_PYTHON.is_file() and Path(sys.executable).resolve() != _VENV_PYTHON.resolve():
     os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
 
 from instrukt_ai_logging import configure_logging, get_logger  # noqa: E402
 
 # Ensure local hooks utils and TeleClaude package are importable
-hooks_dir = Path(__file__).parent
-sys.path.append(str(hooks_dir))
-sys.path.append(str(hooks_dir.parent.parent))
+sys.path.append(str(_REPO_ROOT / "teleclaude" / "hooks"))
+sys.path.append(str(_REPO_ROOT))
 
 from teleclaude.config import config  # noqa: E402
 from teleclaude.core.agents import AgentName  # noqa: E402
@@ -40,13 +71,6 @@ from teleclaude.hooks.checkpoint_flags import (  # noqa: E402
     is_checkpoint_disabled,
     set_checkpoint_flag,
 )
-
-# Bootstrap: agent CLIs call this hook from arbitrary directories where PATH may
-# resolve python3 to system Python (missing project deps). Re-exec under the
-# project venv when needed.
-_VENV_PYTHON = Path(__file__).resolve().parents[2] / ".venv" / "bin" / "python3"
-if _VENV_PYTHON.is_file() and Path(sys.executable).resolve() != _VENV_PYTHON.resolve():
-    os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")

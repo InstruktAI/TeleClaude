@@ -137,6 +137,7 @@ class TelegramAdapterMetadata:
     parse_mode: Optional[str] = None
     char_offset: int = 0
     user_id: Optional[int] = None
+    badge_sent: bool = False
 
 
 @dataclass
@@ -148,6 +149,8 @@ class DiscordAdapterMetadata:
     channel_id: Optional[int] = None
     thread_id: Optional[int] = None
     output_message_id: Optional[str] = None
+    badge_sent: bool = False
+    char_offset: int = 0
 
 
 @dataclass
@@ -289,6 +292,7 @@ class SessionAdapterMetadata:
                     parse_mode=parse_mode,
                     char_offset=char_offset,
                     user_id=tg_user_id,
+                    badge_sent=bool(tg_raw.get("badge_sent", False)),
                 )
 
             discord_raw = data_obj.get("discord")
@@ -312,6 +316,8 @@ class SessionAdapterMetadata:
                     channel_id=_get_int_or_none("channel_id"),
                     thread_id=_get_int_or_none("thread_id"),
                     output_message_id=discord_output_message_id,
+                    badge_sent=bool(discord_raw.get("badge_sent", False)),
+                    char_offset=int(discord_raw.get("char_offset", 0)),
                 )
 
             redis_raw = data_obj.get("redis")
@@ -360,7 +366,7 @@ class MessageMetadata:
     """Per-call metadata for message operations."""
 
     reply_markup: Optional["InlineKeyboardMarkup"] = None
-    parse_mode: str | None = "MarkdownV2"
+    parse_mode: str | None = None
     message_thread_id: Optional[int] = None
     raw_format: bool = False
     origin: Optional[str] = None
@@ -371,6 +377,8 @@ class MessageMetadata:
     channel_metadata: Optional[Dict[str, object]] = None  # guard: loose-dict
     auto_command: Optional[str] = None  # legacy adapter boundary (deprecated)
     launch_intent: Optional["SessionLaunchIntent"] = None
+    is_transcription: bool = False
+    cleanup_trigger: Optional[str] = None
 
 
 @dataclass

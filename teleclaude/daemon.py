@@ -1820,6 +1820,7 @@ async def main() -> None:
     # Setup logging from environment variables
     log_level = os.getenv("TELECLAUDE_LOG_LEVEL", DEFAULT_LOG_LEVEL)
     setup_logging(level=log_level)
+    logger.info("Starting TeleClaude Daemon (version=v2-append-only-v3)")
 
     # Create daemon
     daemon = TeleClaudeDaemon(str(env_path))

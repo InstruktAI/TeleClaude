@@ -81,10 +81,7 @@ class AdapterClient:
 
     def _origin_ui_adapter(self, session: "Session") -> UiAdapter | None:
         if not session.last_input_origin:
-            logger.error(
-                "Session %s missing last_input_origin; broadcasting to all UI adapters",
-                session.session_id[:8],
-            )
+            logger.error("Session %s missing last_input_origin", session.session_id[:8])
             return None
         adapter = self.adapters.get(session.last_input_origin)
         return adapter if isinstance(adapter, UiAdapter) else None
@@ -208,6 +205,8 @@ class AdapterClient:
         session: "Session",
         operation: str,
         task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
+        *,
+        origin: str | None = None,
     ) -> None:
         """Broadcast operation to all UI observers (best-effort).
 
@@ -215,13 +214,12 @@ class AdapterClient:
         Failures are logged as warnings but do not raise exceptions.
 
         Args:
-            session: Session object (contains last_input_origin)
+            session: Session object
             operation: Operation name for logging
             task_factory: Function that takes adapter and returns awaitable
+            origin: Origin adapter type to exclude. Uses session.last_input_origin if not provided.
         """
-        # Fetch fresh origin from DB (session object may be stale)
-        fresh_session = await db.get_session(session.session_id)
-        last_input_origin = fresh_session.last_input_origin if fresh_session else session.last_input_origin
+        last_input_origin = origin or session.last_input_origin
 
         observer_tasks: list[tuple[str, Awaitable[object]]] = []
         for adapter_type, adapter in self.adapters.items():
@@ -255,23 +253,9 @@ class AdapterClient:
         broadcast: bool = True,
         **kwargs: object,
     ) -> object:
-        """Route operation to origin UI adapter via _run_ui_lane, then broadcast to observers.
+        """Route operation to origin UI adapter, then broadcast to observers.
 
-        ALL calls go through _run_ui_lane which guarantees ensure_channel runs,
-        providing thread-gone resilience (topic deleted, channel missing, etc.).
-
-        If no origin adapter, broadcasts to all UI adapters and returns first truthy result.
-        If origin exists, calls origin via lane and broadcasts to observers (best-effort).
-
-        Args:
-            session: Session object
-            method: Method name to call on adapters
-            *args: Positional args to pass to method (after session)
-            broadcast: If False, only send to origin (no observers). Default: True.
-            **kwargs: Keyword args to pass to method
-
-        Returns:
-            First truthy result, or None if no truthy results
+        Returns None immediately if no origin UI adapter is found (fail-fast).
         """
         origin_ui = self._origin_ui_adapter(session)
 
@@ -279,20 +263,13 @@ class AdapterClient:
             return cast(Awaitable[object], getattr(adapter, method)(lane_session, *args, **kwargs))
 
         if not origin_ui:
-            # No UI origin — pick first available UI adapter. Never broadcast.
-            ui_adapters = self._ui_adapters()
-            if not ui_adapters:
-                logger.warning("[ROUTING] No UI adapters for session=%s method=%s", session.session_id[:8], method)
-                return None
-            first_type, first_adapter = ui_adapters[0]
-            logger.debug(
-                "[ROUTING] Fallback to %s (no UI origin): session=%s method=%s origin=%s",
-                first_type,
-                session.session_id[:8],
+            logger.error(
+                "[ROUTING] No UI origin adapter — dropping %s for session=%s origin=%s",
                 method,
+                session.session_id[:8],
                 session.last_input_origin,
             )
-            return await self._run_ui_lane(session, first_type, first_adapter, make_task)
+            return None
 
         # Route origin through _run_ui_lane for ensure_channel resilience
         origin_type = session.last_input_origin or "unknown"
@@ -307,7 +284,7 @@ class AdapterClient:
 
         # Broadcast to observers (best-effort) unless disabled
         if broadcast:
-            await self._broadcast_to_observers(session, method, make_task)
+            await self._broadcast_to_observers(session, method, make_task, origin=origin_type)
 
         return result
 
@@ -337,6 +314,13 @@ class AdapterClient:
         Returns:
             message_id from origin adapter, or None if send failed
         """
+        # Override cleanup_trigger if specified in metadata (e.g. from voice handler)
+        if metadata and metadata.cleanup_trigger:
+            try:
+                cleanup_trigger = CleanupTrigger(metadata.cleanup_trigger)
+            except ValueError:
+                logger.warning("Invalid cleanup_trigger in metadata: %s", metadata.cleanup_trigger)
+
         # Convert cleanup_trigger enum to feedback boolean (internal implementation)
         feedback = cleanup_trigger == CleanupTrigger.NEXT_NOTICE
 
@@ -406,6 +390,27 @@ class AdapterClient:
 
         return message_id
 
+    async def move_badge_to_bottom(self, session: "Session") -> None:
+        """Atomic-like move of the Session Badge to the absolute bottom on all UI adapters."""
+        await self._broadcast_to_ui_adapters(session, "move_badge", lambda adapter, s: adapter._move_badge_to_bottom(s))
+
+    async def break_threaded_turn(self, session: "Session") -> None:
+        """Force a break in the threaded output stream on all UI adapters.
+
+        Clears tracked message IDs and resets offsets so the next output
+        starts as a fresh message at the bottom of the thread.
+        """
+        # Reset the global signal column
+        await db.set_output_message_id(session.session_id, None)
+        await db.update_session(session.session_id, char_offset=0)
+
+        # Broadcast reset to all UI adapters to clear platform-specific state (metadata)
+        async def _reset_adapter_state(adapter: UiAdapter, s: "Session") -> None:
+            await adapter._clear_output_message_id(s)
+            await adapter._set_char_offset(s, 0)
+
+        await self._broadcast_to_ui_adapters(session, "break_turn", _reset_adapter_state)
+
     async def send_threaded_output(
         self,
         session: "Session",
@@ -417,11 +422,26 @@ class AdapterClient:
         Routes to origin only (no broadcast) — streaming output is an
         edit-in-place operation with platform-specific message IDs.
         """
+        # Cleanup feedback messages (like "Transcribed text...") when threaded output starts.
+        pending = await db.get_pending_deletions(session.session_id, deletion_type="feedback")
+        if pending:
+            logger.debug(
+                "Feedback cleanup (threaded output start): session=%s pending_count=%d",
+                session.session_id[:8],
+                len(pending),
+            )
+            for msg_id in pending:
+                try:
+                    await self.delete_message(session, msg_id, broadcast=False)
+                except Exception as e:
+                    logger.debug("Best-effort feedback deletion failed: %s", e)
+            await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
+
         result = await self._route_to_ui(
             session,
             "send_threaded_output",
             text,
-            broadcast=False,
+            broadcast=True,
             multi_message=multi_message,
         )
         return str(result) if result else None
@@ -495,9 +515,7 @@ class AdapterClient:
         """Route output update to originating UI adapter.
 
         Delivers streaming output to the adapter that originated the user input.
-        When no origin is set (API/MCP sessions), falls back to broadcasting
-        to all UI adapters. No observer broadcast — output is an edit-in-place
-        streaming operation, not a notification.
+        Returns None if no origin adapter is found.
 
         Args:
             session: Session object
@@ -517,6 +535,23 @@ class AdapterClient:
             len(output),
             is_final,
         )
+
+        # Cleanup feedback messages (like "Transcribed text...") when output starts.
+        # This keeps the thread clean by removing intermediate status updates
+        # once the real agent output begins.
+        pending = await db.get_pending_deletions(session.session_id, deletion_type="feedback")
+        if pending:
+            logger.debug(
+                "Feedback cleanup (output start): session=%s pending_count=%d",
+                session.session_id[:8],
+                len(pending),
+            )
+            for msg_id in pending:
+                try:
+                    await self.delete_message(session, msg_id, broadcast=False)
+                except Exception as e:
+                    logger.debug("Best-effort feedback deletion failed: %s", e)
+            await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
 
         # Suppress standard poller output when threaded output experiment is enabled.
         # The experiment config and active_agent are both known at session creation —
@@ -558,21 +593,19 @@ class AdapterClient:
         if origin in _NON_INTERACTIVE:
             return
 
-        from teleclaude.utils.markdown import escape_markdown_v2
-
         origin_display = "TUI" if origin.lower() == "api" else origin.upper()
         computer_name = config.computer.name
         header = f"{origin_display} @ {computer_name}:"
 
-        escaped_header = escape_markdown_v2(header)
-        escaped_text = escape_markdown_v2(text)
-        final_text = f"*{escaped_header}*\n_{escaped_text}_"
+        # Pass raw text to observers. Adapters handle their own formatting
+        # based on origin/context.
+        final_text = f"{header}\n\n{text}"
 
         async def send_broadcast(ui_adapter: UiAdapter, lane_session: "Session") -> Optional[str]:
             return await ui_adapter.send_message(
                 lane_session,
                 final_text,
-                metadata=MessageMetadata(parse_mode="MarkdownV2"),
+                metadata=MessageMetadata(parse_mode=None),
             )
 
         await self._broadcast_to_observers(session, "broadcast_user_input", send_broadcast)

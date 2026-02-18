@@ -16,7 +16,6 @@ Each doc snippet gets a `clearance` front matter field:
 
 - `public` — visible to all agents (help desk, onboarding, external)
 - `internal` — visible to team member agents (contributor+)
-- `ops` — visible to ops/admin agents only
 - `admin` — visible to admin agents only
 
 Default when omitted: `internal` (backward-compatible, nothing leaks by accident).
@@ -25,9 +24,8 @@ Default when omitted: `internal` (backward-compatible, nothing leaks by accident
 
 When a session starts, the agent inherits a role from its launch context:
 
-- Help desk sessions: `public`
-- Member-initiated sessions: `internal`
-- Ops-initiated sessions: `ops`
+- Help desk sessions: `customer`
+- Member-initiated sessions: `member`
 - Direct admin sessions: `admin`
 
 ### FR3: get_context filtering
@@ -45,6 +43,5 @@ Existing snippets default to `internal`. New public-facing content is explicitly
 ## Success criteria
 
 - A help desk agent started for an anonymous user sees only `public` snippets
-- An ops agent sees `public` + `internal` + `ops`
-- No snippet without explicit `clearance: public` is ever returned to a public agent
+- No snippet without explicit `clearance: public` is ever returned to a customer agent
 - Config CLI commands reject unauthorized callers with a clear error

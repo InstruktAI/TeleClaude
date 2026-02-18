@@ -964,7 +964,6 @@ async def handle_voice(
             session,
             message,
             metadata=metadata,
-            cleanup_trigger=CleanupTrigger.NEXT_TURN,
         )
 
     async def _delete_feedback(session_id: str, message_id: str) -> None:
@@ -997,6 +996,14 @@ async def handle_voice(
         session = await db.get_session(cmd.session_id)
         if session:
             await client.delete_message(session, str(cmd.message_id), broadcast=False)
+
+    logger.debug("Forwarding transcribed voice to agent: %s...", transcribed[:50])
+
+    # Reset threaded output state to ensure "Transcribed text" acts as a visual boundary.
+    # The next agent output will start a fresh message block at the bottom.
+    session = await db.get_session(cmd.session_id)
+    if session:
+        await client.break_threaded_turn(session)
 
     await process_message(
         ProcessMessageCommand(session_id=cmd.session_id, text=transcribed, origin=cmd.origin),

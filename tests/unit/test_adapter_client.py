@@ -2,7 +2,7 @@
 
 import os
 from datetime import datetime
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -278,7 +278,7 @@ async def test_adapter_client_discover_peers_multiple_adapters():
 
 @pytest.mark.asyncio
 async def test_route_to_ui_skips_exceptions_without_origin():
-    """Originless routing should ignore exceptions and return a real message_id."""
+    """Originless routing returns None (fail-fast, no fallback)."""
     client = AdapterClient()
     ok_adapter = DummyTelegramAdapter(client, send_message_return="123")
     failing_adapter = DummyFailingAdapter(client, error=TimeoutError("Timed out"))
@@ -299,7 +299,8 @@ async def test_route_to_ui_skips_exceptions_without_origin():
     mock_db.get_session = AsyncMock(return_value=session)
     with patch("teleclaude.core.adapter_client.db", mock_db):
         result = await client.send_message(session, "hello", ephemeral=False)
-    assert result == "123"
+    # "api" is not a UI adapter — fail-fast returns None
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -499,13 +500,16 @@ async def test_send_output_update_missing_thread_recovers_via_adapter():
         ),
     )
 
-    result = await client.send_output_update(session, "output", 0.0, 0.0)
+    mock_db = AsyncMock()
+    mock_db.get_pending_deletions = AsyncMock(return_value=[])
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        result = await client.send_output_update(session, "output", 0.0, 0.0)
     assert result == "msg"
 
 
 @pytest.mark.asyncio
-async def test_send_output_update_missing_thread_recovers_for_non_telegram_origin():
-    """Recovery should not depend on the last input origin."""
+async def test_send_output_update_non_ui_origin_returns_none():
+    """Non-UI origin (api) returns None — no fallback routing."""
     client = AdapterClient()
     client.register_adapter(
         "telegram",
@@ -523,8 +527,11 @@ async def test_send_output_update_missing_thread_recovers_for_non_telegram_origi
         ),
     )
 
-    result = await client.send_output_update(session, "output", 0.0, 0.0)
-    assert result == "msg"
+    mock_db = AsyncMock()
+    mock_db.get_pending_deletions = AsyncMock(return_value=[])
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        result = await client.send_output_update(session, "output", 0.0, 0.0)
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -540,14 +547,17 @@ async def test_send_output_update_topic_deleted_recovers_via_adapter():
         session_id="session-789",
         computer_name="test",
         tmux_session_name="tc_session_789",
-        last_input_origin=InputOrigin.API.value,
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Tmux Session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="msg-1")
         ),
     )
 
-    result = await client.send_output_update(session, "output", 0.0, 0.0)
+    mock_db = AsyncMock()
+    mock_db.get_pending_deletions = AsyncMock(return_value=[])
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        result = await client.send_output_update(session, "output", 0.0, 0.0)
     assert result == "msg"
 
 
@@ -563,7 +573,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
         session_id="session-999",
         computer_name="test",
         tmux_session_name="tc_session_999",
-        last_input_origin=InputOrigin.API.value,
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Tmux Session",
         adapter_metadata=SessionAdapterMetadata(),
     )
@@ -571,7 +581,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
         session_id="session-999",
         computer_name="test",
         tmux_session_name="tc_session_999",
-        last_input_origin=InputOrigin.API.value,
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Tmux Session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=999, output_message_id="msg-1")
@@ -584,9 +594,11 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
         sent_sessions.append(sent_session)
         return "msg"
 
+    mock_db = AsyncMock()
+    mock_db.get_pending_deletions = AsyncMock(return_value=[])
     with (
         patch.object(telegram, "ensure_channel", new=AsyncMock(return_value=updated_session)),
-        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()),
+        patch("teleclaude.core.adapter_client.db", mock_db),
     ):
         telegram.send_output_update = record_send_output_update  # type: ignore[assignment]
         await client.send_output_update(session, "output", 0.0, 0.0)
@@ -610,12 +622,17 @@ async def test_send_output_update_non_gemini_not_suppressed_when_experiment_glob
         session_id="session-codex",
         computer_name="test",
         tmux_session_name="tc_session_codex",
-        last_input_origin=InputOrigin.API.value,
+        last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Session",
         active_agent="codex",
     )
 
-    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled_for_session", return_value=False):
+    mock_db = MagicMock()
+    mock_db.get_pending_deletions = AsyncMock(return_value=[])
+    with (
+        patch("teleclaude.core.adapter_client.is_threaded_output_enabled_for_session", return_value=False),
+        patch("teleclaude.core.adapter_client.db", mock_db),
+    ):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
     assert result == "msg"
@@ -707,8 +724,8 @@ async def test_send_message_persistent_not_tracked():
 
 
 @pytest.mark.asyncio
-async def test_send_message_notice_broadcasts_when_missing_origin():
-    """Notices broadcast to all UI adapters when last_input_origin is missing."""
+async def test_send_message_notice_returns_none_when_missing_origin():
+    """Notices return None when last_input_origin is missing (fail-fast)."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -729,9 +746,9 @@ async def test_send_message_notice_broadcasts_when_missing_origin():
     with patch("teleclaude.core.adapter_client.db", mock_db):
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
-    assert message_id == "tg-feedback"
-    assert telegram_adapter.sent_messages == ["hello"]
-    assert slack_adapter.sent_messages == ["hello"]
+    assert message_id is None
+    assert telegram_adapter.sent_messages == []
+    assert slack_adapter.sent_messages == []
 
 
 @pytest.mark.asyncio
@@ -763,8 +780,8 @@ async def test_send_message_notice_does_not_broadcast_to_observers():
 
 
 @pytest.mark.asyncio
-async def test_send_message_notice_api_origin_routes_to_ui():
-    """Notices route to UI adapters when last_input_origin is api."""
+async def test_send_message_notice_api_origin_returns_none():
+    """Notices return None when last_input_origin is api (not a UI adapter)."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -783,8 +800,8 @@ async def test_send_message_notice_api_origin_routes_to_ui():
     with patch("teleclaude.core.adapter_client.db", mock_db):
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
-    assert message_id == "tg-feedback"
-    assert telegram_adapter.sent_messages == ["hello"]
+    assert message_id is None
+    assert telegram_adapter.sent_messages == []
 
 
 @pytest.mark.asyncio
@@ -974,7 +991,12 @@ async def test_send_output_update_suppressed_when_threaded_active():
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata()),
     )
 
-    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled_for_session", return_value=True):
+    mock_db = MagicMock()
+    mock_db.get_pending_deletions = AsyncMock(return_value=[])
+    with (
+        patch("teleclaude.core.adapter_client.is_threaded_output_enabled_for_session", return_value=True),
+        patch("teleclaude.core.adapter_client.db", mock_db),
+    ):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
     assert result is None
@@ -1001,7 +1023,12 @@ async def test_send_output_update_suppressed_when_threaded_active_no_output_mess
         ),
     )
 
-    with patch("teleclaude.core.adapter_client.is_threaded_output_enabled_for_session", return_value=True):
+    mock_db = MagicMock()
+    mock_db.get_pending_deletions = AsyncMock(return_value=[])
+    with (
+        patch("teleclaude.core.adapter_client.is_threaded_output_enabled_for_session", return_value=True),
+        patch("teleclaude.core.adapter_client.db", mock_db),
+    ):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
     assert result is None
