@@ -499,6 +499,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
     relay_started_at: Optional[datetime] = None
     transcript_files: str = "[]"
     char_offset: int = 0
+    visibility: Optional[str] = "private"
 
     def get_metadata(self) -> SessionAdapterMetadata:
         """Get session adapter metadata."""

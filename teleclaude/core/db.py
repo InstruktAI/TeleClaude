@@ -124,6 +124,7 @@ class Db:
             relay_started_at=Db._coerce_datetime(row.relay_started_at),
             transcript_files=row.transcript_files or "[]",
             char_offset=int(row.char_offset) if row.char_offset is not None else 0,
+            visibility=row.visibility if hasattr(row, "visibility") else "private",
         )
 
     def __init__(self, db_path: str) -> None:
