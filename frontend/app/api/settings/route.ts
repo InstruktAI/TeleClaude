@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { daemonRequest, normalizeUpstreamError } from "@/lib/proxy/daemon-client";
 import { buildIdentityHeaders } from "@/lib/proxy/identity-headers";
+import { requireAdmin } from "@/lib/proxy/auth-guards";
 
 export async function GET() {
   const session = await auth();
@@ -45,9 +46,8 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (session.user.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const adminErr = requireAdmin(session);
+  if (adminErr) return adminErr;
 
   let body: Record<string, unknown>;
   try {

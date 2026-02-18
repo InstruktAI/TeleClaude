@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { daemonRequest, normalizeUpstreamError } from "@/lib/proxy/daemon-client";
 import { buildIdentityHeaders } from "@/lib/proxy/identity-headers";
+import { requireAdmin } from "@/lib/proxy/auth-guards";
 
 export async function POST(
   _request: Request,
@@ -12,9 +13,8 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (session.user.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const adminErr = requireAdmin(session);
+  if (adminErr) return adminErr;
 
   const { id } = await params;
 
