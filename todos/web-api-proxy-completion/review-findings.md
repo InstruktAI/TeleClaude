@@ -90,3 +90,47 @@ Replace inlined `session.user.role !== "admin"` checks with `requireAdmin(sessio
 | Suggestions | 2     |
 
 The three critical issues are blockers: missing ownership enforcement (C1) is a security gap where any user can delete any session; dead cache invalidation (C2) means FR5 real-time updates don't work; and the cookie name bug (C3) breaks all WebSocket connections in production. All must be fixed before this can ship.
+
+---
+
+## Fixes Applied
+
+### C1 — Ownership enforcement on DELETE and revive
+
+**Fix:** Both routes now fetch session metadata (`GET /sessions/{id}`) to extract `human_email`, then call `requireOwnership(session, ownerEmail)` before proceeding. Admins bypass the check.
+**Commits:** `a9a09a54`
+**Tests:** Added owner allowed, non-owner 403, and admin bypass test cases.
+
+### C2 — useCacheInvalidation never mounted
+
+**Fix:** Created `frontend/lib/ws/CacheInvalidation.tsx` (thin client component) and mounted it inside `WebSocketProvider` in the chat layout.
+**Commit:** `ec92f018`
+
+### C3 — WS cookie name not preserved for production
+
+**Fix:** `extractSessionToken()` now returns `{ token, cookieName }`. The call site passes `cookieName` through to `validateSession()` which uses it in the cookie header.
+**Commit:** `50f38365`
+
+### I1 — auth-guards.ts dead code
+
+**Fix:** Replaced inline `session.user.role !== "admin"` checks in `settings/route.ts` and `agent-restart/route.ts` with `requireAdmin(session)` from `auth-guards.ts`.
+**Commit:** `480682b3`
+
+### I2 — web-api-facade.md route map outdated
+
+**Fix:** Updated Public Contract table to include all 15 routes + WS bridge with auth guard annotations.
+**Commit:** `d9454b7c`
+
+### I3 — Test coverage gaps (partial)
+
+**Fix:** Fixed `normalizeUpstreamError` mock divergence ("Upstream error" → "Upstream service error"). Added ownership check tests for DELETE route (owner, non-owner, admin bypass).
+**Commit:** `a9a09a54`
+**Note:** Remaining gaps (projects, todos, agents/availability, messages, revive, sessions GET/POST, WS bridge, identity header assertions) were not addressed in this pass.
+
+### I4 — WS fetch lacks timeout
+
+**Fix:** Added `signal: AbortSignal.timeout(5000)` to the `fetch()` call in `validateSession()`.
+**Commit:** `50f38365`
+
+**Tests:** PASSING (200/200)
+**Lint:** PASSING
