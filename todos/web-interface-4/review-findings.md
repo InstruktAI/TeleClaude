@@ -71,5 +71,13 @@ Mobile overlay lacks keyboard focus trapping. Screen reader and keyboard users c
 
 ---
 
+## Fixes Applied (Round 2)
+
+| Issue                                                             | Fix                                                                                        | Commit   |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------- |
+| C1: POST proxy sends `initial_message` — daemon expects `message` | Changed `initial_message: message` to `message` in `frontend/app/api/sessions/route.ts:72` | cb391d49 |
+
+---
+
 **Tests:** 9 new tests PASSING. Existing suite unaffected.
 **Lint:** PASSING.
