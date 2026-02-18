@@ -310,6 +310,42 @@ def _process_thinking_block(
     return "assistant"
 
 
+def _extract_tool_subject(block: dict[str, object]) -> Optional[str]:  # guard: loose-dict - External block
+    """Intelligently extract the 'subject' of a tool call from its arguments.
+
+    Prioritizes paths, commands, patterns, and URLs.
+    """
+    input_data = block.get("input") or block.get("arguments")
+    if not isinstance(input_data, dict):
+        return None
+
+    # Priority 1: Filesystem (paths)
+    for key in ("path", "file_path", "dir_path", "filename", "project_path"):
+        val = input_data.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+
+    # Priority 2: Shell/Execution (commands)
+    for key in ("command", "script"):
+        val = input_data.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip().split("\n")[0]  # First line only
+
+    # Priority 3: Search/Query
+    for key in ("pattern", "query", "regex", "search"):
+        val = input_data.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+
+    # Priority 4: Web/Logic (URLs, Slugs)
+    for key in ("url", "slug", "session_id", "channel"):
+        val = input_data.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+
+    return None
+
+
 def _process_tool_use_block(
     block: dict[str, object],  # guard: loose-dict - External block
     time_prefix: str,
@@ -322,9 +358,34 @@ def _process_tool_use_block(
     tool_name = str(block.get("name", "unknown"))
     # Truncate at first newline, open paren, or open brace to ensure single-line name only
     tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
+
+    # 1. Start with the base decoration
+    # 🔧 **`tool_name`**
+    prefix_and_icon = f"{time_prefix}🔧 "
+    formatted_name = f"**`{tool_name_safe}`**"
+
+    # 2. Extract subject and calculate budget
+    subject = _extract_tool_subject(block)
+
+    # Length budget calculation:
+    # We want TOTAL length (icon + spaces + name + subject decoration) <= 70.
+    # Base overhead: 🔧 (2) + space (1) + name length + colon-space (2) + backticks/bold (approx handled by name)
+    # Note: '🔧' is often 2-wide in terminal/monospaced fonts.
+    base_len = len(time_prefix) + 2 + 1 + len(tool_name_safe)
+    if subject:
+        base_len += 2  # for ': '
+
+    budget = max(0, 70 - base_len)
+
+    if subject and budget > 0:
+        if len(subject) > budget:
+            subject = subject[: budget - 1] + "…"
+        content = f"{formatted_name}: `{subject}`"
+    else:
+        content = formatted_name
+
     lines.append("")
-    # Use bold single-backtick monospace for tool invocations (name only, no args)
-    lines.append(f"{time_prefix}🔧 **`{tool_name_safe}`**")
+    lines.append(f"{prefix_and_icon}{content}")
     return "tool_use"
 
 
@@ -419,10 +480,28 @@ def render_clean_agent_output(
                 tool_name = str(block.get("name", "unknown"))
                 # Truncate at first newline, open paren, or open brace to ensure single-line name only
                 tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
+
+                # Format using enriched subject logic
+                prefix_and_icon = "🔧 "
+                formatted_name = f"**`{tool_name_safe}`**"
+                subject = _extract_tool_subject(block)
+
+                # Length budget calculation (icon[2] + space[1] + name + colon-space[2])
+                base_len = 2 + 1 + len(tool_name_safe)
+                if subject:
+                    base_len += 2
+                budget = max(0, 70 - base_len)
+
+                if subject and budget > 0:
+                    if len(subject) > budget:
+                        subject = subject[: budget - 1] + "…"
+                    content = f"{formatted_name}: `{subject}`"
+                else:
+                    content = formatted_name
+
                 if lines:
                     lines.append("")
-                # Clean tool use: bold single-backtick monospace (name only, no args)
-                lines.append(f"🔧 **`{tool_name_safe}`**")
+                lines.append(f"{prefix_and_icon}{content}")
                 emitted = True
             # Tool results are completely omitted in this "clean" renderer
 

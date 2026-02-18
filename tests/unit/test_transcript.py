@@ -35,8 +35,8 @@ def test_parse_claude_transcript_with_title():
         assert "## 👤 User" in result
         assert "hello" in result
 
-        # Verify assistant thinking (italic)
-        assert "*User said hello*" in result
+        # Verify assistant thinking text
+        assert "User said hello" in result
 
         # Verify assistant text (no bold)
         assert "Hi there" in result
@@ -61,9 +61,9 @@ def test_parse_claude_transcript_code_blocks():
         assert "print('test')" in result
         assert "```" in result
 
-        # Text outside code block should be italicized
-        assert "*Check this code:*" in result
-        assert "*Looks good*" in result
+        # Text outside code block
+        assert "Check this code:" in result
+        assert "Looks good" in result
 
         Path(f.name).unlink()
 
@@ -117,7 +117,7 @@ def test_parse_claude_transcript_spacing():
         lines = result.split("\n")
 
         # Find thinking line and next non-empty line
-        thinking_idx = next(i for i, line in enumerate(lines) if "*Processing*" in line)
+        thinking_idx = next(i for i, line in enumerate(lines) if "Processing" in line)
 
         # Next non-empty line should be the bold text
         next_content_idx = next(

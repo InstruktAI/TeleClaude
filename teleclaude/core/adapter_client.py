@@ -79,12 +79,19 @@ class AdapterClient:
         self.adapters[adapter_type] = adapter
         logger.info("Registered adapter: %s", adapter_type)
 
-    def _origin_ui_adapter(self, session: "Session") -> UiAdapter | None:
+    def _origin_ui_adapter(self, session: "Session") -> UiAdapter:
         if not session.last_input_origin:
-            logger.error("Session %s missing last_input_origin", session.session_id[:8])
-            return None
+            raise ValueError(
+                f"Session {session.session_id[:8]} has no last_input_origin — "
+                "every routable session must have an origin"
+            )
         adapter = self.adapters.get(session.last_input_origin)
-        return adapter if isinstance(adapter, UiAdapter) else None
+        if not isinstance(adapter, UiAdapter):
+            raise ValueError(
+                f"Session {session.session_id[:8]} origin '{session.last_input_origin}' "
+                "does not resolve to a UI adapter"
+            )
+        return adapter
 
     def _ui_adapters(self) -> list[tuple[str, UiAdapter]]:
         return [
@@ -255,24 +262,15 @@ class AdapterClient:
     ) -> object:
         """Route operation to origin UI adapter, then broadcast to observers.
 
-        Returns None immediately if no origin UI adapter is found (fail-fast).
+        Raises ValueError if the session has no valid UI origin — every
+        routable session must have one (design-by-contract).
         """
         origin_ui = self._origin_ui_adapter(session)
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
             return cast(Awaitable[object], getattr(adapter, method)(lane_session, *args, **kwargs))
 
-        if not origin_ui:
-            logger.error(
-                "[ROUTING] No UI origin adapter — dropping %s for session=%s origin=%s",
-                method,
-                session.session_id[:8],
-                session.last_input_origin,
-            )
-            return None
-
-        # Route origin through _run_ui_lane for ensure_channel resilience
-        origin_type = session.last_input_origin or "unknown"
+        origin_type = session.last_input_origin
         logger.debug(
             "[ROUTING] Direct lane: session=%s method=%s origin=%s broadcast=%s",
             session.session_id[:8],
