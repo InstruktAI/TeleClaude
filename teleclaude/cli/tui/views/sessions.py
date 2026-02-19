@@ -95,7 +95,7 @@ def _format_time(iso_timestamp: str | None) -> str:
 # Pattern matches /Users/<user>/... (macOS) or /home/<user>/... (Linux)
 _HOME_PATH_PATTERN = re.compile(r"^(/(?:Users|home)/[^/]+)")
 _SESSION_TREE_CORNER_CHAR = "└"
-_SESSION_TREE_HORIZONTAL_CHAR = "─"
+_SESSION_TREE_HORIZONTAL_CHAR = "-"
 _SESSION_TREE_VERTICAL_CHAR = "│"
 
 
