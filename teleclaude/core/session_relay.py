@@ -39,9 +39,7 @@ class SessionRelay:
     participants: list[RelayParticipant]
     baselines: dict[str, str] = field(default_factory=dict)
     active: bool = True
-    _monitor_tasks: dict[str, asyncio.Task[None]] = field(  # noqa: RUF009
-        default_factory=dict, repr=False
-    )
+    _monitor_tasks: dict[str, asyncio.Task[None]] = field(init=False, default_factory=dict, repr=False)
 
 
 # Module-level state — same pattern as polling_coordinator._active_pollers
