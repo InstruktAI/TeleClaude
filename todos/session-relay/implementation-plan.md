@@ -60,7 +60,7 @@ The relay monitors ALL participants simultaneously (bidirectional for 1:1). Moni
 
 **Verify:** Unit tests for relay creation, fan-out delivery to N-1 participants, baseline snapshot prevents feedback loops, relay cleanup on session end.
 
-- [ ] Task 2: 1:1 relay via send_message
+- [x] Task 2: 1:1 relay via send_message
 
 **Files:** `teleclaude/mcp/handlers.py`, `teleclaude/core/session_relay.py`
 
