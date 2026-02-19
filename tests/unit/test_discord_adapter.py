@@ -187,6 +187,7 @@ async def test_discord_create_channel_uses_forum_thread_when_configured() -> Non
         adapter = DiscordAdapter(client)
 
     session = _build_session()
+    session.human_role = "customer"
     fake_db = MagicMock()
     fake_db.update_session = AsyncMock()
 
@@ -198,7 +199,7 @@ async def test_discord_create_channel_uses_forum_thread_when_configured() -> Non
     adapter._help_desk_channel_id = 333000
 
     with patch("teleclaude.adapters.discord_adapter.db", fake_db):
-        thread_id = await adapter.create_channel(session, "Alice ticket", ChannelMetadata(origin=True))
+        thread_id = await adapter.create_channel(session, "Alice ticket", ChannelMetadata())
 
     assert thread_id == "777000"
     discord_meta = session.get_metadata().get_ui().get_discord()
@@ -506,15 +507,14 @@ async def test_escalation_creates_thread_in_escalation_forum() -> None:
     escalation_forum = FakeForumChannel(channel_id=888000, thread_id=999888)
     fake_client.channels[888000] = escalation_forum
     adapter._client = fake_client
+    adapter._escalation_channel_id = 888000
 
-    with patch("teleclaude.adapters.discord_adapter.config") as mock_config:
-        mock_config.discord.escalation_channel_id = 888000
-        thread_id = await adapter.create_escalation_thread(
-            customer_name="Alice",
-            reason="Billing issue",
-            context_summary="Customer has billing question",
-            session_id="sess-123",
-        )
+    thread_id = await adapter.create_escalation_thread(
+        customer_name="Alice",
+        reason="Billing issue",
+        context_summary="Customer has billing question",
+        session_id="sess-123",
+    )
 
     assert thread_id == 999888
     assert "Alice" in escalation_forum.created_names

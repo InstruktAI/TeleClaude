@@ -121,7 +121,7 @@ POST_COMPLETION: dict[str, str] = {
 4. Call {next_call}
 """,
     "next-review": """WHEN WORKER COMPLETES:
-1. Read trees/{args}/todos/{args}/review-findings.md
+1. Read worker output via get_session_data to extract verdict
 2. teleclaude__end_session(computer="local", session_id="<session_id>")
 3. Relay verdict to state:
    - If APPROVE: teleclaude__mark_phase(slug="{args}", phase="review", status="approved")

@@ -757,8 +757,8 @@ async def test_send_message_notice_broadcasts_when_missing_origin():
 
 
 @pytest.mark.asyncio
-async def test_send_message_notice_does_not_broadcast_to_observers():
-    """Notices should NOT broadcast to observers (noise reduction)."""
+async def test_send_message_notice_fans_out_to_all_ui_adapters():
+    """Notices fan out to all UI adapters (unconditional fan-out)."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -780,7 +780,7 @@ async def test_send_message_notice_does_not_broadcast_to_observers():
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id == "slack-feedback"
-    assert telegram_adapter.sent_messages == []  # No broadcast for notice
+    assert telegram_adapter.sent_messages == ["hello"]  # All adapters receive
     assert slack_adapter.sent_messages == ["hello"]
 
 

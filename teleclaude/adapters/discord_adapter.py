@@ -152,7 +152,7 @@ class DiscordAdapter(UiAdapter):
 
         from teleclaude.core.models import ChannelMetadata
 
-        await self.create_channel(session, title, ChannelMetadata(origin=False))
+        await self.create_channel(session, title, ChannelMetadata())
         refreshed = await db.get_session(session.session_id)
         return refreshed or session
 
@@ -162,13 +162,10 @@ class DiscordAdapter(UiAdapter):
             return self._help_desk_channel_id
         return self._all_sessions_channel_id
 
-    def _is_customer_session(self, session: "Session") -> bool:
-        """Check if session is customer-facing."""
-        if session.human_role == "customer":
-            return True
-        if session.last_input_origin == "discord" and self._help_desk_channel_id is not None:
-            return session.human_role is None or session.human_role == "customer"
-        return False
+    @staticmethod
+    def _is_customer_session(session: "Session") -> bool:
+        """Check if session is customer-facing. Based solely on human_role."""
+        return session.human_role == "customer"
 
     # =========================================================================
     # Discord Infrastructure Auto-Provisioning

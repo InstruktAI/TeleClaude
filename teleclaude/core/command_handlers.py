@@ -971,7 +971,7 @@ async def handle_voice(
         if not session:
             logger.warning("Session %s not found for voice delete", session_id[:8])
             return
-        await client.delete_message(session, str(message_id), broadcast=False)
+        await client.delete_message(session, str(message_id))
 
     context = VoiceEventContext(
         session_id=cmd.session_id,
@@ -995,7 +995,7 @@ async def handle_voice(
     if cmd.message_id:
         session = await db.get_session(cmd.session_id)
         if session:
-            await client.delete_message(session, str(cmd.message_id), broadcast=False)
+            await client.delete_message(session, str(cmd.message_id))
 
     logger.debug("Forwarding transcribed voice to agent: %s...", transcribed[:50])
 

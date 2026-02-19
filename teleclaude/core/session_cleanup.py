@@ -91,7 +91,7 @@ async def cleanup_session_resources(
     await cleanup_caller_listeners(session_id)
 
     if delete_channel:
-        # Delete channel/topic in all adapters (broadcasts to observers)
+        # Delete channel/topic in all UI adapters
         try:
             await adapter_client.delete_channel(session)
             logger.info("Deleted channels for session %s", session_id[:8])

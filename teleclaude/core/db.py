@@ -815,8 +815,8 @@ class Db:
         """Get sessions by adapter metadata field.
 
         Finds sessions that HAVE the specified adapter metadata, regardless of
-        which adapter was the origin. This enables observer adapters to find
-        sessions they're observing even when another adapter was the initiator.
+        which adapter was the entry point. This enables any UI adapter to find
+        sessions it has channels for regardless of the entry point.
 
         Args:
             adapter_type: Adapter type whose metadata to search

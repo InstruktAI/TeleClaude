@@ -168,6 +168,10 @@ class TelegramAdapter(
         self._register_simple_command_handlers()
 
     async def ensure_channel(self, session: Session, title: str) -> Session:
+        # Telegram is admin/member only — skip customer sessions entirely.
+        if session.human_role == "customer":
+            return session
+
         # Re-read from DB to prevent stale in-memory metadata from concurrent lanes
         fresh = await db.get_session(session.session_id)
         if fresh:
@@ -189,7 +193,7 @@ class TelegramAdapter(
             title,
         )
         try:
-            await self.create_channel(session, title, metadata=ChannelMetadata(origin=False))
+            await self.create_channel(session, title, metadata=ChannelMetadata())
             logger.info("[TG_ENSURE] Channel created successfully for session %s", session.session_id[:8])
         except Exception as exc:
             logger.error(
@@ -204,7 +208,7 @@ class TelegramAdapter(
                 await db.update_session(current.session_id, adapter_metadata=current.adapter_metadata)
                 # Clear output_message_id via dedicated column (not adapter_metadata blob)
                 await db.set_output_message_id(current.session_id, None)
-            await self.create_channel(current or session, title, metadata=ChannelMetadata(origin=False))
+            await self.create_channel(current or session, title, metadata=ChannelMetadata())
 
         refreshed = await db.get_session(session.session_id)
         logger.debug("[TG_ENSURE] Refreshed session from DB for %s", session.session_id[:8])

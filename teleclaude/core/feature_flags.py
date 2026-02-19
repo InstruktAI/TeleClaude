@@ -38,7 +38,7 @@ def is_threaded_output_enabled_for_session(session: "Session") -> bool:
 
     Threaded output is on when:
     - The experiment flag is enabled for the session's active agent, OR
-    - The session's origin adapter is Discord (all Discord sessions use threaded output)
+    - The session's entry point is Discord (all Discord sessions use threaded output)
     """
     if session.last_input_origin == AdapterType.DISCORD.value:
         return True

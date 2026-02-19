@@ -360,7 +360,6 @@ class ChannelMetadata:
     """Per-call metadata for create_channel operations."""
 
     target_computer: Optional[str] = None
-    origin: bool = False
 
 
 @dataclass

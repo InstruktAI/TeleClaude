@@ -703,10 +703,10 @@ class UiAdapter(BaseAdapter):
         message_id: str | None,
         metadata: MessageMetadata,
         command_name: str,
-        payload: dict[str, object],  # guard: loose-dict - Command payload for observers
+        payload: dict[str, object],  # guard: loose-dict - Command payload for UI adapters
         handler: Callable[[], Awaitable[object]],
     ) -> object:
-        """Run command with UI pre/post handling and observer broadcast."""
+        """Run command with UI pre/post handling and broadcast to other adapters."""
         if metadata.origin and metadata.origin in self.client.adapters:
             await db.update_session(session.session_id, last_input_origin=metadata.origin)
 

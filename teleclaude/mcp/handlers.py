@@ -957,7 +957,7 @@ class MCPHandlersMixin:
     # =========================================================================
 
     async def teleclaude__send_file(self, session_id: str, file_path: str, caption: str | None = None) -> str:
-        """Send file via session's origin adapter."""
+        """Send file via session's UI adapters."""
         path = Path(file_path)
         if not path.exists():
             return f"Error: File not found: {file_path}"

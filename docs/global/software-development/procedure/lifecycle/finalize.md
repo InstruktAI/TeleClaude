@@ -23,7 +23,7 @@ Merge approved work to main, log delivery, and clean up.
 
 ## Steps
 
-1. Read `trees/{slug}/todos/{slug}/review-findings.md` and confirm verdict APPROVE.
+1. Read `todos/{slug}/review-findings.md` and confirm verdict APPROVE.
 2. Update only the Finalize section in `quality-checklist.md`.
    - Do not edit Build or Review sections.
 3. Use commit hooks for verification (lint + unit tests).

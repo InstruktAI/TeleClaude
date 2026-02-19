@@ -629,6 +629,13 @@ snippets:
   path: docs/project/spec/session-identity-truth.md
   role: member
   source_project: TeleClaude
+- id: project/spec/session-output-routing
+  description: Routing rules for session output across UI adapters (Telegram, Discord).
+  type: spec
+  scope: project
+  path: docs/project/spec/session-output-routing.md
+  role: member
+  source_project: TeleClaude
 - id: project/spec/telec-cli-surface
   description: Authoritative surface for the telec command-line tool.
   type: spec

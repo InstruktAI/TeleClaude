@@ -145,10 +145,7 @@ class BaseAdapter(ABC):
         Args:
             session: Session object
             title: Channel title
-            metadata: {
-                "origin": bool,  # True if this adapter is origin
-                "last_input_origin": str,  # Last input origin
-            }
+            metadata: ChannelMetadata with target_computer for AI-to-AI sessions
 
         Returns:
             channel_id (platform-specific identifier)
