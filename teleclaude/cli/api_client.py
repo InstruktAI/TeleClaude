@@ -404,6 +404,7 @@ class TelecAPIClient:
         auto_command: str | None = None,
         human_email: str | None = None,
         human_role: str | None = "admin",
+        metadata: dict[str, object] | None = None,  # guard: loose-dict
     ) -> CreateSessionResult:
         """Create a new session.
 
@@ -427,6 +428,7 @@ class TelecAPIClient:
             "auto_command": auto_command,
             "human_email": human_email,
             "human_role": human_role,
+            "metadata": metadata,
         }
         if subdir is not None:
             payload["subdir"] = subdir

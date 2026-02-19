@@ -22,7 +22,6 @@ import atexit
 import importlib
 import os
 import re
-import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -209,12 +208,13 @@ def _build_agent_job_message(job_name: str, config: JobScheduleConfig) -> str | 
 
 
 def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
-    """Spawn an agent subprocess for an agent-type job.
+    """Trigger an agent job via the API (fire-and-forget session creation).
 
-    Uses run_job() from agent_cli to spawn a full interactive agent subprocess
-    with tools and MCP enabled. Blocks until the agent completes or times out.
+    Instead of spawning a subprocess directly, this sends a request to the daemon
+    to create a session with job metadata. The daemon handles execution.
     """
-    from teleclaude.helpers.agent_cli import run_job
+    from teleclaude.cli.api_client import TelecAPIClient
+    from teleclaude.config import config as global_config
 
     message = _build_agent_job_message(job_name, config)
     if not message:
@@ -222,27 +222,37 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
 
     agent = str(config.agent or "claude")
     thinking_mode = str(config.thinking_mode or "fast")
-    timeout_s = config.timeout if config.timeout is not None else _DEFAULT_JOB_TIMEOUT_S
+
+    # Job sessions are always created on the local computer where the runner is active
+    computer = global_config.computer.name
+    # Project root is assumed to be current repo root
+    project_path = str(_REPO_ROOT)
+
+    async def _trigger() -> bool:
+        client = TelecAPIClient()
+        await client.connect()
+        try:
+            await client.create_session(
+                computer=computer,
+                project_path=project_path,
+                agent=agent,
+                thinking_mode=thinking_mode,
+                title=f"Job: {job_name}",
+                message=message,
+                human_role="admin",  # Jobs run as admin
+                metadata={"job_name": job_name, "job_type": config.type or "agent"},
+            )
+            return True
+        except Exception as e:
+            logger.error("agent job API trigger failed", name=job_name, error=str(e))
+            return False
+        finally:
+            await client.close()
 
     try:
-        exit_code = run_job(
-            agent=agent,
-            thinking_mode=thinking_mode,
-            prompt=message,
-            role="admin",
-            timeout_s=timeout_s,
-        )
-        if exit_code == 0:
-            logger.info("agent job completed", name=job_name)
-            return True
-        logger.error("agent job failed", name=job_name, exit_code=exit_code)
-        return False
-
-    except subprocess.TimeoutExpired:
-        logger.error("agent job timed out", name=job_name, timeout_s=timeout_s)
-        return False
+        return asyncio.run(_trigger())
     except Exception as e:
-        logger.error("agent job dispatch failed", name=job_name, error=str(e))
+        logger.error("agent job trigger crashed", name=job_name, error=str(e))
         return False
 
 

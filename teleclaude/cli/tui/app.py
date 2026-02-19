@@ -376,10 +376,13 @@ class TelecApp:
         """Refresh all data from API."""
         logger.debug("Refreshing data from API...")
         try:
-            computers, projects, sessions, availability, todos, settings, jobs = await asyncio.gather(
+            # Split gather to help type inference
+            computers, projects, sessions = await asyncio.gather(
                 self.api.list_computers(),
                 self.api.list_projects(),
                 self.api.list_sessions(),
+            )
+            availability, todos, settings, jobs = await asyncio.gather(
                 self.api.get_agent_availability(),
                 self.api.list_todos(),
                 self.api.get_settings(),
@@ -433,9 +436,11 @@ class TelecApp:
             # Refresh ALL views with data (not just current)
             for view_num, view in self.views.items():
                 if view_num == 3:
-                    await view.refresh(jobs)
+                    if isinstance(view, JobsView):
+                        await view.refresh(jobs, sessions)
                 else:
-                    await view.refresh(computers, projects_with_todos, sessions)
+                    if not isinstance(view, JobsView):
+                        await view.refresh(computers, projects_with_todos, sessions)
                 logger.debug(
                     "View %d refreshed: flat_items=%d",
                     view_num,
@@ -892,10 +897,10 @@ class TelecApp:
             sessions_view = self.views.get(1)
             if isinstance(sessions_view, SessionsView):
                 sessions_view.apply_pending_activation()
-            self.controller.apply_pending_layout()
-            if isinstance(sessions_view, SessionsView):
                 sessions_view.apply_pending_focus()
-                # Detect user pane clicks on every iteration (not just layout changes)
+            self.controller.apply_pending_layout()
+            # Detect user pane clicks on every iteration (not just layout changes)
+            if isinstance(sessions_view, SessionsView):
                 sessions_view.detect_pane_focus_change()
 
     def _consume_theme_refresh(self) -> bool:
@@ -1100,7 +1105,7 @@ class TelecApp:
             view = self.views.get(self.current_view)
             logger.debug("Left arrow: view=%s", type(view).__name__ if view else None)
             # Try to collapse session first (SessionsView only)
-            if view and hasattr(view, "collapse_selected"):
+            if isinstance(view, SessionsView):
                 collapsed = view.collapse_selected()
                 logger.debug("collapse_selected() returned %s", collapsed)
                 if collapsed:
@@ -1119,7 +1124,7 @@ class TelecApp:
         elif key == curses.KEY_RIGHT:
             view = self.views.get(self.current_view)
             logger.debug("Right arrow: view=%s", type(view).__name__ if view else None)
-            if view:
+            if isinstance(view, SessionsView):
                 result = view.drill_down()
                 logger.debug("drill_down() returned %s", result)
                 if result:
@@ -1285,7 +1290,7 @@ class TelecApp:
             # Panes remain unchanged across view switches.
             if current_view == 2 and view_num != 2:
                 prep_view = self.views.get(2)
-                if prep_view:
+                if isinstance(prep_view, PreparationView):
                     prep_view.controller.dispatch(Intent(IntentType.CLEAR_PREP_PREVIEW), defer_layout=True)
         else:
             logger.warning("Attempted to switch to non-existent view %d", view_num)

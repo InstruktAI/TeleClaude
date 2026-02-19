@@ -67,6 +67,18 @@ class Db:
         return value.to_json()
 
     @staticmethod
+    def _serialize_session_metadata(
+        value: dict[str, object] | str | None,  # guard: loose-dict
+    ) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return json.dumps(value)
+        return str(value)
+
+    @staticmethod
     def _coerce_datetime(value: datetime | str | None) -> datetime | None:
         if value is None:
             return None
@@ -81,6 +93,13 @@ class Db:
             if isinstance(row.adapter_metadata, str) and row.adapter_metadata
             else SessionAdapterMetadata()
         )
+        session_metadata: Optional[dict[str, object]] = None  # guard: loose-dict
+        if row.session_metadata:
+            try:
+                session_metadata = json.loads(row.session_metadata)
+            except json.JSONDecodeError:
+                pass
+
         return Session(
             session_id=row.session_id,
             computer_name=row.computer_name,
@@ -88,6 +107,7 @@ class Db:
             last_input_origin=row.last_input_origin,
             title=row.title or "",
             adapter_metadata=adapter_metadata,
+            session_metadata=session_metadata,
             created_at=Db._coerce_datetime(row.created_at),
             last_activity=Db._coerce_datetime(row.last_activity),
             closed_at=Db._coerce_datetime(row.closed_at),
@@ -281,6 +301,7 @@ class Db:
         last_input_origin: str,
         title: str,
         adapter_metadata: Optional[SessionAdapterMetadata] = None,
+        session_metadata: Optional[dict[str, object]] = None,  # guard: loose-dict
         project_path: Optional[str] = None,
         subdir: Optional[str] = None,
         description: Optional[str] = None,
@@ -299,6 +320,7 @@ class Db:
             last_input_origin: Last input origin (InputOrigin.*.value)
             title: Optional session title
             adapter_metadata: Optional adapter-specific metadata
+            session_metadata: Optional generic JSON metadata (e.g. job details)
             project_path: Base project path (no subdir)
             subdir: Optional subdirectory/worktree relative to project_path
             description: Optional description (for AI-to-AI sessions)
@@ -321,6 +343,7 @@ class Db:
             last_input_origin=last_input_origin,
             title=title or f"[{computer_name}] Untitled",
             adapter_metadata=adapter_metadata or SessionAdapterMetadata(),
+            session_metadata=session_metadata,
             created_at=now,
             last_activity=now,
             project_path=project_path,
@@ -340,6 +363,7 @@ class Db:
             tmux_session_name=session.tmux_session_name,
             last_input_origin=session.last_input_origin,
             adapter_metadata=self._serialize_adapter_metadata(session.adapter_metadata),
+            session_metadata=self._serialize_session_metadata(session.session_metadata),
             created_at=session.created_at,
             last_activity=session.last_activity,
             project_path=session.project_path,

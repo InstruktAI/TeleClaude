@@ -25,6 +25,7 @@ class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
     subdir: str | None = None
     human_email: str | None = None
     human_role: Literal["admin", "member", "contributor", "newcomer"] | None = None
+    metadata: dict[str, object] | None = None  # guard: loose-dict
 
 
 class CreateSessionResponseDTO(BaseModel):  # type: ignore[explicit-any]
@@ -105,6 +106,7 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
     human_email: str | None = None
     human_role: str | None = None
     visibility: str = "private"
+    session_metadata: dict[str, object] | None = None  # guard: loose-dict
 
     @classmethod
     def from_core(cls, summary: "SessionSummary", computer: str | None = None) -> "SessionSummaryDTO":
@@ -132,6 +134,7 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
             human_email=summary.human_email,
             human_role=summary.human_role,
             visibility=summary.visibility or "private",
+            session_metadata=summary.session_metadata,
         )
 
 

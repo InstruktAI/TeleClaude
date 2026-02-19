@@ -10,6 +10,11 @@
 #     "youtube-transcript-api",
 #     "instruktai-python-logger",
 #     "python-dotenv",
+#     "aiosqlite",
+#     "sqlalchemy",
+#     "sqlmodel",
+#     "httpx",
+#     "websockets",
 # ]
 # ///
 """

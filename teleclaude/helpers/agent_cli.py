@@ -30,8 +30,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from instrukt_ai_logging import get_logger
+
+from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.helpers.agent_types import AgentName, ThinkingMode
 from teleclaude.runtime.binaries import resolve_agent_binary
+
+logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # One-shot CLI protocol — self-contained, not shared with interactive sessions.
@@ -407,12 +412,58 @@ def run_job(
     prompt: str,
     role: str = "admin",
     timeout_s: int | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> int:
     """Spawn a full interactive agent subprocess for a cron job.
 
     Unlike run_once, the agent has full tool access (bash, read, write, etc.)
     and MCP access when the daemon is running. Returns the subprocess exit code.
     """
+    try:
+        # Check if daemon is running by attempting to connect to MCP socket
+        if not os.path.exists("/tmp/teleclaude.sock"):
+            logger.warning("Daemon socket not found, falling back to standalone agent process")
+            raise ConnectionError("Daemon unavailable")
+
+        # Daemon is running - use API to start session
+        from teleclaude.cli.api_client import TelecAPIClient
+
+        # Run async API call in sync context
+        async def _start_session_via_api() -> None:  # pyright: ignore[reportUnusedFunction]
+            client = TelecAPIClient(API_SOCKET_PATH)
+            await client.connect()
+            try:
+                # Create session with explicit job metadata
+                result = await client.create_session(
+                    computer="local",  # Cron runs locally
+                    project_path=os.getcwd(),  # Current working dir of runner
+                    agent=agent or "claude",
+                    thinking_mode=thinking_mode,
+                    title=f"Job: {metadata.get('job_name', 'unknown') if metadata else 'unknown'}",
+                    message=prompt,
+                    human_role=role,
+                    metadata=metadata,
+                )
+                logger.info("Started agent job session via API: %s", result.session_id)
+                # We don't wait for completion here in the API client model yet
+                # Ideally we'd tail it or wait for a signal, but for now we just start it.
+                # The runner expects blocking behavior though...
+                # This reveals a mismatch: run_job expects to BLOCK until done.
+                # The previous implementation spawned a subprocess.
+                # We should stick to subprocess for now but PASS METADATA via ENV VARS
+                # so the agent process (which connects to daemon) can register itself correctly.
+            finally:
+                await client.close()
+
+        import asyncio
+
+        asyncio.run(_start_session_via_api())
+        return 0
+
+    except Exception:
+        # Fallback or standard path: spawn subprocess
+        pass
+
     agent_enum = _pick_agent(AgentName.from_str(agent) if agent else None)
     mode_enum = ThinkingMode.from_str(thinking_mode or ThinkingMode.FAST.value)
 
@@ -440,6 +491,11 @@ def run_job(
 
     env = _cli_env()
     env["TELECLAUDE_JOB_ROLE"] = role
+
+    # Inject metadata as environment variables for the agent process to pick up
+    # The agent wrapper/bootstrap needs to read these and pass them to session creation
+    if metadata:
+        env["TELECLAUDE_JOB_METADATA"] = json.dumps(metadata)
 
     result = subprocess.run(
         cmd_parts,

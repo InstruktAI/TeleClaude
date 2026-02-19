@@ -319,7 +319,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._pending_activate_at: float | None = None
         self._pending_activate_clear_preview: bool = False
         self._pending_activate_focus: bool = True
-        self._pending_focus_session_id: str | None = None
         self._pending_ready_session_id: str | None = None
         self._last_data_counts: dict[str, int] = {}
         # Pane focus detection for reverse sync (pane click → tree selection)
@@ -404,19 +403,28 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             len(sessions),
         )
 
+        # Filter out job sessions (they belong in View 3)
+        display_sessions = []
+        for s in sessions:
+            if s.session_metadata and s.session_metadata.get("job_name"):
+                continue
+            display_sessions.append(s)
+
         previous_selection = self._get_selected_key()
         last_output_summary_before = dict(self.state.sessions.last_output_summary)
 
         # Store sessions for child lookup
-        self._sessions = sessions
-        if not sessions and self._last_data_counts.get("sessions", 1) != 0:
-            logger.debug("SessionsView.refresh: no sessions returned")
-        self._last_data_counts["sessions"] = len(sessions)
-        self.controller.update_sessions(sessions)
-        self.controller.dispatch(Intent(IntentType.SYNC_SESSIONS, {"session_ids": [s.session_id for s in sessions]}))
+        self._sessions = display_sessions
+        if not display_sessions and self._last_data_counts.get("sessions", 1) != 0:
+            logger.debug("SessionsView.refresh: no display sessions returned")
+        self._last_data_counts["sessions"] = len(display_sessions)
+        self.controller.update_sessions(display_sessions)
+        self.controller.dispatch(
+            Intent(IntentType.SYNC_SESSIONS, {"session_ids": [s.session_id for s in display_sessions]})
+        )
         # Keep render summary state aligned with persisted session summaries.
         # This prevents losing "out:" content after TUI reload/reconnect.
-        for session in sessions:
+        for session in display_sessions:
             summary = (session.last_output_summary or "").strip()
             if summary:
                 self.state.sessions.last_output_summary[session.session_id] = summary
@@ -427,13 +435,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._computers = computers
 
         # Track state changes for color coding
-        self._update_activity_state(sessions)
+        self._update_activity_state(display_sessions)
 
         # Aggregate session counts and recent activity per computer
         session_counts: dict[str, int] = {}
         recent_activity: dict[str, bool] = {}
         now = datetime.now(timezone.utc)
-        for session in sessions:
+        for session in display_sessions:
             comp_name = session.computer or ""
             if not comp_name:
                 continue
@@ -471,7 +479,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             )
             for p in projects
         ]
-        self.tree = build_tree(enriched_computers, project_infos, sessions)
+        self.tree = build_tree(enriched_computers, project_infos, display_sessions)
         logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
         if self._pending_select_session_id:
@@ -1243,7 +1251,17 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
     def _build_click_preview_interaction(self, selected: SessionNode, *, now: float) -> _SessionInputIntent:
         """Build normalized preview intent for single-click interactions."""
-        return self._build_preview_interaction(selected, now=now, allow_sticky_toggle=False)
+        interaction = self._build_preview_interaction(selected, now=now, allow_sticky_toggle=False)
+        if interaction.kind == _SessionInputKind.NONE:
+            return interaction
+        return _SessionInputIntent(
+            item=interaction.item,
+            kind=interaction.kind,
+            now=interaction.now,
+            request_focus=True,
+            clear_preview=interaction.clear_preview,
+            force_sticky_preview=interaction.force_sticky_preview,
+        )
 
     def _build_space_preview_interaction(self, selected: SessionNode, *, now: float) -> _SessionInputIntent:
         """Build normalized preview intent for keyboard-space interactions."""
@@ -1387,6 +1405,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 "_activate_session: session %s already sticky, reusing existing sticky pane",
                 session_id[:8],
             )
+            if request_focus:
+                self.controller.request_focus_session(session_id)
             if request_focus and self._preview:
                 self.controller.dispatch(Intent(IntentType.CLEAR_PREVIEW), defer_layout=True)
             if force_sticky_preview and not request_focus:
@@ -1463,7 +1483,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._pending_activate_clear_preview = False
         self._pending_activate_focus = True
         self._pending_activate_at = None
-        self._pending_focus_session_id = None
         self._pending_ready_session_id = None
 
     def apply_pending_activation(self) -> None:
@@ -1501,22 +1520,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                     request_focus=request_focus,
                     force_sticky_preview=force_sticky_preview,
                 )
-                if request_focus:
-                    self._queue_focus_session(target)
                 return
 
-    def _queue_focus_session(self, session_id: str) -> None:
-        """Request pane focus after the next layout apply."""
-        self._pending_focus_session_id = session_id
-
     def apply_pending_focus(self) -> None:
-        """Focus the requested session pane after layout changes settle."""
-        session_id = self._pending_focus_session_id
-        if not session_id:
+        """Mark next layout-driven pane focus as initiated by this view."""
+        if not self.controller.has_pending_focus():
             return
-        self._pending_focus_session_id = None
         self._we_caused_focus = True  # Mark that we triggered focus, not user
-        self.pane_manager.focus_pane_for_session(session_id)
 
     def _maybe_activate_ready_session(self) -> None:
         """Activate a pending session once it is ready for preview."""
@@ -1867,7 +1877,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # SINGLE CLICK - select and update preview context only.
         self._select_index(item_idx, source="user")
 
-        # Keep click in tree-only mode; activation/focus remains explicit (Enter/space).
+        # Single click now previews and activates focus for the selected session.
         if is_session_node(item):
             now = time.perf_counter()
             self._handle_session_interaction(self._build_click_preview_interaction(item, now=now))

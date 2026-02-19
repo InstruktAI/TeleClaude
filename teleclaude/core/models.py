@@ -376,6 +376,7 @@ class MessageMetadata:
     project_path: Optional[str] = None
     subdir: Optional[str] = None
     channel_metadata: Optional[Dict[str, object]] = None  # guard: loose-dict
+    session_metadata: Optional[Dict[str, object]] = None  # guard: loose-dict
     auto_command: Optional[str] = None  # legacy adapter boundary (deprecated)
     launch_intent: Optional["SessionLaunchIntent"] = None
     is_transcription: bool = False
@@ -464,6 +465,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
     title: str
     last_input_origin: Optional[str] = None
     adapter_metadata: SessionAdapterMetadata = field(default_factory=SessionAdapterMetadata)
+    session_metadata: Optional[Dict[str, object]] = None
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
     closed_at: Optional[datetime] = None
@@ -537,6 +539,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
             data["adapter_metadata"] = json.dumps(adapter_meta)
         else:
             data["adapter_metadata"] = adapter_meta.to_json()
+        if self.session_metadata:
+            data["session_metadata"] = self.session_metadata
         return data
 
     @classmethod
@@ -588,6 +592,16 @@ class Session:  # pylint: disable=too-many-instance-attributes
         else:
             adapter_metadata = SessionAdapterMetadata()
 
+        session_metadata_raw = data.get("session_metadata")
+        session_metadata: Optional[Dict[str, object]] = None
+        if isinstance(session_metadata_raw, dict):
+            session_metadata = cast(Dict[str, object], session_metadata_raw)
+        elif isinstance(session_metadata_raw, str):
+            try:
+                session_metadata = json.loads(session_metadata_raw)
+            except json.JSONDecodeError:
+                pass
+
         ia_val = data.get("initiated_by_ai")
         initiated_by_ai = bool(ia_val) if ia_val is not None else False
 
@@ -607,6 +621,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
             tmux_session_name=_get_optional_str("tmux_session_name") or "",
             title=_get_optional_str("title") or "",
             adapter_metadata=adapter_metadata,
+            session_metadata=session_metadata,
             created_at=ensure_utc(created_at) if isinstance(created_at, datetime) else None,
             last_activity=ensure_utc(last_activity) if isinstance(last_activity, datetime) else None,
             closed_at=ensure_utc(closed_at) if isinstance(closed_at, datetime) else None,
@@ -840,6 +855,7 @@ class SessionSummary:
     human_email: Optional[str] = None
     human_role: Optional[str] = None
     visibility: Optional[str] = "private"
+    session_metadata: Optional[Dict[str, object]] = None
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict - Serialization output
         return {
@@ -865,6 +881,7 @@ class SessionSummary:
             "human_email": self.human_email,
             "human_role": self.human_role,
             "visibility": self.visibility,
+            "session_metadata": self.session_metadata,
         }
 
     @classmethod
@@ -893,6 +910,7 @@ class SessionSummary:
             human_email=session.human_email,
             human_role=session.human_role,
             visibility=getattr(session, "visibility", None) or "private",
+            session_metadata=session.session_metadata,
         )
 
     @classmethod
@@ -929,6 +947,7 @@ class SessionSummary:
             human_email=str(data.get("human_email")) if data.get("human_email") else None,
             human_role=str(data.get("human_role")) if data.get("human_role") else None,
             visibility=str(data.get("visibility")) if data.get("visibility") else "private",
+            session_metadata=cast(Optional[Dict[str, object]], data.get("session_metadata")),
         )
 
 

@@ -25,6 +25,7 @@ class Session(SQLModel, table=True):
     tmux_session_name: Optional[str] = None
     last_input_origin: str = InputOrigin.TELEGRAM.value
     adapter_metadata: Optional[str] = None
+    session_metadata: Optional[str] = None
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
     closed_at: Optional[datetime] = None

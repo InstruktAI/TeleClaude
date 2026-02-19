@@ -50,6 +50,7 @@ class CreateSessionCommand(InternalCommand):
     channel_metadata: Optional[Dict[str, object]] = None
     launch_intent: Optional["SessionLaunchIntent"] = None
     auto_command: Optional[str] = None
+    session_metadata: Optional[Dict[str, object]] = None  # Generic metadata injection
 
     def __init__(
         self,
@@ -63,6 +64,7 @@ class CreateSessionCommand(InternalCommand):
         channel_metadata: Optional[Dict[str, object]] = None,
         launch_intent: Optional["SessionLaunchIntent"] = None,
         auto_command: Optional[str] = None,
+        session_metadata: Optional[Dict[str, object]] = None,
         request_id: Optional[str] = None,
     ):
         super().__init__(command_type=CommandType.CREATE_SESSION, request_id=request_id)
@@ -75,6 +77,7 @@ class CreateSessionCommand(InternalCommand):
         self.channel_metadata = channel_metadata
         self.launch_intent = launch_intent
         self.auto_command = auto_command
+        self.session_metadata = session_metadata
 
     def to_payload(self) -> Dict[str, object]:
         args: List[str] = [self.title] if self.title else []

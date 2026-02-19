@@ -273,6 +273,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     subfolder = cmd.subdir
     working_slug = cmd.working_slug
     initiator_session_id = cmd.initiator_session_id
+    metadata_from_cmd = cmd.session_metadata or {}
 
     if cmd.channel_metadata:
         # subfolder/slug/initiator_id can also be in metadata, but command fields take precedence
@@ -382,6 +383,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         human_email=human_email,
         human_role=human_role,
         lifecycle_status="initializing",
+        session_metadata=metadata_from_cmd,  # Inject metadata from command
     )
     if cmd.launch_intent and cmd.launch_intent.thinking_mode:
         await db.update_session(session.session_id, thinking_mode=cmd.launch_intent.thinking_mode)

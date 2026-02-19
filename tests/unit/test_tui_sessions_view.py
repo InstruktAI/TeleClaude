@@ -615,7 +615,7 @@ class TestSessionsViewLogic:
         controller.apply_pending_layout()
         assert view.selected_index == 0
         assert view.state.sessions.preview == PreviewState(session_id="sess-1")
-        assert pane_manager.focus_called is False
+        assert pane_manager.focus_called is True
 
         # Second click as double-click
         pane_manager.toggle_called = False
@@ -693,7 +693,7 @@ class TestSessionsViewLogic:
         controller.apply_pending_layout()
 
         assert view.state.sessions.preview == PreviewState(session_id="preview-session")
-        assert pane_manager.focus_called is False
+        assert pane_manager.focus_called is True
 
     def test_single_click_dispatches_single_selection_method(self, mock_focus):
         """Single click preview should dispatch click selection intent exactly once."""
@@ -771,12 +771,12 @@ class TestSessionsViewLogic:
             payload for intent_type, payload in dispatched_intents if intent_type == IntentType.SET_PREVIEW
         )
         assert preview_payload["session_id"] == "preview-session"
-        assert preview_payload["focus_preview"] is False
+        assert preview_payload["focus_preview"] is True
         assert preview_payload["clear_preview"] is False
-        assert pane_manager.focus_called is False
+        assert pane_manager.focus_called is True
 
     def test_space_and_click_preview_paths_agree_for_non_sticky_sessions(self, mock_focus):
-        """Space and click should schedule identical non-sticky preview semantics."""
+        """Click preview should request focus while space preview should not."""
 
         class MockPaneManager:
             def __init__(self):
@@ -852,7 +852,7 @@ class TestSessionsViewLogic:
         space_preview = next(payload for intent_type, payload in space_intents if intent_type == IntentType.SET_PREVIEW)
 
         assert click_preview["session_id"] == space_preview["session_id"] == "nonsticky-session"
-        assert click_preview["focus_preview"] is False
+        assert click_preview["focus_preview"] is True
         assert space_preview["focus_preview"] is False
         assert click_preview["clear_preview"] is False
         assert space_preview["clear_preview"] is False

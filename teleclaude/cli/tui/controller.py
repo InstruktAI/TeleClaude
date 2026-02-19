@@ -45,6 +45,7 @@ class TuiController:
         self._sessions: list[SessionInfo] = []
         self._last_layout: LayoutState | None = None
         self._layout_pending = False
+        self._pending_focus_session_id: str | None = None
 
     def update_sessions(self, sessions: list[SessionInfo]) -> None:
         """Update session catalog used for layout derivation."""
@@ -86,6 +87,14 @@ class TuiController:
             if self._sticky_inputs() != before_sticky:
                 save_sticky_state(self.state)
             return
+
+        if intent.type is IntentType.SET_PREVIEW:
+            focus_requested = bool(intent.payload.get("focus_preview", False))
+            target_session = intent.payload.get("session_id")
+            if focus_requested and isinstance(target_session, str):
+                self._pending_focus_session_id = target_session
+            elif not focus_requested:
+                self._pending_focus_session_id = None
         reduce_state(self.state, intent)
         if intent.type in layout_intents:
             after_layout = self._layout_inputs()
@@ -100,9 +109,11 @@ class TuiController:
         if not self.pane_manager.is_available:
             return
         layout = self._derive_layout()
-        if not focus and self._last_layout == layout:
+        should_focus = focus or self._pending_focus_session_id is not None
+        if not should_focus and self._last_layout == layout:
             return
         self._last_layout = layout
+        # Apply layout state first and keep focus transition in one place below.
         self.pane_manager.apply_layout(
             active_session_id=layout.active_session_id,
             sticky_session_ids=layout.sticky_session_ids,
@@ -110,15 +121,34 @@ class TuiController:
             active_doc_preview=layout.active_doc_preview,
             selected_session_id=layout.selected_session_id,
             tree_node_has_focus=layout.tree_node_has_focus,
-            focus=focus,
+            focus=False,
         )
+        if should_focus:
+            focus_session_id = self._pending_focus_session_id or layout.active_session_id
+            if not focus_session_id and layout.active_doc_preview:
+                focus_session_id = f"doc:{layout.active_doc_preview.doc_id}"
+            if focus_session_id:
+                self.pane_manager.focus_pane_for_session(focus_session_id)
+
+    def has_pending_focus(self) -> bool:
+        """Whether a focus transition has been requested by the latest intent."""
+        return self._pending_focus_session_id is not None
+
+    def request_focus_session(self, session_id: str | None) -> None:
+        """Request that the next layout application focuses the given session."""
+        if session_id is None:
+            self._pending_focus_session_id = None
+            return
+        self._pending_focus_session_id = session_id
 
     def apply_pending_layout(self) -> bool:
         """Apply deferred layout work once per loop tick."""
-        if not self._layout_pending:
+        pending_focus = self._pending_focus_session_id is not None
+        if not self._layout_pending and not pending_focus:
             return False
         self._layout_pending = False
-        self.apply_layout(focus=False)
+        self.apply_layout(focus=pending_focus)
+        self._pending_focus_session_id = None
         return True
 
     def _derive_layout(self) -> LayoutState:

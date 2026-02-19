@@ -245,6 +245,7 @@ class CommandMapper:
                 channel_metadata=metadata.channel_metadata,
                 launch_intent=metadata.launch_intent,
                 auto_command=metadata.auto_command,
+                session_metadata=metadata.session_metadata,
             )
 
         if command_name == "message":

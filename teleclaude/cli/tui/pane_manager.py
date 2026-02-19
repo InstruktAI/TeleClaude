@@ -210,6 +210,8 @@ class TmuxPaneManager:
             return
 
         self._render_layout()
+        if focus and active_spec:
+            self.focus_pane_for_session(active_spec.session_id)
 
     def _run_tmux(self, *args: str) -> str:
         """Run a tmux command and return output.

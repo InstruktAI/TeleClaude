@@ -419,6 +419,7 @@ class APIServer:
                 project_path=request.project_path,
                 subdir=request.subdir,
                 channel_metadata=channel_metadata,
+                session_metadata=request.metadata,
                 # launch_intent and auto_command logic will be simplified or moved
             )
 
@@ -1065,7 +1066,7 @@ class APIServer:
                 raise HTTPException(status_code=500, detail=f"Failed to list jobs: {e}") from e
 
         @self.app.post("/jobs/{name}/run")
-        async def run_job(
+        async def run_job(  # pyright: ignore[reportUnusedFunction]
             name: str,
             background_tasks: "fastapi.BackgroundTasks",
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
