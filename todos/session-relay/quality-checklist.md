@@ -21,12 +21,12 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior — core relay primitive meets spec; handler wiring functional but has duplicate relay bug
+- [x] Deferrals justified and not hiding required scope — no deferrals.md present; no silent deferrals found
+- [x] Findings written in `review-findings.md` — 1 critical, 4 important, 5 suggestions
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
+- [ ] Critical issues resolved or explicitly blocked — 1 critical open (duplicate relay prevention)
+- [x] Test coverage and regression risk assessed — relay primitive well-covered; handler wiring has zero coverage
 
 ## Finalize Gates (Finalizer)
 
