@@ -67,6 +67,11 @@ async def create_relay(participants: list[RelayParticipant]) -> str:
         relay.baselines[p.session_id] = await tmux_bridge.capture_pane(p.tmux_session_name)
 
     async with _relay_lock:
+        # Prevent enrolling sessions already in another relay
+        for p in participants:
+            if p.session_id in _relay_by_session:
+                existing_relay_id = _relay_by_session[p.session_id]
+                raise ValueError(f"Session {p.session_id[:8]} already in relay {existing_relay_id[:8]}")
         _relays[relay_id] = relay
         for p in participants:
             _relay_by_session[p.session_id] = relay_id
