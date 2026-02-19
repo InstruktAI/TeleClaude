@@ -67,6 +67,17 @@ async def cleanup_session_resources(
     if project_path:
         release_finalize_lock(project_path, session_id)
 
+    # Stop any active relay this session is part of (defense-in-depth)
+    from teleclaude.core.session_relay import get_relay_for_session, stop_relay
+
+    relay_id = await get_relay_for_session(session_id)
+    if relay_id:
+        try:
+            await stop_relay(relay_id)
+            logger.debug("Stopped relay %s for terminated session %s", relay_id[:8], session_id[:8])
+        except Exception as e:
+            logger.warning("Failed to stop relay for session %s: %s", session_id[:8], e)
+
     # Remove listeners waiting on this session (target listeners)
     target_listeners = await pop_listeners(session_id)
     if target_listeners:
