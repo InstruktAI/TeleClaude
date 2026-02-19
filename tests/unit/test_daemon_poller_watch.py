@@ -16,8 +16,8 @@ from teleclaude.services.maintenance_service import MaintenanceService
 
 
 @pytest.mark.asyncio
-async def test_poller_watch_does_not_create_ui_channel():
-    """Poller watch should not create UI channels (handled by UI lanes)."""
+async def test_poller_watch_ensures_ui_channels_for_all_origins():
+    """Poller watch should create UI channels for sessions without them, regardless of origin."""
     service = MaintenanceService(client=Mock(), output_poller=Mock(), poller_watch_interval_s=1.0)
     service._client.ensure_ui_channels = AsyncMock()
 
@@ -42,10 +42,14 @@ async def test_poller_watch_does_not_create_ui_channel():
             "teleclaude.services.maintenance_service.polling_coordinator.is_polling", new=AsyncMock(return_value=False)
         ),
         patch("teleclaude.services.maintenance_service.polling_coordinator.schedule_polling", new=AsyncMock()),
+        patch(
+            "teleclaude.services.maintenance_service.get_display_title_for_session",
+            new=AsyncMock(return_value="Test Session"),
+        ),
     ):
         await service._poller_watch_iteration()
 
-    service._client.ensure_ui_channels.assert_not_called()
+    service._client.ensure_ui_channels.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -72,6 +76,8 @@ async def test_poller_watch_recreates_missing_tmux_session():
 
     service.ensure_tmux_session = record_ensure
 
+    service._client.ensure_ui_channels = AsyncMock()
+
     with (
         patch("teleclaude.services.maintenance_service.db.get_active_sessions", new=AsyncMock(return_value=[session])),
         patch("teleclaude.services.maintenance_service.tmux_bridge.list_tmux_sessions", new=AsyncMock(return_value=[])),
@@ -80,6 +86,10 @@ async def test_poller_watch_recreates_missing_tmux_session():
             "teleclaude.services.maintenance_service.polling_coordinator.is_polling", new=AsyncMock(return_value=False)
         ),
         patch("teleclaude.services.maintenance_service.polling_coordinator.schedule_polling", new=AsyncMock()),
+        patch(
+            "teleclaude.services.maintenance_service.get_display_title_for_session",
+            new=AsyncMock(return_value="Test Session 2"),
+        ),
     ):
         await service._poller_watch_iteration()
 

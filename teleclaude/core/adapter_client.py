@@ -64,6 +64,8 @@ class AdapterClient:
         self.is_shutting_down = False
         # Direct handler for agent events (set by daemon, replaces event bus for AGENT_EVENT)
         self.agent_event_handler: Callable[["AgentEventContext"], Awaitable[None]] | None = None
+        # Per-session lock for channel provisioning (prevents concurrent ensure_channel races)
+        self._channel_ensure_locks: dict[str, asyncio.Lock] = {}
 
     def mark_shutting_down(self) -> None:
         """Mark client as shutting down to suppress adapter restarts."""
@@ -265,6 +267,10 @@ class AdapterClient:
         Raises ValueError if the session has no valid UI origin — every
         routable session must have one (design-by-contract).
         """
+        # Ensure channels via single funnel before dispatching to any lane
+        display_title = await get_display_title_for_session(session)
+        session = await self.ensure_ui_channels(session, display_title)
+
         origin_ui = self._origin_ui_adapter(session)
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
@@ -361,19 +367,46 @@ class AdapterClient:
         # Use fresh session for routing to ensure we have the latest last_input_origin
         session_to_use = fresh_session or session
 
-        # Route through unified path to ensure lane resilience (ensure_channel)
+        # Route through unified path for lane resilience
         # Broadcast only if not feedback (ephemeral status updates)
         should_broadcast = not feedback
 
-        result = await self._route_to_ui(
-            session_to_use,
-            "send_message",
-            text,
-            broadcast=should_broadcast,
-            metadata=metadata,
-            multi_message=multi_message,
-        )
-        message_id = str(result) if result else None
+        # Check if origin resolves to a UI adapter
+        origin_adapter = self.adapters.get(session_to_use.last_input_origin or "")
+        if isinstance(origin_adapter, UiAdapter):
+            result = await self._route_to_ui(
+                session_to_use,
+                "send_message",
+                text,
+                broadcast=should_broadcast,
+                metadata=metadata,
+                multi_message=multi_message,
+            )
+            message_id = str(result) if result else None
+        else:
+            # Non-UI origin (api/hook/mcp): ensure channels then send to all UI adapters
+            display_title = await get_display_title_for_session(session_to_use)
+            session_to_use = await self.ensure_ui_channels(session_to_use, display_title)
+
+            ui_adapters = self._ui_adapters()
+            if not ui_adapters:
+                return None
+
+            def make_msg_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+                return cast(
+                    Awaitable[object],
+                    adapter.send_message(lane_session, text, metadata=metadata, multi_message=multi_message),
+                )
+
+            results = await asyncio.gather(
+                *[self._run_ui_lane(session_to_use, atype, adapter, make_msg_task) for atype, adapter in ui_adapters],
+                return_exceptions=True,
+            )
+            message_id = None
+            for r in results:
+                if not isinstance(r, (Exception, type(None))):
+                    message_id = str(r)
+                    break
 
         # Track for deletion if ephemeral
         if ephemeral and message_id:
@@ -562,18 +595,46 @@ class AdapterClient:
             )
             return None
 
-        result = await self._route_to_ui(
-            session,
-            "send_output_update",
-            output,
-            started_at,
-            last_output_changed_at,
-            is_final,
-            exit_code,
-            render_markdown,
-            broadcast=False,
+        # Check if origin resolves to a UI adapter
+        origin_adapter = self.adapters.get(session.last_input_origin or "")
+        if isinstance(origin_adapter, UiAdapter):
+            result = await self._route_to_ui(
+                session,
+                "send_output_update",
+                output,
+                started_at,
+                last_output_changed_at,
+                is_final,
+                exit_code,
+                render_markdown,
+                broadcast=False,
+            )
+            return str(result) if result else None
+
+        # Non-UI origin (api/hook/mcp): ensure channels then send to all UI adapters
+        display_title = await get_display_title_for_session(session)
+        session = await self.ensure_ui_channels(session, display_title)
+
+        ui_adapters = self._ui_adapters()
+        if not ui_adapters:
+            return None
+
+        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            return cast(
+                Awaitable[object],
+                adapter.send_output_update(
+                    lane_session, output, started_at, last_output_changed_at, is_final, exit_code, render_markdown
+                ),
+            )
+
+        results = await asyncio.gather(
+            *[self._run_ui_lane(session, atype, adapter, make_task) for atype, adapter in ui_adapters],
+            return_exceptions=True,
         )
-        return str(result) if result else None
+        for r in results:
+            if not isinstance(r, (Exception, type(None))):
+                return str(r)
+        return None
 
     async def broadcast_user_input(
         self,
@@ -585,7 +646,7 @@ class AdapterClient:
 
         Formats input with source attribution (e.g. "TUI @ macbook") and
         sends to all UI adapters except the origin via _broadcast_to_observers,
-        which routes through _run_ui_lane for ensure_channel resilience.
+        which routes through _run_ui_lane for lane resilience.
         """
         _NON_INTERACTIVE = {InputOrigin.MCP.value, InputOrigin.HOOK.value}
         if origin in _NON_INTERACTIVE:
@@ -614,37 +675,20 @@ class AdapterClient:
         adapter_type: str,
         adapter: UiAdapter,
         task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
-        *,
-        ensure_channel: bool = True,
     ) -> object | None:
-        # Build display title for UI adapters (DB stores only description)
+        """Execute a task on a single UI adapter lane.
+
+        Caller must provision channels via ensure_ui_channels() first.
+        """
         display_title = await get_display_title_for_session(session)
         logger.debug(
-            "[UI_LANE] Starting lane for adapter=%s session=%s title=%s",
+            "[UI_LANE] Starting lane for adapter=%s session=%s",
             adapter_type,
             session.session_id[:8],
-            display_title,
         )
-        lane_session = session
-        if ensure_channel:
-            try:
-                lane_session = await adapter.ensure_channel(lane_session, display_title)
-                logger.debug(
-                    "[UI_LANE] ensure_channel succeeded for %s session %s",
-                    adapter_type,
-                    session.session_id[:8],
-                )
-            except Exception as exc:
-                logger.error(
-                    "[UI_LANE] Failed to ensure UI channel for %s session %s: %s (BLOCKING OUTPUT)",
-                    adapter_type,
-                    session.session_id[:8],
-                    exc,
-                )
-                return None
 
         try:
-            result = await task_factory(adapter, lane_session)
+            result = await task_factory(adapter, session)
             logger.debug(
                 "[UI_LANE] Task completed for %s session %s: result=%s",
                 adapter_type,
@@ -698,7 +742,8 @@ class AdapterClient:
         Returns:
             True if origin deletion succeeded
         """
-        origin_ui = self._origin_ui_adapter(session)
+        origin_adapter = self.adapters.get(session.last_input_origin or "")
+        origin_ui = origin_adapter if isinstance(origin_adapter, UiAdapter) else None
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
             return cast(Awaitable[object], adapter.delete_channel(lane_session))
@@ -712,7 +757,7 @@ class AdapterClient:
 
             results = await asyncio.gather(
                 *[
-                    self._run_ui_lane(session, adapter_type, adapter, make_task, ensure_channel=False)
+                    self._run_ui_lane(session, adapter_type, adapter, make_task)
                     for adapter_type, adapter in ui_adapters
                 ],
                 return_exceptions=True,
@@ -730,7 +775,6 @@ class AdapterClient:
             origin_type,
             origin_ui,
             make_task,
-            ensure_channel=False,
         )
         success = bool(origin_result)
         if not success:
@@ -751,7 +795,6 @@ class AdapterClient:
                         adapter_type,
                         adapter,
                         make_task,
-                        ensure_channel=False,
                     )
                 )
             if observer_tasks:
@@ -1070,21 +1113,32 @@ class AdapterClient:
         session: "Session",
         title: str,
     ) -> "Session":
-        """Ensure UI channels exist for a session (originless)."""
-        ui_adapters = self._ui_adapters()
-        if not ui_adapters:
-            raise ValueError("No UI adapters registered")
+        """Single funnel for UI channel provisioning.
 
-        tasks = [adapter.ensure_channel(session, title) for _, adapter in ui_adapters]
-        try:
-            await asyncio.gather(*tasks)
-        except Exception as exc:
-            logger.error("Failed to ensure UI channel(s): %s", exc)
-            raise
+        Uses a per-session lock to prevent concurrent provisioning.
+        Adapter calls are serialized to prevent cross-adapter metadata overwrites
+        (each adapter reads the previous one's writes).
+        """
+        session_id = session.session_id
 
-        refreshed = await db.get_session(session.session_id)
+        if session_id not in self._channel_ensure_locks:
+            self._channel_ensure_locks[session_id] = asyncio.Lock()
+
+        async with self._channel_ensure_locks[session_id]:
+            fresh = await db.get_session(session_id)
+            if fresh:
+                session = fresh
+
+            ui_adapters = self._ui_adapters()
+            if not ui_adapters:
+                raise ValueError("No UI adapters registered")
+
+            for _, adapter in ui_adapters:
+                session = await adapter.ensure_channel(session, title)
+
+        refreshed = await db.get_session(session_id)
         if not refreshed:
-            raise ValueError(f"Session {session.session_id[:8]} missing after channel creation")
+            raise ValueError(f"Session {session_id[:8]} missing after channel creation")
         return refreshed
 
     async def get_output_message_id(self, session_id: str) -> Optional[str]:

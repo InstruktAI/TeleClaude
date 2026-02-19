@@ -50,6 +50,7 @@ class TrustedDir:
     name: str
     desc: str
     path: str
+    discord_forum: int | None = None
 
 
 @dataclass
@@ -172,9 +173,13 @@ class DiscordConfig:
     enabled: bool
     token: str | None
     guild_id: int | None
-    help_desk_channel_id: int | None
-    escalation_channel_id: int | None
-    all_sessions_channel_id: int | None
+    help_desk_channel_id: int | None = None
+    escalation_channel_id: int | None = None
+    all_sessions_channel_id: int | None = None
+    operator_chat_channel_id: int | None = None
+    announcements_channel_id: int | None = None
+    general_channel_id: int | None = None
+    categories: dict[str, int] | None = None
 
 
 @dataclass
@@ -352,6 +357,10 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "help_desk_channel_id": None,
         "escalation_channel_id": None,
         "all_sessions_channel_id": None,
+        "operator_chat_channel_id": None,
+        "announcements_channel_id": None,
+        "general_channel_id": None,
+        "categories": None,
     },
     "creds": {
         "telegram": None,
@@ -438,6 +447,18 @@ def _validate_disallowed_runtime_keys(user_config: dict[str, object]) -> None:  
         )
 
 
+def _parse_categories(raw: object) -> dict[str, int] | None:
+    """Parse Discord categories dict from config (name -> channel ID)."""
+    if not isinstance(raw, dict):
+        return None
+    result: dict[str, int] = {}
+    for key, val in raw.items():
+        parsed = _parse_optional_int(val)
+        if parsed is not None:
+            result[str(key)] = parsed
+    return result or None
+
+
 def _parse_trusted_dirs(raw_dirs: list[object]) -> list[TrustedDir]:
     """Parse trusted_dirs from config.
 
@@ -452,12 +473,13 @@ def _parse_trusted_dirs(raw_dirs: list[object]) -> list[TrustedDir]:
     trusted_dirs = []
     for item in raw_dirs:
         if isinstance(item, dict):
-            # New format: dict with name, desc, path
+            # New format: dict with name, desc, path, optional discord_forum
             trusted_dirs.append(
                 TrustedDir(
                     name=str(item["name"]),
                     desc=str(item.get("desc", "")),
                     path=str(item["path"]),
+                    discord_forum=_parse_optional_int(item.get("discord_forum")),
                 )
             )
         else:
@@ -668,6 +690,20 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
                 if isinstance(discord_raw, dict)
                 else None
             ),
+            operator_chat_channel_id=(
+                _parse_optional_int(discord_raw.get("operator_chat_channel_id"))
+                if isinstance(discord_raw, dict)
+                else None
+            ),
+            announcements_channel_id=(
+                _parse_optional_int(discord_raw.get("announcements_channel_id"))
+                if isinstance(discord_raw, dict)
+                else None
+            ),
+            general_channel_id=(
+                _parse_optional_int(discord_raw.get("general_channel_id")) if isinstance(discord_raw, dict) else None
+            ),
+            categories=(_parse_categories(discord_raw.get("categories")) if isinstance(discord_raw, dict) else None),
         ),
         creds=CredsConfig(telegram=tg_creds),
         agents=agents_registry,

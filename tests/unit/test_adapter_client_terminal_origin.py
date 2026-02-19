@@ -91,22 +91,21 @@ def _make_session(last_input_origin: str) -> Session:
 
 
 @pytest.mark.asyncio
-async def test_terminal_origin_send_message_skips_ui():
-    """API origin is not a UI adapter — fail-fast returns None."""
+async def test_terminal_origin_send_message_broadcasts_to_ui():
+    """API origin is not a UI adapter — broadcasts to all registered UI adapters."""
     client = AdapterClient()
     adapter = DummyUiAdapter(client)
     client.register_adapter("telegram", adapter)
 
     session = _make_session(InputOrigin.API.value)
 
-    # Mock db.add_pending_deletion since send_message auto-tracks ephemeral messages
     mock_db = AsyncMock()
-    mock_db.get_session.return_value = None  # Force use of input session
+    mock_db.get_session.return_value = session
     with patch("teleclaude.core.adapter_client.db", mock_db):
         message_id = await client.send_message(session, "hello")
 
-    assert message_id is None
-    assert adapter.sent_messages == []
+    assert message_id == "msg-1"
+    assert adapter.sent_messages == [("sess-1", "hello")]
 
 
 @pytest.mark.asyncio
@@ -118,7 +117,7 @@ async def test_terminal_origin_send_message_ephemeral_tracks_deletion():
     session = _make_session("telegram")
 
     mock_db = AsyncMock()
-    mock_db.get_session.return_value = None  # Force use of input session
+    mock_db.get_session.return_value = session
     with patch("teleclaude.core.adapter_client.db", mock_db):
         await client.send_message(session, "ephemeral message")
 

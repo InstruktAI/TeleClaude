@@ -64,6 +64,12 @@ class DiscordAdapter(UiAdapter):
         self._all_sessions_channel_id = config.discord.all_sessions_channel_id or self._parse_optional_int(
             os.getenv("DISCORD_ALL_SESSIONS_CHANNEL_ID")
         )
+        self._escalation_channel_id: int | None = config.discord.escalation_channel_id or self._parse_optional_int(
+            os.getenv("DISCORD_ESCALATION_CHANNEL_ID")
+        )
+        self._operator_chat_channel_id: int | None = config.discord.operator_chat_channel_id
+        self._announcements_channel_id: int | None = config.discord.announcements_channel_id
+        self._general_channel_id: int | None = config.discord.general_channel_id
         self._gateway_task: asyncio.Task[object] | None = None
         self._ready_event = asyncio.Event()
         self._client: DiscordClientLike | None = None
@@ -137,7 +143,9 @@ class DiscordAdapter(UiAdapter):
         if discord_meta.thread_id is not None:
             return session
 
-        # Route to the correct forum based on session type
+        # Route to the correct forum based on session type.
+        # Infrastructure provisioning runs at startup (_handle_on_ready);
+        # if channels are still missing here, skip silently.
         target_forum_id = self._resolve_target_forum(session)
         if target_forum_id is None:
             return session
@@ -146,11 +154,6 @@ class DiscordAdapter(UiAdapter):
 
         await self.create_channel(session, title, ChannelMetadata(origin=False))
         refreshed = await db.get_session(session.session_id)
-
-        # Future: project-scoped forum mirroring (gated by discord_project_forum_mirroring experiment)
-        # if is_discord_project_forum_mirroring_enabled():
-        #     await self._mirror_to_project_forum(session, title)
-
         return refreshed or session
 
     def _resolve_target_forum(self, session: "Session") -> int | None:
@@ -166,6 +169,300 @@ class DiscordAdapter(UiAdapter):
         if session.last_input_origin == "discord" and self._help_desk_channel_id is not None:
             return session.human_role is None or session.human_role == "customer"
         return False
+
+    # =========================================================================
+    # Discord Infrastructure Auto-Provisioning
+    # =========================================================================
+
+    async def _ensure_discord_infrastructure(self) -> None:
+        """Auto-provision the full Discord channel structure.
+
+        Creates four categories with their channels:
+        - Operations: #announcements (text), #general (text)
+        - Sessions: #all-sessions (forum)
+        - Help Desk: #customer-sessions (forum), #escalations (forum), #operator-chat (text)
+        - Projects: per-project forums (behind discord_project_forum_mirroring flag)
+
+        Idempotent: skips any channel that already exists.
+        Persists all created IDs to config.yml.
+        """
+        if self._client is None or self._guild_id is None:
+            return
+
+        guild = await self._resolve_guild()
+        if guild is None:
+            logger.warning("Cannot auto-provision Discord channels: guild %s not found", self._guild_id)
+            return
+
+        changes: dict[str, int | dict[str, int]] = {}
+        cat_changes: dict[str, int] = {}
+        existing_cats = config.discord.categories or {}
+
+        # --- Category: Operations ---
+        ops_cat = await self._ensure_category(guild, "Operations", existing_cats, cat_changes)
+
+        if self._announcements_channel_id is None:
+            ch_id = await self._find_or_create_text_channel(guild, ops_cat, "announcements")
+            if ch_id is not None:
+                self._announcements_channel_id = ch_id
+                changes["announcements_channel_id"] = ch_id
+
+        if self._general_channel_id is None:
+            ch_id = await self._find_or_create_text_channel(guild, ops_cat, "general")
+            if ch_id is not None:
+                self._general_channel_id = ch_id
+                changes["general_channel_id"] = ch_id
+
+        # --- Category: Sessions ---
+        sessions_cat = await self._ensure_category(guild, "Sessions", existing_cats, cat_changes)
+
+        if self._all_sessions_channel_id is None:
+            forum_id = await self._find_or_create_forum(
+                guild, sessions_cat, "All Sessions", "All admin and member AI sessions"
+            )
+            if forum_id is not None:
+                self._all_sessions_channel_id = forum_id
+                changes["all_sessions_channel_id"] = forum_id
+
+        # --- Category: Help Desk ---
+        hd_cat = await self._ensure_category(guild, "Help Desk", existing_cats, cat_changes)
+
+        if self._help_desk_channel_id is None:
+            forum_id = await self._find_or_create_forum(guild, hd_cat, "Customer Sessions", "Customer support sessions")
+            if forum_id is not None:
+                self._help_desk_channel_id = forum_id
+                changes["help_desk_channel_id"] = forum_id
+
+        if self._escalation_channel_id is None:
+            forum_id = await self._find_or_create_forum(
+                guild, hd_cat, "Escalations", "Human-admin escalation relay threads"
+            )
+            if forum_id is not None:
+                self._escalation_channel_id = forum_id
+                changes["escalation_channel_id"] = forum_id
+
+        if self._operator_chat_channel_id is None:
+            ch_id = await self._find_or_create_text_channel(guild, hd_cat, "operator-chat")
+            if ch_id is not None:
+                self._operator_chat_channel_id = ch_id
+                changes["operator_chat_channel_id"] = ch_id
+
+        # --- Category: Projects (behind feature flag) ---
+        from teleclaude.core.feature_flags import is_discord_project_forum_mirroring_enabled
+
+        if is_discord_project_forum_mirroring_enabled():
+            proj_cat = await self._ensure_category(guild, "Projects", existing_cats, cat_changes)
+            await self._ensure_project_forums(guild, proj_cat)
+
+        # Persist all changes
+        if cat_changes:
+            changes["categories"] = cat_changes
+        if changes:
+            self._persist_discord_channel_ids(changes)
+            logger.info("Discord infrastructure provisioned: %s", list(changes.keys()))
+
+    async def _ensure_category(
+        self,
+        guild: object,
+        name: str,
+        existing: dict[str, int],
+        cat_changes: dict[str, int],
+    ) -> object | None:
+        """Resolve a category: from config cache, by name search, or create new."""
+        key = name.lower().replace(" ", "_")
+
+        # Check if we already have the ID cached
+        cached_id = existing.get(key)
+        if cached_id is not None:
+            cat = await self._get_channel(cached_id)
+            if cat is not None:
+                return cat
+
+        # Find or create
+        cat = await self._find_or_create_category(guild, name)
+        cat_id = self._parse_optional_int(getattr(cat, "id", None)) if cat else None
+        if cat_id is not None:
+            cat_changes[key] = cat_id
+        return cat
+
+    async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
+        """Create a forum for each trusted dir that lacks a discord_forum ID."""
+        trusted_dirs = config.computer.get_all_trusted_dirs()
+        project_changes: list[tuple[str, int]] = []
+
+        for td in trusted_dirs:
+            if td.discord_forum is not None:
+                continue
+            forum_id = await self._find_or_create_forum(guild, category, td.name, td.desc or f"Sessions for {td.name}")
+            if forum_id is not None:
+                td.discord_forum = forum_id
+                project_changes.append((td.name, forum_id))
+
+        if project_changes:
+            self._persist_project_forum_ids(project_changes)
+
+    async def _resolve_guild(self) -> object | None:
+        """Resolve the configured guild by ID."""
+        if self._client is None or self._guild_id is None:
+            return None
+
+        get_guild_fn = getattr(self._client, "get_guild", None)
+        guild = get_guild_fn(self._guild_id) if callable(get_guild_fn) else None
+
+        if guild is None:
+            fetch_guild_fn = getattr(self._client, "fetch_guild", None)
+            if callable(fetch_guild_fn):
+                try:
+                    guild = await self._require_async_callable(fetch_guild_fn, label="fetch_guild")(self._guild_id)
+                except Exception as exc:
+                    logger.debug("Failed to fetch guild %s: %s", self._guild_id, exc)
+
+        return guild
+
+    async def _find_or_create_category(self, guild: object, name: str) -> object | None:
+        """Find an existing category by name, or create one."""
+        # Search existing categories
+        categories = getattr(guild, "categories", None)
+        if isinstance(categories, list):
+            for cat in categories:
+                cat_name = getattr(cat, "name", None)
+                if isinstance(cat_name, str) and cat_name.lower() == name.lower():
+                    logger.debug("Found existing Discord category: %s (id=%s)", name, getattr(cat, "id", "?"))
+                    return cat
+
+        # Create new category
+        create_fn = getattr(guild, "create_category", None)
+        if not callable(create_fn):
+            logger.debug("Guild has no create_category method; skipping category creation")
+            return None
+
+        try:
+            category = await self._require_async_callable(create_fn, label="guild.create_category")(name=name)
+            logger.info("Created Discord category: %s (id=%s)", name, getattr(category, "id", "?"))
+            return category
+        except Exception as exc:
+            logger.warning("Failed to create Discord category '%s': %s", name, exc)
+            return None
+
+    async def _find_or_create_forum(self, guild: object, category: object | None, name: str, topic: str) -> int | None:
+        """Find an existing forum by name, or create one under the category."""
+        # Search existing channels for a matching forum
+        channels = getattr(guild, "channels", None)
+        if isinstance(channels, list):
+            for ch in channels:
+                ch_name = getattr(ch, "name", None)
+                if isinstance(ch_name, str) and ch_name.lower() == name.lower() and self._is_forum_channel(ch):
+                    found_id = self._parse_optional_int(getattr(ch, "id", None))
+                    if found_id is not None:
+                        logger.debug("Found existing Discord forum: %s (id=%s)", name, found_id)
+                        return found_id
+
+        # Create new forum
+        create_fn = getattr(guild, "create_forum", None)
+        if not callable(create_fn):
+            logger.warning("Guild has no create_forum method; cannot create '%s'", name)
+            return None
+
+        try:
+            create = self._require_async_callable(create_fn, label="guild.create_forum")
+            if category is not None:
+                forum = await create(name=name, topic=topic, category=category)
+            else:
+                forum = await create(name=name, topic=topic)
+            forum_id = self._parse_optional_int(getattr(forum, "id", None))
+            if forum_id is not None:
+                logger.info("Created Discord forum: %s (id=%s)", name, forum_id)
+            return forum_id
+        except Exception as exc:
+            logger.warning("Failed to create Discord forum '%s': %s", name, exc)
+            return None
+
+    async def _find_or_create_text_channel(self, guild: object, category: object | None, name: str) -> int | None:
+        """Find an existing text channel by name, or create one under the category."""
+        channels = getattr(guild, "channels", None)
+        if isinstance(channels, list):
+            for ch in channels:
+                ch_name = getattr(ch, "name", None)
+                ch_type = getattr(ch, "type", None)
+                # discord.ChannelType.text has value 0
+                is_text = ch_type is not None and getattr(ch_type, "value", ch_type) == 0
+                if isinstance(ch_name, str) and ch_name.lower() == name.lower() and is_text:
+                    found_id = self._parse_optional_int(getattr(ch, "id", None))
+                    if found_id is not None:
+                        logger.debug("Found existing Discord text channel: %s (id=%s)", name, found_id)
+                        return found_id
+
+        create_fn = getattr(guild, "create_text_channel", None)
+        if not callable(create_fn):
+            logger.warning("Guild has no create_text_channel method; cannot create '%s'", name)
+            return None
+
+        try:
+            create = self._require_async_callable(create_fn, label="guild.create_text_channel")
+            if category is not None:
+                channel = await create(name=name, category=category)
+            else:
+                channel = await create(name=name)
+            ch_id = self._parse_optional_int(getattr(channel, "id", None))
+            if ch_id is not None:
+                logger.info("Created Discord text channel: %s (id=%s)", name, ch_id)
+            return ch_id
+        except Exception as exc:
+            logger.warning("Failed to create Discord text channel '%s': %s", name, exc)
+            return None
+
+    @staticmethod
+    def _persist_project_forum_ids(project_changes: list[tuple[str, int]]) -> None:
+        """Write auto-provisioned project forum IDs to config.yml trusted_dirs."""
+        import yaml
+
+        from teleclaude.config import config_path
+
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                raw = yaml.safe_load(f) or {}
+
+            comp = raw.get("computer", {})
+            trusted_dirs = comp.get("trusted_dirs", [])
+            name_to_id = dict(project_changes)
+
+            for td in trusted_dirs:
+                if isinstance(td, dict) and td.get("name") in name_to_id:
+                    td["discord_forum"] = name_to_id[td["name"]]
+
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(raw, f, default_flow_style=False, sort_keys=False)
+
+            logger.info("Persisted project forum IDs to %s: %s", config_path, name_to_id)
+        except Exception as exc:
+            logger.warning("Failed to persist project forum IDs to config: %s", exc)
+
+    @staticmethod
+    def _persist_discord_channel_ids(changes: dict[str, int | dict[str, int]]) -> None:
+        """Write auto-provisioned channel IDs to config.yml."""
+        import yaml
+
+        from teleclaude.config import config_path
+
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                raw = yaml.safe_load(f) or {}
+
+            discord_section = raw.setdefault("discord", {})
+            for key, value in changes.items():
+                if key == "categories" and isinstance(value, dict):
+                    existing_cats = discord_section.get("categories") or {}
+                    existing_cats.update(value)
+                    discord_section["categories"] = existing_cats
+                else:
+                    discord_section[key] = value
+
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(raw, f, default_flow_style=False, sort_keys=False)
+
+            logger.info("Persisted discord channel IDs to %s: %s", config_path, changes)
+        except Exception as exc:
+            logger.warning("Failed to persist discord channel IDs to config: %s", exc)
 
     # --- Per-adapter output message tracking ---
     # Discord uses adapter_metadata instead of the shared DB column
@@ -424,6 +721,13 @@ class DiscordAdapter(UiAdapter):
             return
         user = getattr(self._client, "user", None)
         logger.info("Discord adapter ready as %s", user)
+
+        # Auto-provision Discord infrastructure (category + forums)
+        try:
+            await self._ensure_discord_infrastructure()
+        except Exception as exc:
+            logger.warning("Discord infrastructure provisioning failed: %s", exc)
+
         self._ready_event.set()
 
     async def _handle_on_message(self, message: object) -> None:
@@ -440,7 +744,7 @@ class DiscordAdapter(UiAdapter):
         # Check if this message is in a relay thread (escalation forum)
         channel = getattr(message, "channel", None)
         parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
-        if parent_id and parent_id == config.discord.escalation_channel_id:
+        if parent_id and parent_id == self._escalation_channel_id:
             text = getattr(message, "content", None)
             if isinstance(text, str) and text.strip():
                 await self._handle_relay_thread_message(message, text)
@@ -787,7 +1091,7 @@ class DiscordAdapter(UiAdapter):
         session_id: str,
     ) -> int:
         """Create a thread in the escalation forum channel for admin relay."""
-        escalation_channel_id = config.discord.escalation_channel_id
+        escalation_channel_id = self._escalation_channel_id
         if not escalation_channel_id:
             raise AdapterError("escalation_channel_id not configured")
 
@@ -821,7 +1125,7 @@ class DiscordAdapter(UiAdapter):
         for forum_id, match_field in [
             (self._help_desk_channel_id, "thread_id"),
             (self._all_sessions_channel_id, "thread_id"),
-            (config.discord.escalation_channel_id, "relay"),
+            (self._escalation_channel_id, "relay"),
         ]:
             if forum_id is None:
                 continue

@@ -14,7 +14,6 @@ from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
-from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_display_title_for_session, get_output_file, resolve_working_dir
 from teleclaude.core.voice_assignment import get_voice_env_vars
@@ -89,19 +88,19 @@ class MaintenanceService:
             if await polling_coordinator.is_polling(session.session_id):
                 continue
 
-            if session.last_input_origin == InputOrigin.TELEGRAM.value:
-                telegram_meta = session.get_metadata().get_ui().get_telegram()
-                if not telegram_meta.topic_id or not session.output_message_id:
-                    try:
-                        display_title = await get_display_title_for_session(session)
-                        await self._client.ensure_ui_channels(session, display_title)
-                    except Exception as exc:
-                        logger.warning(
-                            "Failed to ensure UI channels for session %s: %s",
-                            session.session_id[:8],
-                            exc,
-                        )
-                        continue
+            # Ensure UI channels exist for output delivery (all origins)
+            telegram_meta = session.get_metadata().get_ui().get_telegram()
+            if not telegram_meta.topic_id:
+                try:
+                    display_title = await get_display_title_for_session(session)
+                    await self._client.ensure_ui_channels(session, display_title)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to ensure UI channels for session %s: %s",
+                        session.session_id[:8],
+                        exc,
+                    )
+                    continue
 
             if session.tmux_session_name not in active_tmux_sessions:
                 recreated = await self.ensure_tmux_session(session)

@@ -36,12 +36,11 @@ discord:
   enabled: false
   # Bot token. Prefer environment interpolation to avoid plaintext secrets.
   token: ${DISCORD_BOT_TOKEN}
-  # Guild (server) where the help desk forum channel lives.
+  # Guild (server) ID.
   guild_id: ${DISCORD_GUILD_ID}
-  # Forum channel ID (Discord channel type 15). Each session gets one thread.
-  help_desk_channel_id: ${DISCORD_HELP_DESK_CHANNEL_ID}
-  # Forum channel ID for escalation threads (admin relay).
-  escalation_channel_id: ${DISCORD_ESCALATION_CHANNEL_ID}
+  # All channel/category IDs below are auto-provisioned on startup.
+  # The bot creates the full structure (categories, forums, text channels)
+  # and persists IDs here. Do not edit manually.
 
 # Agent binaries are resolved internally by platform policy:
 # macOS: ~/Applications/{Claude,Gemini,Codex}Launcher.app/...
