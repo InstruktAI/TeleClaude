@@ -616,8 +616,9 @@ class MCPHandlersMixin:
         )
 
         # Don't create duplicate relays
-        existing = await get_relay_for_session(caller_session_id)
-        if existing:
+        existing_caller = await get_relay_for_session(caller_session_id)
+        existing_target = await get_relay_for_session(target_session_id)
+        if existing_caller or existing_target:
             return " Relay already active."
 
         caller = await db.get_session(caller_session_id)
