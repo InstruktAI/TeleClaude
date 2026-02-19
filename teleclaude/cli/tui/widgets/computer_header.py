@@ -31,15 +31,13 @@ class ComputerHeader(Widget):
         count = self.data.session_count
 
         line = Text()
-        if computer.is_local:
-            line.append(f"⊙ {name}", style="bold")
-        else:
-            line.append(f"◎ {name}", style="bold")
+        line.append(f"🖥  {name}", style="bold")
 
         if status != "online":
             line.append(f"  [{status}]", style="dim italic")
 
-        if count > 0:
-            line.append(f"  ({count})", style="dim")
+        suffix = f"({count})" if count else ""
+        if suffix:
+            line.append(f" {suffix}", style="dim")
 
         return line

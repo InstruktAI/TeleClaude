@@ -18,6 +18,8 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import SessionLifecycleContext
 from teleclaude.core.models import SessionAdapterMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import CreateSessionCommand, HandleVoiceCommand, ProcessMessageCommand
@@ -683,6 +685,19 @@ class DiscordAdapter(UiAdapter):
         raise NotImplementedError("Discord adapter does not support poll_output_stream")
         yield ""  # pragma: no cover
 
+    def _fit_output_to_limit(self, tmux_output: str) -> str:
+        """Build output message within Discord's 2000-char limit.
+
+        The base class truncates raw output to max_message_size, but format_output()
+        wraps it in triple backticks (adding 8 chars). Account for that overhead.
+        """
+        formatted = self.format_output(tmux_output)
+        if len(formatted) <= self.max_message_size:
+            return formatted
+        overhead = len("```\n\n```")
+        max_body = self.max_message_size - overhead
+        return self.format_output(tmux_output[-max_body:]) if max_body > 0 else ""
+
     def get_max_message_length(self) -> int:
         return self.max_message_size
 
@@ -710,8 +725,12 @@ class DiscordAdapter(UiAdapter):
         async def on_message(message: object) -> None:
             await self._handle_on_message(message)
 
+        async def on_raw_thread_delete(payload: object) -> None:
+            await self._handle_thread_delete(payload)
+
         self._client.event(on_ready)
         self._client.event(on_message)
+        self._client.event(on_raw_thread_delete)
 
     async def _handle_on_ready(self) -> None:
         if self._client is None:
@@ -794,6 +813,46 @@ class DiscordAdapter(UiAdapter):
             "process_message",
             cmd.to_payload(),
             lambda: get_command_service().process_message(cmd),
+        )
+
+    async def _handle_thread_delete(self, payload: object) -> None:
+        """Handle a Discord thread being deleted externally.
+
+        When a user deletes a thread from Discord, look up the session
+        that owns it and emit session_closed so the daemon terminates it.
+        """
+        thread_id = self._parse_optional_int(getattr(payload, "thread_id", None))
+        if thread_id is None:
+            return
+
+        # Guild check
+        if self._guild_id is not None:
+            payload_guild_id = self._parse_optional_int(getattr(payload, "guild_id", None))
+            if payload_guild_id is not None and payload_guild_id != self._guild_id:
+                return
+
+        sessions = await db.get_sessions_by_adapter_metadata("discord", "thread_id", thread_id, include_closed=True)
+        if not sessions:
+            logger.debug("No session found for deleted Discord thread %s", thread_id)
+            return
+
+        session = sessions[0]
+        if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+            logger.debug(
+                "Thread %s deleted for already-closed session %s",
+                thread_id,
+                session.session_id[:8],
+            )
+            return
+
+        logger.info(
+            "Discord thread %s deleted by user, terminating session %s",
+            thread_id,
+            session.session_id[:8],
+        )
+        event_bus.emit(
+            "session_closed",
+            SessionLifecycleContext(session_id=session.session_id),
         )
 
     def _is_bot_message(self, message: object) -> bool:
@@ -1024,7 +1083,17 @@ class DiscordAdapter(UiAdapter):
 
         channel = await self._get_channel(destination_id)
         if channel is None:
-            raise AdapterError(f"Discord channel {destination_id} not found")
+            # Channel was deleted from Discord — clear stale metadata so we stop retrying
+            logger.warning(
+                "Discord channel %s not found for session %s, clearing stale metadata",
+                destination_id,
+                session.session_id[:8],
+            )
+            discord_meta.thread_id = None
+            discord_meta.channel_id = None
+            discord_meta.output_message_id = None
+            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+            raise AdapterError(f"Discord channel {destination_id} not found (metadata cleared)")
         return channel
 
     async def _fetch_destination_message(

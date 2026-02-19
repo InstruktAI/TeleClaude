@@ -421,6 +421,14 @@ snippets:
   path: docs/project/procedure/host-health-checks.md
   role: member
   source_project: TeleClaude
+- id: project/procedure/member-onboarding
+  description: Invite a new member by email with deep links to their personal AI assistant
+    on Telegram, Discord, or WhatsApp.
+  type: procedure
+  scope: project
+  path: docs/project/procedure/member-onboarding.md
+  role: member
+  source_project: TeleClaude
 - id: project/procedure/multi-computer-setup
   description: Guide for setting up a distributed TeleClaude network.
   type: procedure
@@ -550,30 +558,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/jobs/memory-review.md
-  role: member
-  source_project: TeleClaude
-- id: project/spec/jobs/next-prepare
-  description: Maintenance job that continuously improves todo readiness by assessing
-    and refining requirements and implementation plans.
-  type: spec
-  scope: project
-  path: docs/project/spec/jobs/next-prepare.md
-  role: member
-  source_project: TeleClaude
-- id: project/spec/jobs/next-prepare-draft
-  description: Draft phase job for next-prepare. Builds or refines todo preparation
-    artifacts without final readiness decisions.
-  type: spec
-  scope: project
-  path: docs/project/spec/jobs/next-prepare-draft.md
-  role: member
-  source_project: TeleClaude
-- id: project/spec/jobs/next-prepare-gate
-  description: Gate phase job for next-prepare. Runs formal DOR validation and is
-    the only phase allowed to authorize readiness.
-  type: spec
-  scope: project
-  path: docs/project/spec/jobs/next-prepare-gate.md
   role: member
   source_project: TeleClaude
 - id: project/spec/jobs/youtube-sync-subscriptions

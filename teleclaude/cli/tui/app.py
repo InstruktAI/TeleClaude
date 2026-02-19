@@ -86,13 +86,13 @@ class TelecApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Banner()
         with TabbedContent(id="main-tabs"):
-            with TabPane("Sessions", id="sessions"):
+            with TabPane("[1] Sessions", id="sessions"):
                 yield SessionsView(id="sessions-view")
-            with TabPane("Preparation", id="preparation"):
+            with TabPane("[2] Preparation", id="preparation"):
                 yield PreparationView(id="preparation-view")
-            with TabPane("Jobs", id="jobs"):
+            with TabPane("[3] Jobs", id="jobs"):
                 yield JobsView(id="jobs-view")
-            with TabPane("Config", id="config"):
+            with TabPane("[4] Config", id="config"):
                 yield ConfigView(id="config-view")
         yield ActionBar(id="action-bar")
         yield StatusBar(id="status-bar")

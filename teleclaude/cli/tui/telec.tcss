@@ -11,8 +11,52 @@ Banner {
     content-align: center middle;
 }
 
-/* Tabs */
+/* Tabs - match old TUI appearance */
 #main-tabs {
+    height: 1fr;
+}
+
+Tabs {
+    min-height: 1;
+    height: 1;
+}
+
+Tab {
+    padding: 0 2;
+}
+
+Tab.-active {
+    text-style: bold;
+}
+
+/* Tab underline styling */
+TabbedContent > ContentSwitcher {
+    height: 1fr;
+}
+
+TabPane {
+    height: 1fr;
+    padding: 0;
+}
+
+/* Views fill their tab panes */
+SessionsView {
+    width: 100%;
+    height: 1fr;
+}
+
+PreparationView {
+    width: 100%;
+    height: 1fr;
+}
+
+JobsView {
+    width: 100%;
+    height: 1fr;
+}
+
+ConfigView {
+    width: 100%;
     height: 1fr;
 }
 
@@ -56,10 +100,18 @@ ComputerHeader {
     text-style: bold;
 }
 
+ComputerHeader.selected {
+    background: $accent-darken-2;
+}
+
 ProjectHeader {
     width: 100%;
     height: 1;
     padding: 0 1;
+}
+
+ProjectHeader.selected {
+    background: $accent-darken-2;
 }
 
 /* Todo rows */

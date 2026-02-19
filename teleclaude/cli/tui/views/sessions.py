@@ -52,11 +52,11 @@ class SessionsView(Widget):
     DEFAULT_CSS = """
     SessionsView {
         width: 100%;
-        height: 100%;
+        height: 1fr;
     }
     SessionsView VerticalScroll {
         width: 100%;
-        height: 100%;
+        height: 1fr;
     }
     """
 
@@ -212,7 +212,7 @@ class SessionsView(Widget):
     def _update_cursor_highlight(self) -> None:
         """Update the selected class on the current nav item."""
         for i, widget in enumerate(self._nav_items):
-            widget.toggle_class("selected", i == self.cursor_index)
+            widget.set_class(i == self.cursor_index, "selected")
 
     def _current_session_row(self) -> SessionRow | None:
         """Get the SessionRow at the current cursor position, if any."""

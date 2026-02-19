@@ -14,10 +14,6 @@
 > Admins additionally observe all sessions via supergroups. Notifications arrive through
 > the same bot identity as conversations (credential unity).
 
-- discord-session-routing
-
-Fix forum routing (customer threads in help desk forum, admin threads in all-sessions forum), add Discord-specific stale thread cleanup across all forum structures, and gate project-forum mirroring behind a feature flag.
-
 ## Web Interface
 
 - web-interface (after: help-desk) — **BROKEN DOWN**

@@ -100,7 +100,7 @@ class JobsView(Widget):
 
     def _update_cursor_highlight(self) -> None:
         for i, widget in enumerate(self._nav_items):
-            widget.toggle_class("selected", i == self.cursor_index)
+            widget.set_class(i == self.cursor_index, "selected")
 
     def _current_job_row(self) -> JobRow | None:
         if not self._nav_items or self.cursor_index >= len(self._nav_items):

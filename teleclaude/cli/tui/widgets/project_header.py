@@ -3,37 +3,45 @@
 from __future__ import annotations
 
 from rich.text import Text
+from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.models import ProjectInfo
+from teleclaude.cli.tui.utils.formatters import shorten_path
 
 
 class ProjectHeader(Widget):
-    """Header row for a project group."""
+    """Header row for a project group — shows path with separator line."""
 
     DEFAULT_CSS = """
     ProjectHeader {
         width: 100%;
-        height: 1;
+        height: auto;
         padding: 0 1;
     }
     """
+
+    terminal_width = reactive(80)
 
     def __init__(self, project: ProjectInfo, session_count: int = 0, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self.project = project
         self.session_count = session_count
 
+    def on_resize(self, event: object) -> None:
+        self.terminal_width = self.size.width
+
     def render(self) -> Text:
         line = Text()
-        # Show project name or last path component
-        name = self.project.name or self.project.path.rstrip("/").rsplit("/", 1)[-1]
-        line.append(f"  ├ {name}", style="bold dim")
-
-        if self.project.description:
-            line.append(f"  {self.project.description}", style="dim italic")
-
-        if self.session_count > 0:
-            line.append(f"  ({self.session_count})", style="dim")
-
+        path = shorten_path(self.project.path)
+        suffix = f"({self.session_count})" if self.session_count else ""
+        # Mute empty projects
+        style = "dim" if not self.session_count else ""
+        line.append(f"📁 {path}", style=style)
+        if suffix:
+            line.append(f" {suffix}", style="dim")
+        line.append("\n")
+        # Separator line
+        sep_width = max(self.terminal_width, 40)
+        line.append("─" * sep_width, style="dim")
         return line

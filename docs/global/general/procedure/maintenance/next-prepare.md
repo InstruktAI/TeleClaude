@@ -41,6 +41,45 @@ Draft and gate must run in separate worker sessions.
 2. Draft artifacts from draft phase.
 3. Final DOR verdict from gate phase.
 
+### DOR contract
+
+Per processed slug, both phases may update:
+
+- `requirements.md`
+- `implementation-plan.md`
+- `dor-report.md`
+- `state.json` (`dor` section)
+
+`state.json.dor` schema:
+
+```json
+{
+  "dor": {
+    "last_assessed_at": "2026-02-09T17:00:00Z",
+    "score": 8,
+    "status": "pass",
+    "schema_version": 1,
+    "blockers": [],
+    "actions_taken": {
+      "requirements_updated": true,
+      "implementation_plan_updated": true
+    }
+  }
+}
+```
+
+Allowed values:
+
+- `dor.score`: integer `1..10`
+- `dor.status`: `pass`, `needs_work`, `needs_decision`
+
+Threshold constants:
+
+- Target quality: `8`
+- Decision required: `< 7`
+
+Phase transition: when `requirements.md` and `implementation-plan.md` exist, item phase is `pending`, and `dor.status == "pass"`, transition phase to `ready`. Only `next-prepare-gate` may authorize this.
+
 ## Recovery
 
 1. If phase routing is ambiguous, default to draft and record ambiguity in `dor-report.md`.
