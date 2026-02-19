@@ -80,7 +80,7 @@ The receiving agent sees the message arrive (existing send_keys injection) and r
 
 **Verify:** Integration test — send_message with direct=true starts relay, both directions work, relay cleans up on session end.
 
-- [ ] Task 3: Tests
+- [x] Task 3: Tests
 
 **Files:** `tests/unit/test_session_relay.py` (new)
 
