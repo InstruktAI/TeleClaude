@@ -32,11 +32,9 @@ from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.state import Intent, IntentType, PreviewState, TuiState
 from teleclaude.cli.tui.state_store import load_sticky_state, save_sticky_state
 from teleclaude.cli.tui.theme import (
-    get_agent_highlight_attr,
-    get_agent_normal_attr,
+    AGENT_COLORS,
     get_agent_preview_selected_bg_attr,
     get_agent_preview_selected_focus_attr,
-    get_agent_subtle_attr,
     get_peaceful_muted_attr,
     get_peaceful_normal_attr,
     get_sticky_badge_attr,
@@ -99,6 +97,26 @@ _HOME_PATH_PATTERN = re.compile(r"^(/(?:Users|home)/[^/]+)")
 _SESSION_TREE_CORNER_CHAR = "└"
 _SESSION_TREE_HORIZONTAL_CHAR = "─"
 _SESSION_TREE_VERTICAL_CHAR = "│"
+
+
+def _safe_session_agent(agent: str) -> str:
+    """Normalize agent value to one known in the local AGENT_COLORS mapping."""
+    return agent if agent in AGENT_COLORS else "codex"
+
+
+def _session_agent_subtle_attr(agent: str) -> int:
+    """Return subtle color for an agent using the mutable local palette."""
+    return curses.color_pair(AGENT_COLORS[_safe_session_agent(agent)]["subtle"])
+
+
+def _session_agent_normal_attr(agent: str) -> int:
+    """Return normal color for an agent using the mutable local palette."""
+    return curses.color_pair(AGENT_COLORS[_safe_session_agent(agent)]["normal"])
+
+
+def _session_agent_highlight_attr(agent: str) -> int:
+    """Return highlight color for an agent using the mutable local palette."""
+    return curses.color_pair(AGENT_COLORS[_safe_session_agent(agent)]["highlight"])
 
 
 def _shorten_path(path: str) -> str:
@@ -1878,7 +1896,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return lines
 
         # Calculate scroll range
-        max_scroll = max(0, len(self.flat_items) - height + 3)
+        max_scroll = max(0, len(self.flat_items) - 1)
         scroll_offset = max(0, min(self.scroll_offset, max_scroll))
 
         for i, item in enumerate(self.flat_items):
@@ -2050,7 +2068,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return
 
         # Clamp scroll_offset to valid range
-        max_scroll = max(0, len(self.flat_items) - height + 3)
+        max_scroll = max(0, len(self.flat_items) - 1)
         self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
 
         row = start_row
@@ -2296,9 +2314,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         idx = session_display.display_index
 
         if should_apply_session_theming():
-            subtle_attr = get_agent_subtle_attr(agent)
-            normal_attr = get_agent_normal_attr(agent)
-            highlight_attr = get_agent_highlight_attr(agent)
+            subtle_attr = _session_agent_subtle_attr(agent)
+            normal_attr = _session_agent_normal_attr(agent)
+            highlight_attr = _session_agent_highlight_attr(agent)
         else:
             subtle_attr = get_peaceful_muted_attr()
             normal_attr = get_peaceful_normal_attr()

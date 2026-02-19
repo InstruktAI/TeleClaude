@@ -1879,11 +1879,11 @@ class TestSessionsViewLogic:
         width = 30
         lines_used = sessions_view._render_session(screen, 0, session, width, False, 3)
 
-        assert lines_used == 2
+        assert lines_used == 3
 
         # Rendering uses five calls for line 1 (leading space, idx, spacer, agent/mode, title)
         # and one for line 2.
-        assert len(screen.calls) == 6
+        assert len(screen.calls) == 8
 
         # Line 1 does not guarantee full width padding
         line1_calls = [call for call in screen.calls if call[0] == 0]
@@ -1891,8 +1891,10 @@ class TestSessionsViewLogic:
 
         # Line 2 (ID line) should still be full width
         line2_calls = [call for call in screen.calls if call[0] == 1]
-        assert len(line2_calls) == 1
+        assert len(line2_calls) == 2
         assert len(line2_calls[0][2]) == width
+        separator_calls = [call for call in screen.calls if call[0] == 2]
+        assert len(separator_calls) == 1
 
     def test_headless_session_mutes_header_lines_only(self, sessions_view, monkeypatch):
         """Headless sessions render title/ID muted while keeping output highlight behavior."""
@@ -1919,7 +1921,7 @@ class TestSessionsViewLogic:
         screen = FakeScreen()
         lines_used = sessions_view._render_session(screen, 0, session, 80, False, 4)
 
-        assert lines_used == 3
+        assert lines_used == 4
 
         # Header/title line (row 0): leading space, [idx], spacer, agent/mode, and title should be muted.
         row0_calls = [call for call in screen.calls if call[0] == 0]
@@ -1932,13 +1934,16 @@ class TestSessionsViewLogic:
 
         # Line 2 ID row is also muted for headless.
         row1_calls = [call for call in screen.calls if call[0] == 1]
-        assert len(row1_calls) == 1
+        assert len(row1_calls) == 2
         assert row1_calls[0][3] == 1
 
         # Output row keeps activity highlight behavior.
         row2_calls = [call for call in screen.calls if call[0] == 2]
-        assert len(row2_calls) == 1
+        assert len(row2_calls) == 2
         assert row2_calls[0][3] == 41  # claude highlight pair
+
+        row3_calls = [call for call in screen.calls if call[0] == 3]
+        assert len(row3_calls) == 1
 
     def test_selected_headless_session_headers_show_keyboard_focus(self, sessions_view, monkeypatch):
         """Selected headless rows should use muted focus colors during navigation."""
@@ -1963,7 +1968,7 @@ class TestSessionsViewLogic:
         screen = FakeScreen()
         lines_used = sessions_view._render_session(screen, 0, session, 80, True, 3)
 
-        assert lines_used == 2
+        assert lines_used == 3
         row0_calls = [call for call in screen.calls if call[0] == 0]
         assert len(row0_calls) == 5
         focused_headless_selection_attr = 37 | curses.A_BOLD
@@ -2127,7 +2132,7 @@ class TestSessionsViewLogic:
         screen = FakeScreen()
         lines_used = sessions_view._render_session(screen, 0, session, 80, True, 3)
 
-        assert lines_used == 2
+        assert lines_used == 3
         row0_calls = [call for call in screen.calls if call[0] == 0]
         assert len(row0_calls) == 5
         assert row0_calls[0][3] == 0
@@ -2588,7 +2593,7 @@ class TestSessionsViewLogic:
         screen = FakeScreen()
         lines_used = sessions_view._render_session(screen, 0, session, 80, False, 3)
 
-        assert lines_used == 2
+        assert lines_used == 3
         row0_calls = [call for call in screen.calls if call[0] == 0]
         assert len(row0_calls) == 5
         assert row0_calls[0][3] == 0  # leading space — default bg
@@ -2618,9 +2623,9 @@ class TestSessionsViewLogic:
         screen = FakeScreen()
         lines_used = sessions_view._render_session(screen, 0, session, 120, False, 4)
 
-        assert lines_used == 3
+        assert lines_used == 4
         output_row_calls = [call for call in screen.calls if call[0] == 2]
-        assert len(output_row_calls) == 2
+        assert len(output_row_calls) == 3
         # Prefix line is non-italic
         assert "out:" in output_row_calls[0][2]
         assert output_row_calls[0][3] == 41  # claude highlight pair
@@ -2650,9 +2655,9 @@ class TestSessionsViewLogic:
         screen = FakeScreen()
         lines_used = sessions_view._render_session(screen, 0, session, 120, False, 4)
 
-        assert lines_used == 3
+        assert lines_used == 4
         output_row_calls = [call for call in screen.calls if call[0] == 2]
-        assert len(output_row_calls) == 2
+        assert len(output_row_calls) == 3
         # Prefix line is agent color, non-italic
         assert "out:" in output_row_calls[0][2]
         assert output_row_calls[0][3] == 3  # claude normal pair
