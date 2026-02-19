@@ -1936,7 +1936,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             session_count = len(item.children)
             suffix = f"({session_count})" if session_count else ""
             line = f"📁 {path} {suffix}"
-            return [line[:width]]
+            separator = "─" * max(0, width)
+            return [line[:width], separator]
 
         if is_session_node(item):
             return self._format_session(item, width, selected)
@@ -2145,7 +2146,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             if not session_count and not selected:
                 attr = curses.A_DIM
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
-            return 1
+            if remaining <= 1 or not width:
+                return 1
+            separator = "─" * width
+            stdscr.addstr(row + 1, 0, separator, get_tab_line_attr())  # type: ignore[attr-defined]
+            return 2
         if is_session_node(item):
             return self._render_session(stdscr, row, item, width, selected, remaining)
         return 1

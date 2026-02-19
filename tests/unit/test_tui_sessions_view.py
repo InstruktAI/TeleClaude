@@ -310,9 +310,10 @@ class TestSessionsViewLogic:
         sessions_view.flat_items = [project]
         lines = sessions_view.get_render_lines(80, 24)
 
-        assert len(lines) == 1
+        assert len(lines) == 2
         assert "/test/project" in lines[0]
         assert "(2)" in lines[0]  # Session count
+        assert lines[1] == "─" * 80
 
     def test_action_bar_for_computer_includes_restart(self, sessions_view):
         """Computer action bar advertises restart shortcut."""
