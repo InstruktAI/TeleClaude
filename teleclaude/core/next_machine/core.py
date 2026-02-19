@@ -102,56 +102,53 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
 }
 
 # Post-completion instructions for each command (used in format_tool_call)
-# These tell the orchestrator what to do AFTER a worker completes
+# These tell the orchestrator what to do AFTER a worker completes.
+#
+# ORCHESTRATOR BOUNDARY RULES:
+# - The orchestrator NEVER runs tests, lint, or make in/targeting worktrees
+# - The orchestrator NEVER edits or commits files in worktrees
+# - The orchestrator NEVER cd's into worktrees
+# - Workers are ephemeral: every session is ended after its step completes
+# - If mark_phase rejects, the state machine routes to the appropriate fix —
+#   the orchestrator does NOT compensate by editing files itself
+# - Process gates (pre-commit hooks, mark_phase clerical checks) ARE the
+#   verification. The orchestrator trusts them.
 POST_COMPLETION: dict[str, str] = {
     "next-build": """WHEN WORKER COMPLETES:
-1. MANDATORY VERIFICATION - Never trust worker self-reports:
-     - Run linter and tests using absolute paths (e.g. make -C trees/{args} lint test)
-     - Do NOT cd into the worktree — the orchestrator must stay in the main repo
-     - Commits with --no-verify indicate incomplete work
-     - If checks fail, work is NOT done
-2a. If verification FAILS:
-    - Keep session alive and guide worker to resolution
-    - Only mark phase when YOUR verification passes
-2b. If success:
-   - teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
-   - teleclaude__end_session(computer="local", session_id="<session_id>")
-   - Call {next_call}
+1. Read worker output via get_session_data
+2. teleclaude__end_session(computer="local", session_id="<session_id>")
+3. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
+4. Call {next_call}
 """,
     "next-review": """WHEN WORKER COMPLETES:
 1. Read trees/{args}/todos/{args}/review-findings.md
-2. Relay verdict to state:
-   - If "[x] APPROVE": teleclaude__mark_phase(slug="{args}", phase="review", status="approved")
-   - If "[x] REQUEST CHANGES": teleclaude__mark_phase(slug="{args}", phase="review", status="changes_requested")
-3. teleclaude__end_session(computer="local", session_id="<session_id>")
+2. teleclaude__end_session(computer="local", session_id="<session_id>")
+3. Relay verdict to state:
+   - If APPROVE: teleclaude__mark_phase(slug="{args}", phase="review", status="approved")
+   - If REQUEST CHANGES: teleclaude__mark_phase(slug="{args}", phase="review", status="changes_requested")
 4. Call {next_call}
 """,
     "next-fix-review": """WHEN WORKER COMPLETES:
-1. Verify fixes applied and tests pass
-2. If fixes complete:
-   - teleclaude__mark_phase(slug="{args}", phase="review", status="pending")
-   - teleclaude__end_session(computer="local", session_id="<session_id>")
-   - Call {next_call}
-3. If fixes incomplete:
-   - Keep session alive and guide worker to finish
+1. Read worker output via get_session_data
+2. teleclaude__end_session(computer="local", session_id="<session_id>")
+3. teleclaude__mark_phase(slug="{args}", phase="review", status="pending")
+4. Call {next_call}
 """,
     "next-defer": """WHEN WORKER COMPLETES:
-1. Verify state.json.deferrals_processed is true
+1. Read worker output. Confirm deferrals_processed in state.json
 2. teleclaude__end_session(computer="local", session_id="<session_id>")
 3. Call {next_call}
 """,
     "next-finalize": """WHEN WORKER COMPLETES:
-1. Verify merge succeeded and delivery log updated
-2. If success:
-   - teleclaude__end_session(computer="local", session_id="<session_id>")
-   - CLEANUP (orchestrator-owned, run from main repo):
-     a. git worktree remove trees/{args} --force  (if worktree exists)
-     b. git branch -d {args}  (if branch exists)
-     c. rm -rf todos/{args}
-     d. git add -A && git commit -m "chore: remove {args} worktree, branch, and todo folder"
-   - Call {next_call}
-3. If failed:
-   - Keep session alive and help resolve""",
+1. Read worker output via get_session_data. Confirm merge succeeded.
+2. teleclaude__end_session(computer="local", session_id="<session_id>")
+3. CLEANUP (orchestrator-owned, from main repo root — NEVER cd into worktree):
+   a. git worktree remove trees/{args} --force
+   b. git branch -d {args}
+   c. rm -rf todos/{args}
+   d. git add -A && git commit -m "chore: cleanup {args}"
+4. Call {next_call}
+""",
 }
 
 REVIEW_DIFF_NOTE = (
@@ -237,9 +234,13 @@ C) YOU SEND ANOTHER MESSAGE TO THE AGENT BECAUSE IT NEEDS FEEDBACK OR HELP:
 {post_completion}
 
 ORCHESTRATION PRINCIPLE: Guide process, don't dictate implementation.
-You are an orchestrator, not a micromanager. If a worker is stuck, point them
-to requirements or docs - never tell them specific commands to run or how to
-implement something. They have full autonomy within their context."""
+You are an orchestrator, not a micromanager. Workers have full autonomy.
+- NEVER run tests, lint, or make in/targeting worktrees
+- NEVER edit or commit files in worktrees
+- NEVER cd into worktrees — stay in the main repo root
+- ALWAYS end the worker session when its step completes — no exceptions
+- Trust the process gates (pre-commit hooks, mark_phase clerical checks)
+- If mark_phase rejects, the state machine routes to the fix — do NOT fix it yourself"""
     if note:
         result += f"\n\nNOTE: {note}"
     return result
