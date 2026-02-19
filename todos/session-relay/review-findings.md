@@ -131,3 +131,39 @@ def __post_init__(self) -> None:
     if len(self.participants) < 2:
         raise ValueError("Relay requires at least 2 participants")
 ```
+
+---
+
+## Fixes Applied
+
+### Critical Issue #1: Duplicate relay prevention
+
+**Commit:** 820113eb
+**Fix:** Updated `_start_direct_relay` to check both caller and target sessions for existing relays before creating a new one. Both `existing_caller` and `existing_target` are now checked, preventing duplicate relays when either session is already enrolled.
+
+### Important Issue #2: Guard in create_relay
+
+**Commit:** d3bf9aac
+**Fix:** Added validation in `create_relay` under the `_relay_lock` to check if any participant is already enrolled in another relay. Raises `ValueError` with clear message if duplicate enrollment is attempted, preventing silent overwrite of `_relay_by_session` entries.
+
+### Important Issue #3: Relay cleanup in session lifecycle
+
+**Commit:** 76fb657a
+**Fix:** Added relay cleanup to `cleanup_session_resources` in `session_cleanup.py`. When a session terminates, the function now calls `get_relay_for_session` and `stop_relay` to proactively clean up any active relay. This is defense-in-depth alongside the reactive monitor loop cleanup.
+
+### Important Issue #4: Handler tests
+
+**Commit:** 1add3cd9
+**Fix:** Added comprehensive test coverage for `_start_direct_relay` handler in `test_session_relay.py`:
+
+- Test for duplicate relay prevention (caller already in relay)
+- Test for duplicate relay prevention (target already in relay)
+- Test for missing caller session in DB
+- Test for missing target session in DB
+- Test for missing tmux session name
+- Test for participant construction with title fallback to session_id prefix
+
+### Important Issue #5: Monitor tasks init=False
+
+**Commit:** a3368b9f
+**Fix:** Updated `_monitor_tasks` field in `SessionRelay` dataclass to use `init=False`, making it explicit that this field is never passed at construction and removing the RUF009 suppression.
