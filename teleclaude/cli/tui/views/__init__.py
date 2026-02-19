@@ -1,1 +1,1 @@
-"""TUI views (Sessions and Preparation)."""
+"""TUI views for the Textual application."""

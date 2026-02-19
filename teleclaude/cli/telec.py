@@ -1,7 +1,6 @@
 """telec: TUI client for TeleClaude."""
 
 import asyncio
-import curses
 import os
 import subprocess
 import sys
@@ -344,26 +343,20 @@ def main() -> None:
 def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
     """Run TUI application."""
     logger = get_logger(__name__)
-    # Lazy import: TelecApp applies nest_asyncio which breaks httpx for CLI commands
     from teleclaude.cli.tui.app import TelecApp
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     api = TelecAPIClient()
-    app = TelecApp(api, start_view=start_view, config_guided=config_guided)
+    app = TelecApp(api, start_view=start_view)
 
     try:
         _ensure_tmux_status_hidden_for_tui()
         _ensure_tmux_mouse_on()
-        loop.run_until_complete(app.initialize())
-        curses.wrapper(app.run)
+        app.run()
     except KeyboardInterrupt:
         pass  # Clean exit on Ctrl-C
     except Exception:
         logger.exception("telec TUI crashed")
     finally:
-        loop.run_until_complete(api.close())
-        loop.close()
         _maybe_kill_tui_session()
 
 

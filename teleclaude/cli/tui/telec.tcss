@@ -1,0 +1,147 @@
+/* TeleClaude TUI global stylesheet */
+
+TelecApp {
+    background: $surface;
+}
+
+/* Banner */
+Banner {
+    height: 6;
+    width: 100%;
+    content-align: center middle;
+}
+
+/* Tabs */
+#main-tabs {
+    height: 1fr;
+}
+
+/* Status and action bars */
+StatusBar {
+    dock: bottom;
+    height: 1;
+    background: $surface-darken-1;
+}
+
+ActionBar {
+    dock: bottom;
+    height: 1;
+    background: $surface-darken-2;
+}
+
+/* Session rows */
+SessionRow {
+    width: 100%;
+    height: auto;
+    padding: 0 1;
+}
+
+SessionRow.selected {
+    background: $accent-darken-2;
+}
+
+SessionRow.preview {
+    background: $primary-darken-2;
+}
+
+SessionRow.sticky {
+    background: $primary-darken-3;
+}
+
+/* Computer and project headers */
+ComputerHeader {
+    width: 100%;
+    height: 1;
+    padding: 0 1;
+    text-style: bold;
+}
+
+ProjectHeader {
+    width: 100%;
+    height: 1;
+    padding: 0 1;
+}
+
+/* Todo rows */
+TodoRow {
+    width: 100%;
+    height: auto;
+    padding: 0 1;
+}
+
+TodoRow.selected {
+    background: $accent-darken-2;
+}
+
+/* Job rows */
+JobRow {
+    width: 100%;
+    height: 1;
+    padding: 0 1;
+}
+
+JobRow.selected {
+    background: $accent-darken-2;
+}
+
+/* Section headers */
+SectionHeader {
+    width: 100%;
+    height: 1;
+    padding: 0 1;
+}
+
+/* Pane bridge (invisible) */
+PaneManagerBridge {
+    display: none;
+}
+
+/* Modals */
+ConfirmModal {
+    align: center middle;
+}
+
+ConfirmModal > Vertical {
+    width: 50;
+    height: auto;
+    max-height: 12;
+    border: thick $accent;
+    background: $surface;
+    padding: 1 2;
+}
+
+ConfirmModal Button {
+    width: 1fr;
+    margin: 1 1 0 0;
+}
+
+StartSessionModal {
+    align: center middle;
+}
+
+StartSessionModal > Vertical {
+    width: 70;
+    height: auto;
+    max-height: 25;
+    border: thick $accent;
+    background: $surface;
+    padding: 1 2;
+}
+
+StartSessionModal Input {
+    margin: 0 0 1 0;
+}
+
+StartSessionModal Select {
+    margin: 0 0 1 0;
+}
+
+StartSessionModal Button {
+    width: 1fr;
+    margin: 1 1 0 0;
+}
+
+/* Scroll containers */
+VerticalScroll {
+    scrollbar-size: 1 1;
+}

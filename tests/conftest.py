@@ -52,12 +52,10 @@ def _isolate_tui_state(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):
     """Isolate TUI sticky state from user ~/.teleclaude/tui_state.json."""
     from teleclaude import paths
     from teleclaude.cli.tui import state_store
-    from teleclaude.cli.tui.views import sessions as sessions_view
 
     tui_state = tmp_path / "tui_state.json"
     monkeypatch.setattr(paths, "TUI_STATE_PATH", tui_state)
     monkeypatch.setattr(state_store, "TUI_STATE_PATH", tui_state)
-    monkeypatch.setattr(sessions_view, "TUI_STATE_PATH", tui_state)
     yield
 
 

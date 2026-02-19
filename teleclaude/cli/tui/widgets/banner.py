@@ -1,10 +1,11 @@
-"""ASCII banner widget."""
+"""ASCII banner widget with optional animation color overlay."""
 
-import curses
-from typing import TYPE_CHECKING, Optional
+from __future__ import annotations
 
-if TYPE_CHECKING:
-    from teleclaude.cli.tui.animation_engine import AnimationEngine
+from rich.text import Text
+from textual.widget import Widget
+
+from teleclaude.cli.tui.theme import BANNER_COLOR
 
 BANNER_LINES = [
     "████████╗███████╗██╗     ███████╗ ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗",
@@ -18,37 +19,21 @@ BANNER_LINES = [
 BANNER_HEIGHT = len(BANNER_LINES)
 
 
-def render_banner(
-    stdscr: object, start_row: int, width: int, animation_engine: Optional["AnimationEngine"] = None
-) -> int:
-    """Render ASCII banner.
+class Banner(Widget):
+    """ASCII art banner for the TUI header."""
 
-    Args:
-        stdscr: Curses screen object
-        start_row: Starting row
-        width: Screen width
-        animation_engine: Optional animation engine for colors
-
-    Returns:
-        Number of rows used
+    DEFAULT_CSS = """
+    Banner {
+        width: 100%;
+        height: 6;
+        content-align: center middle;
+    }
     """
-    from teleclaude.cli.tui.theme import get_banner_attr, get_current_mode
 
-    is_dark_mode = get_current_mode()
-    banner_attr = get_banner_attr(is_dark_mode)
-    for i, line in enumerate(BANNER_LINES):
-        row = start_row + i
-        # Truncate if wider than screen
-        truncated_line = line[:width]
-        for j, char in enumerate(truncated_line):
-            attr = banner_attr
-            if animation_engine:
-                color_idx = animation_engine.get_color(j, i, is_big=True)
-                if color_idx is not None:
-                    attr = curses.color_pair(color_idx)
-
-            try:
-                stdscr.addstr(row, j, char, attr)  # type: ignore[attr-defined]
-            except curses.error:
-                pass
-    return BANNER_HEIGHT
+    def render(self) -> Text:
+        result = Text()
+        for i, line in enumerate(BANNER_LINES):
+            if i > 0:
+                result.append("\n")
+            result.append(line, style=BANNER_COLOR)
+        return result

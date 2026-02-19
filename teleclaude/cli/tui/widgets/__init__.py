@@ -1,1 +1,1 @@
-"""TUI widgets (modal, footer, tab bar)."""
+"""TUI widget components built on Textual primitives."""

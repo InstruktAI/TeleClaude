@@ -1,112 +1,132 @@
-"""Persistence helpers for TUI state."""
+"""Persistence helpers for TUI state.
+
+Adapted for Textual reactive model: loads/saves from distributed view state
+instead of a centralized TuiState object.
+"""
 
 from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass, field
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.tui.state import PreviewState, TuiState
-from teleclaude.cli.tui.types import StickySessionInfo
 from teleclaude.paths import TUI_STATE_PATH
 
 logger = get_logger(__name__)
 
 
-def load_sticky_state(state: TuiState) -> None:
-    """Load sticky session/doc state from ~/.teleclaude/tui_state.json."""
+@dataclass
+class PersistedState:
+    """Flat container for state loaded from disk."""
+
+    sticky_session_ids: list[str] = field(default_factory=list)
+    expanded_todos: set[str] = field(default_factory=set)
+    input_highlights: set[str] = field(default_factory=set)
+    output_highlights: set[str] = field(default_factory=set)
+    last_output_summary: dict[str, str] = field(default_factory=dict)
+    collapsed_sessions: set[str] = field(default_factory=set)
+    preview_session_id: str | None = None
+    animation_mode: str = "periodic"
+
+
+def load_state() -> PersistedState:
+    """Load persisted TUI state from ~/.teleclaude/tui_state.json."""
+    state = PersistedState()
+
     if not TUI_STATE_PATH.exists():
-        logger.debug("No TUI state file found, starting with empty sticky state")
-        return
+        logger.debug("No TUI state file found, starting fresh")
+        return state
 
     try:
         with open(TUI_STATE_PATH, encoding="utf-8") as f:
             data = json.load(f)
 
         sticky_data = data.get("sticky_sessions", [])
-        state.sessions.sticky_sessions = [StickySessionInfo(session_id=item["session_id"]) for item in sticky_data]
+        state.sticky_session_ids = [item["session_id"] for item in sticky_data if isinstance(item, dict)]
 
         expanded_todos = data.get("expanded_todos", [])
         if isinstance(expanded_todos, list):
-            state.preparation.expanded_todos = set(str(item) for item in expanded_todos)
+            state.expanded_todos = set(str(item) for item in expanded_todos)
 
         input_highlights = data.get("input_highlights", [])
         if isinstance(input_highlights, list):
-            state.sessions.input_highlights = set(str(item) for item in input_highlights)
+            state.input_highlights = set(str(item) for item in input_highlights)
 
         output_highlights = data.get("output_highlights", [])
         if isinstance(output_highlights, list):
-            state.sessions.output_highlights = set(str(item) for item in output_highlights)
+            state.output_highlights = set(str(item) for item in output_highlights)
 
         last_output_summary = data.get("last_output_summary", {})
         if isinstance(last_output_summary, dict):
-            state.sessions.last_output_summary = {
-                str(session_id): str(summary)
-                for session_id, summary in last_output_summary.items()
-                if isinstance(session_id, str) and isinstance(summary, str)
+            state.last_output_summary = {
+                str(k): str(v) for k, v in last_output_summary.items() if isinstance(k, str) and isinstance(v, str)
             }
 
         collapsed_sessions = data.get("collapsed_sessions", [])
         if isinstance(collapsed_sessions, list):
-            state.sessions.collapsed_sessions = set(str(item) for item in collapsed_sessions)
+            state.collapsed_sessions = set(str(item) for item in collapsed_sessions)
 
         preview_data = data.get("preview")
         if isinstance(preview_data, dict) and preview_data.get("session_id"):
-            state.sessions.preview = PreviewState(session_id=preview_data["session_id"])
+            state.preview_session_id = preview_data["session_id"]
 
         anim_mode = data.get("animation_mode", "periodic")
         if anim_mode in ("off", "periodic", "party"):
-            state.animation_mode = anim_mode  # type: ignore
+            state.animation_mode = anim_mode
 
         logger.info(
-            "Loaded TUI state: %d sticky, %d in_hl, %d out_hl, %d summaries, %d collapsed, preview=%s, anim=%s",
-            len(state.sessions.sticky_sessions),
-            len(state.sessions.input_highlights),
-            len(state.sessions.output_highlights),
-            len(state.sessions.last_output_summary),
-            len(state.sessions.collapsed_sessions),
-            state.sessions.preview.session_id[:8] if state.sessions.preview else None,
+            "Loaded TUI state: %d sticky, %d in_hl, %d out_hl, preview=%s, anim=%s",
+            len(state.sticky_session_ids),
+            len(state.input_highlights),
+            len(state.output_highlights),
+            state.preview_session_id[:8] if state.preview_session_id else None,
             state.animation_mode,
         )
     except (json.JSONDecodeError, KeyError, TypeError, OSError) as e:
         logger.warning("Failed to load TUI state from %s: %s", TUI_STATE_PATH, e)
-        state.sessions.sticky_sessions = []
+
+    return state
 
 
-def save_sticky_state(state: TuiState) -> None:
-    """Save sticky session/doc state to ~/.teleclaude/tui_state.json.
+def save_state(
+    *,
+    sessions_state: dict[str, object] | None = None,  # guard: loose-dict
+    preparation_state: dict[str, object] | None = None,  # guard: loose-dict
+    animation_mode: str = "periodic",
+) -> None:
+    """Save TUI state to ~/.teleclaude/tui_state.json.
 
-    Uses atomic replacement and advisory locking to prevent race conditions.
+    Accepts state dicts from each view's get_persisted_state() method.
     """
+    sessions = sessions_state or {}
+    prep = preparation_state or {}
+
+    state_data = {
+        "sticky_sessions": sessions.get("sticky_sessions", []),
+        "expanded_todos": prep.get("expanded_todos", []),
+        "input_highlights": sessions.get("input_highlights", []),
+        "output_highlights": sessions.get("output_highlights", []),
+        "last_output_summary": sessions.get("last_output_summary", {}),
+        "collapsed_sessions": sessions.get("collapsed_sessions", []),
+        "preview": sessions.get("preview"),
+        "animation_mode": animation_mode,
+    }
+
     try:
         TUI_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-        preview = state.sessions.preview
-        state_data = {
-            "sticky_sessions": [{"session_id": s.session_id} for s in state.sessions.sticky_sessions],
-            "expanded_todos": sorted(state.preparation.expanded_todos),
-            "input_highlights": sorted(state.sessions.input_highlights),
-            "output_highlights": sorted(state.sessions.output_highlights),
-            "last_output_summary": dict(sorted(state.sessions.last_output_summary.items())),
-            "collapsed_sessions": sorted(state.sessions.collapsed_sessions),
-            "preview": {"session_id": preview.session_id} if preview else None,
-            "animation_mode": state.animation_mode,
-        }
-
-        # Atomic write with lock to prevent race conditions
         lock_path = TUI_STATE_PATH.with_suffix(".lock")
         try:
-            # Use a lock file to serialize writes
             with open(lock_path, "w", encoding="utf-8") as lock_file:
                 try:
                     import fcntl
 
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
                 except (ImportError, OSError):
-                    pass  # fcntl not available or locking failed, proceed best-effort
+                    pass
 
-                # Write to temp file then atomic replace
                 tmp_path = TUI_STATE_PATH.with_suffix(".tmp")
                 with open(tmp_path, "w", encoding="utf-8") as f:
                     json.dump(state_data, f, indent=2)
@@ -117,13 +137,14 @@ def save_sticky_state(state: TuiState) -> None:
 
         except (OSError, IOError) as e:
             logger.error("Failed to atomic save TUI state: %s", e)
-            return  # Skip write rather than risk corruption
+            return
 
-        logger.debug(
-            "Saved %d sticky sessions, %d expanded todos to %s",
-            len(state.sessions.sticky_sessions),
-            len(state.preparation.expanded_todos),
-            TUI_STATE_PATH,
-        )
+        logger.debug("Saved TUI state to %s", TUI_STATE_PATH)
     except (OSError, IOError) as e:
         logger.error("Failed to save TUI state to %s: %s", TUI_STATE_PATH, e)
+
+
+# --- Legacy compatibility stub (old controller.py still imports this) ---
+# Delete when Phase 4 cleanup removes old curses code.
+def save_sticky_state(_state: object) -> None:
+    pass
