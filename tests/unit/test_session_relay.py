@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -18,6 +18,7 @@ from teleclaude.core.session_relay import (
     get_relay_for_session,
     stop_relay,
 )
+from teleclaude.mcp.handlers import MCPHandlersMixin
 
 
 def _make_participant(
@@ -383,3 +384,160 @@ class TestBaselinePreventsReCapture:
         # So computing delta against this baseline yields nothing
         delta = _compute_delta(relay.baselines["sess-B"], "initial\n[Alice] (1):\n\nmsg\n")
         assert delta == ""
+
+
+# ---------------------------------------------------------------------------
+# Handler integration: _start_direct_relay
+# ---------------------------------------------------------------------------
+
+
+class TestStartDirectRelayHandler:
+    """Tests for the MCP handler method _start_direct_relay."""
+
+    @pytest.mark.asyncio
+    async def test_prevents_duplicate_relay_caller(self):
+        """Should return early if caller session is already in a relay."""
+        from teleclaude.mcp.handlers import MCPHandlersMixin
+
+        handler = MCPHandlersMixin()
+
+        # Create a relay with caller session
+        participants = [
+            _make_participant("caller-id", "tc_caller", "Caller", 1),
+            _make_participant("other-id", "tc_other", "Other", 2),
+        ]
+        with (
+            patch("teleclaude.core.session_relay.tmux_bridge") as mock_tmux,
+            patch("teleclaude.core.session_relay.POLL_INTERVAL_SECONDS", 100),
+        ):
+            mock_tmux.capture_pane = AsyncMock(return_value="")
+            mock_tmux.send_keys_existing_tmux = AsyncMock(return_value=True)
+            relay_id = await create_relay(participants)
+
+        # Attempt to create a new relay with the same caller
+        result = await handler._start_direct_relay("caller-id", "new-target-id")
+        assert result == " Relay already active."
+
+        await stop_relay(relay_id)
+
+    @pytest.mark.asyncio
+    async def test_prevents_duplicate_relay_target(self):
+        """Should return early if target session is already in a relay."""
+        from teleclaude.mcp.handlers import MCPHandlersMixin
+
+        handler = MCPHandlersMixin()
+
+        # Create a relay with target session
+        participants = [
+            _make_participant("existing-id", "tc_existing", "Existing", 1),
+            _make_participant("target-id", "tc_target", "Target", 2),
+        ]
+        with (
+            patch("teleclaude.core.session_relay.tmux_bridge") as mock_tmux,
+            patch("teleclaude.core.session_relay.POLL_INTERVAL_SECONDS", 100),
+        ):
+            mock_tmux.capture_pane = AsyncMock(return_value="")
+            mock_tmux.send_keys_existing_tmux = AsyncMock(return_value=True)
+            relay_id = await create_relay(participants)
+
+        # Attempt to create a new relay with the same target
+        result = await handler._start_direct_relay("new-caller-id", "target-id")
+        assert result == " Relay already active."
+
+        await stop_relay(relay_id)
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_if_caller_session_not_found(self):
+        """Should return empty string if caller session does not exist in DB."""
+        from unittest.mock import MagicMock
+
+        from teleclaude.mcp.handlers import MCPHandlersMixin
+
+        handler = MCPHandlersMixin()
+
+        with patch("teleclaude.mcp.handlers.db") as mock_db:
+            mock_db.get_session = AsyncMock(side_effect=[None, MagicMock()])  # Caller None, target exists
+            result = await handler._start_direct_relay("missing-caller", "target-id")
+
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_if_target_session_not_found(self):
+        """Should return empty string if target session does not exist in DB."""
+        from unittest.mock import MagicMock
+
+        from teleclaude.mcp.handlers import MCPHandlersMixin
+
+        handler = MCPHandlersMixin()
+
+        with patch("teleclaude.mcp.handlers.db") as mock_db:
+            mock_db.get_session = AsyncMock(side_effect=[MagicMock(), None])  # Caller exists, target None
+            result = await handler._start_direct_relay("caller-id", "missing-target")
+
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_if_tmux_session_name_missing(self):
+        """Should return empty string if either session has no tmux_session_name."""
+        from unittest.mock import MagicMock
+
+        from teleclaude.mcp.handlers import MCPHandlersMixin
+
+        handler = MCPHandlersMixin()
+
+        caller_session = MagicMock()
+        caller_session.tmux_session_name = None
+        target_session = MagicMock()
+        target_session.tmux_session_name = "tc_target"
+
+        with patch("teleclaude.mcp.handlers.db") as mock_db:
+            mock_db.get_session = AsyncMock(side_effect=[caller_session, target_session])
+            result = await handler._start_direct_relay("caller-id", "target-id")
+
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_creates_relay_with_fallback_names(self):
+        """Should create relay using session titles, falling back to session_id prefix."""
+        from unittest.mock import MagicMock
+
+        from teleclaude.mcp.handlers import MCPHandlersMixin
+
+        handler = MCPHandlersMixin()
+
+        caller_session = MagicMock()
+        caller_session.tmux_session_name = "tc_caller"
+        caller_session.title = None  # No title, should use session_id prefix
+
+        target_session = MagicMock()
+        target_session.tmux_session_name = "tc_target"
+        target_session.title = "Target Agent"  # Has title
+
+        with (
+            patch("teleclaude.mcp.handlers.db") as mock_db,
+            patch("teleclaude.core.session_relay.tmux_bridge") as mock_tmux,
+            patch("teleclaude.core.session_relay.POLL_INTERVAL_SECONDS", 100),
+        ):
+            mock_db.get_session = AsyncMock(side_effect=[caller_session, target_session])
+            mock_tmux.capture_pane = AsyncMock(return_value="")
+            mock_tmux.send_keys_existing_tmux = AsyncMock(return_value=True)
+
+            result = await handler._start_direct_relay("caller-123456", "target-789012")
+
+        assert result == " Bidirectional relay started."
+
+        # Verify relay was created
+        relay_id_caller = await get_relay_for_session("caller-123456")
+        relay_id_target = await get_relay_for_session("target-789012")
+        assert relay_id_caller is not None
+        assert relay_id_caller == relay_id_target
+
+        relay = await get_relay(relay_id_caller)
+        assert relay is not None
+        assert len(relay.participants) == 2
+        # Verify fallback name for caller (session_id prefix)
+        assert any(p.name == "caller-1" for p in relay.participants)
+        # Verify title used for target
+        assert any(p.name == "Target Agent" for p in relay.participants)
+
+        await stop_relay(relay_id_caller)
