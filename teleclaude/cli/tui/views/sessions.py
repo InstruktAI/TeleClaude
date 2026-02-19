@@ -40,6 +40,7 @@ from teleclaude.cli.tui.theme import (
     get_peaceful_muted_attr,
     get_peaceful_normal_attr,
     get_sticky_badge_attr,
+    get_tab_line_attr,
     should_apply_session_theming,
 )
 from teleclaude.cli.tui.tree import (
@@ -95,6 +96,9 @@ def _format_time(iso_timestamp: str | None) -> str:
 
 # Pattern matches /Users/<user>/... (macOS) or /home/<user>/... (Linux)
 _HOME_PATH_PATTERN = re.compile(r"^(/(?:Users|home)/[^/]+)")
+_SESSION_TREE_CORNER_CHAR = "└"
+_SESSION_TREE_HORIZONTAL_CHAR = "─"
+_SESSION_TREE_VERTICAL_CHAR = "│"
 
 
 def _shorten_path(path: str) -> str:
@@ -235,6 +239,7 @@ class _SessionRowModel:
     header: _SessionHeaderModel
     details: tuple[_SessionDetailModel, ...]
     is_collapsed: bool
+    connector_anchor_col: int
 
 
 class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
@@ -2197,6 +2202,25 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 stdscr.addstr(row, col, segment_text, segment.attr)  # type: ignore[attr-defined]
                 col += len(segment_text)
 
+        def _safe_add_connector_char(target_row: int, col: int, ch: str, attr: int) -> None:
+            if col < 0 or col >= width or target_row >= row + remaining:
+                return
+            try:
+                stdscr.addstr(target_row, col, ch, attr)  # type: ignore[attr-defined]
+            except curses.error as e:
+                logger.warning("curses error rendering session connector at row %d col %d: %s", target_row, col, e)
+
+        def _paint_bottom_separator(target_row: int, anchor_col: int, attr: int) -> None:
+            if anchor_col < 0 or anchor_col >= width or target_row >= row + remaining:
+                return
+            if anchor_col + 1 >= width:
+                line = _SESSION_TREE_CORNER_CHAR
+            else:
+                run_len = width - anchor_col - 1
+                line = f"{_SESSION_TREE_CORNER_CHAR}{_SESSION_TREE_HORIZONTAL_CHAR * run_len}"
+            padded = f"{' ' * anchor_col}{line}"
+            stdscr.addstr(target_row, 0, padded.ljust(width)[:width], attr)  # type: ignore[attr-defined]
+
         try:
             if hasattr(stdscr, "attrset"):
                 stdscr.attrset(0)  # type: ignore[attr-defined]
@@ -2218,6 +2242,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return lines_used
 
         # Render detail lines from the declarative model.
+        rendered_detail_lines = 0
         for detail_line in row_model.details:
             if lines_used >= remaining:
                 break
@@ -2226,6 +2251,24 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             else:
                 _safe_addstr(row + lines_used, detail_line.text, detail_line.attr)
 
+            rendered_detail_lines += 1
+            lines_used += 1
+
+        separator_attr = get_tab_line_attr()
+        if lines_used >= remaining:
+            return lines_used
+
+        if row_model.is_collapsed:
+            _paint_bottom_separator(row + lines_used, row_model.connector_anchor_col, separator_attr)
+            return lines_used + 1
+
+        for i in range(1, rendered_detail_lines + 1):
+            _safe_add_connector_char(
+                row + i, row_model.connector_anchor_col, _SESSION_TREE_VERTICAL_CHAR, separator_attr
+            )
+
+        if lines_used < remaining:
+            _paint_bottom_separator(row + lines_used, row_model.connector_anchor_col, separator_attr)
             lines_used += 1
 
         return lines_used
@@ -2415,4 +2458,5 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             ),
             details=tuple(details),
             is_collapsed=is_collapsed,
+            connector_anchor_col=(sum(len(segment.text) for segment in leading_segments) + 1),
         )
