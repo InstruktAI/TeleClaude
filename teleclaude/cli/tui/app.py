@@ -251,6 +251,8 @@ class TelecApp:
         self._reload_requested = False
         self._session_status_cache: dict[str, str] = {}
         self._last_ws_heal = time.monotonic()
+        self._refresh_needed = False
+        self._last_refresh_complete: float = 0.0
         self._refresh_error_since: float | None = None
         self._refresh_error_notified = False
         self._refresh_error_escalated = False
@@ -328,6 +330,7 @@ class TelecApp:
 
         # Now refresh to populate views with data (always include todos so prep view has data)
         await self.refresh_data()
+        self._last_refresh_complete = time.monotonic()
 
         # Start WebSocket connection for push updates
         self.api.start_websocket(
@@ -565,8 +568,7 @@ class TelecApp:
         if current not in self._subscribed_computers:
             self.api.subscribe(current, ["sessions", "projects"])
             self._subscribed_computers.add(current)
-            if self._loop:
-                self._loop.run_until_complete(self.refresh_data())
+            self._refresh_needed = True
 
     def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
         """Get SSH connection info for a computer."""
@@ -634,17 +636,13 @@ class TelecApp:
             elif isinstance(event, SessionStartedEvent):
                 sessions_view = self.views.get(1)
                 if isinstance(sessions_view, SessionsView):
-                    # Do not auto-select delegated child sessions; they should appear in
-                    # the tree without hijacking the user's current preview.
                     is_ai_child = bool(event.data.initiator_session_id)
                     if event.data.tmux_session_name and not is_ai_child:
                         sessions_view.request_select_session(event.data.session_id, source="system")
-                if self._loop:
-                    self._loop.run_until_complete(self.refresh_data())
+                self._apply_session_update(event.data)
 
             elif isinstance(event, SessionUpdatedEvent):
                 updated_session = event.data
-
                 old_status = self._session_status_cache.get(updated_session.session_id)
                 new_status = updated_session.status
                 if old_status and old_status != new_status:
@@ -653,14 +651,9 @@ class TelecApp:
                         NotificationLevel.INFO,
                     )
                 self._session_status_cache[updated_session.session_id] = new_status
-
-                # Refresh data for state changes (title, status, etc.)
-                # Activity events (user input, tool use, agent output) flow through AgentActivityEvent
-                if self._loop:
-                    self._loop.run_until_complete(self.refresh_data())
+                self._apply_session_update(updated_session)
 
             elif isinstance(event, AgentActivityEvent):
-                # Dispatch AGENT_ACTIVITY intent with event_type, session_id, tool metadata, summary
                 self.controller.dispatch(
                     Intent(
                         IntentType.AGENT_ACTIVITY,
@@ -678,22 +671,16 @@ class TelecApp:
                     save_sticky_state(self.state)
 
             elif isinstance(event, SessionClosedEvent):
-                if self._loop:
-                    self._loop.run_until_complete(self.refresh_data())
+                self._apply_session_removal(event.data.session_id)
 
             elif isinstance(event, ErrorEvent):
                 self.notify(event.data.message, NotificationLevel.ERROR)
 
             elif hasattr(event, "event") and str(event.event).startswith("todo_"):
-                # Granular todo events — refresh with todos included
-                if self._loop:
-                    self._loop.run_until_complete(self.refresh_data())
+                self._refresh_needed = True
 
             else:
-                # For now, trigger a full refresh for computer/project updates
-                # In the future, could apply incremental updates
-                if self._loop:
-                    self._loop.run_until_complete(self.refresh_data())
+                logger.debug("Unhandled WS event type: %s", event.event)
 
         return updated
 
@@ -721,12 +708,10 @@ class TelecApp:
         """Update preparation view with fresh project data.
 
         Args:
-            projects: List of project dicts with todos (unused - triggers full refresh)
+            projects: List of project dicts with todos
         """
-        # For now, trigger a full async refresh since preparation view
-        # needs to rebuild its tree with todos
-        if self._loop:
-            self._loop.run_until_complete(self.refresh_data())
+        # Projects initial event received — flag for refresh to get full todo data
+        self._refresh_needed = True
 
     def _apply_session_update(self, session: SessionInfo) -> None:
         """Apply incremental session update.
@@ -749,10 +734,12 @@ class TelecApp:
                 break
 
         if not found:
-            # Unknown session: refresh from source-of-truth data
-            if self._loop:
-                self._loop.run_until_complete(self.refresh_data())
-            return
+            # New session — add it
+            sessions_view._sessions.append(session)
+            self.controller.update_sessions(sessions_view._sessions)
+            self.controller.dispatch(
+                Intent(IntentType.SYNC_SESSIONS, {"session_ids": [s.session_id for s in sessions_view._sessions]})
+            )
 
         # Update activity state for the changed session
         sessions_view._update_activity_state([session])
@@ -867,8 +854,22 @@ class TelecApp:
         while self.running:
             # Process any pending WebSocket events
             self._process_ws_events()
+
             self._maybe_heal_ws()
+
             self._poll_theme_drift()
+
+            # Single consolidated refresh point.  refresh_data() blocks the
+            # curses loop for 1-3 s (7+ API calls).  Debounce: at most once
+            # every 30 seconds for WS-triggered refreshes to keep the UI
+            # responsive.  WS events already handle incremental updates so
+            # full refreshes are a safety net, not a primary data path.
+            if self._refresh_needed and self._loop:
+                now_mono = time.monotonic()
+                if now_mono - self._last_refresh_complete >= 30.0:
+                    self._refresh_needed = False
+                    self._loop.run_until_complete(self.refresh_data())
+                    self._last_refresh_complete = time.monotonic()
 
             key = stdscr.getch()  # type: ignore[attr-defined]
 
@@ -888,17 +889,18 @@ class TelecApp:
                 # Check if view needs data refresh
                 view = self.views.get(self.current_view)
                 if view and getattr(view, "needs_refresh", False):
-                    if self._loop:
-                        self._loop.run_until_complete(self.refresh_data())
+                    self._refresh_needed = True
                     view.needs_refresh = False
 
             # Always render to advance animations, even during idle periods
             self._render(stdscr)
+
             sessions_view = self.views.get(1)
             if isinstance(sessions_view, SessionsView):
                 sessions_view.apply_pending_activation()
                 sessions_view.apply_pending_focus()
             self.controller.apply_pending_layout()
+
             # Detect user pane clicks on every iteration (not just layout changes)
             if isinstance(sessions_view, SessionsView):
                 sessions_view.detect_pane_focus_change()
@@ -925,9 +927,15 @@ class TelecApp:
         if current - self._last_ws_heal < WS_HEAL_REFRESH_S:
             return False
 
+        # Respect the same debounce as the main refresh path so we don't
+        # block the event loop more often than every 10 seconds.
+        if current - self._last_refresh_complete < 10.0:
+            return False
+
         self._last_ws_heal = current
         if self._loop:
             self._loop.run_until_complete(self.refresh_data())
+            self._last_refresh_complete = current
         return True
 
     def _poll_theme_drift(self, now: float | None = None) -> None:
@@ -1104,12 +1112,12 @@ class TelecApp:
         elif key == curses.KEY_LEFT:
             view = self.views.get(self.current_view)
             logger.debug("Left arrow: view=%s", type(view).__name__ if view else None)
-            # Try to collapse session first (SessionsView only)
-            if isinstance(view, SessionsView):
+            # Try to collapse in any view that supports it
+            if view and hasattr(view, "collapse_selected"):
                 collapsed = view.collapse_selected()
                 logger.debug("collapse_selected() returned %s", collapsed)
                 if collapsed:
-                    pass  # Session collapsed
+                    pass  # Item collapsed
                 elif self.focus.pop():
                     # Go back in focus stack
                     view.rebuild_for_focus()
@@ -1124,7 +1132,7 @@ class TelecApp:
         elif key == curses.KEY_RIGHT:
             view = self.views.get(self.current_view)
             logger.debug("Right arrow: view=%s", type(view).__name__ if view else None)
-            if isinstance(view, SessionsView):
+            if view and hasattr(view, "drill_down"):
                 result = view.drill_down()
                 logger.debug("drill_down() returned %s", result)
                 if result:
@@ -1285,8 +1293,7 @@ class TelecApp:
                     view.selected_index,
                 )
                 if view_num == 2:
-                    if self._loop:
-                        self._loop.run_until_complete(self.refresh_data())
+                    self._refresh_needed = True
             # Panes remain unchanged across view switches.
             if current_view == 2 and view_num != 2:
                 prep_view = self.views.get(2)

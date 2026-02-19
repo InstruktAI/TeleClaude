@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import curses
-import time
 from typing import TYPE_CHECKING, Callable
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.models import JobInfo
+from teleclaude.cli.models import JobInfo, SessionInfo
 from teleclaude.cli.tui.types import CursesWindow, NotificationLevel
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import ConfirmModal
@@ -37,6 +36,8 @@ class JobsView(ScrollableViewMixin[JobInfo], BaseView):
         self.api = api
         self.notify = notify
         self.flat_items: list[JobInfo] = []
+        self.selected_index = 0
+        self.scroll_offset = 0
         self._row_to_item: dict[int, int] = {}
         self.needs_refresh: bool = False
         self._visible_height: int = 20
@@ -51,15 +52,36 @@ class JobsView(ScrollableViewMixin[JobInfo], BaseView):
             "status": 10,
         }
 
-    async def refresh(self, jobs: list[JobInfo]) -> None:
+    async def refresh(self, jobs: list[JobInfo], sessions: list[SessionInfo] | None = None) -> None:
         """Refresh view data.
 
         Args:
             jobs: List of jobs
+            sessions: Optional list of sessions (used to show active job runs)
         """
-        self.flat_items = jobs
-        if self.selected_index >= len(self.flat_items):
-            self.selected_index = max(0, len(self.flat_items) - 1)
+        items: list[JobInfo | SessionInfo | str] = []
+
+        # Show active job runs first
+        if sessions:
+            active_runs = [s for s in sessions if s.session_metadata and s.session_metadata.get("job_name")]
+            if active_runs:
+                items.append("Active Runs")
+                items.extend(active_runs)
+                items.append("")  # spacer
+
+        # Then show job catalog
+        if jobs:
+            items.append("Job Catalog")
+            items.extend(jobs)
+
+        self.flat_items = items  # type: ignore[assignment]
+        # Auto-select the first non-header/spacer item
+        selected = 0
+        for i, item in enumerate(self.flat_items):
+            if not isinstance(item, str):
+                selected = i
+                break
+        self.selected_index = selected
 
     def render(self, stdscr: CursesWindow, row_start: int, height: int, width: int) -> None:
         """Render the jobs list.
@@ -104,29 +126,45 @@ class JobsView(ScrollableViewMixin[JobInfo], BaseView):
             item = self.flat_items[i]
             row = row_start + 1 + (i - start_idx)
             is_selected = i == self.selected_index
-            self._row_to_item[row] = i
 
+            # Headers and spacers
+            if isinstance(item, str):
+                try:
+                    if item:  # Non-empty string = section header
+                        stdscr.addstr(row, 2, item, curses.A_BOLD | curses.A_DIM)
+                except curses.error:
+                    pass
+                continue
+
+            self._row_to_item[row] = i
             attr = curses.A_REVERSE if is_selected else curses.A_NORMAL
 
             # Color status
             status_attr = attr
-            if item.status == "success":
-                status_attr |= curses.color_pair(2)  # Green
-            elif item.status == "failed":
-                status_attr |= curses.color_pair(1)  # Red
+            if hasattr(item, "status"):
+                if item.status == "success":
+                    status_attr |= curses.color_pair(2)  # Green
+                elif item.status == "failed":
+                    status_attr |= curses.color_pair(1)  # Red
 
-            line = (
-                f"{item.name:<{self._col_widths['name']}} "
-                f"{item.type:<{self._col_widths['type']}} "
-                f"{str(item.schedule or '-'):<{self._col_widths['schedule']}} "
-                f"{str(item.last_run or 'never'):<{self._col_widths['last_run']}} "
-            )
+            if isinstance(item, JobInfo):
+                line = (
+                    f"{item.name:<{self._col_widths['name']}} "
+                    f"{item.type:<{self._col_widths['type']}} "
+                    f"{str(item.schedule or '-'):<{self._col_widths['schedule']}} "
+                    f"{str(item.last_run or 'never'):<{self._col_widths['last_run']}} "
+                )
+                status_text = f"{item.status:<{self._col_widths['status']}}"
+            else:
+                # SessionInfo (active job run)
+                title = getattr(item, "title", "") or ""
+                agent = getattr(item, "agent", "") or ""
+                line = f"  {agent:<8} {title:<{self._col_widths['name']}}"
+                status_text = getattr(item, "status", "") or ""
 
             try:
-                # Print base line
-                stdscr.addstr(row, 2, line, attr)
-                # Print status with color
-                stdscr.addstr(f"{item.status:<{self._col_widths['status']}}", status_attr)
+                stdscr.addstr(row, 2, line[: width - 4], attr)
+                stdscr.addstr(f" {status_text}", status_attr)
             except curses.error:
                 pass
 
@@ -143,6 +181,34 @@ class JobsView(ScrollableViewMixin[JobInfo], BaseView):
 
         if key in (curses.KEY_ENTER, 10, 13, ord("r")):
             self._run_selected_job(stdscr)
+
+    def move_up(self) -> None:
+        """Move selection up, skipping headers and spacers."""
+        if not self.flat_items:
+            return
+        new_index = self.selected_index - 1
+        while new_index >= 0:
+            if not isinstance(self.flat_items[new_index], str):
+                self.selected_index = new_index
+                if self.selected_index < self.scroll_offset:
+                    self.scroll_offset = self.selected_index
+                return
+            new_index -= 1
+
+    def move_down(self) -> None:
+        """Move selection down, skipping headers and spacers."""
+        if not self.flat_items:
+            return
+        new_index = self.selected_index + 1
+        while new_index < len(self.flat_items):
+            if not isinstance(self.flat_items[new_index], str):
+                self.selected_index = new_index
+                if hasattr(self, "_last_rendered_range"):
+                    _, last_rendered = self._last_rendered_range
+                    if self.selected_index > last_rendered:
+                        self.scroll_offset += self.selected_index - last_rendered
+                return
+            new_index += 1
 
     def handle_click(self, screen_row: int, is_double_click: bool = False) -> bool:
         """Handle mouse click."""
@@ -162,6 +228,8 @@ class JobsView(ScrollableViewMixin[JobInfo], BaseView):
             return
 
         job = self.flat_items[self.selected_index]
+        if not isinstance(job, JobInfo):
+            return
 
         modal = ConfirmModal(
             title="Run Job",

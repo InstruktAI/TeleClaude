@@ -118,6 +118,7 @@ class TmuxPaneManager:
         self._selected_session_id: str | None = None
         self._tree_node_has_focus: bool = False
         self._layout_signature: tuple[object, ...] | None = None
+        self._bg_signature: tuple[object, ...] | None = None
         self._session_catalog: dict[str, "SessionInfo"] = {}
         # Store our own pane ID for reference
         self._tui_pane_id: str | None = None
@@ -205,11 +206,18 @@ class TmuxPaneManager:
             self._sync_sticky_mappings()
             if not active_spec:
                 self._clear_active_state_if_sticky()
-            self._refresh_session_pane_backgrounds()
-            self._set_tui_pane_background()
+            # Only re-apply pane backgrounds when the selection or agent
+            # actually changed.  Each call spawns ~5 tmux subprocesses per
+            # pane which dominates the per-click latency.
+            bg_sig = self._compute_bg_signature()
+            if bg_sig != self._bg_signature:
+                self._bg_signature = bg_sig
+                self._refresh_session_pane_backgrounds()
+                self._set_tui_pane_background()
             return
 
         self._render_layout()
+        self.invalidate_bg_cache()
         if focus and active_spec:
             self.focus_pane_for_session(active_spec.session_id)
 
@@ -526,6 +534,29 @@ class TmuxPaneManager:
             structural_keys,
         )
 
+    def _compute_bg_signature(self) -> tuple[object, ...]:
+        """Compute a signature for pane background state.
+
+        Captures the inputs that determine _refresh_session_pane_backgrounds
+        and _set_tui_pane_background output: selected session, agents, and
+        theming mode.
+        """
+        pane_agents = tuple(
+            (sid, self._session_catalog.get(sid, None) and self._session_catalog[sid].active_agent)
+            for sid in sorted(self.state.session_to_pane)
+        )
+        return (
+            self._selected_session_id,
+            self._tree_node_has_focus,
+            theme.get_pane_theming_mode(),
+            theme.get_current_mode(),
+            pane_agents,
+        )
+
+    def invalidate_bg_cache(self) -> None:
+        """Force background re-application on next apply_layout (e.g. after theme change)."""
+        self._bg_signature = None
+
     def _sync_sticky_mappings(self) -> None:
         """Sync sticky pane mappings without rebuilding layout."""
         sticky_panes: list[str] = []
@@ -824,6 +855,7 @@ class TmuxPaneManager:
         """
         if not self._in_tmux:
             return
+        self.invalidate_bg_cache()
 
         self._set_tui_pane_background()
         reapplied_panes: set[str] = set()
@@ -935,6 +967,9 @@ class TmuxPaneManager:
     def focus_pane_for_session(self, session_id: str) -> bool:
         """Focus the pane showing a specific session.
 
+        Uses direct select-pane without existence checks to avoid
+        spawning extra tmux subprocesses on the hot path.
+
         Args:
             session_id: The session ID to focus
 
@@ -944,16 +979,15 @@ class TmuxPaneManager:
         if not self._in_tmux:
             return False
 
-        # Check if session is visible in any pane
+        # Try session-to-pane mapping first (sticky panes).
         pane_id = self.state.session_to_pane.get(session_id)
-        if pane_id and self._get_pane_exists(pane_id):
+        if pane_id:
             self._run_tmux("select-pane", "-t", pane_id)
             logger.debug("Focused sticky pane %s for session %s", pane_id, session_id[:8])
             return True
 
-        # Check if session is in active pane (match by session_id would require tracking)
-        # For now, just focus active pane if it exists
-        if self.state.parent_pane_id and self._get_pane_exists(self.state.parent_pane_id):
+        # Fall back to the active (parent) pane.
+        if self.state.parent_pane_id:
             self._run_tmux("select-pane", "-t", self.state.parent_pane_id)
             logger.debug("Focused active pane %s", self.state.parent_pane_id)
             return True

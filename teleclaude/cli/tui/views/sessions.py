@@ -324,6 +324,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Pane focus detection for reverse sync (pane click → tree selection)
         self._last_detected_pane_id: str | None = None
         self._we_caused_focus: bool = False
+        self._last_pane_poll: float = 0.0
         self._initial_layout_done: bool = False
         self._state_hydration_complete: bool = False
         # Auto-clear timer for currently watched preview session.
@@ -568,13 +569,21 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if not self.pane_manager.is_available:
             return False
 
-        active_pane_id = self.pane_manager.get_active_pane_id()
-
-        # If we caused the focus change, just update tracking and skip
+        # If we caused the focus change, clear the flag immediately without
+        # polling tmux.  The pane_id tracking updates on the next real poll.
         if self._we_caused_focus:
             self._we_caused_focus = False
-            self._last_detected_pane_id = active_pane_id
             return False
+
+        # Throttle tmux subprocess calls to every 500ms instead of every
+        # 100ms loop iteration.  The subprocess call (tmux display-message)
+        # is the dominant per-frame cost.
+        now = time.monotonic()
+        if now - self._last_pane_poll < 0.5:
+            return False
+        self._last_pane_poll = now
+
+        active_pane_id = self.pane_manager.get_active_pane_id()
 
         # No change in pane focus
         if active_pane_id == self._last_detected_pane_id:

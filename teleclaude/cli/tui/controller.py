@@ -110,19 +110,26 @@ class TuiController:
             return
         layout = self._derive_layout()
         should_focus = focus or self._pending_focus_session_id is not None
-        if not should_focus and self._last_layout == layout:
+        layout_changed = self._last_layout != layout
+
+        if not layout_changed and not should_focus:
             return
-        self._last_layout = layout
-        # Apply layout state first and keep focus transition in one place below.
-        self.pane_manager.apply_layout(
-            active_session_id=layout.active_session_id,
-            sticky_session_ids=layout.sticky_session_ids,
-            get_computer_info=self._get_computer_info,
-            active_doc_preview=layout.active_doc_preview,
-            selected_session_id=layout.selected_session_id,
-            tree_node_has_focus=layout.tree_node_has_focus,
-            focus=False,
-        )
+
+        # Only call the (expensive) pane_manager.apply_layout when the
+        # structural layout actually changed.  Focus-only transitions skip
+        # the full apply and go straight to focus_pane_for_session.
+        if layout_changed:
+            self._last_layout = layout
+            self.pane_manager.apply_layout(
+                active_session_id=layout.active_session_id,
+                sticky_session_ids=layout.sticky_session_ids,
+                get_computer_info=self._get_computer_info,
+                active_doc_preview=layout.active_doc_preview,
+                selected_session_id=layout.selected_session_id,
+                tree_node_has_focus=layout.tree_node_has_focus,
+                focus=False,
+            )
+
         if should_focus:
             focus_session_id = self._pending_focus_session_id or layout.active_session_id
             if not focus_session_id and layout.active_doc_preview:
