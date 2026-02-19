@@ -94,6 +94,7 @@ def _format_time(iso_timestamp: str | None) -> str:
 
 # Pattern matches /Users/<user>/... (macOS) or /home/<user>/... (Linux)
 _HOME_PATH_PATTERN = re.compile(r"^(/(?:Users|home)/[^/]+)")
+_SESSION_DETAIL_TEXT_LIMIT = 70
 _SESSION_TREE_CORNER_CHAR = "└"
 _SESSION_TREE_HORIZONTAL_CHAR = "-"
 _SESSION_TREE_VERTICAL_CHAR = "│"
@@ -1996,7 +1997,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         last_input = (session.last_input or "").strip()
         last_input_at = session.last_input_at
         if last_input:
-            input_text = last_input.replace("\n", " ")[:60]
+            input_text = last_input.replace("\n", " ")[:_SESSION_DETAIL_TEXT_LIMIT]
             input_time = _format_time(last_input_at)
             line3 = f"{detail_indent}[{input_time}]  in: {input_text}"
             lines.append(line3[:width])
@@ -2024,7 +2025,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             line4 = f"{detail_indent}[{activity_time}] out: {_working_placeholder_text()}"
             lines.append(line4[:width])
         elif last_output:
-            output_text = last_output.replace("\n", " ")[:60]
+            output_text = last_output.replace("\n", " ")[:_SESSION_DETAIL_TEXT_LIMIT]
             line4 = f"{detail_indent}[{output_time}] out: {output_text}"
             lines.append(line4[:width])
         elif has_output_highlight or has_activity:
@@ -2406,7 +2407,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         last_input = (session.last_input or "").strip()
         last_input_at = session.last_input_at
         if last_input:
-            input_text = last_input.replace("\n", " ")[:60]
+            input_text = last_input.replace("\n", " ")[:_SESSION_DETAIL_TEXT_LIMIT]
             input_time = _format_time(last_input_at)
             line3 = f"{detail_indent}[{input_time}]  in: {input_text}"
             details.append(_SessionDetailModel(line3, input_attr))
@@ -2449,7 +2450,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             else:
                 details.append(_SessionDetailModel(f"{prefix_text}{placeholder_text}", output_attr | curses.A_BOLD))
         elif last_output:
-            output_text = last_output.replace("\n", " ")[:60]
+            output_text = last_output.replace("\n", " ")[:_SESSION_DETAIL_TEXT_LIMIT]
             line4 = f"{detail_indent}[{output_time}] out: {output_text}"
             details.append(_SessionDetailModel(line4, output_attr))
         elif has_output_highlight or has_activity:

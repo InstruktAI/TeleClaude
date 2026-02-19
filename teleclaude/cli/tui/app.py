@@ -65,6 +65,7 @@ from teleclaude.cli.tui.theme import (
 from teleclaude.cli.tui.tree import is_computer_node, is_session_node
 from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NotificationLevel
 from teleclaude.cli.tui.views.configuration import ConfigurationView
+from teleclaude.cli.tui.views.jobs import JobsView
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import BANNER_HEIGHT, render_banner
@@ -205,7 +206,7 @@ class Notification:
 
 
 class TelecApp:
-    """Main TUI application with view switching (1=Sessions, 2=Preparation, 3=Configuration)."""
+    """Main TUI application with view switching (1=Sessions, 2=Preparation, 3=Jobs, 4=Configuration)."""
 
     def __init__(self, api: "TelecAPIClient", start_view: int = 1, config_guided: bool = False):
         """Initialize TUI app.
@@ -217,7 +218,7 @@ class TelecApp:
         """
         self.api = api
         self.current_view = start_view
-        self.views: dict[int, SessionsView | PreparationView | ConfigurationView] = {}
+        self.views: dict[int, SessionsView | PreparationView | ConfigurationView | JobsView] = {}
         self.tab_bar = TabBar()
         # Set initial active tab
         self.tab_bar.set_active(start_view)
@@ -306,7 +307,11 @@ class TelecApp:
             self.controller,
             notify=self.notify,
         )
-        self.views[3] = ConfigurationView(
+        self.views[3] = JobsView(
+            self.api,
+            notify=self.notify,
+        )
+        self.views[4] = ConfigurationView(
             self.api,
             self.agent_availability,
             self.focus,
@@ -371,13 +376,14 @@ class TelecApp:
         """Refresh all data from API."""
         logger.debug("Refreshing data from API...")
         try:
-            computers, projects, sessions, availability, todos, settings = await asyncio.gather(
+            computers, projects, sessions, availability, todos, settings, jobs = await asyncio.gather(
                 self.api.list_computers(),
                 self.api.list_projects(),
                 self.api.list_sessions(),
                 self.api.get_agent_availability(),
                 self.api.list_todos(),
                 self.api.get_settings(),
+                self.api.list_jobs(),
             )
 
             todos_by_project: dict[tuple[str, str], list[TodoInfo]] = {}
@@ -426,7 +432,10 @@ class TelecApp:
 
             # Refresh ALL views with data (not just current)
             for view_num, view in self.views.items():
-                await view.refresh(computers, projects_with_todos, sessions)
+                if view_num == 3:
+                    await view.refresh(jobs)
+                else:
+                    await view.refresh(computers, projects_with_todos, sessions)
                 logger.debug(
                     "View %d refreshed: flat_items=%d",
                     view_num,
@@ -1124,8 +1133,11 @@ class TelecApp:
             logger.debug("Switching to view 2 (Preparation)")
             self._switch_view(2)
         elif key == ord("3"):
-            logger.debug("Switching to view 3 (Configuration)")
+            logger.debug("Switching to view 3 (Jobs)")
             self._switch_view(3)
+        elif key == ord("4"):
+            logger.debug("Switching to view 4 (Configuration)")
+            self._switch_view(4)
 
         # Navigation - delegate to current view
         elif key == curses.KEY_UP:

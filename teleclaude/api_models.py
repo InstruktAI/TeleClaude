@@ -405,3 +405,15 @@ class SessionMessagesDTO(BaseModel):  # type: ignore[explicit-any]
     session_id: str
     agent: str | None = None
     messages: list[MessageDTO] = Field(default_factory=list)
+
+
+class JobDTO(BaseModel):  # type: ignore[explicit-any]
+    """DTO for job info."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    type: Literal["agent", "script"]
+    schedule: str | None = None
+    last_run: str | None = None
+    status: str

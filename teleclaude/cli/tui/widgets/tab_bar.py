@@ -11,7 +11,8 @@ class TabBar:
     TABS = [
         (1, "[1] AI Sessions"),
         (2, "[2] Work Preparation"),
-        (3, "[3] Configuration"),
+        (3, "[3] Jobs"),
+        (4, "[4] Configuration"),
     ]
     HEIGHT = 3  # Tab bar spans 3 rows
 

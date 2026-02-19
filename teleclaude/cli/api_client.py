@@ -20,6 +20,7 @@ from teleclaude.cli.models import (
     AgentAvailabilityInfo,
     ComputerInfo,
     CreateSessionResult,
+    JobInfo,
     ProjectInfo,
     ProjectWithTodosInfo,
     SessionInfo,
@@ -569,6 +570,34 @@ class TelecAPIClient:
             params["computer"] = computer
         resp = await self._request("GET", "/todos", params=params)
         return TypeAdapter(list[TodoInfo]).validate_json(resp.text)
+
+    async def list_jobs(self) -> list[JobInfo]:
+        """List scheduled jobs.
+
+        Returns:
+            List of job objects
+
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request("GET", "/jobs")
+        return TypeAdapter(list[JobInfo]).validate_json(resp.text)
+
+    async def run_job(self, name: str) -> bool:
+        """Run a scheduled job immediately.
+
+        Args:
+            name: Job name
+
+        Returns:
+            True if successful
+
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request("POST", f"/jobs/{name}/run", timeout=30.0)
+        data = resp.json()
+        return data.get("status") == "success"
 
     async def agent_restart(self, session_id: str) -> bool:
         """Restart agent in a session (preserves conversation via --resume).

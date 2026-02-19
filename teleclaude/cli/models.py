@@ -20,6 +20,9 @@ from teleclaude.api_models import (
     ErrorEventDTO as ErrorEvent,
 )
 from teleclaude.api_models import (
+    JobDTO as JobInfo,
+)
+from teleclaude.api_models import (
     ProjectDTO as ProjectInfo,
 )
 from teleclaude.api_models import (
@@ -76,6 +79,7 @@ __all__ = [
     "AgentAvailabilityInfo",
     "ComputerInfo",
     "CreateSessionResult",
+    "JobInfo",
     "ProjectInfo",
     "ProjectsInitialData",
     "ProjectsInitialEvent",
