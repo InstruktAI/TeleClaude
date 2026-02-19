@@ -1347,7 +1347,8 @@ class TelecApp:
         # Row height-4: Separator (avoid last-column writes)
         separator_attr = get_tab_line_attr()
         line_width = max(0, width - 1)
-        stdscr.addstr(height - 4, 0, "─" * line_width, separator_attr)  # type: ignore[attr-defined]
+        separator_width = max(0, width)
+        stdscr.addstr(height - 4, 0, "─" * separator_width, separator_attr)  # type: ignore[attr-defined]
 
         # Row height-3: Action bar (view-specific)
         action_bar = current.get_action_bar() if current else ""
