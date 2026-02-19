@@ -21,7 +21,7 @@ SessionRelay (core primitive)
 
 ## Tasks
 
-### Task 1: Session relay primitive
+- [x] Task 1: Session relay primitive
 
 **Files:** `teleclaude/core/session_relay.py` (new)
 
@@ -60,7 +60,7 @@ The relay monitors ALL participants simultaneously (bidirectional for 1:1). Moni
 
 **Verify:** Unit tests for relay creation, fan-out delivery to N-1 participants, baseline snapshot prevents feedback loops, relay cleanup on session end.
 
-### Task 2: 1:1 relay via send_message
+- [x] Task 2: 1:1 relay via send_message
 
 **Files:** `teleclaude/mcp/handlers.py`, `teleclaude/core/session_relay.py`
 
@@ -80,7 +80,7 @@ The receiving agent sees the message arrive (existing send_keys injection) and r
 
 **Verify:** Integration test — send_message with direct=true starts relay, both directions work, relay cleans up on session end.
 
-### Task 3: Tests
+- [x] Task 3: Tests
 
 **Files:** `tests/unit/test_session_relay.py` (new)
 

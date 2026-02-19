@@ -549,7 +549,12 @@ class MCPHandlersMixin:
                     metadata=MessageMetadata(origin=origin),
                 )
 
-            yield f"Message sent to session {session_id[:8]} on {computer}. Use teleclaude__get_session_data to check status."
+            # Start bidirectional relay for direct peer-to-peer conversations
+            relay_msg = ""
+            if direct and caller_session_id and self._is_local_computer(computer):
+                relay_msg = await self._start_direct_relay(caller_session_id, session_id)
+
+            yield f"Message sent to session {session_id[:8]} on {computer}.{relay_msg} Use teleclaude__get_session_data to check status."
         except Exception as e:
             logger.error("Failed to send message to session %s: %s", session_id[:8], e)
             yield f"[Error: Failed to send message: {str(e)}]"
@@ -597,6 +602,57 @@ class MCPHandlersMixin:
         return await self._start_remote_session_with_auto_command(
             computer, project, title, auto_command, caller_session_id, normalized_subfolder, working_slug
         )
+
+    async def _start_direct_relay(self, caller_session_id: str, target_session_id: str) -> str:
+        """Start a bidirectional session relay between caller and target.
+
+        Looks up both sessions from DB to get tmux names and titles,
+        then creates a relay. Returns a status suffix for the response.
+        """
+        from teleclaude.core.session_relay import (
+            RelayParticipant,
+            create_relay,
+            get_relay_for_session,
+        )
+
+        # Don't create duplicate relays
+        existing_caller = await get_relay_for_session(caller_session_id)
+        existing_target = await get_relay_for_session(target_session_id)
+        if existing_caller or existing_target:
+            return " Relay already active."
+
+        caller = await db.get_session(caller_session_id)
+        target = await db.get_session(target_session_id)
+        if not caller or not target:
+            logger.warning(
+                "Cannot start relay: missing session (caller=%s, target=%s)",
+                bool(caller),
+                bool(target),
+            )
+            return ""
+        if not caller.tmux_session_name or not target.tmux_session_name:
+            logger.warning("Cannot start relay: missing tmux session name")
+            return ""
+
+        participants = [
+            RelayParticipant(
+                session_id=caller_session_id,
+                tmux_session_name=caller.tmux_session_name,
+                name=caller.title or caller_session_id[:8],
+                number=1,
+            ),
+            RelayParticipant(
+                session_id=target_session_id,
+                tmux_session_name=target.tmux_session_name,
+                name=target.title or target_session_id[:8],
+                number=2,
+            ),
+        ]
+        relay_id = await create_relay(participants)
+        logger.info(
+            "Direct relay %s started between %s and %s", relay_id[:8], caller_session_id[:8], target_session_id[:8]
+        )
+        return " Bidirectional relay started."
 
     async def _resolve_origin(self, caller_session_id: str | None) -> str:
         """Resolve origin for MCP requests."""
