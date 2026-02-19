@@ -38,10 +38,6 @@ Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon pr
 - mcp-migration-delete-mcp (after: mcp-migration-agent-config) — Phase 5: Delete all MCP server code, wrapper, handlers, definitions (~3,400 lines)
 - mcp-migration-doc-updates (after: mcp-migration-delete-mcp) — Phase 6: Update architecture and policy docs, rewrite MCP references
 
-## Session Relay
-
-- session-relay — Output relay between agent sessions: monitor via capture_pane, deliver delta to peers with attribution. Enables natural 1:1 conversations after send_message(direct=true) handshake.
-
 ## Gathering Ceremony
 
 > Procedure: `docs/global/general/procedure/gathering.md`
