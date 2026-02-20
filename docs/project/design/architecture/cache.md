@@ -40,7 +40,11 @@ flowchart TB
 
 **Inputs:**
 
-- Domain events (SESSION_STARTED, SESSION_CLOSED, COMPUTER_UPDATED, etc.)
+- Domain events:
+  - Session lifecycle: SESSION_STARTED, SESSION_UPDATED, SESSION_CLOSED
+  - Agent activity: AGENT_ACTIVITY (tool_use, tool_done, agent_stop, user_prompt_submit)
+  - Infrastructure: COMPUTER_UPDATED
+  - Project/todo changes: PROJECTS_UPDATED, TODOS_UPDATED, TODO_CREATED, TODO_UPDATED, TODO_REMOVED
 - Heartbeat messages with project/todo digests
 - Local database queries for session state
 - Remote refresh triggers from digest changes

@@ -124,6 +124,10 @@ class TmuxPaneManager:
         self._tui_pane_id: str | None = None
         if self._in_tmux:
             self._tui_pane_id = self._get_current_pane_id()
+            # Adopt any existing non-TUI panes so cleanup works on reload.
+            # On cold start this finds nothing; on SIGUSR2 reload it discovers
+            # session panes created by the previous process.
+            self._adopt_existing_panes()
             # Ensure the tmux server knows tmux-256color clients support
             # truecolor.  Without this, RGB escape sequences from CLIs are
             # stripped when rendered through nested tmux attach.
@@ -134,6 +138,31 @@ class TmuxPaneManager:
     def is_available(self) -> bool:
         """Check if tmux pane management is available."""
         return self._in_tmux
+
+    def _adopt_existing_panes(self) -> None:
+        """Adopt existing non-TUI panes from a previous process.
+
+        On SIGUSR2 reload, the old process exits but the tmux panes
+        it created survive. This method discovers them and populates
+        PaneState so that:
+        1. _cleanup_all_session_panes() removes them properly
+        2. _update_active_pane() can respawn content without rebuilding
+        """
+        if not self._tui_pane_id:
+            return
+        output = self._run_tmux("list-panes", "-F", "#{pane_id}")
+        adopted: list[str] = []
+        for pane_id in output.split("\n"):
+            pane_id = pane_id.strip()
+            if pane_id and pane_id != self._tui_pane_id:
+                self.state.session_pane_ids.append(pane_id)
+                adopted.append(pane_id)
+        if not adopted:
+            return
+        # Use the first adopted pane as the active/parent pane so that
+        # _update_active_pane() can respawn it without a full rebuild.
+        self.state.parent_pane_id = adopted[0]
+        logger.debug("Adopted %d existing panes, parent=%s", len(adopted), adopted[0])
 
     def update_session_catalog(self, sessions: list["SessionInfo"]) -> None:
         """Update the session catalog used for layout lookup."""
@@ -154,6 +183,17 @@ class TmuxPaneManager:
         """Apply a deterministic layout from session ids."""
         if not self._in_tmux:
             return
+
+        logger.debug(
+            "apply_layout: active=%s sticky=%s doc_preview=%s focus=%s tui_pane=%s parent_pane=%s",
+            active_session_id[:8] if active_session_id else None,
+            [s[:8] for s in sticky_session_ids],
+            active_doc_preview.doc_id if active_doc_preview else None,
+            focus,
+            self._tui_pane_id,
+            self.state.parent_pane_id,
+        )
+
         self._selected_session_id = selected_session_id
         self._tree_node_has_focus = tree_node_has_focus
 
@@ -199,6 +239,12 @@ class TmuxPaneManager:
         self._active_spec = active_spec
 
         if self._layout_is_unchanged():
+            logger.debug(
+                "apply_layout: layout unchanged, active_spec=%s parent_spec=%s parent_pane=%s",
+                active_spec.session_id[:8] if active_spec else None,
+                self.state.parent_spec_id[:8] if self.state.parent_spec_id else None,
+                self.state.parent_pane_id,
+            )
             if active_spec and self.state.parent_spec_id != active_spec.session_id:
                 self._update_active_pane(active_spec)
             if focus and active_spec:
@@ -216,6 +262,10 @@ class TmuxPaneManager:
                 self._set_tui_pane_background()
             return
 
+        logger.debug(
+            "apply_layout: layout CHANGED, calling _render_layout (specs=%d)",
+            len(self._build_session_specs()),
+        )
         self._render_layout()
         self.invalidate_bg_cache()
         if focus and active_spec:
@@ -606,9 +656,27 @@ class TmuxPaneManager:
         if not self._in_tmux:
             return
         if not self.state.parent_pane_id or not self._get_pane_exists(self.state.parent_pane_id):
+            logger.debug(
+                "_update_active_pane: parent_pane missing or dead (%s), falling back to _render_layout",
+                self.state.parent_pane_id,
+            )
+            self._render_layout()
+            return
+        if self.state.parent_pane_id == self._tui_pane_id:
+            logger.error(
+                "_update_active_pane: parent_pane_id == tui_pane_id (%s), refusing to respawn TUI — rebuilding layout",
+                self._tui_pane_id,
+            )
+            self.state.parent_pane_id = None
             self._render_layout()
             return
 
+        logger.debug(
+            "_update_active_pane: respawning pane %s with session %s (tmux=%s)",
+            self.state.parent_pane_id,
+            active_spec.session_id[:8],
+            active_spec.tmux_session_name,
+        )
         attach_cmd = self._build_pane_command(active_spec)
         # Force replace running process; without -k, respawn-pane can no-op.
         self._run_tmux("respawn-pane", "-k", "-t", self.state.parent_pane_id, attach_cmd)
@@ -650,6 +718,13 @@ class TmuxPaneManager:
             return
 
         session_specs = self._build_session_specs()
+        logger.debug(
+            "_render_layout: tui_pane=%s specs=%d sticky=%s active=%s",
+            self._tui_pane_id,
+            len(session_specs),
+            [s.session_id[:8] for s in session_specs if s.is_sticky],
+            next((s.session_id[:8] for s in session_specs if not s.is_sticky), None),
+        )
         if len(session_specs) > 5:
             logger.warning("_render_layout: truncating session panes from %d to 5", len(session_specs))
 
@@ -741,11 +816,24 @@ class TmuxPaneManager:
                 self.state.parent_session = self._active_spec.tmux_session_name
                 self.state.parent_spec_id = self._active_spec.session_id
 
+        logger.debug(
+            "_render_layout: done. parent_pane=%s parent_session=%s tracked=%s",
+            self.state.parent_pane_id,
+            self.state.parent_session,
+            dict(self.state.session_to_pane),
+        )
         self._layout_signature = self._compute_layout_signature()
         self._set_tui_pane_background()
 
     def _track_session_pane(self, spec: SessionPaneSpec, pane_id: str) -> None:
         """Track pane ids for lookup and cleanup."""
+        logger.debug(
+            "_track_session_pane: %s → %s (sticky=%s, tmux=%s)",
+            spec.session_id[:8],
+            pane_id,
+            spec.is_sticky,
+            spec.tmux_session_name,
+        )
         self.state.session_pane_ids.append(pane_id)
         self.state.session_to_pane[spec.session_id] = pane_id
         if spec.is_sticky:
@@ -833,16 +921,22 @@ class TmuxPaneManager:
     def _set_doc_pane_background(self, pane_id: str, *, agent: str = "") -> None:
         """Apply styling for doc preview panes (glow/less).
 
-        In native mode, both foreground and background are delegated to terminal
-        defaults. In paint-theming mode, pane-specific agent colors are applied.
+        Follows the 5-state paradigm:
+        - Levels 0, 1: unstyled (NO_COLOR handled via command prefix)
+        - Level 2: unstyled (natural CLI colors)
+        - Level 3: agent haze background + agent foreground
+        - Level 4: unstyled (natural CLI colors)
         """
         if theme.should_apply_paint_pane_theming():
-            fg = f"colour{theme.get_agent_normal_color(agent)}" if agent else ""
             inactive_bg = theme.get_tui_inactive_background()
             terminal_bg = theme.get_terminal_background()
-            fg_prefix = f"fg={fg}," if fg else ""
-            self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"{fg_prefix}bg={inactive_bg}")
-            self._run_tmux("set", "-p", "-t", pane_id, "window-active-style", f"{fg_prefix}bg={terminal_bg}")
+            if agent:
+                fg = f"colour{theme.get_agent_normal_color(agent)}"
+                self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg={fg},bg={inactive_bg}")
+                self._run_tmux("set", "-p", "-t", pane_id, "window-active-style", f"fg={fg},bg={terminal_bg}")
+            else:
+                self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"bg={inactive_bg}")
+                self._run_tmux("set", "-p", "-t", pane_id, "window-active-style", f"bg={terminal_bg}")
         else:
             self._run_tmux("set", "-pu", "-t", pane_id, "window-style")
             self._run_tmux("set", "-pu", "-t", pane_id, "window-active-style")
@@ -891,7 +985,7 @@ class TmuxPaneManager:
                     self._set_doc_pane_background(pane_id, agent=self._active_spec.active_agent)
                 reapplied_panes.add(pane_id)
 
-        # Fallback: style any remaining tracked panes from session mapping.
+        # Remaining: style any tracked panes not covered by sticky/active specs.
         for session_id, pane_id in self.state.session_to_pane.items():
             if pane_id in reapplied_panes or not self._get_pane_exists(pane_id):
                 continue
@@ -908,8 +1002,15 @@ class TmuxPaneManager:
                 )
 
     def _build_pane_command(self, spec: SessionPaneSpec) -> str:
-        """Build the command used to populate a pane."""
+        """Build the command used to populate a pane.
+
+        Doc pane commands (glow/less) get NO_COLOR=1 prefix at peaceful
+        levels (0, 1) to suppress CLI color output.
+        """
         if spec.command:
+            level = theme.get_pane_theming_mode_level()
+            if level <= 1:
+                return f"NO_COLOR=1 {spec.command}"
             return spec.command
         return self._build_attach_cmd(spec.tmux_session_name or "", spec.computer_info)
 

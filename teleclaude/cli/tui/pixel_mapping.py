@@ -89,7 +89,7 @@ class PixelMap:
 
         target = target_registry.get(target_name)
 
-        # Fallback for targets without letters defined
+        # No letters defined for this target
         if not target or not target.letters:
             return []
 

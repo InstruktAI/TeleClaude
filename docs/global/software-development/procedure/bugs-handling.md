@@ -32,7 +32,7 @@ External bugs arrive via GitHub Issues and are processed by the maintenance runn
 
 3. **If the bug is too large for inline fixing**, it is not a bug — it is a work item.
    Create `todos/{slug}/input.md` with the issue details and add it to
-   `todos/roadmap.md`. Do not create a separate bugs file.
+   `todos/roadmap.yaml`. Do not create a separate bugs file.
 
 4. **Never log a bug and move on.** That middle ground — "I'll note it for later" —
    creates noise that goes stale. Either fix it or promote it. There is no third option.

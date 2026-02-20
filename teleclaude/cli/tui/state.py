@@ -405,7 +405,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.active_tool.pop(session_id, None)
             state.sessions.output_highlights.add(session_id)
             logger.debug(
-                "temp_output_highlight CLEARED + output_highlight ADDED for %s (timer expired fallback)",
+                "temp_output_highlight CLEARED + output_highlight ADDED for %s (timer expired safety-net)",
                 session_id[:8],
             )
         return

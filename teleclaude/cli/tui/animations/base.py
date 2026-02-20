@@ -1,7 +1,8 @@
 """Base classes for TUI animations."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Dict, Tuple
 
 from teleclaude.cli.tui.animation_colors import ColorPalette
 
@@ -35,17 +36,15 @@ class Animation(ABC):
         self.target = target or ("banner" if is_big else "logo")
 
     @abstractmethod
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         """Calculate colors for the given frame.
 
         Args:
             frame: Current frame number (0 to duration_frames - 1)
 
         Returns:
-            Dictionary mapping (x, y) to color pair ID.
-            Should only return pixels that have changed or are active in animation.
+            Dictionary mapping (x, y) to Rich color string or -1 (clear).
         """
-        pass
 
     def is_complete(self, frame: int) -> bool:
         """Check if animation has finished."""

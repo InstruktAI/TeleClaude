@@ -73,9 +73,9 @@ async def test_next_work_dispatches_defer():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Setup roadmap
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text(f"# Roadmap\n\n- {slug}\n")
+        from teleclaude.core.next_machine.core import RoadmapEntry, save_roadmap
+
+        save_roadmap(tmpdir, [RoadmapEntry(slug=slug)])
 
         # Setup item files
         item_dir = Path(tmpdir) / "todos" / slug
@@ -115,9 +115,9 @@ async def test_next_work_skips_defer_if_processed():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Setup roadmap
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text(f"# Roadmap\n\n- {slug}\n")
+        from teleclaude.core.next_machine.core import RoadmapEntry, save_roadmap
+
+        save_roadmap(tmpdir, [RoadmapEntry(slug=slug)])
 
         # Setup item files
         item_dir = Path(tmpdir) / "todos" / slug

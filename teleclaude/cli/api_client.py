@@ -520,8 +520,10 @@ class TelecAPIClient:
         Raises:
             APIError: If request fails
         """
-        projects = await self.list_projects()
-        todos = await self.list_todos()
+        projects, todos = await asyncio.gather(
+            self.list_projects(),
+            self.list_todos(),
+        )
         if not projects:
             return []
 

@@ -73,6 +73,36 @@ subcommands:
           - slug: 'string (optional)'
         flags:
           --project-root: 'Project root directory.'
+  roadmap:
+    description: 'View and manage the work item roadmap.'
+    subcommands:
+      add:
+        args:
+          - slug: 'string'
+        flags:
+          --group: 'Visual grouping label.'
+          --after: 'Comma-separated dependency slugs.'
+          --before: 'Insert before this slug.'
+          --description: 'Summary description.'
+          --project-root: 'Project root directory.'
+      remove:
+        args:
+          - slug: 'string'
+        flags:
+          --project-root: 'Project root directory.'
+      move:
+        args:
+          - slug: 'string'
+        flags:
+          --before: 'Move before this slug.'
+          --after: 'Move after this slug.'
+          --project-root: 'Project root directory.'
+      deps:
+        args:
+          - slug: 'string'
+        flags:
+          --after: 'Comma-separated dependency slugs.'
+          --project-root: 'Project root directory.'
   config:
     description: 'Interactive configuration (or get/patch/validate subcommands).'
     subcommands:

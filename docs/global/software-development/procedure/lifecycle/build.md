@@ -46,8 +46,7 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
    - If not clean, commit remaining build-phase changes following the commits policy.
    - Treat pre-existing out-of-scope drift as non-blocking.
    - Orchestrator-synced planning drift is a common non-blocking case:
-     - `todos/roadmap.md`
-     - `todos/dependencies.json`
+     - `todos/roadmap.yaml`
    - If dirty files do not overlap this slug's build scope, continue; do not force-commit unrelated files during build unless the task explicitly requires editing them.
 5. Verify commits exist: `git log --oneline -10`.
 6. Build section in `quality-checklist.md` is fully checked.

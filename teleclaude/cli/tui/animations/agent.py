@@ -1,7 +1,8 @@
 """Agent-specific activity animations."""
 
+from __future__ import annotations
+
 import random
-from typing import Dict, Tuple
 
 from teleclaude.cli.tui.animations.base import Animation
 from teleclaude.cli.tui.pixel_mapping import (
@@ -18,7 +19,7 @@ from teleclaude.cli.tui.pixel_mapping import (
 class AgentPulse(Animation):
     """A1: All pixels pulse synchronously through agent colors."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         # Cycle through Muted (0), Normal (1), Highlight (2)
         # We can use a sine wave or just simple cycling
         color_idx = frame % len(self.palette)
@@ -31,7 +32,7 @@ class AgentPulse(Animation):
 class AgentWaveLR(Animation):
     """A2: Letter-by-letter wave using agent colors."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter_idx = frame % num_letters
 
@@ -53,7 +54,7 @@ class AgentWaveLR(Animation):
 class AgentWaveRL(Animation):
     """A3: Letter-by-letter wave right-to-left using agent colors."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter_idx = (num_letters - 1) - (frame % num_letters)
         color_pair = self.palette.get(frame // num_letters)
@@ -73,7 +74,7 @@ class AgentWaveRL(Animation):
 class AgentLineSweep(Animation):
     """A9: Horizontal lines sweep top-to-bottom with agent color progression."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = frame % height
         color_pair = self.palette.get(frame // height)
@@ -95,7 +96,7 @@ class AgentMiddleOut(Animation):
 
     supports_small = False
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
             return {}
 
@@ -122,11 +123,11 @@ class AgentMiddleOut(Animation):
 class AgentSparkle(Animation):
     """A7: Random pixels flash with random agent colors."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         all_pixels = PixelMap.get_all_pixels(self.is_big)
         num_sparkles = len(all_pixels) // 15
 
-        result = {p: -1 for p in all_pixels}
+        result: dict[tuple[int, int], str | int] = {p: -1 for p in all_pixels}
         sparkle_pixels = random.sample(all_pixels, num_sparkles)
         for p in sparkle_pixels:
             result[p] = self.palette.get(random.randint(0, len(self.palette) - 1))
@@ -138,7 +139,7 @@ class AgentWithinLetterSweep(Animation):
 
     supports_small = False
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
             return {}
 
@@ -166,7 +167,7 @@ class AgentWithinLetterSweep(Animation):
 class AgentHeartbeat(Animation):
     """A4: All pixels pulse with strong beat (Highlight) then rest (Muted)."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         # Beat pattern: Highlight, Muted, Highlight, Muted, Muted, Muted
         pattern = [2, 0, 2, 0, 0, 0]
         color_idx = pattern[frame % len(pattern)]
@@ -179,7 +180,7 @@ class AgentHeartbeat(Animation):
 class AgentWordSplit(Animation):
     """A6: "TELE" and "CLAUDE" alternate between Muted and Normal/Highlight."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         all_pixels = PixelMap.get_all_pixels(self.is_big)
         split_x = 33 if self.is_big else 15
 
@@ -200,7 +201,7 @@ class AgentWordSplit(Animation):
 class AgentLetterCascade(Animation):
     """A5: Letters light up sequentially, each using one of the agent colors."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter = frame % num_letters
         result = {}
@@ -217,7 +218,7 @@ class AgentLetterCascade(Animation):
 class AgentFadeCycle(Animation):
     """A8: All pixels smoothly transition Muted <-> Normal <-> Highlight."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         # Simple cycle 0-1-2-1-0
         sequence = [0, 1, 2, 1]
         color_idx = sequence[frame % len(sequence)]
@@ -229,7 +230,7 @@ class AgentFadeCycle(Animation):
 class AgentSpotlight(Animation):
     """A10: Bright pixel cluster travels through word."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         active_x = frame % width
         radius = 4
@@ -250,7 +251,7 @@ class AgentSpotlight(Animation):
 class AgentBreathing(Animation):
     """A12: Gentle synchronized pulse with easing (simplified)."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         # Longer sequence for "breathing" effect
         # 0, 0, 1, 1, 2, 2, 1, 1, 0, 0
         sequence = [0, 0, 1, 1, 2, 2, 1, 1]
@@ -265,7 +266,7 @@ class AgentDiagonalWave(Animation):
 
     supports_small = False
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
             return {}
         max_val = BIG_BANNER_WIDTH + BIG_BANNER_HEIGHT

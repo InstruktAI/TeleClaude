@@ -12,7 +12,7 @@ from typing import Callable, Generic, TypeVar
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER
-from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
+from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot, TodoInfo
 
 logger = get_logger(__name__)
 
@@ -79,7 +79,7 @@ class DaemonCache:
         self._projects: dict[str, CachedItem[ProjectInfo]] = {}
 
         # Session cache: key = session_id
-        self._sessions: dict[str, CachedItem[SessionSummary]] = {}
+        self._sessions: dict[str, CachedItem[SessionSnapshot]] = {}
 
         # Todo cache: key = f"{computer}:{project_path}"
         self._todos: dict[str, CachedItem[list[TodoInfo]]] = {}
@@ -195,7 +195,7 @@ class DaemonCache:
         """Get the stored projects digest for a computer."""
         return self._projects_digest.get(computer)
 
-    def get_sessions(self, computer: str | None = None) -> list[SessionSummary]:
+    def get_sessions(self, computer: str | None = None) -> list[SessionSnapshot]:
         """Get cached sessions, optionally filtered by computer.
 
         Handles 'local' alias and exact computer name matching.
@@ -204,7 +204,7 @@ class DaemonCache:
             computer: Optional computer name or 'local' alias to filter by
 
         Returns:
-            List of session summary objects
+            List of session snapshot objects
         """
         from teleclaude.config import config
 
@@ -308,12 +308,12 @@ class DaemonCache:
 
     def update_session(
         self,
-        session: SessionSummary,
+        session: SessionSnapshot,
     ) -> None:
         """Update session info in cache.
 
         Args:
-            session: Session summary object
+            session: Session snapshot object
         """
         session_id = session.session_id
         is_new = session_id not in self._sessions

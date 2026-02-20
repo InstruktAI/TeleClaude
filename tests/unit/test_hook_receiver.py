@@ -41,8 +41,8 @@ def test_receiver_emits_error_on_invalid_stdin_json(monkeypatch, tmp_path):
     assert sent == []
 
 
-def test_receiver_fails_fast_without_session(monkeypatch):
-    """Unresolved handled hook sessions should fail fast."""
+def test_receiver_drops_event_without_session(monkeypatch):
+    """Unresolved hook sessions should silently drop the event."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -59,12 +59,12 @@ def test_receiver_fails_fast_without_session(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 1
+    assert exc.value.code == 0
     assert not sent
 
 
-def test_receiver_fails_fast_when_tmux_recovery_fails(monkeypatch):
-    """When handled session resolution fails, receiver should fail fast."""
+def test_receiver_drops_event_when_tmux_recovery_fails(monkeypatch):
+    """When handled session resolution fails, receiver should silently drop the event."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -80,12 +80,12 @@ def test_receiver_fails_fast_when_tmux_recovery_fails(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 1
+    assert exc.value.code == 0
     assert not sent
 
 
-def test_receiver_fails_fast_when_session_not_in_db(monkeypatch):
-    """When handled session ID cannot resolve, receiver should fail fast."""
+def test_receiver_drops_event_when_session_not_in_db(monkeypatch):
+    """When handled session ID cannot resolve, receiver should silently drop the event."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -101,7 +101,7 @@ def test_receiver_fails_fast_when_session_not_in_db(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 1
+    assert exc.value.code == 0
     assert not sent
 
 
@@ -682,7 +682,8 @@ def test_receiver_gemini_before_agent_empty_prompt_is_dropped(monkeypatch, tmp_p
     assert sent == []
 
 
-def test_receiver_includes_agent_name_in_payload(monkeypatch, tmp_path):
+def test_receiver_drops_event_when_agent_name_present_but_no_session(monkeypatch, tmp_path):
+    """Hook with agent name but no session mapping should silently drop."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -698,7 +699,7 @@ def test_receiver_includes_agent_name_in_payload(monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 1
+    assert exc.value.code == 0
     assert sent == []
 
 
@@ -731,8 +732,8 @@ def test_receiver_uses_session_map_for_agent_stop(monkeypatch, tmp_path):
     assert persisted == [("claude", "native-1", "cached-1")]
 
 
-def test_receiver_fails_fast_agent_stop_without_existing_mapping(monkeypatch, tmp_path):
-    """Agent stop with unresolved mapping should fail fast."""
+def test_receiver_drops_event_agent_stop_without_existing_mapping(monkeypatch, tmp_path):
+    """Agent stop with unresolved mapping should silently drop the event."""
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -750,7 +751,7 @@ def test_receiver_fails_fast_agent_stop_without_existing_mapping(monkeypatch, tm
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 1
+    assert exc.value.code == 0
     assert sent == []
 
 
@@ -919,8 +920,8 @@ def test_receiver_session_start_tmux_marker_mismatch_falls_back_to_native_lookup
     assert persisted == [("claude", "native-claude", "claude-session-123")]
 
 
-def test_receiver_session_start_tmux_marker_mismatch_without_fallback_fails_fast(monkeypatch, tmp_path):
-    """TMUX marker mismatch with no native fallback should fail fast."""
+def test_receiver_drops_event_on_tmux_marker_mismatch_without_fallback(monkeypatch, tmp_path):
+    """TMUX marker mismatch with no native fallback should silently drop the event."""
     sent = []
     session_tmp = tmp_path / "session-mismatch-2"
     session_tmp.mkdir(parents=True, exist_ok=True)
@@ -945,7 +946,7 @@ def test_receiver_session_start_tmux_marker_mismatch_without_fallback_fails_fast
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 1
+    assert exc.value.code == 0
     assert sent == []
 
 

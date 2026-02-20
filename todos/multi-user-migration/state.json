@@ -1,0 +1,30 @@
+{
+  "phase": "pending",
+  "build": "pending",
+  "review": "pending",
+  "deferrals_processed": false,
+  "breakdown": {
+    "assessed": false,
+    "todos": []
+  },
+  "dor": {
+    "last_assessed_at": "2026-02-18T14:00:00Z",
+    "score": 5,
+    "status": "needs_work",
+    "schema_version": 1,
+    "blockers": [
+      "Depends on Phases 0 (multi-user-db-abstraction), 2 (multi-user-sessions), 4 (multi-user-config), and 5 (multi-user-service)",
+      "SQLite-to-PostgreSQL data transfer validation approach needs definition"
+    ],
+    "actions_taken": {
+      "requirements_updated": true,
+      "implementation_plan_updated": true
+    }
+  },
+  "review_round": 0,
+  "max_review_rounds": 3,
+  "review_baseline_commit": "",
+  "unresolved_findings": [],
+  "resolved_findings": [],
+  "schema_version": 1
+}

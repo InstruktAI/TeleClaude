@@ -13,7 +13,7 @@ from teleclaude.core.models import (
     ComputerInfo,
     MessageMetadata,
     ProjectInfo,
-    SessionSummary,
+    SessionSnapshot,
     TodoInfo,
 )
 
@@ -85,7 +85,7 @@ async def test_pull_initial_sessions_happy_path():
 
     updated: list[tuple[str, str]] = []
 
-    def record_update(session: SessionSummary) -> None:
+    def record_update(session: SessionSnapshot) -> None:
         updated.append((session.session_id, session.computer))
 
     mock_cache.update_session = record_update

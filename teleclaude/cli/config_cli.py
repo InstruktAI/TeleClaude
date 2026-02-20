@@ -172,9 +172,14 @@ def _people_add(args: list[str], use_json: bool) -> None:
         print("Error: --name required")
         raise SystemExit(1)
 
+    email = opts.get("email")
+    if not email:
+        print("Error: --email required")
+        raise SystemExit(1)
+
     entry = PersonEntry(
         name=name,
-        email=opts.get("email"),
+        email=email,
         username=opts.get("username"),
         role=opts.get("role", "member"),  # type: ignore[arg-type]
     )

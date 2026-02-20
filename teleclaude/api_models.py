@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
-    from teleclaude.core.models import SessionSummary
+    from teleclaude.core.models import SessionSnapshot
 
 
 class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
@@ -79,8 +79,8 @@ class FileUploadRequest(BaseModel):  # type: ignore[explicit-any]
     file_size: int = 0
 
 
-class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
-    """DTO for session summary in lists."""
+class SessionDTO(BaseModel):  # type: ignore[explicit-any]
+    """DTO for session data in API responses."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -109,32 +109,32 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
     session_metadata: dict[str, object] | None = None  # guard: loose-dict
 
     @classmethod
-    def from_core(cls, summary: "SessionSummary", computer: str | None = None) -> "SessionSummaryDTO":
-        """Map from core SessionSummary dataclass."""
+    def from_core(cls, session: "SessionSnapshot", computer: str | None = None) -> "SessionDTO":
+        """Map from core SessionSnapshot dataclass."""
         return cls(
-            session_id=summary.session_id,
-            last_input_origin=summary.last_input_origin,
-            title=summary.title,
-            project_path=summary.project_path,
-            subdir=summary.subdir,
-            thinking_mode=summary.thinking_mode,
-            active_agent=summary.active_agent,
-            status=summary.status,
-            created_at=summary.created_at,
-            last_activity=summary.last_activity,
-            last_input=summary.last_input,
-            last_input_at=summary.last_input_at,
-            last_output_summary=summary.last_output_summary,
-            last_output_summary_at=summary.last_output_summary_at,
-            last_output_digest=summary.last_output_digest,
-            native_session_id=summary.native_session_id,
-            tmux_session_name=summary.tmux_session_name,
-            initiator_session_id=summary.initiator_session_id,
+            session_id=session.session_id,
+            last_input_origin=session.last_input_origin,
+            title=session.title,
+            project_path=session.project_path,
+            subdir=session.subdir,
+            thinking_mode=session.thinking_mode,
+            active_agent=session.active_agent,
+            status=session.status,
+            created_at=session.created_at,
+            last_activity=session.last_activity,
+            last_input=session.last_input,
+            last_input_at=session.last_input_at,
+            last_output_summary=session.last_output_summary,
+            last_output_summary_at=session.last_output_summary_at,
+            last_output_digest=session.last_output_digest,
+            native_session_id=session.native_session_id,
+            tmux_session_name=session.tmux_session_name,
+            initiator_session_id=session.initiator_session_id,
             computer=computer,
-            human_email=summary.human_email,
-            human_role=summary.human_role,
-            visibility=summary.visibility or "private",
-            session_metadata=summary.session_metadata,
+            human_email=session.human_email,
+            human_role=session.human_role,
+            visibility=session.visibility or "private",
+            session_metadata=session.session_metadata,
         )
 
 
@@ -221,7 +221,7 @@ class SessionsInitialDataDTO(BaseModel):  # type: ignore[explicit-any]
 
     model_config = ConfigDict(frozen=True)
 
-    sessions: list[SessionSummaryDTO]
+    sessions: list[SessionDTO]
     computer: str | None = None
 
 
@@ -258,7 +258,7 @@ class SessionStartedEventDTO(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True)
 
     event: Literal["session_started"]
-    data: SessionSummaryDTO
+    data: SessionDTO
 
 
 class SessionUpdatedEventDTO(BaseModel):  # type: ignore[explicit-any]
@@ -267,7 +267,7 @@ class SessionUpdatedEventDTO(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True)
 
     event: Literal["session_updated"]
-    data: SessionSummaryDTO
+    data: SessionDTO
 
 
 class SessionClosedDataDTO(BaseModel):  # type: ignore[explicit-any]

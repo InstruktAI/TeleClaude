@@ -3,18 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import signal
+import time as _t
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from textual import work
 from textual.app import App, ComposeResult
+from textual.color import Color
+from textual.containers import Vertical
+from textual.theme import Theme
 from textual.widgets import TabbedContent, TabPane
 
 from teleclaude.cli.models import (
     AgentActivityEvent,
+    ComputerInfo,
     ErrorEvent,
+    ProjectInfo,
     ProjectsInitialEvent,
+    ProjectWithTodosInfo,
     SessionClosedEvent,
     SessionsInitialEvent,
     SessionStartedEvent,
@@ -24,13 +32,19 @@ from teleclaude.cli.models import (
 from teleclaude.cli.tui.messages import (
     AgentActivity,
     CreateSessionRequest,
+    CursorContextChanged,
     DataRefreshed,
+    DocPreviewRequest,
+    FocusPaneRequest,
     KillSessionRequest,
+    PreviewChanged,
     RestartSessionRequest,
+    ReviveSessionRequest,
     SessionClosed,
     SessionStarted,
     SessionUpdated,
     SettingsChanged,
+    StickyChanged,
 )
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.state_store import load_state, save_state
@@ -40,6 +54,7 @@ from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.action_bar import ActionBar
 from teleclaude.cli.tui.widgets.banner import Banner
+from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.status_bar import StatusBar
 
 if TYPE_CHECKING:
@@ -54,7 +69,108 @@ class FocusContext:
     pass
 
 
-class TelecApp(App[None]):
+_TELECLAUDE_DARK_THEME = Theme(
+    name="teleclaude-dark",
+    # Neutral structural colors — NOT agent-specific.
+    # Buttons, inputs, selects inherit from these.
+    primary="#808080",  # Neutral gray for UI chrome
+    secondary="#626262",  # Slightly darker neutral
+    accent="#585858",  # Muted focus indicator
+    foreground="#d0d0d0",  # Soft light gray — highlight end
+    background="#1c1c1c",  # Dark terminal background
+    success="#5faf5f",  # Muted green
+    warning="#d7af5f",  # Warm gold
+    error="#d75f5f",  # Muted red
+    surface="#262626",  # Panel surface
+    panel="#303030",  # Slightly lighter panel
+    dark=True,
+    variables={
+        "block-cursor-text-style": "reverse",
+        "input-selection-background": "#585858 50%",
+        "scrollbar-color": "#444444",
+        "scrollbar-background": "#1c1c1c",
+        # --- Agent colors: Claude (dark: subtle→highlight = dark→bright) ---
+        "claude-subtle": "#875f00",
+        "claude-muted": "#af875f",
+        "claude-normal": "#d7af87",
+        "claude-highlight": "#ffffff",
+        # --- Agent colors: Gemini ---
+        "gemini-subtle": "#8787af",
+        "gemini-muted": "#af87ff",
+        "gemini-normal": "#d7afff",
+        "gemini-highlight": "#ffffff",
+        # --- Agent colors: Codex ---
+        "codex-subtle": "#5f87af",
+        "codex-muted": "#87afd7",
+        "codex-normal": "#afd7ff",
+        "codex-highlight": "#ffffff",
+        # --- Neutral structural gradient (white → dark gray) ---
+        "neutral-highlight": "#e0e0e0",
+        "neutral-normal": "#a0a0a0",
+        "neutral-muted": "#707070",
+        "neutral-subtle": "#484848",
+        # --- Structural colors ---
+        "connector": "#808080",  # Tree lines (xterm 244)
+        "separator": "#585858",  # Thin separators
+        "input-border": "#444444",  # Input/select borders
+        "banner-color": "#585858",  # Banner muted
+        "status-fg": "#727578",  # Status bar text
+    },
+)
+
+_TELECLAUDE_LIGHT_THEME = Theme(
+    name="teleclaude-light",
+    # Light mode: inverted gray gradient — black highlight, grading lighter.
+    primary="#808080",  # Neutral gray for UI chrome
+    secondary="#9e9e9e",  # Slightly lighter neutral
+    accent="#a8a8a8",  # Muted focus indicator
+    foreground="#303030",  # Near-black text — highlight end
+    background="#fdf6e3",  # Warm paper background
+    success="#3a8a3a",  # Darker green for light bg
+    warning="#8a6a1a",  # Darker gold for light bg
+    error="#b03030",  # Darker red for light bg
+    surface="#f0ead8",  # Slightly darker paper
+    panel="#e8e0cc",  # Panel surface
+    dark=False,
+    variables={
+        "block-cursor-text-style": "reverse",
+        "input-selection-background": "#a0a0a0 50%",
+        "scrollbar-color": "#c0c0c0",
+        "scrollbar-background": "#fdf6e3",
+        # --- Agent colors: Claude (light: subtle→highlight = light→dark) ---
+        "claude-subtle": "#d7af87",  # xterm 180
+        "claude-muted": "#af875f",  # xterm 137
+        "claude-normal": "#875f00",  # xterm 94
+        "claude-highlight": "#000000",
+        # --- Agent colors: Gemini (inverted) ---
+        "gemini-subtle": "#d787ff",  # xterm 177
+        "gemini-muted": "#af5fff",  # xterm 135
+        "gemini-normal": "#870087",  # xterm 90
+        "gemini-highlight": "#000000",
+        # --- Agent colors: Codex (inverted) ---
+        "codex-subtle": "#87afd7",  # xterm 110
+        "codex-muted": "#5f87af",  # xterm 67
+        "codex-normal": "#005f87",  # xterm 24
+        "codex-highlight": "#000000",
+        # --- Neutral structural gradient (black → light gray) ---
+        "neutral-highlight": "#202020",
+        "neutral-normal": "#606060",
+        "neutral-muted": "#909090",
+        "neutral-subtle": "#b8b8b8",
+        # --- Structural colors (inverted) ---
+        "connector": "#808080",  # Tree lines (same gray)
+        "separator": "#a0a0a0",  # Thin separators (lighter)
+        "input-border": "#c0c0c0",  # Input/select borders
+        "banner-color": "#a0a0a0",  # Banner muted
+        "status-fg": "#727578",  # Status bar text
+    },
+)
+
+
+RELOAD_EXIT = "__RELOAD__"
+
+
+class TelecApp(App[str | None]):
     """Main TeleClaude TUI application."""
 
     CSS_PATH = "telec.tcss"
@@ -78,28 +194,51 @@ class TelecApp(App[None]):
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
+        self.register_theme(_TELECLAUDE_DARK_THEME)
+        self.register_theme(_TELECLAUDE_LIGHT_THEME)
+        from teleclaude.cli.tui.theme import is_dark_mode
+
+        self.theme = "teleclaude-dark" if is_dark_mode() else "teleclaude-light"
         self.api = api
         self._start_view = start_view
         self._persisted = load_state()
+        self._computers: list[ComputerInfo] = []
         self._session_status_cache: dict[str, str] = {}
+        self._session_agents: dict[str, str] = {}
+        # On SIGUSR2 reload, panes already exist — skip layout re-application
+        self._is_reload = bool(os.environ.pop("TELEC_RELOAD", ""))
+        self._initial_layout_applied = self._is_reload
+        self._pane_has_focus = True
+
+        # Animation engine and triggers
+        from teleclaude.cli.tui.animation_engine import AnimationEngine
+
+        self._animation_engine = AnimationEngine()
+        self._periodic_trigger: object | None = None
+        self._activity_trigger: object | None = None
+        self._animation_timer: object | None = None
 
     def compose(self) -> ComposeResult:
         yield Banner()
+        yield BoxTabBar(id="box-tab-bar")
         with TabbedContent(id="main-tabs"):
-            with TabPane("[1] Sessions", id="sessions"):
+            with TabPane("Sessions", id="sessions"):
                 yield SessionsView(id="sessions-view")
-            with TabPane("[2] Preparation", id="preparation"):
+            with TabPane("Preparation", id="preparation"):
                 yield PreparationView(id="preparation-view")
-            with TabPane("[3] Jobs", id="jobs"):
+            with TabPane("Jobs", id="jobs"):
                 yield JobsView(id="jobs-view")
-            with TabPane("[4] Config", id="config"):
+            with TabPane("Config", id="config"):
                 yield ConfigView(id="config-view")
-        yield ActionBar(id="action-bar")
-        yield StatusBar(id="status-bar")
+        with Vertical(id="footer"):
+            yield ActionBar(id="action-bar")
+            yield StatusBar(id="status-bar")
         yield PaneManagerBridge(id="pane-bridge")
 
     async def on_mount(self) -> None:
         """Initialize on mount: load state, connect API, start refresh."""
+        _m0 = _t.monotonic()
+        logger.info("[PERF] on_mount START t=%.3f", _m0)
         # Restore persisted state to views
         sessions_view = self.query_one("#sessions-view", SessionsView)
         prep_view = self.query_one("#preparation-view", PreparationView)
@@ -118,11 +257,24 @@ class TelecApp(App[None]):
         )
         status_bar.animation_mode = self._persisted.animation_mode
 
+        # Wire animation engine to banner
+        banner = self.query_one(Banner)
+        banner.animation_engine = self._animation_engine
+        self._start_animation_mode(self._persisted.animation_mode)
+
         # Switch to starting tab
         tab_ids = {1: "sessions", 2: "preparation", 3: "jobs", 4: "config"}
         start_tab = tab_ids.get(self._start_view, "sessions")
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.active = start_tab
+        box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
+        box_tabs.active_tab = start_tab
+
+        # Focus the active view so key bindings work
+        self._focus_active_view(start_tab)
+
+        # Set initial background from terminal background
+        self._apply_haze_background(active=True)
 
         # Connect API and start refresh
         try:
@@ -136,34 +288,60 @@ class TelecApp(App[None]):
             subscriptions=["sessions", "projects", "todos"],
         )
 
-        # Initial data load
+        logger.info("[PERF] on_mount api+ws done dt=%.3f", _t.monotonic() - _m0)
+
+        # Initial data load (computers loaded in parallel inside _refresh_data)
         self._refresh_data()
 
-        # Periodic refresh every 5s
-        self.set_interval(5, self._refresh_data)
+        # SIGUSR2 handler for reload.
+        # signal.signal() ensures the signal is always caught (preventing
+        # default termination). Inside the handler, call_soon_threadsafe()
+        # safely schedules the reload on the asyncio event loop.
+        self._reload_loop = asyncio.get_running_loop()
+        signal.signal(signal.SIGUSR2, self._handle_sigusr2)
 
-        # SIGUSR2 handler for reload
+    @work(exclusive=True, group="computers")
+    async def _reload_computers(self) -> None:
+        """Re-fetch computer list on computer_updated event."""
         try:
-            signal.signal(signal.SIGUSR2, self._handle_sigusr2)
-        except (ValueError, OSError):
-            pass
+            self._computers = await self.api.list_computers()
+        except Exception:
+            logger.exception("Computer refresh failed")
 
     @work(exclusive=True, group="refresh")
     async def _refresh_data(self) -> None:
-        """Fetch all data from API and post DataRefreshed."""
+        """Fetch all data and post DataRefreshed.
+
+        Computers are included in the parallel gather so the first load
+        doesn't block on sequential list_computers(). After startup,
+        computer_updated WS events trigger _reload_computers() separately.
+        """
+        _r0 = _t.monotonic()
+        logger.info("[PERF] _refresh_data START t=%.3f", _r0)
         try:
-            computers, projects, projects_with_todos, sessions, availability, jobs = await asyncio.gather(
+            computers, projects_with_todos, sessions, availability, jobs, settings = await asyncio.gather(
                 self.api.list_computers(),
-                self.api.list_projects(),
                 self.api.list_projects_with_todos(),
                 self.api.list_sessions(),
                 self.api.get_agent_availability(),
                 self.api.list_jobs(),
+                self.api.get_settings(),
             )
+            logger.info("[PERF] _refresh_data gather done dt=%.3f", _t.monotonic() - _r0)
+            self._computers = computers
 
-            # Get settings for TTS and pane theming
+            # Derive plain projects list from projects_with_todos
+            projects = [
+                ProjectInfo(
+                    computer=p.computer,
+                    name=p.name,
+                    path=p.path,
+                    description=p.description,
+                )
+                for p in projects_with_todos
+            ]
+
             try:
-                settings = await self.api.get_settings()
                 tts_enabled = bool(getattr(settings, "tts_enabled", False))
                 pane_theming_mode = getattr(settings, "pane_theming_mode", "off") or "off"
             except Exception:
@@ -187,6 +365,8 @@ class TelecApp(App[None]):
 
     def on_data_refreshed(self, message: DataRefreshed) -> None:
         """Handle refreshed data — update all views."""
+        _d0 = _t.monotonic()
+        logger.info("[PERF] on_data_refreshed START t=%.3f", _d0)
         sessions_view = self.query_one("#sessions-view", SessionsView)
         prep_view = self.query_one("#preparation-view", PreparationView)
         jobs_view = self.query_one("#jobs-view", JobsView)
@@ -204,8 +384,68 @@ class TelecApp(App[None]):
         status_bar.tts_enabled = message.tts_enabled
         status_bar.pane_theming_mode = message.pane_theming_mode
 
+        logger.info("[PERF] on_data_refreshed views updated dt=%.3f", _t.monotonic() - _d0)
+
         # Update session status cache
         self._session_status_cache = {s.session_id: s.status for s in message.sessions}
+
+        # Forward to pane bridge (sibling — messages don't reach it via bubbling)
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge.on_data_refreshed(message)
+
+        # On first data load, apply layout with persisted preview/sticky state.
+        # After that, layout changes are driven only by user actions
+        # (PreviewChanged/StickyChanged messages) to prevent focus hijacking.
+        if not self._initial_layout_applied:
+            self._initial_layout_applied = True
+            if sessions_view.preview_session_id or sessions_view._sticky_session_ids:
+                pane_bridge.on_preview_changed(PreviewChanged(sessions_view.preview_session_id))
+                if sessions_view._sticky_session_ids:
+                    pane_bridge.on_sticky_changed(StickyChanged(sessions_view._sticky_session_ids.copy()))
+            self._update_banner_compactness(len(sessions_view._sticky_session_ids))
+        elif self._is_reload:
+            # SIGUSR2 reload: panes already exist, just sync bridge state
+            # without calling apply_layout (which would tear down and rebuild).
+            self._is_reload = False
+            pane_bridge._preview_session_id = sessions_view.preview_session_id
+            pane_bridge._sticky_session_ids = sessions_view._sticky_session_ids.copy()
+            # Seed the pane manager's specs and layout signature so the
+            # first user interaction takes the lightweight _update_active_pane
+            # path instead of a destructive _render_layout rebuild.
+            pane_bridge.seed_layout_for_reload(
+                active_session_id=pane_bridge._preview_session_id,
+                sticky_session_ids=pane_bridge._sticky_session_ids,
+                get_computer_info=pane_bridge._get_computer_info,
+            )
+            self._update_banner_compactness(len(pane_bridge._sticky_session_ids))
+
+    # --- Pane manager message forwarding ---
+    # Textual messages bubble UP through ancestors, not sideways to siblings.
+    # PaneManagerBridge is a sibling of TabbedContent, so it never receives
+    # messages posted by SessionsView. We forward them here.
+
+    def on_preview_changed(self, message: PreviewChanged) -> None:
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge.on_preview_changed(message)
+        self._save_state()
+
+    def on_sticky_changed(self, message: StickyChanged) -> None:
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge.on_sticky_changed(message)
+        self._update_banner_compactness(len(message.session_ids))
+        self._save_state()
+
+    def on_focus_pane_request(self, message: FocusPaneRequest) -> None:
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge.on_focus_pane_request(message)
+
+    def on_doc_preview_request(self, message: DocPreviewRequest) -> None:
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge.on_doc_preview_request(message)
+
+    def on_cursor_context_changed(self, message: CursorContextChanged) -> None:
+        action_bar = self.query_one("#action-bar", ActionBar)
+        action_bar.cursor_item_type = message.item_type
 
     # --- WebSocket event handling ---
 
@@ -225,7 +465,17 @@ class TelecApp(App[None]):
 
         elif isinstance(event, ProjectsInitialEvent):
             prep_view = self.query_one("#preparation-view", PreparationView)
-            prep_view.update_data(event.data.projects)
+            projects_with_todos = [
+                ProjectWithTodosInfo(
+                    computer=p.computer,
+                    name=p.name,
+                    path=p.path,
+                    description=p.description,
+                    todos=getattr(p, "todos", []),
+                )
+                for p in event.data.projects
+            ]
+            prep_view.update_data(projects_with_todos)
 
         elif isinstance(event, SessionStartedEvent):
             self.post_message(SessionStarted(event.data))
@@ -259,36 +509,60 @@ class TelecApp(App[None]):
             self.notify(event.data.message, severity="error")
 
         else:
-            event_name = getattr(event, "event", "")
-            if str(event_name).startswith("todo_"):
-                self._refresh_data()
-            else:
-                logger.debug("Unhandled WS event: %s", event_name)
+            if event.event == "computer_updated":
+                self._reload_computers()
+            self._refresh_data()
 
     # --- Message handlers for WS-generated messages ---
 
     def on_session_started(self, message: SessionStarted) -> None:
-        sessions_view = self.query_one("#sessions-view", SessionsView)
-        sessions_view.update_session(message.session)
+        session = message.session
+        self._session_agents[session.session_id] = session.active_agent or "claude"
+        # Auto-select new user-initiated sessions (not AI-delegated children)
+        if not session.initiator_session_id:
+            sessions_view = self.query_one("#sessions-view", SessionsView)
+            sessions_view.request_select_session(session.session_id)
+        # Trigger full data refresh so tree rebuilds
+        self._refresh_data()
+        self._save_state()
 
     def on_session_updated(self, message: SessionUpdated) -> None:
         sessions_view = self.query_one("#sessions-view", SessionsView)
         sessions_view.update_session(message.session)
+        # Session may now have a tmux pane — try pending auto-select
+        sessions_view._apply_pending_selection()
 
     def on_session_closed(self, message: SessionClosed) -> None:
+        self._session_agents.pop(message.session_id, None)
         self._refresh_data()
+        self._save_state()
 
     def on_agent_activity(self, message: AgentActivity) -> None:
         sessions_view = self.query_one("#sessions-view", SessionsView)
         if message.activity_type == "agent_input":
+            sessions_view.clear_active_tool(message.session_id)
             sessions_view.set_input_highlight(message.session_id)
+            self._save_state()
         elif message.activity_type == "agent_stop":
+            sessions_view.clear_active_tool(message.session_id)
             sessions_view.set_output_highlight(message.session_id, message.summary or "")
             self._save_state()
         elif message.activity_type == "tool_use" and message.tool_name:
             preview = message.tool_preview or ""
+            if preview.startswith(message.tool_name):
+                preview = preview[len(message.tool_name) :].lstrip()
             tool_info = f"{message.tool_name}: {preview}" if preview else message.tool_name
             sessions_view.set_active_tool(message.session_id, tool_info)
+            self._save_state()
+
+        # Feed agent activity to animation trigger (both banner and logo targets)
+        if self._activity_trigger is not None:
+            from teleclaude.cli.tui.animation_triggers import ActivityTrigger
+
+            if isinstance(self._activity_trigger, ActivityTrigger):
+                agent = self._session_agents.get(message.session_id, "claude")
+                self._activity_trigger.on_agent_activity(agent, is_big=True)
+                self._activity_trigger.on_agent_activity(agent, is_big=False)
 
     # --- Action handlers for user-initiated actions ---
 
@@ -314,17 +588,39 @@ class TelecApp(App[None]):
             self.notify(f"Failed to kill session: {e}", severity="error")
 
     @work(exclusive=True, group="session-action")
+    async def on_revive_session_request(self, message: ReviveSessionRequest) -> None:
+        """Revive a headless session by sending Enter key."""
+        try:
+            await self.api.send_keys(
+                session_id=message.session_id,
+                computer=message.computer,
+                key="enter",
+                count=1,
+            )
+            self.notify("Reviving headless session...")
+            # Refresh after a delay to pick up the new tmux pane
+            await asyncio.sleep(2)
+            self._refresh_data()
+        except Exception as e:
+            self.notify(f"Failed to revive session: {e}", severity="error")
+
+    @work(exclusive=True, group="session-action")
     async def on_restart_session_request(self, message: RestartSessionRequest) -> None:
         try:
-            await self.api.end_session(message.session_id, message.computer)
-            await asyncio.sleep(1)
-            await self.api.revive_session(message.session_id)
+            await self.api.agent_restart(message.session_id)
+            self.notify("Restarting agent...")
         except Exception as e:
             self.notify(f"Failed to restart session: {e}", severity="error")
 
     async def on_settings_changed(self, message: SettingsChanged) -> None:
         key = message.key
-        if key.startswith("run_job:"):
+        if key == "pane_theming_mode":
+            self.action_cycle_pane_theming()
+        elif key == "tts_enabled":
+            self._toggle_tts()
+        elif key == "animation_mode":
+            self._cycle_animation(str(message.value))
+        elif key.startswith("run_job:"):
             job_name = key.split(":", 1)[1]
             try:
                 await self.api.run_job(job_name)
@@ -335,19 +631,97 @@ class TelecApp(App[None]):
     # --- Tab switching ---
 
     def action_switch_tab(self, tab_id: str) -> None:
+        logger.info("[PERF] action_switch_tab(%s) START t=%.3f", tab_id, _t.monotonic())
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.active = tab_id
+        box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
+        box_tabs.active_tab = tab_id
         action_bar = self.query_one("#action-bar", ActionBar)
         action_bar.active_view = tab_id
+        self._focus_active_view(tab_id)
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        tab_id = event.pane.id or "sessions"
+        logger.info("[PERF] tab_activated(%s) t=%.3f", tab_id, _t.monotonic())
+        box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
+        box_tabs.active_tab = tab_id
         action_bar = self.query_one("#action-bar", ActionBar)
-        action_bar.active_view = event.pane.id or "sessions"
+        action_bar.active_view = tab_id
+        self._focus_active_view(tab_id)
+
+    def on_box_tab_bar_tab_clicked(self, message: BoxTabBar.TabClicked) -> None:
+        """Handle click on custom tab bar."""
+        self.action_switch_tab(message.tab_id)
+
+    def _focus_active_view(self, tab_id: str) -> None:
+        """Focus the view widget inside the active tab so key bindings work."""
+        view_map = {
+            "sessions": "#sessions-view",
+            "preparation": "#preparation-view",
+            "jobs": "#jobs-view",
+            "config": "#config-view",
+        }
+        selector = view_map.get(tab_id)
+        if selector:
+            try:
+                view = self.query_one(selector)
+                view.focus()
+            except Exception:
+                pass
+
+    # --- TUI pane haze (inactive background) ---
+
+    def _apply_haze_background(self, active: bool) -> None:
+        """Set TUI background based on tmux pane focus state.
+
+        When the TUI pane is inactive (a session pane is focused),
+        apply a subtle haze. When active, use the terminal background.
+        """
+        from teleclaude.cli.tui import theme
+
+        if not theme.should_apply_session_theming():
+            return
+        if active:
+            bg = theme.get_terminal_background()
+        else:
+            bg = theme.get_tui_inactive_background()
+        try:
+            self.screen.styles.background = Color.parse(bg)
+        except Exception:
+            pass
+
+    def on_app_focus(self) -> None:
+        """TUI pane gained focus — debounce to avoid reacting to mouse-down.
+
+        tmux switches pane focus on mouse-down, but we should only apply
+        haze changes after the interaction settles (mouse-up).
+        """
+        self._pane_has_focus = True
+        self._schedule_haze_update(active=True)
+
+    def on_app_blur(self) -> None:
+        """TUI pane lost focus — debounce to avoid reacting to transient events."""
+        self._pane_has_focus = False
+        self._schedule_haze_update(active=False)
+
+    def _schedule_haze_update(self, active: bool) -> None:
+        """Debounce haze updates — wait 350ms to avoid reacting to mouse-down."""
+        timer = getattr(self, "_haze_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._haze_timer = self.set_timer(0.35, lambda: self._apply_haze_if_stable(active))
+
+    def _apply_haze_if_stable(self, active: bool) -> None:
+        """Apply haze only if focus state is still what we expected."""
+        if self._pane_has_focus == active:
+            self._apply_haze_background(active=active)
 
     # --- Pane theming ---
 
     def action_cycle_pane_theming(self) -> None:
         from teleclaude.cli.tui import theme
+        from teleclaude.cli.tui.widgets.session_row import SessionRow
+        from teleclaude.cli.tui.widgets.todo_row import TodoRow
 
         current_level = theme.get_pane_theming_mode_level()
         next_level = (current_level + 1) % 5
@@ -357,6 +731,107 @@ class TelecApp(App[None]):
         status_bar.pane_theming_mode = mode
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.reapply_colors()
+        # Re-apply haze with new theming mode
+        self._apply_haze_background(active=self._pane_has_focus)
+        # Refresh theme-dependent widgets (agent vs peaceful colors)
+        for widget in self.query(SessionRow):
+            widget.refresh()
+        for widget in self.query(TodoRow):
+            widget.refresh()
+
+    # --- TTS toggle ---
+
+    @work(exclusive=True, group="settings")
+    async def _toggle_tts(self) -> None:
+        """Toggle TTS on/off via API."""
+        from teleclaude.cli.models import SettingsPatchInfo, TTSSettingsPatchInfo
+
+        new_val = not self.query_one("#status-bar", StatusBar).tts_enabled
+        try:
+            await self.api.patch_settings(SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=new_val)))
+            status_bar = self.query_one("#status-bar", StatusBar)
+            status_bar.tts_enabled = new_val
+        except Exception as e:
+            self.notify(f"Failed to toggle TTS: {e}", severity="error")
+
+    # --- Banner compactness ---
+
+    def _update_banner_compactness(self, num_stickies: int) -> None:
+        """Switch between full banner (6-line) and compact logo (3-line).
+
+        Uses sticky count (not preview) to avoid flickering on every click.
+        Compact at 4 or 6 total panes (2x2 and 3x2 grids) where the TUI
+        pane is small enough that vertical space matters.
+        """
+        banner_panes = 1 + num_stickies  # TUI + stickies (preview excluded)
+        is_compact = banner_panes in (4, 6)
+        try:
+            self.query_one(Banner).is_compact = is_compact
+        except Exception:
+            pass
+
+    # --- Animation management ---
+
+    def _start_animation_mode(self, mode: str) -> None:
+        """Configure animation engine and triggers for the given mode."""
+        self._stop_animation()
+
+        if mode == "off":
+            return
+
+        from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger
+
+        self._animation_engine.is_enabled = True
+
+        if mode in ("periodic", "party"):
+            interval = 10 if mode == "party" else 60
+            trigger = PeriodicTrigger(self._animation_engine, interval_sec=interval)
+            trigger.task = asyncio.ensure_future(trigger.start())
+            self._periodic_trigger = trigger
+
+        if mode == "party":
+            self._activity_trigger = ActivityTrigger(self._animation_engine)
+
+        # Start the render tick timer (~150ms)
+        self._animation_timer = self.set_interval(0.15, self._animation_tick)
+
+    def _stop_animation(self) -> None:
+        """Stop engine, triggers, and render timer."""
+        from teleclaude.cli.tui.animation_triggers import PeriodicTrigger
+
+        if isinstance(self._periodic_trigger, PeriodicTrigger):
+            self._periodic_trigger.stop()
+        self._periodic_trigger = None
+        self._activity_trigger = None
+
+        self._animation_engine.stop()
+        self._animation_engine.is_enabled = False
+
+        timer = self._animation_timer
+        if timer is not None and hasattr(timer, "stop"):
+            timer.stop()  # type: ignore[union-attr]
+        self._animation_timer = None
+
+        # Clear any lingering animation colors from the banner
+        try:
+            self.query_one(Banner).refresh()
+        except Exception:
+            pass
+
+    def _animation_tick(self) -> None:
+        """Periodic tick: advance engine and refresh banner if frame changed."""
+        if self._animation_engine.update():
+            try:
+                self.query_one(Banner).refresh()
+            except Exception:
+                pass
+
+    def _cycle_animation(self, new_mode: str) -> None:
+        """Set animation mode, reconfigure engine, and update status bar."""
+        self._start_animation_mode(new_mode)
+        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar.animation_mode = new_mode
+        self._save_state()
 
     # --- Refresh ---
 
@@ -378,12 +853,23 @@ class TelecApp(App[None]):
     # --- Signal handlers ---
 
     def _handle_sigusr2(self, _signum: int, _frame: object) -> None:
-        """SIGUSR2: reload TUI."""
-        self.call_from_thread(self._refresh_data)
+        """Catch SIGUSR2 and schedule reload on the event loop."""
+        self._reload_loop.call_soon_threadsafe(self._sigusr2_reload)
+
+    def _sigusr2_reload(self) -> None:
+        """Save state and exit for full process restart.
+
+        Python modules are cached in memory — refreshing CSS and data
+        doesn't pick up code changes. The outer _run_tui() loop detects
+        RELOAD_EXIT and re-execs the process.
+        """
+        self._save_state()
+        self.exit(result=RELOAD_EXIT)
 
     # --- Lifecycle ---
 
     async def action_quit(self) -> None:
+        self._stop_animation()
         self._save_state()
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.cleanup()

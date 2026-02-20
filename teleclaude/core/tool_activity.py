@@ -6,6 +6,25 @@ from collections.abc import Mapping
 
 TOOL_ACTIVITY_PREVIEW_MAX_CHARS = 70
 
+# Fields checked in priority order for a useful preview snippet.
+_PREVIEW_FIELDS = (
+    "command",
+    "file_path",
+    "pattern",
+    "query",
+    "url",
+    "notebook_path",
+    "skill",
+    "prompt",
+    "description",
+)
+
+
+def _first_line(text: str) -> str:
+    """Return text up to the first newline."""
+    idx = text.find("\n")
+    return text[:idx] if idx >= 0 else text
+
 
 def _as_non_empty_str(value: object) -> str | None:
     if not isinstance(value, str):
@@ -34,27 +53,40 @@ def extract_tool_name(raw_payload: Mapping[str, object] | None) -> str | None:
     return _as_non_empty_str(raw_tool)
 
 
+def _extract_detail(tool_input: Mapping[str, object]) -> str | None:
+    """Extract the most interesting detail string from tool_input.
+
+    Checks known high-value fields first, then falls back to the first
+    non-empty string value it finds.  Only the first line is kept.
+    """
+    # Priority fields
+    for field in _PREVIEW_FIELDS:
+        val = _as_non_empty_str(tool_input.get(field))
+        if val:
+            return _first_line(val)
+
+    # Generic fallback: first string value that isn't empty
+    for val in tool_input.values():
+        text = _as_non_empty_str(val)
+        if text:
+            return _first_line(text)
+
+    return None
+
+
 def build_tool_preview(
     *,
     tool_name: str | None,
     raw_payload: Mapping[str, object] | None,
 ) -> str | None:
     """Build compact tool preview text for UI from contract payload fields."""
-    command: str | None = None
-    file_path: str | None = None
-    description: str | None = None
+    detail: str | None = None
 
     if raw_payload:
         tool_input = raw_payload.get("tool_input")
         if isinstance(tool_input, Mapping):
-            command = _as_non_empty_str(tool_input.get("command"))
-            file_path = _as_non_empty_str(tool_input.get("file_path"))
-            description = _as_non_empty_str(tool_input.get("description"))
+            detail = _extract_detail(tool_input)
 
-    if command:
-        return truncate_tool_preview(f"{tool_name or ''} {command}".strip())
-    if file_path:
-        return truncate_tool_preview(f"{tool_name or ''} {file_path}".strip())
-    if description:
-        return truncate_tool_preview(f"{tool_name or ''} {description}".strip())
+    if detail:
+        return truncate_tool_preview(f"{tool_name or ''} {detail}".strip())
     return truncate_tool_preview(tool_name)

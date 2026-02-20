@@ -35,6 +35,7 @@ class TelecCommand(str, Enum):
     WATCH = "watch"
     DOCS = "docs"
     TODO = "todo"
+    ROADMAP = "roadmap"
     CONFIG = "config"
     ONBOARD = "onboard"
 
@@ -42,7 +43,7 @@ class TelecCommand(str, Enum):
 # Completion definitions: (short, long, description)
 _COMMANDS = [cmd.value for cmd in TelecCommand]
 _COMMAND_DESCRIPTIONS = {
-    "list": "List active TeleClaude sessions across all computers",
+    "list": "List sessions (default: spawned by current session, --all for all)",
     "claude": "Start interactive Claude Code session (fast/med/slow)",
     "gemini": "Start interactive Gemini session (fast/med/slow)",
     "codex": "Start interactive Codex session (fast/med/slow)",
@@ -52,6 +53,7 @@ _COMMAND_DESCRIPTIONS = {
     "watch": "Auto-sync docs on file changes",
     "docs": "Query doc snippets (index or fetch by ID)",
     "todo": "Scaffold a todo folder and core files",
+    "roadmap": "View and manage the work item roadmap",
     "config": "Interactive configuration (or get/patch/validate subcommands)",
     "onboard": "Guided onboarding wizard for first-run setup",
 }
@@ -94,10 +96,18 @@ _DOMAINS = [
     ("software-development", "Software dev domain"),
     ("general", "Cross-domain"),
 ]
+_LIST_FLAGS = [
+    ("-h", "--help", "Show usage information"),
+    (None, "--all", "Show all sessions (default: only spawned sessions)"),
+]
 _CONFIG_SUBCOMMANDS = [
     ("get", "Get config values (telec config get [paths...])"),
     ("patch", "Patch config values (telec config patch --yaml '...')"),
-    ("validate", "Validate config file"),
+    ("validate", "Full validation"),
+    ("people", "Manage people (list/add/edit/remove)"),
+    ("env", "Manage environment variables (list/set)"),
+    ("notify", "Toggle notification settings"),
+    ("invite", "Generate invite links for a person"),
 ]
 _CONFIG_FLAGS = [
     ("-h", "--help", "Show usage information"),
@@ -111,6 +121,19 @@ _TODO_SUBCOMMANDS = [
 _TODO_FLAGS = [
     (None, "--project-root", "Project root directory"),
     (None, "--after", "Comma-separated dependency slugs"),
+]
+_ROADMAP_SUBCOMMANDS = [
+    ("add", "Add entry to the roadmap"),
+    ("remove", "Remove entry from the roadmap"),
+    ("move", "Reorder an entry in the roadmap"),
+    ("deps", "Set dependencies for an entry"),
+]
+_ROADMAP_FLAGS = [
+    (None, "--group", "Visual grouping label"),
+    (None, "--after", "Comma-separated dependency slugs (add/deps) or slug to insert after (move)"),
+    (None, "--before", "Slug to insert before (move/add)"),
+    (None, "--description", "Summary description"),
+    (None, "--project-root", "Project root directory"),
 ]
 
 
@@ -159,9 +182,13 @@ def _handle_completion() -> None:
         _complete_agent(rest, current, is_partial)
     elif cmd == "todo":
         _complete_todo(rest, current, is_partial)
+    elif cmd == "roadmap":
+        _complete_roadmap(rest, current, is_partial)
     elif cmd == "config":
         _complete_config(rest, current, is_partial)
-    # list, init, onboard have no further completions
+    elif cmd == "list":
+        _complete_flags(_LIST_FLAGS, rest, current, is_partial)
+    # init, onboard have no further completions
 
 
 def _flag_used(flag_tuple: tuple[str | None, str, str], used: set[str]) -> bool:
@@ -264,6 +291,26 @@ def _complete_todo(rest: list[str], current: str, is_partial: bool) -> None:
             _print_flag(flag)
 
 
+def _complete_roadmap(rest: list[str], current: str, is_partial: bool) -> None:
+    """Complete telec roadmap arguments."""
+    if not rest:
+        for subcommand, desc in _ROADMAP_SUBCOMMANDS:
+            if not is_partial or subcommand.startswith(current):
+                _print_completion(subcommand, desc)
+        return
+
+    used = set(rest[1:])
+    if is_partial and current.startswith("-"):
+        for flag in _ROADMAP_FLAGS:
+            if _flag_matches(flag, current) and not _flag_used(flag, used):
+                _print_flag(flag)
+        return
+
+    for flag in _ROADMAP_FLAGS:
+        if not _flag_used(flag, used):
+            _print_flag(flag)
+
+
 def _complete_config(rest: list[str], current: str, is_partial: bool) -> None:
     """Complete telec config arguments."""
     if not rest:
@@ -341,23 +388,40 @@ def main() -> None:
 
 
 def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
-    """Run TUI application."""
+    """Run TUI application.
+
+    On SIGUSR2 the app exits with RELOAD_EXIT. We skip tmux session
+    cleanup and os.execvp to restart the process, reloading all Python
+    modules from disk.
+    """
     logger = get_logger(__name__)
-    from teleclaude.cli.tui.app import TelecApp
+    from teleclaude.cli.tui.app import RELOAD_EXIT, TelecApp
 
     api = TelecAPIClient()
     app = TelecApp(api, start_view=start_view)
 
+    reload_requested = False
+
     try:
         _ensure_tmux_status_hidden_for_tui()
         _ensure_tmux_mouse_on()
-        app.run()
+        result = app.run()
+        reload_requested = result == RELOAD_EXIT
     except KeyboardInterrupt:
         pass  # Clean exit on Ctrl-C
     except Exception:
         logger.exception("telec TUI crashed")
     finally:
-        _maybe_kill_tui_session()
+        if not reload_requested:
+            _maybe_kill_tui_session()
+
+    if reload_requested:
+        # Re-exec via the Python interpreter + module flag, not sys.argv[0]
+        # (which may be a .py file path without execute permission).
+        # Mark as reload so the new process skips re-applying pane layout.
+        os.environ["TELEC_RELOAD"] = "1"
+        python = sys.executable
+        os.execvp(python, [python, "-m", "teleclaude.cli.telec"])
 
 
 def _run_tui_config_mode(guided: bool = False) -> None:
@@ -380,8 +444,16 @@ def _handle_cli_command(argv: list[str]) -> None:
         cmd_enum = None
 
     if cmd_enum is TelecCommand.LIST:
+        if args and args[0] in ("--help", "-h"):
+            print(
+                "Usage:\n"
+                "  telec list           # List child sessions of the current session\n"
+                "  telec list --all     # List all active sessions\n"
+            )
+            return
+        show_all = "--all" in args
         api = TelecAPIClient()
-        asyncio.run(_list_sessions(api))
+        asyncio.run(_list_sessions(api, show_all=show_all))
     elif cmd_enum in (TelecCommand.CLAUDE, TelecCommand.GEMINI, TelecCommand.CODEX):
         mode = args[0] if args else "slow"
         prompt = " ".join(args[1:]) if len(args) > 1 else None
@@ -398,6 +470,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         _handle_docs(args)
     elif cmd_enum is TelecCommand.TODO:
         _handle_todo(args)
+    elif cmd_enum is TelecCommand.ROADMAP:
+        _handle_roadmap(args)
     elif cmd_enum is TelecCommand.CONFIG:
         _handle_config(args)
     elif cmd_enum is TelecCommand.ONBOARD:
@@ -471,21 +545,43 @@ def _ensure_tmux_status_hidden_for_tui() -> None:
         return
 
 
-async def _list_sessions(api: TelecAPIClient) -> None:
+def _get_caller_session_id() -> str | None:
+    """Read the calling session's ID from $TMPDIR/teleclaude_session_id."""
+    tmpdir = os.environ.get("TMPDIR", "")
+    if not tmpdir:
+        return None
+    id_file = Path(tmpdir) / "teleclaude_session_id"
+    try:
+        return id_file.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
+
+async def _list_sessions(api: TelecAPIClient, *, show_all: bool = False) -> None:
     """List sessions to stdout.
+
+    Default: show only sessions spawned by the calling session (via initiator_session_id).
+    With --all: show all sessions.
 
     Args:
         api: API client
+        show_all: If True, list all sessions regardless of initiator
     """
+    caller_id = None if show_all else _get_caller_session_id()
+
     await api.connect()
     try:
         sessions = await api.list_sessions()
+        if caller_id:
+            sessions = [s for s in sessions if s.initiator_session_id == caller_id]
         for session in sessions:
             computer = session.computer or "?"
             agent = session.active_agent or "?"
             mode = session.thinking_mode or "?"
             title = session.title
             print(f"{computer}: {agent}/{mode} - {title}")
+        if not sessions and caller_id:
+            print("No child sessions. Use --all to list all sessions.")
     finally:
         await api.close()
 
@@ -761,7 +857,7 @@ def _usage() -> str:
     return (
         "Usage:\n"
         "  telec                          # Open TUI (Sessions view)\n"
-        "  telec list                     # List sessions (stdout, no TUI)\n"
+        "  telec list [--all]             # List sessions (default: spawned by current, --all for all)\n"
         "  telec claude [mode] [prompt]   # Start Claude (mode: fast/med/slow, prompt optional)\n"
         "  telec gemini [mode] [prompt]   # Start Gemini (mode: fast/med/slow, prompt optional)\n"
         "  telec codex [mode] [prompt]    # Start Codex (mode: fast/med/slow/deep, prompt optional)\n"
@@ -777,6 +873,11 @@ def _usage() -> str:
         "                                 # Scaffold todo files without modifying roadmap\n"
         "  telec todo validate [slug] [--project-root PATH]\n"
         "                                 # Validate todo files and state.json schema\n"
+        "  telec roadmap                  # Show roadmap (grouped, with deps & state)\n"
+        "  telec roadmap add <slug>       # Add entry (--group, --after, --description, --before)\n"
+        "  telec roadmap remove <slug>    # Remove entry\n"
+        "  telec roadmap move <slug>      # Reorder (--before or --after)\n"
+        "  telec roadmap deps <slug>      # Set dependencies (--after dep1,dep2)\n"
         "  telec config                   # Interactive configuration menu\n"
         "  telec config get/patch/validate # Config subcommands (daemon config.yml)\n"
         "  telec onboard                  # Guided onboarding wizard\n"
@@ -916,7 +1017,321 @@ def _todo_usage() -> str:
         "  - create: Scaffolds todos/{slug}/requirements.md, implementation-plan.md, etc.\n"
         "  - validate: Checks state.json schema and required files for 'Ready' status.\n"
         "  - If slug is omitted for validate, all active todos are checked.\n"
-        "  - Does NOT modify todos/roadmap.md\n"
+        "  - Use --after with create to also register the entry in roadmap.yaml.\n"
+    )
+
+
+def _handle_roadmap(args: list[str]) -> None:
+    """Handle telec roadmap commands."""
+    if args and args[0] in ("--help", "-h"):
+        print(_roadmap_usage())
+        return
+
+    if not args:
+        _handle_roadmap_show(args)
+        return
+
+    subcommand = args[0]
+    if subcommand == "add":
+        _handle_roadmap_add(args[1:])
+    elif subcommand == "remove":
+        _handle_roadmap_remove(args[1:])
+    elif subcommand == "move":
+        _handle_roadmap_move(args[1:])
+    elif subcommand == "deps":
+        _handle_roadmap_deps(args[1:])
+    elif subcommand.startswith("-"):
+        # Flags passed to show (e.g. --project-root)
+        _handle_roadmap_show(args)
+    else:
+        print(f"Unknown roadmap subcommand: {subcommand}")
+        print(_roadmap_usage())
+        raise SystemExit(1)
+
+
+def _handle_roadmap_show(args: list[str]) -> None:
+    """Display the roadmap grouped by group, with deps and state."""
+    import json
+
+    from teleclaude.core.next_machine.core import load_roadmap
+
+    project_root = Path.cwd()
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        else:
+            i += 1
+
+    entries = load_roadmap(str(project_root))
+    if not entries:
+        print("Roadmap is empty.")
+        return
+
+    # Group entries preserving order of first appearance
+    from teleclaude.core.next_machine.core import RoadmapEntry
+
+    groups: dict[str, list[RoadmapEntry]] = {}
+    for entry in entries:
+        key = entry.group or ""
+        groups.setdefault(key, []).append(entry)
+
+    todos_root = project_root / "todos"
+    for group_name, group_entries in groups.items():
+        if group_name:
+            print(f"\n  {group_name}")
+            print(f"  {'─' * len(group_name)}")
+        else:
+            print()
+
+        for entry in group_entries:
+            # Load state from state.json
+            state_path = todos_root / entry.slug / "state.json"
+            phase = "?"
+            if state_path.exists():
+                try:
+                    state = json.loads(state_path.read_text())
+                    phase = state.get("phase", "?")
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+            deps_str = ""
+            if entry.after:
+                deps_str = f"  (after: {', '.join(entry.after)})"
+
+            print(f"    {entry.slug}  [{phase}]{deps_str}")
+
+
+def _handle_roadmap_add(args: list[str]) -> None:
+    """Handle telec roadmap add <slug> [--group G] [--after d1,d2] [--description T] [--before S]."""
+    from teleclaude.core.next_machine.core import add_to_roadmap
+
+    if not args or args[0] in ("--help", "-h"):
+        print(_roadmap_usage())
+        return
+
+    slug: str | None = None
+    project_root = Path.cwd()
+    group: str | None = None
+    after: list[str] | None = None
+    description: str | None = None
+    before: str | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg == "--group" and i + 1 < len(args):
+            group = args[i + 1]
+            i += 2
+        elif arg == "--after" and i + 1 < len(args):
+            after = [p.strip() for p in args[i + 1].split(",") if p.strip()]
+            i += 2
+        elif arg == "--description" and i + 1 < len(args):
+            description = args[i + 1]
+            i += 2
+        elif arg == "--before" and i + 1 < len(args):
+            before = args[i + 1]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_roadmap_usage())
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print(_roadmap_usage())
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if not slug:
+        print("Missing required slug.")
+        print(_roadmap_usage())
+        raise SystemExit(1)
+
+    add_to_roadmap(str(project_root), slug, group=group, after=after, description=description, before=before)
+    print(f"Added {slug} to roadmap.")
+
+
+def _handle_roadmap_remove(args: list[str]) -> None:
+    """Handle telec roadmap remove <slug>."""
+    from teleclaude.core.next_machine.core import remove_from_roadmap
+
+    if not args or args[0] in ("--help", "-h"):
+        print(_roadmap_usage())
+        return
+
+    slug: str | None = None
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_roadmap_usage())
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if not slug:
+        print("Missing required slug.")
+        print(_roadmap_usage())
+        raise SystemExit(1)
+
+    if remove_from_roadmap(str(project_root), slug):
+        print(f"Removed {slug} from roadmap.")
+    else:
+        print(f"Slug not found in roadmap: {slug}")
+        raise SystemExit(1)
+
+
+def _handle_roadmap_move(args: list[str]) -> None:
+    """Handle telec roadmap move <slug> --before <s> | --after <s>."""
+    from teleclaude.core.next_machine.core import move_in_roadmap
+
+    if not args or args[0] in ("--help", "-h"):
+        print(_roadmap_usage())
+        return
+
+    slug: str | None = None
+    project_root = Path.cwd()
+    before: str | None = None
+    after: str | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg == "--before" and i + 1 < len(args):
+            before = args[i + 1]
+            i += 2
+        elif arg == "--after" and i + 1 < len(args):
+            after = args[i + 1]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_roadmap_usage())
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if not slug:
+        print("Missing required slug.")
+        print(_roadmap_usage())
+        raise SystemExit(1)
+
+    if not before and not after:
+        print("Either --before or --after is required.")
+        print(_roadmap_usage())
+        raise SystemExit(1)
+
+    if move_in_roadmap(str(project_root), slug, before=before, after=after):
+        target = before or after
+        direction = "before" if before else "after"
+        print(f"Moved {slug} {direction} {target}.")
+    else:
+        print(f"Slug not found in roadmap: {slug}")
+        raise SystemExit(1)
+
+
+def _handle_roadmap_deps(args: list[str]) -> None:
+    """Handle telec roadmap deps <slug> --after dep1,dep2."""
+    from teleclaude.core.next_machine.core import load_roadmap, save_roadmap
+
+    if not args or args[0] in ("--help", "-h"):
+        print(_roadmap_usage())
+        return
+
+    slug: str | None = None
+    project_root = Path.cwd()
+    after: list[str] | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg == "--after" and i + 1 < len(args):
+            after = [p.strip() for p in args[i + 1].split(",") if p.strip()]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_roadmap_usage())
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if not slug:
+        print("Missing required slug.")
+        print(_roadmap_usage())
+        raise SystemExit(1)
+
+    if after is None:
+        print("--after is required.")
+        print(_roadmap_usage())
+        raise SystemExit(1)
+
+    cwd = str(project_root)
+    entries = load_roadmap(cwd)
+    found = False
+    for entry in entries:
+        if entry.slug == slug:
+            entry.after = after
+            found = True
+            break
+
+    if not found:
+        print(f"Slug not found in roadmap: {slug}")
+        raise SystemExit(1)
+
+    save_roadmap(cwd, entries)
+    if after:
+        print(f"Set dependencies for {slug}: {', '.join(after)}")
+    else:
+        print(f"Cleared dependencies for {slug}.")
+
+
+def _roadmap_usage() -> str:
+    """Return usage string for telec roadmap."""
+    return (
+        "Usage:\n"
+        "  telec roadmap                                   # Show roadmap (grouped, with state)\n"
+        "  telec roadmap add <slug> [options]               # Add entry to roadmap\n"
+        "  telec roadmap remove <slug>                      # Remove entry from roadmap\n"
+        "  telec roadmap move <slug> --before <s>           # Reorder: move before another\n"
+        "  telec roadmap move <slug> --after <s>            # Reorder: move after another\n"
+        "  telec roadmap deps <slug> --after dep1,dep2      # Set dependencies\n"
+        "\n"
+        "Add options:\n"
+        "  --group GROUP          Visual grouping label\n"
+        "  --after dep1,dep2      Comma-separated dependency slugs\n"
+        "  --before <slug>        Insert before this slug (default: append)\n"
+        "  --description TEXT     Summary description\n"
+        "  --project-root PATH    Project root directory\n"
     )
 
 

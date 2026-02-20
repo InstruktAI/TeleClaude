@@ -22,9 +22,19 @@ from teleclaude.helpers.agent_types import AgentName
 # ---------------------------------------------------------------------------
 
 
+def _bypass_daemon_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force run_job() to skip the daemon API path and use subprocess fallback."""
+    _orig = os.path.exists
+    monkeypatch.setattr(
+        "os.path.exists",
+        lambda p: False if p == "/tmp/teleclaude.sock" else _orig(p),
+    )
+
+
 @pytest.mark.unit
 def test_run_job_no_tools_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     """run_job() must NOT pass --tools '' (unlike run_once)."""
+    _bypass_daemon_api(monkeypatch)
     captured_cmd: list[str] = []
 
     def fake_run(cmd, **kwargs):
@@ -45,6 +55,7 @@ def test_run_job_no_tools_flag(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.unit
 def test_run_job_sets_role_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """run_job() sets TELECLAUDE_JOB_ROLE in subprocess environment."""
+    _bypass_daemon_api(monkeypatch)
     captured_env: dict = {}
 
     def fake_run(cmd, **kwargs):
@@ -63,6 +74,7 @@ def test_run_job_sets_role_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.unit
 def test_run_job_returns_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:
     """run_job() returns the subprocess exit code."""
+    _bypass_daemon_api(monkeypatch)
     monkeypatch.setattr(
         subprocess,
         "run",
@@ -78,6 +90,7 @@ def test_run_job_returns_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.unit
 def test_run_job_passes_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     """run_job() passes timeout_s to subprocess.run."""
+    _bypass_daemon_api(monkeypatch)
     captured_kwargs: dict = {}
 
     def fake_run(cmd, **kwargs):
@@ -94,53 +107,65 @@ def test_run_job_passes_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# _run_agent_job() uses run_job(), not daemon API
+# _run_agent_job() creates session via daemon API
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_run_agent_job_calls_run_job(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_run_agent_job() dispatches to run_job() instead of daemon socket."""
+def test_run_agent_job_creates_session_via_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_run_agent_job() sends create_session to daemon via TelecAPIClient."""
+    from types import SimpleNamespace
+
     call_args: dict = {}
 
-    def fake_run_job(**kwargs):
-        call_args.update(kwargs)
-        return 0
+    class FakeClient:
+        async def connect(self) -> None:
+            pass
 
-    monkeypatch.setattr("teleclaude.helpers.agent_cli.run_job", fake_run_job)
+        async def create_session(self, **kwargs: object) -> None:
+            call_args.update(kwargs)
+
+        async def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("teleclaude.cli.api_client.TelecAPIClient", lambda **_kw: FakeClient())
+    monkeypatch.setattr(
+        "teleclaude.config.config",
+        SimpleNamespace(computer=SimpleNamespace(name="TestHost")),
+    )
 
     config = JobScheduleConfig(type="agent", job="memory-review", timeout=900)
     result = runner._run_agent_job("memory_review", config)
 
     assert result is True
+    assert call_args["computer"] == "TestHost"
     assert call_args["agent"] == "claude"
     assert call_args["thinking_mode"] == "fast"
-    assert call_args["role"] == "admin"
-    assert call_args["timeout_s"] == 900
-    assert call_args["prompt"] == runner._build_agent_job_message("memory_review", config)
-
-
-@pytest.mark.unit
-def test_run_agent_job_default_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_run_agent_job() uses 30-minute default when config has no timeout."""
-    call_args: dict = {}
-
-    def fake_run_job(**kwargs):
-        call_args.update(kwargs)
-        return 0
-
-    monkeypatch.setattr("teleclaude.helpers.agent_cli.run_job", fake_run_job)
-
-    config = JobScheduleConfig(type="agent", job="memory-review")
-    runner._run_agent_job("memory_review", config)
-
-    assert call_args["timeout_s"] == 1800
+    assert call_args["title"] == "Job: memory_review"
+    assert call_args["human_role"] == "admin"
+    assert "memory_review job" in call_args["message"]
 
 
 @pytest.mark.unit
 def test_run_agent_job_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_run_agent_job() returns False on non-zero exit."""
-    monkeypatch.setattr("teleclaude.helpers.agent_cli.run_job", lambda **kw: 1)
+    """_run_agent_job() returns False when API call fails."""
+    from types import SimpleNamespace
+
+    class FailingClient:
+        async def connect(self) -> None:
+            pass
+
+        async def create_session(self, **kwargs: object) -> None:
+            raise ConnectionError("daemon not available")
+
+        async def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("teleclaude.cli.api_client.TelecAPIClient", lambda **_kw: FailingClient())
+    monkeypatch.setattr(
+        "teleclaude.config.config",
+        SimpleNamespace(computer=SimpleNamespace(name="TestHost")),
+    )
 
     config = JobScheduleConfig(type="agent", job="memory-review")
     result = runner._run_agent_job("memory_review", config)

@@ -6,7 +6,6 @@ Tests validation rules (tested directly, not via MCP):
 3. MCP tool validation (slug format, roadmap presence)
 """
 
-import json
 import os
 import tempfile
 from pathlib import Path
@@ -18,10 +17,17 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.next_machine import (
     detect_circular_dependency,
-    read_dependencies,
-    write_dependencies,
+    load_roadmap_deps,
+    save_roadmap,
 )
+from teleclaude.core.next_machine.core import RoadmapEntry
 from teleclaude.mcp_server import TeleClaudeMCPServer
+
+
+def _write_roadmap_yaml(tmpdir: str | Path, slugs: list[str], deps: dict[str, list[str]] | None = None) -> None:
+    """Helper to write roadmap.yaml fixtures in tests."""
+    entries = [RoadmapEntry(slug=s, after=(deps or {}).get(s, [])) for s in slugs]
+    save_roadmap(str(tmpdir), entries)
 
 
 def test_detect_circular_dependency_simple_cycle() -> None:
@@ -55,38 +61,30 @@ def test_detect_circular_dependency_no_cycle() -> None:
     assert cycle is None
 
 
-def test_read_write_dependencies_roundtrip() -> None:
-    """Paranoid test that write followed by read preserves data."""
+def test_save_and_load_roadmap_deps_roundtrip() -> None:
+    """Paranoid test that save followed by load preserves dependency data."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        cwd = Path(tmpdir)
         deps_to_write = {"a": ["b", "c"], "b": ["c"]}
+        _write_roadmap_yaml(tmpdir, ["a", "b", "c"], deps_to_write)
 
-        write_dependencies(cwd, deps_to_write)
-        deps_read = read_dependencies(cwd)
-
+        deps_read = load_roadmap_deps(str(tmpdir))
         assert deps_read == deps_to_write
 
 
-def test_read_dependencies_missing_file() -> None:
-    """Paranoid test that missing dependencies.json returns empty dict."""
+def test_load_roadmap_deps_missing_file() -> None:
+    """Paranoid test that missing roadmap.yaml returns empty dict."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        cwd = Path(tmpdir)
-        deps = read_dependencies(cwd)
+        deps = load_roadmap_deps(str(tmpdir))
         assert deps == {}
 
 
-def test_write_dependencies_creates_todos_dir() -> None:
-    """Paranoid test that write_dependencies creates todos/ if missing."""
+def test_save_roadmap_creates_todos_dir() -> None:
+    """Paranoid test that save_roadmap creates todos/ if missing."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        cwd = Path(tmpdir)
-        write_dependencies(cwd, {"a": ["b"]})
+        _write_roadmap_yaml(tmpdir, ["a", "b"], {"a": ["b"]})
 
-        deps_file = cwd / "todos" / "dependencies.json"
-        assert deps_file.exists()
-
-        with open(deps_file, encoding="utf-8") as f:
-            data = json.load(f)
-        assert data == {"a": ["b"]}
+        roadmap_file = Path(tmpdir) / "todos" / "roadmap.yaml"
+        assert roadmap_file.exists()
 
 
 # =============================================================================
@@ -101,10 +99,7 @@ async def test_mcp_set_dependencies_invalid_slug_format() -> None:
         cwd = Path(tmpdir)
 
         # Create roadmap with valid slugs
-        todos_dir = cwd / "todos"
-        todos_dir.mkdir()
-        roadmap = todos_dir / "roadmap.md"
-        roadmap.write_text("- valid-slug\n- another-slug\n")
+        _write_roadmap_yaml(tmpdir, ["valid-slug", "another-slug"])
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
@@ -131,11 +126,7 @@ async def test_mcp_set_dependencies_slug_not_in_roadmap() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         cwd = Path(tmpdir)
 
-        # Create roadmap with some slugs
-        todos_dir = cwd / "todos"
-        todos_dir.mkdir()
-        roadmap = todos_dir / "roadmap.md"
-        roadmap.write_text("- existing-slug\n- another-slug\n")
+        _write_roadmap_yaml(tmpdir, ["existing-slug", "another-slug"])
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
@@ -154,11 +145,7 @@ async def test_mcp_set_dependencies_dependency_not_in_roadmap() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         cwd = Path(tmpdir)
 
-        # Create roadmap with some slugs
-        todos_dir = cwd / "todos"
-        todos_dir.mkdir()
-        roadmap = todos_dir / "roadmap.md"
-        roadmap.write_text("- item-a\n- item-b\n")
+        _write_roadmap_yaml(tmpdir, ["item-a", "item-b"])
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
@@ -177,11 +164,7 @@ async def test_mcp_set_dependencies_self_reference_via_tool() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         cwd = Path(tmpdir)
 
-        # Create roadmap
-        todos_dir = cwd / "todos"
-        todos_dir.mkdir()
-        roadmap = todos_dir / "roadmap.md"
-        roadmap.write_text("- item-a\n")
+        _write_roadmap_yaml(tmpdir, ["item-a"])
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
@@ -200,11 +183,7 @@ async def test_mcp_set_dependencies_circular_via_tool() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         cwd = Path(tmpdir)
 
-        # Create roadmap
-        todos_dir = cwd / "todos"
-        todos_dir.mkdir()
-        roadmap = todos_dir / "roadmap.md"
-        roadmap.write_text("- item-a\n- item-b\n- item-c\n")
+        _write_roadmap_yaml(tmpdir, ["item-a", "item-b", "item-c"])
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()

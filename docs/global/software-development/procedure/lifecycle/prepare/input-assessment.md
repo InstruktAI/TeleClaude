@@ -34,8 +34,8 @@ If any criterion fails, apply story-splitting patterns.
 2. If breakdown is needed:
    - Create focused todos: `todos/{slug}-1/`, `todos/{slug}-2/`, etc.
    - Each new `input.md` is a clean briefing (intended outcome only).
-   - Update `todos/dependencies.json` with the new slugs.
-   - Update `todos/roadmap.md` to insert new slugs before `{slug}`.
+   - Update `todos/roadmap.yaml` with the new slugs and dependencies.
+   - Insert new slugs before `{slug}` in `todos/roadmap.yaml`.
    - Create `todos/{slug}/breakdown.md` with split reasoning.
    - Update `todos/{slug}/state.json`:
      ```json

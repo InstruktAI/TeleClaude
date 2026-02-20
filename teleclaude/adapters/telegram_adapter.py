@@ -160,6 +160,7 @@ class TelegramAdapter(
         self._processed_voice_messages: set[str] = set()  # Track processed voice message IDs with edit state
         self._mcp_message_queues: dict[int, asyncio.Queue[object]] = {}  #  Event-driven MCP delivery: topic_id -> queue
         self._pending_edits: dict[str, EditContext] = {}  # Track pending edits (message_id -> mutable context)
+        self._last_edit_hash: dict[str, str] = {}  # message_id -> content hash (skip no-op edits)
         self._topic_creation_locks: dict[str, asyncio.Lock] = {}  # Prevent duplicate topic creation per session_id
         self._topic_ready_events: dict[int, asyncio.Event] = {}  # topic_id -> readiness event
         self._topic_ready_cache: set[int] = set()  # topic_ids confirmed via forum_topic_created

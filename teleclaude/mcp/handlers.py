@@ -33,10 +33,11 @@ from teleclaude.core.next_machine.core import (
     detect_circular_dependency,
     get_stash_entries,
     has_uncommitted_changes,
+    load_roadmap,
+    load_roadmap_deps,
     mark_phase,
-    read_dependencies,
+    save_roadmap,
     sync_main_planning_to_all_worktrees,
-    write_dependencies,
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import register_listener, unregister_listener
@@ -476,7 +477,7 @@ class MCPHandlersMixin:
 
     async def _list_local_sessions(self) -> list[SessionInfo]:
         """List sessions from local database directly."""
-        # returns SessionSummary dataclasses
+        # returns SessionSnapshot dataclasses
         sessions = await command_handlers.list_sessions()
         result: list[SessionInfo] = []
         for s in sessions:
@@ -1158,33 +1159,32 @@ class MCPHandlersMixin:
         if slug in after:
             return f"ERROR: SELF_REFERENCE\nSlug '{slug}' cannot depend on itself."
 
-        roadmap_path = Path(cwd) / "todos" / "roadmap.md"
-        if not roadmap_path.exists():
-            return "ERROR: NO_ROADMAP\ntodos/roadmap.md not found."
+        entries = load_roadmap(cwd)
+        if not entries:
+            return "ERROR: NO_ROADMAP\ntodos/roadmap.yaml not found."
 
-        content = roadmap_path.read_text(encoding="utf-8")
-        roadmap_slug_pattern = re.compile(r"^-\s+([a-z0-9-]+)", re.MULTILINE)
-        roadmap_slugs = set(roadmap_slug_pattern.findall(content))
+        roadmap_slugs = {e.slug for e in entries}
 
         if slug not in roadmap_slugs:
-            return f"ERROR: SLUG_NOT_FOUND\nSlug '{slug}' not found in roadmap.md."
+            return f"ERROR: SLUG_NOT_FOUND\nSlug '{slug}' not found in roadmap.yaml."
 
         for dep in after:
             if dep not in roadmap_slugs:
-                return f"ERROR: DEP_NOT_FOUND\nDependency '{dep}' not found in roadmap.md."
+                return f"ERROR: DEP_NOT_FOUND\nDependency '{dep}' not found in roadmap.yaml."
 
-        deps = read_dependencies(cwd)
+        deps = load_roadmap_deps(cwd)
         cycle = detect_circular_dependency(deps, slug, after)
         if cycle:
             cycle_str = " -> ".join(cycle)
             return f"ERROR: CIRCULAR_DEP\nCircular dependency detected: {cycle_str}"
 
-        if after:
-            deps[slug] = after
-        elif slug in deps:
-            del deps[slug]
+        # Update the matching entry's after field
+        for entry in entries:
+            if entry.slug == slug:
+                entry.after = after
+                break
 
-        write_dependencies(cwd, deps)
+        save_roadmap(cwd, entries)
         sync_main_planning_to_all_worktrees(cwd)
         return (
             f"OK: Dependencies set for '{slug}': {', '.join(after)}"

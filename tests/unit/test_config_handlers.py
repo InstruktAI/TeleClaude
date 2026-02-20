@@ -28,7 +28,7 @@ def test_get_global_config_default(mock_teleclaude_dir):
 
 
 def test_save_and_load_global_config(mock_teleclaude_dir):
-    config = GlobalConfig(people=[PersonEntry(name="Alice", role="admin")])
+    config = GlobalConfig(people=[PersonEntry(name="Alice", email="alice@test.com", role="admin")])
     config_handlers.save_global_config(config)
 
     loaded = config_handlers.get_global_config()
@@ -53,7 +53,12 @@ def test_save_and_load_person_config(mock_teleclaude_dir):
 
 
 def test_list_people(mock_teleclaude_dir):
-    config = GlobalConfig(people=[PersonEntry(name="Alice", role="admin"), PersonEntry(name="Bob", role="member")])
+    config = GlobalConfig(
+        people=[
+            PersonEntry(name="Alice", email="alice@test.com", role="admin"),
+            PersonEntry(name="Bob", email="bob@test.com", role="member"),
+        ]
+    )
     people = config_handlers.list_people(config)
     assert len(people) == 2
     assert people[0].name == "Alice"
@@ -83,7 +88,7 @@ def test_atomic_yaml_write_cleanup(mock_teleclaude_dir):
 
 
 def test_discover_config_areas(mock_teleclaude_dir):
-    config = GlobalConfig(people=[PersonEntry(name="Alice", role="admin")])
+    config = GlobalConfig(people=[PersonEntry(name="Alice", email="alice@test.com", role="admin")])
     config_handlers.save_global_config(config)
 
     areas = config_handlers.discover_config_areas()

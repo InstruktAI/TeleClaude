@@ -1,6 +1,6 @@
 """Filesystem watcher for todos/ directories across trusted projects.
 
-Watches for changes to roadmap.md, state.json, and directory structure within
+Watches for changes to roadmap.yaml, state.json, and directory structure within
 todos/ and triggers granular cache updates via the daemon cache.
 """
 

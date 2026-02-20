@@ -40,11 +40,11 @@ from teleclaude.api_models import (
     SendMessageRequest,
     SessionClosedDataDTO,
     SessionClosedEventDTO,
+    SessionDTO,
     SessionMessagesDTO,
     SessionsInitialDataDTO,
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
-    SessionSummaryDTO,
     SessionUpdatedEventDTO,
     SettingsDTO,
     TodoDTO,
@@ -66,7 +66,14 @@ from teleclaude.core.events import (
     SessionUpdatedContext,
     TeleClaudeEvents,
 )
-from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSummary, TodoInfo
+from teleclaude.core.models import (
+    MessageMetadata,
+    ProjectInfo,
+    SessionLaunchIntent,
+    SessionLaunchKind,
+    SessionSnapshot,
+    TodoInfo,
+)
 from teleclaude.core.origins import InputOrigin
 from teleclaude.transport.redis_transport import RedisTransport
 
@@ -94,7 +101,7 @@ PatchBodyScalar = str | int | float | bool | None
 PatchBodyValue = PatchBodyScalar | list[PatchBodyScalar] | dict[str, PatchBodyScalar]
 
 
-def _filter_sessions_by_role(request: Request, sessions: list[SessionSummary]) -> list[SessionSummary]:
+def _filter_sessions_by_role(request: Request, sessions: list[SessionSnapshot]) -> list[SessionSnapshot]:
     """Apply role-based visibility filtering to session list.
 
     Only filters when identity headers are present (web interface).
@@ -223,8 +230,8 @@ class APIServer:
         if session.closed_at:
             self.cache.remove_session(context.session_id)
             return
-        summary = SessionSummary.from_db_session(session, computer=config.computer.name)
-        self.cache.update_session(summary)
+        snapshot = SessionSnapshot.from_db_session(session, computer=config.computer.name)
+        self.cache.update_session(snapshot)
 
     async def _handle_session_started_event(
         self,
@@ -238,8 +245,8 @@ class APIServer:
         session = await db.get_session(context.session_id)
         if not session:
             return
-        summary = SessionSummary.from_db_session(session, computer=config.computer.name)
-        self.cache.update_session(summary)
+        snapshot = SessionSnapshot.from_db_session(session, computer=config.computer.name)
+        self.cache.update_session(snapshot)
 
     async def _handle_session_closed_event(
         self,
@@ -342,7 +349,7 @@ class APIServer:
         async def list_sessions(  # pyright: ignore
             request: "Request",
             computer: str | None = None,
-        ) -> list[SessionSummaryDTO]:
+        ) -> list[SessionDTO]:
             """List sessions from local storage and remote cache.
 
             Applies role-based filtering when identity headers are present
@@ -383,7 +390,7 @@ class APIServer:
                 # Role-based visibility filtering (only when identity headers present)
                 merged = _filter_sessions_by_role(request, merged)
 
-                return [SessionSummaryDTO.from_core(s, computer=s.computer) for s in merged]
+                return [SessionDTO.from_core(s, computer=s.computer) for s in merged]
             except Exception as e:
                 logger.error("list_sessions failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list sessions: {e}") from e
@@ -860,34 +867,53 @@ class APIServer:
         ) -> list[ProjectDTO]:
             """List projects (local + cached remote projects).
 
-            Pure cache reader - returns cached data without triggering pulls.
+            Serves local projects from cache when available (warmed on startup,
+            kept fresh by TodoWatcher). Falls back to filesystem on cache miss.
             """
             try:
-                # Get LOCAL projects from command handler (with todos for cache population)
-                raw_projects = await command_handlers.list_projects_with_todos()
                 computer_name = config.computer.name
                 result: list[ProjectDTO] = []
 
+                # Try cache first for local projects
+                cached_local: list[ProjectInfo] | None = None
                 if self.cache:
-                    self.cache.apply_projects_snapshot(computer_name, raw_projects)
-                    # Populate local todo cache so TUI has data immediately
-                    todos_by_project: dict[str, list[TodoInfo]] = {}
-                    for p in raw_projects:
-                        if p.path and p.todos:
-                            todos_by_project[p.path] = p.todos
-                    if todos_by_project:
-                        self.cache.apply_todos_snapshot(computer_name, todos_by_project)
+                    cached_local_raw = self.cache.get_projects(computer_name, include_stale=True)
+                    if cached_local_raw:
+                        cached_local = [p for p in cached_local_raw if (p.computer or "") == computer_name]
 
-                # Add local projects
-                for p in raw_projects:
-                    result.append(
-                        ProjectDTO(
-                            computer=computer_name,
-                            name=p.name,
-                            path=p.path,
-                            description=p.description,
+                if cached_local:
+                    # Cache hit — serve from cache
+                    for p in cached_local:
+                        result.append(
+                            ProjectDTO(
+                                computer=computer_name,
+                                name=p.name,
+                                path=p.path or "",
+                                description=p.description,
+                            )
                         )
-                    )
+                else:
+                    # Cache miss — fall back to filesystem
+                    logger.info("GET /projects: cache MISS, reading filesystem")
+                    raw_projects = await command_handlers.list_projects_with_todos()
+                    if self.cache:
+                        self.cache.apply_projects_snapshot(computer_name, raw_projects)
+                        todos_by_project: dict[str, list[TodoInfo]] = {}
+                        for p in raw_projects:
+                            if p.path and p.todos:
+                                todos_by_project[p.path] = p.todos
+                        if todos_by_project:
+                            self.cache.apply_todos_snapshot(computer_name, todos_by_project)
+
+                    for p in raw_projects:
+                        result.append(
+                            ProjectDTO(
+                                computer=computer_name,
+                                name=p.name,
+                                path=p.path,
+                                description=p.description,
+                            )
+                        )
 
                 stale_computers: set[str] = set()
                 # Add cached REMOTE projects from cache (skip local to avoid duplicates)
@@ -1407,7 +1433,7 @@ class APIServer:
                             ]
                         else:
                             cached_sessions = [s for s in cached_sessions if s.human_email == email]
-                    sessions = [SessionSummaryDTO.from_core(s, computer=s.computer) for s in cached_sessions]
+                    sessions = [SessionDTO.from_core(s, computer=s.computer) for s in cached_sessions]
                     event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions, computer=computer))
                     await websocket.send_json(event.model_dump(exclude_none=True))
             elif data_type in ("preparation", "projects"):
@@ -1447,16 +1473,16 @@ class APIServer:
         payload: dict[str, object]  # guard: loose-dict - WebSocket payload assembly
         if event in ("session_started", "session_updated"):
             # Extract session from cache notification
-            session: SessionSummary | None = None
+            session: SessionSnapshot | None = None
             if isinstance(data, dict):
                 session_val = data.get("session")
-                if isinstance(session_val, SessionSummary):
+                if isinstance(session_val, SessionSnapshot):
                     session = session_val
-            elif isinstance(data, SessionSummary):
+            elif isinstance(data, SessionSnapshot):
                 session = data
 
             if session:
-                dto = SessionSummaryDTO.from_core(session, computer=session.computer)
+                dto = SessionDTO.from_core(session, computer=session.computer)
                 if event == "session_started":
                     payload = SessionStartedEventDTO(
                         event=event,

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 from teleclaude.core.cache import CachedItem, DaemonCache
-from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
+from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot, TodoInfo
 from teleclaude.core.origins import InputOrigin
 
 # ==================== CachedItem Tests ====================
@@ -75,7 +75,7 @@ def test_get_sessions_filters_by_computer():
     cache = DaemonCache()
 
     cache.update_session(
-        SessionSummary(
+        SessionSnapshot(
             session_id="sess-1",
             computer="local",
             title="Local",
@@ -87,7 +87,7 @@ def test_get_sessions_filters_by_computer():
         )
     )
     cache.update_session(
-        SessionSummary(
+        SessionSnapshot(
             session_id="sess-2",
             computer="remote",
             title="Remote",
@@ -138,7 +138,7 @@ def test_update_session_notifies_subscribers():
     record_event.__name__ = "test_callback"
     cache.subscribe(record_event)
 
-    session = SessionSummary(
+    session = SessionSnapshot(
         session_id="sess-123",
         computer="local",
         title="Test",
@@ -172,7 +172,7 @@ def test_remove_session_notifies_subscribers():
     cache.subscribe(record_event)
 
     # Add then remove session
-    session = SessionSummary(
+    session = SessionSnapshot(
         session_id="sess-123",
         computer="local",
         title="Test",
@@ -377,7 +377,7 @@ def test_invalidate_removes_from_cache():
     # Add data to all caches
     cache.update_computer(ComputerInfo(name="test", status="online"))
     cache.update_session(
-        SessionSummary(
+        SessionSnapshot(
             session_id="sess-123",
             computer="local",
             title="Test",
@@ -406,7 +406,7 @@ def test_invalidate_all_clears_everything():
     # Add data to all caches
     cache.update_computer(ComputerInfo(name="test", status="online"))
     cache.update_session(
-        SessionSummary(
+        SessionSnapshot(
             session_id="sess-123",
             computer="local",
             title="Test",

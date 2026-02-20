@@ -32,7 +32,6 @@ MARKDOWN_DIRS = [
     "docs",  # Main documentation
     "agents/docs",  # Agent-specific docs
     "todos",  # Active work items
-    "ideas",  # Feature ideas and proposals
     "docs-3rd",  # Third-party research
 ]
 

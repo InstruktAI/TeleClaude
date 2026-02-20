@@ -6,10 +6,11 @@ from rich.text import Text
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from teleclaude.cli.tui.theme import get_agent_style
+from teleclaude.cli.tui.base import TelecMixin
+from teleclaude.cli.tui.theme import resolve_style
 
 
-class AgentBadge(Widget):
+class AgentBadge(TelecMixin, Widget):
     """Small pill showing agent name with agent-specific color."""
 
     DEFAULT_CSS = """
@@ -22,5 +23,5 @@ class AgentBadge(Widget):
     agent = reactive("claude")
 
     def render(self) -> Text:
-        style = get_agent_style(self.agent, "normal")
+        style = resolve_style(self.agent, "normal")
         return Text(self.agent, style=style)

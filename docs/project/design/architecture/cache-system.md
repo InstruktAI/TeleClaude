@@ -38,14 +38,18 @@ flowchart TB
 
 **Inputs:**
 
-- Domain events: SESSION_STARTED, SESSION_CLOSED, SESSION_UPDATED, COMPUTER_UPDATED, PROJECTS_UPDATED, TODOS_UPDATED
+- Domain events:
+  - Session lifecycle: SESSION_STARTED, SESSION_UPDATED, SESSION_CLOSED
+  - Agent activity: AGENT_ACTIVITY (subtypes: tool_use, tool_done, agent_stop, user_prompt_submit)
+  - Infrastructure: COMPUTER_UPDATED
+  - Project/todo changes: PROJECTS_UPDATED, TODOS_UPDATED, TODO_CREATED, TODO_UPDATED, TODO_REMOVED
 - Local data sources: SQLite sessions table, command handlers, project registry, computer registry
 - Remote data triggers: Redis heartbeat digests
 
 **Outputs:**
 
 - JSON snapshots in cache table (keyed by data_type:scope)
-- WebSocket push notifications to subscribed clients
+- WebSocket push notifications to subscribed clients (see WS event surface below)
 - Cache hit/miss metrics for observability
 
 ## Invariants
@@ -137,6 +141,38 @@ sequenceDiagram
 | Todos              | Per-project  | 5m  | TTL + Digest    |
 | Sessions           | Per-computer | ∞   | Events only     |
 | Agent availability | Global       | 30s | TTL only        |
+
+### 5. WebSocket Event Surface
+
+Cache changes are pushed to WS clients as typed events. The API server normalizes domain events into DTOs before broadcast. Refresh events (computer/project/todo changes) are debounced (250ms coalesce).
+
+| WS Event           | DTO                     | When                                                                   |
+| ------------------ | ----------------------- | ---------------------------------------------------------------------- |
+| `sessions_initial` | SessionsInitialEventDTO | On subscription — full session snapshot                                |
+| `projects_initial` | ProjectsInitialEventDTO | On subscription — full project snapshot                                |
+| `session_started`  | SessionStartedEventDTO  | New session created                                                    |
+| `session_updated`  | SessionUpdatedEventDTO  | Session fields changed (status, title, etc.)                           |
+| `session_closed`   | SessionClosedEventDTO   | Session ended                                                          |
+| `agent_activity`   | AgentActivityEventDTO   | Agent hook event (tool_use, tool_done, agent_stop, user_prompt_submit) |
+| `computer_updated` | RefreshEventDTO         | Computer online/offline/stats change                                   |
+| `project_updated`  | RefreshEventDTO         | Single project changed                                                 |
+| `projects_updated` | RefreshEventDTO         | Project list changed on a computer                                     |
+| `todos_updated`    | RefreshEventDTO         | Todo list changed for a project                                        |
+| `todo_created`     | RefreshEventDTO         | New todo scaffolded                                                    |
+| `todo_updated`     | RefreshEventDTO         | Todo state/artifacts changed                                           |
+| `todo_removed`     | RefreshEventDTO         | Todo deleted                                                           |
+| `error`            | ErrorEventDTO           | Error condition (retryable flag, severity)                             |
+
+### 6. TUI Data Consumption
+
+The TUI fetches data at startup and then relies entirely on WS push events:
+
+- **Computers**: fetched once at startup. Updated only on `computer_updated` WS event.
+- **Sessions/Projects/Todos/Availability/Jobs**: fetched at startup, then refreshed on relevant WS events (session start/close, RefreshEvent).
+- **Agent activity**: handled inline per-event (tool highlights, input/output indicators). No full refresh needed.
+- **Session updates**: handled inline per-event (status change). No full refresh needed.
+
+The TUI never polls. All data updates are event-driven.
 
 ## Failure modes
 

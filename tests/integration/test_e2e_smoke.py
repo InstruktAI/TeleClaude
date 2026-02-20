@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import TypeAdapter
 
-from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary
+from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot
 from teleclaude.core.origins import InputOrigin
 
 if TYPE_CHECKING:
@@ -93,8 +93,8 @@ def create_test_session(
     computer: str = "test-computer",
     title: str = "Test Session",
 ):
-    """Create test session summary object."""
-    return SessionSummary(
+    """Create test session snapshot object."""
+    return SessionSnapshot(
         session_id=session_id,
         last_input_origin=InputOrigin.TELEGRAM.value,
         title=title,

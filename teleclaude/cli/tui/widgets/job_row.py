@@ -6,10 +6,11 @@ from rich.text import Text
 from textual.widget import Widget
 
 from teleclaude.cli.models import JobInfo
+from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.utils.formatters import format_relative_time
 
 
-class JobRow(Widget):
+class JobRow(TelecMixin, Widget):
     """Single job row in the jobs list."""
 
     DEFAULT_CSS = """

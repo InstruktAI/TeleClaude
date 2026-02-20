@@ -5,6 +5,7 @@ Handles sending, editing, and deleting messages in Telegram topics.
 
 from __future__ import annotations
 
+import hashlib
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,6 +55,7 @@ class MessageOperationsMixin:
     - supergroup_id: int (instance variable)
     - _ensure_started() -> None
     - _pending_edits: dict[str, EditContext]
+    - _last_edit_hash: dict[str, str]
 
     Required from ChannelOperationsMixin (via MRO):
     - _wait_for_topic_ready(topic_id: int, title: str) -> None
@@ -68,6 +70,7 @@ class MessageOperationsMixin:
     # Abstract instance variables (declared for type hints)
     supergroup_id: int
     _pending_edits: dict[str, EditContext]
+    _last_edit_hash: dict[str, str]
 
     def _ensure_started(self) -> None:
         """Ensure the adapter is started before operations."""
@@ -82,6 +85,16 @@ class MessageOperationsMixin:
     # =========================================================================
     # Message Operations Implementation
     # =========================================================================
+
+    @staticmethod
+    def _content_hash(text: str, parse_mode: Optional[str], reply_markup: object | None) -> str:
+        """Fast content fingerprint for skipping no-op edits."""
+        h = hashlib.sha256(text.encode())
+        if parse_mode:
+            h.update(parse_mode.encode())
+        if reply_markup:
+            h.update(str(reply_markup).encode())
+        return h.hexdigest()
 
     def _truncate_for_platform(self, text: str, parse_mode: Optional[str], max_chars: int) -> str:
         """Last-mile safety net: enforce Telegram API byte/char limit.
@@ -265,6 +278,11 @@ class MessageOperationsMixin:
 
         text = self._truncate_for_platform(text, parse_mode, UI_MESSAGE_MAX_CHARS)
 
+        # Skip no-op edits: if content hasn't changed, avoid the API round-trip entirely.
+        content_hash = self._content_hash(text, parse_mode, reply_markup)
+        if self._last_edit_hash.get(message_id) == content_hash:
+            return True
+
         # Platform-specific optimization: if an edit is already pending for this message,
         # just update the existing context with the latest text. The already-running
         # retry loop will use this updated text on its next attempt.
@@ -293,6 +311,7 @@ class MessageOperationsMixin:
             start_time = time.time()
             logger.trace("[TELEGRAM %s] Starting edit_message API call", session.session_id[:8])
             await self._edit_message_with_retry(session, ctx)
+            self._last_edit_hash[message_id] = content_hash
             elapsed = time.time() - start_time
             logger.debug(
                 "[TELEGRAM %s] edit_message completed in %.2fs",
@@ -381,6 +400,7 @@ class MessageOperationsMixin:
                 message_id,
             )
             await self._delete_message_with_retry(int(message_id))
+            self._last_edit_hash.pop(message_id, None)
             logger.debug("[TELEGRAM %s] delete_message: SUCCESS message_id=%s", session.session_id[:8], message_id)
             return True
         except BadRequest as e:
@@ -494,8 +514,14 @@ class MessageOperationsMixin:
         if reply_markup is not None and not isinstance(reply_markup, InlineKeyboardMarkup):
             reply_markup = None
 
+        # Skip no-op edits.
+        content_hash = self._content_hash(text, parse_mode, reply_markup)
+        if self._last_edit_hash.get(message_id) == content_hash:
+            return True
+
         try:
             await self._edit_general_message_with_retry(message_id, text, parse_mode, reply_markup)
+            self._last_edit_hash[message_id] = content_hash
             return True
         except RetryAfter as e:
             logger.debug(

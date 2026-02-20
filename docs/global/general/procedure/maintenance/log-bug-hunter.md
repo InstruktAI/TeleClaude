@@ -83,7 +83,7 @@ the maintenance cadence — run continuously so weekly passes find fewer surpris
      - log excerpt,
      - severity classification,
      - attempted diagnosis.
-   - Add the slug to `todos/roadmap.md` with phase set to `pending` in its `state.json`.
+   - Add the slug to `todos/roadmap.yaml` with phase set to `pending` in its `state.json`.
 
 8. Repeat steps 5–7 until every error from step 3 has been handled (fixed,
    promoted, or recorded). Do not stop while unprocessed errors remain.

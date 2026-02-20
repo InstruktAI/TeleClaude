@@ -12,7 +12,7 @@ from teleclaude.core.origins import InputOrigin
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-from teleclaude.core.models import ComputerInfo, SessionSummary, ThinkingMode
+from teleclaude.core.models import ComputerInfo, SessionSnapshot, ThinkingMode
 from teleclaude.mcp_server import MCP_SESSION_DATA_MAX_CHARS, TeleClaudeMCPServer
 from teleclaude.types.commands import CloseSessionCommand
 
@@ -108,7 +108,7 @@ async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
     with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
         mock_handlers.list_sessions = AsyncMock(
             return_value=[
-                SessionSummary(
+                SessionSnapshot(
                     session_id="test-session-123",
                     last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Test Session",
@@ -156,7 +156,7 @@ async def test_teleclaude_list_sessions_filters_by_caller(mock_mcp_server):
     with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
         mock_handlers.list_sessions = AsyncMock(
             return_value=[
-                SessionSummary(
+                SessionSnapshot(
                     session_id="sess-1",
                     last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session One",
@@ -166,7 +166,7 @@ async def test_teleclaude_list_sessions_filters_by_caller(mock_mcp_server):
                     status="active",
                     initiator_session_id="caller-1",
                 ),
-                SessionSummary(
+                SessionSnapshot(
                     session_id="sess-2",
                     last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session Two",
@@ -176,7 +176,7 @@ async def test_teleclaude_list_sessions_filters_by_caller(mock_mcp_server):
                     status="active",
                     initiator_session_id="caller-2",
                 ),
-                SessionSummary(
+                SessionSnapshot(
                     session_id="sess-3",
                     last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session Three",
@@ -205,7 +205,7 @@ async def test_teleclaude_list_sessions_without_caller_returns_unfiltered(mock_m
     with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
         mock_handlers.list_sessions = AsyncMock(
             return_value=[
-                SessionSummary(
+                SessionSnapshot(
                     session_id="sess-1",
                     last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session One",
@@ -215,7 +215,7 @@ async def test_teleclaude_list_sessions_without_caller_returns_unfiltered(mock_m
                     status="active",
                     initiator_session_id="caller-1",
                 ),
-                SessionSummary(
+                SessionSnapshot(
                     session_id="sess-2",
                     last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session Two",
@@ -244,7 +244,7 @@ async def test_teleclaude_list_sessions_isolates_multiple_callers(mock_mcp_serve
     with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
         mock_handlers.list_sessions = AsyncMock(
             return_value=[
-                SessionSummary(
+                SessionSnapshot(
                     session_id="sess-1",
                     last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session One",
@@ -254,7 +254,7 @@ async def test_teleclaude_list_sessions_isolates_multiple_callers(mock_mcp_serve
                     status="active",
                     initiator_session_id="caller-1",
                 ),
-                SessionSummary(
+                SessionSnapshot(
                     session_id="sess-2",
                     last_input_origin=InputOrigin.TELEGRAM.value,
                     title="Session Two",

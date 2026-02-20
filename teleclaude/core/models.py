@@ -830,8 +830,8 @@ class RedisInboundMessage:
 
 
 @dataclass
-class SessionSummary:
-    """Typed session summary for list_sessions output."""
+class SessionSnapshot:
+    """Typed session snapshot for list_sessions output."""
 
     session_id: str
     last_input_origin: Optional[str]
@@ -885,7 +885,7 @@ class SessionSummary:
         }
 
     @classmethod
-    def from_db_session(cls, session: "Session", computer: Optional[str] = None) -> "SessionSummary":
+    def from_db_session(cls, session: "Session", computer: Optional[str] = None) -> "SessionSnapshot":
         """Create from database Session object."""
         return cls(
             session_id=session.session_id,
@@ -914,7 +914,7 @@ class SessionSummary:
         )
 
     @classmethod
-    def from_dict(cls, data: Dict[str, object]) -> "SessionSummary":  # guard: loose-dict
+    def from_dict(cls, data: Dict[str, object]) -> "SessionSnapshot":  # guard: loose-dict
         """Create from dict."""
         return cls(
             session_id=str(data["session_id"]),

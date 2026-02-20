@@ -30,7 +30,7 @@ auditable outcomes via `dor-report.md` and `state.json`.
 
 - Scan `todos/` for active todo folders.
 - Exclude slugs present in `todos/icebox.md` and `todos/delivered.md`.
-- Ignore non-todo files (`roadmap.md`, `dependencies.json`, etc.).
+- Ignore non-todo files (`roadmap.yaml`, etc.).
 
 ### FR2: Required artifact assessment
 

@@ -40,31 +40,6 @@ def _write_file(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _load_dependencies(path: Path) -> dict[str, list[str]]:
-    if not path.exists():
-        return {}
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("todos/dependencies.json must be a JSON object")
-    result: dict[str, list[str]] = {}
-    for key, value in data.items():
-        if not isinstance(key, str) or not isinstance(value, list) or not all(isinstance(v, str) for v in value):
-            raise ValueError("todos/dependencies.json must map string slugs to string arrays")
-        result[key] = value
-    return result
-
-
-def _normalize_dep_list(items: list[str]) -> list[str]:
-    deduped: list[str] = []
-    for item in items:
-        cleaned = item.strip()
-        if not cleaned:
-            continue
-        if cleaned not in deduped:
-            deduped.append(cleaned)
-    return deduped
-
-
 def create_todo_skeleton(
     project_root: Path,
     slug: str,
@@ -79,8 +54,7 @@ def create_todo_skeleton(
     - todos/{slug}/quality-checklist.md
     - todos/{slug}/state.json
 
-    Optionally updates todos/dependencies.json when ``after`` is provided.
-    Does not modify todos/roadmap.md.
+    Optionally registers the slug in todos/roadmap.yaml when ``after`` is provided.
     """
     slug = slug.strip()
     if not slug:
@@ -105,15 +79,15 @@ def create_todo_skeleton(
     _write_file(todo_dir / "state.json", state_content)
 
     if after is not None:
-        deps_path = todos_root / "dependencies.json"
-        deps = _load_dependencies(deps_path)
-        deps[slug] = _normalize_dep_list(after)
-        deps = {k: v for k, v in deps.items() if v}
+        from teleclaude.core.next_machine.core import add_to_roadmap
 
-        if deps:
-            deps_path.parent.mkdir(parents=True, exist_ok=True)
-            deps_path.write_text(json.dumps(deps, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        elif deps_path.exists():
-            deps_path.unlink()
+        # Deduplicate and clean deps
+        deduped: list[str] = []
+        for item in after:
+            cleaned = item.strip()
+            if cleaned and cleaned not in deduped:
+                deduped.append(cleaned)
+
+        add_to_roadmap(str(project_root), slug, after=deduped)
 
     return todo_dir

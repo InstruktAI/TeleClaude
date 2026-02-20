@@ -1,10 +1,26 @@
-"""Color palette management for TUI animations."""
+"""Color palette management for TUI animations.
 
-import curses
+Palettes return Rich-compatible color strings (e.g., "color(196)", "#ff5f5f")
+that can be used directly in Rich Style objects for Textual rendering.
+"""
+
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from typing import Optional
 
-from teleclaude.cli.tui.theme import AGENT_COLORS
+from teleclaude.cli.tui.theme import get_agent_color
+
+# Spectrum: seven distinct colors that read well on both dark and light backgrounds.
+_SPECTRUM_COLORS = (
+    "color(196)",  # Red
+    "color(226)",  # Yellow
+    "color(46)",  # Green
+    "color(51)",  # Cyan
+    "color(69)",  # Blue (lighter, visible on dark bg)
+    "color(201)",  # Magenta
+    "color(231)",  # White
+)
 
 
 class ColorPalette(ABC):
@@ -14,105 +30,71 @@ class ColorPalette(ABC):
         self.name = name
 
     @abstractmethod
-    def get(self, index: int) -> int:
-        """Get curses color pair ID for the given palette index."""
-        pass
+    def get(self, index: int) -> str:
+        """Get a Rich color string for the given palette index."""
 
     @abstractmethod
     def __len__(self) -> int:
         """Number of colors in the palette."""
-        pass
 
 
 class SpectrumPalette(ColorPalette):
-    """Rainbow spectrum palette using standard curses colors."""
+    """Rainbow spectrum palette."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("spectrum")
-        # Pair IDs 30-36 for spectrum (Red, Yellow, Green, Cyan, Blue, Magenta, White)
-        self.color_pairs = list(range(30, 37))
 
-    def get(self, index: int) -> int:
-        return self.color_pairs[index % len(self.color_pairs)]
+    def get(self, index: int) -> str:
+        return _SPECTRUM_COLORS[index % len(_SPECTRUM_COLORS)]
 
     def __len__(self) -> int:
-        return len(self.color_pairs)
+        return len(_SPECTRUM_COLORS)
 
 
 class AgentPalette(ColorPalette):
-    """Agent-specific palette (Muted, Normal, Highlight)."""
+    """Agent-specific palette (subtle, muted, normal, highlight)."""
 
-    def __init__(self, agent_name: str):
+    def __init__(self, agent_name: str) -> None:
         super().__init__(f"agent_{agent_name}")
-        agent_cfg = AGENT_COLORS.get(agent_name, AGENT_COLORS["claude"])
-        self.color_pairs = [
-            agent_cfg["subtle"],
-            agent_cfg["muted"],
-            agent_cfg["normal"],
-            agent_cfg["highlight"],
+        self._colors = [
+            get_agent_color(agent_name, "subtle"),
+            get_agent_color(agent_name, "muted"),
+            get_agent_color(agent_name, "normal"),
+            get_agent_color(agent_name, "highlight"),
         ]
 
-    def get(self, index: int) -> int:
-        return self.color_pairs[index % len(self.color_pairs)]
+    def get(self, index: int) -> str:
+        return self._colors[index % len(self._colors)]
 
     def __len__(self) -> int:
-        return len(self.color_pairs)
+        return len(self._colors)
 
 
 class SectionPalette(ColorPalette):
-    """Section-specific palette using spectrum color pairs."""
+    """Section-specific palette using spectrum color subsets."""
 
-    def __init__(self, section_name: str, color_indices: list[int]):
+    def __init__(self, section_name: str, color_indices: list[int]) -> None:
         super().__init__(section_name)
-        # Map 0-6 indices to spectrum pairs 30-36
-        # Red=0(30), Yellow=1(31), Green=2(32), Cyan=3(33), Blue=4(34), Magenta=5(35), White=6(36)
-        self.color_pairs = [30 + i for i in color_indices]
+        self._colors = [_SPECTRUM_COLORS[i] for i in color_indices]
 
-    def get(self, index: int) -> int:
-        return self.color_pairs[index % len(self.color_pairs)]
+    def get(self, index: int) -> str:
+        return self._colors[index % len(self._colors)]
 
     def __len__(self) -> int:
-        return len(self.color_pairs)
+        return len(self._colors)
 
 
 class PaletteRegistry:
     """Registry for available color palettes."""
 
-    def __init__(self):
-        self._palettes: Dict[str, ColorPalette] = {}
-        self._initialized = False
+    def __init__(self) -> None:
+        self._palettes: dict[str, ColorPalette] = {}
 
     def register(self, palette: ColorPalette) -> None:
         self._palettes[palette.name] = palette
 
     def get(self, name: str) -> Optional[ColorPalette]:
         return self._palettes.get(name)
-
-    def initialize_colors(self) -> None:
-        """Initialize curses color pairs for the spectrum palette.
-
-        This should be called after curses.start_color().
-        """
-        if self._initialized:
-            return
-
-        # Initialize Spectrum pairs (30-36)
-        # Red, Yellow, Green, Cyan, Blue, Magenta, White
-        # Colors: 1, 3, 2, 6, 4, 5, 7 (standard curses color IDs)
-        colors = [
-            curses.COLOR_RED,
-            curses.COLOR_YELLOW,
-            curses.COLOR_GREEN,
-            curses.COLOR_CYAN,
-            curses.COLOR_BLUE,
-            curses.COLOR_MAGENTA,
-            curses.COLOR_WHITE,
-        ]
-
-        for i, color in enumerate(colors):
-            curses.init_pair(30 + i, color, -1)
-
-        self._initialized = True
 
 
 # Global registry
@@ -125,7 +107,7 @@ palette_registry.register(AgentPalette("codex"))
 # Section Palettes
 # Indices: Red=0, Yellow=1, Green=2, Cyan=3, Blue=4, Magenta=5, White=6
 palette_registry.register(SectionPalette("telegram", [4, 6]))  # Blue, White
-palette_registry.register(SectionPalette("whatsapp", [2, 6]))  # Green, White (I6)
+palette_registry.register(SectionPalette("whatsapp", [2, 6]))  # Green, White
 palette_registry.register(SectionPalette("discord", [4, 5, 6]))  # Blue, Magenta, White
 palette_registry.register(SectionPalette("ai_keys", [2, 1]))  # Green, Yellow
 palette_registry.register(SectionPalette("people", [6]))  # White

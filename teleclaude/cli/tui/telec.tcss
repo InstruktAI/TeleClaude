@@ -1,35 +1,77 @@
-/* TeleClaude TUI global stylesheet */
+/* TeleClaude TUI global stylesheet
+ *
+ * Agent colors are available as CSS variables:
+ *   $claude-subtle, $claude-muted, $claude-normal, $claude-highlight
+ *   $gemini-subtle, $gemini-muted, $gemini-normal, $gemini-highlight
+ *   $codex-subtle,  $codex-muted,  $codex-normal,  $codex-highlight
+ *
+ * Structural variables:
+ *   $connector, $separator, $input-border, $banner-color, $status-fg
+ */
 
 TelecApp {
-    background: $surface;
+    /* Background set dynamically by _apply_haze_background for tmux pane haze */
 }
 
-/* Banner */
+/* ── Global hover/focus suppression ───────────────────── */
+/* Kill Textual default hover/focus backgrounds on tree widgets.
+   Modal form elements (#modal-box inputs/buttons) keep focus. */
+Widget:hover {
+    background: transparent;
+}
+
+Widget:focus {
+    background: transparent;
+}
+
+/* Suppress focus-within propagation on structural containers.
+   Focus flows inward (views get focused) — parent containers should not
+   react visually. Scoped to our containers; future rich-content widgets
+   (markdown editor, etc.) are not affected. */
+SessionsView:focus-within,
+PreparationView:focus-within,
+JobsView:focus-within,
+ConfigView:focus-within,
+TabPane:focus-within,
+TabbedContent:focus-within,
+ContentSwitcher:focus-within {
+    background: transparent;
+}
+
+/* Restore focus indicators inside modals */
+#modal-box Button:focus {
+    background: $panel;
+    text-style: bold;
+    border: round $connector;
+}
+
+#modal-box Input:focus {
+    background: $surface;
+    border: round $connector;
+}
+
+#modal-box Select:focus {
+    background: $surface;
+    border: round $connector;
+}
+
+/* ── Banner ────────────────────────────────────────────── */
 Banner {
     height: 6;
     width: 100%;
-    content-align: center middle;
+    content-align: left middle;
 }
 
-/* Tabs - match old TUI appearance */
+/* ── Tab bar ───────────────────────────────────────────── */
+/* Hide Textual's built-in tab bar — replaced by BoxTabBar */
 #main-tabs {
     height: 1fr;
 }
 
 Tabs {
-    min-height: 1;
-    height: 1;
+    display: none;
 }
 
-Tab {
-    padding: 0 2;
-}
-
-Tab.-active {
-    text-style: bold;
-}
-
-/* Tab underline styling */
 TabbedContent > ContentSwitcher {
     height: 1fr;
 }
@@ -37,9 +79,18 @@ TabbedContent > ContentSwitcher {
 TabPane {
     height: 1fr;
     padding: 0;
+    background: transparent;
 }
 
-/* Views fill their tab panes */
+ContentSwitcher {
+    background: transparent;
+}
+
+TabbedContent {
+    background: transparent;
+}
+
+/* ── Views fill their tab panes ────────────────────────── */
 SessionsView {
     width: 100%;
     height: 1fr;
@@ -60,140 +111,288 @@ ConfigView {
     height: 1fr;
 }
 
-/* Status and action bars */
-StatusBar {
+/* ── Footer ────────────────────────────────────────────── */
+#footer {
     dock: bottom;
-    height: 1;
-    background: $surface-darken-1;
+    height: 4;
 }
 
 ActionBar {
-    dock: bottom;
-    height: 1;
-    background: $surface-darken-2;
+    height: 3;
 }
 
-/* Session rows */
+StatusBar {
+    height: 1;
+}
+
+/* ── Session tree rows ─────────────────────────────────── */
+/* Selection colors handled by render() for agent-specific styling.
+   Prevent Textual defaults from painting backgrounds. */
 SessionRow {
     width: 100%;
     height: auto;
     padding: 0 1;
+    background: transparent;
 }
 
 SessionRow.selected {
-    background: $accent-darken-2;
-}
-
-SessionRow.preview {
-    background: $primary-darken-2;
-}
-
-SessionRow.sticky {
-    background: $primary-darken-3;
+    background: transparent;
 }
 
 /* Computer and project headers */
 ComputerHeader {
     width: 100%;
-    height: 1;
+    height: auto;
     padding: 0 1;
-    text-style: bold;
+    background: transparent;
 }
 
 ComputerHeader.selected {
-    background: $accent-darken-2;
+    background: transparent;
 }
 
 ProjectHeader {
     width: 100%;
-    height: 1;
+    height: auto;
     padding: 0 1;
+    background: transparent;
 }
 
 ProjectHeader.selected {
-    background: $accent-darken-2;
+    background: transparent;
 }
 
-/* Todo rows */
+/* ── Todo rows ─────────────────────────────────────────── */
 TodoRow {
     width: 100%;
     height: auto;
     padding: 0 1;
+    background: transparent;
 }
 
 TodoRow.selected {
-    background: $accent-darken-2;
+    background: transparent;
 }
 
-/* Job rows */
+/* ── Job rows ──────────────────────────────────────────── */
 JobRow {
     width: 100%;
     height: 1;
     padding: 0 1;
+    background: transparent;
 }
 
 JobRow.selected {
-    background: $accent-darken-2;
+    background: transparent;
 }
 
-/* Section headers */
+/* ── Section headers ───────────────────────────────────── */
 SectionHeader {
     width: 100%;
     height: 1;
     padding: 0 1;
 }
 
-/* Pane bridge (invisible) */
+/* ── Pane bridge (invisible) ───────────────────────────── */
 PaneManagerBridge {
     display: none;
 }
 
-/* Modals */
-ConfirmModal {
-    align: center middle;
-}
-
-ConfirmModal > Vertical {
-    width: 50;
-    height: auto;
-    max-height: 12;
-    border: thick $accent;
-    background: $surface;
-    padding: 1 2;
-}
-
-ConfirmModal Button {
-    width: 1fr;
-    margin: 1 1 0 0;
-}
-
-StartSessionModal {
-    align: center middle;
-}
-
-StartSessionModal > Vertical {
-    width: 70;
-    height: auto;
-    max-height: 25;
-    border: thick $accent;
-    background: $surface;
-    padding: 1 2;
-}
-
-StartSessionModal Input {
-    margin: 0 0 1 0;
-}
-
-StartSessionModal Select {
-    margin: 0 0 1 0;
-}
-
-StartSessionModal Button {
-    width: 1fr;
-    margin: 1 1 0 0;
-}
-
-/* Scroll containers */
+/* ── Scroll containers ─────────────────────────────────── */
 VerticalScroll {
-    scrollbar-size: 1 1;
+    scrollbar-size: 0 0;
+}
+
+/* ── Global button styling ─────────────────────────────── */
+Button {
+    background: $panel;
+    color: $foreground;
+    border: round $input-border;
+    min-width: 10;
+}
+
+Button:hover {
+    background: $panel;
+    border: round $connector;
+}
+
+Button:focus {
+    border: round $connector;
+    text-style: bold;
+}
+
+Button.-primary {
+    background: $panel;
+    color: $foreground;
+    border: round $connector;
+}
+
+Button.-primary:hover {
+    background: $panel;
+}
+
+/* ── Global input styling ──────────────────────────────── */
+Input {
+    background: $surface;
+    color: $foreground;
+    border: round $input-border;
+}
+
+Input:focus {
+    border: round $connector;
+}
+
+/* ── Global select styling ─────────────────────────────── */
+Select {
+    background: $surface;
+    border: round $input-border;
+}
+
+Select:focus {
+    border: round $connector;
+}
+
+SelectOverlay {
+    background: $panel;
+    color: $foreground;
+    border: round $connector;
+}
+
+SelectCurrent {
+    background: $surface;
+    color: $foreground;
+}
+
+/* ── Global label styling ──────────────────────────────── */
+Label {
+    color: $foreground;
+}
+
+/* ── Toast notifications ───────────────────────────────── */
+ToastRack {
+    align: center top;
+}
+
+Toast {
+    background: $panel;
+    color: $foreground;
+    border: round $input-border;
+    padding: 1 2;
+}
+
+Toast.-information {
+    background: $panel;
+    color: $foreground;
+    border: round $connector;
+}
+
+Toast.-warning {
+    background: #3a3520;
+    color: $warning;
+    border: round #8a7530;
+}
+
+Toast.-error {
+    background: #3a2020;
+    color: $error;
+    border: round #8a3030;
+}
+
+Toast .toast--title {
+    color: $foreground;
+    text-style: bold;
+}
+
+/* ── Modals ────────────────────────────────────────────── */
+/* Single thin border with title on top border line */
+
+ConfirmModal, StartSessionModal {
+    align: center middle;
+}
+
+#modal-box {
+    height: auto;
+    border: round $connector;
+    border-title-color: $foreground;
+    border-title-style: bold;
+    background: $panel;
+    padding: 1 2;
+}
+
+/* ── ConfirmModal ─────────────────────────────────────── */
+
+ConfirmModal #modal-box {
+    width: 52;
+    max-height: 14;
+}
+
+ConfirmModal #confirm-message {
+    margin: 0 0 0 0;
+}
+
+/* ── StartSessionModal ────────────────────────────────── */
+
+StartSessionModal #modal-box {
+    width: 64;
+    max-height: 32;
+}
+
+StartSessionModal #modal-computer,
+StartSessionModal #modal-project {
+    color: $foreground;
+}
+
+/* Field groups: thin border with title on border line */
+#agent-group,
+#mode-group,
+#prompt-group,
+#title-group {
+    border: round $input-border;
+    border-title-color: $foreground;
+    border-title-style: bold;
+    height: auto;
+    margin: 1 0 0 0;
+    padding: 0;
+}
+
+#agent-group:focus-within,
+#mode-group:focus-within,
+#prompt-group:focus-within,
+#title-group:focus-within {
+    border: round $connector;
+}
+
+/* Custom horizontal selectors */
+AgentSelector, ModeSelector {
+    height: 1;
+    width: 100%;
+    background: transparent;
+}
+
+/* Inputs inside field groups */
+StartSessionModal Input {
+    width: 100%;
+    border: none;
+    background: transparent;
+}
+
+StartSessionModal Input:focus {
+    border: none;
+}
+
+/* Action buttons row */
+#modal-actions {
+    height: auto;
+    margin: 1 0 0 0;
+}
+
+#modal-actions Button {
+    width: 1fr;
+    margin: 0 1 0 0;
+}
+
+#cancel-hint {
+    width: auto;
+    margin: 0 0 0 1;
+    color: $foreground 50%;
 }

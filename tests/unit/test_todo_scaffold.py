@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -28,11 +27,14 @@ def test_create_todo_skeleton_rejects_existing(tmp_path: Path) -> None:
         create_todo_skeleton(tmp_path, "sample-slug")
 
 
-def test_create_todo_skeleton_updates_dependencies_when_after_provided(tmp_path: Path) -> None:
+def test_create_todo_skeleton_registers_in_roadmap_when_after_provided(tmp_path: Path) -> None:
     create_todo_skeleton(tmp_path, "sample-slug", after=["dep-b", "dep-a", "dep-a"])
 
-    deps = json.loads((tmp_path / "todos" / "dependencies.json").read_text(encoding="utf-8"))
-    assert deps["sample-slug"] == ["dep-b", "dep-a"]
+    import yaml
+
+    roadmap = yaml.safe_load((tmp_path / "todos" / "roadmap.yaml").read_text(encoding="utf-8"))
+    entry = next(e for e in roadmap if e["slug"] == "sample-slug")
+    assert entry["after"] == ["dep-b", "dep-a"]
 
 
 def test_create_todo_skeleton_validates_slug(tmp_path: Path) -> None:

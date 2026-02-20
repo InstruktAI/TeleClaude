@@ -305,8 +305,8 @@ snippets:
   role: admin
   source_project: TeleClaude
 - id: general/spec/tools/telec-cli
-  description: 'Canonical AI-safe telec commands: project init, docs sync, and todo
-    scaffolding.'
+  description: AI-safe telec CLI commands for project work, docs sync, todo scaffolding,
+    and configuration.
   type: spec
   scope: global
   path: docs/general/spec/tools/telec-cli.md

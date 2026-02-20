@@ -15,7 +15,7 @@ type: 'procedure'
 
 ## Goal
 
-1. Read `todos/roadmap.md`.
+1. Read `todos/roadmap.yaml`.
 2. Report current items and recommendations:
    - What items are pending?
    - What should be prioritized and why?
@@ -51,7 +51,7 @@ Ready for implementation.
 
 ## Preconditions
 
-- `todos/roadmap.md` exists and is readable.
+- `todos/roadmap.yaml` exists and is readable.
 - Target slug folder exists or can be created.
 
 ## Steps

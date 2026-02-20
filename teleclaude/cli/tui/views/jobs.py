@@ -9,10 +9,11 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.models import JobInfo
+from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.widgets.job_row import JobRow
 
 
-class SectionHeader(Widget):
+class SectionHeader(TelecMixin, Widget):
     """Section header divider in the jobs list."""
 
     DEFAULT_CSS = """
@@ -31,7 +32,7 @@ class SectionHeader(Widget):
         return Text(f"── {self._title} ──", style="bold dim")
 
 
-class JobsView(Widget):
+class JobsView(Widget, can_focus=True):
     """Jobs tab view listing scheduled and one-shot jobs.
 
     Handles: arrow nav, Enter (run job).
@@ -62,7 +63,9 @@ class JobsView(Widget):
         self._nav_items: list[Widget] = []
 
     def compose(self) -> ComposeResult:
-        yield VerticalScroll(id="jobs-scroll")
+        scroll = VerticalScroll(id="jobs-scroll")
+        scroll.can_focus = False
+        yield scroll
 
     def update_data(self, jobs: list[JobInfo]) -> None:
         """Update view with fresh job data."""
@@ -100,7 +103,11 @@ class JobsView(Widget):
 
     def _update_cursor_highlight(self) -> None:
         for i, widget in enumerate(self._nav_items):
-            widget.set_class(i == self.cursor_index, "selected")
+            was_selected = widget.has_class("selected")
+            is_selected = i == self.cursor_index
+            widget.set_class(is_selected, "selected")
+            if was_selected != is_selected:
+                widget.refresh()
 
     def _current_job_row(self) -> JobRow | None:
         if not self._nav_items or self.cursor_index >= len(self._nav_items):

@@ -16,34 +16,34 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine import (
     check_dependencies_satisfied,
     get_item_phase,
+    load_roadmap_deps,
     next_work,
     resolve_slug,
+    save_roadmap,
     set_item_phase,
-    write_dependencies,
 )
+from teleclaude.core.next_machine.core import RoadmapEntry
+
+
+def _write_roadmap_yaml(tmpdir: str, slugs: list[str], deps: dict[str, list[str]] | None = None) -> None:
+    """Helper to write roadmap.yaml fixtures."""
+    entries = [RoadmapEntry(slug=s, after=(deps or {}).get(s, [])) for s in slugs]
+    save_roadmap(tmpdir, entries)
 
 
 @pytest.mark.asyncio
 async def test_workflow_pending_to_done_with_dependencies():
     """Integration test: pending → ready → in_progress → done with dependency gating"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create roadmap with dependency chain (plain slug format)
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text(
-            "# Roadmap\n\n- dep-item\nDependency item description\n\n- main-item\nMain item description\n"
-        )
+        # Create roadmap with dependency chain
+        deps = {"main-item": ["dep-item"]}
+        _write_roadmap_yaml(tmpdir, ["dep-item", "main-item"], deps)
 
         # Create state.json for items
         for slug in ("dep-item", "main-item"):
             d = Path(tmpdir) / "todos" / slug
             d.mkdir(parents=True, exist_ok=True)
             (d / "state.json").write_text('{"phase": "pending"}')
-
-        # Set up dependency: main-item depends on dep-item
-        deps = {"main-item": ["dep-item"]}
-        with patch("teleclaude.core.next_machine.core.Repo"):
-            write_dependencies(tmpdir, deps)
 
         # Step 1: Verify main-item cannot be selected (dependency unsatisfied)
         slug, is_ready, desc = resolve_slug(tmpdir, slug=None, ready_only=True)
@@ -92,15 +92,9 @@ async def test_next_work_dependency_blocking():
     db = MagicMock(spec=Db)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create roadmap (plain slug format)
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text(
-            "# Roadmap\n\n"
-            "- foundation\nFoundation work\n\n"
-            "- blocked-feature\nBlocked by foundation\n\n"
-            "- independent-feature\nNo dependencies\n"
-        )
+        # Create roadmap with dependencies
+        deps = {"blocked-feature": ["foundation"]}
+        _write_roadmap_yaml(tmpdir, ["foundation", "blocked-feature", "independent-feature"], deps)
 
         # Create state.json for items
         states = {
@@ -112,11 +106,6 @@ async def test_next_work_dependency_blocking():
             d = Path(tmpdir) / "todos" / slug
             d.mkdir(parents=True, exist_ok=True)
             (d / "state.json").write_text(state)
-
-        # Set up dependency: blocked-feature depends on foundation
-        deps = {"blocked-feature": ["foundation"], "independent-feature": []}
-        with patch("teleclaude.core.next_machine.core.Repo"):
-            write_dependencies(tmpdir, deps)
 
         # Create required files for independent-feature
         item_dir = Path(tmpdir) / "todos" / "independent-feature"
@@ -170,15 +159,9 @@ async def test_removed_dependency_satisfaction():
     db = MagicMock(spec=Db)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create roadmap with an item that depends on an archived item
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text("# Roadmap\n\n- new-feature\nNew feature\n")
-
-        # Set up dependency on removed item
+        # Create roadmap with dependency on a removed item
         deps = {"new-feature": ["former-foundation"]}
-        with patch("teleclaude.core.next_machine.core.Repo"):
-            write_dependencies(tmpdir, deps)
+        _write_roadmap_yaml(tmpdir, ["new-feature"], deps)
 
         # Create required files for new-feature
         item_dir = Path(tmpdir) / "todos" / "new-feature"

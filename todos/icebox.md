@@ -1,7 +1,7 @@
 # Icebox
 
 Acknowledged work that has no active priority. Items here are valid but parked.
-Reviewed periodically — promote back to [roadmap.md](./roadmap.md) when priority changes.
+Reviewed periodically — promote back to [roadmap.yaml](./roadmap.yaml) when priority changes.
 
 ---
 

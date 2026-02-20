@@ -75,7 +75,7 @@ Work state lives in `todos/{slug}/state.json` and records:
 
 ## Preconditions
 
-- Work item exists in `todos/roadmap.md`.
+- Work item exists in `todos/roadmap.yaml`.
 - `requirements.md` and `implementation-plan.md` are present.
 
 ## Steps

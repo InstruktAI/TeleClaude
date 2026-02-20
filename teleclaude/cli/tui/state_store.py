@@ -25,7 +25,8 @@ class PersistedState:
     expanded_todos: set[str] = field(default_factory=set)
     input_highlights: set[str] = field(default_factory=set)
     output_highlights: set[str] = field(default_factory=set)
-    last_output_summary: dict[str, str] = field(default_factory=dict)
+    # session_id → {"text": str, "ts": float (monotonic epoch)}
+    last_output_summary: dict[str, dict[str, object]] = field(default_factory=dict)  # guard: loose-dict
     collapsed_sessions: set[str] = field(default_factory=set)
     preview_session_id: str | None = None
     animation_mode: str = "periodic"
@@ -60,9 +61,16 @@ def load_state() -> PersistedState:
 
         last_output_summary = data.get("last_output_summary", {})
         if isinstance(last_output_summary, dict):
-            state.last_output_summary = {
-                str(k): str(v) for k, v in last_output_summary.items() if isinstance(k, str) and isinstance(v, str)
-            }
+            parsed: dict[str, dict[str, object]] = {}  # guard: loose-dict
+            for k, v in last_output_summary.items():
+                if not isinstance(k, str):
+                    continue
+                if isinstance(v, dict) and "text" in v:
+                    parsed[k] = v
+                elif isinstance(v, str):
+                    # Backward compat: old format was just a string
+                    parsed[k] = {"text": v, "ts": 0.0}
+            state.last_output_summary = parsed
 
         collapsed_sessions = data.get("collapsed_sessions", [])
         if isinstance(collapsed_sessions, list):

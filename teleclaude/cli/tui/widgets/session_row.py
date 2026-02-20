@@ -2,23 +2,41 @@
 
 from __future__ import annotations
 
+from rich.style import Style
 from rich.text import Text
+from textual.events import Click
+from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.models import SessionInfo
-from teleclaude.cli.tui.theme import get_agent_color, get_agent_style
+from teleclaude.cli.tui.base import TelecMixin
+from teleclaude.cli.tui.theme import (
+    CONNECTOR_COLOR,
+    get_selection_fg_hex,
+    resolve_preview_bg_hex,
+    resolve_selection_bg_hex,
+    resolve_style,
+)
 from teleclaude.cli.tui.utils.formatters import format_time, truncate_text
 
 _DETAIL_TEXT_LIMIT = 70
 
 
-class SessionRow(Widget):
+class SessionRow(TelecMixin, Widget):
     """Multi-line expandable session row for the sessions tree.
 
     Collapsed: `[N] ▶ agent/mode "Title"`
-    Expanded: adds `[HH:MM:SS] sid / native_id`, `[HH:MM:SS]  in: ...`, `[HH:MM:SS] out: ...`
+    Expanded: adds `│   [HH:MM:SS] sid / native_id`, `│   [HH:MM:SS]  in: ...`,
+              `│   [HH:MM:SS] out: ...`, and `└───` bottom connector.
     """
+
+    class Pressed(Message):
+        """Posted when a session row is clicked."""
+
+        def __init__(self, session_row: SessionRow) -> None:
+            super().__init__()
+            self.session_row = session_row
 
     DEFAULT_CSS = """
     SessionRow {
@@ -26,23 +44,15 @@ class SessionRow(Widget):
         height: auto;
         padding: 0 1;
     }
-    SessionRow.selected {
-        background: $accent-darken-2;
-    }
-    SessionRow.preview {
-        background: $primary-darken-2;
-    }
-    SessionRow.sticky {
-        background: $primary-darken-3;
-    }
     """
 
-    collapsed = reactive(True)
+    collapsed = reactive(True, layout=True)
     is_sticky = reactive(False)
     is_preview = reactive(False)
     highlight_type = reactive("")  # "" | "input" | "output"
-    active_tool = reactive("")
-    last_output_summary = reactive("")
+    active_tool = reactive("", layout=True)
+    last_output_summary = reactive("", layout=True)
+    skip_bottom_connector = reactive(False)
 
     def __init__(
         self,
@@ -72,107 +82,215 @@ class SessionRow(Widget):
     def status(self) -> str:
         return self.session.status or "idle"
 
-    def _build_title_line(self) -> Text:
+    @property
+    def _is_headless(self) -> bool:
+        return self.status.startswith("headless") or not self.session.tmux_session_name
+
+    @property
+    def _child_indent(self) -> str:
+        """Leading indent before the badge.
+
+        Old TUI: child_indent = " " * (max(0, depth-2) * 2)
+        If empty (depth=2), a " " minimum is used. Otherwise used directly.
+        depth=2 → " ", depth=3 → "  ", depth=4 → "    "
+        """
+        raw = max(0, self.depth - 2) * 2
+        return " " * raw if raw > 0 else " "
+
+    @property
+    def _connector_col(self) -> int:
+        """Column for tree │ and └ connectors.
+
+        Old TUI: connector_anchor_col = sum(leading_text) + 1
+        = len(indent) + 1, positioned in the middle of the [N] badge.
+        """
+        return len(self._child_indent) + 1
+
+    def _tier(self, tier: str) -> str:
+        """Resolve color tier, shifting one level down for headless sessions."""
+        if not self._is_headless:
+            return tier
+        _shift = {"highlight": "normal", "normal": "muted", "muted": "subtle", "subtle": "subtle"}
+        return _shift.get(tier, tier)
+
+    def _get_row_style(self, *, selected: bool = False, previewed: bool = False) -> Style:
+        """Determine the style for the title line based on selection state.
+
+        Matches old TUI behavior:
+        - Selected: inverted — dark text on agent normal-color background, bold
+        - Previewed: inverted — dark text on agent muted-color background, bold
+        - Activity highlight (input/output): agent highlight color, bold
+        - Normal: agent-colored text on default background
+        - Headless: agent muted text on default background
+        """
+        if selected:
+            return Style(
+                color=get_selection_fg_hex(),
+                bgcolor=resolve_selection_bg_hex(self.agent),
+                bold=True,
+            )
+        if previewed:
+            return Style(
+                color=get_selection_fg_hex(),
+                bgcolor=resolve_preview_bg_hex(self.agent),
+                bold=True,
+            )
+        if self.collapsed and (self.highlight_type in ("input", "output") or self.active_tool):
+            return resolve_style(self.agent, self._tier("highlight"))
+        return resolve_style(self.agent, self._tier("normal"))
+
+    def _build_title_line(self, *, selected: bool = False, previewed: bool = False) -> Text:
         """Build the header: `[N] ▶ agent/mode "Title"` matching old TUI format."""
         line = Text()
-        indent = " " * (max(0, self.depth - 1) * 2)
+        indent = self._child_indent
         if indent:
             line.append(indent)
 
-        # Agent style for entire row
-        agent_style = get_agent_style(self.agent, "normal")
-        is_headless = self.status.startswith("headless") or not self.session.tmux_session_name
-        row_style = get_agent_style(self.agent, "muted") if is_headless else agent_style
+        style = self._get_row_style(selected=selected, previewed=previewed)
 
-        # Index badge — sticky sessions show position number
-        line.append(f"[{self.display_index}]", style=row_style)
-        line.append(" ")
+        # Badge: sticky → reverse. Otherwise → tier-shifted normal.
+        # Never inherits selection/preview background.
+        if self.is_sticky:
+            badge_style = Style(reverse=True, bold=selected)
+        else:
+            badge_style = resolve_style(self.agent, self._tier("normal"))
+        line.append(f"[{self.display_index}]", style=badge_style)
+
+        # Space between badge and chevron inherits the row style (shows highlight)
+        line.append(" ", style=style)
 
         # Collapse indicator
         collapse_char = "▶" if self.collapsed else "▼"
-        line.append(f"{collapse_char} ", style=row_style)
+        line.append(f"{collapse_char} ", style=style)
 
         # Agent/mode
-        line.append(f"{self.agent}/{self.mode}", style=row_style)
+        line.append(f"{self.agent}/{self.mode}", style=style)
 
-        # Subdir if present
+        # Subdir (slug only) — always highlighted regardless of activity state
         subdir = getattr(self.session, "subdir", None)
         if subdir:
-            subdir_display = subdir.removeprefix("trees/")
-            line.append(f" {subdir_display}", style=row_style)
+            slug = subdir.removeprefix("trees/")
+            line.append(f" {slug}", style=resolve_style(self.agent, self._tier("normal")))
 
         # Title in quotes
         title = self.session.title or "(untitled)"
-        line.append(f'  "{title}"', style=row_style)
+        line.append(f'  "{title}"', style=style)
 
         return line
 
     def _build_detail_lines(self) -> list[Text]:
-        """Build expanded detail lines matching old TUI format."""
+        """Build expanded detail lines with │ tree connectors."""
         lines: list[Text] = []
-        detail_indent = " " * (max(0, self.depth - 1) * 2) + "    "
-        agent_style = get_agent_style(self.agent, "normal")
-        highlight_style = (
-            get_agent_style(self.agent, "highlight") if hasattr(get_agent_style, "__call__") else agent_style
-        )
-        muted_style = get_agent_style(self.agent, "muted")
+        connector_pad = " " * self._connector_col
+        # Old TUI: detail_indent = child_indent + "    " (4 spaces)
+        # The │ is painted at connector_col, so the gap after │ is:
+        # len(child_indent) + 4 - connector_col - 1
+        raw_indent = max(0, self.depth - 2) * 2
+        detail_gap = raw_indent + 4 - self._connector_col - 1
+        detail_pad = " " * max(detail_gap, 1)
+        connector_style = Style(color=CONNECTOR_COLOR)
+
+        base_style = resolve_style(self.agent, self._tier("normal"))
+        highlight_style = resolve_style(self.agent, self._tier("highlight"))
+        id_style = base_style
 
         has_input_highlight = self.highlight_type == "input"
         has_output_highlight = self.highlight_type == "output"
-        input_style = highlight_style if has_input_highlight else agent_style
-        output_style = highlight_style if has_output_highlight else agent_style
+        has_tool_activity = bool(self.active_tool)
+        input_style = highlight_style if has_input_highlight else base_style
+        output_style = highlight_style if (has_output_highlight or has_tool_activity) else base_style
 
-        # Line 2: [HH:MM:SS] session_id / native_session_id
+        # Line 2: │   [HH:MM:SS] session_id / native_session_id
         activity_time = format_time(self.session.last_activity)
         sid = self.session.session_id
         native_id = getattr(self.session, "native_session_id", None) or "-"
-        line2 = Text(f"{detail_indent}[{activity_time}] {sid} / {native_id}", style=muted_style)
+        line2 = Text()
+        line2.append(connector_pad)
+        line2.append("│", style=connector_style)
+        line2.append(f"{detail_pad}[{activity_time}] {sid} / {native_id}", style=id_style)
         lines.append(line2)
 
-        # Line 3: [HH:MM:SS]  in: <last input>
+        # Line 3: │   [HH:MM:SS]  in: <last input>
         last_input = (self.session.last_input or "").strip()
         last_input_at = getattr(self.session, "last_input_at", None)
         if last_input:
             input_text = last_input.replace("\n", " ")[:_DETAIL_TEXT_LIMIT]
             input_time = format_time(last_input_at)
-            line3 = Text(f"{detail_indent}[{input_time}]  in: {input_text}", style=input_style)
+            line3 = Text()
+            line3.append(connector_pad)
+            line3.append("│", style=connector_style)
+            line3.append(f"{detail_pad}[{input_time}]  in: {input_text}", style=input_style)
             lines.append(line3)
 
-        # Line 4: [HH:MM:SS] out: <summary or tool activity>
+        # Line 4: │   [HH:MM:SS] out: <content>
+        # Whole row uses output_style color. Tool activity text is italic.
         if self.active_tool:
             activity_time_str = format_time(self.session.last_activity)
-            line4 = Text(f"{detail_indent}[{activity_time_str}] out: ", style=output_style)
-            line4.append(
-                truncate_text(self.active_tool, _DETAIL_TEXT_LIMIT),
-                style=f"italic {get_agent_color(self.agent, 'muted')}",
-            )
+            italic_style = Style(color=output_style.color, bold=output_style.bold, italic=True)
+            line4 = Text()
+            line4.append(connector_pad)
+            line4.append("│", style=connector_style)
+            line4.append(f"{detail_pad}[{activity_time_str}] out: ", style=output_style)
+            line4.append(truncate_text(self.active_tool, _DETAIL_TEXT_LIMIT), style=italic_style)
             lines.append(line4)
         elif self.last_output_summary:
             summary_at = getattr(self.session, "last_output_summary_at", None) or self.session.last_activity
             output_time = format_time(summary_at)
             output_text = self.last_output_summary.replace("\n", " ")[:_DETAIL_TEXT_LIMIT]
-            line4 = Text(f"{detail_indent}[{output_time}] out: {output_text}", style=output_style)
+            line4 = Text()
+            line4.append(connector_pad)
+            line4.append("│", style=connector_style)
+            line4.append(f"{detail_pad}[{output_time}] out: {output_text}", style=output_style)
             lines.append(line4)
         elif has_input_highlight or has_output_highlight:
             activity_time_str = format_time(self.session.last_activity)
-            line4 = Text(f"{detail_indent}[{activity_time_str}] out: ", style=output_style)
-            line4.append("...", style=f"italic bold {get_agent_color(self.agent, 'normal')}")
+            line4 = Text()
+            line4.append(connector_pad)
+            line4.append("│", style=connector_style)
+            line4.append(f"{detail_pad}[{activity_time_str}] out: ...", style=output_style)
             lines.append(line4)
 
         return lines
 
+    def _build_connector_bottom(self) -> Text:
+        """Build the ├---- bottom connector line (non-last sessions).
+
+        Uses ├ (tee) to indicate the tree continues below.
+        Last sessions skip this entirely — GroupSeparator handles closing.
+        """
+        connector_pad = " " * self._connector_col
+        connector_style = Style(color=CONNECTOR_COLOR)
+        run_len = max(self.size.width - self._connector_col - 1, 20)
+        line = Text()
+        line.append(connector_pad)
+        line.append("\u251c", style=connector_style)
+        line.append("-" * run_len, style=connector_style)
+        return line
+
     def render(self) -> Text:
-        result = self._build_title_line()
+        is_selected = self.has_class("selected")
+        is_previewed = self.is_preview
+
+        result = self._build_title_line(selected=is_selected, previewed=is_previewed)
         if not self.collapsed:
             for detail in self._build_detail_lines():
                 result.append("\n")
                 result.append_text(detail)
+            # Bottom connector (skipped for last session before GroupSeparator)
+            if not self.skip_bottom_connector:
+                result.append("\n")
+                result.append_text(self._build_connector_bottom())
         return result
+
+    def on_click(self, event: Click) -> None:
+        """Post Pressed message when clicked."""
+        event.stop()
+        self.post_message(self.Pressed(self))
 
     def update_session(self, session: SessionInfo) -> None:
         """Update the underlying session data and trigger re-render."""
         self.session = session
-        self.refresh()
+        self.refresh(layout=True)
 
     def watch_collapsed(self, _value: bool) -> None:
         self.refresh()

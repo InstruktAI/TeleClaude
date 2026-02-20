@@ -47,6 +47,9 @@ from teleclaude.api_models import (
     SessionClosedEventDTO as SessionClosedEvent,
 )
 from teleclaude.api_models import (
+    SessionDTO as SessionInfo,
+)
+from teleclaude.api_models import (
     SessionsInitialDataDTO as SessionsInitialData,
 )
 from teleclaude.api_models import (
@@ -54,9 +57,6 @@ from teleclaude.api_models import (
 )
 from teleclaude.api_models import (
     SessionStartedEventDTO as SessionStartedEvent,
-)
-from teleclaude.api_models import (
-    SessionSummaryDTO as SessionInfo,
 )
 from teleclaude.api_models import (
     SessionUpdatedEventDTO as SessionUpdatedEvent,

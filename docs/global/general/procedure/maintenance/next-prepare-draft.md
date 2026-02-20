@@ -20,7 +20,7 @@ This phase is creative and constructive. It improves quality but does not make f
 ## Preconditions
 
 1. Job was launched as `next-prepare-draft`.
-2. `todos/roadmap.md`, `todos/icebox.md`, and `todos/delivered.md` are readable.
+2. `todos/roadmap.yaml`, `todos/icebox.md`, and `todos/delivered.md` are readable.
 3. Slug is active only if not listed in icebox or delivered.
 
 ## Steps

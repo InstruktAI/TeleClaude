@@ -12,7 +12,7 @@ type: 'design'
 The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phase B: Build/Review/Fix) without maintaining internal state.
 
 1. **Statelessness**: It derives all work status from project artifacts:
-   - `roadmap.md` (item discovery)
+   - `roadmap.yaml` (item discovery)
    - `requirements.md` and `implementation-plan.md` (preparation check)
    - `state.json` (build/review phase tracking)
 2. **Phases**:
@@ -41,7 +41,7 @@ stateDiagram-v2
 
 **Inputs:**
 
-- `todos/roadmap.md` - Work item registry with priorities
+- `todos/roadmap.yaml` - Work item registry with priorities
 - `todos/{slug}/requirements.md` - Feature requirements
 - `todos/{slug}/implementation-plan.md` - Technical design
 - `todos/{slug}/state.json` - Phase tracking (build, review)

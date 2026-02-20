@@ -23,7 +23,7 @@ Draft and gate must run in separate worker sessions.
 
 ## Preconditions
 
-1. `todos/roadmap.md` exists.
+1. `todos/roadmap.yaml` exists.
 2. Target slug is active (not icebox, not delivered) when slug is provided.
 3. Worker command selected is explicit: `next-prepare-draft` or `next-prepare-gate`.
 

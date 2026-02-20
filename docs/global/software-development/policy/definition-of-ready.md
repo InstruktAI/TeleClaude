@@ -37,7 +37,7 @@ Gates (all required):
    - If no third-party dependencies exist, this gate is automatically satisfied.
    - Triggered when the change introduces or modifies third-party tooling/integrations.
 6. **Dependencies & preconditions**
-   - Prerequisite tasks are listed and blocked via `dependencies.json` if needed.
+   - Prerequisite tasks are listed and blocked via `roadmap.yaml` if needed.
    - Required configs, access, and environments are known.
    - Required external systems are reachable or stubbed.
 7. **Integration safety**

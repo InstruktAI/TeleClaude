@@ -61,7 +61,7 @@ Merge approved work to main, log delivery, and clean up.
    | {date} | {slug} | {title} | DELIVERED | {commit-hash} |
    ```
 
-8. Remove the item for `{slug}` from `todos/roadmap.md`.
+8. Remove the item for `{slug}` from `todos/roadmap.yaml`.
 
 **STOP HERE.** Do not delete `todos/{slug}/`, the worktree, or the feature branch.
 The orchestrator owns cleanup after `end_session` — the worker cannot safely delete
@@ -81,7 +81,7 @@ Cleanup: orchestrator-owned (worktree, branch, todo folder)
 ## Outputs
 
 - Merged changes on `main`.
-- Updated `todos/delivered.md` and `todos/roadmap.md`.
+- Updated `todos/delivered.md` and `todos/roadmap.yaml`.
 
 ## Recovery
 

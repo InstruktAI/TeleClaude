@@ -14,10 +14,12 @@ import os
 import re
 import shutil
 import subprocess
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 
+import yaml
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
@@ -309,7 +311,7 @@ def format_hitl_guidance(context: str) -> str:
 def _find_next_prepare_slug(cwd: str) -> str | None:
     """Find the next active slug that still needs preparation work.
 
-    Scans roadmap.md for slugs, then checks state.json phase for each.
+    Scans roadmap.yaml for slugs, then checks state.json phase for each.
     Active slugs have phase pending, ready, or in_progress.
     Returns the first slug that still needs action:
     - breakdown assessment pending for input.md
@@ -317,15 +319,7 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
     - implementation-plan.md missing
     - phase still pending (needs promotion to ready)
     """
-    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
-    if not roadmap_path.exists():
-        return None
-
-    content = read_text_sync(roadmap_path)
-    pattern = re.compile(r"^-\s+(\S+)", re.MULTILINE)
-
-    for match in pattern.finditer(content):
-        slug = match.group(1)
+    for slug in load_roadmap_slugs(cwd):
         phase = get_item_phase(cwd, slug)
 
         # Skip done items
@@ -585,10 +579,6 @@ def resolve_slug(
 ) -> tuple[str | None, bool, str]:
     """Resolve slug from argument or roadmap.
 
-    Roadmap format expected (plain slug list, no markers):
-        - my-slug
-        Description of the work item.
-
     Phase is derived from state.json for each slug.
 
     Args:
@@ -607,15 +597,12 @@ def resolve_slug(
     if slug:
         return slug, True, ""
 
-    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
-    if not roadmap_path.exists():
+    entries = load_roadmap(cwd)
+    if not entries:
         return None, False, ""
 
-    content = read_text_sync(roadmap_path)
-    pattern = re.compile(r"^-\s+(\S+)", re.MULTILINE)
-
-    for match in pattern.finditer(content):
-        found_slug = match.group(1)
+    for entry in entries:
+        found_slug = entry.slug
         phase = get_item_phase(cwd, found_slug)
 
         if ready_only:
@@ -633,18 +620,7 @@ def resolve_slug(
             if not check_dependencies_satisfied(cwd, found_slug, dependencies):
                 continue  # Skip items with unsatisfied dependencies
 
-        # Extract description: everything after the slug line until next item or section
-        start_pos = match.end()
-        next_item = re.search(r"^-\s+\S", content[start_pos:], re.MULTILINE)
-        next_section = re.search(r"^##", content[start_pos:], re.MULTILINE)
-
-        end_pos = len(content)
-        if next_item:
-            end_pos = min(end_pos, start_pos + next_item.start())
-        if next_section:
-            end_pos = min(end_pos, start_pos + next_section.start())
-
-        description = content[start_pos:end_pos].strip()
+        description = entry.description or ""
         return found_slug, is_ready, description
 
     return None, False, ""
@@ -666,14 +642,8 @@ def check_file_exists(cwd: str, relative_path: str) -> bool:
 
 
 def slug_in_roadmap(cwd: str, slug: str) -> bool:
-    """Check if a slug exists in todos/roadmap.md."""
-    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
-    if not roadmap_path.exists():
-        return False
-
-    content = read_text_sync(roadmap_path)
-    pattern = re.compile(rf"^-\s+{re.escape(slug)}(\s|$)", re.MULTILINE)
-    return bool(pattern.search(content))
+    """Check if a slug exists in todos/roadmap.yaml."""
+    return slug in load_roadmap_slugs(cwd)
 
 
 # =============================================================================
@@ -723,46 +693,154 @@ def set_item_phase(cwd: str, slug: str, phase: str) -> None:
 
 
 # =============================================================================
-# Dependency Management (R4, R5, R6)
+# Roadmap Management (roadmap.yaml)
 # =============================================================================
 
 
-def read_dependencies(cwd: str) -> dict[str, list[str]]:
-    """Read dependency graph from todos/dependencies.json.
-
-    Returns:
-        Dict mapping slug to list of slugs it depends on.
-        Empty dict if file doesn't exist.
-    """
-    deps_path = Path(cwd) / "todos" / "dependencies.json"
-    if not deps_path.exists():
-        return {}
-
-    content = read_text_sync(deps_path)
-    result: dict[str, list[str]] = json.loads(content)
-    return result
+@dataclass
+class RoadmapEntry:
+    slug: str
+    group: str | None = None
+    after: list[str] = field(default_factory=list)
+    description: str | None = None
 
 
-def write_dependencies(cwd: str, deps: dict[str, list[str]]) -> None:
-    """Write dependency graph to todos/dependencies.json.
+class RoadmapDict(TypedDict, total=False):
+    slug: str
+    group: str
+    after: list[str]
+    description: str
 
-    Args:
-        cwd: Project root directory
-        deps: Dependency graph to write
-    """
-    deps_path = Path(cwd) / "todos" / "dependencies.json"
 
-    # Remove empty lists to keep file clean
-    deps = {k: v for k, v in deps.items() if v}
+def _roadmap_path(cwd: str) -> Path:
+    return Path(cwd) / "todos" / "roadmap.yaml"
 
-    if not deps:
-        # If no dependencies, remove file if it exists
-        if deps_path.exists():
-            deps_path.unlink()
+
+def load_roadmap(cwd: str) -> list[RoadmapEntry]:
+    """Parse todos/roadmap.yaml and return ordered list of entries."""
+    path = _roadmap_path(cwd)
+    if not path.exists():
+        return []
+
+    content = read_text_sync(path)
+    raw = yaml.safe_load(content)
+    if not isinstance(raw, list):
+        return []
+
+    entries: list[RoadmapEntry] = []
+    for item in raw:
+        if not isinstance(item, dict) or "slug" not in item:
+            continue
+        after = item.get("after")
+        entries.append(
+            RoadmapEntry(
+                slug=item["slug"],
+                group=item.get("group"),
+                after=list(after) if isinstance(after, list) else [],
+                description=item.get("description"),
+            )
+        )
+    return entries
+
+
+def save_roadmap(cwd: str, entries: list[RoadmapEntry]) -> None:
+    """Write entries back to todos/roadmap.yaml."""
+    path = _roadmap_path(cwd)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    data: list[RoadmapDict] = []
+    for entry in entries:
+        item: RoadmapDict = {"slug": entry.slug}
+        if entry.group:
+            item["group"] = entry.group
+        if entry.after:
+            item["after"] = entry.after
+        if entry.description:
+            item["description"] = entry.description
+        data.append(item)
+
+    header = "# Priority order (first = highest). Per-item state in {slug}/state.json.\n\n"
+    body = yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    write_text_sync(path, header + body)
+
+
+def load_roadmap_slugs(cwd: str) -> list[str]:
+    """Return slug strings in roadmap order."""
+    return [e.slug for e in load_roadmap(cwd)]
+
+
+def load_roadmap_deps(cwd: str) -> dict[str, list[str]]:
+    """Return dependency graph dict from roadmap (replaces read_dependencies)."""
+    return {e.slug: e.after for e in load_roadmap(cwd) if e.after}
+
+
+def add_to_roadmap(
+    cwd: str,
+    slug: str,
+    *,
+    group: str | None = None,
+    after: list[str] | None = None,
+    description: str | None = None,
+    before: str | None = None,
+) -> None:
+    """Add entry to roadmap.yaml at specified position (default: append)."""
+    entries = load_roadmap(cwd)
+    # Avoid duplicates
+    if any(e.slug == slug for e in entries):
         return
 
-    deps_path.parent.mkdir(parents=True, exist_ok=True)
-    write_text_sync(deps_path, json.dumps(deps, indent=2, sort_keys=True) + "\n")
+    entry = RoadmapEntry(slug=slug, group=group, after=after or [], description=description)
+
+    if before:
+        for i, e in enumerate(entries):
+            if e.slug == before:
+                entries.insert(i, entry)
+                save_roadmap(cwd, entries)
+                return
+
+    entries.append(entry)
+    save_roadmap(cwd, entries)
+
+
+def remove_from_roadmap(cwd: str, slug: str) -> bool:
+    """Remove entry from roadmap.yaml. Returns True if found and removed."""
+    entries = load_roadmap(cwd)
+    original_len = len(entries)
+    entries = [e for e in entries if e.slug != slug]
+    if len(entries) < original_len:
+        save_roadmap(cwd, entries)
+        return True
+    return False
+
+
+def move_in_roadmap(cwd: str, slug: str, *, before: str | None = None, after: str | None = None) -> bool:
+    """Reorder entry in roadmap.yaml. Returns True if moved successfully."""
+    entries = load_roadmap(cwd)
+    entry = None
+    for i, e in enumerate(entries):
+        if e.slug == slug:
+            entry = entries.pop(i)
+            break
+    if entry is None:
+        return False
+
+    if before:
+        for i, e in enumerate(entries):
+            if e.slug == before:
+                entries.insert(i, entry)
+                save_roadmap(cwd, entries)
+                return True
+    elif after:
+        for i, e in enumerate(entries):
+            if e.slug == after:
+                entries.insert(i + 1, entry)
+                save_roadmap(cwd, entries)
+                return True
+
+    # Target not found, append
+    entries.append(entry)
+    save_roadmap(cwd, entries)
+    return True
 
 
 def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]) -> bool:
@@ -770,7 +848,7 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
 
     A dependency is satisfied if:
     - Its phase is "done" in state.json, OR
-    - It is not present in roadmap.md (assumed completed/removed)
+    - It is not present in roadmap.yaml (assumed completed/removed)
 
     Args:
         cwd: Project root directory
@@ -1041,7 +1119,7 @@ def sync_main_to_worktree(cwd: str, slug: str, extra_files: list[str] | None = N
     worktree_root = Path(cwd) / "trees" / slug
     if not worktree_root.exists():
         return
-    files = ["todos/roadmap.md", "todos/dependencies.json"]
+    files = ["todos/roadmap.yaml"]
     if extra_files:
         files.extend(extra_files)
     for rel in files:
@@ -1163,8 +1241,7 @@ def has_uncommitted_changes(cwd: str, slug: str) -> bool:
         # planning state into worktrees. The slug todo subtree can also appear
         # as untracked on older worktree branches before the first commit.
         ignored = {
-            "todos/roadmap.md",
-            "todos/dependencies.json",
+            "todos/roadmap.yaml",
             f"todos/{slug}",
             f"todos/{slug}/",
         }
@@ -1543,7 +1620,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 "Discuss with the user where it should appear in the list and get approval, "
                 f"then add it to the roadmap{docs_clause}"
             )
-            note = f"Preparing: {resolved_slug}. This slug is not in todos/roadmap.md. {next_step}"
+            note = f"Preparing: {resolved_slug}. This slug is not in todos/roadmap.yaml. {next_step}"
             if hitl:
                 return format_hitl_guidance(note)
 
@@ -1715,9 +1792,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     deps_cwd = cwd
     if slug:
         maybe_worktree = Path(cwd) / "trees" / slug
-        if (maybe_worktree / "todos" / "dependencies.json").exists():
+        if (maybe_worktree / "todos" / "roadmap.yaml").exists():
             deps_cwd = str(maybe_worktree)
-    deps = await asyncio.to_thread(read_dependencies, deps_cwd)
+    deps = await asyncio.to_thread(load_roadmap_deps, deps_cwd)
 
     resolved_slug: str
     if slug:
@@ -1726,7 +1803,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             return format_error(
                 "NOT_PREPARED",
                 f"Item '{slug}' not found in roadmap.",
-                next_call="Check todos/roadmap.md or call teleclaude__next_prepare().",
+                next_call="Check todos/roadmap.yaml or call teleclaude__next_prepare().",
             )
 
         phase = await asyncio.to_thread(get_item_phase, cwd, slug)
@@ -1744,7 +1821,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             return format_error(
                 "DEPS_UNSATISFIED",
                 f"Item '{slug}' has unsatisfied dependencies.",
-                next_call="Complete dependency items first, or check todos/dependencies.json.",
+                next_call="Complete dependency items first, or check todos/roadmap.yaml.",
             )
         resolved_slug = slug
     else:
@@ -1759,7 +1836,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 return format_error(
                     "DEPS_UNSATISFIED",
                     "Ready items exist but all have unsatisfied dependencies.",
-                    next_call="Complete dependency items first, or check todos/dependencies.json.",
+                    next_call="Complete dependency items first, or check todos/roadmap.yaml.",
                 )
             return format_error(
                 "NO_READY_ITEMS",

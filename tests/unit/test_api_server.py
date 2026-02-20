@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from typing_extensions import TypedDict
 
 from teleclaude.api_server import APIServer
-from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
+from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot, TodoInfo
 from teleclaude.core.origins import InputOrigin
 from teleclaude.transport.redis_transport import RedisTransport
 
@@ -78,7 +78,7 @@ def test_list_sessions_success(test_client, mock_cache):  # type: ignore[explici
     """Test list_sessions returns local sessions with computer field."""
     with patch("teleclaude.api_server.command_handlers.list_sessions", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = [
-            SessionSummary(
+            SessionSnapshot(
                 session_id="sess-1",
                 title="Test Session",
                 last_input_origin=InputOrigin.TELEGRAM.value,
@@ -90,7 +90,7 @@ def test_list_sessions_success(test_client, mock_cache):  # type: ignore[explici
         ]
         # Mock cache to return one duplicate + one remote session
         mock_cache.get_sessions.return_value = [
-            SessionSummary(
+            SessionSnapshot(
                 session_id="sess-1",
                 title="Duplicate Session",
                 computer="remote",
@@ -100,7 +100,7 @@ def test_list_sessions_success(test_client, mock_cache):  # type: ignore[explici
                 active_agent=None,
                 status="active",
             ),
-            SessionSummary(
+            SessionSnapshot(
                 session_id="sess-2",
                 title="Remote Session",
                 computer="remote",
@@ -137,7 +137,7 @@ def test_list_sessions_with_computer_filter(test_client, mock_cache):  # type: i
     """Test list_sessions passes computer parameter to cache."""
     with patch("teleclaude.api_server.command_handlers.list_sessions", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = [
-            SessionSummary(
+            SessionSnapshot(
                 session_id="sess-1",
                 title="Local",
                 last_input_origin=InputOrigin.TELEGRAM.value,
@@ -162,7 +162,7 @@ def test_list_sessions_without_cache(mock_adapter_client):  # type: ignore[expli
 
     with patch("teleclaude.api_server.command_handlers.list_sessions", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = [
-            SessionSummary(
+            SessionSnapshot(
                 session_id="sess-1",
                 title="Local",
                 last_input_origin=InputOrigin.TELEGRAM.value,
@@ -673,9 +673,9 @@ async def test_handle_session_started_updates_cache(api_server, mock_cache):
 
         await api_server._handle_session_started_event("session_started", context)
 
-        summary = mock_cache.update_session.call_args[0][0]
-        assert summary.session_id == "new-sess"
-        assert summary.title == "New Session"
+        snapshot = mock_cache.update_session.call_args[0][0]
+        assert snapshot.session_id == "new-sess"
+        assert snapshot.title == "New Session"
 
 
 @pytest.mark.asyncio
@@ -698,9 +698,9 @@ async def test_handle_session_updated_updates_cache(api_server, mock_cache):
 
         await api_server._handle_session_updated_event("session_updated", context)
 
-        summary = mock_cache.update_session.call_args[0][0]
-        assert summary.session_id == "sess-1"
-        assert summary.title == "Updated"
+        snapshot = mock_cache.update_session.call_args[0][0]
+        assert snapshot.session_id == "sess-1"
+        assert snapshot.title == "Updated"
 
 
 @pytest.mark.asyncio
@@ -708,14 +708,14 @@ async def test_handle_session_closed_updates_cache(mock_adapter_client):
     """Test _handle_session_closed_event removes session from cache."""
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.events import SessionLifecycleContext
-    from teleclaude.core.models import SessionSummary
+    from teleclaude.core.models import SessionSnapshot
 
     cache = DaemonCache()
     api_server = APIServer(client=mock_adapter_client, cache=cache)
     context = SessionLifecycleContext(session_id="sess-1")
 
     cache.update_session(
-        SessionSummary(
+        SessionSnapshot(
             session_id="sess-1",
             title="Test Session",
             last_input_origin=InputOrigin.TELEGRAM.value,

@@ -6,8 +6,10 @@ from rich.text import Text
 from textual.reactive import reactive
 from textual.widget import Widget
 
+from teleclaude.cli.tui.base import TelecMixin
 
-class ActivityRow(Widget):
+
+class ActivityRow(TelecMixin, Widget):
     """Base row with: left badge, center title+subtitle, right status+time.
 
     Subclasses override render() to build their specific layout.

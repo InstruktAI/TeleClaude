@@ -54,11 +54,17 @@ class SessionSelected(Message):
 
 
 class PreviewChanged(Message):
-    """Preview session changed — PaneBridge should update layout."""
+    """Preview session changed — PaneBridge should update layout.
 
-    def __init__(self, session_id: str | None) -> None:
+    request_focus: If True, transfer tmux focus to the preview pane.
+                   Space sets False (preview without focus shift).
+                   Enter/click set True (preview AND focus the pane).
+    """
+
+    def __init__(self, session_id: str | None, *, request_focus: bool = False) -> None:
         super().__init__()
         self.session_id = session_id
+        self.request_focus = request_focus
 
 
 class StickyChanged(Message):
@@ -88,6 +94,15 @@ class KillSessionRequest(Message):
 
 class RestartSessionRequest(Message):
     """Request to restart a session."""
+
+    def __init__(self, session_id: str, computer: str) -> None:
+        super().__init__()
+        self.session_id = session_id
+        self.computer = computer
+
+
+class ReviveSessionRequest(Message):
+    """Request to revive a headless session (create its tmux pane)."""
 
     def __init__(self, session_id: str, computer: str) -> None:
         super().__init__()
@@ -183,6 +198,17 @@ class DocPreviewRequest(Message):
         self.doc_id = doc_id
         self.command = command
         self.title = title
+
+
+# --- Cursor context messages ---
+
+
+class CursorContextChanged(Message):
+    """Cursor moved to a different item type — ActionBar should update hints."""
+
+    def __init__(self, item_type: str) -> None:
+        super().__init__()
+        self.item_type = item_type  # "session" | "computer" | "project"
 
 
 # --- Settings messages ---

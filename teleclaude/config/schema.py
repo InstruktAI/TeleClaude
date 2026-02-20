@@ -96,14 +96,9 @@ class GitConfig(BaseModel):
 class PersonEntry(BaseModel):
     model_config = ConfigDict(extra="allow")
     name: str
-    email: Optional[str] = None
+    email: str
     username: Optional[str] = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
-
-
-class OpsEntry(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    username: str
 
 
 class TelegramCreds(BaseModel):
@@ -202,7 +197,6 @@ class ProjectConfig(BaseModel):
 
 class GlobalConfig(ProjectConfig):
     people: List[PersonEntry] = []
-    ops: List[OpsEntry] = []
     subscriptions: SubscriptionsConfig = SubscriptionsConfig()
     interests: List[str] = []
 

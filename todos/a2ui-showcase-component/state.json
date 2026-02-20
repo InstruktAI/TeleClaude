@@ -1,0 +1,23 @@
+{
+  "slug": "a2ui-showcase-component",
+  "phase": "prepare",
+  "build": "pending",
+  "review": "pending",
+  "dor": {
+    "score": 9,
+    "status": "pass",
+    "schema_version": 1,
+    "blockers": [],
+    "actions_taken": [
+      "Rewrote input.md to drop web components/A2UI in favor of Next.js native showcase page",
+      "Derived requirements.md from new input with concrete data schema and success criteria",
+      "Derived implementation-plan.md with 7 tasks grounded in existing codebase patterns",
+      "Wrote draft DOR report — all 8 gates assessed as pass/auto-pass",
+      "Gate: Verified all pattern claims against actual codebase files",
+      "Gate: Corrected cache access pattern from request.app.state to inline self.cache closure",
+      "Gate: Updated implementation-plan.md Task 1 with correct approach",
+      "Gate: Final verdict PASS at 9/10"
+    ],
+    "last_assessed_at": "2026-02-18T00:00:00Z"
+  }
+}

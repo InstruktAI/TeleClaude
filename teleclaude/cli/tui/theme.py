@@ -130,7 +130,7 @@ def refresh_mode() -> None:
 # --- Agent xterm256 Color Codes ---
 # Used by pane_manager for tmux foreground and external references.
 
-_DEFAULT_AGENT = "codex"
+_KNOWN_AGENTS = frozenset(("claude", "gemini", "codex"))
 
 _AGENT_SUBTLE_DARK = {"claude": 94, "gemini": 103, "codex": 67}
 _AGENT_SUBTLE_LIGHT = {"claude": 180, "gemini": 177, "codex": 110}
@@ -146,8 +146,10 @@ _AGENT_HIGHLIGHT_LIGHT = {"claude": 16, "gemini": 16, "codex": 16}
 
 
 def _safe_agent(agent: str) -> str:
-    """Normalize unknown agent names to a stable default."""
-    return agent if agent in ("claude", "gemini", "codex") else _DEFAULT_AGENT
+    """Validate agent name. Unknown agents crash — they indicate a contract violation."""
+    if agent not in _KNOWN_AGENTS:
+        raise ValueError(f"Unknown agent '{agent}' — expected one of {sorted(_KNOWN_AGENTS)}")
+    return agent
 
 
 def get_agent_normal_color(agent: str) -> int:
@@ -190,12 +192,12 @@ _AGENT_HEX_COLORS_LIGHT: dict[str, str] = {
 
 _LIGHT_MODE_PAPER_BG = "#fdf6e3"
 
-_AGENT_PANE_INACTIVE_HAZE_PERCENTAGE = 0.12 if not _is_dark_mode else 0.24
-_AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE = 0.04 if not _is_dark_mode else 0.08
+_AGENT_PANE_INACTIVE_HAZE_PERCENTAGE = 0.18
+_AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE = 0.10
 _AGENT_PANE_ACTIVE_HAZE_PERCENTAGE = 0.0
 _AGENT_STATUS_HAZE_PERCENTAGE = 0.06
-_TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT = 0.04
-_TUI_INACTIVE_HAZE_PERCENTAGE_DARK = 0.08
+_TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT = 0.08
+_TUI_INACTIVE_HAZE_PERCENTAGE_DARK = 0.12
 _TERMINAL_HINT_WEIGHT = 0.35
 _DARK_HINT_MAX_LUMINANCE = 0.45
 _LIGHT_HINT_MIN_LUMINANCE = 0.55
@@ -390,6 +392,89 @@ def get_pane_theming_mode_from_level(level: int) -> str:
     return _PANE_LEVEL_TO_CANONICAL_MODE[level]
 
 
+# --- xterm256-to-hex conversion ---
+
+
+def _xterm256_to_hex(code: int) -> str:
+    """Convert xterm256 color code to hex string."""
+    if code < 16:
+        _standard = [
+            "#000000",
+            "#800000",
+            "#008000",
+            "#808000",
+            "#000080",
+            "#800080",
+            "#008080",
+            "#c0c0c0",
+            "#808080",
+            "#ff0000",
+            "#00ff00",
+            "#ffff00",
+            "#0000ff",
+            "#ff00ff",
+            "#00ffff",
+            "#ffffff",
+        ]
+        return _standard[code]
+    if code < 232:
+        idx = code - 16
+        b_idx = idx % 6
+        g_idx = (idx // 6) % 6
+        r_idx = idx // 36
+        r = 0 if r_idx == 0 else r_idx * 40 + 55
+        g = 0 if g_idx == 0 else g_idx * 40 + 55
+        b = 0 if b_idx == 0 else b_idx * 40 + 55
+        return f"#{r:02x}{g:02x}{b:02x}"
+    val = (code - 232) * 10 + 8
+    return f"#{val:02x}{val:02x}{val:02x}"
+
+
+def get_agent_selection_bg_hex(agent: str) -> str:
+    """Hex background for cursor-selected row (agent normal color).
+
+    Matches old TUI: get_agent_preview_selected_focus_attr → bg = agent normal.
+    """
+    return _xterm256_to_hex(get_agent_normal_color(agent))
+
+
+def get_agent_preview_bg_hex(agent: str) -> str:
+    """Hex background for preview row (agent muted color).
+
+    Matches old TUI: get_agent_preview_selected_bg_attr → bg = agent muted.
+    """
+    return _xterm256_to_hex(get_agent_muted_color(agent))
+
+
+def get_selection_fg_hex() -> str:
+    """Hex foreground for selected/preview rows (inverted text — terminal bg)."""
+    return "#000000" if _is_dark_mode else "#ffffff"
+
+
+# Connector/separator color for tree lines
+CONNECTOR_COLOR = "color(244)"
+
+# Neutral structural gradient colors (non-agent elements: tabs, banners, etc.)
+# Dark mode: bright → dark.  Light mode: dark → bright.
+_NEUTRAL_COLORS_DARK = {
+    "highlight": "#e0e0e0",
+    "normal": "#a0a0a0",
+    "muted": "#707070",
+    "subtle": "#484848",
+}
+_NEUTRAL_COLORS_LIGHT = {
+    "highlight": "#202020",
+    "normal": "#606060",
+    "muted": "#909090",
+    "subtle": "#b8b8b8",
+}
+
+NEUTRAL_HIGHLIGHT_COLOR = _NEUTRAL_COLORS_DARK["highlight"] if _is_dark_mode else _NEUTRAL_COLORS_LIGHT["highlight"]
+NEUTRAL_NORMAL_COLOR = _NEUTRAL_COLORS_DARK["normal"] if _is_dark_mode else _NEUTRAL_COLORS_LIGHT["normal"]
+NEUTRAL_MUTED_COLOR = _NEUTRAL_COLORS_DARK["muted"] if _is_dark_mode else _NEUTRAL_COLORS_LIGHT["muted"]
+NEUTRAL_SUBTLE_COLOR = _NEUTRAL_COLORS_DARK["subtle"] if _is_dark_mode else _NEUTRAL_COLORS_LIGHT["subtle"]
+
+
 # --- Rich Style Definitions for Textual Widgets ---
 
 # CSS-compatible color values per agent per tier.
@@ -447,9 +532,22 @@ def _build_rich_colors() -> None:
 
 _build_rich_colors()
 
-# Peaceful mode: neutral grays (no agent tint)
-PEACEFUL_NORMAL_COLOR = "color(250)" if _is_dark_mode else "color(238)"
-PEACEFUL_MUTED_COLOR = "color(240)" if _is_dark_mode else "color(244)"
+# Peaceful mode: neutral grays (no agent tint) — full tier table
+_PEACEFUL_COLORS_DARK = {
+    "subtle": "color(236)",
+    "muted": "color(240)",
+    "normal": "color(250)",
+    "highlight": "color(255)",
+}
+_PEACEFUL_COLORS_LIGHT = {
+    "subtle": "color(252)",
+    "muted": "color(244)",
+    "normal": "color(238)",
+    "highlight": "color(232)",
+}
+
+PEACEFUL_NORMAL_COLOR = _PEACEFUL_COLORS_DARK["normal"] if _is_dark_mode else _PEACEFUL_COLORS_LIGHT["normal"]
+PEACEFUL_MUTED_COLOR = _PEACEFUL_COLORS_DARK["muted"] if _is_dark_mode else _PEACEFUL_COLORS_LIGHT["muted"]
 
 # Banner muted color
 BANNER_COLOR = "color(240)" if _is_dark_mode else "color(244)"
@@ -466,7 +564,7 @@ def get_agent_style(agent: str, tier: str = "normal") -> Style:
         tier: "subtle", "muted", "normal", "highlight"
     """
     safe = _safe_agent(agent)
-    color = _agent_rich_colors.get(safe, _agent_rich_colors[_DEFAULT_AGENT]).get(tier, "default")
+    color = _agent_rich_colors[safe].get(tier, "default")
     bold = tier == "highlight"
     return Style(color=color, bold=bold)
 
@@ -474,12 +572,59 @@ def get_agent_style(agent: str, tier: str = "normal") -> Style:
 def get_agent_color(agent: str, tier: str = "normal") -> str:
     """Get the Rich color string for an agent at a given tier."""
     safe = _safe_agent(agent)
-    return _agent_rich_colors.get(safe, _agent_rich_colors[_DEFAULT_AGENT]).get(tier, "default")
+    return _agent_rich_colors[safe].get(tier, "default")
 
 
 def get_agent_css_class(agent: str) -> str:
     """Get CSS class name for an agent."""
     return f"agent-{_safe_agent(agent)}"
+
+
+# --- Theme-aware resolvers ---
+# Widgets call these instead of raw get_agent_* functions.
+# At levels 0, 2 (peaceful): neutral grays. At levels 1, 3, 4: agent colors.
+
+
+def _peaceful_style(tier: str) -> Style:
+    colors = _PEACEFUL_COLORS_DARK if _is_dark_mode else _PEACEFUL_COLORS_LIGHT
+    return Style(color=colors.get(tier, colors["normal"]), bold=tier == "highlight")
+
+
+def _peaceful_color(tier: str) -> str:
+    colors = _PEACEFUL_COLORS_DARK if _is_dark_mode else _PEACEFUL_COLORS_LIGHT
+    return colors.get(tier, colors["normal"])
+
+
+def resolve_style(agent: str, tier: str = "normal") -> Style:
+    """Resolve a session style through the active theme.
+
+    Agent theme (levels 1, 3, 4): agent-specific colors.
+    Peaceful theme (levels 0, 2): neutral grays.
+    """
+    if should_apply_session_theming():
+        return get_agent_style(agent, tier)
+    return _peaceful_style(tier)
+
+
+def resolve_color(agent: str, tier: str = "normal") -> str:
+    """Resolve a session color string through the active theme."""
+    if should_apply_session_theming():
+        return get_agent_color(agent, tier)
+    return _peaceful_color(tier)
+
+
+def resolve_selection_bg_hex(agent: str) -> str:
+    """Resolve selection background hex through the active theme."""
+    if should_apply_session_theming():
+        return get_agent_selection_bg_hex(agent)
+    return NEUTRAL_NORMAL_COLOR
+
+
+def resolve_preview_bg_hex(agent: str) -> str:
+    """Resolve preview background hex through the active theme."""
+    if should_apply_session_theming():
+        return get_agent_preview_bg_hex(agent)
+    return NEUTRAL_MUTED_COLOR
 
 
 # --- Compatibility layer for agent_status.py ---

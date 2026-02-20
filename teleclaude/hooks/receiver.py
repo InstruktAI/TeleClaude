@@ -902,8 +902,8 @@ def main() -> None:
         native_session_id=(raw_native_session_id or "")[:8],
     )
     if not teleclaude_session_id:
-        logger.error(
-            "Hook session resolution failed (contract violation)",
+        logger.debug(
+            "Hook session has no TeleClaude mapping, dropping event",
             agent=args.agent,
             headless=headless_route,
             event_type=event_type,
@@ -912,7 +912,7 @@ def main() -> None:
             cached_session_id=(cached_session_id or "")[:8],
             existing_session_id=(existing_id or "")[:8],
         )
-        sys.exit(1)
+        sys.exit(0)
 
     logger.debug(
         "Hook event received",

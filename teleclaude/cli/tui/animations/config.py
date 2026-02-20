@@ -1,7 +1,8 @@
 """Config section animations."""
 
+from __future__ import annotations
+
 import random
-from typing import Dict, Tuple
 
 from teleclaude.cli.tui.animations.base import Animation
 from teleclaude.cli.tui.pixel_mapping import target_registry
@@ -10,7 +11,7 @@ from teleclaude.cli.tui.pixel_mapping import target_registry
 class PulseAnimation(Animation):
     """Simple pulsing animation for idle state."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         target = target_registry.get(self.target)
         if not target:
             return {}
@@ -18,7 +19,7 @@ class PulseAnimation(Animation):
         width = target.width
         progress = frame / self.duration_frames if self.duration_frames else 0
 
-        pixels: Dict[Tuple[int, int], int] = {}
+        pixels: dict[tuple[int, int], str | int] = {}
 
         # Use full width
         bar_width = int(width * 0.8)
@@ -41,13 +42,13 @@ class PulseAnimation(Animation):
 class TypingAnimation(Animation):
     """Typing animation for interacting state."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         target = target_registry.get(self.target)
         if not target:
             return {}
 
         width = target.width
-        pixels: Dict[Tuple[int, int], int] = {}
+        pixels: dict[tuple[int, int], str | int] = {}
 
         # Random flickering chars
         for _ in range(5):
@@ -61,7 +62,7 @@ class TypingAnimation(Animation):
 class SuccessAnimation(Animation):
     """Success burst animation."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         target = target_registry.get(self.target)
         if not target:
             return {}
@@ -69,7 +70,7 @@ class SuccessAnimation(Animation):
         width = target.width
         progress = frame / self.duration_frames if self.duration_frames else 0
 
-        pixels: Dict[Tuple[int, int], int] = {}
+        pixels: dict[tuple[int, int], str | int] = {}
         center_x = width // 2
 
         # Expanding from center
@@ -87,7 +88,7 @@ class SuccessAnimation(Animation):
 class ErrorAnimation(Animation):
     """Error flash animation."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         target = target_registry.get(self.target)
         if not target:
             return {}
@@ -95,7 +96,7 @@ class ErrorAnimation(Animation):
         width = target.width
         progress = frame / self.duration_frames if self.duration_frames else 0
 
-        pixels: Dict[Tuple[int, int], int] = {}
+        pixels: dict[tuple[int, int], str | int] = {}
 
         # Flash entire line on/off
         if int(progress * 10) % 2 == 0:

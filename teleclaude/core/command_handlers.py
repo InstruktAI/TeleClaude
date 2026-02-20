@@ -45,7 +45,7 @@ from teleclaude.core.models import (
     MessageMetadata,
     ProjectInfo,
     Session,
-    SessionSummary,
+    SessionSnapshot,
     ThinkingMode,
     TodoInfo,
 )
@@ -405,22 +405,19 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     return {"session_id": session_id, "tmux_session_name": tmux_name}
 
 
-async def list_sessions() -> list[SessionSummary]:
+async def list_sessions() -> list[SessionSnapshot]:
     """List all active sessions from local database.
 
     Ephemeral request/response for MCP/Redis only - no DB session required.
     UI adapters (Telegram) should not have access to this command.
-
-    Returns:
-        List of session summaries.
     """
     sessions = await db.list_sessions(include_headless=True)
 
-    summaries: list[SessionSummary] = []
+    results: list[SessionSnapshot] = []
     local_name = config.computer.name
     for s in sessions:
-        summaries.append(
-            SessionSummary(
+        results.append(
+            SessionSnapshot(
                 session_id=s.session_id,
                 last_input_origin=s.last_input_origin,
                 title=s.title,
@@ -444,7 +441,7 @@ async def list_sessions() -> list[SessionSummary]:
             )
         )
 
-    return summaries
+    return results
 
 
 async def list_projects() -> list[ProjectInfo]:
@@ -503,7 +500,6 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
         List of todo objects.
     """
     todos_root = Path(project_path) / "todos"
-    roadmap_path = todos_root / "roadmap.md"
     icebox_path = todos_root / "icebox.md"
 
     todos: list[TodoInfo] = []
@@ -657,43 +653,20 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
             return None
         return None
 
-    if roadmap_path.exists():
-        content = roadmap_path.read_text()
+    from teleclaude.core.next_machine.core import load_roadmap
 
-        # Pattern for todo line: - slug-name (plain slug list, no markers)
-        pattern = re.compile(r"^-\s+(\S+)", re.MULTILINE)
+    roadmap_entries = load_roadmap(project_path)
+    for entry in roadmap_entries:
+        slug = entry.slug
+        if slug in seen_slugs:
+            logger.warning("Duplicate todo slug '%s' in roadmap.yaml, ignoring duplicate", slug)
+            continue
+        if slug in icebox_slugs:
+            logger.info("Skipping todo '%s' because it is in icebox", slug)
+            continue
 
-        lines = content.split("\n")
-        for i, line in enumerate(lines):
-            match = pattern.match(line)
-            if match:
-                slug = match.group(1)
-                if slug in seen_slugs:
-                    logger.warning(
-                        "Duplicate todo slug '%s' in %s on line %d, ignoring duplicate",
-                        slug,
-                        roadmap_path,
-                        i + 1,
-                    )
-                    continue
-                if slug in icebox_slugs:
-                    logger.info("Skipping todo '%s' because it is in icebox", slug)
-                    continue
-
-                seen_slugs.add(slug)
-
-                # Extract description (next indented lines)
-                description = ""
-                for j in range(i + 1, len(lines)):
-                    next_line = lines[j]
-                    if next_line.startswith("      "):  # 6 spaces = indented
-                        description += next_line.strip() + " "
-                    elif next_line.strip() == "":
-                        continue
-                    else:
-                        break
-
-                append_todo(slug, description=description.strip() or None)
+        seen_slugs.add(slug)
+        append_todo(slug, description=entry.description)
 
     for todo_dir in sorted(todos_root.iterdir(), key=lambda p: p.name):
         if not todo_dir.is_dir():
@@ -705,9 +678,8 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
         if todo_dir.name in seen_slugs:
             continue
 
-        if todo_dir.name != "roadmap.md":
-            seen_slugs.add(todo_dir.name)
-            append_todo(todo_dir.name, description=infer_input_description(todo_dir))
+        seen_slugs.add(todo_dir.name)
+        append_todo(todo_dir.name, description=infer_input_description(todo_dir))
 
     return todos
 
@@ -726,10 +698,12 @@ async def get_computer_info() -> ComputerInfo:
     if not config.computer.user or not config.computer.role or not config.computer.host:
         raise ValueError("Computer configuration is incomplete - user, role, and host are required")
 
-    # Gather system stats
-    memory = await asyncio.to_thread(psutil.virtual_memory)
-    disk = await asyncio.to_thread(psutil.disk_usage, "/")
-    cpu_percent = await asyncio.to_thread(psutil.cpu_percent, 0.1)
+    # Gather system stats (parallel, non-blocking cpu_percent)
+    memory, disk, cpu_percent = await asyncio.gather(
+        asyncio.to_thread(psutil.virtual_memory),
+        asyncio.to_thread(psutil.disk_usage, "/"),
+        asyncio.to_thread(psutil.cpu_percent, None),
+    )
 
     # Build typed system stats
     memory_stats: MemoryStats = {

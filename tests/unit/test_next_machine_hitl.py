@@ -132,7 +132,7 @@ async def test_next_prepare_hitl_slug_missing_from_roadmap():
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
-        assert "not in todos/roadmap.md" in result
+        assert "not in todos/roadmap.yaml" in result
         assert "add it to the roadmap" in result
 
 
@@ -153,7 +153,7 @@ async def test_next_prepare_autonomous_slug_missing_from_roadmap():
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
         assert "teleclaude__run_agent_command" in result
         assert f'args="{slug}"' in result
-        assert "not in todos/roadmap.md" in result
+        assert "not in todos/roadmap.yaml" in result
 
 
 @pytest.mark.asyncio
@@ -168,7 +168,7 @@ async def test_next_prepare_hitl_slug_missing_from_roadmap_when_docs_exist():
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=True),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
-        assert "not in todos/roadmap.md" in result
+        assert "not in todos/roadmap.yaml" in result
         assert "add it to the roadmap" in result
 
 
@@ -271,7 +271,7 @@ def test_has_uncommitted_changes_ignores_orchestrator_control_files():
         worktree.mkdir(parents=True, exist_ok=True)
 
         repo_mock = MagicMock()
-        repo_mock.git.status.return_value = " M todos/roadmap.md\n M todos/dependencies.json\n"
+        repo_mock.git.status.return_value = " M todos/roadmap.yaml\n"
 
         with patch("teleclaude.core.next_machine.core.Repo", return_value=repo_mock):
             assert has_uncommitted_changes(tmpdir, "test-slug") is False

@@ -46,7 +46,7 @@ from teleclaude.core.models import (
     RedisInboundMessage,
     Session,
     SessionLaunchIntent,
-    SessionSummary,
+    SessionSnapshot,
     TodoInfo,
 )
 from teleclaude.core.origins import InputOrigin
@@ -1077,7 +1077,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 from teleclaude.core import command_handlers
 
                 if cmd_name == "list_sessions":
-                    payload = [summary.to_dict() for summary in await command_handlers.list_sessions()]
+                    payload = [s.to_dict() for s in await command_handlers.list_sessions()]
                 elif cmd_name == "list_projects":
                     payload = [project.to_dict() for project in await command_handlers.list_projects()]
                 elif cmd_name == "list_projects_with_todos":
@@ -1443,10 +1443,9 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 # Populate cache with sessions
                 for session_obj in data:
                     if isinstance(session_obj, dict):
-                        # Cast dict to SessionSummary for cache
-                        summary = SessionSummary.from_dict(session_obj)
-                        summary.computer = computer_name
-                        self.cache.update_session(summary)
+                        snapshot = SessionSnapshot.from_dict(session_obj)
+                        snapshot.computer = computer_name
+                        self.cache.update_session(snapshot)
 
                 logger.info("Pulled %d sessions from %s", len(data), computer_name)
 

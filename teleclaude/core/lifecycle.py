@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_server import APIServer
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.models import SessionSummary
+from teleclaude.core.models import SessionSnapshot
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -157,17 +157,17 @@ class DaemonLifecycle:
             return
 
         for session in sessions:
-            summary = SessionSummary.from_db_session(session, computer=config.computer.name)
-            self.cache.update_session(summary)
+            snapshot = SessionSnapshot.from_db_session(session, computer=config.computer.name)
+            self.cache.update_session(snapshot)
 
         logger.info("Seeded cache with %d local sessions", len(sessions))
 
     async def _warm_local_projects_cache(self) -> None:
-        """Seed cache with current local projects for digest/initial UI state."""
+        """Seed cache with current local projects AND todos for instant UI."""
         try:
             from teleclaude.core import command_handlers
 
-            projects = await command_handlers.list_projects()
+            projects = await command_handlers.list_projects_with_todos()
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to warm projects cache: %s", exc, exc_info=True)
             return
@@ -176,9 +176,21 @@ class DaemonLifecycle:
             logger.debug("No local projects to seed in cache")
             return
 
-        updated = self.cache.apply_projects_snapshot(config.computer.name, projects)
+        computer_name = config.computer.name
+        updated = self.cache.apply_projects_snapshot(computer_name, projects)
         if updated:
             logger.info("Seeded cache with %d local projects", len(projects))
+
+        # Warm todo cache alongside projects
+        from teleclaude.core.models import TodoInfo
+
+        todos_by_project: dict[str, list[TodoInfo]] = {}
+        for p in projects:
+            if p.path and p.todos:
+                todos_by_project[p.path] = p.todos
+        if todos_by_project:
+            self.cache.apply_todos_snapshot(computer_name, todos_by_project)
+            logger.info("Seeded cache with todos for %d projects", len(todos_by_project))
 
     async def shutdown(self) -> None:
         """Stop core components in a defined order."""

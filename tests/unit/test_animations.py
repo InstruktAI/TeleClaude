@@ -30,31 +30,31 @@ class TestAnimationEngine(unittest.TestCase):
     def test_engine_update(self):
         engine = AnimationEngine()
         palette = MagicMock(spec=ColorPalette)
-        palette.get.return_value = 10
+        palette.get.return_value = "color(196)"
         palette.__len__.return_value = 7
 
         animation = FullSpectrumCycle(palette, is_big=True, duration_seconds=1.0, speed_ms=100)
-        engine.play(animation)
+        engine.play(animation, target="banner")
 
         # Wait for enough time to pass for first frame
         time.sleep(0.11)
         engine.update()
-        self.assertEqual(engine.get_color(0, 0, is_big=True), 10)
+        self.assertEqual(engine.get_color(0, 0, target="banner"), "color(196)")
 
         # Test clearing
         engine.stop()
-        self.assertIsNone(engine.get_color(0, 0, is_big=True))
+        self.assertIsNone(engine.get_color(0, 0, target="banner"))
 
     def test_engine_clear_on_completion(self):
         """Test that colors are cleared when animation completes."""
         engine = AnimationEngine()
         palette = MagicMock(spec=ColorPalette)
-        palette.get.return_value = 10
+        palette.get.return_value = "color(196)"
         palette.__len__.return_value = 7
 
         # Very short animation (1 frame)
         animation = FullSpectrumCycle(palette, is_big=True, duration_seconds=0.1, speed_ms=100)
-        engine.play(animation)
+        engine.play(animation, target="banner")
 
         # First update should set colors
         engine.update()
@@ -62,45 +62,45 @@ class TestAnimationEngine(unittest.TestCase):
         engine.update()
 
         # After completion, colors should be cleared
-        self.assertIsNone(engine.get_color(0, 0, is_big=True))
+        self.assertIsNone(engine.get_color(0, 0, target="banner"))
 
     def test_priority_queue(self):
         """Test that activity animations interrupt periodic animations."""
         engine = AnimationEngine()
         palette = MagicMock(spec=ColorPalette)
-        palette.get.return_value = 10
+        palette.get.return_value = "color(196)"
         palette.__len__.return_value = 7
 
         # Start periodic animation
         periodic_anim = FullSpectrumCycle(palette, is_big=True, duration_seconds=5.0, speed_ms=100)
-        engine.play(periodic_anim, priority=AnimationPriority.PERIODIC)
+        engine.play(periodic_anim, priority=AnimationPriority.PERIODIC, target="banner")
         self.assertEqual(engine._targets["banner"].priority, AnimationPriority.PERIODIC)
 
         # Activity animation should interrupt
         activity_anim = FullSpectrumCycle(palette, is_big=True, duration_seconds=2.0, speed_ms=100)
-        engine.play(activity_anim, priority=AnimationPriority.ACTIVITY)
+        engine.play(activity_anim, priority=AnimationPriority.ACTIVITY, target="banner")
         self.assertEqual(engine._targets["banner"].priority, AnimationPriority.ACTIVITY)
 
     def test_small_and_big_simultaneous(self):
-        """Test that big and small animations run simultaneously."""
+        """Test that banner and logo animations run simultaneously."""
         engine = AnimationEngine()
         palette = MagicMock(spec=ColorPalette)
-        palette.get.return_value = 10
+        palette.get.return_value = "color(196)"
         palette.__len__.return_value = 7
 
         big_anim = FullSpectrumCycle(palette, is_big=True, duration_seconds=1.0, speed_ms=100)
         small_anim = FullSpectrumCycle(palette, is_big=False, duration_seconds=1.0, speed_ms=100)
 
-        engine.play(big_anim)
-        engine.play(small_anim)
+        engine.play(big_anim, target="banner")
+        engine.play(small_anim, target="logo")
 
         # Wait for enough time to pass for first frame
         time.sleep(0.11)
         engine.update()
 
         # Both should have colors
-        self.assertIsNotNone(engine.get_color(0, 0, is_big=True))
-        self.assertIsNotNone(engine.get_color(0, 0, is_big=False))
+        self.assertIsNotNone(engine.get_color(0, 0, target="banner"))
+        self.assertIsNotNone(engine.get_color(0, 0, target="logo"))
 
     def test_engine_disabled(self):
         """Test that animations don't play when engine is disabled."""
@@ -108,11 +108,11 @@ class TestAnimationEngine(unittest.TestCase):
         engine.is_enabled = False
 
         palette = MagicMock(spec=ColorPalette)
-        palette.get.return_value = 10
+        palette.get.return_value = "color(196)"
         palette.__len__.return_value = 7
 
         animation = FullSpectrumCycle(palette, is_big=True, duration_seconds=1.0, speed_ms=100)
-        engine.play(animation)
+        engine.play(animation, target="banner")
 
         # Animation should not have started
         self.assertIsNone(engine._targets["banner"].animation)
@@ -122,17 +122,17 @@ class TestAnimations(unittest.TestCase):
     def test_full_spectrum_cycle(self):
         palette = MagicMock(spec=ColorPalette)
         palette.__len__.return_value = 7
-        palette.get.side_effect = lambda i: 30 + (i % 7)
+        palette.get.side_effect = lambda i: f"color({196 + (i % 7)})"
 
         anim = FullSpectrumCycle(palette, is_big=True, duration_seconds=1.0)
 
         # Frame 0
         colors = anim.update(0)
-        self.assertEqual(colors[(0, 0)], 30)
+        self.assertEqual(colors[(0, 0)], "color(196)")
 
         # Frame 1
         colors = anim.update(1)
-        self.assertEqual(colors[(0, 0)], 31)
+        self.assertEqual(colors[(0, 0)], "color(197)")
 
 
 class TestAnimationTriggers(unittest.TestCase):

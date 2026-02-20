@@ -1,7 +1,8 @@
 """General purpose rainbow animations."""
 
+from __future__ import annotations
+
 import random
-from typing import Dict, Tuple
 
 from teleclaude.cli.tui.animations.base import Animation
 from teleclaude.cli.tui.pixel_mapping import (
@@ -18,7 +19,7 @@ from teleclaude.cli.tui.pixel_mapping import (
 class FullSpectrumCycle(Animation):
     """G1: All pixels synchronously cycle through the color palette."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         color_idx = frame % len(self.palette)
         color_pair = self.palette.get(color_idx)
 
@@ -29,7 +30,7 @@ class FullSpectrumCycle(Animation):
 class LetterWaveLR(Animation):
     """G2: Each letter lights up sequentially from left to right."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         # One letter active at a time, cycling through palette
         active_letter_idx = frame % num_letters
@@ -53,7 +54,7 @@ class LetterWaveLR(Animation):
 class LetterWaveRL(Animation):
     """G3: Each letter lights up sequentially from right to left."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter_idx = (num_letters - 1) - (frame % num_letters)
         color_pair = self.palette.get(frame // num_letters)
@@ -73,7 +74,7 @@ class LetterWaveRL(Animation):
 class LineSweepTopBottom(Animation):
     """G6: Horizontal lines sweep from top to bottom."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = frame % height
         color_pair = self.palette.get(frame // height)
@@ -93,7 +94,7 @@ class LineSweepTopBottom(Animation):
 class LineSweepBottomTop(Animation):
     """G7: Horizontal lines sweep from bottom to top."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = (height - 1) - (frame % height)
         color_pair = self.palette.get(frame // height)
@@ -115,7 +116,7 @@ class MiddleOutVertical(Animation):
 
     supports_small = False
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
             return {}  # Not supported for small logo
 
@@ -143,7 +144,7 @@ class WithinLetterSweepLR(Animation):
 
     supports_small = False
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
             return {}
 
@@ -172,7 +173,7 @@ class WithinLetterSweepRL(Animation):
 
     supports_small = False
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
             return {}
 
@@ -199,11 +200,11 @@ class WithinLetterSweepRL(Animation):
 class RandomPixelSparkle(Animation):
     """G10: Random individual character pixels flash random colors."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         all_pixels = PixelMap.get_all_pixels(self.is_big)
         num_sparkles = len(all_pixels) // 10  # 10% of pixels sparkle
 
-        result = {p: -1 for p in all_pixels}  # Clear all first
+        result: dict[tuple[int, int], str | int] = {p: -1 for p in all_pixels}  # Clear all first
 
         sparkle_pixels = random.sample(all_pixels, num_sparkles)
         for p in sparkle_pixels:
@@ -215,7 +216,7 @@ class RandomPixelSparkle(Animation):
 class CheckerboardFlash(Animation):
     """G13: Alternating pixels flash in checkerboard pattern."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         all_pixels = PixelMap.get_all_pixels(self.is_big)
         color_pair = self.palette.get(frame // 2)
         # 0 or 1
@@ -233,7 +234,7 @@ class CheckerboardFlash(Animation):
 class WordSplitBlink(Animation):
     """G9: "TELE" vs "CLAUDE" blink alternately."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         all_pixels = PixelMap.get_all_pixels(self.is_big)
         split_x = 33 if self.is_big else 15
 
@@ -255,7 +256,7 @@ class DiagonalSweepDR(Animation):
 
     supports_small = False
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
             return {}
         max_val = BIG_BANNER_WIDTH + BIG_BANNER_HEIGHT
@@ -276,7 +277,7 @@ class DiagonalSweepDL(Animation):
 
     supports_small = False
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
             return {}
         max_val = BIG_BANNER_WIDTH + BIG_BANNER_HEIGHT
@@ -298,7 +299,7 @@ class DiagonalSweepDL(Animation):
 class LetterShimmer(Animation):
     """G14: Each letter rapidly cycles through colors independently."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         result = {}
         for i in range(num_letters):
@@ -313,7 +314,7 @@ class LetterShimmer(Animation):
 class WavePulse(Animation):
     """G15: Color wave travels through word with trailing brightness gradient."""
 
-    def update(self, frame: int) -> Dict[Tuple[int, int], int]:
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         active_x = frame % width
 

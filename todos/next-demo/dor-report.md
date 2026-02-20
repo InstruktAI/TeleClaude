@@ -39,7 +39,7 @@ No third-party dependencies. Bash, jq, curl are standard.
 
 ### 6. Dependencies & Preconditions — PASS
 
-- No entries in `dependencies.json`.
+- No dependency entries in `roadmap.yaml`.
 - No `after:` clause in roadmap.
 - All target files exist.
 

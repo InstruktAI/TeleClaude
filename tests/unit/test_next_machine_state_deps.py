@@ -9,12 +9,12 @@ Tests for:
 - next_work() without bug check
 """
 
-import json
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import yaml
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import (
@@ -22,12 +22,13 @@ from teleclaude.core.next_machine import (
     detect_circular_dependency,
     get_item_phase,
     is_ready_for_work,
+    load_roadmap_deps,
     next_work,
-    read_dependencies,
     resolve_slug,
+    save_roadmap,
     set_item_phase,
-    write_dependencies,
 )
+from teleclaude.core.next_machine.core import RoadmapEntry
 
 # =============================================================================
 # set_item_phase / get_item_phase Tests
@@ -110,35 +111,37 @@ def test_get_item_phase_missing_state():
 # =============================================================================
 
 
-def test_read_dependencies_missing_file():
-    """Verify read_dependencies returns empty dict when file doesn't exist"""
+def _write_roadmap_yaml(tmpdir: str, slugs: list[str], deps: dict[str, list[str]] | None = None) -> None:
+    """Helper to write roadmap.yaml fixtures in tests."""
+    entries = []
+    for slug in slugs:
+        entry = RoadmapEntry(slug=slug, after=(deps or {}).get(slug, []))
+        entries.append(entry)
+    save_roadmap(tmpdir, entries)
+
+
+def test_load_roadmap_deps_missing_file():
+    """Verify load_roadmap_deps returns empty dict when file doesn't exist"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        deps = read_dependencies(tmpdir)
+        deps = load_roadmap_deps(tmpdir)
         assert deps == {}
 
 
-def test_write_and_read_dependencies():
-    """Verify writing and reading dependencies works correctly"""
+def test_save_and_load_roadmap_deps():
+    """Verify saving roadmap and loading deps works correctly"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Ensure todos directory exists
-        todos_dir = Path(tmpdir) / "todos"
-        todos_dir.mkdir(parents=True, exist_ok=True)
-
         test_deps = {"item-a": ["item-b", "item-c"], "item-d": ["item-a"]}
+        _write_roadmap_yaml(tmpdir, ["item-a", "item-b", "item-c", "item-d"], test_deps)
 
-        # Mock git operations
-        with patch("teleclaude.core.next_machine.core.Repo"):
-            write_dependencies(tmpdir, test_deps)
-
-        deps = read_dependencies(tmpdir)
-
+        deps = load_roadmap_deps(tmpdir)
         assert deps == test_deps
 
         # Verify file format
-        deps_path = Path(tmpdir) / "todos" / "dependencies.json"
-        content = deps_path.read_text()
-        parsed = json.loads(content)
-        assert parsed == test_deps
+        roadmap_path = Path(tmpdir) / "todos" / "roadmap.yaml"
+        content = roadmap_path.read_text()
+        parsed = yaml.safe_load(content)
+        assert isinstance(parsed, list)
+        assert len(parsed) == 4
 
 
 def test_check_dependencies_satisfied_no_deps():
@@ -152,9 +155,7 @@ def test_check_dependencies_satisfied_no_deps():
 def test_check_dependencies_satisfied_all_complete():
     """Verify dependencies are satisfied when all have phase=done"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text("# Roadmap\n\n- dep-a\n- dep-b\n- test-item\n")
+        _write_roadmap_yaml(tmpdir, ["dep-a", "dep-b", "test-item"])
 
         # Create state.json with phase=done for deps
         for dep in ("dep-a", "dep-b"):
@@ -170,9 +171,7 @@ def test_check_dependencies_satisfied_all_complete():
 def test_check_dependencies_satisfied_incomplete():
     """Verify dependencies are not satisfied when some are not done"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text("# Roadmap\n\n- dep-a\n- dep-b\n- test-item\n")
+        _write_roadmap_yaml(tmpdir, ["dep-a", "dep-b", "test-item"])
 
         # dep-a is done, dep-b is pending
         dep_a_dir = Path(tmpdir) / "todos" / "dep-a"
@@ -191,9 +190,7 @@ def test_check_dependencies_satisfied_incomplete():
 def test_check_dependencies_satisfied_removed():
     """Verify dependencies missing from roadmap are satisfied"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text("# Roadmap\n\n- test-item\n")
+        _write_roadmap_yaml(tmpdir, ["test-item"])
 
         deps = {"test-item": ["former-dep"]}
         result = check_dependencies_satisfied(tmpdir, "test-item", deps)
@@ -257,8 +254,7 @@ async def test_next_work_no_bug_check():
         bugs_path.write_text("# Bugs\n\n- [ ] Fix critical bug\n")
 
         # Create roadmap with item
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.write_text("# Roadmap\n\n- test-item\n")
+        _write_roadmap_yaml(tmpdir, ["test-item"])
 
         # Create required files
         item_dir = Path(tmpdir) / "todos" / "test-item"
@@ -288,14 +284,9 @@ async def test_next_work_respects_dependencies():
     db = MagicMock(spec=Db)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create roadmap with items (plain slug format)
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text("# Roadmap\n\n- dep-item\n- blocked-item\n- ready-item\n")
-
-        # Ensure todos directory exists
-        todos_dir = Path(tmpdir) / "todos"
-        todos_dir.mkdir(parents=True, exist_ok=True)
+        # Create roadmap with items and dependencies
+        deps = {"blocked-item": ["dep-item"]}
+        _write_roadmap_yaml(tmpdir, ["dep-item", "blocked-item", "ready-item"], deps)
 
         # Create state.json for each item
         dep_dir = Path(tmpdir) / "todos" / "dep-item"
@@ -305,11 +296,6 @@ async def test_next_work_respects_dependencies():
         blocked_dir = Path(tmpdir) / "todos" / "blocked-item"
         blocked_dir.mkdir(parents=True, exist_ok=True)
         (blocked_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
-
-        # Set up dependencies
-        deps = {"blocked-item": ["dep-item"], "ready-item": []}
-        with patch("teleclaude.core.next_machine.core.Repo"):
-            write_dependencies(tmpdir, deps)
 
         # Create required files for ready-item
         item_dir = Path(tmpdir) / "todos" / "ready-item"
@@ -338,10 +324,9 @@ async def test_next_work_explicit_slug_checks_dependencies():
     db = MagicMock(spec=Db)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create roadmap (plain slug format)
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text("# Roadmap\n\n- dep-item\n- blocked-item\n")
+        # Create roadmap with dependency
+        deps = {"blocked-item": ["dep-item"]}
+        _write_roadmap_yaml(tmpdir, ["dep-item", "blocked-item"], deps)
 
         # Create state.json for items
         dep_dir = Path(tmpdir) / "todos" / "dep-item"
@@ -351,10 +336,6 @@ async def test_next_work_explicit_slug_checks_dependencies():
         blocked_dir = Path(tmpdir) / "todos" / "blocked-item"
         blocked_dir.mkdir(parents=True, exist_ok=True)
         (blocked_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
-
-        # Set up dependency
-        deps = {"blocked-item": ["dep-item"]}
-        write_dependencies(tmpdir, deps)
 
         result = await next_work(db, slug="blocked-item", cwd=tmpdir)
 
@@ -369,10 +350,8 @@ async def test_next_work_explicit_slug_rejects_pending_items():
     db = MagicMock(spec=Db)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create roadmap with items (plain slug format)
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text("# Roadmap\n\n- pending-item\n- ready-item\n")
+        # Create roadmap
+        _write_roadmap_yaml(tmpdir, ["pending-item", "ready-item"])
 
         # Create state.json with phase=pending
         pend_dir = Path(tmpdir) / "todos" / "pending-item"
@@ -395,9 +374,7 @@ async def test_next_work_review_includes_merge_base_note():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create roadmap with ready item
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text(f"# Roadmap\n\n- {slug}\n")
+        _write_roadmap_yaml(tmpdir, [slug])
 
         # Create required files in main repo
         item_dir = Path(tmpdir) / "todos" / slug
@@ -430,9 +407,7 @@ async def test_next_work_blocks_when_stash_debt_exists():
     slug = "stash-blocked"
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text(f"# Roadmap\n\n- {slug}\n")
+        _write_roadmap_yaml(tmpdir, [slug])
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
@@ -456,9 +431,7 @@ async def test_next_work_does_not_block_review_when_main_ahead():
     slug = "review-blocked"
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text(f"# Roadmap\n\n- {slug}\n")
+        _write_roadmap_yaml(tmpdir, [slug])
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
@@ -488,9 +461,7 @@ async def test_next_work_blocks_when_review_round_limit_reached():
     slug = "review-round-limit"
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text(f"# Roadmap\n\n- {slug}\n")
+        _write_roadmap_yaml(tmpdir, [slug])
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
@@ -523,9 +494,7 @@ async def test_next_work_finalize_next_call_without_slug():
     slug = "final-item"
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text(f"# Roadmap\n\n- {slug}\n")
+        _write_roadmap_yaml(tmpdir, [slug])
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
@@ -561,9 +530,7 @@ async def test_next_work_finalize_next_call_without_slug():
 def test_resolve_slug_ready_only_matches_ready_items():
     """Verify ready_only=True only matches items with pending phase + dor.score >= 8"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text("# Roadmap\n\n- pending-item\n- ready-item\n- in-progress-item\n- done-item\n")
+        _write_roadmap_yaml(tmpdir, ["pending-item", "ready-item", "in-progress-item", "done-item"])
 
         # Create state.json for each item
         states = {
@@ -587,9 +554,7 @@ def test_resolve_slug_ready_only_matches_ready_items():
 def test_resolve_slug_ready_only_no_ready_items():
     """Verify ready_only=True returns None when no ready items exist"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text("# Roadmap\n\n- pending-item\n- in-progress-item\n")
+        _write_roadmap_yaml(tmpdir, ["pending-item", "in-progress-item"])
 
         for slug_name, phase in [("pending-item", "pending"), ("in-progress-item", "in_progress")]:
             d = Path(tmpdir) / "todos" / slug_name
@@ -605,9 +570,7 @@ def test_resolve_slug_ready_only_no_ready_items():
 def test_resolve_slug_ready_only_skips_pending():
     """Verify ready_only=True skips pending items without sufficient dor score"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text("# Roadmap\n\n- pending-item\n- ready-item\n")
+        _write_roadmap_yaml(tmpdir, ["pending-item", "ready-item"])
 
         states = {
             "pending-item": '{"phase": "pending"}',
@@ -627,9 +590,7 @@ def test_resolve_slug_ready_only_skips_pending():
 def test_resolve_slug_ready_only_skips_in_progress():
     """Verify ready_only=True skips in_progress items"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
-        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-        roadmap_path.write_text("# Roadmap\n\n- in-progress-item\n- ready-item\n")
+        _write_roadmap_yaml(tmpdir, ["in-progress-item", "ready-item"])
 
         states = {
             "in-progress-item": '{"phase": "in_progress"}',

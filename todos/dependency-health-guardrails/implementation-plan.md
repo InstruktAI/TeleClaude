@@ -66,7 +66,7 @@ Exit:
 
 ## Dependencies and Preconditions
 
-1. No upstream todo dependency currently declared in `todos/dependencies.json`.
+1. No upstream todo dependency currently declared in `todos/roadmap.yaml`.
 2. Requires local fault-injection capability (or deterministic test doubles) for Redis/API failures.
 3. Requires agreement on explicit bypass policy for user-forced termination requests.
 

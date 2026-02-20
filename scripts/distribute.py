@@ -49,6 +49,7 @@ from teleclaude.resource_validation import (
 Transform = Callable[[Post], str]
 
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
+EXEC_DIRECTIVE_RE = re.compile(r"<!--\s*@exec:\s*(.+?)\s*-->")
 CODEX_NEXT_COMMAND_RE = re.compile(
     r"(^|[\s`'\"(\[])\/(next-[a-z0-9-]+)(?=$|[\s`'\"),.:;!?])",
     re.MULTILINE,
@@ -350,6 +351,40 @@ def _render_progressive_index(
     return header + "\n".join(entries)
 
 
+def expand_exec_directives(content: str, *, project_root: Path, warn_only: bool = False) -> str:
+    """Expand ``<!-- @exec: command -->`` directives by running the command and inserting stdout."""
+
+    def _run(match: re.Match[str]) -> str:
+        cmd = match.group(1)
+        try:
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=project_root,
+            )
+            output = result.stdout.strip()
+            if result.returncode != 0:
+                msg = f"@exec failed ({result.returncode}): {cmd}"
+                if warn_only:
+                    print(f"WARNING: {msg}")
+                    return match.group(0)
+                raise RuntimeError(msg)
+            if not output:
+                return ""
+            return f"```\n{output}\n```"
+        except subprocess.TimeoutExpired:
+            msg = f"@exec timed out: {cmd}"
+            if warn_only:
+                print(f"WARNING: {msg}")
+                return match.group(0)
+            raise RuntimeError(msg)
+
+    return EXEC_DIRECTIVE_RE.sub(_run, content)
+
+
 def expand_inline_refs(content: str, *, project_root: Path, current_path: Path, warn_only: bool = False) -> str:
     """Inline @path.md references into the content (Codex speedup)."""
     seen: set[Path] = set()
@@ -433,7 +468,10 @@ def expand_inline_refs(content: str, *, project_root: Path, current_path: Path, 
             return required_block
         return expanded_body
 
-    return _expand_document(content, current_path=current_path, depth=20)
+    expanded = _expand_document(content, current_path=current_path, depth=20)
+    if EXEC_DIRECTIVE_RE.search(expanded):
+        expanded = expand_exec_directives(expanded, project_root=project_root, warn_only=warn_only)
+    return expanded
 
 
 def _strip_specific_h1(content: str, title: str) -> str:

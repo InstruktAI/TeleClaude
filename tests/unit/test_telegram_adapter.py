@@ -189,7 +189,7 @@ class TestMessaging:
 
             telegram_adapter.app.bot.edit_message_text = record_edit_message_text
 
-            result = await telegram_adapter.edit_message(mock_session, "456", "new text", metadata=metadata)
+            result = await telegram_adapter.edit_message(mock_session, "456", "updated text", metadata=metadata)
 
             assert result is True
             assert len(calls) == 1

@@ -54,8 +54,7 @@ Execute the build phase for the slug and verify completion.
   - tests passing
   - lint passing
   - clean working tree for build-scope changes; pre-existing orchestrator-synced planning drift is allowed:
-    - `todos/roadmap.md`
-    - `todos/dependencies.json`
+    - `todos/roadmap.yaml`
   - if only those files are dirty, report completion and note it explicitly
 - End with: `Ready for review.`
 - Summarize results in the completion report.

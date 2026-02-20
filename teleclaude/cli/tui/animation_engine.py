@@ -1,10 +1,12 @@
 """Core animation engine for TUI banner and logo."""
 
+from __future__ import annotations
+
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Deque, Dict, Optional, Tuple
+from typing import Deque, Optional, Tuple
 
 from teleclaude.cli.tui.animations.base import Animation
 
@@ -28,23 +30,27 @@ class AnimationSlot:
     looping: bool = False
 
 
+# Buffer values are Rich color strings (from palettes) or -1 (clear sentinel).
+_BufferDict = dict[tuple[int, int], str | int]
+
+
 class AnimationEngine:
     """Manages animation state and timing for multiple render targets.
 
     Supports priority-based animation queuing per target:
     - Activity animations (higher priority) interrupt periodic animations
     - Periodic animations queue behind activity animations
+
+    Color values are Rich-compatible color strings (e.g., "color(196)", "#ff5f5f").
+    The sentinel value -1 means "no animation color" (clear pixel).
     """
 
-    def __init__(self):
-        # State per target
-        self._targets: Dict[str, AnimationSlot] = {}
-
-        # Double-buffering per target: target -> { (x,y) -> color_pair }
-        self._buffers_front: Dict[str, Dict[Tuple[int, int], int]] = {}
-        self._buffers_back: Dict[str, Dict[Tuple[int, int], int]] = {}
-
+    def __init__(self) -> None:
+        self._targets: dict[str, AnimationSlot] = {}
+        self._buffers_front: dict[str, _BufferDict] = {}
+        self._buffers_back: dict[str, _BufferDict] = {}
         self._is_enabled: bool = True
+        self._has_active_animation: bool = False
 
         # Initialize default targets
         self._ensure_target("banner")
@@ -60,8 +66,12 @@ class AnimationEngine:
         if not value:
             self.stop()
 
+    @property
+    def has_active_animation(self) -> bool:
+        """True if any target has a running animation."""
+        return self._has_active_animation
+
     def _ensure_target(self, target: str) -> AnimationSlot:
-        """Ensure a target slot exists."""
         if target not in self._targets:
             self._targets[target] = AnimationSlot()
             self._buffers_front[target] = {}
@@ -72,34 +82,22 @@ class AnimationEngine:
         self,
         animation: Animation,
         priority: AnimationPriority = AnimationPriority.PERIODIC,
-        target: Optional[str] = None,
+        target: str | None = None,
     ) -> None:
-        """Start a new animation with priority-based queuing.
-
-        Args:
-            animation: The animation to play
-            priority: Priority level (ACTIVITY interrupts PERIODIC)
-            target: Target name (defaults to animation.target)
-
-        Rules:
-            - Higher priority animations interrupt lower priority ones
-            - Same priority animations replace current animation
-            - Interrupted animations are NOT queued (dropped)
-        """
+        """Start a new animation with priority-based queuing."""
         if not self._is_enabled:
             return
 
         target_name = target or animation.target
         slot = self._ensure_target(target_name)
 
-        # Higher priority interrupts current animation
         if slot.animation is None or priority >= slot.priority:
             slot.animation = animation
             slot.frame_count = 0
             slot.last_update_ms = time.time() * 1000
             slot.priority = priority
-            slot.looping = False  # Reset looping state
-        # Lower priority gets queued (if queue has space)
+            slot.looping = False
+            self._has_active_animation = True
         else:
             slot.queue.append((animation, priority))
 
@@ -115,47 +113,44 @@ class AnimationEngine:
             buf.clear()
         for buf in self._buffers_back.values():
             buf.clear()
+        self._has_active_animation = False
 
     def set_looping(self, target: str, looping: bool) -> None:
-        """Set looping state for a specific target's current animation."""
         if target in self._targets:
             self._targets[target].looping = looping
 
-    def update(self) -> None:
+    def update(self) -> bool:
         """Update animation state. Call this once per render cycle (~100ms).
 
-        Respects per-animation speed_ms timing:
-        - Only advances frame when enough time has elapsed
-        - Uses double-buffering: updates written to back buffer, then swapped to front
-        - Handles queue progression when animations complete
+        Returns True if any animation produced new frame data (banner needs refresh).
         """
         current_time_ms = time.time() * 1000
+        changed = False
+        any_active = False
 
         for target_name, slot in self._targets.items():
             back_buffer = self._buffers_back[target_name]
 
             if slot.animation:
+                any_active = True
                 elapsed_ms = current_time_ms - slot.last_update_ms
                 if elapsed_ms >= slot.animation.speed_ms:
-                    # Time to advance frame
                     new_colors = slot.animation.update(slot.frame_count)
                     back_buffer.update(new_colors)
                     slot.frame_count += 1
                     slot.last_update_ms = current_time_ms
+                    changed = True
 
                     if slot.animation.is_complete(slot.frame_count):
                         if slot.looping:
-                            # Loop animation
                             slot.frame_count = 0
                         elif slot.queue:
-                            # Animation complete - check queue for next animation
                             next_animation, next_priority = slot.queue.popleft()
                             slot.animation = next_animation
                             slot.frame_count = 0
                             slot.priority = next_priority
-                            slot.looping = False  # Reset looping for queued item
+                            slot.looping = False
                         else:
-                            # No more animations
                             slot.animation = None
                             back_buffer.clear()
             else:
@@ -163,35 +158,29 @@ class AnimationEngine:
 
         # Swap buffers atomically
         self._buffers_front, self._buffers_back = self._buffers_back, self._buffers_front
+        self._has_active_animation = any_active
+        return changed
 
-    def get_color(self, x: int, y: int, is_big: bool = True, target: Optional[str] = None) -> Optional[int]:
-        """Get the color pair ID for a specific pixel.
+    def get_color(self, x: int, y: int, target: str = "banner") -> str | None:
+        """Get the Rich color string for a specific pixel.
 
         Reads from front buffer (stable snapshot during rendering).
 
-        Args:
-            x, y: Coordinates
-            is_big: Legacy flag for banner/logo selection (deprecated)
-            target: Explicit target name (overrides is_big)
-
         Returns:
-            Color pair ID or None if no animation color is set for this pixel.
+            Rich color string or None if no animation color is set.
         """
         if not self._is_enabled:
             return None
 
-        # Resolve target
-        target_name = target if target is not None else ("banner" if is_big else "logo")
-
-        # Check if target exists (don't create on get_color to avoid noise)
-        if target_name not in self._buffers_front:
+        colors = self._buffers_front.get(target)
+        if colors is None:
             return None
 
-        colors = self._buffers_front[target_name]
         color = colors.get((x, y))
-        if color == -1:
-            return None
-        return color
+        # Only return actual color strings; -1 sentinel and missing = no color
+        if isinstance(color, str):
+            return color
+        return None
 
     def clear_colors(self) -> None:
         """Clear all active animation colors (both buffers)."""
