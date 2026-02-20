@@ -10,6 +10,17 @@
 
 **Design doc:** `docs/plans/2026-02-20-tui-markdown-editor-design.md`
 
+**Parallelism:** Tasks 1 and 2 are independent (scaffold vs editor app). Tasks 3, 4, and 5 are independent of each other (message, bridge, modal). Task 6 depends on all of 2-5. Task 7 is independent. Task 8 depends on everything.
+
+```
+Task 1 ─────┐
+Task 2 ─────┤
+Task 3 ──┐  │
+Task 4 ──┼──┼── Task 6 ── Task 8
+Task 5 ──┘  │
+Task 7 ─────┘
+```
+
 ---
 
 ### Task 1: Add input.md template and update scaffold
@@ -651,3 +662,15 @@ rm -rf todos/test-braindump
 **Step 5: Final commit**
 
 If any fixes were needed, commit them. Otherwise, done.
+
+---
+
+## Execution Handoff
+
+**1. Subagent-Driven (this session)** — Dispatch fresh subagent per task, review between tasks, fast iteration. Use `superpowers:subagent-driven-development`.
+
+**2. Parallel Session (separate)** — Open new session in worktree with `superpowers:executing-plans`, batch execution with checkpoints.
+
+```bash
+telec claude slow "Read docs/plans/2026-02-20-tui-markdown-editor-plan.md and execute it task-by-task using the superpowers:executing-plans skill."
+```

@@ -10,11 +10,23 @@
 
 **Design doc:** `docs/plans/2026-02-20-tui-markdown-editor-design.md`
 
+**Parallelism:** Tasks 1 and 2 are independent (scaffold vs editor app). Tasks 3, 4, and 5 are independent of each other (message, bridge, modal). Task 6 depends on all of 2-5. Task 7 is independent. Task 8 depends on everything.
+
+```
+Task 1 ─────┐
+Task 2 ─────┤
+Task 3 ──┐  │
+Task 4 ──┼──┼── Task 6 ── Task 8
+Task 5 ──┘  │
+Task 7 ─────┘
+```
+
 ---
 
 ### Task 1: Add input.md template and update scaffold
 
 **Files:**
+
 - Create: `templates/todos/input.md`
 - Modify: `teleclaude/todo_scaffold.py:71-79`
 - Modify: `tests/unit/test_todo_scaffold.py:12-20`
@@ -52,7 +64,6 @@ Create `templates/todos/input.md`:
 # Input: {slug}
 
 <!-- Brain dump — raw thoughts, ideas, context. Prepare when ready. -->
-
 ```
 
 **Step 4: Add input.md to scaffold**
@@ -85,6 +96,7 @@ feat: add input.md to todo scaffold
 ### Task 2: Create the standalone editor micro-app
 
 **Files:**
+
 - Create: `teleclaude/cli/editor.py`
 - Test: `tests/unit/cli/test_editor.py`
 
@@ -242,6 +254,7 @@ Expected: All 4 tests PASS
 **Step 5: Verify the editor runs manually**
 
 Create a temp file and test:
+
 ```bash
 echo "# Test\nHello world" > /tmp/test-editor.md
 uv run python -m teleclaude.cli.editor /tmp/test-editor.md
@@ -260,6 +273,7 @@ feat: add standalone Textual markdown editor for tmux pane
 ### Task 3: Add DocEditRequest message
 
 **Files:**
+
 - Modify: `teleclaude/cli/tui/messages.py:193-200`
 
 **Step 1: Add the message class**
@@ -293,6 +307,7 @@ feat: add DocEditRequest message for editor integration
 ### Task 4: Wire PaneManagerBridge to handle DocEditRequest
 
 **Files:**
+
 - Modify: `teleclaude/cli/tui/pane_bridge.py:12-18` (imports)
 - Modify: `teleclaude/cli/tui/pane_bridge.py:125-134` (add handler)
 
@@ -344,6 +359,7 @@ feat: wire PaneManagerBridge for DocEditRequest
 ### Task 5: Add CreateTodoModal
 
 **Files:**
+
 - Modify: `teleclaude/cli/tui/widgets/modals.py`
 - Test: `tests/unit/cli/tui/test_create_todo_modal.py`
 
@@ -453,6 +469,7 @@ feat: add CreateTodoModal for TUI todo creation
 ### Task 6: Update PreparationView keybindings and actions
 
 **Files:**
+
 - Modify: `teleclaude/cli/tui/views/preparation.py:12-18` (imports)
 - Modify: `teleclaude/cli/tui/views/preparation.py:39-50` (BINDINGS)
 - Modify: `teleclaude/cli/tui/views/preparation.py:247-255` (add editor command builder)
@@ -574,6 +591,7 @@ feat: wire editor and new-todo creation in PreparationView
 ### Task 7: Update ActionBar hints
 
 **Files:**
+
 - Modify: `teleclaude/cli/tui/widgets/action_bar.py:39-43`
 
 **Step 1: Update the preparation context hints**
@@ -644,3 +662,15 @@ rm -rf todos/test-braindump
 **Step 5: Final commit**
 
 If any fixes were needed, commit them. Otherwise, done.
+
+---
+
+## Execution Handoff
+
+**1. Subagent-Driven (this session)** — Dispatch fresh subagent per task, review between tasks, fast iteration. Use `superpowers:subagent-driven-development`.
+
+**2. Parallel Session (separate)** — Open new session in worktree with `superpowers:executing-plans`, batch execution with checkpoints.
+
+```bash
+telec claude slow "Read docs/plans/2026-02-20-tui-markdown-editor-plan.md and execute it task-by-task using the superpowers:executing-plans skill."
+```
