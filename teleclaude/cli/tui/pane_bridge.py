@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import queue
+import threading
+from typing import TYPE_CHECKING, Callable
 
 from instrukt_ai_logging import get_logger
 from textual.widget import Widget
@@ -24,6 +26,67 @@ if TYPE_CHECKING:
     from teleclaude.cli.models import ComputerInfo as APIComputerInfo
     from teleclaude.cli.models import SessionInfo
 
+_SENTINEL = object()
+
+
+class PaneWriter:
+    """Serial writer thread for pane operations with latest-wins coalescing.
+
+    All pane operations (layout, focus, reapply) are enqueued and executed
+    by a single dedicated thread.  This guarantees:
+    1. Serial execution — no concurrent PaneState mutation.
+    2. Non-blocking — the Textual event loop never waits for tmux subprocesses.
+    3. Coalescing — if multiple requests pile up while one executes, only the
+       latest is processed.  Intermediate states are skipped.
+    """
+
+    def __init__(self, pane_manager: TmuxPaneManager) -> None:
+        self._pm = pane_manager
+        self._queue: queue.Queue[Callable[[], None] | object] = queue.Queue()
+        self._thread = threading.Thread(target=self._run, daemon=True, name="pane-writer")
+        self._thread.start()
+
+    def schedule(self, fn: Callable[[], None]) -> None:
+        """Enqueue a pane operation.  Latest-wins coalescing applied."""
+        self._queue.put(fn)
+
+    def stop(self) -> None:
+        """Signal the writer thread to exit and wait for it."""
+        self._queue.put(_SENTINEL)
+        self._thread.join(timeout=5)
+
+    def _run(self) -> None:
+        """Process pane operations serially, coalescing pending ones."""
+        while True:
+            item = self._queue.get()
+            if item is _SENTINEL:
+                break
+
+            # Drain: if more items arrived while we were blocked or executing
+            # the previous operation, use only the latest.
+            latest = item
+            while not self._queue.empty():
+                try:
+                    peek = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                if peek is _SENTINEL:
+                    # Execute the current latest, then exit.
+                    self._execute(latest)
+                    return
+                latest = peek
+
+            self._execute(latest)
+
+    @staticmethod
+    def _execute(fn: object) -> None:
+        if not callable(fn):
+            return
+        try:
+            fn()
+        except Exception:
+            logger.exception("PaneWriter error")
+
 
 class PaneManagerBridge(TelecMixin, Widget):
     """Invisible widget that bridges Textual messages to TmuxPaneManager.
@@ -31,6 +94,10 @@ class PaneManagerBridge(TelecMixin, Widget):
     Listens for PreviewChanged, StickyChanged, and FocusPaneRequest messages
     and translates them into pane_manager.apply_layout() calls.
     No polling. Events only.
+
+    All blocking tmux work is dispatched to a single PaneWriter thread
+    to keep the Textual event loop free while guaranteeing serial access
+    to PaneState.
     """
 
     DEFAULT_CSS = """
@@ -42,6 +109,7 @@ class PaneManagerBridge(TelecMixin, Widget):
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self.pane_manager = TmuxPaneManager()
+        self._writer = PaneWriter(self.pane_manager)
         self._computers: dict[str, APIComputerInfo] = {}
         self._sessions: list[SessionInfo] = []
         self._preview_session_id: str | None = None
@@ -64,10 +132,11 @@ class PaneManagerBridge(TelecMixin, Widget):
     def _apply(self, *, focus: bool = True) -> None:
         """Apply the current layout to the pane manager (non-blocking).
 
-        Runs blocking tmux subprocess calls in a background thread so
-        Textual's event loop stays responsive for rendering.
+        Snapshots current state and enqueues a layout operation on the
+        PaneWriter thread.  If multiple _apply calls fire before the
+        writer processes one, only the latest snapshot is executed.
         """
-        # Snapshot mutable state for thread safety
+        # Snapshot mutable state for the writer thread
         sessions = self._sessions
         preview_id = self._preview_session_id
         sticky_ids = list(self._sticky_session_ids)
@@ -83,7 +152,7 @@ class PaneManagerBridge(TelecMixin, Widget):
                 focus=focus,
             )
 
-        self.run_worker(_do_layout, exclusive=True, group="pane-layout", thread=True)
+        self._writer.schedule(_do_layout)
 
     def on_data_refreshed(self, message: DataRefreshed) -> None:
         """Update cached data from API refresh."""
@@ -117,11 +186,7 @@ class PaneManagerBridge(TelecMixin, Widget):
     def on_focus_pane_request(self, message: FocusPaneRequest) -> None:
         """Handle explicit focus request (non-blocking)."""
         session_id = message.session_id
-
-        def _do_focus() -> None:
-            self.pane_manager.focus_pane_for_session(session_id)
-
-        self.run_worker(_do_focus, thread=True, group="pane-focus")
+        self._writer.schedule(lambda: self.pane_manager.focus_pane_for_session(session_id))
 
     def on_doc_preview_request(self, message: DocPreviewRequest) -> None:
         """Handle doc preview request from preparation view."""
@@ -143,7 +208,6 @@ class PaneManagerBridge(TelecMixin, Widget):
         *,
         active_session_id: str | None,
         sticky_session_ids: list[str],
-        get_computer_info: object,
     ) -> None:
         """Pre-compute pane manager specs and layout signature for reload.
 
@@ -201,12 +265,9 @@ class PaneManagerBridge(TelecMixin, Widget):
 
     def reapply_colors(self) -> None:
         """Re-apply agent colors after theme change (non-blocking)."""
-
-        def _do_reapply() -> None:
-            self.pane_manager.reapply_agent_colors()
-
-        self.run_worker(_do_reapply, thread=True, group="pane-colors")
+        self._writer.schedule(self.pane_manager.reapply_agent_colors)
 
     def cleanup(self) -> None:
         """Clean up all panes on exit."""
+        self._writer.stop()
         self.pane_manager.cleanup()

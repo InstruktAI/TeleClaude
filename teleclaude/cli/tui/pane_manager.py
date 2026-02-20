@@ -140,29 +140,24 @@ class TmuxPaneManager:
         return self._in_tmux
 
     def _adopt_existing_panes(self) -> None:
-        """Adopt existing non-TUI panes from a previous process.
+        """Kill orphaned non-TUI panes from a previous process.
 
-        On SIGUSR2 reload, the old process exits but the tmux panes
-        it created survive. This method discovers them and populates
-        PaneState so that:
-        1. _cleanup_all_session_panes() removes them properly
-        2. _update_active_pane() can respawn content without rebuilding
+        On SIGUSR2 reload or cold restart, the old process exits but
+        the tmux panes it created survive.  These orphans have no
+        session-id mapping and cannot be reliably reused.  Kill them
+        so the first apply_layout call starts from a clean slate.
         """
         if not self._tui_pane_id:
             return
         output = self._run_tmux("list-panes", "-F", "#{pane_id}")
-        adopted: list[str] = []
+        killed = 0
         for pane_id in output.split("\n"):
             pane_id = pane_id.strip()
             if pane_id and pane_id != self._tui_pane_id:
-                self.state.session_pane_ids.append(pane_id)
-                adopted.append(pane_id)
-        if not adopted:
-            return
-        # Use the first adopted pane as the active/parent pane so that
-        # _update_active_pane() can respawn it without a full rebuild.
-        self.state.parent_pane_id = adopted[0]
-        logger.debug("Adopted %d existing panes, parent=%s", len(adopted), adopted[0])
+                self._run_tmux("kill-pane", "-t", pane_id)
+                killed += 1
+        if killed:
+            logger.debug("Killed %d orphaned panes on startup", killed)
 
     def update_session_catalog(self, sessions: list["SessionInfo"]) -> None:
         """Update the session catalog used for layout lookup."""
@@ -175,7 +170,6 @@ class TmuxPaneManager:
         sticky_session_ids: list[str],
         get_computer_info: Callable[[str], ComputerInfo | None],
         active_doc_preview: "DocPreviewState | None" = None,
-        sticky_doc_previews: list[object] | None = None,
         selected_session_id: str | None = None,
         tree_node_has_focus: bool = False,
         focus: bool = True,
@@ -590,10 +584,16 @@ class TmuxPaneManager:
         Captures the inputs that determine _refresh_session_pane_backgrounds
         and _set_tui_pane_background output: selected session, agents, and
         theming mode.
+
+        Keyed on (pane_id, agent) — NOT session_id — so that switching
+        the active preview between sessions with the same agent doesn't
+        trigger a redundant full background refresh.
         """
         pane_agents = tuple(
-            (sid, self._session_catalog.get(sid, None) and self._session_catalog[sid].active_agent)
-            for sid in sorted(self.state.session_to_pane)
+            sorted(
+                (pid, (self._session_catalog.get(sid) or None) and self._session_catalog[sid].active_agent)
+                for sid, pid in self.state.session_to_pane.items()
+            )
         )
         return (
             self._selected_session_id,
@@ -1062,8 +1062,7 @@ class TmuxPaneManager:
 
     def cleanup(self) -> None:
         """Clean up all managed panes. Call this when TUI exits."""
-        self._cleanup_panes()
-        self._cleanup_sticky_panes()
+        self._cleanup_all_session_panes()
 
     def focus_pane_for_session(self, session_id: str) -> bool:
         """Focus the pane showing a specific session.

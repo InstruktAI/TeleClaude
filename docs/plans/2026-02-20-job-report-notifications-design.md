@@ -87,6 +87,7 @@ class SubscriptionNotification(BaseModel):
 
 class Subscription(BaseModel):
     type: str
+    enabled: bool = True  # toggle off without deleting
     notification: SubscriptionNotification = SubscriptionNotification()
 
 class JobSubscription(Subscription):

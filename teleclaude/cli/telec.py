@@ -4,18 +4,21 @@ import asyncio
 import os
 import subprocess
 import sys
+import time as _t
 from enum import Enum
 from pathlib import Path
 
-from instrukt_ai_logging import get_logger
+_BOOT = _t.monotonic()
 
-from teleclaude.cli.api_client import APIError, TelecAPIClient
-from teleclaude.cli.models import CreateSessionResult
-from teleclaude.config import config
-from teleclaude.constants import ENV_ENABLE, MAIN_MODULE
-from teleclaude.logging_config import setup_logging
-from teleclaude.project_setup import init_project
-from teleclaude.todo_scaffold import create_todo_skeleton
+from instrukt_ai_logging import get_logger  # noqa: E402
+
+from teleclaude.cli.api_client import APIError, TelecAPIClient  # noqa: E402
+from teleclaude.cli.models import CreateSessionResult  # noqa: E402
+from teleclaude.config import config  # noqa: E402
+from teleclaude.constants import ENV_ENABLE, MAIN_MODULE  # noqa: E402
+from teleclaude.logging_config import setup_logging  # noqa: E402
+from teleclaude.project_setup import init_project  # noqa: E402
+from teleclaude.todo_scaffold import create_todo_skeleton  # noqa: E402
 
 TMUX_ENV_KEY = "TMUX"
 TUI_ENV_KEY = "TELEC_TUI_SESSION"
@@ -340,6 +343,7 @@ def main() -> None:
 
     setup_logging()
     logger = get_logger(__name__)
+    logger.info("[PERF] main() imports done dt=%.3f", _t.monotonic() - _BOOT)
     argv = sys.argv[1:]
 
     # Handle --help / -h
@@ -395,16 +399,20 @@ def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
     modules from disk.
     """
     logger = get_logger(__name__)
+    _t0 = _t.monotonic()
     from teleclaude.cli.tui.app import RELOAD_EXIT, TelecApp
 
+    logger.info("[PERF] _run_tui import TelecApp dt=%.3f", _t.monotonic() - _t0)
     api = TelecAPIClient()
     app = TelecApp(api, start_view=start_view)
+    logger.info("[PERF] _run_tui TelecApp created dt=%.3f", _t.monotonic() - _t0)
 
     reload_requested = False
 
     try:
         _ensure_tmux_status_hidden_for_tui()
         _ensure_tmux_mouse_on()
+        logger.info("[PERF] _run_tui pre-app.run dt=%.3f", _t.monotonic() - _t0)
         result = app.run()
         reload_requested = result == RELOAD_EXIT
     except KeyboardInterrupt:

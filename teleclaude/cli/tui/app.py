@@ -219,6 +219,7 @@ class TelecApp(App[str | None]):
         self._animation_timer: object | None = None
 
     def compose(self) -> ComposeResult:
+        logger.info("[PERF] compose START t=%.3f", _t.monotonic())
         yield Banner()
         yield BoxTabBar(id="box-tab-bar")
         with TabbedContent(id="main-tabs"):
@@ -234,6 +235,7 @@ class TelecApp(App[str | None]):
             yield ActionBar(id="action-bar")
             yield StatusBar(id="status-bar")
         yield PaneManagerBridge(id="pane-bridge")
+        logger.info("[PERF] compose END t=%.3f", _t.monotonic())
 
     async def on_mount(self) -> None:
         """Initialize on mount: load state, connect API, start refresh."""
@@ -415,7 +417,6 @@ class TelecApp(App[str | None]):
             pane_bridge.seed_layout_for_reload(
                 active_session_id=pane_bridge._preview_session_id,
                 sticky_session_ids=pane_bridge._sticky_session_ids,
-                get_computer_info=pane_bridge._get_computer_info,
             )
             self._update_banner_compactness(len(pane_bridge._sticky_session_ids))
 
