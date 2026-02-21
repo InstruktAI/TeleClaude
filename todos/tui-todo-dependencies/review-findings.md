@@ -1,43 +1,46 @@
 # Review Findings: tui-todo-dependencies
 
-## Critical
+## Round 2
+
+### Critical
 
 (none)
 
-## Important
+### Important
 
-### 1. GroupSeparator labeled-line width calculation off by 2
+(none)
 
-**File:** `teleclaude/cli/tui/widgets/group_separator.py:44`
+### Suggestions
 
-The `remaining` calculation for labeled separators undercounts by 2, causing the line to extend 2 characters past the intended widget width.
+(none)
 
-**Breakdown:**
+All findings from Round 1 have been resolved.
 
-- `" " * col` → col chars
-- `"│"` → 1 char
-- `"  ── "` → 5 chars
-- `label` → len(label) chars
-- `" " + "─" * remaining` → 1 + remaining chars
-- **Total:** `col + 7 + len(label) + remaining`
+---
 
-Current code: `remaining = max(width - col - 5 - len(self._label), 1)` → total = `width + 2`
+## Round 1 — Resolved
 
-**Fix:** Change constant from `5` to `7`:
+### Fixes Applied
 
-```python
-remaining = max(width - col - 7 - len(self._label), 1)
-```
+#### 1. GroupSeparator width calculation (Important)
 
-This may cause visual clipping or overflow in the terminal widget.
+**Issue:** Width calculation off by 2 — used constant `5` instead of `7`
 
-## Suggestions
+**Fix:** Changed `width - col - 5 - len(self._label)` to `width - col - 7 - len(self._label)` in `group_separator.py:44`
 
-### 1. Module docstring still says "closing separator"
+**Commit:** `6a089663` — fix(tui): correct GroupSeparator width calculation off-by-2
 
-**File:** `teleclaude/cli/tui/widgets/group_separator.py:1`
+**Verification:** Lint pass | Hooks pass
 
-The module-level docstring `"""Shared closing separator for project groups in tree views."""` still describes only the closing-line role. The class docstring was correctly updated to reflect both purposes. Consider aligning the module docstring.
+#### 2. Module docstring alignment (Suggestion)
+
+**Issue:** Module docstring only mentioned "closing separator" role
+
+**Fix:** Updated module docstring to "Separator line widget for tree views: closing lines and group sub-headers."
+
+**Commit:** `dcc6e544` — docs(tui): update GroupSeparator module docstring to reflect dual purpose
+
+**Verification:** Lint pass | Hooks pass
 
 ---
 
@@ -45,11 +48,11 @@ The module-level docstring `"""Shared closing separator for project groups in tr
 
 | Requirement                               | Status | Evidence                                                     |
 | ----------------------------------------- | ------ | ------------------------------------------------------------ |
-| API response includes `after` and `group` | ✅     | `api_models.py:192-193`, `api_server.py:1143-1144,1176-1177` |
-| Dimmed dependency suffix on todo rows     | ✅     | `todo_row.py:198-201`                                        |
-| Group sub-headers in Preparation view     | ✅     | `preparation.py:161-169`                                     |
-| Display matches `telec roadmap` info      | ✅     | Both dependency arrows and group labels present              |
-| No regressions in existing tests          | ✅     | Build gates confirm tests pass                               |
+| API response includes `after` and `group` | pass   | `api_models.py:193-194`, `api_server.py:1143-1144,1176-1177` |
+| Dimmed dependency suffix on todo rows     | pass   | `todo_row.py:199-201`                                        |
+| Group sub-headers in Preparation view     | pass   | `preparation.py:162-169`                                     |
+| Display matches `telec roadmap` info      | pass   | Both dependency arrows and group labels present              |
+| No regressions in existing tests          | pass   | Build gates confirm tests pass                               |
 
 ## Implementation Quality
 
@@ -60,7 +63,6 @@ The module-level docstring `"""Shared closing separator for project groups in tr
 - `to_dict()` via `asdict()` automatically picks up new fields — no manual wiring needed
 - Group tracking logic in `PreparationView` correctly handles transitions between groups and ungrouped items
 - `GroupSeparator` not added to `_nav_items` — correct, separators should not be keyboard-navigable
+- Width calculation verified correct: `col + 1 + 5 + len(label) + 1 + remaining = width` when `remaining = width - col - 7 - len(label)`
 
-## Verdict: REQUEST CHANGES
-
-One important finding (off-by-2 width bug) requires a fix before approval. The fix is a single-character change (`5` → `7`).
+## Verdict: APPROVE
