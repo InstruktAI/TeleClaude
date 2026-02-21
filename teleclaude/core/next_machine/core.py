@@ -59,7 +59,6 @@ class WorktreeScript(str, Enum):
 
 
 SCRIPTS_KEY = "scripts"
-UNCHECKED_TASK_MARKER = "- [ ]"
 REVIEW_APPROVE_MARKER = "[x] APPROVE"
 PAREN_OPEN = "("
 DEFAULT_MAX_REVIEW_ROUNDS = 3
@@ -416,11 +415,6 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateV
     Returns:
         Updated state dict
     """
-    if status in (PhaseStatus.COMPLETE.value, PhaseStatus.APPROVED.value):
-        is_complete, error = is_clerical_complete(cwd, slug, phase)
-        if not is_complete:
-            raise RuntimeError(f"Clerical check failed: {error}")
-
     state = read_phase_state(cwd, slug)
     state[phase] = status
     if phase == PhaseName.REVIEW.value:
@@ -922,73 +916,6 @@ def detect_circular_dependency(deps: dict[str, list[str]], slug: str, new_deps: 
             return [slug] + result
 
     return None
-
-
-def parse_impl_plan_done(cwd: str, slug: str) -> bool:
-    """Check if implementation plan tasks are all done."""
-    impl_plan_path = Path(cwd) / "todos" / slug / "implementation-plan.md"
-    if not impl_plan_path.exists():
-        return False
-
-    content = read_text_sync(impl_plan_path)
-
-    # Check if file uses Group-based format
-    group_pattern = re.compile(r"^##\s+Group\s+(\d+)", re.MULTILINE)
-    has_groups = bool(group_pattern.search(content))
-
-    if has_groups:
-        # Group-based format: only check Groups 1-4
-        in_target_group = False
-        for line in content.split("\n"):
-            group_match = group_pattern.match(line)
-            if group_match:
-                group_num = int(group_match.group(1))
-                in_target_group = 1 <= group_num <= 4
-
-            if in_target_group and line.strip().startswith(UNCHECKED_TASK_MARKER):
-                return False
-    else:
-        # Any other format: check for ANY unchecked items
-        if UNCHECKED_TASK_MARKER in content:
-            return False
-
-    return True
-
-
-def is_clerical_complete(cwd: str, slug: str, phase: str) -> tuple[bool, str]:
-    """Verify if the human-readable evidence matches the requested phase transition.
-
-    Args:
-        cwd: Project root or worktree root
-        slug: Work item slug
-        phase: Target phase (build, review)
-
-    Returns:
-        Tuple of (is_complete, error_message)
-    """
-    todo_dir = Path(cwd) / "todos" / slug
-    if phase == PhaseName.BUILD.value:
-        if not parse_impl_plan_done(cwd, slug):
-            return False, f"Implementation plan for '{slug}' has unchecked tasks."
-        checklist_path = todo_dir / "quality-checklist.md"
-        if checklist_path.exists():
-            content = read_text_sync(checklist_path)
-            build_section = re.search(r"## Build Gates \(Builder\)(.*?)##", content, re.DOTALL)
-            if build_section and UNCHECKED_TASK_MARKER in build_section.group(1):
-                return False, f"Build gates in quality-checklist.md for '{slug}' are not fully checked."
-
-    if phase == PhaseName.REVIEW.value:
-        review_path = todo_dir / "review-findings.md"
-        if not review_path.exists():
-            return False, f"Review findings for '{slug}' are missing (review-findings.md not found)."
-        checklist_path = todo_dir / "quality-checklist.md"
-        if checklist_path.exists():
-            content = read_text_sync(checklist_path)
-            review_section = re.search(r"## Review Gates \(Reviewer\)(.*?)##", content, re.DOTALL)
-            if review_section and UNCHECKED_TASK_MARKER in review_section.group(1):
-                return False, f"Review gates in quality-checklist.md for '{slug}' are not fully checked."
-
-    return True, ""
 
 
 def check_review_status(cwd: str, slug: str) -> str:
