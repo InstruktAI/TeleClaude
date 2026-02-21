@@ -41,6 +41,12 @@ repos:
     language: system
     pass_filenames: false
     files: ^(docs/|agents/|\.agents/|scripts/snippet_schema\.yaml|teleclaude/constants\.py)
+  - id: check-cli-help
+    name: Verify CLI -h exits cleanly
+    entry: ./tools/checks/check-cli-help.sh
+    language: system
+    pass_filenames: false
+    files: ^teleclaude/cli/(telec|config_cli|config_cmd)\.py$
   - id: check-raw-sql
     name: Check for raw SQL without noqa markers
     entry: ./tools/checks/check-raw-sql.sh
