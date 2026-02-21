@@ -1,25 +1,64 @@
 # Parked work items. Promote back to roadmap.yaml when priority changes.
 
+- slug: mcp-migration-tc-cli
+  group: mcp-to-tool-specs
+  description: 'Phase 1: Extend telec with tool subcommands and daemon JSON-RPC endpoint'
+- slug: mcp-migration-tool-spec-docs
+  group: mcp-to-tool-specs
+  description: 'Phase 2: Write 24 tool spec doc snippets in 6 taxonomy groups'
+- slug: mcp-migration-context-integration
+  group: mcp-to-tool-specs
+  after:
+    - mcp-migration-tc-cli
+    - mcp-migration-tool-spec-docs
+  description:
+    'Phase 3: Wire tool specs into context-selection pipeline, update CLAUDE.md
+    baseline'
+- slug: mcp-migration-agent-config
+  group: mcp-to-tool-specs
+  after:
+    - mcp-migration-context-integration
+  description:
+    'Phase 4: Remove MCP from agent session configs, validate all agent
+    types'
+- slug: mcp-migration-delete-mcp
+  group: mcp-to-tool-specs
+  after:
+    - mcp-migration-agent-config
+  description:
+    'Phase 5: Delete all MCP server code, wrapper, handlers, definitions
+    (~3,400 lines)'
+- slug: mcp-migration-doc-updates
+  group: mcp-to-tool-specs
+  after:
+    - mcp-migration-delete-mcp
+  description: 'Phase 6: Update architecture and policy docs, rewrite MCP references'
 - slug: test-suite-ownership-reset
-  description: Freeze non-emergency feature changes and reset test ownership to a
+  description:
+    Freeze non-emergency feature changes and reset test ownership to a
     deterministic one-to-one model (source file to owning unit test) with path-based
     test gating. Introduce prefix-based bug routing with an atomic per-bug loop.
 - slug: agent-file-locking-heartbeat
-  description: Agent-level file locking to prevent same-file collisions on main with
+  description:
+    Agent-level file locking to prevent same-file collisions on main with
     deterministic contention behavior. Heartbeat on contention, retry after 3 minutes,
     then halt with precise blocker report if still locked.
 - slug: code-context-annotations
-  description: Code annotation extraction and doc snippet integration work. Parked
+  description:
+    Code annotation extraction and doc snippet integration work. Parked
     behind core identity/streaming/web delivery.
 - slug: code-context-auditor
   description: Drift-auditing layer for context annotations. Depends on code-context-annotations.
 - slug: bidirectional-agent-links
-  description: Agent-to-agent chat/link system. Nice-to-have, not on the near-term
+  description:
+    Agent-to-agent chat/link system. Nice-to-have, not on the near-term
     product path.
 - slug: github-maintenance-runner
-  description: Periodic GitHub bug triage and automated bugfix PR flow in a dedicated
+  description:
+    Periodic GitHub bug triage and automated bugfix PR flow in a dedicated
     maintenance worktree.
 - slug: tdd-enforcement
-  description: Strict TDD enforcement initiative (upfront approved test contract +
+  description:
+    Strict TDD enforcement initiative (upfront approved test contract +
     builder/fixer test immutability). Revisit when bandwidth is available for process
     hardening.

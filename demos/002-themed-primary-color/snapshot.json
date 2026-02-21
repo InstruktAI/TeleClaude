@@ -1,0 +1,26 @@
+{
+  "slug": "themed-primary-color",
+  "title": "Agent-Variant Themes with Warm Primary Color",
+  "sequence": "002",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-21",
+  "merge_commit": "809dbea1",
+  "metrics": {
+    "commits": 14,
+    "files_changed": 10,
+    "files_created": 1,
+    "insertions": 563,
+    "deletions": 118,
+    "test_files_added": 0,
+    "review_rounds": 1,
+    "critical_findings": 0,
+    "important_findings": 1,
+    "suggestions": 4
+  },
+  "acts": {
+    "challenge": "The TUI theme system was all gray with blue Textual defaults leaking into the standalone editor. Introduce Claude's warm orange into themes at higher pane theming levels while keeping things peaceful and neutral at level 0.",
+    "build": "Created two new agent-variant Textual themes with Claude's orange primary color (#d7af87 dark, #875f00 light). Theme objects consolidated into a new theme.py module. Switching between peaceful/agent themes happens automatically when carousel level changes. Editor subprocess receives active theme via CLI flag.",
+    "gauntlet": "Review approved with suggestions. One important finding: stream-of-consciousness comments in app.py needed cleanup. Core implementation solid, no critical issues. All test failures verified pre-existing on main.",
+    "next": "Consider dropping underscore prefixes from theme objects since they are cross-module public API. Legacy test stubs (PrepFileDisplayInfo etc.) remain as pre-existing debt."
+  }
+}
