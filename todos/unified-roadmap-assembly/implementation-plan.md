@@ -2,40 +2,57 @@
 
 ## Overview
 
-- Summarize the approach and why it is appropriate.
+Extract roadmap assembly logic into a core function and unify usage across CLI and API.
 
-## Phase 1: Core Changes
+## Phase 1: Core Extraction
 
-### Task 1.1:
+### Task 1.1: Create `teleclaude/core/roadmap.py`
 
-**File(s):** ``
+**File(s):** `teleclaude/core/roadmap.py`
 
-- [ ] Complete this task
+- [x] Create module with `assemble_roadmap` function.
+- [x] Port logic from `command_handlers.list_todos`, including:
+  - Roadmap loading
+  - Icebox parsing
+  - State.json reading (DOR, status, etc.)
+  - Breakdown/container injection
+  - Grouping and dependency handling
+- [x] Add `include_icebox` and `icebox_only` parameters.
 
-### Task 1.2:
+### Task 1.2: Refactor `command_handlers.py`
 
-**File(s):** ``
+**File(s):** `teleclaude/core/command_handlers.py`
 
-- [ ] Complete this task
+- [x] Update imports.
+- [x] Replace `list_todos` body with call to `assemble_roadmap`.
 
----
+## Phase 2: CLI Integration
 
-## Phase 2: Validation
+### Task 2.1: Update `telec.py` schema
 
-### Task 2.1: Tests
+**File(s):** `teleclaude/cli/telec.py`
 
-- [ ] Add or update tests for the changed behavior
-- [ ] Run `make test`
+- [x] Add `--include-icebox` (-i) and `--icebox-only` (-o) flags to `roadmap` command definition.
+- [x] Add `--json` flag to `roadmap` command definition.
 
-### Task 2.2: Quality Checks
+### Task 2.2: Update `telec.py` handler
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+**File(s):** `teleclaude/cli/telec.py`
 
----
+- [x] Refactor `_handle_roadmap_show` to use `assemble_roadmap`.
+- [x] Implement CLI rendering using `TodoInfo` objects (replacing raw `RoadmapEntry` usage).
+- [x] Implement JSON output format.
+- [x] Handle new icebox flags.
 
-## Phase 3: Review Readiness
+## Phase 3: Validation
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+### Task 3.1: Verification
+
+- [x] Verify `telec roadmap` output matches expected rich format.
+- [x] Verify `telec roadmap --json` output.
+- [x] Verify `telec roadmap --icebox-only`.
+
+### Task 3.2: Quality Checks
+
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
