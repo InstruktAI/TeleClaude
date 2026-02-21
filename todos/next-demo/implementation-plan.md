@@ -153,12 +153,12 @@ The demo step lives in the `"next-finalize"` completion instructions template (`
 
 ### Task 6.1: Tests
 
-- [ ] Test that demo artifact structure matches the spec (folder with `snapshot.json` + `demo.sh`)
-- [ ] Test `snapshot.json` schema: required fields present, types correct
-- [ ] Test `demo.sh` semver gate: exits cleanly on major mismatch, runs on match
-- [ ] Test that the state machine includes the demo step after finalize
-- [ ] Test graceful degradation: demo failure does not block cleanup
-- [ ] Run `make test`
+- [x] Test that demo artifact structure matches the spec (folder with `snapshot.json` + `demo.sh`)
+- [x] Test `snapshot.json` schema: required fields present, types correct
+- [x] Test `demo.sh` semver gate: exits cleanly on major mismatch, runs on match
+- [x] Test that the state machine includes the demo step after finalize
+- [x] Test graceful degradation: demo failure does not block cleanup
+- [x] Run `make test`
 
 ### Task 6.2: Quality Checks
 
