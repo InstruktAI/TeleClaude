@@ -290,7 +290,7 @@ def _should_run_subscription_job(
     *job_name* and checks if any subscriber's ``when`` schedule is due.
     """
     from teleclaude.config.loader import load_person_config
-    from teleclaude.config.schema import JobSubscription, SubscriptionsConfig
+    from teleclaude.config.schema import JobSubscription
 
     if root is None:
         root = Path.home() / ".teleclaude"
@@ -312,11 +312,7 @@ def _should_run_subscription_job(
         except Exception:
             continue
 
-        subs = person_cfg.subscriptions
-        if isinstance(subs, SubscriptionsConfig):
-            continue
-
-        for sub in subs:
+        for sub in person_cfg.subscriptions:
             if not isinstance(sub, JobSubscription):
                 continue
             if sub.job != job_name or not sub.enabled:

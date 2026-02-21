@@ -15,47 +15,7 @@ from teleclaude.config.schema import JobScheduleConfig
 from teleclaude.core.db import Db
 from teleclaude.cron import runner
 from teleclaude.notifications import NotificationOutboxWorker
-from teleclaude.notifications.discovery import build_notification_subscriptions
 from teleclaude.notifications.router import NotificationRouter
-
-
-def _people_root(tmp_path: Path) -> Path:
-    """Create a deterministic ~/.teleclaude directory with people subscriptions."""
-    root = tmp_path / ".teleclaude"
-    (root / "people" / "alice").mkdir(parents=True)
-    (root / "people" / "bob").mkdir(parents=True)
-
-    (root / "teleclaude.yml").write_text(
-        """
-people:
-  - name: alice
-    email: alice@example.com
-  - name: bob
-    email: bob@example.com
-""",
-        encoding="utf-8",
-    )
-
-    (root / "people" / "alice" / "teleclaude.yml").write_text(
-        """
-notifications:
-  telegram_chat_id: "111"
-  channels:
-    - idea-miner-reports
-    - maintenance-alerts
-""",
-        encoding="utf-8",
-    )
-    (root / "people" / "bob" / "teleclaude.yml").write_text(
-        """
-notifications:
-  telegram_chat_id: "222"
-  channels:
-    - maintenance-alerts
-""",
-        encoding="utf-8",
-    )
-    return root
 
 
 @pytest.mark.asyncio
@@ -112,66 +72,30 @@ async def test_notification_outbox_batch_excludes_max_attempt_rows(tmp_path: Pat
 
 
 @pytest.mark.asyncio
-async def test_notification_router_enqueues_only_matching_subscribers(tmp_path: Path) -> None:
-    """Router writes outbox rows only for subscribers of the requested channel."""
-    root = _people_root(tmp_path)
-    db = AsyncMock()
-    db.enqueue_notification = AsyncMock(side_effect=[123])
-
-    router = NotificationRouter(db=db, root=root)
-    rows = await router.send_notification("idea-miner-reports", "report is ready")
-
-    assert rows == [123]
-    db.enqueue_notification.assert_awaited_once_with(
-        channel="idea-miner-reports",
-        recipient_email="alice@example.com",
-        content="report is ready",
-        file_path=None,
-    )
-
-    db.enqueue_notification.reset_mock()
-    rows = await router.send_notification("unknown", "no one should get this")
-    assert rows == []
-    db.enqueue_notification.assert_not_awaited()
-
-
-@pytest.mark.unit
-def test_notification_router_includes_only_subscriber_channel_membership(tmp_path: Path) -> None:
-    """Bob should not receive idea-miner notifications when only maintenance channel is configured."""
-    root = _people_root(tmp_path)
-    people = build_notification_subscriptions(root)
-    assert [recipient.email for recipient in people.for_channel("idea-miner-reports")] == ["alice@example.com"]
-    assert {recipient.email for recipient in people.for_channel("maintenance-alerts")} == {
-        "alice@example.com",
-        "bob@example.com",
-    }
-
-
-@pytest.mark.asyncio
 async def test_notification_worker_delivers_batch_with_isolated_failures(monkeypatch, tmp_path: Path) -> None:
     """A failure in one row should not prevent later rows from being processed."""
-    root = _people_root(tmp_path)
-
     db = AsyncMock()
     db.fetch_notification_batch = AsyncMock(
         return_value=[
             {
                 "id": 1,
-                "channel": "idea-miner-reports",
-                "recipient_email": "alice@example.com",
+                "channel": "idea-miner",
+                "recipient_email": "111",
                 "content": "all good",
                 "file_path": None,
                 "status": "pending",
                 "attempt_count": 0,
+                "delivery_channel": "telegram",
             },
             {
                 "id": 2,
-                "channel": "idea-miner-reports",
-                "recipient_email": "bob@example.com",
+                "channel": "idea-miner",
+                "recipient_email": "222",
                 "content": "this fails",
                 "file_path": None,
                 "status": "pending",
                 "attempt_count": 0,
+                "delivery_channel": "telegram",
             },
         ]
     )
@@ -193,7 +117,7 @@ async def test_notification_worker_delivers_batch_with_isolated_failures(monkeyp
         db=db,
         shutdown_event=asyncio.Event(),
         batch_size=10,
-        root=root,
+        root=tmp_path,
     )
     await worker._process_once()
 

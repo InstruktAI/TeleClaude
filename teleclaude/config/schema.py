@@ -120,18 +120,6 @@ class CredsConfig(BaseModel):
     discord: Optional[DiscordCreds] = None
 
 
-class NotificationsConfig(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    telegram_chat_id: str | None = None
-    telegram: bool = False
-    channels: list[str] = []
-
-
-class SubscriptionsConfig(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    youtube: Optional[str] = None
-
-
 class SubscriptionNotification(BaseModel):
     model_config = ConfigDict(extra="allow")
     preferred_channel: Literal["telegram", "discord", "email"] = "telegram"
@@ -229,7 +217,7 @@ class ProjectConfig(BaseModel):
 
 class GlobalConfig(ProjectConfig):
     people: List[PersonEntry] = []
-    subscriptions: SubscriptionsConfig = SubscriptionsConfig()
+    subscriptions: List[SubscriptionEntry] = []
     interests: List[str] = []
 
     @field_validator("interests", mode="before")
@@ -255,17 +243,8 @@ class GlobalConfig(ProjectConfig):
 class PersonConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     creds: CredsConfig = CredsConfig()
-    notifications: NotificationsConfig = NotificationsConfig()
-    subscriptions: Union[SubscriptionsConfig, List[SubscriptionEntry]] = SubscriptionsConfig()
+    subscriptions: List[SubscriptionEntry] = []
     interests: List[str] = []
-
-    @field_validator("subscriptions", mode="before")
-    @classmethod
-    def coerce_subscriptions(cls, v: Any) -> Any:
-        """Accept both legacy SubscriptionsConfig dict and new list[SubscriptionEntry]."""
-        if isinstance(v, list):
-            return v
-        return v
 
     @field_validator("interests", mode="before")
     @classmethod

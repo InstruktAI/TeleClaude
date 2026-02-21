@@ -435,7 +435,7 @@ def discover_config_areas() -> list[ConfigArea]:
     for person in config.people:
         try:
             pc = get_person_config(person.name)
-            if pc.notifications.telegram:
+            if pc.subscriptions:
                 has_notifications = True
                 break
         except (ValueError, ValidationError):

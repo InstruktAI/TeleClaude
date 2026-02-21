@@ -118,14 +118,14 @@ Replace hardcoded job-to-channel notification mapping with a subscription-driven
 
 **File(s):** `teleclaude/config/schema.py`, `teleclaude/notifications/discovery.py`, `teleclaude/cron/discovery.py`, affected tests
 
-- [ ] Search all references: `rg "NotificationsConfig|SubscriptionsConfig|notifications\.telegram_chat_id" --type py`
-- [ ] Delete `NotificationsConfig` and old `SubscriptionsConfig` from schema.py
-- [ ] Remove `notifications` field from `PersonConfig`
-- [ ] Make `subscriptions` field exclusively `list[SubscriptionEntry]`
-- [ ] Update `discover_youtube_subscribers()` in `teleclaude/cron/discovery.py` to use new `YoutubeSubscription` entries
-- [ ] Gut or delete `teleclaude/notifications/discovery.py` (replaced by `job_recipients.py`)
-- [ ] Fix all tests referencing old config fields
-- [ ] Run `pytest tests/ -v` — PASS
+- [x] Search all references: `rg "NotificationsConfig|SubscriptionsConfig|notifications\.telegram_chat_id" --type py`
+- [x] Delete `NotificationsConfig` and old `SubscriptionsConfig` from schema.py
+- [x] Remove `notifications` field from `PersonConfig`
+- [x] Make `subscriptions` field exclusively `list[SubscriptionEntry]`
+- [x] Update `discover_youtube_subscribers()` in `teleclaude/cron/discovery.py` to use new `YoutubeSubscription` entries
+- [x] Gut or delete `teleclaude/notifications/discovery.py` (replaced by `job_recipients.py`)
+- [x] Fix all tests referencing old config fields
+- [x] Run `pytest tests/ -v` — PASS
 
 ### Task 5.2: Person config migration script
 

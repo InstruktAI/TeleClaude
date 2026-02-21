@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from teleclaude.config.loader import load_global_config, load_person_config
-from teleclaude.config.schema import SubscriptionsConfig
+from teleclaude.config.schema import YoutubeSubscription
 
 
 @dataclass
@@ -43,15 +43,17 @@ def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
     global_cfg_path = root / "teleclaude.yml"
     if global_cfg_path.exists():
         global_cfg = load_global_config(global_cfg_path)
-        if global_cfg.subscriptions.youtube:
-            subscribers.append(
-                Subscriber(
-                    scope="global",
-                    name=None,
-                    config_path=global_cfg_path,
-                    tags=global_cfg.interests,
+        for sub in global_cfg.subscriptions:
+            if isinstance(sub, YoutubeSubscription) and sub.enabled:
+                subscribers.append(
+                    Subscriber(
+                        scope="global",
+                        name=None,
+                        config_path=global_cfg_path,
+                        tags=global_cfg.interests,
+                    )
                 )
-            )
+                break
 
     # Check each person
     people_dir = root / "people"
@@ -62,15 +64,16 @@ def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
             person_cfg_path = person_dir / "teleclaude.yml"
             if person_cfg_path.exists():
                 person_cfg = load_person_config(person_cfg_path)
-                subs = person_cfg.subscriptions
-                if isinstance(subs, SubscriptionsConfig) and subs.youtube:
-                    subscribers.append(
-                        Subscriber(
-                            scope="person",
-                            name=person_dir.name,
-                            config_path=person_cfg_path,
-                            tags=person_cfg.interests,
+                for sub in person_cfg.subscriptions:
+                    if isinstance(sub, YoutubeSubscription) and sub.enabled:
+                        subscribers.append(
+                            Subscriber(
+                                scope="person",
+                                name=person_dir.name,
+                                config_path=person_cfg_path,
+                                tags=person_cfg.interests,
+                            )
                         )
-                    )
+                        break
 
     return subscribers

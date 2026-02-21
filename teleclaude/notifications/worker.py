@@ -11,7 +11,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core import db as db_module
 
-from .discovery import build_notification_subscriptions
 from .telegram import send_telegram_dm
 
 if TYPE_CHECKING:
@@ -45,8 +44,6 @@ class NotificationOutboxWorker:
         self.base_backoff_s = base_backoff_s
         self.max_backoff_s = max_backoff_s
         self.root = root
-        self._recipient_cache: dict[str, str] = {}
-        self._recipient_cache_dirty = True
 
     @staticmethod
     def _backoff_seconds(attempt: int) -> float:
@@ -58,17 +55,6 @@ class NotificationOutboxWorker:
     def _build_backoff(self, attempt: int) -> float:
         delay = self._backoff_seconds(attempt) * self.base_backoff_s
         return min(self.max_backoff_s, delay)
-
-    def _recipient_for_email(self, email: str) -> str | None:
-        if self._recipient_cache_dirty:
-            index = build_notification_subscriptions(self.root)
-            self._recipient_cache = {
-                recipient.email: recipient.telegram_chat_id
-                for channel in index.by_channel
-                for recipient in index.for_channel(channel)
-            }
-            self._recipient_cache_dirty = False
-        return self._recipient_cache.get(email)
 
     async def run(self) -> None:
         """Run continuously until shutdown event is set."""
@@ -132,12 +118,9 @@ class NotificationOutboxWorker:
             )
             return
 
-        # Resolve chat_id: if recipient contains '@', use old email->chat_id lookup;
-        # otherwise treat recipient as a chat_id directly (new subscription path).
-        if "@" in recipient:
-            chat_id = self._recipient_for_email(recipient)
-        else:
-            chat_id = recipient
+        # Recipient is a telegram chat_id (subscription path).
+        # Legacy email-based rows are no longer supported.
+        chat_id = recipient if "@" not in recipient else None
 
         if not chat_id:
             logger.warning("undeliverable notification; no chat_id configured", row_id=row_id, recipient=recipient)

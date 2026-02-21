@@ -11,7 +11,6 @@ from teleclaude.config.schema import (
     CredsConfig,
     JobSubscription,
     SubscriptionNotification,
-    SubscriptionsConfig,
 )
 
 logger = get_logger(__name__)
@@ -74,16 +73,14 @@ def discover_job_recipients(
         email = email_by_dir.get(dir_key, f"{person_dir.name}@local")
         role = people_by_email.get(email, "member")
 
-        subs = person_cfg.subscriptions
         has_matching_sub = False
         sub_notification = SubscriptionNotification()
 
-        if not isinstance(subs, SubscriptionsConfig):
-            for sub in subs:
-                if isinstance(sub, JobSubscription) and sub.job == job_name and sub.enabled:
-                    has_matching_sub = True
-                    sub_notification = sub.notification
-                    break
+        for sub in person_cfg.subscriptions:
+            if isinstance(sub, JobSubscription) and sub.job == job_name and sub.enabled:
+                has_matching_sub = True
+                sub_notification = sub.notification
+                break
 
         if job_category == "subscription":
             if has_matching_sub and email not in seen_emails:

@@ -5,7 +5,6 @@ from teleclaude.config.schema import (
     JobScheduleConfig,
     JobSubscription,
     JobWhenConfig,
-    PersonConfig,
     Subscription,
     SubscriptionNotification,
     TelegramCreds,
@@ -54,7 +53,9 @@ people:
 ops:
   - username: "alice_ops"
 subscriptions:
-  youtube: "subs.json"
+  - type: youtube
+    source: "subs.json"
+    tags: ["python"]
 interests: ["python", "ai"]
 """,
         encoding="utf-8",
@@ -62,8 +63,8 @@ interests: ["python", "ai"]
     config = load_global_config(config_path)
     assert len(config.people) == 1
     assert config.people[0].name == "Alice"
-    assert config.ops[0].username == "alice_ops"
-    assert config.subscriptions.youtube == "subs.json"
+    assert config.ops[0]["username"] == "alice_ops"
+    assert len(config.subscriptions) == 1
     assert "python" in config.interests
 
 
@@ -75,21 +76,20 @@ creds:
   telegram:
     user_name: "alice"
     user_id: 12345
-notifications:
-  telegram: true
-  telegram_chat_id: "123456"
-  channels:
-    - idea-miner-reports
-    - maintenance-alerts
+    chat_id: "123456"
+subscriptions:
+  - type: job
+    job: idea-miner
+    when:
+      every: "1h"
 interests: ["ai", "rust"]
 """,
         encoding="utf-8",
     )
     config = load_person_config(config_path)
     assert config.creds.telegram.user_name == "alice"
-    assert config.notifications.telegram is True
-    assert config.notifications.telegram_chat_id == "123456"
-    assert config.notifications.channels == ["idea-miner-reports", "maintenance-alerts"]
+    assert config.creds.telegram.chat_id == "123456"
+    assert len(config.subscriptions) == 1
     assert "ai" in config.interests
 
 
@@ -311,20 +311,16 @@ subscriptions:
     assert config.creds.telegram.chat_id == "999"
 
 
-def test_person_config_legacy_subscriptions_still_work(tmp_path):
+def test_person_config_empty_subscriptions(tmp_path):
     config_path = tmp_path / "teleclaude.yml"
     config_path.write_text(
         """
-subscriptions:
-  youtube: "subs.json"
+subscriptions: []
 """,
         encoding="utf-8",
     )
     config = load_person_config(config_path)
-    from teleclaude.config.schema import SubscriptionsConfig
-
-    assert isinstance(config.subscriptions, SubscriptionsConfig)
-    assert config.subscriptions.youtube == "subs.json"
+    assert config.subscriptions == []
 
 
 def test_job_category_in_project_config(tmp_path):
