@@ -51,9 +51,9 @@ The data already exists in `RoadmapEntry` (core/next_machine/core.py:701) but is
 
 **File(s):** `teleclaude/cli/tui/views/preparation.py`
 
-- [ ] Add `after=getattr(t, "after", [])` to TodoItem construction (line 104)
-- [ ] Add `group=getattr(t, "group", None)` to TodoItem construction
-- [ ] Track current group per project; insert `GroupSeparator` when group changes
+- [x] Add `after=getattr(t, "after", [])` to TodoItem construction (line 104)
+- [x] Add `group=getattr(t, "group", None)` to TodoItem construction
+- [x] Track current group per project; insert `GroupSeparator` when group changes
 
 ### Task 2.3: Display dependencies in TodoRow
 
