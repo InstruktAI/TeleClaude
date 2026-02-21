@@ -112,7 +112,3 @@
     test gating. Introduce prefix-based bug routing with an atomic per-bug loop.
 - slug: tui-markdown-editor
   description: Inline markdown editing and one-key todo creation in TUI
-- slug: job-report-notifications
-  description: Subscription-driven job execution and notification delivery. Subscription
-    jobs only run when someone subscribes. System jobs deliver to all admins. Mailbox
-    flag scan, per-recipient outbox, enabled toggle.
