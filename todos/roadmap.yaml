@@ -58,11 +58,6 @@
   description: After every finalize, produce a stored demo artifact — a rich five-act
     presentation of what was built. Includes /next-demo command, demos/ artifact storage,
     orchestration wiring, widget rendering, and lifecycle doc updates.
-- slug: direct-conversation-flag
-  group: Agent Direct Conversation
-  description: Add direct boolean parameter to teleclaude__send_message and teleclaude__start_session.
-    When true, skip listener registration for clean peer-to-peer agent communication
-    without automatic notification subscriptions.
 - slug: multi-user-db-abstraction
   group: Multi-User System-Wide Installation
   description: 'Phase 0: Configurable database engine (SQLite default, PostgreSQL
