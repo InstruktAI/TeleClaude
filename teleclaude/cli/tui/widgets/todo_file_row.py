@@ -32,17 +32,29 @@ class TodoFileRow(TelecMixin, Widget):
     }
     """
 
-    def __init__(self, slug: str, filename: str, is_last: bool = False, **kwargs: object) -> None:
+    def __init__(
+        self,
+        slug: str,
+        filename: str,
+        is_last: bool = False,
+        tree_lines: list[bool] | None = None,
+        **kwargs: object,
+    ) -> None:
         super().__init__(**kwargs)
         self.slug = slug
         self.filename = filename
         self.is_last = is_last
+        self._tree_lines = tree_lines or []
 
     def render(self) -> Text:
         line = Text()
         is_selected = self.has_class("selected")
+        # Tree prefix: same ancestor lines as parent todo, then file connector
+        line.append("  ", style=_CONNECTOR)
+        for continues in self._tree_lines:
+            line.append("\u2502 " if continues else "  ", style=_CONNECTOR)
         connector = "\u2514" if self.is_last else "\u251c"
-        line.append(f"  \u2502 {connector}\u2500", style=_CONNECTOR)
+        line.append(f"{connector}\u2500", style=_CONNECTOR)
         name_style = Style(reverse=True) if is_selected else Style()
         line.append(self.filename, style=name_style)
         return line

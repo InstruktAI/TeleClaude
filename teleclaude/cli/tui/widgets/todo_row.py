@@ -78,6 +78,8 @@ class TodoRow(TelecMixin, Widget):
         is_last: bool = False,
         slug_width: int = 0,
         col_widths: dict[str, int] | None = None,
+        tree_lines: list[bool] | None = None,
+        max_depth: int = 0,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -85,6 +87,8 @@ class TodoRow(TelecMixin, Widget):
         self.is_last = is_last
         self._slug_width = slug_width
         self._col_widths = col_widths or {}
+        self._tree_lines = tree_lines or []
+        self._max_depth = max_depth
 
     @staticmethod
     def compute_col_widths(todos: list[TodoItem]) -> dict[str, int]:
@@ -120,7 +124,7 @@ class TodoRow(TelecMixin, Widget):
         return Style(color=color, bold=bold)
 
     def _build_col(self, label: str, value: str, width: int, value_style: Style) -> Text:
-        """Render a fixed-width column. Empty value → blank padding for alignment."""
+        """Render a fixed-width column. Empty value -> blank padding for alignment."""
         col = Text()
         if value:
             col.append(f"{label}:", style=Style())
@@ -169,8 +173,11 @@ class TodoRow(TelecMixin, Widget):
         line = Text()
         is_selected = self.has_class("selected")
 
-        # Tree connector + status dot: draft=space, ready=green ●, active=gold ●
-        line.append("  \u251c\u2500", style=_CONNECTOR)
+        # Tree prefix: leading margin + ancestor continuation lines + own connector
+        line.append("  ", style=_CONNECTOR)
+        for continues in self._tree_lines:
+            line.append("\u2502 " if continues else "  ", style=_CONNECTOR)
+        line.append("\u2514\u2500" if self.is_last else "\u251c\u2500", style=_CONNECTOR)
         status_label = self.todo.status.display_label
         if status_label == "draft":
             line.append("\u25a1", style=self._status_style())
@@ -188,17 +195,13 @@ class TodoRow(TelecMixin, Widget):
             slug_style = Style()
         line.append(self.todo.slug, style=slug_style)
 
-        # Dot padding from slug to columns
-        dot_count = max(1, self._slug_width - len(self.todo.slug) + 2)
+        # Dot padding from slug to columns (compensate for indent so columns align)
+        indent_compensation = (self._max_depth - len(self._tree_lines)) * 2
+        dot_count = max(1, self._slug_width - len(self.todo.slug) + 2 + indent_compensation)
         line.append("\u00b7" * dot_count, style=Style(color=_muted_color()))
 
         # Property columns (DOR first)
         line.append_text(self._build_columns())
-
-        # Dependency suffix
-        if self.todo.after:
-            dep_text = ", ".join(self.todo.after)
-            line.append(f"  \u2190 {dep_text}", style=_DIM)
 
         return line
 

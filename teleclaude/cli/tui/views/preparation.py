@@ -135,6 +135,26 @@ class PreparationView(Widget, can_focus=True):
         col_widths = TodoRow.compute_col_widths(all_todo_items)
         todo_by_slug: dict[str, TodoItem] = {t.slug: t for t in all_todo_items}
 
+        # Compute dependency depth for indentation
+        depth_map: dict[str, int] = {}
+        visible_slugs = set(todo_by_slug.keys())
+
+        def _depth(slug: str) -> int:
+            if slug in depth_map:
+                return depth_map[slug]
+            item = todo_by_slug.get(slug)
+            if not item or not item.after:
+                depth_map[slug] = 0
+                return 0
+            parent_depths = [_depth(p) for p in item.after if p in visible_slugs]
+            d = (max(parent_depths) + 1) if parent_depths else 0
+            depth_map[slug] = d
+            return d
+
+        for item in all_todo_items:
+            _depth(item.slug)
+        max_depth = max(depth_map.values(), default=0)
+
         # Collect all widgets first, then batch-mount to minimize layout reflows
         widgets_to_mount: list[Widget] = []
         expanded_file_rows: list[tuple[TodoRow, list[Widget]]] = []
@@ -153,32 +173,64 @@ class PreparationView(Widget, can_focus=True):
             self._nav_items.append(header)
 
             todos_list = project.todos or []
-            current_group: str | None = None
+            depths = [depth_map.get(td.slug, 0) for td in todos_list]
+            n_todos = len(todos_list)
+
             for idx, todo_data in enumerate(todos_list):
-                is_last = idx == len(todos_list) - 1
                 todo = todo_by_slug[todo_data.slug]
+                d = depths[idx]
 
-                # Insert group sub-header when group changes
-                if todo.group and todo.group != current_group:
-                    widgets_to_mount.append(
-                        GroupSeparator(
-                            connector_col=ProjectHeader.CONNECTOR_COL,
-                            label=todo.group,
-                        )
-                    )
-                current_group = todo.group
+                # Depth-0 items always use ├─ because GroupSeparator closes the tree.
+                if d == 0:
+                    is_last_sibling = False
+                else:
+                    is_last_sibling = True
+                    for j in range(idx + 1, n_todos):
+                        if depths[j] == d:
+                            is_last_sibling = False
+                            break
+                        if depths[j] < d:
+                            break
 
-                row = TodoRow(todo=todo, is_last=is_last, slug_width=slug_width, col_widths=col_widths)
+                # Ancestor continuation: for each level 0..d-1, check if a future
+                # item at that level exists before a shallower item interrupts.
+                # Level 0 is always True (GroupSeparator ┴ terminates the root line).
+                tree_lines: list[bool] = []
+                for lvl in range(d):
+                    if lvl == 0:
+                        tree_lines.append(True)
+                        continue
+                    has_cont = False
+                    for j in range(idx + 1, n_todos):
+                        if depths[j] == lvl:
+                            has_cont = True
+                            break
+                        if depths[j] < lvl:
+                            break
+                    tree_lines.append(has_cont)
+
+                row = TodoRow(
+                    todo=todo,
+                    is_last=is_last_sibling,
+                    slug_width=slug_width,
+                    col_widths=col_widths,
+                    tree_lines=tree_lines,
+                    max_depth=max_depth,
+                )
                 widgets_to_mount.append(row)
                 self._nav_items.append(row)
 
                 # Collect file rows for expanded todos
                 if todo.slug in self._expanded_todos and todo.files:
+                    # File tree_lines = parent's lines + parent's own branch continuation
+                    file_tree_lines = tree_lines + [not is_last_sibling]
                     sorted_files = sorted(todo.files)
                     file_widgets: list[Widget] = []
                     for fi, filename in enumerate(sorted_files):
                         f_last = fi == len(sorted_files) - 1
-                        file_row = TodoFileRow(slug=todo.slug, filename=filename, is_last=f_last)
+                        file_row = TodoFileRow(
+                            slug=todo.slug, filename=filename, is_last=f_last, tree_lines=file_tree_lines
+                        )
                         file_widgets.append(file_row)
                         widgets_to_mount.append(file_row)
                     expanded_file_rows.append((row, file_widgets))
@@ -207,9 +259,11 @@ class PreparationView(Widget, can_focus=True):
         """Mount file rows after a todo row and insert into nav_items."""
         sorted_files = sorted(todo_row.todo.files)
         row_idx = self._nav_items.index(todo_row)
+        # File tree_lines = parent's lines + parent's own branch continuation
+        file_tree_lines = list(todo_row._tree_lines) + [not todo_row.is_last]
         for i, filename in enumerate(sorted_files):
             is_last = i == len(sorted_files) - 1
-            file_row = TodoFileRow(slug=todo_row.slug, filename=filename, is_last=is_last)
+            file_row = TodoFileRow(slug=todo_row.slug, filename=filename, is_last=is_last, tree_lines=file_tree_lines)
             container.mount(file_row, after=todo_row if i == 0 else self._nav_items[row_idx + i])
             self._nav_items.insert(row_idx + 1 + i, file_row)
 
