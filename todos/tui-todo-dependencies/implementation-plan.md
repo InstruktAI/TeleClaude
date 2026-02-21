@@ -72,8 +72,8 @@ The data already exists in `RoadmapEntry` (core/next_machine/core.py:701) but is
 
 ### Task 3.1: Tests
 
-- [ ] Run `pytest tests/unit/test_cache.py tests/unit/test_api_server.py tests/unit/test_mcp_server.py -x`
-- [ ] Verify no regressions in existing tests
+- [x] Run `pytest tests/unit/test_cache.py tests/unit/test_api_server.py tests/unit/test_mcp_server.py -x`
+- [x] Verify no regressions in existing tests
 
 ### Task 3.2: Manual Verification
 
@@ -84,13 +84,13 @@ The data already exists in `RoadmapEntry` (core/next_machine/core.py:701) but is
 
 ### Task 3.3: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 4: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)
