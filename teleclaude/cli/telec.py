@@ -162,6 +162,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
     "roadmap": CommandDef(
         desc="View and manage the work item roadmap",
+        flags=[
+            Flag("--include-icebox", "-i", "Include icebox items"),
+            Flag("--icebox-only", "-o", "Show only icebox items"),
+            Flag("--json", desc="Output as JSON"),
+            _PROJECT_ROOT_LONG,
+        ],
         subcommands={
             "add": CommandDef(
                 desc="Add entry to the roadmap",
@@ -1183,55 +1189,95 @@ def _handle_roadmap_show(args: list[str]) -> None:
     """Display the roadmap grouped by group, with deps and state."""
     import json
 
-    from teleclaude.core.next_machine.core import load_roadmap
+    from teleclaude.core.models import TodoInfo
+    from teleclaude.core.roadmap import assemble_roadmap
 
     project_root = Path.cwd()
+    include_icebox = False
+    icebox_only = False
+    json_output = False
+
     i = 0
     while i < len(args):
         arg = args[i]
         if arg == "--project-root" and i + 1 < len(args):
             project_root = Path(args[i + 1]).expanduser().resolve()
             i += 2
-        else:
+        elif arg in ("--include-icebox", "-i"):
+            include_icebox = True
             i += 1
+        elif arg in ("--icebox-only", "-o"):
+            icebox_only = True
+            i += 1
+        elif arg == "--json":
+            json_output = True
+            i += 1
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("roadmap"))
+            raise SystemExit(1)
+        else:
+            print(f"Unknown argument: {arg}")
+            print(_usage("roadmap"))
+            raise SystemExit(1)
 
-    entries = load_roadmap(str(project_root))
-    if not entries:
-        print("Roadmap is empty.")
+    todos = assemble_roadmap(
+        str(project_root),
+        include_icebox=include_icebox,
+        icebox_only=icebox_only,
+    )
+
+    if not todos:
+        if json_output:
+            print("[]")
+        else:
+            print("Roadmap is empty.")
         return
 
-    # Group entries preserving order of first appearance
-    from teleclaude.core.next_machine.core import RoadmapEntry
+    if json_output:
+        print(json.dumps([t.to_dict() for t in todos], indent=2))
+        return
 
-    groups: dict[str, list[RoadmapEntry]] = {}
-    for entry in entries:
-        key = entry.group or ""
-        groups.setdefault(key, []).append(entry)
+    # Group todos preserving order
+    groups: dict[str, list[TodoInfo]] = {}
+    for todo in todos:
+        key = todo.group or ""
+        groups.setdefault(key, []).append(todo)
 
-    todos_root = project_root / "todos"
-    for group_name, group_entries in groups.items():
+    first = True
+    for group_name, group_todos in groups.items():
+        if not first:
+            print()
+        first = False
+
         if group_name:
-            print(f"\n  {group_name}")
+            print(f"  {group_name}")
             print(f"  {'─' * len(group_name)}")
         else:
-            print()
+            # If default group is not empty and not the only group, add spacing
+            if len(groups) > 1:
+                print()
 
-        for entry in group_entries:
-            # Load state from state.json
-            state_path = todos_root / entry.slug / "state.json"
-            phase = "?"
-            if state_path.exists():
-                try:
-                    state = json.loads(state_path.read_text())
-                    phase = state.get("phase", "?")
-                except (json.JSONDecodeError, OSError):
-                    pass
+        for todo in group_todos:
+            phase = todo.status
+
+            extras = []
+            if todo.dor_score is not None:
+                extras.append(f"DOR:{todo.dor_score}")
+            if todo.findings_count > 0:
+                extras.append(f"Findings:{todo.findings_count}")
+            if todo.build_status and todo.build_status != "pending":
+                extras.append(f"Build:{todo.build_status}")
+            if todo.review_status and todo.review_status != "pending":
+                extras.append(f"Review:{todo.review_status}")
+
+            extras_str = f" [{', '.join(extras)}]" if extras else ""
 
             deps_str = ""
-            if entry.after:
-                deps_str = f"  (after: {', '.join(entry.after)})"
+            if todo.after:
+                deps_str = f" (after: {', '.join(todo.after)})"
 
-            print(f"    {entry.slug}  [{phase}]{deps_str}")
+            print(f"    {todo.slug} [{phase}]{extras_str}{deps_str}")
 
 
 def _handle_roadmap_add(args: list[str]) -> None:
