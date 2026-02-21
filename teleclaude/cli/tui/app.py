@@ -538,6 +538,8 @@ class TelecApp(App[str | None]):
 
     def on_session_started(self, message: SessionStarted) -> None:
         session = message.session
+        if not session.active_agent:
+            logger.error("Session %s started with no active_agent — data integrity violation", session.session_id[:8])
         self._session_agents[session.session_id] = session.active_agent or "claude"
         # Auto-select new user-initiated sessions (not AI-delegated children)
         if not session.initiator_session_id:
@@ -581,7 +583,13 @@ class TelecApp(App[str | None]):
             from teleclaude.cli.tui.animation_triggers import ActivityTrigger
 
             if isinstance(self._activity_trigger, ActivityTrigger):
-                agent = self._session_agents.get(message.session_id, "claude")
+                agent = self._session_agents.get(message.session_id)
+                if not agent:
+                    logger.error(
+                        "Activity for session %s with no cached agent — data integrity violation",
+                        message.session_id[:8],
+                    )
+                    agent = "claude"
                 self._activity_trigger.on_agent_activity(agent, is_big=True)
                 self._activity_trigger.on_agent_activity(agent, is_big=False)
 
@@ -593,7 +601,7 @@ class TelecApp(App[str | None]):
             await self.api.create_session(
                 computer=message.computer,
                 project_path=message.project_path,
-                agent=message.agent or "claude",
+                agent=message.agent or "claude",  # UI default — modal should always set this
                 thinking_mode=message.thinking_mode or "slow",
                 title=message.title,
                 message=message.message,

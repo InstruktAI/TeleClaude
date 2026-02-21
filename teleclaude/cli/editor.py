@@ -2,7 +2,7 @@
 
 Launched by the TUI via PaneManagerBridge as a subprocess in the right
 tmux pane. Supports view mode (--view, read-only) and edit mode (default,
-auto-saves on exit).
+auto-saves on exit and on focus loss).
 
 Usage: python -m teleclaude.cli.editor [-v|--view] <filepath>
 """
@@ -14,15 +14,16 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.events import AppBlur
 from textual.widgets import Label, TextArea
 
 
 class EditorApp(App[None]):
-    """Minimal markdown editor with auto-save on exit.
+    """Minimal markdown editor with auto-save.
 
     Supports two modes:
-    - Edit mode (default): full editing with auto-save on exit.
-    - View mode (--view): read-only preview, no save on exit.
+    - Edit mode (default): full editing with auto-save on exit and focus loss.
+    - View mode (--view): read-only preview, no save.
     """
 
     BINDINGS = [
@@ -49,11 +50,13 @@ class EditorApp(App[None]):
             raise FileNotFoundError(f"File not found: {file_path}")
         self.file_path = file_path
         self.view_mode = view_mode
+        self._last_saved_content: str | None = None
 
     def compose(self) -> ComposeResult:
         mode_label = "VIEW" if self.view_mode else "EDIT"
         yield Label(f" [{mode_label}] {self.file_path.name}", id="editor-title")
         content = self.file_path.read_text(encoding="utf-8")
+        self._last_saved_content = content
         yield TextArea(
             content,
             language="markdown",
@@ -68,6 +71,13 @@ class EditorApp(App[None]):
         if not self.view_mode:
             self.query_one("#editor-area", TextArea).focus()
 
+    def on_app_blur(self, _event: AppBlur) -> None:
+        """Auto-save when the pane loses focus (requires tmux focus-events on)."""
+        if self.view_mode:
+            return
+        editor = self.query_one("#editor-area", TextArea)
+        self._save_if_changed(editor.text)
+
     def action_save(self) -> None:
         if self.view_mode:
             return
@@ -80,8 +90,14 @@ class EditorApp(App[None]):
             self._save_content(editor.text)
         self.exit()
 
+    def _save_if_changed(self, content: str) -> None:
+        """Save only if content differs from last saved state."""
+        if content != self._last_saved_content:
+            self._save_content(content)
+
     def _save_content(self, content: str) -> None:
         self.file_path.write_text(content, encoding="utf-8")
+        self._last_saved_content = content
 
 
 def main() -> None:

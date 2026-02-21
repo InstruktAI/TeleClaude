@@ -133,6 +133,9 @@ class TmuxPaneManager:
             # stripped when rendered through nested tmux attach.
             self._run_tmux("set", "-sa", "terminal-overrides", ",tmux-256color:Tc")
             self._run_tmux("set", "-sa", "terminal-features", "tmux-256color:RGB")
+            # Enable focus event forwarding so embedded apps (editor) receive
+            # AppBlur/AppFocus for autosave-on-focus-loss.
+            self._run_tmux("set", "-g", "focus-events", "on")
 
     @property
     def is_available(self) -> bool:
@@ -1007,6 +1010,16 @@ class TmuxPaneManager:
             agent: Agent name for color calculation
             is_tree_selected: Use lighter haze when the tree focus selected row matches.
         """
+        if not agent:
+            logger.error(
+                "_set_pane_background: empty agent for pane %s (tmux=%s) — clearing style",
+                pane_id,
+                tmux_session_name,
+            )
+            self._run_tmux("set", "-pu", "-t", pane_id, "window-style")
+            self._run_tmux("set", "-pu", "-t", pane_id, "window-active-style")
+            self._run_tmux("set", "-t", tmux_session_name, "status", "off")
+            return
         if theme.should_apply_paint_pane_theming():
             if is_tree_selected:
                 bg_color = theme.get_agent_pane_selected_background(agent)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from instrukt_ai_logging import get_logger
 from rich.style import Style
 from rich.text import Text
 from textual.events import Click
@@ -19,6 +20,8 @@ from teleclaude.cli.tui.theme import (
     resolve_style,
 )
 from teleclaude.cli.tui.utils.formatters import format_time, truncate_text
+
+logger = get_logger(__name__)
 
 _DETAIL_TEXT_LIMIT = 70
 
@@ -73,7 +76,10 @@ class SessionRow(TelecMixin, Widget):
 
     @property
     def agent(self) -> str:
-        return self.session.active_agent or "claude"
+        agent = self.session.active_agent
+        if not agent:
+            logger.error("Session %s has no active_agent — data integrity violation", self.session_id[:8])
+        return agent or "claude"
 
     @property
     def mode(self) -> str:
