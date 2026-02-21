@@ -135,7 +135,7 @@ The demo step lives in the `"next-finalize"` completion instructions template (`
 
 **File(s):** `agents/commands/next-demo.md` (rendering section)
 
-- [ ] Define the `render_widget` expression structure:
+- [x] Define the `render_widget` expression structure:
   - `title`: "{title}"
   - `status`: "success"
   - `sections`:
@@ -144,8 +144,8 @@ The demo step lives in the `"next-finalize"` completion instructions template (`
     - `divider` between acts
     - `code` section if a specific technical decision deserves highlighting
   - `footer`: merge commit hash + delivery date + version
-- [ ] Widget rendered to the orchestrator's session
-- [ ] The `snapshot.json` + `demo.sh` in `demos/` is the durable version; the widget is the live presentation
+- [x] Widget rendered to the orchestrator's session
+- [x] The `snapshot.json` + `demo.sh` in `demos/` is the durable version; the widget is the live presentation
 
 ---
 
