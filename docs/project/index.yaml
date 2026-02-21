@@ -1,5 +1,5 @@
-project_root: ~/Workspace/InstruktAI/TeleClaude
-snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
+project_root: ~/Workspace/InstruktAI/TeleClaude/trees/next-demo
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/trees/next-demo/docs/project
 snippets:
 - id: project/concept/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
@@ -519,6 +519,14 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/command-surface.md
+  role: member
+  source_project: TeleClaude
+- id: project/spec/demo-artifact
+  description: 'Demo artifact format: numbered folders with snapshot.json and demo.sh
+    for celebrating deliveries.'
+  type: spec
+  scope: project
+  path: docs/project/spec/demo-artifact.md
   role: member
   source_project: TeleClaude
 - id: project/spec/event-vocabulary

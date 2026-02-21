@@ -125,7 +125,7 @@ The demo step lives in the `"next-finalize"` completion instructions template (`
 
 **File(s):** `docs/global/index.yaml`
 
-- [ ] Run `telec sync` to update the snippet index with any new or modified docs
+- [x] Run `telec sync` to update the snippet index with any new or modified docs
 
 ---
 
