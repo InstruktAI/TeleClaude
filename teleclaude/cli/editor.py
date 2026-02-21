@@ -15,7 +15,7 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.events import AppBlur
-from textual.widgets import Label, TextArea
+from textual.widgets import Label, Markdown, TextArea
 
 from teleclaude.cli.tui.theme import (
     _TELECLAUDE_DARK_AGENT_THEME,
@@ -48,6 +48,10 @@ class EditorApp(App[None]):
     #editor-area {
         height: 1fr;
     }
+    #view-area {
+        height: 1fr;
+        padding: 0 1;
+    }
     """
 
     def __init__(
@@ -77,15 +81,17 @@ class EditorApp(App[None]):
         yield Label(f" [{mode_label}] {self.file_path.name}", id="editor-title")
         content = self.file_path.read_text(encoding="utf-8")
         self._last_saved_content = content
-        yield TextArea(
-            content,
-            language="markdown",
-            soft_wrap=True,
-            show_line_numbers=True,
-            tab_behavior="indent",
-            read_only=self.view_mode,
-            id="editor-area",
-        )
+        if self.view_mode:
+            yield Markdown(content, id="view-area")
+        else:
+            yield TextArea(
+                content,
+                language="markdown",
+                soft_wrap=True,
+                show_line_numbers=True,
+                tab_behavior="indent",
+                id="editor-area",
+            )
 
     def on_mount(self) -> None:
         if not self.view_mode:

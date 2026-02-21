@@ -8,14 +8,14 @@
     "todos": []
   },
   "dor": {
-    "last_assessed_at": "2026-02-21T14:00:00Z",
+    "last_assessed_at": "2026-02-21T20:45:00Z",
     "score": 8,
     "status": "pass",
     "schema_version": 1,
     "blockers": [],
     "actions_taken": {
-      "requirements_updated": false,
-      "implementation_plan_updated": false
+      "requirements_updated": true,
+      "implementation_plan_updated": true
     }
   },
   "review_round": 0,

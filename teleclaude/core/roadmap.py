@@ -125,6 +125,10 @@ def assemble_roadmap(
                 if isinstance(unresolved, list):
                     findings_count = len(unresolved)
 
+                # Build past pending means work has started
+                if phase_status == "pending" and build_status and build_status != "pending":
+                    phase_status = "in_progress"
+
                 # Derive display status: pending + dor_score >= 8 shows as "ready"
                 if phase_status == "pending" and isinstance(dor_score, int) and dor_score >= 8:
                     phase_status = "ready"

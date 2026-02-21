@@ -139,6 +139,14 @@ SessionRow {
     background: transparent;
 }
 
+SessionRow:hover {
+    background: transparent;
+}
+
+SessionRow:focus {
+    background: transparent;
+}
+
 SessionRow.selected {
     background: transparent;
 }
@@ -205,6 +213,19 @@ PaneManagerBridge {
 /* ── Scroll containers ─────────────────────────────────── */
 VerticalScroll {
     scrollbar-size: 0 0;
+    background: transparent;
+}
+
+VerticalScroll:hover {
+    background: transparent;
+}
+
+VerticalScroll:focus {
+    background: transparent;
+}
+
+VerticalScroll:focus-within {
+    background: transparent;
 }
 
 /* ── Global button styling ─────────────────────────────── */

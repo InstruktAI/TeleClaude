@@ -763,7 +763,7 @@ def get_tool_definitions() -> list[Tool]:
                     },
                     "status": {
                         "type": "string",
-                        "enum": ["pending", "complete", "approved", "changes_requested"],
+                        "enum": ["pending", "started", "complete", "approved", "changes_requested"],
                         "description": "New status for the phase",
                     },
                 },

@@ -1,94 +1,111 @@
 # DOR Report: demo-runner
 
-## Gate Assessment
+## Draft Assessment
 
-**Phase**: Gate (final)
+**Phase**: Draft (revision 2)
 **Date**: 2026-02-21
-**Assessor**: Architect (gate mode)
+**Assessor**: Architect (draft mode)
 
-## Gate Analysis
+## Artifact State
 
-### 1. Intent & Success — PASS
+State D: Both `requirements.md` and `implementation-plan.md` existed from a prior draft. This revision tightens both against verified codebase state — actual file contents, line numbers, field names, and existing test coverage.
+
+**Codebase verification performed**:
+
+- CLI surface structure in `telec.py` (lines 143-162, 1050-1064) — confirmed dispatcher pattern
+- `POST_COMPLETION` dict in `core.py` (lines 80-125) — confirmed `next-finalize` step 3 and `next-demo` entry
+- Both existing demo folders inspected — actual `snapshot.json` field names documented
+- `test_next_machine_demo.py` (359 lines) — test expectations vs actual snapshot fields mapped
+- Quality checklist template — no demo gate present
+- Demo procedure doc — references `delivered.md` (actual file is `delivered.yaml`)
+- Project version: `0.1.0`
+
+## Draft Analysis
+
+### 1. Intent & Success
 
 - Problem statement is clear: demos should show working software, not AI narratives.
-- Success criteria are concrete and testable (13 checkboxes).
-- The "what" and "why" are well-articulated in `input.md` and `requirements.md`.
+- Success criteria are concrete and testable (19 checkboxes).
+- The "what" and "why" are well-articulated across `input.md` and `requirements.md`.
+- **Assessment**: Strong. No gaps.
 
-### 2. Scope & Size — PASS
+### 2. Scope & Size
 
-- 9 files to edit/create, 1 to delete. Each change is small and concrete.
-- The CLI runner (Phase 2) is the only substantial new code (~80-100 lines).
-- Remaining work is spec/doc edits, test adjustments, agent command rewrite, and template config.
-- Phases are sequential and well-ordered — no intermediate inconsistency risk.
-- **Verdict**: Fits a single focused builder session.
+- ~10 files to edit/create, 2 to rename, 2 to delete.
+- CLI runner (~80-100 lines) is the only substantial new code.
+- Remaining: spec/doc edits, test updates, agent command rewrite, template config.
+- 5 sequential phases, well-ordered.
+- **Assessment**: Fits a single focused builder session.
 
-### 3. Verification — PASS
+### 3. Verification
 
 - `make test` and `make lint` cover automated verification.
-- Manual exercise: `telec todo demo` (list) and `telec todo demo tui-markdown-editor` (run).
+- Manual: `telec todo demo` (list) and `telec todo demo tui-markdown-editor` (run).
 - Edge cases identified: missing demo field, nonexistent slug, empty demos dir, semver mismatch.
+- **Assessment**: Clear verification path.
 
-### 4. Approach Known — PASS
+### 4. Approach Known
 
-- CLI subcommand pattern established (`_handle_todo` dispatches to `create`, `validate`; adding `demo` follows the pattern).
-- `CLI_SURFACE["todo"].subcommands` dict pattern verified in codebase.
-- `POST_COMPLETION` structure verified — `"next-finalize"` dispatches `"/next-demo"`, `"next-demo"` has own entry. Both need modification.
-- Snapshot.json schema is simple JSON — adding optional `demo` field is backward compatible.
-- Semver gating: `pyproject.toml` has `version = "0.1.0"` at line 7.
+- CLI subcommand pattern established: `CLI_SURFACE["todo"].subcommands` has `create` and `validate`; adding `demo` follows the same pattern.
+- `_handle_todo()` dispatches to `_handle_todo_create()` and `_handle_todo_validate()`; adding `_handle_todo_demo()` is mechanical.
+- `POST_COMPLETION` structure verified — removing entries and steps is straightforward.
+- **Assessment**: Known pattern, no architectural decisions needed.
 
 ### 5. Research Complete — AUTO-PASS
 
 - No third-party dependencies. All changes are internal.
 
-### 6. Dependencies & Preconditions — PASS
+### 6. Dependencies & Preconditions
 
-- No prerequisite todos.
-- No external system dependencies.
-- All referenced files exist and are accessible (verified: `demo-artifact.md`, `core.py`, `test_next_machine_demo.py`, `next-demo.md`, `quality-checklist.md` template, `demo.md` procedure doc, `snapshot.json`, `demo.sh`).
-- **Action required**: Add `demo-runner` to `roadmap.yaml` before build dispatch.
+- No prerequisite todos in roadmap.
+- All referenced files exist and are accessible.
+- **Assessment**: No blockers.
 
-### 7. Integration Safety — PASS
+### 7. Integration Safety
 
-- Atomic merge to main. No intermediate broken state.
+- Atomic merge to main. No intermediate broken state if phases are committed in order.
 - Removing demo from finalize POST_COMPLETION is safe — it was already non-blocking.
-- Backward compatibility: runner handles demos without `demo` field (warn + skip execution).
+- Backward compatibility: runner handles demos without `demo` field.
+- **Assessment**: Safe.
 
-### 8. Tooling Impact — PASS
+### 8. Tooling Impact
 
-- CLI surface change: `telec todo demo` subcommand. Plan Task 2.1 covers this explicitly.
-- Quality checklist template: Plan Task 3.4 adds the build gate.
-- `/next-demo` agent command: Plan Task 3.3 rewrites it as builder guidance + presentation runner. This serves as the "how to write a demo" procedure.
-- Demo artifact spec: Plan Task 1.1 updates the schema documentation.
-- All tooling changes are accounted for in the implementation plan.
+- CLI surface change: `telec todo demo` subcommand (Task 2.1).
+- Quality checklist template: demo gate (Task 3.3).
+- `/next-demo` command rewrite (Task 3.2).
+- Demo artifact spec update (Task 1.1).
+- Demo procedure doc update (Task 3.4).
+- **Assessment**: All tooling changes accounted for in the plan.
 
-## Assumptions (validated)
+## Assumptions
 
-1. The `demo` field is a shell command string, not a structured object. Simple and sufficient.
-2. `demos/001-tui-markdown-editor/` is the only demo to migrate. Confirmed — only one demo directory exists.
-3. Semver gate uses major-version comparison. Current version is `0.1.0`.
-4. `POST_COMPLETION["next-finalize"]` step 3 (DEMO) and `POST_COMPLETION["next-demo"]` entry both need modification. Confirmed in `core.py` lines 144-161.
+1. The `demo` field is a shell command string, not a structured object.
+2. Folder rename from `demos/NNN-{slug}/` to `demos/{slug}/` is safe — only two existing demos.
+3. Semver gate uses major-version comparison only. Current project version is `0.1.0`.
+4. Existing snapshot field name inconsistencies are left as-is (out of scope). The runner reads actual field names with fallbacks.
+5. The Five Acts narrative structure is preserved — builders compose it during build instead of AI composing it post-finalize.
+
+## Noted Risks
+
+1. **Test-schema mismatch**: `test_next_machine_demo.py` uses spec-standard field names (`delivered`, `commit`, `lines_added`, `lines_removed`, `whats_next`) but actual snapshot files use variant names (`delivered_date`, `merge_commit`, `insertions`, `deletions`, `next`). Tests that validate the schema will need careful handling — either test against what the runner actually reads, or keep tests validating the spec-standard schema for _new_ demos going forward.
+2. **Workflow shift**: Builders now create demos during build. This needs explicit guidance in the procedure doc (Task 3.4).
 
 ## Open Questions
 
-1. **Demo field format**: String vs structured object. String is the right call for now — no extensibility needed yet, and it can evolve later without breaking changes.
+None — previous user clarification resolved folder naming and interface questions. Schema normalization was explicitly placed out of scope.
 
 ## Blockers
 
-- None.
+None.
 
-## Gate Verdict
+## Draft Verdict
 
-**Score**: 8/10
-**Status**: `pass`
+**Estimated score**: 8/10
+**Status**: Artifacts are substantive, codebase-verified, and ready for formal gate assessment.
+**Next step**: Route to `next-prepare-gate` for formal DOR validation.
 
-**Reasoning**: All 8 DOR gates pass. The scope concern from the draft phase (7/10) is resolved — each individual change is small and the implementation plan provides clear, concrete tasks. The tooling impact concern is resolved — all procedure/template/spec changes are explicitly covered. The only pre-build action is adding `demo-runner` to `roadmap.yaml`.
+## Actions Taken (this revision)
 
-## Actions Taken
-
-- Verified all file references against codebase (all exist).
-- Verified CLI_SURFACE pattern and \_handle_todo dispatcher structure.
-- Verified POST_COMPLETION structure and exact entries to modify.
-- Verified snapshot.json schema compatibility.
-- Verified pyproject.toml version field location.
-- Elevated score from 7 to 8 based on evidence.
-- Set gate status to `pass`.
+- Tightened requirements: added presentation details (widget rendering), explicit schema field-name constraint, `delivered.yaml` reference fix, builder guidance as in-scope item, `POST_COMPLETION["next-demo"]` removal.
+- Tightened implementation plan: verified line numbers against codebase, added field-name fallback handling in runner, added builder guidance task in procedure doc, fixed `delivered.md` → `delivered.yaml`, added build sequence summary table, added specific test removal targets.
+- DOR report: full codebase verification performed, schema mismatch documented as noted risk with mitigation path.

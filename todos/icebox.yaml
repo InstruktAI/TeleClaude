@@ -1,38 +1,49 @@
 # Parked work items. Promote back to roadmap.yaml when priority changes.
 
-- slug: mcp-migration-tc-cli
-  group: mcp-to-tool-specs
-  description: 'Phase 1: Extend telec with tool subcommands and daemon JSON-RPC endpoint'
-- slug: mcp-migration-tool-spec-docs
-  group: mcp-to-tool-specs
-  description: 'Phase 2: Write 24 tool spec doc snippets in 6 taxonomy groups'
-- slug: mcp-migration-context-integration
-  group: mcp-to-tool-specs
-  after:
-    - mcp-migration-tc-cli
-    - mcp-migration-tool-spec-docs
+- slug: multi-user-db-abstraction
+  group: multi-user-system-install
   description:
-    'Phase 3: Wire tool specs into context-selection pipeline, update CLAUDE.md
-    baseline'
-- slug: mcp-migration-agent-config
-  group: mcp-to-tool-specs
-  after:
-    - mcp-migration-context-integration
+    'Phase 0: Configurable database engine (SQLite default, PostgreSQL
+    opt-in), dialect-aware migrations'
+- slug: multi-user-identity
+  group: multi-user-system-install
   description:
-    'Phase 4: Remove MCP from agent session configs, validate all agent
-    types'
-- slug: mcp-migration-delete-mcp
-  group: mcp-to-tool-specs
+    'Phase 1: Unix socket peer credentials, OS user, TeleClaude person/role
+    resolution'
+- slug: multi-user-sessions
+  group: multi-user-system-install
   after:
-    - mcp-migration-agent-config
+    - multi-user-db-abstraction
+    - multi-user-identity
   description:
-    'Phase 5: Delete all MCP server code, wrapper, handlers, definitions
-    (~3,400 lines)'
-- slug: mcp-migration-doc-updates
-  group: mcp-to-tool-specs
+    'Phase 2: Session ownership columns, role-scoped visibility, owner
+    badges in TUI'
+- slug: multi-user-admin-audit
+  group: multi-user-system-install
   after:
-    - mcp-migration-delete-mcp
-  description: 'Phase 6: Update architecture and policy docs, rewrite MCP references'
+    - multi-user-sessions
+  description:
+    'Phase 3: Explicit transcript access with audit logging, admin observability
+    UX'
+- slug: multi-user-config
+  group: multi-user-system-install
+  after:
+    - multi-user-identity
+  description: 'Phase 4: Config split into system/secrets/per-user layers'
+- slug: multi-user-service
+  group: multi-user-system-install
+  after:
+    - multi-user-db-abstraction
+    - multi-user-config
+  description: 'Phase 5: Dedicated service user, launchd/systemd units, Docker Compose'
+- slug: multi-user-migration
+  group: multi-user-system-install
+  after:
+    - multi-user-sessions
+    - multi-user-service
+  description:
+    'Phase 6: SQLite to PostgreSQL data migration, single-user to system-wide
+    tooling'
 - slug: test-suite-ownership-reset
   description:
     Freeze non-emergency feature changes and reset test ownership to a
@@ -57,7 +68,7 @@
   description:
     Periodic GitHub bug triage and automated bugfix PR flow in a dedicated
     maintenance worktree.
-- slug: tdd-enforcement
+- slug: tdd-enforcement-single-test-contract
   description:
     Strict TDD enforcement initiative (upfront approved test contract +
     builder/fixer test immutability). Revisit when bandwidth is available for process

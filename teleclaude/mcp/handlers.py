@@ -1117,10 +1117,8 @@ class MCPHandlersMixin:
             return "ERROR: NO_CWD\nWorking directory not provided."
         if phase not in ("build", "review"):
             return f"ERROR: Invalid phase '{phase}'. Must be 'build' or 'review'."
-        if status not in ("pending", "complete", "approved", "changes_requested"):
-            return (
-                f"ERROR: Invalid status '{status}'. Must be 'pending', 'complete', 'approved', or 'changes_requested'."
-            )
+        if status not in ("pending", "started", "complete", "approved", "changes_requested"):
+            return f"ERROR: Invalid status '{status}'. Must be 'pending', 'started', 'complete', 'approved', or 'changes_requested'."
 
         worktree_cwd = str(Path(cwd) / "trees" / slug)
         if not Path(worktree_cwd).exists():
