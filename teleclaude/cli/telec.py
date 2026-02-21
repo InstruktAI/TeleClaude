@@ -41,7 +41,6 @@ class TelecCommand(str, Enum):
     TODO = "todo"
     ROADMAP = "roadmap"
     CONFIG = "config"
-    ONBOARD = "onboard"
 
 
 # =============================================================================
@@ -225,10 +224,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "invite": CommandDef(desc="Generate invite links for a person"),
         },
     ),
-    "onboard": CommandDef(
-        desc="Guided onboarding wizard for first-run setup",
-        notes=["Walks through all configuration in order.", "Detects existing config and skips completed sections."],
-    ),
 }
 
 # Derived constants for completion (from schema)
@@ -260,16 +255,32 @@ _DOMAINS = [
 # =============================================================================
 
 
-def _usage(subcommand: str | None = None) -> str:
+def _usage(command: str | None = None, subcommand: str | None = None) -> str:
     """Generate help text from CLI_SURFACE schema.
 
     Args:
-        subcommand: If None, generate main overview. Otherwise, detailed help
-                    for the named subcommand.
+        command: Top-level command name. None for main overview.
+        subcommand: If provided with command, show help for that specific subcommand.
     """
-    if subcommand is None:
+    if command is None:
         return _usage_main()
-    return _usage_subcmd(subcommand)
+    if subcommand is not None:
+        return _usage_leaf(command, subcommand)
+    return _usage_subcmd(command)
+
+
+def _maybe_show_help(cmd: str, args: list[str]) -> bool:
+    """If -h/--help appears anywhere in args, show contextual help and return True."""
+    if "-h" not in args and "--help" not in args:
+        return False
+    positionals = []
+    for a in args:
+        if a in ("-h", "--help"):
+            break
+        if not a.startswith("-"):
+            positionals.append(a)
+    print(_usage(cmd, positionals[0] if positionals else None))
+    return True
 
 
 def _usage_main() -> str:
@@ -356,6 +367,32 @@ def _usage_subcmd(cmd_name: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _usage_leaf(cmd_name: str, sub_name: str) -> str:
+    """Generate help for a specific subcommand (e.g. 'roadmap add')."""
+    cmd = CLI_SURFACE[cmd_name]
+    sub = cmd.subcommands.get(sub_name)
+    if not sub:
+        return _usage_subcmd(cmd_name)
+
+    args_str = f" {sub.args}" if sub.args else ""
+    lines = ["Usage:", f"  telec {cmd_name} {sub_name}{args_str}"]
+    lines.append(f"\n  {sub.desc}")
+
+    visible = [f for f in sub.flags if f.long != "--help"] if sub.flags else []
+    if visible:
+        lines.append("\nOptions:")
+        for f in visible:
+            flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
+            lines.append(f"{flag_label:<25s}{f.desc}")
+
+    if sub.notes:
+        lines.append("\nNotes:")
+        for note in sub.notes:
+            lines.append(f"  {note}")
+
+    return "\n".join(lines) + "\n"
+
+
 def _print_completion(value: str, description: str) -> None:
     """Print completion in value<TAB>description format for zsh."""
     print(f"{value}\t{description}")
@@ -397,7 +434,7 @@ def _handle_completion() -> None:
         _complete_agent(rest, current, is_partial)
     elif cmd in ("todo", "roadmap", "config"):
         _complete_subcmd(cmd, rest, current, is_partial)
-    # init, onboard have no further completions
+    # init has no further completions
 
 
 def _flag_used(flag_tuple: tuple[str | None, str, str], used: set[str]) -> bool:
@@ -617,15 +654,16 @@ def _handle_cli_command(argv: list[str]) -> None:
     cmd = argv[0].lstrip("/")
     args = argv[1:]
 
+    # Centralized -h handling for all commands
+    if _maybe_show_help(cmd, args):
+        return
+
     try:
         cmd_enum = TelecCommand(cmd)
     except ValueError:
         cmd_enum = None
 
     if cmd_enum is TelecCommand.LIST:
-        if args and args[0] in ("--help", "-h"):
-            print(_usage("list"))
-            return
         show_all = "--all" in args
         api = TelecAPIClient()
         asyncio.run(_list_sessions(api, show_all=show_all))
@@ -649,8 +687,6 @@ def _handle_cli_command(argv: list[str]) -> None:
         _handle_roadmap(args)
     elif cmd_enum is TelecCommand.CONFIG:
         _handle_config(args)
-    elif cmd_enum is TelecCommand.ONBOARD:
-        _handle_onboard(args)
     else:
         print(f"Unknown command: /{cmd}")
         print(_usage())
@@ -790,7 +826,7 @@ def _quick_start(agent: str, mode: str, prompt: str | None) -> None:
 
 def _handle_revive(args: list[str]) -> None:
     """Handle telec revive command."""
-    if not args or args[0] in ("--help", "-h"):
+    if not args:
         print(_usage("revive"))
         return
 
@@ -943,11 +979,6 @@ def _handle_docs(args: list[str]) -> None:
     Phase 1 (index): telec docs [--baseline-only] [--third-party] [--areas TYPES] [--domains DOMAINS]
     Phase 2 (content): telec docs id1 id2 id3 (positional args = snippet IDs)
     """
-    # Handle --help early
-    if args and args[0] in ("--help", "-h"):
-        print(_usage("docs"))
-        return
-
     from teleclaude.context_selector import build_context_output
 
     project_root = Path.cwd()
@@ -1004,7 +1035,7 @@ def _handle_docs(args: list[str]) -> None:
 
 def _handle_todo(args: list[str]) -> None:
     """Handle telec todo commands."""
-    if not args or args[0] in ("--help", "-h"):
+    if not args:
         print(_usage("todo"))
         return
 
@@ -1021,9 +1052,6 @@ def _handle_todo(args: list[str]) -> None:
 
 def _handle_todo_validate(args: list[str]) -> None:
     """Handle telec todo validate."""
-    if args and args[0] in ("--help", "-h"):
-        print(_usage("todo"))
-        return
 
     from teleclaude.resource_validation import validate_all_todos, validate_todo
 
@@ -1038,12 +1066,12 @@ def _handle_todo_validate(args: list[str]) -> None:
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print(_usage("todo"))
+            print(_usage("todo", "validate"))
             raise SystemExit(1)
         else:
             if slug is not None:
                 print("Only one slug is allowed for validation.")
-                print(_usage("todo"))
+                print(_usage("todo", "validate"))
                 raise SystemExit(1)
             slug = arg
             i += 1
@@ -1068,8 +1096,8 @@ def _handle_todo_validate(args: list[str]) -> None:
 
 def _handle_todo_create(args: list[str]) -> None:
     """Handle telec todo create."""
-    if not args or args[0] in ("--help", "-h"):
-        print(_usage("todo"))
+    if not args:
+        print(_usage("todo", "create"))
         return
 
     slug: str | None = None
@@ -1087,19 +1115,19 @@ def _handle_todo_create(args: list[str]) -> None:
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print(_usage("todo"))
+            print(_usage("todo", "create"))
             raise SystemExit(1)
         else:
             if slug is not None:
                 print("Only one slug is allowed.")
-                print(_usage("todo"))
+                print(_usage("todo", "create"))
                 raise SystemExit(1)
             slug = arg
             i += 1
 
     if not slug:
         print("Missing required slug.")
-        print(_usage("todo"))
+        print(_usage("todo", "create"))
         raise SystemExit(1)
 
     try:
@@ -1115,9 +1143,6 @@ def _handle_todo_create(args: list[str]) -> None:
 
 def _handle_roadmap(args: list[str]) -> None:
     """Handle telec roadmap commands."""
-    if args and args[0] in ("--help", "-h"):
-        print(_usage("roadmap"))
-        return
 
     if not args:
         _handle_roadmap_show(args)
@@ -1204,8 +1229,8 @@ def _handle_roadmap_add(args: list[str]) -> None:
     """Handle telec roadmap add <slug> [--group <slug>] [--after d1,d2] [--description T] [--before S]."""
     from teleclaude.core.next_machine.core import add_to_roadmap
 
-    if not args or args[0] in ("--help", "-h"):
-        print(_usage("roadmap"))
+    if not args:
+        print(_usage("roadmap", "add"))
         return
 
     slug: str | None = None
@@ -1235,19 +1260,19 @@ def _handle_roadmap_add(args: list[str]) -> None:
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print(_usage("roadmap"))
+            print(_usage("roadmap", "add"))
             raise SystemExit(1)
         else:
             if slug is not None:
                 print("Only one slug is allowed.")
-                print(_usage("roadmap"))
+                print(_usage("roadmap", "add"))
                 raise SystemExit(1)
             slug = arg
             i += 1
 
     if not slug:
         print("Missing required slug.")
-        print(_usage("roadmap"))
+        print(_usage("roadmap", "add"))
         raise SystemExit(1)
 
     add_to_roadmap(str(project_root), slug, group=group, after=after, description=description, before=before)
@@ -1258,8 +1283,8 @@ def _handle_roadmap_remove(args: list[str]) -> None:
     """Handle telec roadmap remove <slug>."""
     from teleclaude.core.next_machine.core import remove_from_roadmap
 
-    if not args or args[0] in ("--help", "-h"):
-        print(_usage("roadmap"))
+    if not args:
+        print(_usage("roadmap", "remove"))
         return
 
     slug: str | None = None
@@ -1273,7 +1298,7 @@ def _handle_roadmap_remove(args: list[str]) -> None:
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print(_usage("roadmap"))
+            print(_usage("roadmap", "remove"))
             raise SystemExit(1)
         else:
             if slug is not None:
@@ -1284,7 +1309,7 @@ def _handle_roadmap_remove(args: list[str]) -> None:
 
     if not slug:
         print("Missing required slug.")
-        print(_usage("roadmap"))
+        print(_usage("roadmap", "remove"))
         raise SystemExit(1)
 
     if remove_from_roadmap(str(project_root), slug):
@@ -1298,8 +1323,8 @@ def _handle_roadmap_move(args: list[str]) -> None:
     """Handle telec roadmap move <slug> --before <s> | --after <s>."""
     from teleclaude.core.next_machine.core import move_in_roadmap
 
-    if not args or args[0] in ("--help", "-h"):
-        print(_usage("roadmap"))
+    if not args:
+        print(_usage("roadmap", "move"))
         return
 
     slug: str | None = None
@@ -1321,7 +1346,7 @@ def _handle_roadmap_move(args: list[str]) -> None:
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print(_usage("roadmap"))
+            print(_usage("roadmap", "move"))
             raise SystemExit(1)
         else:
             if slug is not None:
@@ -1332,12 +1357,12 @@ def _handle_roadmap_move(args: list[str]) -> None:
 
     if not slug:
         print("Missing required slug.")
-        print(_usage("roadmap"))
+        print(_usage("roadmap", "move"))
         raise SystemExit(1)
 
     if not before and not after:
         print("Either --before or --after is required.")
-        print(_usage("roadmap"))
+        print(_usage("roadmap", "move"))
         raise SystemExit(1)
 
     if move_in_roadmap(str(project_root), slug, before=before, after=after):
@@ -1353,8 +1378,8 @@ def _handle_roadmap_deps(args: list[str]) -> None:
     """Handle telec roadmap deps <slug> --after dep1,dep2."""
     from teleclaude.core.next_machine.core import load_roadmap, save_roadmap
 
-    if not args or args[0] in ("--help", "-h"):
-        print(_usage("roadmap"))
+    if not args:
+        print(_usage("roadmap", "deps"))
         return
 
     slug: str | None = None
@@ -1372,7 +1397,7 @@ def _handle_roadmap_deps(args: list[str]) -> None:
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print(_usage("roadmap"))
+            print(_usage("roadmap", "deps"))
             raise SystemExit(1)
         else:
             if slug is not None:
@@ -1383,12 +1408,12 @@ def _handle_roadmap_deps(args: list[str]) -> None:
 
     if not slug:
         print("Missing required slug.")
-        print(_usage("roadmap"))
+        print(_usage("roadmap", "deps"))
         raise SystemExit(1)
 
     if after is None:
         print("--after is required.")
-        print(_usage("roadmap"))
+        print(_usage("roadmap", "deps"))
         raise SystemExit(1)
 
     cwd = str(project_root)
@@ -1415,8 +1440,8 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
     """Handle telec roadmap freeze <slug> [--project-root PATH]."""
     from teleclaude.core.next_machine.core import freeze_to_icebox
 
-    if not args or args[0] in ("--help", "-h"):
-        print(_usage("roadmap"))
+    if not args:
+        print(_usage("roadmap", "freeze"))
         return
 
     slug: str | None = None
@@ -1429,7 +1454,7 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print(_usage("roadmap"))
+            print(_usage("roadmap", "freeze"))
             raise SystemExit(1)
         else:
             if slug is not None:
@@ -1440,7 +1465,7 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
 
     if not slug:
         print("Missing required slug.")
-        print(_usage("roadmap"))
+        print(_usage("roadmap", "freeze"))
         raise SystemExit(1)
 
     if freeze_to_icebox(str(project_root), slug):
@@ -1454,8 +1479,8 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
     """Handle telec roadmap deliver <slug> [--commit SHA] [--title TEXT] [--outcome TEXT] [--project-root PATH]."""
     from teleclaude.core.next_machine.core import deliver_to_delivered
 
-    if not args or args[0] in ("--help", "-h"):
-        print(_usage("roadmap"))
+    if not args:
+        print(_usage("roadmap", "deliver"))
         return
 
     slug: str | None = None
@@ -1480,7 +1505,7 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print(_usage("roadmap"))
+            print(_usage("roadmap", "deliver"))
             raise SystemExit(1)
         else:
             if slug is not None:
@@ -1491,7 +1516,7 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
 
     if not slug:
         print("Missing required slug.")
-        print(_usage("roadmap"))
+        print(_usage("roadmap", "deliver"))
         raise SystemExit(1)
 
     if deliver_to_delivered(str(project_root), slug, commit=commit, title=title, outcome=outcome):
@@ -1507,9 +1532,6 @@ def _handle_config(args: list[str]) -> None:
     No args → interactive menu (TUI). Subcommands (get/patch/validate) → delegate
     to existing config_cmd handler for daemon config.
     """
-    if args and args[0] in ("--help", "-h"):
-        print(_usage("config"))
-        return
 
     if not args:
         if not sys.stdin.isatty():
@@ -1532,19 +1554,6 @@ def _handle_config(args: list[str]) -> None:
         print(f"Unknown config subcommand: {subcommand}")
         print(_usage("config"))
         raise SystemExit(1)
-
-
-def _handle_onboard(args: list[str]) -> None:
-    """Handle telec onboard command."""
-    if args and args[0] in ("--help", "-h"):
-        print(_usage("onboard"))
-        return
-
-    if not sys.stdin.isatty():
-        print("Error: Onboarding wizard requires a terminal.")
-        raise SystemExit(1)
-
-    _run_tui_config_mode(guided=True)
 
 
 if __name__ == MAIN_MODULE:

@@ -85,9 +85,9 @@ def handle_config_cli(args: list[str]) -> None:
 
     # Intercept --help/-h at any level (e.g. "telec config people -h")
     if sub in ("--help", "-h") or "--help" in rest or "-h" in rest:
-        from teleclaude.cli.telec import _usage
+        from teleclaude.cli.telec import _maybe_show_help
 
-        print(_usage("config"))
+        _maybe_show_help("config", args)
         return
 
     handlers = {

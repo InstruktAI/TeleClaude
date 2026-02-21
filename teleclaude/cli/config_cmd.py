@@ -22,9 +22,9 @@ def handle_config_command(args: list[str]) -> None:
 
     # Intercept --help/-h at any level
     if subcommand in ("--help", "-h") or "--help" in sub_args or "-h" in sub_args:
-        from teleclaude.cli.telec import _usage
+        from teleclaude.cli.telec import _maybe_show_help
 
-        print(_usage("config"))
+        _maybe_show_help("config", args)
         return
 
     if subcommand == "get":
