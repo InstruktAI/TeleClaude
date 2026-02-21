@@ -195,6 +195,11 @@ class TodoRow(TelecMixin, Widget):
         # Property columns (DOR first)
         line.append_text(self._build_columns())
 
+        # Dependency suffix
+        if self.todo.after:
+            dep_text = ", ".join(self.todo.after)
+            line.append(f"  \u2190 {dep_text}", style=_DIM)
+
         return line
 
     def on_click(self, event: Click) -> None:

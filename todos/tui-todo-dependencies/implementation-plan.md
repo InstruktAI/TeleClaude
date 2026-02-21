@@ -59,7 +59,7 @@ The data already exists in `RoadmapEntry` (core/next_machine/core.py:701) but is
 
 **File(s):** `teleclaude/cli/tui/widgets/todo_row.py`
 
-- [ ] After property columns (line 196), append dimmed dependency suffix:
+- [x] After property columns (line 196), append dimmed dependency suffix:
   ```python
   if self.todo.after:
       dep_text = ", ".join(self.todo.after)
