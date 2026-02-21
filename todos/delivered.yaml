@@ -1,4 +1,11 @@
 # Delivered work items. Newest first.
+- slug: themed-primary-color
+  date: '2026-02-21'
+  title: Introduce warm Claude-orange primary color for Textual theme at agent
+    carousel levels; fix blue outline in standalone editor
+  outcome: DELIVERED
+  commit: 809dbea1
+
 - slug: tui-markdown-editor
   date: '2026-02-21'
   title: Inline markdown editing and one-key todo creation in TUI
