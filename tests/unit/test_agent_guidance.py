@@ -125,3 +125,13 @@ async def test_compose_guidance_no_agents(mock_db, mock_config):
 
     with pytest.raises(RuntimeError, match="No agents are currently enabled and available"):
         await compose_agent_guidance(mock_db)
+
+
+async def test_compose_guidance_all_runtime_unavailable(mock_db, mock_config):
+    # Agents are enabled in config but unavailable in DB
+    mock_db.get_agent_availability.return_value = {"status": "unavailable"}
+
+    # CURRENTLY this will FAIL to raise RuntimeError (it will return empty guidance)
+    # We want it to raise RuntimeError
+    with pytest.raises(RuntimeError, match="No agents are currently enabled and available"):
+        await compose_agent_guidance(mock_db)

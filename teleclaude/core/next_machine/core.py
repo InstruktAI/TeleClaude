@@ -1207,15 +1207,13 @@ async def compose_agent_guidance(db: Db) -> str:
     # Clear expired availability first
     await db.clear_expired_agent_availability()
 
-    enabled_count = 0
+    listed_count = 0
 
     for agent_name in AgentName:
         name = agent_name.value
         cfg = app_config.agents.get(name)
         if not cfg or not cfg.enabled:
             continue
-
-        enabled_count += 1
 
         # Check runtime status
         availability = await db.get_agent_availability(name)
@@ -1228,13 +1226,14 @@ async def compose_agent_guidance(db: Db) -> str:
                 reason = availability.get("reason", "unknown reason")
                 status_note = f" [DEGRADED: {reason}]"
 
+        listed_count += 1
         lines.append(f"- {name.upper()}{status_note}:")
         if cfg.strengths:
             lines.append(f"  Strengths: {cfg.strengths}")
         if cfg.avoid:
             lines.append(f"  Avoid: {cfg.avoid}")
 
-    if enabled_count == 0:
+    if listed_count == 0:
         raise RuntimeError("No agents are currently enabled and available.")
 
     lines.append("")
