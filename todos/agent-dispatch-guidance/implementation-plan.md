@@ -83,8 +83,8 @@ This approach is appropriate because domain inference (frontend vs backend vs ov
 
 **File(s):** `teleclaude/helpers/agent_cli.py`
 
-- [ ] Respect `config.agents[name].enabled` in standalone agent picker
-- [ ] Tests pass
+- [x] Respect `config.agents[name].enabled` in standalone agent picker
+- [x] Tests pass
 
 ### Task 4.2: Update doc snippets
 

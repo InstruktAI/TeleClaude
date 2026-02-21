@@ -32,6 +32,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config as app_config
 from teleclaude.helpers.agent_types import AgentName, ThinkingMode
 from teleclaude.runtime.binaries import resolve_agent_binary
 
@@ -216,9 +217,15 @@ def _pick_agent(preferred: AgentName | None) -> AgentName:
         return False
 
     def agent_usable(agent: AgentName) -> bool:
+        cfg = app_config.agents.get(agent.value)
+        if cfg and not cfg.enabled:
+            return False
         return binary_available(agent) and db_available(agent)
 
     if preferred:
+        cfg = app_config.agents.get(preferred.value)
+        if cfg and not cfg.enabled:
+            raise SystemExit(f"ERROR: configured agent {preferred.value} is disabled in config.yml")
         if not binary_available(preferred):
             raise SystemExit(f"ERROR: configured binary for {preferred.value} is not available")
         if not db_available(preferred):

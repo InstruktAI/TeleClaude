@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from teleclaude.config import AgentConfig
 from teleclaude.helpers import agent_cli
 from teleclaude.helpers.agent_types import AgentName
 
@@ -38,9 +39,29 @@ def _set_binary_map(monkeypatch: pytest.MonkeyPatch, available: set[str]) -> Non
     )
 
 
+def _mock_app_config_agents(monkeypatch: pytest.MonkeyPatch, disabled: set[str] = None) -> None:
+    disabled = disabled or set()
+    mock_agents = {}
+    for name in ["claude", "gemini", "codex"]:
+        mock_agents[name] = AgentConfig(
+            binary=name,
+            profiles={},
+            session_dir="",
+            log_pattern="",
+            model_flags={},
+            exec_subcommand="",
+            interactive_flag="",
+            non_interactive_flag="",
+            resume_template="",
+            enabled=(name not in disabled),
+        )
+    monkeypatch.setattr(agent_cli.app_config, "agents", mock_agents)
+
+
 def test_pick_agent_prefers_first_db_available(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setattr(agent_cli, "_REPO_ROOT", tmp_path)
     _set_binary_map(monkeypatch, {"claude", "codex", "gemini"})
+    _mock_app_config_agents(monkeypatch)
 
     future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     _write_agent_availability_db(
@@ -58,6 +79,7 @@ def test_pick_agent_prefers_first_db_available(monkeypatch: pytest.MonkeyPatch, 
 def test_pick_agent_rejects_unavailable_preferred(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setattr(agent_cli, "_REPO_ROOT", tmp_path)
     _set_binary_map(monkeypatch, {"claude", "codex", "gemini"})
+    _mock_app_config_agents(monkeypatch)
 
     future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     _write_agent_availability_db(
@@ -74,6 +96,7 @@ def test_pick_agent_rejects_unavailable_preferred(monkeypatch: pytest.MonkeyPatc
 def test_pick_agent_treats_expired_unavailability_as_available(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setattr(agent_cli, "_REPO_ROOT", tmp_path)
     _set_binary_map(monkeypatch, {"claude", "codex", "gemini"})
+    _mock_app_config_agents(monkeypatch)
 
     past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     _write_agent_availability_db(
@@ -90,6 +113,7 @@ def test_pick_agent_treats_expired_unavailability_as_available(monkeypatch: pyte
 def test_pick_agent_fails_when_no_binary_and_db_available(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setattr(agent_cli, "_REPO_ROOT", tmp_path)
     _set_binary_map(monkeypatch, set())
+    _mock_app_config_agents(monkeypatch)
 
     with pytest.raises(SystemExit, match="no available agent CLI found"):
         agent_cli._pick_agent(None)
@@ -98,6 +122,7 @@ def test_pick_agent_fails_when_no_binary_and_db_available(monkeypatch: pytest.Mo
 def test_pick_agent_skips_degraded(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setattr(agent_cli, "_REPO_ROOT", tmp_path)
     _set_binary_map(monkeypatch, {"claude", "codex", "gemini"})
+    _mock_app_config_agents(monkeypatch)
 
     with sqlite3.connect(str(tmp_path / "teleclaude.db")) as conn:
         conn.execute(
@@ -123,6 +148,7 @@ def test_pick_agent_skips_degraded(monkeypatch: pytest.MonkeyPatch, tmp_path) ->
 def test_pick_agent_rejects_degraded_preferred(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setattr(agent_cli, "_REPO_ROOT", tmp_path)
     _set_binary_map(monkeypatch, {"claude", "codex", "gemini"})
+    _mock_app_config_agents(monkeypatch)
 
     with sqlite3.connect(str(tmp_path / "teleclaude.db")) as conn:
         conn.execute(
@@ -143,3 +169,34 @@ def test_pick_agent_rejects_degraded_preferred(monkeypatch: pytest.MonkeyPatch, 
 
     with pytest.raises(SystemExit, match="unavailable or degraded"):
         agent_cli._pick_agent(AgentName.CODEX)
+
+
+def test_pick_agent_respects_config_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setattr(agent_cli, "_REPO_ROOT", tmp_path)
+    _set_binary_map(monkeypatch, {"claude", "codex", "gemini"})
+
+    # Disable claude in config
+    _mock_app_config_agents(monkeypatch, disabled={"claude"})
+
+    # Even if DB says claude is available, it should be skipped because of config
+    _write_agent_availability_db(
+        str(tmp_path / "teleclaude.db"),
+        [
+            ("claude", 1, None),
+            ("gemini", 1, None),
+        ],
+    )
+
+    selected = agent_cli._pick_agent(None)
+    assert selected == AgentName.CODEX
+
+
+def test_pick_agent_preferred_config_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setattr(agent_cli, "_REPO_ROOT", tmp_path)
+    _set_binary_map(monkeypatch, {"claude", "codex", "gemini"})
+
+    # Disable claude in config
+    _mock_app_config_agents(monkeypatch, disabled={"claude"})
+
+    with pytest.raises(SystemExit, match="disabled in config.yml"):
+        agent_cli._pick_agent(AgentName.CLAUDE)
