@@ -159,6 +159,49 @@ class TmuxPaneManager:
         if killed:
             logger.debug("Killed %d orphaned panes on startup", killed)
 
+    def _reconcile(self) -> None:
+        """Prune state entries referencing dead tmux panes.
+
+        Queries tmux once for all live pane IDs, then removes any
+        stale entries from session_to_pane, sticky_pane_ids,
+        sticky_session_to_pane, session_pane_ids, and parent state.
+        Called at the top of apply_layout() before signature checks.
+        """
+        if not self._tui_pane_id:
+            return
+
+        output = self._run_tmux("list-panes", "-F", "#{pane_id}")
+        live_panes = {p.strip() for p in output.split("\n") if p.strip()}
+
+        # Prune session_to_pane
+        dead_sessions = [sid for sid, pid in self.state.session_to_pane.items() if pid not in live_panes]
+        for sid in dead_sessions:
+            del self.state.session_to_pane[sid]
+
+        # Prune session_pane_ids
+        self.state.session_pane_ids = [pid for pid in self.state.session_pane_ids if pid in live_panes]
+
+        # Prune sticky_pane_ids
+        self.state.sticky_pane_ids = [pid for pid in self.state.sticky_pane_ids if pid in live_panes]
+
+        # Prune sticky_session_to_pane
+        dead_sticky = [sid for sid, pid in self.state.sticky_session_to_pane.items() if pid not in live_panes]
+        for sid in dead_sticky:
+            del self.state.sticky_session_to_pane[sid]
+
+        # Clear parent state if parent pane is dead
+        if self.state.parent_pane_id and self.state.parent_pane_id not in live_panes:
+            self.state.parent_pane_id = None
+            self.state.parent_session = None
+            self.state.parent_spec_id = None
+
+        if dead_sessions:
+            logger.debug(
+                "_reconcile: pruned %d dead entries: %s",
+                len(dead_sessions),
+                dead_sessions,
+            )
+
     def update_session_catalog(self, sessions: list["SessionInfo"]) -> None:
         """Update the session catalog used for layout lookup."""
         self._session_catalog = {session.session_id: session for session in sessions}
@@ -177,6 +220,8 @@ class TmuxPaneManager:
         """Apply a deterministic layout from session ids."""
         if not self._in_tmux:
             return
+
+        self._reconcile()
 
         logger.debug(
             "apply_layout: active=%s sticky=%s doc_preview=%s focus=%s tui_pane=%s parent_pane=%s",
