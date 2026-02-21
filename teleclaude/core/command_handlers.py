@@ -367,7 +367,9 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     # using build_display_title() when displaying to users
     title = cmd.title or "Untitled"
 
-    # Create session in database first
+    # Create session atomically with all known fields — the SESSION_STARTED
+    # event must carry complete data so downstream consumers never see partial state.
+    launch = cmd.launch_intent
     session = await db.create_session(
         computer_name=computer_name,
         tmux_session_name=tmux_name,
@@ -381,10 +383,15 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         human_email=human_email,
         human_role=human_role,
         lifecycle_status="initializing",
-        session_metadata=metadata_from_cmd,  # Inject metadata from command
+        session_metadata=metadata_from_cmd,
+        active_agent=launch.agent if launch else None,
+        thinking_mode=launch.thinking_mode if launch else None,
     )
-    if cmd.launch_intent and cmd.launch_intent.thinking_mode:
-        await db.update_session(session.session_id, thinking_mode=cmd.launch_intent.thinking_mode)
+
+    event_bus.emit(
+        TeleClaudeEvents.SESSION_STARTED,
+        SessionLifecycleContext(session_id=session_id),
+    )
 
     # Persist platform user_id on adapter metadata for derive_identity_key()
     if identity and identity.platform == "telegram" and identity.platform_user_id:
