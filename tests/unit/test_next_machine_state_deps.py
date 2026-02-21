@@ -269,6 +269,10 @@ async def test_next_work_no_bug_check():
         with (
             patch("teleclaude.core.next_machine.core.Repo"),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
         ):
             result = await next_work(db, slug=None, cwd=tmpdir)
 
@@ -309,6 +313,10 @@ async def test_next_work_respects_dependencies():
         with (
             patch("teleclaude.core.next_machine.core.Repo"),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
         ):
             result = await next_work(db, slug=None, cwd=tmpdir)
 
@@ -393,6 +401,10 @@ async def test_next_work_review_includes_merge_base_note():
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.core.is_main_ahead", return_value=False),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
@@ -448,6 +460,10 @@ async def test_next_work_does_not_block_review_when_main_ahead():
             patch("teleclaude.core.next_machine.core.ensure_worktree", return_value=False),
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.core.is_main_ahead", return_value=True),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
@@ -511,8 +527,8 @@ async def test_next_work_finalize_next_call_without_slug():
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
             patch(
-                "teleclaude.core.next_machine.core.get_available_agent",
-                new=AsyncMock(return_value=("claude", "med")),
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
             ),
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
