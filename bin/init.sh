@@ -528,7 +528,7 @@ install_launchd_service() {
 install_launchd_cron() {
     local service_name="ai.instrukt.teleclaude.cron"
     local plist_file="$HOME/Library/LaunchAgents/${service_name}.plist"
-    local source_file="$INSTALL_DIR/launchd/${service_name}.plist"
+    local source_file="$INSTALL_DIR/templates/${service_name}.plist"
 
     if [ ! -f "$source_file" ]; then
         print_warning "Cron plist not found: $source_file"

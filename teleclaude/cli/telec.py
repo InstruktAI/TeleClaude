@@ -1114,7 +1114,7 @@ def _handle_roadmap_show(args: list[str]) -> None:
 
 
 def _handle_roadmap_add(args: list[str]) -> None:
-    """Handle telec roadmap add <slug> [--group G] [--after d1,d2] [--description T] [--before S]."""
+    """Handle telec roadmap add <slug> [--group <slug>] [--after d1,d2] [--description T] [--before S]."""
     from teleclaude.core.next_machine.core import add_to_roadmap
 
     if not args or args[0] in ("--help", "-h"):
@@ -1328,7 +1328,7 @@ def _roadmap_usage() -> str:
     """Return usage string for telec roadmap."""
     return (
         "Usage:\n"
-        "  telec roadmap                                   # Show roadmap (grouped, with state)\n"
+        "  telec roadmap                                    # Show roadmap (grouped, with state)\n"
         "  telec roadmap add <slug> [options]               # Add entry to roadmap\n"
         "  telec roadmap remove <slug>                      # Remove entry from roadmap\n"
         "  telec roadmap move <slug> --before <s>           # Reorder: move before another\n"

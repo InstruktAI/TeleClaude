@@ -10,32 +10,32 @@
     live output. Frontend uses useChat with DefaultChatTransport. Auth via NextAuth
     email OTP. Session-to-person metadata binding with visibility routing.
 - slug: mcp-migration-tc-cli
-  group: MCP to Tool Specs Migration
+  group: mcp-to-tool-specs
   description: 'Phase 1: Extend telec with tool subcommands and daemon JSON-RPC endpoint'
 - slug: mcp-migration-tool-spec-docs
-  group: MCP to Tool Specs Migration
+  group: mcp-to-tool-specs
   description: 'Phase 2: Write 24 tool spec doc snippets in 6 taxonomy groups'
 - slug: mcp-migration-context-integration
-  group: MCP to Tool Specs Migration
+  group: mcp-to-tool-specs
   after:
   - mcp-migration-tc-cli
   - mcp-migration-tool-spec-docs
   description: 'Phase 3: Wire tool specs into context-selection pipeline, update CLAUDE.md
     baseline'
 - slug: mcp-migration-agent-config
-  group: MCP to Tool Specs Migration
+  group: mcp-to-tool-specs
   after:
   - mcp-migration-context-integration
   description: 'Phase 4: Remove MCP from agent session configs, validate all agent
     types'
 - slug: mcp-migration-delete-mcp
-  group: MCP to Tool Specs Migration
+  group: mcp-to-tool-specs
   after:
   - mcp-migration-agent-config
   description: 'Phase 5: Delete all MCP server code, wrapper, handlers, definitions
     (~3,400 lines)'
 - slug: mcp-migration-doc-updates
-  group: MCP to Tool Specs Migration
+  group: mcp-to-tool-specs
   after:
   - mcp-migration-delete-mcp
   description: 'Phase 6: Update architecture and policy docs, rewrite MCP references'
@@ -49,66 +49,57 @@
 - slug: start-gathering-tool
   group: Gathering Ceremony
   after:
-  - session-relay
   - gathering-rhythm-subprocedures
   description: 'Gathering ceremony orchestrator: turn-managed relay, talking piece,
     heartbeats, phase management, harvester, HITL'
-- slug: next-demo
-  group: Demo Celebration System
-  description: After every finalize, produce a stored demo artifact — a rich five-act
-    presentation of what was built. Includes /next-demo command, demos/ artifact storage,
-    orchestration wiring, widget rendering, and lifecycle doc updates.
+- slug: rolling-session-titles
+  description: Re-summarize session titles based on the last 3 user inputs instead
+    of only the first. Use a dedicated rolling prompt that captures session direction.
+    Reset the output message on any title change so the telegram title feedback floats
+    to the top in Telegram.
+- slug: project-aware-bug-routing
+- slug: test-suite-ownership-reset
+  description: Freeze non-emergency feature changes and reset test ownership to a
+    deterministic one-to-one model (source file to owning unit test) with path-based
+    test gating. Introduce prefix-based bug routing with an atomic per-bug loop.
+- slug: tui-markdown-editor
+  description: Inline markdown editing and one-key todo creation in TUI
 - slug: multi-user-db-abstraction
-  group: Multi-User System-Wide Installation
+  group: multi-user-system-install
   description: 'Phase 0: Configurable database engine (SQLite default, PostgreSQL
     opt-in), dialect-aware migrations'
 - slug: multi-user-identity
-  group: Multi-User System-Wide Installation
+  group: multi-user-system-install
   description: 'Phase 1: Unix socket peer credentials, OS user, TeleClaude person/role
     resolution'
 - slug: multi-user-sessions
-  group: Multi-User System-Wide Installation
+  group: multi-user-system-install
   after:
   - multi-user-db-abstraction
   - multi-user-identity
   description: 'Phase 2: Session ownership columns, role-scoped visibility, owner
     badges in TUI'
 - slug: multi-user-admin-audit
-  group: Multi-User System-Wide Installation
+  group: multi-user-system-install
   after:
   - multi-user-sessions
   description: 'Phase 3: Explicit transcript access with audit logging, admin observability
     UX'
 - slug: multi-user-config
-  group: Multi-User System-Wide Installation
+  group: multi-user-system-install
   after:
   - multi-user-identity
   description: 'Phase 4: Config split into system/secrets/per-user layers'
 - slug: multi-user-service
-  group: Multi-User System-Wide Installation
+  group: multi-user-system-install
   after:
   - multi-user-db-abstraction
   - multi-user-config
   description: 'Phase 5: Dedicated service user, launchd/systemd units, Docker Compose'
 - slug: multi-user-migration
-  group: Multi-User System-Wide Installation
+  group: multi-user-system-install
   after:
   - multi-user-sessions
   - multi-user-service
   description: 'Phase 6: SQLite to PostgreSQL data migration, single-user to system-wide
     tooling'
-- slug: rolling-session-titles
-  group: Rolling Session Titles
-  description: Re-summarize session titles based on the last 3 user inputs instead
-    of only the first. Use a dedicated rolling prompt that captures session direction.
-    Reset the output message on any title change so the telegram title feedback floats
-    to the top in Telegram.
-- slug: project-aware-bug-routing
-  group: Maintenance
-- slug: test-suite-ownership-reset
-  group: Maintenance
-  description: Freeze non-emergency feature changes and reset test ownership to a
-    deterministic one-to-one model (source file to owning unit test) with path-based
-    test gating. Introduce prefix-based bug routing with an atomic per-bug loop.
-- slug: tui-markdown-editor
-  description: Inline markdown editing and one-key todo creation in TUI

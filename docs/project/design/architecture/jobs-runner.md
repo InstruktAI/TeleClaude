@@ -349,7 +349,7 @@ File: `~/.teleclaude/cron_state.json`
 ## Service Integration
 
 - **Launchd label**: `ai.instrukt.teleclaude.cron`
-- **Plist**: `launchd/ai.instrukt.teleclaude.cron.plist`
+- **Plist**: `templates/ai.instrukt.teleclaude.cron.plist`
 - **Trigger**: Every 5 minutes (`StartInterval` = 300)
 - **Installation**: `bin/init.sh` installs the cron plist alongside the daemon plist
 - **Working directory**: Repository root

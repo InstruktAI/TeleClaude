@@ -192,11 +192,13 @@ _AGENT_HEX_COLORS_LIGHT: dict[str, str] = {
 
 _LIGHT_MODE_PAPER_BG = "#fdf6e3"
 
-_AGENT_PANE_INACTIVE_HAZE_PERCENTAGE = 0.18
-_AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE = 0.10
+_AGENT_PANE_INACTIVE_HAZE_PERCENTAGE_LIGHT = 0.12
+_AGENT_PANE_INACTIVE_HAZE_PERCENTAGE_DARK = 0.18
+_AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE_LIGHT = 0.08
+_AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE_DARK = 0.12
 _AGENT_PANE_ACTIVE_HAZE_PERCENTAGE = 0.0
 _AGENT_STATUS_HAZE_PERCENTAGE = 0.06
-_TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT = 0.08
+_TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT = 0.06
 _TUI_INACTIVE_HAZE_PERCENTAGE_DARK = 0.12
 _TERMINAL_HINT_WEIGHT = 0.35
 _DARK_HINT_MAX_LUMINANCE = 0.45
@@ -284,12 +286,23 @@ def get_agent_pane_inactive_background(agent: str, haze_percentage: float | None
     colors = _AGENT_HEX_COLORS_DARK if _is_dark_mode else _AGENT_HEX_COLORS_LIGHT
     base_bg = get_terminal_background()
     agent_color = colors[_safe_agent(agent)]
-    pct = _AGENT_PANE_INACTIVE_HAZE_PERCENTAGE if haze_percentage is None else haze_percentage
+    pct = (
+        (_AGENT_PANE_INACTIVE_HAZE_PERCENTAGE_DARK if _is_dark_mode else _AGENT_PANE_INACTIVE_HAZE_PERCENTAGE_LIGHT)
+        if haze_percentage is None
+        else haze_percentage
+    )
     return blend_colors(base_bg, agent_color, pct)
 
 
 def get_agent_pane_selected_background(agent: str) -> str:
-    return get_agent_pane_inactive_background(agent, haze_percentage=_AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE)
+    return get_agent_pane_inactive_background(
+        agent,
+        haze_percentage=(
+            _AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE_DARK
+            if _is_dark_mode
+            else _AGENT_PANE_TREE_SELECTED_HAZE_PERCENTAGE_LIGHT
+        ),
+    )
 
 
 def get_agent_pane_active_background(agent: str) -> str:

@@ -80,7 +80,7 @@ subcommands:
         args:
           - slug: 'string'
         flags:
-          --group: 'Visual grouping label.'
+          --group: 'Slug of holder todo.'
           --after: 'Comma-separated dependency slugs.'
           --before: 'Insert before this slug.'
           --description: 'Summary description.'
