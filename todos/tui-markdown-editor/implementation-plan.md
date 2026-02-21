@@ -25,11 +25,9 @@ Task 7 ─────┘
 
 ### Task 1: Add input.md template and update scaffold
 
-**Files:**
-
-- Create: `templates/todos/input.md`
-- Modify: `teleclaude/todo_scaffold.py:71-79`
-- Modify: `tests/unit/test_todo_scaffold.py:12-20`
+- [x] Create: `templates/todos/input.md`
+- [x] Modify: `teleclaude/todo_scaffold.py:71-79`
+- [x] Modify: `tests/unit/test_todo_scaffold.py:12-20`
 
 **Step 1: Update the existing test to expect input.md**
 
@@ -95,10 +93,8 @@ feat: add input.md to todo scaffold
 
 ### Task 2: Create the standalone editor micro-app
 
-**Files:**
-
-- Create: `teleclaude/cli/editor.py`
-- Test: `tests/unit/cli/test_editor.py`
+- [x] Create: `teleclaude/cli/editor.py`
+- [x] Test: `tests/unit/cli/test_editor.py`
 
 **Step 1: Write the test**
 
@@ -272,9 +268,7 @@ feat: add standalone Textual markdown editor for tmux pane
 
 ### Task 3: Add DocEditRequest message
 
-**Files:**
-
-- Modify: `teleclaude/cli/tui/messages.py:193-200`
+- [x] Modify: `teleclaude/cli/tui/messages.py:193-200`
 
 **Step 1: Add the message class**
 
@@ -306,10 +300,8 @@ feat: add DocEditRequest message for editor integration
 
 ### Task 4: Wire PaneManagerBridge to handle DocEditRequest
 
-**Files:**
-
-- Modify: `teleclaude/cli/tui/pane_bridge.py:12-18` (imports)
-- Modify: `teleclaude/cli/tui/pane_bridge.py:125-134` (add handler)
+- [x] Modify: `teleclaude/cli/tui/pane_bridge.py:12-18` (imports)
+- [x] Modify: `teleclaude/cli/tui/pane_bridge.py:125-134` (add handler)
 
 **Step 1: Add import**
 
@@ -358,10 +350,8 @@ feat: wire PaneManagerBridge for DocEditRequest
 
 ### Task 5: Add CreateTodoModal
 
-**Files:**
-
-- Modify: `teleclaude/cli/tui/widgets/modals.py`
-- Test: `tests/unit/cli/tui/test_create_todo_modal.py`
+- [x] Modify: `teleclaude/cli/tui/widgets/modals.py`
+- [x] Test: `tests/unit/cli/tui/test_create_todo_modal.py`
 
 **Step 1: Write the test**
 
@@ -468,13 +458,11 @@ feat: add CreateTodoModal for TUI todo creation
 
 ### Task 6: Update PreparationView keybindings and actions
 
-**Files:**
-
-- Modify: `teleclaude/cli/tui/views/preparation.py:12-18` (imports)
-- Modify: `teleclaude/cli/tui/views/preparation.py:39-50` (BINDINGS)
-- Modify: `teleclaude/cli/tui/views/preparation.py:247-255` (add editor command builder)
-- Modify: `teleclaude/cli/tui/views/preparation.py:306-320` (action_activate)
-- Add: new `action_new_todo` method
+- [x] Modify: `teleclaude/cli/tui/views/preparation.py:12-18` (imports)
+- [x] Modify: `teleclaude/cli/tui/views/preparation.py:39-50` (BINDINGS)
+- [x] Modify: `teleclaude/cli/tui/views/preparation.py:247-255` (add editor command builder)
+- [x] Modify: `teleclaude/cli/tui/views/preparation.py:306-320` (action_activate)
+- [x] Add: new `action_new_todo` method
 
 **Step 1: Add imports**
 
@@ -590,9 +578,7 @@ feat: wire editor and new-todo creation in PreparationView
 
 ### Task 7: Update ActionBar hints
 
-**Files:**
-
-- Modify: `teleclaude/cli/tui/widgets/action_bar.py:39-43`
+- [x] Modify: `teleclaude/cli/tui/widgets/action_bar.py:39-43`
 
 **Step 1: Update the preparation context hints**
 
@@ -628,6 +614,8 @@ feat: update ActionBar hints for preparation view editor keybindings
 ---
 
 ### Task 8: End-to-end verification
+
+- [x] Reload TUI and verify workflow
 
 **Step 1: Reload TUI**
 
