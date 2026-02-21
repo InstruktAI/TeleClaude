@@ -144,7 +144,7 @@ POST_COMPLETION: dict[str, str] = {
 1. Read worker output via get_session_data. Confirm merge succeeded.
 2. teleclaude__end_session(computer="local", session_id="<session_id>")
 3. DEMO (run before cleanup, while artifacts exist — non-blocking):
-   teleclaude__run_agent_command(command="/next-demo", args="{args}", project="<project>", agent="claude", thinking_mode="fast", subfolder="")
+   teleclaude__run_agent_command(command="/next-demo", args="{args}", project="<project>", agent="claude", thinking_mode="fast", subfolder="trees/{args}")
    Wait for demo to complete (use the same timer/notification pattern).
    If demo fails or errors, log a warning and continue to CLEANUP.
 4. CLEANUP (orchestrator-owned, from main repo root — NEVER cd into worktree):
