@@ -607,7 +607,12 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
             files,
         )
 
-    def append_todo(slug: str, description: str | None = None) -> None:
+    def append_todo(
+        slug: str,
+        description: str | None = None,
+        after: list[str] | None = None,
+        group: str | None = None,
+    ) -> None:
         todo_dir = todos_root / slug
         (
             has_requirements,
@@ -634,6 +639,8 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
                 deferrals_status=deferrals_status,
                 findings_count=findings_count,
                 files=files,
+                after=after or [],
+                group=group,
             )
         )
 
@@ -666,7 +673,7 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
             continue
 
         seen_slugs.add(slug)
-        append_todo(slug, description=entry.description)
+        append_todo(slug, description=entry.description, after=entry.after, group=entry.group)
 
     for todo_dir in sorted(todos_root.iterdir(), key=lambda p: p.name):
         if not todo_dir.is_dir():

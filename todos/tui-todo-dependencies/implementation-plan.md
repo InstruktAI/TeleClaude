@@ -20,9 +20,9 @@ The data already exists in `RoadmapEntry` (core/next_machine/core.py:701) but is
 
 **File(s):** `teleclaude/core/command_handlers.py`
 
-- [ ] Add `after` and `group` parameters to `append_todo()` (line 610)
-- [ ] Pass them to `TodoInfo` constructor (line 624)
-- [ ] Update call site (line 669): `append_todo(slug, description=entry.description, after=entry.after, group=entry.group)`
+- [x] Add `after` and `group` parameters to `append_todo()` (line 610)
+- [x] Pass them to `TodoInfo` constructor (line 624)
+- [x] Update call site (line 669): `append_todo(slug, description=entry.description, after=entry.after, group=entry.group)`
 
 ### Task 1.3: Add `after` and `group` to `TodoDTO`
 
