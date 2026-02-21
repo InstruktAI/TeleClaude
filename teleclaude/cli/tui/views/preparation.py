@@ -379,14 +379,29 @@ class PreparationView(Widget, can_focus=True):
             )
 
     def action_prepare(self) -> None:
-        """p: open agent session modal with /next-prepare prompt."""
+        """p: directly start a prepare session with defaults."""
         row = self._current_todo_row()
-        if not row:
+        slug = row.slug if row else None
+        if not slug:
             file_row = self._current_file_row()
             if file_row:
-                self._open_session_modal(file_row.slug, f"/next-prepare {file_row.slug}")
+                slug = file_row.slug
+        if not slug:
             return
-        self._open_session_modal(row.slug, f"/next-prepare {row.slug}")
+        computer = self._slug_to_computer.get(slug, "local")
+        project_path = self._slug_to_project_path.get(slug, "")
+        if not project_path:
+            return
+        self.post_message(
+            CreateSessionRequest(
+                computer=computer,
+                project_path=project_path,
+                agent="claude",
+                thinking_mode="slow",
+                title=f"Prepare {slug}",
+                message=f"/next-prepare {slug}",
+            )
+        )
 
     def action_start_work(self) -> None:
         """s: open agent session modal with /next-work prompt.
