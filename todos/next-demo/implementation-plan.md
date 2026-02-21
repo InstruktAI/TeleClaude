@@ -12,12 +12,12 @@ The demo system has five parts: artifact storage with numbered folders, a comman
 
 **File(s):** `demos/.gitkeep`, `docs/project/spec/demo-artifact.md`
 
-- [ ] Create `demos/` directory at repository root
-- [ ] Write a doc snippet (`project/spec/demo-artifact`) defining:
+- [x] Create `demos/` directory at repository root
+- [x] Write a doc snippet (`project/spec/demo-artifact`) defining:
   - Numbered folder convention: `NNN-{slug}/` (zero-padded sequence)
   - `snapshot.json` schema: slug, title, sequence, version, delivered date, commit hash, metrics object, acts object (challenge, build, gauntlet, whats_next)
   - `demo.sh` contract: reads snapshot, checks semver, renders or exits
-- [ ] Sequence number derived from count of existing `demos/*/` folders + 1
+- [x] Sequence number derived from count of existing `demos/*/` folders + 1
 
 ---
 
