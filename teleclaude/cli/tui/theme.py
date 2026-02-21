@@ -9,6 +9,7 @@ Detects macOS dark/light mode via system settings.
 
 from __future__ import annotations
 
+import curses
 import os
 import re
 import subprocess
@@ -843,8 +844,12 @@ AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_SEMI: dict[str, int] = _STUB_DICT.copy()
 
 
 def get_agent_preview_selected_bg_attr(agent: str) -> int:
-    return 0
+    return curses.A_BOLD
 
 
 def get_agent_preview_selected_focus_attr(agent: str) -> int:
+    return curses.A_BOLD
+
+
+def get_sticky_badge_attr() -> int:
     return 0

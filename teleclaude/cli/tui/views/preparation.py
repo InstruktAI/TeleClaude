@@ -567,3 +567,23 @@ class PreparationView(Widget, can_focus=True):
 
     def get_persisted_state(self) -> dict[str, object]:  # guard: loose-dict
         return {"expanded_todos": sorted(self._expanded_todos)}
+
+
+# Legacy stub for tests
+class PrepTodoDisplayInfo:
+    def __init__(self, todo: object, project_path: object, computer: object) -> None:
+        self.todo = todo
+        self.project_path = project_path
+        self.computer = computer
+
+
+class PrepTodoNode:
+    pass
+
+
+class PrepComputerDisplayInfo:
+    pass
+
+
+class PrepComputerNode:
+    pass
