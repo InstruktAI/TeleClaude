@@ -218,8 +218,9 @@ class PaneManagerBridge(TelecMixin, Widget):
         """
         pm = self.pane_manager
         pm.update_session_catalog(self._sessions)
+        reload_map = pm._reload_session_panes  # tmux_session_name → pane_id
 
-        # Build sticky specs (same logic as apply_layout)
+        # Build sticky specs and map panes via reload discovery
         sticky_specs = []
         for session_id in sticky_session_ids:
             session = pm._session_catalog.get(session_id)
@@ -228,9 +229,14 @@ class PaneManagerBridge(TelecMixin, Widget):
             sticky_specs.append(
                 PaneManagerBridge._make_spec(session, is_sticky=True, get_computer_info=self._get_computer_info)
             )
+            pane_id = reload_map.get(session.tmux_session_name)
+            if pane_id:
+                pm.state.session_to_pane[session_id] = pane_id
+                pm.state.sticky_pane_ids.append(pane_id)
+                pm.state.sticky_session_to_pane[session_id] = pane_id
         pm._sticky_specs = sticky_specs
 
-        # Build active spec and map parent pane to active session
+        # Build active spec and map pane via reload discovery
         if active_session_id:
             session = pm._session_catalog.get(active_session_id)
             if session and session.tmux_session_name:
@@ -239,8 +245,10 @@ class PaneManagerBridge(TelecMixin, Widget):
                 )
                 pm.state.parent_session = session.tmux_session_name
                 pm.state.parent_spec_id = session.session_id
-                if pm.state.parent_pane_id:
-                    pm.state.session_to_pane[session.session_id] = pm.state.parent_pane_id
+                pane_id = reload_map.get(session.tmux_session_name) or pm.state.parent_pane_id
+                if pane_id:
+                    pm.state.parent_pane_id = pane_id
+                    pm.state.session_to_pane[session.session_id] = pane_id
 
         # Compute and set the layout signature so _layout_is_unchanged()
         # returns True on the next apply_layout call.

@@ -21,10 +21,10 @@ The approach is additive-then-subtractive: first add reconciliation, then simpli
 
 **File(s):** `teleclaude/cli/tui/pane_manager.py`
 
-- [ ] Add `is_reload: bool = False` parameter to `TmuxPaneManager.__init__()`
-- [ ] When `is_reload=True`: skip `_adopt_existing_panes()`, instead call `_adopt_for_reload()` which discovers existing non-TUI panes and pre-populates `session_pane_ids` (without session-to-pane mapping yet — that happens when data arrives)
-- [ ] When `is_reload=False` (cold start): keep existing behavior of killing orphaned panes
-- [ ] Delete `_adopt_existing_panes()` — replace both paths with `_init_panes(is_reload)`
+- [x] Add `is_reload: bool = False` parameter to `TmuxPaneManager.__init__()`
+- [x] When `is_reload=True`: skip `_adopt_existing_panes()`, instead call `_adopt_for_reload()` which discovers existing non-TUI panes and pre-populates `session_pane_ids` (without session-to-pane mapping yet — that happens when data arrives)
+- [x] When `is_reload=False` (cold start): keep existing behavior of killing orphaned panes
+- [x] Delete `_adopt_existing_panes()` — replace both paths with `_init_panes(is_reload)`
 
 ### Task 1.3: Pass reload flag through the chain
 

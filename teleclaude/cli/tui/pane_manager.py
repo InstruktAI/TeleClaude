@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Literal
@@ -109,8 +110,13 @@ class TmuxPaneManager:
     └─────────────┴────────────────────┘
     """
 
-    def __init__(self) -> None:
-        """Initialize pane manager."""
+    def __init__(self, *, is_reload: bool = False) -> None:
+        """Initialize pane manager.
+
+        Args:
+            is_reload: True on SIGUSR2 reload — preserve existing panes
+                       instead of killing orphans.
+        """
         self.state = PaneState()
         self._in_tmux = bool(os.environ.get("TMUX"))
         self._sticky_specs: list[SessionPaneSpec] = []
@@ -120,14 +126,13 @@ class TmuxPaneManager:
         self._layout_signature: tuple[object, ...] | None = None
         self._bg_signature: tuple[object, ...] | None = None
         self._session_catalog: dict[str, "SessionInfo"] = {}
+        # tmux_session_name → pane_id mapping discovered during reload
+        self._reload_session_panes: dict[str, str] = {}
         # Store our own pane ID for reference
         self._tui_pane_id: str | None = None
         if self._in_tmux:
             self._tui_pane_id = self._get_current_pane_id()
-            # Adopt any existing non-TUI panes so cleanup works on reload.
-            # On cold start this finds nothing; on SIGUSR2 reload it discovers
-            # session panes created by the previous process.
-            self._adopt_existing_panes()
+            self._init_panes(is_reload)
             # Ensure the tmux server knows tmux-256color clients support
             # truecolor.  Without this, RGB escape sequences from CLIs are
             # stripped when rendered through nested tmux attach.
@@ -139,16 +144,21 @@ class TmuxPaneManager:
         """Check if tmux pane management is available."""
         return self._in_tmux
 
-    def _adopt_existing_panes(self) -> None:
-        """Kill orphaned non-TUI panes from a previous process.
+    def _init_panes(self, is_reload: bool) -> None:
+        """Initialize pane state on startup.
 
-        On SIGUSR2 reload or cold restart, the old process exits but
-        the tmux panes it created survive.  These orphans have no
-        session-id mapping and cannot be reliably reused.  Kill them
-        so the first apply_layout call starts from a clean slate.
+        Cold start: kill orphaned panes left by a crashed process.
+        Reload: discover existing panes and preserve them for reuse.
         """
         if not self._tui_pane_id:
             return
+        if is_reload:
+            self._adopt_for_reload()
+        else:
+            self._kill_orphaned_panes()
+
+    def _kill_orphaned_panes(self) -> None:
+        """Kill orphaned non-TUI panes from a previous process (cold start)."""
         output = self._run_tmux("list-panes", "-F", "#{pane_id}")
         killed = 0
         for pane_id in output.split("\n"):
@@ -157,7 +167,40 @@ class TmuxPaneManager:
                 self._run_tmux("kill-pane", "-t", pane_id)
                 killed += 1
         if killed:
-            logger.debug("Killed %d orphaned panes on startup", killed)
+            logger.debug("Cold start: killed %d orphaned panes", killed)
+
+    def _adopt_for_reload(self) -> None:
+        """Discover existing non-TUI panes and identify their tmux sessions.
+
+        On SIGUSR2 reload, panes from the previous process survive in tmux.
+        This method discovers them and extracts which tmux session each pane
+        is attached to (from pane_start_command).  The resulting mapping is
+        stored in _reload_session_panes for seed_layout_for_reload to use.
+        """
+        output = self._run_tmux("list-panes", "-F", "#{pane_id}\t#{pane_start_command}")
+        for line in output.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("\t", 1)
+            pane_id = parts[0].strip()
+            if pane_id == self._tui_pane_id:
+                continue
+
+            self.state.session_pane_ids.append(pane_id)
+
+            # Extract tmux session name from the pane's attach command
+            if len(parts) > 1:
+                match = re.search(r"attach-session -t (\S+)", parts[1])
+                if match:
+                    tmux_name = match.group(1).rstrip("'\"")
+                    self._reload_session_panes[tmux_name] = pane_id
+
+        logger.debug(
+            "Reload: adopted %d panes, mapped sessions: %s",
+            len(self.state.session_pane_ids),
+            dict(self._reload_session_panes),
+        )
 
     def _reconcile(self) -> None:
         """Prune state entries referencing dead tmux panes.
