@@ -127,6 +127,8 @@ class PreparationView(Widget, can_focus=True):
                         deferrals_status=getattr(t, "deferrals_status", None),
                         findings_count=getattr(t, "findings_count", 0),
                         files=getattr(t, "files", []),
+                        after=getattr(t, "after", []),
+                        group=getattr(t, "group", None),
                     )
                 )
         slug_width = max((len(t.slug) for t in all_todo_items), default=0)
@@ -151,9 +153,21 @@ class PreparationView(Widget, can_focus=True):
             self._nav_items.append(header)
 
             todos_list = project.todos or []
+            current_group: str | None = None
             for idx, todo_data in enumerate(todos_list):
                 is_last = idx == len(todos_list) - 1
                 todo = todo_by_slug[todo_data.slug]
+
+                # Insert group sub-header when group changes
+                if todo.group and todo.group != current_group:
+                    widgets_to_mount.append(
+                        GroupSeparator(
+                            connector_col=ProjectHeader.CONNECTOR_COL,
+                            label=todo.group,
+                        )
+                    )
+                current_group = todo.group
+
                 row = TodoRow(todo=todo, is_last=is_last, slug_width=slug_width, col_widths=col_widths)
                 widgets_to_mount.append(row)
                 self._nav_items.append(row)
@@ -379,14 +393,29 @@ class PreparationView(Widget, can_focus=True):
             )
 
     def action_prepare(self) -> None:
-        """p: open agent session modal with /next-prepare prompt."""
+        """p: directly start a prepare session with defaults."""
         row = self._current_todo_row()
-        if not row:
+        slug = row.slug if row else None
+        if not slug:
             file_row = self._current_file_row()
             if file_row:
-                self._open_session_modal(file_row.slug, f"/next-prepare {file_row.slug}")
+                slug = file_row.slug
+        if not slug:
             return
-        self._open_session_modal(row.slug, f"/next-prepare {row.slug}")
+        computer = self._slug_to_computer.get(slug, "local")
+        project_path = self._slug_to_project_path.get(slug, "")
+        if not project_path:
+            return
+        self.post_message(
+            CreateSessionRequest(
+                computer=computer,
+                project_path=project_path,
+                agent="claude",
+                thinking_mode="slow",
+                title=f"Prepare {slug}",
+                message=f"/next-prepare {slug}",
+            )
+        )
 
     def action_start_work(self) -> None:
         """s: open agent session modal with /next-work prompt.

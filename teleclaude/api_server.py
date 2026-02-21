@@ -1140,6 +1140,8 @@ class APIServer:
                                 deferrals_status=t.deferrals_status,
                                 findings_count=t.findings_count,
                                 files=t.files,
+                                after=t.after,
+                                group=t.group,
                             )
                             for t in raw_todos
                         ]
@@ -1171,6 +1173,8 @@ class APIServer:
                                 deferrals_status=todo.deferrals_status,
                                 findings_count=todo.findings_count,
                                 files=todo.files,
+                                after=todo.after,
+                                group=todo.group,
                             )
                         )
                 self._refresh_stale_todos(stale_remote_computers)
