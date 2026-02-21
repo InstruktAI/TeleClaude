@@ -1,4 +1,10 @@
 # Delivered work items. Newest first.
+- slug: agent-dispatch-guidance
+  date: '2026-02-21'
+  title: Replace hardcoded agent selection matrices with config-driven guidance text
+  outcome: DELIVERED
+  commit: 6c3c5f10
+
 - slug: themed-primary-color
   date: '2026-02-21'
   title: Introduce warm Claude-orange primary color for Textual theme at agent

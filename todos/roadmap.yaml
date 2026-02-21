@@ -43,9 +43,6 @@
   - gathering-rhythm-subprocedures
   description: 'Gathering ceremony orchestrator: turn-managed relay, talking piece,
     heartbeats, phase management, harvester, HITL'
-- slug: agent-dispatch-guidance
-  description: Replace hardcoded agent selection matrices with config-driven guidance
-    text
 - slug: project-aware-bug-routing
 - slug: multi-user-db-abstraction
   group: multi-user-system-install
