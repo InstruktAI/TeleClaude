@@ -688,6 +688,43 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
         seen_slugs.add(todo_dir.name)
         append_todo(todo_dir.name, description=infer_input_description(todo_dir))
 
+    # Inject container→child relationships from breakdown.todos in state.json.
+    # This makes container todos appear as tree parents of their sub-items in the TUI
+    # without modifying roadmap.yaml (which drives the next-machine dependency gating).
+    slug_to_idx = {t.slug: i for i, t in enumerate(todos)}
+    for todo in list(todos):
+        state_path = todos_root / todo.slug / "state.json"
+        if not state_path.exists():
+            continue
+        try:
+            state = json.loads(state_path.read_text())
+            child_slugs = state.get("breakdown", {}).get("todos", [])
+            if not child_slugs:
+                continue
+            # Only process if at least one child is in the list
+            children_in_list = [cs for cs in child_slugs if cs in slug_to_idx]
+            if not children_in_list:
+                continue
+            # Inject container as after-dependency for each child
+            for cs in children_in_list:
+                child = todos[slug_to_idx[cs]]
+                if todo.slug not in child.after:
+                    child.after.append(todo.slug)
+            # Propagate group from first child if container has none
+            if not todo.group:
+                first_child = todos[slug_to_idx[children_in_list[0]]]
+                if first_child.group:
+                    todo.group = first_child.group
+            # Move container before its first child for correct visual ordering
+            container_idx = slug_to_idx[todo.slug]
+            first_child_idx = min(slug_to_idx[cs] for cs in children_in_list)
+            if container_idx > first_child_idx:
+                todos.pop(container_idx)
+                todos.insert(first_child_idx, todo)
+                slug_to_idx = {t.slug: i for i, t in enumerate(todos)}
+        except (json.JSONDecodeError, OSError):
+            continue
+
     return todos
 
 
