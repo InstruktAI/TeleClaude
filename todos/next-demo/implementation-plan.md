@@ -162,14 +162,14 @@ The demo step lives in the `"next-finalize"` completion instructions template (`
 
 ### Task 6.2: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
-- [ ] Verify demo procedure doc and lifecycle overview are consistent
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
+- [x] Verify demo procedure doc and lifecycle overview are consistent
 
 ---
 
 ## Phase 7: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly
