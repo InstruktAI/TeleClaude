@@ -234,6 +234,14 @@ class SessionsView(Widget, can_focus=True):
         for node in tree:
             self._mount_node(container, node)
 
+        # Mark last-child sessions: a session uses └ when the next session
+        # in the flat list is at a shallower depth (subtree closing).
+        session_rows = [w for w in self._nav_items if isinstance(w, SessionRow)]
+        for i, row in enumerate(session_rows):
+            if i + 1 < len(session_rows):
+                row.is_last_child = session_rows[i + 1].depth < row.depth
+            # Last session in group is handled by skip_bottom_connector
+
         # Restore cursor position
         if self._nav_items and self.cursor_index >= len(self._nav_items):
             self.cursor_index = max(0, len(self._nav_items) - 1)

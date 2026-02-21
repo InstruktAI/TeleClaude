@@ -583,7 +583,7 @@ async def _list_sessions(api: TelecAPIClient, *, show_all: bool = False) -> None
         if caller_id:
             sessions = [s for s in sessions if s.initiator_session_id == caller_id]
         for session in sessions:
-            sid = session.session_id[:8]
+            sid = session.session_id
             computer = session.computer or "?"
             agent = session.active_agent or "?"
             mode = session.thinking_mode or "?"

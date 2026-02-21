@@ -27,8 +27,8 @@ class SessionRow(TelecMixin, Widget):
     """Multi-line expandable session row for the sessions tree.
 
     Collapsed: `[N] ▶ agent/mode "Title"`
-    Expanded: adds `│   [HH:MM:SS] sid / native_id`, `│   [HH:MM:SS]  in: ...`,
-              `│   [HH:MM:SS] out: ...`, and `└───` bottom connector.
+    Expanded: adds detail lines with depth-based │ connector, then ├/└ bottom.
+    Badge [N] is always at the same left position; the │ pipe indents by depth.
     """
 
     class Pressed(Message):
@@ -53,6 +53,7 @@ class SessionRow(TelecMixin, Widget):
     active_tool = reactive("", layout=True)
     last_output_summary = reactive("", layout=True)
     skip_bottom_connector = reactive(False)
+    is_last_child = reactive(False)
 
     def __init__(
         self,
@@ -88,23 +89,17 @@ class SessionRow(TelecMixin, Widget):
 
     @property
     def _child_indent(self) -> str:
-        """Leading indent before the badge.
-
-        Old TUI: child_indent = " " * (max(0, depth-2) * 2)
-        If empty (depth=2), a " " minimum is used. Otherwise used directly.
-        depth=2 → " ", depth=3 → "  ", depth=4 → "    "
-        """
-        raw = max(0, self.depth - 2) * 2
-        return " " * raw if raw > 0 else " "
+        """Leading indent before the badge — constant for all depths."""
+        return " "
 
     @property
     def _connector_col(self) -> int:
-        """Column for tree │ and └ connectors.
+        """Column for tree │ and └ connectors (depth-based, independent of badge indent).
 
-        Old TUI: connector_anchor_col = sum(leading_text) + 1
-        = len(indent) + 1, positioned in the middle of the [N] badge.
+        depth=2 → 2, depth=3 → 3, depth=4 → 5
         """
-        return len(self._child_indent) + 1
+        raw = max(0, self.depth - 2) * 2
+        return (raw if raw > 0 else 1) + 1
 
     def _tier(self, tier: str) -> str:
         """Resolve color tier, shifting one level down for headless sessions."""
@@ -182,12 +177,7 @@ class SessionRow(TelecMixin, Widget):
         """Build expanded detail lines with │ tree connectors."""
         lines: list[Text] = []
         connector_pad = " " * self._connector_col
-        # Old TUI: detail_indent = child_indent + "    " (4 spaces)
-        # The │ is painted at connector_col, so the gap after │ is:
-        # len(child_indent) + 4 - connector_col - 1
-        raw_indent = max(0, self.depth - 2) * 2
-        detail_gap = raw_indent + 4 - self._connector_col - 1
-        detail_pad = " " * max(detail_gap, 1)
+        detail_pad = " "
         connector_style = Style(color=CONNECTOR_COLOR)
 
         base_style = resolve_style(self.agent, self._tier("normal"))
@@ -253,17 +243,17 @@ class SessionRow(TelecMixin, Widget):
         return lines
 
     def _build_connector_bottom(self) -> Text:
-        """Build the ├---- bottom connector line (non-last sessions).
+        """Build the bottom connector line.
 
-        Uses ├ (tee) to indicate the tree continues below.
-        Last sessions skip this entirely — GroupSeparator handles closing.
+        Uses └ (corner) for last child in a subtree, ├ (tee) otherwise.
         """
         connector_pad = " " * self._connector_col
         connector_style = Style(color=CONNECTOR_COLOR)
         run_len = max(self.size.width - self._connector_col - 1, 20)
+        char = "\u2514" if self.is_last_child else "\u251c"
         line = Text()
         line.append(connector_pad)
-        line.append("\u251c", style=connector_style)
+        line.append(char, style=connector_style)
         line.append("-" * run_len, style=connector_style)
         return line
 
