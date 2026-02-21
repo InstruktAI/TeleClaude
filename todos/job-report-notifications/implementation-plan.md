@@ -40,12 +40,12 @@ Replace hardcoded job-to-channel notification mapping with a subscription-driven
 
 **File(s):** `teleclaude/core/db_models.py`, `teleclaude/core/schema.sql`, `teleclaude/core/migrations/`, `teleclaude/core/db.py`
 
-- [ ] Add `delivery_channel: str = "telegram"` to `NotificationOutbox` model
-- [ ] Add `delivery_channel TEXT NOT NULL DEFAULT 'telegram'` to `CREATE TABLE notification_outbox` in schema.sql
-- [ ] Create migration file `0XX_add_delivery_channel.py` with ALTER TABLE
-- [ ] Update `db.enqueue_notification()` to accept `delivery_channel: str = "telegram"` parameter
-- [ ] Write test: enqueue with delivery_channel, verify it persists
-- [ ] Run `pytest tests/unit/test_notifications.py -v` — PASS
+- [x] Add `delivery_channel: str = "telegram"` to `NotificationOutbox` model
+- [x] Add `delivery_channel TEXT NOT NULL DEFAULT 'telegram'` to `CREATE TABLE notification_outbox` in schema.sql
+- [x] Create migration file `0XX_add_delivery_channel.py` with ALTER TABLE
+- [x] Update `db.enqueue_notification()` to accept `delivery_channel: str = "telegram"` parameter
+- [x] Write test: enqueue with delivery_channel, verify it persists
+- [x] Run `pytest tests/unit/test_notifications.py -v` — PASS
 
 ---
 

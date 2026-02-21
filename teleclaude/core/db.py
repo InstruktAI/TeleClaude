@@ -44,6 +44,7 @@ class NotificationOutboxRow(TypedDict):
     recipient_email: str
     content: str
     file_path: str | None
+    delivery_channel: str
     status: str
     attempt_count: int
 
@@ -1494,6 +1495,7 @@ class Db:
         recipient_email: str,
         content: str,
         file_path: str | None = None,
+        delivery_channel: str = "telegram",
     ) -> int:
         """Persist a notification row for durable asynchronous delivery."""
         now = datetime.now(timezone.utc).isoformat()
@@ -1503,6 +1505,7 @@ class Db:
                 recipient_email=recipient_email,
                 content=content,
                 file_path=file_path,
+                delivery_channel=delivery_channel,
                 status="pending",
                 created_at=now,
                 next_attempt_at=now,
