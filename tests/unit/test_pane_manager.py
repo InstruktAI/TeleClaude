@@ -21,7 +21,7 @@ def test_toggle_session_returns_false_when_not_in_tmux():
     assert manager.active_session is None
 
 
-def test_show_session_tracks_parent_pane():
+def test_show_session_tracks_active_pane():
     """Test that show_session sets pane and session state when pane is created."""
     with patch.dict(os.environ, {"TMUX": "1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
@@ -35,8 +35,8 @@ def test_show_session_tracks_parent_pane():
             computer_info=ComputerInfo(name="local", is_local=True),
         )
 
-    assert manager.state.parent_pane_id is not None
-    assert manager.state.parent_session == "parent-session"
+    assert manager.state.active_session_id is not None
+    assert manager._active_pane_id is not None
     # Verify at least one split-window command issued
     assert any(call.args[0] == "split-window" for call in mock_run.call_args_list)
 
@@ -47,7 +47,11 @@ def test_toggle_session_hides_when_already_showing():
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
-    manager.state.parent_session = "session-1"
+    # Simulate active session via catalog + state
+    manager._session_catalog = {
+        "sid-1": SimpleNamespace(session_id="sid-1", tmux_session_name="session-1", active_agent="claude")
+    }
+    manager.state.active_session_id = "sid-1"
     with patch.object(manager, "_render_layout", return_value=None):
         result = manager.toggle_session("session-1", "claude")
 
@@ -61,17 +65,17 @@ def test_hide_sessions_kills_existing_panes_and_clears_state():
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
-    manager.state.parent_pane_id = "%10"
-    manager.state.parent_session = "session-1"
+    manager.state.session_to_pane["sid-1"] = "%10"
+    manager.state.active_session_id = "sid-1"
 
     mock_run = Mock(return_value="")
     with patch.object(manager, "_run_tmux", mock_run), patch.object(manager, "_get_pane_exists", return_value=True):
         manager.hide_sessions()
 
-    assert manager.state.parent_pane_id is None
-    assert manager.state.parent_session is None
-    # Verify kill-pane command issued for parent pane
-    assert mock_run.call_args_list[0].args == ("kill-pane", "-t", "%10")
+    assert manager.state.active_session_id is None
+    assert manager.active_session is None
+    # Verify kill-pane command issued for active pane
+    assert ("kill-pane", "-t", "%10") in [call.args for call in mock_run.call_args_list]
 
 
 def test_set_pane_background_overrides_only_at_paint_theming_level():

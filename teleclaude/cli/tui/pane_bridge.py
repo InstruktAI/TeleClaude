@@ -232,8 +232,6 @@ class PaneManagerBridge(TelecMixin, Widget):
             pane_id = reload_map.get(session.tmux_session_name)
             if pane_id:
                 pm.state.session_to_pane[session_id] = pane_id
-                pm.state.sticky_pane_ids.append(pane_id)
-                pm.state.sticky_session_to_pane[session_id] = pane_id
         pm._sticky_specs = sticky_specs
 
         # Build active spec and map pane via reload discovery
@@ -243,11 +241,9 @@ class PaneManagerBridge(TelecMixin, Widget):
                 pm._active_spec = PaneManagerBridge._make_spec(
                     session, is_sticky=False, get_computer_info=self._get_computer_info
                 )
-                pm.state.parent_session = session.tmux_session_name
-                pm.state.parent_spec_id = session.session_id
-                pane_id = reload_map.get(session.tmux_session_name) or pm.state.parent_pane_id
+                pm.state.active_session_id = session.session_id
+                pane_id = reload_map.get(session.tmux_session_name)
                 if pane_id:
-                    pm.state.parent_pane_id = pane_id
                     pm.state.session_to_pane[session.session_id] = pane_id
 
         # Compute and set the layout signature so _layout_is_unchanged()

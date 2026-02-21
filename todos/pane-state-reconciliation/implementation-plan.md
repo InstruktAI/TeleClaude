@@ -42,35 +42,35 @@ The approach is additive-then-subtractive: first add reconciliation, then simpli
 
 **File(s):** `teleclaude/cli/tui/pane_manager.py`
 
-- [ ] Replace 7-field PaneState with:
+- [x] Replace 7-field PaneState with:
   ```python
   @dataclass
   class PaneState:
       session_to_pane: dict[str, str] = field(default_factory=dict)
       active_session_id: str | None = None
   ```
-- [ ] Add derived properties / helper methods:
+- [x] Add derived properties / helper methods:
   - `get_active_pane_id()` → `session_to_pane.get(active_session_id)`
   - `get_sticky_panes(sticky_ids)` → filtered dict
   - `get_active_tmux_session()` → look up from session catalog
-- [ ] Update all call sites that read `parent_pane_id`, `parent_session`, `parent_spec_id`, `sticky_pane_ids`, `sticky_session_to_pane`, `session_pane_ids` to use the new derived helpers
+- [x] Update all call sites that read `parent_pane_id`, `parent_session`, `parent_spec_id`, `sticky_pane_ids`, `sticky_session_to_pane`, `session_pane_ids` to use the new derived helpers
 
 ### Task 2.2: Update layout signature computation
 
 **File(s):** `teleclaude/cli/tui/pane_manager.py`
 
-- [ ] `_compute_layout_signature()` uses `active_session_id` from state instead of `parent_spec_id`
-- [ ] `_layout_is_unchanged()` still works correctly with the simplified state
-- [ ] `_compute_bg_signature()` still works correctly
+- [x] `_compute_layout_signature()` uses `active_session_id` from state instead of `parent_spec_id`
+- [x] `_layout_is_unchanged()` still works correctly with the simplified state
+- [x] `_compute_bg_signature()` still works correctly
 
 ### Task 2.3: Update `_render_layout` and `_update_active_pane`
 
 **File(s):** `teleclaude/cli/tui/pane_manager.py`
 
-- [ ] `_render_layout()` writes to `state.session_to_pane` and `state.active_session_id` only
-- [ ] `_update_active_pane()` updates `state.session_to_pane` mapping and `state.active_session_id`
-- [ ] `_cleanup_all_session_panes()` clears `state.session_to_pane` and `state.active_session_id`
-- [ ] `_track_session_pane()` writes only to `state.session_to_pane`
+- [x] `_render_layout()` writes to `state.session_to_pane` and `state.active_session_id` only
+- [x] `_update_active_pane()` updates `state.session_to_pane` mapping and `state.active_session_id`
+- [x] `_cleanup_all_session_panes()` clears `state.session_to_pane` and `state.active_session_id`
+- [x] `_track_session_pane()` writes only to `state.session_to_pane`
 
 ---
 
