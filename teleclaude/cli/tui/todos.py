@@ -20,3 +20,5 @@ class TodoItem:
     deferrals_status: str | None = None
     findings_count: int = 0
     files: list[str] = field(default_factory=list)
+    after: list[str] = field(default_factory=list)
+    group: str | None = None

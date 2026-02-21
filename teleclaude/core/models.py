@@ -1025,6 +1025,8 @@ class TodoInfo:
     deferrals_status: Optional[str] = None
     findings_count: int = 0
     files: List[str] = field(default_factory=list)
+    after: List[str] = field(default_factory=list)
+    group: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, object]) -> "TodoInfo":  # guard: loose-dict
@@ -1048,6 +1050,8 @@ class TodoInfo:
             deferrals_status=cast(Optional[str], data.get("deferrals_status")),
             findings_count=int(data.get("findings_count", 0) or 0),
             files=[str(f) for f in cast(List[object], data.get("files", []))],
+            after=[str(a) for a in cast(List[object], data.get("after", []))],
+            group=cast(Optional[str], data.get("group")),
         )
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict
