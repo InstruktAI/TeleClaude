@@ -12,6 +12,7 @@ from textual.widget import Widget
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import (
     DataRefreshed,
+    DocEditRequest,
     DocPreviewRequest,
     FocusPaneRequest,
     PreviewChanged,
@@ -204,6 +205,17 @@ class PaneManagerBridge(TelecMixin, Widget):
             message.doc_id,
             self._preview_session_id[:8] if self._preview_session_id else None,
         )
+        self._preview_session_id = None
+        self._active_doc_preview = DocPreviewState(
+            doc_id=message.doc_id,
+            command=message.command,
+            title=message.title,
+        )
+        self._apply()
+
+    def on_doc_edit_request(self, message: DocEditRequest) -> None:
+        """Handle doc edit request — same as preview but with editor command."""
+        logger.debug("on_doc_edit_request: doc=%s", message.doc_id)
         self._preview_session_id = None
         self._active_doc_preview = DocPreviewState(
             doc_id=message.doc_id,
