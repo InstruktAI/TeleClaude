@@ -111,7 +111,9 @@ def handle_config_cli(args: list[str]) -> None:
 
 def _handle_people(args: list[str]) -> None:
     if not args:
-        print("Usage: telec config people <list|add|edit|remove> [options]")
+        from teleclaude.cli.telec import _usage
+
+        print(_usage("config", "people"))
         raise SystemExit(1)
 
     action = args[0]

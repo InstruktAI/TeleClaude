@@ -147,6 +147,18 @@ def test_editor_save_writes_content(tmp_path: Path) -> None:
     # Simulate what _save does with a known string
     app._save_content("new content")
     assert test_file.read_text() == "new content"
+
+
+def test_detect_language_from_extension() -> None:
+    """Language detection maps common extensions correctly."""
+    from teleclaude.cli.editor import _detect_language
+
+    assert _detect_language(Path("foo.md")) == "markdown"
+    assert _detect_language(Path("state.yaml")) == "yaml"
+    assert _detect_language(Path("state.yml")) == "yaml"
+    assert _detect_language(Path("config.json")) == "json"
+    assert _detect_language(Path("script.py")) == "python"
+    assert _detect_language(Path("unknown.xyz")) is None
 ```
 
 **Step 2: Run test to verify it fails**
@@ -174,12 +186,26 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
-from textual.widgets import Footer, Label, TextArea
+from textual.widgets import Label, TextArea
+
+
+_EXT_TO_LANGUAGE: dict[str, str] = {
+    ".md": "markdown",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".json": "json",
+    ".py": "python",
+    ".toml": "toml",
+}
+
+
+def _detect_language(file_path: Path) -> str | None:
+    """Detect TextArea language from file extension."""
+    return _EXT_TO_LANGUAGE.get(file_path.suffix.lower())
 
 
 class EditorApp(App[None]):
-    """Minimal markdown editor with auto-save on exit."""
+    """Minimal file editor with auto-save on exit."""
 
     BINDINGS = [
         Binding("escape", "save_and_quit", "Save & Quit", priority=True),
@@ -208,9 +234,10 @@ class EditorApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Label(f" {self.file_path.name}", id="editor-title")
         content = self.file_path.read_text(encoding="utf-8")
+        language = _detect_language(self.file_path)
         yield TextArea(
             content,
-            language="markdown",
+            language=language,
             soft_wrap=True,
             show_line_numbers=True,
             tab_behavior="indent",

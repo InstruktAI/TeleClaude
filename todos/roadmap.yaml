@@ -90,3 +90,10 @@
     of only the first. Use a dedicated rolling prompt that captures session direction.
     Reset the output message on any title change so the telegram title feedback floats
     to the top in Telegram.
+- slug: state-yaml-migration
+  after:
+  - tui-markdown-editor
+  description: Migrate todo state.json to state.yaml for human-readable state files
+- slug: unified-roadmap-assembly
+  after:
+  - mcp-to-tool-specs

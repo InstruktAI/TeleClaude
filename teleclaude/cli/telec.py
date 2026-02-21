@@ -67,6 +67,7 @@ class CommandDef:
     flags: list[Flag] = field(default_factory=list)
     subcommands: dict[str, "CommandDef"] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)  # extra lines for subcommand help
+    hidden: bool = False  # hide from help output and completion
 
     @property
     def visible_flags(self) -> list[Flag]:
@@ -125,6 +126,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
     "watch": CommandDef(
         desc="Watch project for changes and auto-sync",
         flags=[_H, _PROJECT_ROOT_LONG],
+        hidden=True,
     ),
     "docs": CommandDef(
         desc="Query documentation snippets (use --help for details)",
@@ -218,7 +220,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "get": CommandDef(desc="Get config values", args="[paths...]"),
             "patch": CommandDef(desc="Patch config values", args="[--yaml '...']"),
             "validate": CommandDef(desc="Full validation"),
-            "people": CommandDef(desc="Manage people and their subscriptions (list/add/edit/remove)"),
+            "people": CommandDef(
+                desc="Manage people (list/add/edit/remove)",
+                notes=[
+                    "To edit people's subscriptions, modify the person config: ~/.teleclaude/people/{name}/teleclaude.yml"
+                ],
+            ),
             "env": CommandDef(desc="Manage environment variables (list/set)"),
             "notify": CommandDef(desc="Toggle notification settings"),
             "invite": CommandDef(desc="Generate invite links for a person"),
@@ -227,8 +234,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
 }
 
 # Derived constants for completion (from schema)
-_COMMANDS = [cmd.value for cmd in TelecCommand]
-_COMMAND_DESCRIPTIONS = {name: cmd.desc for name, cmd in CLI_SURFACE.items()}
+_COMMANDS = [name for name, cmd in CLI_SURFACE.items() if not cmd.hidden]
+_COMMAND_DESCRIPTIONS = {name: cmd.desc for name, cmd in CLI_SURFACE.items() if not cmd.hidden}
 
 # Value completions for specific flags
 _AGENT_MODES = [
@@ -289,6 +296,8 @@ def _usage_main() -> str:
     lines = ["Usage:"]
     lines.append(f"  {'telec':<{col}}# Open TUI (Sessions view)")
     for name, cmd in CLI_SURFACE.items():
+        if cmd.hidden:
+            continue
         visible_flags = cmd.visible_flags
         flag_str = ""
         if visible_flags:

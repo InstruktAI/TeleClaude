@@ -13,4 +13,12 @@ AI-safe `telec` commands for project work. Run `telec <subcommand> --help` for d
 
 ## CLI surface
 
-<!-- @exec: telec --help -->
+<!-- @exec: telec -h -->
+
+## Canonical fields
+
+There are many of course, but this section is now intended to reveal the full surface of baseline commands that we want you to know out of the box.
+
+### `telec docs`
+
+<!-- @exec: telec docs -h -->
