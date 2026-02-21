@@ -20,6 +20,13 @@ def handle_config_command(args: list[str]) -> None:
     subcommand = args[0]
     sub_args = args[1:]
 
+    # Intercept --help/-h at any level
+    if subcommand in ("--help", "-h") or "--help" in sub_args or "-h" in sub_args:
+        from teleclaude.cli.telec import _usage
+
+        print(_usage("config"))
+        return
+
     if subcommand == "get":
         handle_get(sub_args)
     elif subcommand == "patch":

@@ -83,6 +83,13 @@ def handle_config_cli(args: list[str]) -> None:
     sub = args[0]
     rest = args[1:]
 
+    # Intercept --help/-h at any level (e.g. "telec config people -h")
+    if sub in ("--help", "-h") or "--help" in rest or "-h" in rest:
+        from teleclaude.cli.telec import _usage
+
+        print(_usage("config"))
+        return
+
     handlers = {
         "people": _handle_people,
         "env": _handle_env,

@@ -395,12 +395,8 @@ def _handle_completion() -> None:
         _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
     elif cmd in ("claude", "gemini", "codex"):
         _complete_agent(rest, current, is_partial)
-    elif cmd == "todo":
-        _complete_todo(rest, current, is_partial)
-    elif cmd == "roadmap":
-        _complete_roadmap(rest, current, is_partial)
-    elif cmd == "config":
-        _complete_config(rest, current, is_partial)
+    elif cmd in ("todo", "roadmap", "config"):
+        _complete_subcmd(cmd, rest, current, is_partial)
     # init, onboard have no further completions
 
 
@@ -481,71 +477,23 @@ def _complete_agent(rest: list[str], current: str, is_partial: bool) -> None:
                 _print_completion(mode_value, mode_desc)
 
 
-def _complete_todo(rest: list[str], current: str, is_partial: bool) -> None:
-    """Complete telec todo arguments."""
-    todo_def = CLI_SURFACE["todo"]
-    if not rest:
-        for subcommand, desc in todo_def.subcmd_tuples:
+def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: bool) -> None:
+    """Complete commands with subcommands (todo, roadmap, config, etc.)."""
+    cmd_def = CLI_SURFACE[cmd_name]
+
+    # Subcommand completion: no args yet, or partially typing subcommand name
+    if not rest or (len(rest) == 1 and is_partial):
+        for subcommand, desc in cmd_def.subcmd_tuples:
             if not is_partial or subcommand.startswith(current):
                 _print_completion(subcommand, desc)
         return
 
-    subcommand = rest[0]
-    sub_def = todo_def.subcommands.get(subcommand)
-    if not sub_def or not sub_def.flags:
-        return
-
-    flags = sub_def.flag_tuples
-    used = set(rest[1:])
-    if is_partial and current.startswith("-"):
-        for flag in flags:
-            if _flag_matches(flag, current) and not _flag_used(flag, used):
-                _print_flag(flag)
-        return
-
-    for flag in flags:
-        if not _flag_used(flag, used):
-            _print_flag(flag)
-
-
-def _complete_roadmap(rest: list[str], current: str, is_partial: bool) -> None:
-    """Complete telec roadmap arguments."""
-    roadmap_def = CLI_SURFACE["roadmap"]
-    if not rest:
-        for subcommand, desc in roadmap_def.subcmd_tuples:
-            if not is_partial or subcommand.startswith(current):
-                _print_completion(subcommand, desc)
-        return
-
+    # Flag completion: use subcommand-specific flags if available, else parent flags
     subcmd = rest[0]
-    sub_def = roadmap_def.subcommands.get(subcmd)
-    if not sub_def or not sub_def.flags:
-        return
+    sub_def = cmd_def.subcommands.get(subcmd)
+    flags = sub_def.flag_tuples if sub_def and sub_def.flags else cmd_def.flag_tuples
 
-    flags = sub_def.flag_tuples
     used = set(rest[1:])
-    if is_partial and current.startswith("-"):
-        for flag in flags:
-            if _flag_matches(flag, current) and not _flag_used(flag, used):
-                _print_flag(flag)
-        return
-
-    for flag in flags:
-        if not _flag_used(flag, used):
-            _print_flag(flag)
-
-
-def _complete_config(rest: list[str], current: str, is_partial: bool) -> None:
-    """Complete telec config arguments."""
-    config_def = CLI_SURFACE["config"]
-    if not rest:
-        for subcommand, desc in config_def.subcmd_tuples:
-            if not is_partial or subcommand.startswith(current):
-                _print_completion(subcommand, desc)
-        return
-
-    flags = config_def.flag_tuples
-    used = set(rest)
     if is_partial and current.startswith("-"):
         for flag in flags:
             if _flag_matches(flag, current) and not _flag_used(flag, used):
