@@ -29,12 +29,12 @@ Replace hardcoded job-to-channel notification mapping with a subscription-driven
 
 **File(s):** `teleclaude/cron/state.py`, `tests/unit/test_cron_state.py` (create)
 
-- [ ] Add `last_notified: str | None` to `JobStateDict`
-- [ ] Add `last_notified: datetime | None = None` to `JobState` dataclass
-- [ ] Update `JobState.to_dict()` and `JobState.from_dict()` to serialize/deserialize `last_notified`
-- [ ] Add `CronState.mark_notified(name, timestamp)` method
-- [ ] Write tests: default None, roundtrip with last_notified, mark_notified creates job if missing
-- [ ] Run `pytest tests/unit/test_cron_state.py -v` — PASS
+- [x] Add `last_notified: str | None` to `JobStateDict`
+- [x] Add `last_notified: datetime | None = None` to `JobState` dataclass
+- [x] Update `JobState.to_dict()` and `JobState.from_dict()` to serialize/deserialize `last_notified`
+- [x] Add `CronState.mark_notified(name, timestamp)` method
+- [x] Write tests: default None, roundtrip with last_notified, mark_notified creates job if missing
+- [x] Run `pytest tests/unit/test_cron_state.py -v` — PASS
 
 ### Task 1.3: DB migration — `delivery_channel` column
 
