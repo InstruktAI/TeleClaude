@@ -131,14 +131,14 @@ Replace hardcoded job-to-channel notification mapping with a subscription-driven
 
 **File(s):** `scripts/migrate_person_configs.py` (create)
 
-- [ ] Read each `~/.teleclaude/people/*/teleclaude.yml`
-- [ ] Move `notifications.telegram_chat_id` → `creds.telegram.chat_id`
-- [ ] Convert `notifications.channels` → explicit `JobSubscription` entries
-- [ ] Convert `subscriptions.youtube` → `YoutubeSubscription` entries
-- [ ] All migrated subscriptions get `enabled: true` by default
-- [ ] Remove old `notifications` block
-- [ ] Idempotent: skip configs already in new format
-- [ ] Support `--dry-run` flag for preview
+- [x] Read each `~/.teleclaude/people/*/teleclaude.yml`
+- [x] Move `notifications.telegram_chat_id` → `creds.telegram.chat_id`
+- [x] Convert `notifications.channels` → explicit `JobSubscription` entries
+- [x] Convert `subscriptions.youtube` → `YoutubeSubscription` entries
+- [x] All migrated subscriptions get `enabled: true` by default
+- [x] Remove old `notifications` block
+- [x] Idempotent: skip configs already in new format
+- [x] Support `--dry-run` flag for preview
 
 ---
 
