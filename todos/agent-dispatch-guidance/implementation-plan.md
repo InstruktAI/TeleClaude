@@ -71,9 +71,9 @@ This approach is appropriate because domain inference (frontend vs backend vs ov
 
 **File(s):** `tests/unit/test_next_machine_breakdown.py`, `tests/unit/test_next_machine_state_deps.py`, `tests/unit/core/test_next_machine_deferral.py`
 
-- [ ] Remove `test_get_available_agent_skips_degraded` (behavior now tested via compose_agent_guidance tests)
-- [ ] Update mocks from `get_available_agent` → `compose_agent_guidance`
-- [ ] All existing tests pass
+- [x] Remove `test_get_available_agent_skips_degraded` (behavior now tested via compose_agent_guidance tests)
+- [x] Update mocks from `get_available_agent` → `compose_agent_guidance`
+- [x] All existing tests pass
 
 ---
 
