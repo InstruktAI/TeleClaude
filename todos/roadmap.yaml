@@ -121,3 +121,5 @@
   description: Subscription-driven job execution and notification delivery. Subscription
     jobs only run when someone subscribes. System jobs deliver to all admins. Mailbox
     flag scan, per-recipient outbox, enabled toggle.
+- slug: tui-todo-dependencies
+  description: Display dependency and group relationships in TUI Preparation view

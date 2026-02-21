@@ -215,6 +215,8 @@ class MLXTTSBackend:
                 "--quiet",
                 "--project",
                 str(_REPO_ROOT),
+                "--extra",
+                "mlx",
                 "--with",
                 "pip",
                 "python",

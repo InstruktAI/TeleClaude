@@ -130,7 +130,7 @@ class SessionsView(Widget, can_focus=True):
         availability: dict[str, AgentAvailabilityInfo] | None = None,
     ) -> None:
         """Update view with fresh API data. Only rebuild tree if structure changed."""
-        self._logger.info("[PERF] SessionsView.update_data called sessions=%d t=%.3f", len(sessions), time.monotonic())
+        self._logger.trace("[PERF] SessionsView.update_data called sessions=%d t=%.3f", len(sessions), time.monotonic())
         old_ids = {s.session_id for s in self._sessions}
         new_ids = {s.session_id for s in sessions}
         self._computers = computers
@@ -209,7 +209,7 @@ class SessionsView(Widget, can_focus=True):
     def _rebuild_tree(self) -> None:
         """Rebuild the tree display from current data."""
         _rt0 = time.monotonic()
-        self._logger.info("[PERF] SessionsView._rebuild_tree START t=%.3f", _rt0)
+        self._logger.trace("[PERF] SessionsView._rebuild_tree START t=%.3f", _rt0)
         container = self.query_one("#sessions-scroll", VerticalScroll)
         container.remove_children()
         self._nav_items.clear()
@@ -247,7 +247,7 @@ class SessionsView(Widget, can_focus=True):
             self._initial_cursor_positioned = True
 
         self._update_cursor_highlight()
-        self._logger.info(
+        self._logger.trace(
             "[PERF] SessionsView._rebuild_tree done items=%d dt=%.3f", len(self._nav_items), time.monotonic() - _rt0
         )
 

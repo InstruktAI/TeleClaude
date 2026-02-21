@@ -66,17 +66,9 @@ def test_build_cli_command_uses_uv_for_python_script_backend(monkeypatch, tmp_pa
     monkeypatch.setattr(mlx_tts, "_REPO_ROOT", tmp_path)
     cmd = backend._build_cli_command(text="hi", voice="nova", file_prefix="/tmp/tts")
 
-    assert cmd[:8] == [
-        "uv",
-        "run",
-        "--quiet",
-        "--project",
-        str(tmp_path),
-        "--with",
-        "pip",
-        "python",
-    ]
-    assert cmd[8:11] == ["-m", "mlx_audio.tts.generate", "--model"]
+    assert cmd[:5] == ["uv", "run", "--quiet", "--project", str(tmp_path)]
+    assert cmd[5:9] == ["--extra", "mlx", "--with", "pip"]
+    assert cmd[9:12] == ["python", "-m", "mlx_audio.tts.generate"]
 
 
 def test_build_cli_command_uses_binary_directly_for_non_script(monkeypatch, tmp_path: Path) -> None:

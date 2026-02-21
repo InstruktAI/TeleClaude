@@ -343,7 +343,7 @@ def main() -> None:
 
     setup_logging()
     logger = get_logger(__name__)
-    logger.info("[PERF] main() imports done dt=%.3f", _t.monotonic() - _BOOT)
+    logger.trace("[PERF] main() imports done dt=%.3f", _t.monotonic() - _BOOT)
     argv = sys.argv[1:]
 
     # Handle --help / -h
@@ -402,17 +402,17 @@ def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
     _t0 = _t.monotonic()
     from teleclaude.cli.tui.app import RELOAD_EXIT, TelecApp
 
-    logger.info("[PERF] _run_tui import TelecApp dt=%.3f", _t.monotonic() - _t0)
+    logger.trace("[PERF] _run_tui import TelecApp dt=%.3f", _t.monotonic() - _t0)
     api = TelecAPIClient()
     app = TelecApp(api, start_view=start_view)
-    logger.info("[PERF] _run_tui TelecApp created dt=%.3f", _t.monotonic() - _t0)
+    logger.trace("[PERF] _run_tui TelecApp created dt=%.3f", _t.monotonic() - _t0)
 
     reload_requested = False
 
     try:
         _ensure_tmux_status_hidden_for_tui()
         _ensure_tmux_mouse_on()
-        logger.info("[PERF] _run_tui pre-app.run dt=%.3f", _t.monotonic() - _t0)
+        logger.trace("[PERF] _run_tui pre-app.run dt=%.3f", _t.monotonic() - _t0)
         result = app.run()
         reload_requested = result == RELOAD_EXIT
     except KeyboardInterrupt:
@@ -583,11 +583,12 @@ async def _list_sessions(api: TelecAPIClient, *, show_all: bool = False) -> None
         if caller_id:
             sessions = [s for s in sessions if s.initiator_session_id == caller_id]
         for session in sessions:
+            sid = session.session_id[:8]
             computer = session.computer or "?"
             agent = session.active_agent or "?"
             mode = session.thinking_mode or "?"
             title = session.title
-            print(f"{computer}: {agent}/{mode} - {title}")
+            print(f"{sid} {computer}: {agent}/{mode} - {title}")
         if not sessions and caller_id:
             print("No child sessions. Use --all to list all sessions.")
     finally:

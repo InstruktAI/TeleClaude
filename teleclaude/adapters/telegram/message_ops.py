@@ -335,6 +335,7 @@ class MessageOperationsMixin:
                     "[TELEGRAM %s] Message not modified (content unchanged)",
                     session.session_id[:8],
                 )
+                self._last_edit_hash[message_id] = content_hash
                 return True
             if "can't parse entities" in str(e).lower():
                 fence_count = text.count("```")
@@ -532,7 +533,8 @@ class MessageOperationsMixin:
             return True
         except BadRequest as e:
             if "message is not modified" in str(e).lower():
-                return True  # Content unchanged, still valid
+                self._last_edit_hash[message_id] = content_hash
+                return True
             if "message to edit not found" in str(e).lower():
                 logger.debug("Menu message %s not found, will recreate", message_id)
                 return False

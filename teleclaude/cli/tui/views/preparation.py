@@ -10,11 +10,16 @@ from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from teleclaude.cli.models import ProjectWithTodosInfo
-from teleclaude.cli.tui.messages import DocPreviewRequest, TodoSelected
+from teleclaude.cli.models import AgentAvailabilityInfo, ProjectWithTodosInfo
+from teleclaude.cli.tui.messages import (
+    CreateSessionRequest,  # noqa: F401  # type: ignore[reportUnusedImport]
+    DocPreviewRequest,
+    TodoSelected,
+)
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
+from teleclaude.cli.tui.widgets.modals import StartSessionModal  # noqa: F401  # type: ignore[reportUnusedImport]
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
@@ -60,6 +65,8 @@ class PreparationView(Widget, can_focus=True):
         self._expanded_todos: set[str] = set()
         self._nav_items: list[Widget] = []
         self._slug_to_project_path: dict[str, str] = {}
+        self._slug_to_computer: dict[str, str] = {}
+        self._availability: dict[str, AgentAvailabilityInfo] = {}
 
     def compose(self) -> ComposeResult:
         scroll = VerticalScroll(id="preparation-scroll")
@@ -70,7 +77,7 @@ class PreparationView(Widget, can_focus=True):
 
     def update_data(self, projects_with_todos: list[ProjectWithTodosInfo]) -> None:
         """Update view with fresh API data. Only rebuild if structure changed."""
-        self._logger.info(
+        self._logger.trace(
             "[PERF] PrepView.update_data called items=%d t=%.3f", len(projects_with_todos), _t.monotonic()
         )
         old_slugs = {t.slug for p in self._projects_with_todos for t in (p.todos or [])}
@@ -86,7 +93,7 @@ class PreparationView(Widget, can_focus=True):
     def _rebuild(self) -> None:
         """Rebuild the todo display from current data."""
         _rb0 = _t.monotonic()
-        self._logger.info("[PERF] PrepView._rebuild START t=%.3f", _rb0)
+        self._logger.trace("[PERF] PrepView._rebuild START t=%.3f", _rb0)
         container = self.query_one("#preparation-scroll", VerticalScroll)
         container.remove_children()
         self._nav_items.clear()
@@ -174,7 +181,9 @@ class PreparationView(Widget, can_focus=True):
         if self._nav_items and self.cursor_index >= len(self._nav_items):
             self.cursor_index = max(0, len(self._nav_items) - 1)
         self._update_cursor_highlight()
-        self._logger.info("[PERF] PrepView._rebuild done items=%d dt=%.3f", len(self._nav_items), _t.monotonic() - _rb0)
+        self._logger.trace(
+            "[PERF] PrepView._rebuild done items=%d dt=%.3f", len(self._nav_items), _t.monotonic() - _rb0
+        )
 
     def _mount_file_rows(self, container: VerticalScroll, todo_row: TodoRow) -> None:
         """Mount file rows after a todo row and insert into nav_items."""

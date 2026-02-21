@@ -254,12 +254,14 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         computer: str,
         project_path: str,
         agent_availability: dict[str, AgentAvailabilityInfo] | None = None,
+        default_message: str | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
         self._computer = computer
         self._project_path = project_path
         self._agent_availability = agent_availability or {}
+        self._default_message = default_message
 
     def compose(self) -> ComposeResult:
         project_name = self._project_path.rsplit("/", 1)[-1]
@@ -284,7 +286,11 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
 
             with Vertical(id="prompt-group") as pg:
                 pg.border_title = "Prompt"
-                yield Input(placeholder="Message to send after start", id="message-input")
+                yield Input(
+                    value=self._default_message or "",
+                    placeholder="Message to send after start",
+                    id="message-input",
+                )
 
             with Vertical(id="title-group") as tg:
                 tg.border_title = "Title"

@@ -90,10 +90,10 @@ def get_system_dark_mode() -> bool | None:
     return mode == ThemeMode.DARK
 
 
-def is_dark_mode() -> bool:
-    """Resolve dark mode with stable precedence.
+def _detect_dark_mode() -> bool:
+    """Probe system dark mode (spawns subprocesses — call sparingly).
 
-    1) APPEARANCE_MODE env  2) Host system  3) tmux  4) dark default
+    Precedence: 1) APPEARANCE_MODE env  2) Host system  3) tmux  4) dark default
     """
     env_mode = _get_env_appearance_mode()
     if env_mode:
@@ -101,18 +101,18 @@ def is_dark_mode() -> bool:
     system_mode = _get_system_appearance_mode()
     if system_mode:
         return system_mode == ThemeMode.DARK
-    if sys.platform == "darwin":
-        cached = globals().get("_is_dark_mode")
-        if isinstance(cached, bool):
-            return cached
-        return True
     tmux_mode = _get_tmux_appearance_mode()
     if tmux_mode:
         return tmux_mode == ThemeMode.DARK
     return True
 
 
-_is_dark_mode: bool = is_dark_mode()
+_is_dark_mode: bool = _detect_dark_mode()
+
+
+def is_dark_mode() -> bool:
+    """Return cached dark mode state. Call refresh_mode() to re-probe."""
+    return _is_dark_mode
 
 
 def get_current_mode() -> bool:
@@ -123,7 +123,7 @@ def get_current_mode() -> bool:
 def refresh_mode() -> None:
     """Re-probe system appearance and update cached mode."""
     global _is_dark_mode, _terminal_bg_cache  # noqa: PLW0603
-    _is_dark_mode = is_dark_mode()
+    _is_dark_mode = _detect_dark_mode()
     _terminal_bg_cache = None
 
 
