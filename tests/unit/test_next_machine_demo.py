@@ -305,3 +305,55 @@ def test_demo_sh_semver_incompatible(tmp_path: Path):
     )
     assert result.returncode == 0
     assert "incompatible" in result.stdout.lower() or "mismatch" in result.stdout.lower()
+
+
+def test_demo_sh_missing_pyproject_fallback(tmp_path: Path):
+    """demo.sh falls back to version 0.0.0 when pyproject.toml is not found."""
+    demo_dir = tmp_path / "demos" / "001-test"
+    demo_dir.mkdir(parents=True)
+    _create_demo_sh(demo_dir, "0.1.0")
+
+    # No pyproject.toml created - should fallback to 0.0.0
+
+    import subprocess
+
+    result = subprocess.run(
+        ["bash", str(demo_dir / "demo.sh")],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert result.returncode == 0
+    # Both have major version 0, so should run
+    assert "Demo: 0.1.0" in result.stdout
+
+
+def test_demo_sh_missing_snapshot_exits_with_error(tmp_path: Path):
+    """demo.sh exits with error when snapshot.json is missing."""
+    demo_dir = tmp_path / "demos" / "001-test"
+    demo_dir.mkdir(parents=True)
+
+    # Create demo.sh but no snapshot.json
+    demo_sh = demo_dir / "demo.sh"
+    demo_sh.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"\n'
+        'SNAPSHOT="$SCRIPT_DIR/snapshot.json"\n'
+        'if [ ! -f "$SNAPSHOT" ]; then\n'
+        '    echo "ERROR: snapshot.json not found" >&2\n'
+        "    exit 1\n"
+        "fi\n"
+    )
+    demo_sh.chmod(0o755)
+
+    import subprocess
+
+    result = subprocess.run(
+        ["bash", str(demo_sh)],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert result.returncode == 1
+    assert "snapshot.json not found" in result.stderr
