@@ -12,9 +12,9 @@ The data already exists in `RoadmapEntry` (core/next_machine/core.py:701) but is
 
 **File(s):** `teleclaude/core/models.py`
 
-- [ ] Add `after: List[str] = field(default_factory=list)` after `files` (line 1027)
-- [ ] Add `group: Optional[str] = None` after `after`
-- [ ] Update `from_dict()` to parse both fields with safe defaults
+- [x] Add `after: List[str] = field(default_factory=list)` after `files` (line 1027)
+- [x] Add `group: Optional[str] = None` after `after`
+- [x] Update `from_dict()` to parse both fields with safe defaults
 
 ### Task 1.2: Pass fields through `list_todos()`
 
