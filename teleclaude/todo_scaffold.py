@@ -71,11 +71,13 @@ def create_todo_skeleton(
     req = _read_template("requirements.md").format(slug=slug)
     plan = _read_template("implementation-plan.md").format(slug=slug)
     checklist = _read_template("quality-checklist.md").format(slug=slug)
+    input_md = _read_template("input.md").format(slug=slug)
     state_content = json.dumps(_DEFAULT_STATE, indent=2) + "\n"
 
     _write_file(todo_dir / "requirements.md", req)
     _write_file(todo_dir / "implementation-plan.md", plan)
     _write_file(todo_dir / "quality-checklist.md", checklist)
+    _write_file(todo_dir / "input.md", input_md)
     _write_file(todo_dir / "state.json", state_content)
 
     if after is not None:

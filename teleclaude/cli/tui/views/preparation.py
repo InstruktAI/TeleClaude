@@ -11,11 +11,15 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.models import AgentAvailabilityInfo, ProjectWithTodosInfo
-from teleclaude.cli.tui.messages import CreateSessionRequest, DocPreviewRequest
+from teleclaude.cli.tui.messages import (
+    CreateSessionRequest,
+    DocEditRequest,
+    DocPreviewRequest,
+)
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
-from teleclaude.cli.tui.widgets.modals import StartSessionModal
+from teleclaude.cli.tui.widgets.modals import CreateTodoModal, StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
@@ -49,6 +53,7 @@ class PreparationView(Widget, can_focus=True):
         ("space", "preview_file", "Preview"),
         ("plus", "expand_all", "Expand all"),
         ("minus", "collapse_all", "Collapse all"),
+        ("n", "new_todo", "New todo"),
         ("p", "prepare", "Prepare"),
         ("s", "start_work", "Start work"),
     ]
@@ -337,6 +342,15 @@ class PreparationView(Widget, can_focus=True):
             return f"glow -p {project_path}/todos/{slug}/{filename}"
         return f"glow -p todos/{slug}/{filename}"
 
+    def _editor_command(self, slug: str, filename: str) -> str:
+        """Build an editor command with absolute path for tmux pane."""
+        project_path = self._slug_to_project_path.get(slug, "")
+        if project_path:
+            filepath = f"{project_path}/todos/{slug}/{filename}"
+        else:
+            filepath = f"todos/{slug}/{filename}"
+        return f"uv run python -m teleclaude.cli.editor {filepath}"
+
     def _find_parent_todo(self, file_row: TodoFileRow) -> TodoRow | None:
         """Find the TodoRow that owns a file row."""
         idx = self._nav_items.index(file_row)
@@ -417,10 +431,10 @@ class PreparationView(Widget, can_focus=True):
         file_row = self._current_file_row()
         if file_row:
             self.post_message(
-                DocPreviewRequest(
+                DocEditRequest(
                     doc_id=f"todo:{file_row.slug}:{file_row.filename}",
-                    command=self._glow_command(file_row.slug, file_row.filename),
-                    title=f"{file_row.slug}/{file_row.filename}",
+                    command=self._editor_command(file_row.slug, file_row.filename),
+                    title=f"Editing: {file_row.slug}/{file_row.filename}",
                 )
             )
 
@@ -445,6 +459,44 @@ class PreparationView(Widget, can_focus=True):
                     title=f"{file_row.slug}/{file_row.filename}",
                 )
             )
+
+    def action_new_todo(self) -> None:
+        """n: create a new todo via modal."""
+
+        def _on_modal_result(slug: str | None) -> None:
+            if not slug:
+                return
+            # Find project root from first known project path, or cwd
+            project_root = None
+            for path in self._slug_to_project_path.values():
+                project_root = path
+                break
+
+            if not project_root:
+                import os
+
+                project_root = os.getcwd()
+
+            from pathlib import Path
+
+            from teleclaude.todo_scaffold import create_todo_skeleton
+
+            try:
+                create_todo_skeleton(Path(project_root), slug)
+            except (ValueError, FileExistsError) as exc:
+                self.app.notify(str(exc), severity="error")
+                return
+
+            # Open input.md in editor
+            self.post_message(
+                DocEditRequest(
+                    doc_id=f"todo:{slug}:input.md",
+                    command=self._editor_command(slug, "input.md"),
+                    title=f"Editing: {slug}/input.md",
+                )
+            )
+
+        self.app.push_screen(CreateTodoModal(), callback=_on_modal_result)
 
     def action_prepare(self) -> None:
         """p: directly start a prepare session with defaults."""

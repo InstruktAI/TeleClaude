@@ -200,6 +200,16 @@ class DocPreviewRequest(Message):
         self.title = title
 
 
+class DocEditRequest(Message):
+    """Request to edit a document in the editor pane."""
+
+    def __init__(self, doc_id: str, command: str, title: str) -> None:
+        super().__init__()
+        self.doc_id = doc_id
+        self.command = command
+        self.title = title
+
+
 # --- Cursor context messages ---
 
 
