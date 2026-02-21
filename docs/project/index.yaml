@@ -521,6 +521,14 @@ snippets:
   path: docs/project/spec/command-surface.md
   role: member
   source_project: TeleClaude
+- id: project/spec/demo-artifact
+  description: 'Demo artifact format: numbered folders with snapshot.json and demo.sh
+    for celebrating deliveries.'
+  type: spec
+  scope: project
+  path: docs/project/spec/demo-artifact.md
+  role: member
+  source_project: TeleClaude
 - id: project/spec/event-vocabulary
   description: Authoritative vocabulary for TeleClaude internal and external events.
   type: spec

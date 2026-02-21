@@ -1,5 +1,5 @@
 ---
-description: 'Deterministic software development lifecycle with prepare, build, review, fix, finalize, and maintenance phases. Serial workflow managed by Orchestrator.'
+description: 'Deterministic software development lifecycle with prepare, build, review, fix, finalize, demo, and maintenance phases. Serial workflow managed by Orchestrator.'
 id: 'software-development/procedure/lifecycle-overview'
 scope: 'domain'
 type: 'procedure'
@@ -16,7 +16,8 @@ The software development lifecycle in this organization follows a deterministic,
 3. Review — validate against requirements and standards
 4. Fix — address review findings
 5. Finalize — merge and deliver
-6. Maintenance — infra/dependency/security upkeep
+6. Demo — celebrate delivery with a visual presentation
+7. Maintenance — infra/dependency/security upkeep
 
 ### 1. Prepare
 
@@ -55,7 +56,14 @@ Review/fix loops are capped by `max_review_rounds` (default `3`). At the cap, or
 
 Merge approved work, update delivered log, remove todo folder, clean up worktree.
 
-### 6. Maintenance
+### 6. Demo
+
+**Output:** `demos/{NNN}-{slug}/` with `snapshot.json` and `demo.sh`
+**Responsibility:** Orchestrator
+
+Triggered automatically after finalize, before cleanup. Captures delivery metrics and narrative into a durable demo artifact, presents a visual celebration via widget, and commits the result. Render scripts are gated by semver — breaking major version bumps disable stale demos automatically.
+
+### 7. Maintenance
 
 **Output:** Infra/dependency/security upkeep
 **Responsibility:** Orchestrator

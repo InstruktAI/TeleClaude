@@ -1,5 +1,5 @@
-project_root: /Users/Morriz/.teleclaude
-snippets_root: /Users/Morriz/.teleclaude/docs
+project_root: ~/.teleclaude
+snippets_root: ~/.teleclaude/docs
 snippets:
 - id: general/concept/agent-invocation-modes
   description: Standardized invocation patterns for AI agent CLIs, separating structured
@@ -543,7 +543,7 @@ snippets:
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle-overview
   description: Deterministic software development lifecycle with prepare, build, review,
-    fix, finalize, and maintenance phases. Serial workflow managed by Orchestrator.
+    fix, finalize, demo, and maintenance phases. Serial workflow managed by Orchestrator.
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle-overview.md
