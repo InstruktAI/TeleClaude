@@ -66,11 +66,11 @@ Replace hardcoded job-to-channel notification mapping with a subscription-driven
 
 **File(s):** `teleclaude/cron/notification_scan.py` (create), `tests/unit/test_notification_scan.py` (create)
 
-- [ ] Create `find_undelivered_reports(jobs_dir, state) -> dict[str, list[Path]]`
-- [ ] Glob `jobs/*/runs/*.md`, compare mtime to `last_notified` in cron state
-- [ ] Reports with mtime > last_notified (or no last_notified) are undelivered
-- [ ] Write tests: finds undelivered, skips already notified, empty when no reports
-- [ ] Run `pytest tests/unit/test_notification_scan.py -v` — PASS
+- [x] Create `find_undelivered_reports(jobs_dir, state) -> dict[str, list[Path]]`
+- [x] Glob `jobs/*/runs/*.md`, compare mtime to `last_notified` in cron state
+- [x] Reports with mtime > last_notified (or no last_notified) are undelivered
+- [x] Write tests: finds undelivered, skips already notified, empty when no reports
+- [x] Run `pytest tests/unit/test_notification_scan.py -v` — PASS
 
 ---
 
