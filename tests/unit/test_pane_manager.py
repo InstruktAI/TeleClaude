@@ -21,7 +21,7 @@ def test_toggle_session_returns_false_when_not_in_tmux():
     assert manager.active_session is None
 
 
-def test_show_session_tracks_parent_pane():
+def test_show_session_tracks_active_pane():
     """Test that show_session sets pane and session state when pane is created."""
     with patch.dict(os.environ, {"TMUX": "1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
@@ -35,8 +35,8 @@ def test_show_session_tracks_parent_pane():
             computer_info=ComputerInfo(name="local", is_local=True),
         )
 
-    assert manager.state.parent_pane_id is not None
-    assert manager.state.parent_session == "parent-session"
+    assert manager.state.active_session_id is not None
+    assert manager._active_pane_id is not None
     # Verify at least one split-window command issued
     assert any(call.args[0] == "split-window" for call in mock_run.call_args_list)
 
@@ -47,7 +47,11 @@ def test_toggle_session_hides_when_already_showing():
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
-    manager.state.parent_session = "session-1"
+    # Simulate active session via catalog + state
+    manager._session_catalog = {
+        "sid-1": SimpleNamespace(session_id="sid-1", tmux_session_name="session-1", active_agent="claude")
+    }
+    manager.state.active_session_id = "sid-1"
     with patch.object(manager, "_render_layout", return_value=None):
         result = manager.toggle_session("session-1", "claude")
 
@@ -61,17 +65,17 @@ def test_hide_sessions_kills_existing_panes_and_clears_state():
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
-    manager.state.parent_pane_id = "%10"
-    manager.state.parent_session = "session-1"
+    manager.state.session_to_pane["sid-1"] = "%10"
+    manager.state.active_session_id = "sid-1"
 
     mock_run = Mock(return_value="")
     with patch.object(manager, "_run_tmux", mock_run), patch.object(manager, "_get_pane_exists", return_value=True):
         manager.hide_sessions()
 
-    assert manager.state.parent_pane_id is None
-    assert manager.state.parent_session is None
-    # Verify kill-pane command issued for parent pane
-    assert mock_run.call_args_list[0].args == ("kill-pane", "-t", "%10")
+    assert manager.state.active_session_id is None
+    assert manager.active_session is None
+    # Verify kill-pane command issued for active pane
+    assert ("kill-pane", "-t", "%10") in [call.args for call in mock_run.call_args_list]
 
 
 def test_set_pane_background_overrides_only_at_paint_theming_level():
@@ -262,6 +266,112 @@ def test_set_tui_pane_background_native_when_session_theming_off():
     assert ("set", "-pu", "-t", "%1", "window-active-style") in calls
     assert ("set", "-wu", "-t", "%1", "pane-border-style") in calls
     assert ("set", "-wu", "-t", "%1", "pane-active-border-style") in calls
+
+
+def test_reconcile_prunes_dead_pane_ids():
+    """_reconcile() removes session_to_pane entries whose pane no longer exists in tmux."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    manager.state.session_to_pane = {
+        "sid-alive": "%10",
+        "sid-dead": "%20",
+        "sid-also-dead": "%30",
+    }
+
+    # list-panes returns only the TUI pane and one live session pane
+    mock_run = Mock(return_value="%1\n%10\n")
+    with patch.object(manager, "_run_tmux", mock_run):
+        manager._reconcile()
+
+    assert "sid-alive" in manager.state.session_to_pane
+    assert "sid-dead" not in manager.state.session_to_pane
+    assert "sid-also-dead" not in manager.state.session_to_pane
+
+
+def test_reconcile_clears_active_session_id_when_active_pane_is_dead():
+    """_reconcile() clears active_session_id when the active pane has died."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    manager.state.session_to_pane = {"sid-active": "%20"}
+    manager.state.active_session_id = "sid-active"
+
+    # list-panes returns only the TUI pane — session pane is dead
+    mock_run = Mock(return_value="%1\n")
+    with patch.object(manager, "_run_tmux", mock_run):
+        manager._reconcile()
+
+    assert manager.state.active_session_id is None
+    assert "sid-active" not in manager.state.session_to_pane
+
+
+def test_reconcile_preserves_active_when_pane_is_alive():
+    """_reconcile() keeps active_session_id when its pane still exists."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    manager.state.session_to_pane = {"sid-active": "%10"}
+    manager.state.active_session_id = "sid-active"
+
+    mock_run = Mock(return_value="%1\n%10\n")
+    with patch.object(manager, "_run_tmux", mock_run):
+        manager._reconcile()
+
+    assert manager.state.active_session_id == "sid-active"
+    assert manager.state.session_to_pane["sid-active"] == "%10"
+
+
+def test_cold_start_kills_orphaned_panes():
+    """Cold-start init kills non-TUI panes left by a crashed process."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        # list-panes returns TUI pane + 2 orphans; _get_current_pane_id is called,
+        # then _init_panes(is_reload=False) calls _kill_orphaned_panes.
+        call_count = 0
+
+        def side_effect(*args):
+            nonlocal call_count
+            if args[0] == "display-message":
+                return "%1"
+            if args[0] == "list-panes":
+                return "%1\n%50\n%60\n"
+            if args[0] == "kill-pane":
+                call_count += 1
+                return ""
+            return ""
+
+        with patch.object(TmuxPaneManager, "_run_tmux", side_effect=side_effect):
+            manager = TmuxPaneManager(is_reload=False)
+
+    # Two orphan panes (%50, %60) should have been killed
+    assert call_count == 2
+
+
+def test_reload_init_preserves_existing_panes():
+    """Reload init discovers existing panes without killing them."""
+    with patch.dict(os.environ, {"TMUX": "1"}):
+        killed = []
+
+        def side_effect(*args):
+            if args[0] == "display-message":
+                return "%1"
+            if args[0] == "list-panes":
+                return "%1\t\n%50\ttmux -u attach-session -t tc_sess1\n%60\ttmux -u attach-session -t tc_sess2\n"
+            if args[0] == "kill-pane":
+                killed.append(args)
+                return ""
+            return ""
+
+        with patch.object(TmuxPaneManager, "_run_tmux", side_effect=side_effect):
+            manager = TmuxPaneManager(is_reload=True)
+
+    # No panes should be killed on reload
+    assert killed == []
+    # Discovered panes should be in the reload map
+    assert manager._reload_session_panes == {"tc_sess1": "%50", "tc_sess2": "%60"}
 
 
 def test_render_layout_split_windows_do_not_capture_focus_with_d_flag():

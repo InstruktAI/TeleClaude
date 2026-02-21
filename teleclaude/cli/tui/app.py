@@ -207,7 +207,9 @@ class TelecApp(App[str | None]):
         self._computers: list[ComputerInfo] = []
         self._session_status_cache: dict[str, str] = {}
         self._session_agents: dict[str, str] = {}
-        # On SIGUSR2 reload, panes already exist — skip layout re-application
+        # On SIGUSR2 reload, panes already exist — the bridge's on_data_refreshed
+        # will call seed_for_reload() to map them.  Skip layout re-application
+        # on the first data refresh to avoid killing and recreating panes.
         self._is_reload = bool(os.environ.pop("TELEC_RELOAD", ""))
         self._initial_layout_applied = self._is_reload
         # Animation engine and triggers
@@ -257,7 +259,7 @@ class TelecApp(App[str | None]):
         with Vertical(id="footer"):
             yield ActionBar(id="action-bar")
             yield StatusBar(id="status-bar")
-        yield PaneManagerBridge(id="pane-bridge")
+        yield PaneManagerBridge(is_reload=self._is_reload, id="pane-bridge")
         logger.trace("[PERF] compose END t=%.3f", _t.monotonic())
 
     async def on_mount(self) -> None:
@@ -412,13 +414,19 @@ class TelecApp(App[str | None]):
         # Update session status cache
         self._session_status_cache = {s.session_id: s.status for s in message.sessions}
 
-        # Forward to pane bridge (sibling — messages don't reach it via bubbling)
+        # Forward to pane bridge (sibling — messages don't reach it via bubbling).
+        # Sync bridge state from sessions view first so seed_for_reload() has
+        # correct active/sticky IDs on SIGUSR2 reload.
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge._preview_session_id = sessions_view.preview_session_id
+        pane_bridge._sticky_session_ids = sessions_view._sticky_session_ids.copy()
         pane_bridge.on_data_refreshed(message)
 
         # On first data load, apply layout with persisted preview/sticky state.
         # After that, layout changes are driven only by user actions
         # (PreviewChanged/StickyChanged messages) to prevent focus hijacking.
+        # On reload, _initial_layout_applied is already True — panes survive
+        # via seed_for_reload() called from bridge.on_data_refreshed().
         if not self._initial_layout_applied:
             self._initial_layout_applied = True
             if sessions_view.preview_session_id or sessions_view._sticky_session_ids:
@@ -426,20 +434,6 @@ class TelecApp(App[str | None]):
                 if sessions_view._sticky_session_ids:
                     pane_bridge.on_sticky_changed(StickyChanged(sessions_view._sticky_session_ids.copy()))
             self._update_banner_compactness(len(sessions_view._sticky_session_ids))
-        elif self._is_reload:
-            # SIGUSR2 reload: panes already exist, just sync bridge state
-            # without calling apply_layout (which would tear down and rebuild).
-            self._is_reload = False
-            pane_bridge._preview_session_id = sessions_view.preview_session_id
-            pane_bridge._sticky_session_ids = sessions_view._sticky_session_ids.copy()
-            # Seed the pane manager's specs and layout signature so the
-            # first user interaction takes the lightweight _update_active_pane
-            # path instead of a destructive _render_layout rebuild.
-            pane_bridge.seed_layout_for_reload(
-                active_session_id=pane_bridge._preview_session_id,
-                sticky_session_ids=pane_bridge._sticky_session_ids,
-            )
-            self._update_banner_compactness(len(pane_bridge._sticky_session_ids))
 
     # --- Pane manager message forwarding ---
     # Textual messages bubble UP through ancestors, not sideways to siblings.

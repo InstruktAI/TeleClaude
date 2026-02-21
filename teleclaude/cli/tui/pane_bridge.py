@@ -17,7 +17,7 @@ from teleclaude.cli.tui.messages import (
     PreviewChanged,
     StickyChanged,
 )
-from teleclaude.cli.tui.pane_manager import ComputerInfo, SessionPaneSpec, TmuxPaneManager
+from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.state import DocPreviewState
 
 logger = get_logger(__name__)
@@ -106,9 +106,9 @@ class PaneManagerBridge(TelecMixin, Widget):
     }
     """
 
-    def __init__(self, **kwargs: object) -> None:
+    def __init__(self, *, is_reload: bool = False, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self.pane_manager = TmuxPaneManager()
+        self.pane_manager = TmuxPaneManager(is_reload=is_reload)
         self._writer = PaneWriter(self.pane_manager)
         self._computers: dict[str, APIComputerInfo] = {}
         self._sessions: list[SessionInfo] = []
@@ -160,6 +160,15 @@ class PaneManagerBridge(TelecMixin, Widget):
         self._sessions = message.sessions
         self.pane_manager.update_session_catalog(self._sessions)
 
+        # On reload, map discovered panes to session state now that the
+        # session catalog is available.  This replaces seed_layout_for_reload.
+        if self.pane_manager._reload_session_panes:
+            self.pane_manager.seed_for_reload(
+                active_session_id=self._preview_session_id,
+                sticky_session_ids=list(self._sticky_session_ids),
+                get_computer_info=self._get_computer_info,
+            )
+
     def on_preview_changed(self, message: PreviewChanged) -> None:
         """Handle preview session change — update active pane."""
         logger.debug(
@@ -202,66 +211,6 @@ class PaneManagerBridge(TelecMixin, Widget):
             title=message.title,
         )
         self._apply()
-
-    def seed_layout_for_reload(
-        self,
-        *,
-        active_session_id: str | None,
-        sticky_session_ids: list[str],
-    ) -> None:
-        """Pre-compute pane manager specs and layout signature for reload.
-
-        Called on SIGUSR2 reload to make the pane manager aware of the
-        current layout WITHOUT calling apply_layout (which would tear down
-        and recreate all panes). The first user interaction after reload
-        will then take the lightweight _update_active_pane path.
-        """
-        pm = self.pane_manager
-        pm.update_session_catalog(self._sessions)
-
-        # Build sticky specs (same logic as apply_layout)
-        sticky_specs = []
-        for session_id in sticky_session_ids:
-            session = pm._session_catalog.get(session_id)
-            if not session or not session.tmux_session_name:
-                continue
-            sticky_specs.append(
-                PaneManagerBridge._make_spec(session, is_sticky=True, get_computer_info=self._get_computer_info)
-            )
-        pm._sticky_specs = sticky_specs
-
-        # Build active spec and map parent pane to active session
-        if active_session_id:
-            session = pm._session_catalog.get(active_session_id)
-            if session and session.tmux_session_name:
-                pm._active_spec = PaneManagerBridge._make_spec(
-                    session, is_sticky=False, get_computer_info=self._get_computer_info
-                )
-                pm.state.parent_session = session.tmux_session_name
-                pm.state.parent_spec_id = session.session_id
-                if pm.state.parent_pane_id:
-                    pm.state.session_to_pane[session.session_id] = pm.state.parent_pane_id
-
-        # Compute and set the layout signature so _layout_is_unchanged()
-        # returns True on the next apply_layout call.
-        pm._layout_signature = pm._compute_layout_signature()
-
-    @staticmethod
-    def _make_spec(
-        session: SessionInfo,
-        *,
-        is_sticky: bool,
-        get_computer_info: object,
-    ) -> SessionPaneSpec:
-        """Build a SessionPaneSpec from a SessionInfo."""
-        computer_info = get_computer_info(session.computer or "local") if callable(get_computer_info) else None
-        return SessionPaneSpec(
-            session_id=session.session_id,
-            tmux_session_name=session.tmux_session_name or "",
-            computer_info=computer_info,
-            is_sticky=is_sticky,
-            active_agent=session.active_agent,
-        )
 
     def reapply_colors(self) -> None:
         """Re-apply agent colors after theme change (non-blocking)."""

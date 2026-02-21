@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable, Literal
 
 from instrukt_ai_logging import get_logger
@@ -44,22 +45,15 @@ class ComputerInfo:
 
 @dataclass
 class PaneState:
-    """Tracks the state of managed tmux panes."""
+    """Tracks the state of managed tmux panes.
 
-    parent_pane_id: str | None = None
-    parent_session: str | None = None
-    parent_spec_id: str | None = None
+    Two-field source of truth.  All other state (sticky mappings,
+    parent pane identity) is derived from session_to_pane filtered
+    through the session catalog and _sticky_specs at query time.
+    """
 
-    def __post_init__(self) -> None:
-        """Initialize mutable fields."""
-        # Sticky session panes (new multi-pane layout)
-        self.sticky_pane_ids: list[str] = []
-        # Map session_id → pane_id for sticky sessions
-        self.sticky_session_to_pane: dict[str, str] = {}
-        # All session panes (active + sticky)
-        self.session_pane_ids: list[str] = []
-        # Map session_id → pane_id for any session pane
-        self.session_to_pane: dict[str, str] = {}
+    session_to_pane: dict[str, str] = field(default_factory=dict)
+    active_session_id: str | None = None
 
 
 @dataclass
@@ -109,8 +103,13 @@ class TmuxPaneManager:
     └─────────────┴────────────────────┘
     """
 
-    def __init__(self) -> None:
-        """Initialize pane manager."""
+    def __init__(self, *, is_reload: bool = False) -> None:
+        """Initialize pane manager.
+
+        Args:
+            is_reload: True on SIGUSR2 reload — preserve existing panes
+                       instead of killing orphans.
+        """
         self.state = PaneState()
         self._in_tmux = bool(os.environ.get("TMUX"))
         self._sticky_specs: list[SessionPaneSpec] = []
@@ -120,14 +119,13 @@ class TmuxPaneManager:
         self._layout_signature: tuple[object, ...] | None = None
         self._bg_signature: tuple[object, ...] | None = None
         self._session_catalog: dict[str, "SessionInfo"] = {}
+        # tmux_session_name → pane_id mapping discovered during reload
+        self._reload_session_panes: dict[str, str] = {}
         # Store our own pane ID for reference
         self._tui_pane_id: str | None = None
         if self._in_tmux:
             self._tui_pane_id = self._get_current_pane_id()
-            # Adopt any existing non-TUI panes so cleanup works on reload.
-            # On cold start this finds nothing; on SIGUSR2 reload it discovers
-            # session panes created by the previous process.
-            self._adopt_existing_panes()
+            self._init_panes(is_reload)
             # Ensure the tmux server knows tmux-256color clients support
             # truecolor.  Without this, RGB escape sequences from CLIs are
             # stripped when rendered through nested tmux attach.
@@ -139,16 +137,37 @@ class TmuxPaneManager:
         """Check if tmux pane management is available."""
         return self._in_tmux
 
-    def _adopt_existing_panes(self) -> None:
-        """Kill orphaned non-TUI panes from a previous process.
+    @property
+    def _active_pane_id(self) -> str | None:
+        """Get the active (non-sticky) pane ID from session_to_pane."""
+        if self.state.active_session_id:
+            return self.state.session_to_pane.get(self.state.active_session_id)
+        return None
 
-        On SIGUSR2 reload or cold restart, the old process exits but
-        the tmux panes it created survive.  These orphans have no
-        session-id mapping and cannot be reliably reused.  Kill them
-        so the first apply_layout call starts from a clean slate.
+    @property
+    def _active_tmux_session(self) -> str | None:
+        """Get the active session's tmux session name from the catalog."""
+        if self.state.active_session_id:
+            session = self._session_catalog.get(self.state.active_session_id)
+            if session:
+                return session.tmux_session_name
+        return None
+
+    def _init_panes(self, is_reload: bool) -> None:
+        """Initialize pane state on startup.
+
+        Cold start: kill orphaned panes left by a crashed process.
+        Reload: discover existing panes and preserve them for reuse.
         """
         if not self._tui_pane_id:
             return
+        if is_reload:
+            self._adopt_for_reload()
+        else:
+            self._kill_orphaned_panes()
+
+    def _kill_orphaned_panes(self) -> None:
+        """Kill orphaned non-TUI panes from a previous process (cold start)."""
         output = self._run_tmux("list-panes", "-F", "#{pane_id}")
         killed = 0
         for pane_id in output.split("\n"):
@@ -157,11 +176,127 @@ class TmuxPaneManager:
                 self._run_tmux("kill-pane", "-t", pane_id)
                 killed += 1
         if killed:
-            logger.debug("Killed %d orphaned panes on startup", killed)
+            logger.debug("Cold start: killed %d orphaned panes", killed)
+
+    def _adopt_for_reload(self) -> None:
+        """Discover existing non-TUI panes and identify their tmux sessions.
+
+        On SIGUSR2 reload, panes from the previous process survive in tmux.
+        This method discovers them and extracts which tmux session each pane
+        is attached to (from pane_start_command).  The resulting mapping is
+        stored in _reload_session_panes for seed_for_reload() to use.
+        """
+        output = self._run_tmux("list-panes", "-F", "#{pane_id}\t#{pane_start_command}")
+        for line in output.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("\t", 1)
+            pane_id = parts[0].strip()
+            if pane_id == self._tui_pane_id:
+                continue
+
+            # Extract tmux session name from the pane's attach command
+            if len(parts) > 1:
+                match = re.search(r"attach-session -t (\S+)", parts[1])
+                if match:
+                    tmux_name = match.group(1).rstrip("'\"")
+                    self._reload_session_panes[tmux_name] = pane_id
+
+        logger.debug(
+            "Reload: mapped %d session panes: %s",
+            len(self._reload_session_panes),
+            dict(self._reload_session_panes),
+        )
+
+    def _reconcile(self) -> None:
+        """Prune state entries referencing dead tmux panes.
+
+        Queries tmux once for all live pane IDs, then removes stale
+        entries from session_to_pane and clears active_session_id if
+        its pane is dead.
+        Called at the top of apply_layout() before signature checks.
+        """
+        if not self._tui_pane_id:
+            return
+
+        output = self._run_tmux("list-panes", "-F", "#{pane_id}")
+        live_panes = {p.strip() for p in output.split("\n") if p.strip()}
+
+        dead_sessions = [sid for sid, pid in self.state.session_to_pane.items() if pid not in live_panes]
+        for sid in dead_sessions:
+            del self.state.session_to_pane[sid]
+
+        if self.state.active_session_id and self.state.active_session_id in dead_sessions:
+            self.state.active_session_id = None
+
+        if dead_sessions:
+            logger.debug(
+                "_reconcile: pruned %d dead entries: %s",
+                len(dead_sessions),
+                dead_sessions,
+            )
 
     def update_session_catalog(self, sessions: list["SessionInfo"]) -> None:
         """Update the session catalog used for layout lookup."""
         self._session_catalog = {session.session_id: session for session in sessions}
+
+    def seed_for_reload(
+        self,
+        *,
+        active_session_id: str | None,
+        sticky_session_ids: list[str],
+        get_computer_info: Callable[[str], ComputerInfo | None],
+    ) -> None:
+        """Map discovered reload panes to session state and set layout signature.
+
+        Called once after the first data refresh on SIGUSR2 reload.  Maps the
+        tmux_session_name → pane_id entries from _adopt_for_reload() to
+        session_to_pane via the session catalog, builds active/sticky specs,
+        and pre-sets the layout signature so the first user-driven
+        apply_layout() takes the lightweight _update_active_pane path.
+        """
+        if not self._reload_session_panes:
+            return
+
+        reload_map = self._reload_session_panes
+
+        sticky_specs = []
+        for session_id in sticky_session_ids:
+            session = self._session_catalog.get(session_id)
+            if not session or not session.tmux_session_name:
+                continue
+            sticky_specs.append(
+                SessionPaneSpec(
+                    session_id=session.session_id,
+                    tmux_session_name=session.tmux_session_name,
+                    computer_info=get_computer_info(session.computer or "local"),
+                    is_sticky=True,
+                    active_agent=session.active_agent,
+                )
+            )
+            pane_id = reload_map.get(session.tmux_session_name)
+            if pane_id:
+                self.state.session_to_pane[session_id] = pane_id
+        self._sticky_specs = sticky_specs
+
+        if active_session_id:
+            session = self._session_catalog.get(active_session_id)
+            if session and session.tmux_session_name:
+                self._active_spec = SessionPaneSpec(
+                    session_id=session.session_id,
+                    tmux_session_name=session.tmux_session_name,
+                    computer_info=get_computer_info(session.computer or "local"),
+                    is_sticky=False,
+                    active_agent=session.active_agent,
+                )
+                self.state.active_session_id = session.session_id
+                pane_id = reload_map.get(session.tmux_session_name)
+                if pane_id:
+                    self.state.session_to_pane[session.session_id] = pane_id
+
+        self._layout_signature = self._compute_layout_signature()
+        self._reload_session_panes.clear()
 
     def apply_layout(
         self,
@@ -178,14 +313,16 @@ class TmuxPaneManager:
         if not self._in_tmux:
             return
 
+        self._reconcile()
+
         logger.debug(
-            "apply_layout: active=%s sticky=%s doc_preview=%s focus=%s tui_pane=%s parent_pane=%s",
+            "apply_layout: active=%s sticky=%s doc_preview=%s focus=%s tui_pane=%s active_pane=%s",
             active_session_id[:8] if active_session_id else None,
             [s[:8] for s in sticky_session_ids],
             active_doc_preview.doc_id if active_doc_preview else None,
             focus,
             self._tui_pane_id,
-            self.state.parent_pane_id,
+            self._active_pane_id,
         )
 
         self._selected_session_id = selected_session_id
@@ -234,16 +371,15 @@ class TmuxPaneManager:
 
         if self._layout_is_unchanged():
             logger.debug(
-                "apply_layout: layout unchanged, active_spec=%s parent_spec=%s parent_pane=%s",
+                "apply_layout: layout unchanged, active_spec=%s active_session=%s active_pane=%s",
                 active_spec.session_id[:8] if active_spec else None,
-                self.state.parent_spec_id[:8] if self.state.parent_spec_id else None,
-                self.state.parent_pane_id,
+                self.state.active_session_id[:8] if self.state.active_session_id else None,
+                self._active_pane_id,
             )
-            if active_spec and self.state.parent_spec_id != active_spec.session_id:
+            if active_spec and self.state.active_session_id != active_spec.session_id:
                 self._update_active_pane(active_spec)
             if focus and active_spec:
                 self.focus_pane_for_session(active_spec.session_id)
-            self._sync_sticky_mappings()
             if not active_spec:
                 self._clear_active_state_if_sticky()
             # Only re-apply pane backgrounds when the selection or agent
@@ -303,12 +439,6 @@ class TmuxPaneManager:
         for session_id, mapped_pane in self.state.session_to_pane.items():
             if mapped_pane == pane_id:
                 return session_id
-
-        if self.state.parent_pane_id and pane_id == self.state.parent_pane_id and self.state.parent_session:
-            for session in self._session_catalog.values():
-                if session.tmux_session_name == self.state.parent_session:
-                    return session.session_id
-
         return None
 
     def _get_pane_exists(self, pane_id: str) -> bool:
@@ -460,10 +590,8 @@ class TmuxPaneManager:
     def hide_sessions(self) -> None:
         """Hide active/preview session pane (preserve sticky panes)."""
         self._active_spec = None
+        self.state.active_session_id = None
         self._render_layout()
-        self.state.parent_pane_id = None
-        self.state.parent_session = None
-        self.state.parent_spec_id = None
         logger.debug("hide_sessions: cleared active pane")
 
     def toggle_session(
@@ -495,11 +623,11 @@ class TmuxPaneManager:
             tmux_session_name,
             active_agent,
             computer_info.name if computer_info else "local",
-            len(self.state.sticky_pane_ids),
+            len(self._sticky_specs),
         )
 
         # If already showing this session, hide it
-        if self.state.parent_session == tmux_session_name:
+        if self._active_tmux_session == tmux_session_name:
             logger.debug("toggle_session: hiding (already showing)")
             self.hide_sessions()
             return False
@@ -516,40 +644,26 @@ class TmuxPaneManager:
 
     @property
     def active_session(self) -> str | None:
-        """Get the currently displayed session name."""
-        return self.state.parent_session
+        """Get the currently displayed session's tmux session name."""
+        return self._active_tmux_session
 
     def _cleanup_panes(self) -> None:
-        """Clean up active/preview panes only."""
-        if self.state.parent_pane_id and self._get_pane_exists(self.state.parent_pane_id):
-            self._run_tmux("kill-pane", "-t", self.state.parent_pane_id)
-        self.state.parent_pane_id = None
-        self.state.parent_session = None
-        self.state.parent_spec_id = None
+        """Clean up active/preview pane only."""
+        active_pane = self._active_pane_id
+        if active_pane and self._get_pane_exists(active_pane):
+            self._run_tmux("kill-pane", "-t", active_pane)
+        if self.state.active_session_id:
+            self.state.session_to_pane.pop(self.state.active_session_id, None)
+            self.state.active_session_id = None
 
     def _cleanup_all_session_panes(self) -> None:
         """Clean up all session panes (active + sticky)."""
-        pane_ids: list[str] = []
-        pane_ids.extend(self.state.session_pane_ids)
-        pane_ids.extend(self.state.sticky_pane_ids)
-        if self.state.parent_pane_id:
-            pane_ids.append(self.state.parent_pane_id)
-
-        seen: set[str] = set()
-        for pane_id in pane_ids:
-            if not pane_id or pane_id in seen:
-                continue
-            seen.add(pane_id)
-            if self._get_pane_exists(pane_id):
+        for pane_id in set(self.state.session_to_pane.values()):
+            if pane_id and self._get_pane_exists(pane_id):
                 self._run_tmux("kill-pane", "-t", pane_id)
 
-        self.state.session_pane_ids.clear()
         self.state.session_to_pane.clear()
-        self.state.sticky_pane_ids.clear()
-        self.state.sticky_session_to_pane.clear()
-        self.state.parent_pane_id = None
-        self.state.parent_session = None
-        self.state.parent_spec_id = None
+        self.state.active_session_id = None
 
     def _build_session_specs(self) -> list[SessionPaneSpec]:
         session_specs: list[SessionPaneSpec] = list(self._sticky_specs)
@@ -607,26 +721,12 @@ class TmuxPaneManager:
         """Force background re-application on next apply_layout (e.g. after theme change)."""
         self._bg_signature = None
 
-    def _sync_sticky_mappings(self) -> None:
-        """Sync sticky pane mappings without rebuilding layout."""
-        sticky_panes: list[str] = []
-        sticky_map: dict[str, str] = {}
-        for spec in self._sticky_specs:
-            pane_id = self.state.session_to_pane.get(spec.session_id)
-            if pane_id and self._get_pane_exists(pane_id):
-                sticky_panes.append(pane_id)
-                sticky_map[spec.session_id] = pane_id
-        self.state.sticky_pane_ids = sticky_panes
-        self.state.sticky_session_to_pane = sticky_map
-
     def _clear_active_state_if_sticky(self) -> None:
-        """Clear active pane metadata when it has been promoted to sticky."""
-        if not self.state.parent_spec_id:
+        """Clear active_session_id when active has been promoted to sticky."""
+        if not self.state.active_session_id:
             return
-        if any(spec.session_id == self.state.parent_spec_id for spec in self._sticky_specs):
-            self.state.parent_session = None
-            self.state.parent_spec_id = None
-            self.state.parent_pane_id = None
+        if any(spec.session_id == self.state.active_session_id for spec in self._sticky_specs):
+            self.state.active_session_id = None
 
     def _refresh_session_pane_backgrounds(self) -> None:
         """Refresh pane backgrounds for all tracked session panes."""
@@ -655,48 +755,47 @@ class TmuxPaneManager:
         """Swap the active pane content without rebuilding layout."""
         if not self._in_tmux:
             return
-        if not self.state.parent_pane_id or not self._get_pane_exists(self.state.parent_pane_id):
+        active_pane = self._active_pane_id
+        if not active_pane or not self._get_pane_exists(active_pane):
             logger.debug(
-                "_update_active_pane: parent_pane missing or dead (%s), falling back to _render_layout",
-                self.state.parent_pane_id,
+                "_update_active_pane: active pane missing or dead (%s), falling back to _render_layout",
+                active_pane,
             )
             self._render_layout()
             return
-        if self.state.parent_pane_id == self._tui_pane_id:
+        if active_pane == self._tui_pane_id:
             logger.error(
-                "_update_active_pane: parent_pane_id == tui_pane_id (%s), refusing to respawn TUI — rebuilding layout",
+                "_update_active_pane: active_pane == tui_pane_id (%s), refusing to respawn TUI — rebuilding layout",
                 self._tui_pane_id,
             )
-            self.state.parent_pane_id = None
+            self.state.active_session_id = None
             self._render_layout()
             return
 
         logger.debug(
             "_update_active_pane: respawning pane %s with session %s (tmux=%s)",
-            self.state.parent_pane_id,
+            active_pane,
             active_spec.session_id[:8],
             active_spec.tmux_session_name,
         )
         attach_cmd = self._build_pane_command(active_spec)
-        # Force replace running process; without -k, respawn-pane can no-op.
-        self._run_tmux("respawn-pane", "-k", "-t", self.state.parent_pane_id, attach_cmd)
+        self._run_tmux("respawn-pane", "-k", "-t", active_pane, attach_cmd)
 
-        stale_ids = [sid for sid, pid in self.state.session_to_pane.items() if pid == self.state.parent_pane_id]
+        stale_ids = [sid for sid, pid in self.state.session_to_pane.items() if pid == active_pane]
         for sid in stale_ids:
             self.state.session_to_pane.pop(sid, None)
-        self.state.session_to_pane[active_spec.session_id] = self.state.parent_pane_id
-        self.state.parent_session = active_spec.tmux_session_name
-        self.state.parent_spec_id = active_spec.session_id
+        self.state.session_to_pane[active_spec.session_id] = active_pane
+        self.state.active_session_id = active_spec.session_id
 
         if active_spec.tmux_session_name:
             self._set_pane_background(
-                self.state.parent_pane_id,
+                active_pane,
                 active_spec.tmux_session_name,
                 active_spec.active_agent,
                 is_tree_selected=self._is_tree_selected_session(active_spec.session_id),
             )
         else:
-            self._set_doc_pane_background(self.state.parent_pane_id, agent=active_spec.active_agent)
+            self._set_doc_pane_background(active_pane, agent=active_spec.active_agent)
 
     def _layout_is_unchanged(self) -> bool:
         signature = self._compute_layout_signature()
@@ -810,16 +909,12 @@ class TmuxPaneManager:
                     self._track_session_pane(spec, pane_id)
 
         if self._active_spec:
-            active_pane_id = self.state.session_to_pane.get(self._active_spec.session_id)
-            if active_pane_id:
-                self.state.parent_pane_id = active_pane_id
-                self.state.parent_session = self._active_spec.tmux_session_name
-                self.state.parent_spec_id = self._active_spec.session_id
+            self.state.active_session_id = self._active_spec.session_id
 
         logger.debug(
-            "_render_layout: done. parent_pane=%s parent_session=%s tracked=%s",
-            self.state.parent_pane_id,
-            self.state.parent_session,
+            "_render_layout: done. active_pane=%s active_session=%s tracked=%s",
+            self._active_pane_id,
+            self.state.active_session_id,
             dict(self.state.session_to_pane),
         )
         self._layout_signature = self._compute_layout_signature()
@@ -834,11 +929,7 @@ class TmuxPaneManager:
             spec.is_sticky,
             spec.tmux_session_name,
         )
-        self.state.session_pane_ids.append(pane_id)
         self.state.session_to_pane[spec.session_id] = pane_id
-        if spec.is_sticky:
-            self.state.sticky_pane_ids.append(pane_id)
-            self.state.sticky_session_to_pane[spec.session_id] = pane_id
 
         # Apply explicit pane styling so panes never inherit stale colors.
         if spec.tmux_session_name:
@@ -1052,13 +1143,17 @@ class TmuxPaneManager:
         self._render_layout()
 
     def _cleanup_sticky_panes(self) -> None:
-        """Clean up all sticky panes."""
-        for pane_id in self.state.sticky_pane_ids:
-            if self._get_pane_exists(pane_id):
-                self._run_tmux("kill-pane", "-t", pane_id)
-        self.state.sticky_pane_ids.clear()
-        self.state.sticky_session_to_pane.clear()  # Clear session→pane mapping
-        logger.debug("_cleanup_sticky_panes: cleaned up sticky panes and mapping")
+        """Clean up all sticky panes (those tracked via _sticky_specs)."""
+        sticky_ids = {spec.session_id for spec in self._sticky_specs}
+        killed = 0
+        for session_id in list(self.state.session_to_pane):
+            if session_id in sticky_ids:
+                pane_id = self.state.session_to_pane.pop(session_id)
+                if self._get_pane_exists(pane_id):
+                    self._run_tmux("kill-pane", "-t", pane_id)
+                    killed += 1
+        if killed:
+            logger.debug("_cleanup_sticky_panes: killed %d sticky panes", killed)
 
     def cleanup(self) -> None:
         """Clean up all managed panes. Call this when TUI exits."""
@@ -1079,17 +1174,10 @@ class TmuxPaneManager:
         if not self._in_tmux:
             return False
 
-        # Try session-to-pane mapping first (sticky panes).
         pane_id = self.state.session_to_pane.get(session_id)
         if pane_id:
             self._run_tmux("select-pane", "-t", pane_id)
-            logger.debug("Focused sticky pane %s for session %s", pane_id, session_id[:8])
-            return True
-
-        # Fall back to the active (parent) pane.
-        if self.state.parent_pane_id:
-            self._run_tmux("select-pane", "-t", self.state.parent_pane_id)
-            logger.debug("Focused active pane %s", self.state.parent_pane_id)
+            logger.debug("Focused pane %s for session %s", pane_id, session_id[:8])
             return True
 
         logger.debug("No pane found for session %s", session_id[:8])
