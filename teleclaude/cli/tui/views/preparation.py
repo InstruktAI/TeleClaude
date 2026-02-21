@@ -11,15 +11,11 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.models import AgentAvailabilityInfo, ProjectWithTodosInfo
-from teleclaude.cli.tui.messages import (
-    CreateSessionRequest,  # noqa: F401  # type: ignore[reportUnusedImport]
-    DocPreviewRequest,
-    TodoSelected,
-)
+from teleclaude.cli.tui.messages import CreateSessionRequest, DocPreviewRequest
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
-from teleclaude.cli.tui.widgets.modals import StartSessionModal  # noqa: F401  # type: ignore[reportUnusedImport]
+from teleclaude.cli.tui.widgets.modals import StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
@@ -29,7 +25,7 @@ from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
 class PreparationView(Widget, can_focus=True):
     """Preparation tab view showing todo items grouped by project.
 
-    Navigation: arrows, left/right expand/collapse, Enter = action,
+    Navigation: arrows, left/right expand/collapse, Enter = toggle expand,
     +/- expand/collapse all, p = prepare, s = start work.
     """
 
@@ -75,11 +71,17 @@ class PreparationView(Widget, can_focus=True):
 
     _logger = get_logger(__name__)
 
-    def update_data(self, projects_with_todos: list[ProjectWithTodosInfo]) -> None:
+    def update_data(
+        self,
+        projects_with_todos: list[ProjectWithTodosInfo],
+        availability: dict[str, AgentAvailabilityInfo] | None = None,
+    ) -> None:
         """Update view with fresh API data. Only rebuild if structure changed."""
         self._logger.trace(
             "[PERF] PrepView.update_data called items=%d t=%.3f", len(projects_with_todos), _t.monotonic()
         )
+        if availability is not None:
+            self._availability = availability
         old_slugs = {t.slug for p in self._projects_with_todos for t in (p.todos or [])}
         new_slugs = {t.slug for p in projects_with_todos for t in (p.todos or [])}
         self._projects_with_todos = projects_with_todos
@@ -98,11 +100,13 @@ class PreparationView(Widget, can_focus=True):
         container.remove_children()
         self._nav_items.clear()
 
-        # Build slug → project path mapping for absolute file paths
+        # Build slug -> project path and slug -> computer mappings
         self._slug_to_project_path.clear()
+        self._slug_to_computer.clear()
         for p in self._projects_with_todos:
             for t in p.todos or []:
                 self._slug_to_project_path[t.slug] = p.path
+                self._slug_to_computer[t.slug] = p.computer or "local"
 
         # Build all TodoItems once for width computation and reuse
         all_todo_items: list[TodoItem] = []
@@ -168,7 +172,7 @@ class PreparationView(Widget, can_focus=True):
             if todos_list:
                 widgets_to_mount.append(GroupSeparator(connector_col=ProjectHeader.CONNECTOR_COL))
 
-        # Single batch mount — one layout reflow instead of N
+        # Single batch mount - one layout reflow instead of N
         if widgets_to_mount:
             container.mount(*widgets_to_mount)
 
@@ -212,7 +216,7 @@ class PreparationView(Widget, can_focus=True):
         return slug in self._expanded_todos
 
     def _expand_todo(self, todo_row: TodoRow) -> None:
-        """Expand a todo row — mount file rows."""
+        """Expand a todo row - mount file rows."""
         slug = todo_row.slug
         if slug in self._expanded_todos:
             return
@@ -223,7 +227,7 @@ class PreparationView(Widget, can_focus=True):
         self._mount_file_rows(container, todo_row)
 
     def _collapse_todo(self, todo_row: TodoRow) -> None:
-        """Collapse a todo row — remove file rows."""
+        """Collapse a todo row - remove file rows."""
         slug = todo_row.slug
         if slug not in self._expanded_todos:
             return
@@ -274,6 +278,25 @@ class PreparationView(Widget, can_focus=True):
                 return item
         return None
 
+    def _open_session_modal(self, slug: str, default_message: str) -> None:
+        """Open StartSessionModal for a todo with a pre-filled prompt."""
+        computer = self._slug_to_computer.get(slug, "local")
+        project_path = self._slug_to_project_path.get(slug, "")
+        if not project_path:
+            return
+        modal = StartSessionModal(
+            computer=computer,
+            project_path=project_path,
+            agent_availability=self._availability,
+            default_message=default_message,
+        )
+        self.app.push_screen(modal, self._on_session_modal_result)
+
+    def _on_session_modal_result(self, result: CreateSessionRequest | None) -> None:
+        """Handle result from StartSessionModal."""
+        if result:
+            self.post_message(result)
+
     # --- Keyboard actions ---
 
     def action_cursor_up(self) -> None:
@@ -315,10 +338,13 @@ class PreparationView(Widget, can_focus=True):
                 self._update_cursor_highlight()
 
     def action_activate(self) -> None:
-        """Enter: prepare on todo, preview on file."""
+        """Enter: toggle expand/collapse on todo, preview on file."""
         row = self._current_todo_row()
         if row:
-            self.post_message(TodoSelected(row.slug))
+            if self._is_expanded(row.slug):
+                self._collapse_todo(row)
+            else:
+                self._expand_todo(row)
             return
         file_row = self._current_file_row()
         if file_row:
@@ -353,49 +379,33 @@ class PreparationView(Widget, can_focus=True):
             )
 
     def action_prepare(self) -> None:
-        """p: trigger preparation for selected todo."""
+        """p: open agent session modal with /next-prepare prompt."""
         row = self._current_todo_row()
         if not row:
-            # If on a file row, prepare the parent todo
             file_row = self._current_file_row()
             if file_row:
-                self.post_message(TodoSelected(file_row.slug))
+                self._open_session_modal(file_row.slug, f"/next-prepare {file_row.slug}")
             return
-        self.post_message(TodoSelected(row.slug))
+        self._open_session_modal(row.slug, f"/next-prepare {row.slug}")
 
     def action_start_work(self) -> None:
-        """s: start work on selected todo (opens doc preview).
+        """s: open agent session modal with /next-work prompt.
 
-        Gated on DOR readiness — todo must meet DOR_READY_THRESHOLD.
+        Gated on DOR readiness - todo must meet DOR_READY_THRESHOLD.
         """
         row = self._current_todo_row()
         if not row:
             return
         dor = row.todo.dor_score
         if dor is None or dor < DOR_READY_THRESHOLD:
+            self.app.notify(f"DOR score too low ({dor or 0}/{DOR_READY_THRESHOLD})", severity="warning")
             return
-        slug = row.slug
-        if row.todo.has_impl_plan:
-            self.post_message(
-                DocPreviewRequest(
-                    doc_id=f"todo:{slug}:impl",
-                    command=self._glow_command(slug, "implementation-plan.md"),
-                    title=f"Implementation: {slug}",
-                )
-            )
-        elif row.todo.has_requirements:
-            self.post_message(
-                DocPreviewRequest(
-                    doc_id=f"todo:{slug}:req",
-                    command=self._glow_command(slug, "requirements.md"),
-                    title=f"Requirements: {slug}",
-                )
-            )
+        self._open_session_modal(row.slug, f"/next-work {row.slug}")
 
     # --- Click handlers ---
 
     def on_todo_row_pressed(self, event: TodoRow.Pressed) -> None:
-        """Handle click on a todo row — update cursor."""
+        """Handle click on a todo row - update cursor."""
         for i, widget in enumerate(self._nav_items):
             if widget is event.todo_row:
                 self.cursor_index = i
@@ -403,7 +413,7 @@ class PreparationView(Widget, can_focus=True):
                 break
 
     def on_todo_file_row_pressed(self, event: TodoFileRow.Pressed) -> None:
-        """Handle click on a file row — update cursor."""
+        """Handle click on a file row - update cursor."""
         for i, widget in enumerate(self._nav_items):
             if widget is event.file_row:
                 self.cursor_index = i
@@ -411,7 +421,7 @@ class PreparationView(Widget, can_focus=True):
                 break
 
     def on_project_header_pressed(self, event: ProjectHeader.Pressed) -> None:
-        """Handle click on a project header — update cursor."""
+        """Handle click on a project header - update cursor."""
         for i, widget in enumerate(self._nav_items):
             if widget is event.header:
                 self.cursor_index = i

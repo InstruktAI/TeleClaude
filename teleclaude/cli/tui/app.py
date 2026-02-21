@@ -401,7 +401,7 @@ class TelecApp(App[str | None]):
             sessions=message.sessions,
             availability=message.availability,
         )
-        prep_view.update_data(message.projects_with_todos)
+        prep_view.update_data(message.projects_with_todos, availability=message.availability)
         jobs_view.update_data(message.jobs)
         status_bar.update_availability(message.availability)
         status_bar.tts_enabled = message.tts_enabled
