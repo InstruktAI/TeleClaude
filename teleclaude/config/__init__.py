@@ -134,6 +134,9 @@ class AgentConfig:
     non_interactive_flag: str  # Flag for non-interactive/pipe mode (e.g., "-p")
     resume_template: str
     continue_template: str = ""
+    enabled: bool = True
+    strengths: str = ""
+    avoid: str = ""
 
     def get_command(self, profile: str = "default") -> str:
         """Assembled base command: binary + profile flags."""
@@ -431,9 +434,6 @@ def _validate_disallowed_runtime_keys(user_config: dict[str, object]) -> None:  
     """Reject config keys that must be runtime policy, not user configuration."""
     disallowed: list[str] = []
 
-    if "agents" in user_config:
-        disallowed.append("agents")
-
     computer = user_config.get("computer")
     if isinstance(computer, dict) and "tmux_binary" in computer:
         disallowed.append("computer.tmux_binary")
@@ -602,12 +602,20 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     tts_raw = raw.get("tts", None)
     stt_raw = raw.get("stt", None)
     experiments_raw = raw.get("experiments", [])
+    agents_raw = raw.get("agents", {})
 
     # Import AGENT_PROTOCOL from constants
     from teleclaude.constants import AGENT_PROTOCOL
 
     agents_registry: Dict[str, AgentConfig] = {}
     for name, protocol in AGENT_PROTOCOL.items():
+        # Get user overrides for this agent if any
+        user_agent_config = {}
+        if isinstance(agents_raw, dict):
+            val = agents_raw.get(name)
+            if isinstance(val, dict):
+                user_agent_config = val
+
         agents_registry[name] = AgentConfig(
             binary=resolve_agent_binary(name),
             profiles=dict(protocol["profiles"]),  # type: ignore[arg-type]
@@ -619,6 +627,9 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             non_interactive_flag=str(protocol["non_interactive_flag"]),
             resume_template=str(protocol["resume_template"]),
             continue_template=str(protocol.get("continue_template", "")),  # Optional field
+            enabled=bool(user_agent_config.get("enabled", True)),
+            strengths=str(user_agent_config.get("strengths", "")),
+            avoid=str(user_agent_config.get("avoid", "")),
         )
 
     experiments = []

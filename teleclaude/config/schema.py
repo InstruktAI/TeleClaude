@@ -3,6 +3,13 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+class AgentDispatchConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    enabled: bool = True
+    strengths: str = ""
+    avoid: str = ""
+
+
 class JobWhenConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     every: Optional[str] = None  # e.g. "10m", "2h", "1d"

@@ -25,9 +25,9 @@ from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config as app_config
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
-from teleclaude.core.models import ThinkingMode
 
 logger = get_logger(__name__)
 
@@ -64,44 +64,6 @@ REVIEW_APPROVE_MARKER = "[x] APPROVE"
 PAREN_OPEN = "("
 DEFAULT_MAX_REVIEW_ROUNDS = 3
 FINDING_ID_PATTERN = re.compile(r"\bR\d+-F\d+\b")
-NO_SELECTABLE_AGENTS_PATTERN = re.compile(r"No selectable agents for task '([^']+)'")
-
-# Fallback matrices: task_type -> [(agent, thinking_mode), ...]
-PREPARE_FALLBACK: dict[str, list[tuple[str, str]]] = {
-    "prepare": [
-        (AgentName.CLAUDE.value, ThinkingMode.SLOW.value),
-        (AgentName.CODEX.value, ThinkingMode.SLOW.value),
-        (AgentName.GEMINI.value, ThinkingMode.SLOW.value),
-    ],
-}
-
-WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
-    "build": [
-        (AgentName.GEMINI.value, ThinkingMode.SLOW.value),
-        (AgentName.CLAUDE.value, ThinkingMode.SLOW.value),
-        (AgentName.CODEX.value, ThinkingMode.MED.value),
-    ],
-    "review": [
-        (AgentName.CLAUDE.value, ThinkingMode.SLOW.value),
-        (AgentName.GEMINI.value, ThinkingMode.SLOW.value),
-        (AgentName.CODEX.value, ThinkingMode.SLOW.value),
-    ],
-    "fix": [
-        (AgentName.GEMINI.value, ThinkingMode.MED.value),
-        (AgentName.CODEX.value, ThinkingMode.MED.value),
-        (AgentName.CLAUDE.value, ThinkingMode.MED.value),
-    ],
-    "finalize": [
-        (AgentName.CODEX.value, ThinkingMode.MED.value),
-        (AgentName.CLAUDE.value, ThinkingMode.MED.value),
-        (AgentName.GEMINI.value, ThinkingMode.MED.value),
-    ],
-    "defer": [
-        (AgentName.CLAUDE.value, ThinkingMode.MED.value),
-        (AgentName.CODEX.value, ThinkingMode.MED.value),
-        (AgentName.GEMINI.value, ThinkingMode.MED.value),
-    ],
-}
 
 # Post-completion instructions for each command (used in format_tool_call)
 # These tell the orchestrator what to do AFTER a worker completes.
@@ -177,8 +139,7 @@ def format_tool_call(
     command: str,
     args: str,
     project: str,
-    agent: str,
-    thinking_mode: str,
+    guidance: str,
     subfolder: str,
     note: str = "",
     next_call: str = "",
@@ -203,13 +164,17 @@ def format_tool_call(
 Execute these steps in order (FOLLOW TO THE LETTER!):
 
 STEP 1 - DISPATCH:
+{guidance}
+
+Based on the above guidance and the work item details, select the best agent and thinking mode.
+
 teleclaude__run_agent_command(
   computer="local",
   command="{formatted_command}",
   args="{args}",
   project="{project}",
-  agent="{agent}",
-  thinking_mode="{thinking_mode}",
+  agent="<your selection>",
+  thinking_mode="<your selection>",
   subfolder="{subfolder}"
 )
 Save the returned session_id.
@@ -263,23 +228,6 @@ def format_error(code: str, message: str, next_call: str = "") -> str:
     if next_call:
         result += f"\n\nNEXT: {next_call}"
     return result
-
-
-def _extract_no_selectable_task_type(message: str) -> str | None:
-    match = NO_SELECTABLE_AGENTS_PATTERN.search(message)
-    return match.group(1) if match else None
-
-
-def format_agent_selection_error(task_type: str, retry_call: str) -> str:
-    return format_error(
-        "NO_SELECTABLE_AGENTS",
-        (f"No selectable agents for task '{task_type}'. Fallback candidates are currently degraded or unavailable."),
-        next_call=(
-            "As orchestrator, set provider state with teleclaude__mark_agent_status("
-            'agent="<claude|gemini|codex>", status="<degraded|unavailable|available>", reason="<why>"), '
-            f"then call {retry_call}"
-        ),
-    )
 
 
 def format_prepared(slug: str) -> str:
@@ -1248,58 +1196,54 @@ def check_review_status(cwd: str, slug: str) -> str:
 # =============================================================================
 
 
-async def get_available_agent(
-    db: Db,
-    task_type: str,
-    fallback_matrix: dict[str, list[tuple[str, str]]],
-) -> tuple[str, str]:
-    """Get an available agent for the given task type.
+async def compose_agent_guidance(db: Db) -> str:
+    """Compose guidance text for agent selection based on config and availability.
 
-    Checks agent availability and returns the first available agent from
-    the fallback list. If all are unavailable, returns the one with the
-    soonest unavailable_until time.
-
-    Args:
-        db: Database instance
-        task_type: Type of task (e.g., "build", "review", "prepare")
-        fallback_matrix: Mapping of task types to agent preference lists
-
-    Returns:
-        Tuple of (agent, thinking_mode)
+    Returns a string block describing available agents, their strengths,
+    and any current degradation status.
     """
+    lines = ["AGENT SELECTION GUIDANCE:"]
+
     # Clear expired availability first
     await db.clear_expired_agent_availability()
 
-    fallback_list = fallback_matrix.get(task_type, [(AgentName.CLAUDE.value, ThinkingMode.MED.value)])
-    soonest_unavailable: tuple[str, str, str | None] | None = None
-    degraded_count = 0
+    enabled_count = 0
 
-    for agent, thinking_mode in fallback_list:
-        availability = await db.get_agent_availability(agent)
-        if availability is None:
-            return agent, thinking_mode
-        status = availability.get("status")
-        if status == "degraded":
-            degraded_count += 1
+    for agent_name in AgentName:
+        name = agent_name.value
+        cfg = app_config.agents.get(name)
+        if not cfg or not cfg.enabled:
             continue
-        if availability["available"]:
-            return agent, thinking_mode
 
-        # Track the soonest unavailable_until
-        until = availability.get("unavailable_until")
-        until_str = until if isinstance(until, str) else None
-        if soonest_unavailable is None or (until_str and until_str < (soonest_unavailable[2] or "")):
-            soonest_unavailable = (agent, thinking_mode, until_str)
+        enabled_count += 1
 
-    # All unavailable - return the one with soonest expiry
-    if soonest_unavailable:
-        return soonest_unavailable[0], soonest_unavailable[1]
+        # Check runtime status
+        availability = await db.get_agent_availability(name)
+        status_note = ""
+        if availability:
+            status = availability.get("status")
+            if status == "unavailable":
+                continue  # Skip completely
+            if status == "degraded":
+                reason = availability.get("reason", "unknown reason")
+                status_note = f" [DEGRADED: {reason}]"
 
-    if degraded_count == len(fallback_list):
-        raise RuntimeError(f"No selectable agents for task '{task_type}': all fallback candidates are degraded")
+        lines.append(f"- {name.upper()}{status_note}:")
+        if cfg.strengths:
+            lines.append(f"  Strengths: {cfg.strengths}")
+        if cfg.avoid:
+            lines.append(f"  Avoid: {cfg.avoid}")
 
-    # Fallback to first in list
-    return fallback_list[0]
+    if enabled_count == 0:
+        raise RuntimeError("No agents are currently enabled and available.")
+
+    lines.append("")
+    lines.append("THINKING MODES:")
+    lines.append("- fast: simple tasks, text editing, quick logic")
+    lines.append("- med: standard coding, refactoring, review")
+    lines.append("- slow: complex reasoning, architecture, planning, root cause analysis")
+
+    return "\n".join(lines)
 
 
 def read_text_sync(path: Path) -> str:
@@ -1809,7 +1753,6 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
     Returns:
         Plain text instructions for the orchestrator to execute
     """
-    retry_call = f'teleclaude__next_prepare(slug="{slug}")' if slug else "teleclaude__next_prepare()"
     try:
         # 1. Resolve slug
         resolved_slug = slug
@@ -1825,13 +1768,12 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 )
 
             # Dispatch next-prepare-draft (no slug) when hitl=False
-            agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+            guidance = await compose_agent_guidance(db)
             return format_tool_call(
                 command="next-prepare-draft",
                 args="",
                 project=cwd,
-                agent=agent,
-                thinking_mode=mode,
+                guidance=guidance,
                 subfolder="",
                 note="No active preparation work found.",
                 next_call="teleclaude__next_prepare",
@@ -1858,13 +1800,12 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             if hitl:
                 return format_hitl_guidance(note)
 
-            agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+            guidance = await compose_agent_guidance(db)
             return format_tool_call(
                 command="next-prepare-draft",
                 args=resolved_slug,
                 project=cwd,
-                agent=agent,
-                thinking_mode=mode,
+                guidance=guidance,
                 subfolder="",
                 note=note,
                 next_call="teleclaude__next_prepare",
@@ -1883,13 +1824,12 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                     "and create breakdown.md."
                 )
             # Non-HITL: dispatch architect to assess
-            agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+            guidance = await compose_agent_guidance(db)
             return format_tool_call(
                 command="next-prepare-draft",
                 args=resolved_slug,
                 project=cwd,
-                agent=agent,
-                thinking_mode=mode,
+                guidance=guidance,
                 subfolder="",
                 note=f"Assess todos/{resolved_slug}/input.md for complexity. Split if needed.",
                 next_call="teleclaude__next_prepare",
@@ -1910,13 +1850,12 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                     f"and todos/{resolved_slug}/implementation-plan.md yourself."
                 )
 
-            agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+            guidance = await compose_agent_guidance(db)
             return format_tool_call(
                 command="next-prepare-draft",
                 args=resolved_slug,
                 project=cwd,
-                agent=agent,
-                thinking_mode=mode,
+                guidance=guidance,
                 subfolder="",
                 note=f"Discuss until you have enough input. Write todos/{resolved_slug}/requirements.md yourself.",
                 next_call="teleclaude__next_prepare",
@@ -1929,13 +1868,12 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                     f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/implementation-plan.md yourself."
                 )
 
-            agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+            guidance = await compose_agent_guidance(db)
             return format_tool_call(
                 command="next-prepare-draft",
                 args=resolved_slug,
                 project=cwd,
-                agent=agent,
-                thinking_mode=mode,
+                guidance=guidance,
                 subfolder="",
                 note=f"Discuss until you have enough input. Write todos/{resolved_slug}/implementation-plan.md yourself.",
                 next_call="teleclaude__next_prepare",
@@ -1959,13 +1897,12 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                         f'and call teleclaude__next_prepare(slug="{resolved_slug}") again.'
                     )
 
-                agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+                guidance = await compose_agent_guidance(db)
                 return format_tool_call(
                     command="next-prepare-gate",
                     args=resolved_slug,
                     project=cwd,
-                    agent=agent,
-                    thinking_mode=mode,
+                    guidance=guidance,
                     subfolder="",
                     note=(
                         f"Requirements/plan exist for {resolved_slug}, but DOR score is below threshold. "
@@ -1975,10 +1912,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 )
         # else: already in_progress or done - no state change needed
         return format_prepared(resolved_slug)
-    except RuntimeError as exc:
-        task_type = _extract_no_selectable_task_type(str(exc))
-        if task_type:
-            return format_agent_selection_error(task_type, retry_call)
+    except RuntimeError:
         raise
 
 
@@ -1997,8 +1931,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     Returns:
         Plain text instructions for the orchestrator to execute
     """
-    retry_call = f'teleclaude__next_work(slug="{slug}")' if slug else "teleclaude__next_work()"
-
     # Sweep completed group parents before resolving next slug
     await asyncio.to_thread(sweep_completed_groups, cwd)
 
@@ -2014,15 +1946,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 )
                 if finalize_done:
                     release_finalize_lock(cwd, caller_session_id)
-
-    async def _pick_agent(task_type: str) -> tuple[str, str] | str:
-        try:
-            return await get_available_agent(db, task_type, WORK_FALLBACK)
-        except RuntimeError as exc:
-            task = _extract_no_selectable_task_type(str(exc))
-            if task:
-                return format_agent_selection_error(task, retry_call)
-            raise
 
     # 1. Resolve slug - only ready items when no explicit slug
     # Prefer worktree-local planning state when explicit slug worktree exists.
@@ -2136,16 +2059,15 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
 
     # 7. Check build status (from state.json in worktree)
     if not await asyncio.to_thread(is_build_complete, worktree_cwd, resolved_slug):
-        selection = await _pick_agent(PhaseName.BUILD.value)
-        if isinstance(selection, str):
-            return selection
-        agent, mode = selection
+        try:
+            guidance = await compose_agent_guidance(db)
+        except RuntimeError as exc:
+            return format_error("NO_AGENTS", str(exc))
         return format_tool_call(
             command="next-build",
             args=resolved_slug,
             project=cwd,
-            agent=agent,
-            thinking_mode=mode,
+            guidance=guidance,
             subfolder=f"trees/{resolved_slug}",
             next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
         )
@@ -2154,16 +2076,15 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     if not await asyncio.to_thread(is_review_approved, worktree_cwd, resolved_slug):
         # Check if review hasn't started yet or needs fixes
         if await asyncio.to_thread(is_review_changes_requested, worktree_cwd, resolved_slug):
-            selection = await _pick_agent("fix")
-            if isinstance(selection, str):
-                return selection
-            agent, mode = selection
+            try:
+                guidance = await compose_agent_guidance(db)
+            except RuntimeError as exc:
+                return format_error("NO_AGENTS", str(exc))
             return format_tool_call(
                 command="next-fix-review",
                 args=resolved_slug,
                 project=cwd,
-                agent=agent,
-                thinking_mode=mode,
+                guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
                 next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
             )
@@ -2181,16 +2102,15 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                     f'then call teleclaude__next_work(slug="{resolved_slug}")'
                 ),
             )
-        selection = await _pick_agent(PhaseName.REVIEW.value)
-        if isinstance(selection, str):
-            return selection
-        agent, mode = selection
+        try:
+            guidance = await compose_agent_guidance(db)
+        except RuntimeError as exc:
+            return format_error("NO_AGENTS", str(exc))
         return format_tool_call(
             command="next-review",
             args=resolved_slug,
             project=cwd,
-            agent=agent,
-            thinking_mode=mode,
+            guidance=guidance,
             subfolder=f"trees/{resolved_slug}",
             next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
             note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(worktree_cwd, resolved_slug)}",
@@ -2198,16 +2118,15 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
 
     # 8.5 Check pending deferrals (R7)
     if await asyncio.to_thread(has_pending_deferrals, worktree_cwd, resolved_slug):
-        selection = await _pick_agent("defer")
-        if isinstance(selection, str):
-            return selection
-        agent, mode = selection
+        try:
+            guidance = await compose_agent_guidance(db)
+        except RuntimeError as exc:
+            return format_error("NO_AGENTS", str(exc))
         return format_tool_call(
             command="next-defer",
             args=resolved_slug,
             project=cwd,
-            agent=agent,
-            thinking_mode=mode,
+            guidance=guidance,
             subfolder=f"trees/{resolved_slug}",
             next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
         )
@@ -2219,17 +2138,16 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     lock_error = acquire_finalize_lock(cwd, resolved_slug, session_id)
     if lock_error:
         return lock_error
-    selection = await _pick_agent("finalize")
-    if isinstance(selection, str):
+    try:
+        guidance = await compose_agent_guidance(db)
+    except RuntimeError as exc:
         release_finalize_lock(cwd, session_id)
-        return selection
-    agent, mode = selection
+        return format_error("NO_AGENTS", str(exc))
     return format_tool_call(
         command="next-finalize",
         args=resolved_slug,
         project=cwd,
-        agent=agent,
-        thinking_mode=mode,
+        guidance=guidance,
         subfolder=f"trees/{resolved_slug}",
         next_call="teleclaude__next_work()",
     )

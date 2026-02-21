@@ -45,3 +45,17 @@ logging:
     file: /tmp/teleclaude-test.log
     max_size_mb: 10
     level: DEBUG
+
+agents:
+  claude:
+    enabled: true
+    strengths: "General purpose, planning."
+    avoid: ""
+  gemini:
+    enabled: true
+    strengths: "Creative writing."
+    avoid: ""
+  codex:
+    enabled: false
+    strengths: "Code completion."
+    avoid: ""
