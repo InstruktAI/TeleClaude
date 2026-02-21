@@ -10,23 +10,23 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`) — 1815 pass, 44 pre-existing TUI failures unrelated to this branch
+- [x] Lint passes (`make lint`) — 0 pyright errors, ruff clean
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Working tree clean (only `todos/job-report-notifications/state.json` dirty — orchestrator-synced)
+- [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior — all 15 success criteria mapped to code
+- [x] Deferrals justified and not hiding required scope — no deferrals exist
+- [x] Findings written in `review-findings.md` — 0 critical, 2 important, 3 suggestions
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — APPROVE
+- [x] Critical issues resolved or explicitly blocked — no critical issues found
+- [x] Test coverage and regression risk assessed — comprehensive coverage, migration script gap noted
 
 ## Finalize Gates (Finalizer)
 

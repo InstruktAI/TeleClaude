@@ -32,6 +32,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import JobScheduleConfig
+from teleclaude.cron.job_recipients import discover_job_recipients
+from teleclaude.cron.notification_scan import find_undelivered_reports
 from teleclaude.cron.state import CronState
 from teleclaude.notifications import NotificationRouter
 
@@ -256,51 +258,6 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
         return False
 
 
-def _normalize_job_name_for_notifications(job_name: str) -> str:
-    """Normalize job names for deterministic notification mapping."""
-    return job_name.strip().lower().replace("-", "_")
-
-
-def _notification_channel_for_job(job_name: str) -> str | None:
-    """Resolve notification channel for a job name."""
-    mapping = {
-        "idea_miner": "idea-miner-reports",
-        "idea_miner_job": "idea-miner-reports",
-        "maintenance": "maintenance-alerts",
-        "maintenance_job": "maintenance-alerts",
-        "maintenance_alerts": "maintenance-alerts",
-        "github_maintenance_runner": "maintenance-alerts",
-    }
-    normalized = _normalize_job_name_for_notifications(job_name)
-    return mapping.get(normalized)
-
-
-def _notification_message_for_job_result(
-    job_name: str,
-    success: bool,
-    message: str,
-    items_processed: int = 0,
-) -> str:
-    """Build notification content for a job completion event."""
-    state = "succeeded" if success else "failed"
-    parts = [message]
-    if items_processed:
-        parts.append(f"items_processed={items_processed}")
-    details = "; ".join(parts)
-    if details:
-        return f"{job_name} job {state}: {details}"
-    return f"{job_name} job {state}"
-
-
-def _notification_file_for_job_result(job_result: object) -> str | None:
-    """Extract an optional report or artifact path from a job result."""
-    for attr in ("file_path", "report_path", "artifact_path"):
-        value = getattr(job_result, attr, None)
-        if isinstance(value, str) and value:
-            return value
-    return None
-
-
 def _run_coro_safely(coro: Awaitable[object]) -> None:
     """Execute a coroutine, supporting both sync and async call sites."""
 
@@ -320,34 +277,110 @@ def _run_coro_safely(coro: Awaitable[object]) -> None:
         task.add_done_callback(_on_task_done)
 
 
-def _notify_job_completion(
+def _should_run_subscription_job(
     job_name: str,
+    state: CronState,
+    now: datetime,
     *,
-    success: bool,
-    message: str,
-    items_processed: int = 0,
-    file_path: str | None = None,
+    root: Path | None = None,
+) -> bool:
+    """Check if any subscriber's schedule makes a subscription job due.
+
+    Iterates person configs for enabled JobSubscription entries matching
+    *job_name* and checks if any subscriber's ``when`` schedule is due.
+    """
+    from teleclaude.config.loader import load_person_config
+    from teleclaude.config.schema import JobSubscription
+
+    if root is None:
+        root = Path.home() / ".teleclaude"
+
+    people_dir = root / "people"
+    if not people_dir.is_dir():
+        return False
+
+    job_state = state.get_job(job_name)
+
+    for person_dir in sorted(people_dir.iterdir()):
+        if not person_dir.is_dir():
+            continue
+        cfg_path = person_dir / "teleclaude.yml"
+        if not cfg_path.exists():
+            continue
+        try:
+            person_cfg = load_person_config(cfg_path)
+        except Exception:
+            continue
+
+        for sub in person_cfg.subscriptions:
+            if not isinstance(sub, JobSubscription):
+                continue
+            if sub.job != job_name or not sub.enabled:
+                continue
+            # Found an enabled subscriber; check schedule
+            if sub.when:
+                schedule_cfg = JobScheduleConfig(when=sub.when)
+                if _is_due(schedule_cfg, job_state.last_run, now):
+                    return True
+            else:
+                # No when config: always due if never run
+                if job_state.last_run is None:
+                    return True
+
+    return False
+
+
+def _scan_and_notify(
+    state: CronState,
+    schedules: dict[str, JobScheduleConfig],
+    root: Path | None = None,
 ) -> None:
-    """Enqueue a notification for a job completion event."""
-    channel = _notification_channel_for_job(job_name)
-    if not channel:
+    """Scan for undelivered reports, discover recipients, and enqueue notifications."""
+    if root is None:
+        root = Path.home() / ".teleclaude"
+
+    jobs_dir = root / "jobs"
+    undelivered = find_undelivered_reports(jobs_dir, state)
+
+    if not undelivered:
         return
-    payload = _notification_message_for_job_result(
-        job_name=job_name,
-        success=success,
-        message=message,
-        items_processed=items_processed,
-    )
-    try:
-        _run_coro_safely(
-            NotificationRouter().send_notification(
-                channel=channel,
-                content=payload,
-                file=file_path,
-            )
-        )
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logger.error("notification enqueue failed", job=job_name, error=str(exc))
+
+    router = NotificationRouter(root=root)
+
+    for job_name, reports in undelivered.items():
+        schedule_cfg = schedules.get(job_name)
+        category = schedule_cfg.category if schedule_cfg else "subscription"
+
+        recipients = discover_job_recipients(job_name, category, root=root)
+        if not recipients:
+            logger.debug("no recipients for job reports", job=job_name)
+            continue
+
+        latest_mtime = datetime.min.replace(tzinfo=timezone.utc)
+
+        for report_path in reports:
+            content = report_path.read_text(encoding="utf-8")
+            file_str = str(report_path)
+
+            try:
+                _run_coro_safely(
+                    router.enqueue_job_notifications(
+                        job_name=job_name,
+                        content=content,
+                        file_path=file_str,
+                        recipients=recipients,
+                    )
+                )
+            except Exception as exc:
+                logger.error("failed to enqueue report notification", job=job_name, error=str(exc))
+                continue
+
+            mtime = datetime.fromtimestamp(report_path.stat().st_mtime, tz=timezone.utc)
+            if mtime > latest_mtime:
+                latest_mtime = mtime
+
+        if latest_mtime > datetime.min.replace(tzinfo=timezone.utc):
+            state.mark_notified(job_name, latest_mtime)
 
 
 def discover_jobs(jobs_dir: Path | None = None) -> list[Job]:
@@ -388,21 +421,21 @@ def run_due_jobs(
     force: bool = False,
     job_filter: str | None = None,
     dry_run: bool = False,
+    root: Path | None = None,
 ) -> dict[str, bool]:
-    """
-    Run all jobs that are due based on their teleclaude.yml schedule.
+    """Run all jobs that are due based on their teleclaude.yml schedule.
 
     Supports two job types:
-    - Python jobs: discovered from jobs/*.py modules
-    - Agent jobs: declared in teleclaude.yml with ``type: agent``
 
-    Args:
-        force: Run jobs regardless of schedule
-        job_filter: Only run job with this name
-        dry_run: Check what would run without executing
+    - **Python jobs** — discovered from ``jobs/*.py`` modules.
+    - **Agent jobs** — declared in ``teleclaude.yml`` with ``type: agent``.
 
-    Returns:
-        Dict mapping job name to success status
+    Subscription-category jobs are only run when at least one person has an
+    enabled ``JobSubscription`` with a matching ``when`` schedule that is due.
+    System-category jobs follow the schedule in ``teleclaude.yml`` directly.
+
+    After execution, a notification scan discovers undelivered reports and
+    enqueues outbox rows for each recipient.
     """
     if not _acquire_pidlock():
         logger.info("another cron runner is active, skipping")
@@ -417,7 +450,6 @@ def run_due_jobs(
     # Build a unified job list: Python modules + agent jobs from config
     python_job_names = {job.name for job in python_jobs}
 
-    # Collect all job names to process (Python + agent-type from config)
     all_job_names: list[str] = [job.name for job in python_jobs]
     for name, config in schedules.items():
         if config.type == "agent" and name not in python_job_names:
@@ -438,8 +470,11 @@ def run_due_jobs(
 
         job_state = state.get_job(job_name)
 
+        # Determine if job is due
         if force:
             is_due = True
+        elif schedule_config and schedule_config.category == "subscription":
+            is_due = _should_run_subscription_job(job_name, state, now, root=root)
         elif schedule_config:
             is_due = _is_due(schedule_config, job_state.last_run, now)
         else:
@@ -457,17 +492,13 @@ def run_due_jobs(
             continue
 
         if is_agent_job:
-            # Agent job: spawn interactive subprocess
             success = _run_agent_job(job_name, schedule_config)  # type: ignore[arg-type]
             if success:
                 state.mark_success(job_name)
-                _notify_job_completion(job_name, success=True, message="agent job completed")
             else:
                 state.mark_failed(job_name, "agent session spawn failed")
-                _notify_job_completion(job_name, success=False, message="agent job failed")
             results[job_name] = success
         else:
-            # Python job: find and execute the module
             python_job = next((j for j in python_jobs if j.name == job_name), None)
             if not python_job:
                 logger.error("python job module not found", name=job_name)
@@ -478,13 +509,6 @@ def run_due_jobs(
                 result = python_job.run()
                 if result.success:
                     state.mark_success(job_name)
-                    _notify_job_completion(
-                        job_name,
-                        success=True,
-                        message=result.message,
-                        items_processed=result.items_processed,
-                        file_path=_notification_file_for_job_result(result),
-                    )
                     logger.info(
                         "job completed",
                         name=job_name,
@@ -493,13 +517,6 @@ def run_due_jobs(
                     )
                 else:
                     state.mark_failed(job_name, result.message)
-                    _notify_job_completion(
-                        job_name,
-                        success=False,
-                        message=result.message,
-                        items_processed=result.items_processed,
-                        file_path=_notification_file_for_job_result(result),
-                    )
                     logger.error(
                         "job failed",
                         name=job_name,
@@ -512,5 +529,12 @@ def run_due_jobs(
                 state.mark_failed(job_name, str(e))
                 logger.exception("job error", name=job_name, error=str(e))
                 results[job_name] = False
+
+    # Post-execution: scan for undelivered reports and enqueue notifications
+    if not dry_run:
+        try:
+            _scan_and_notify(state, schedules, root=root)
+        except Exception as exc:
+            logger.error("notification scan failed", error=str(exc))
 
     return results

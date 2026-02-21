@@ -143,6 +143,7 @@ class NotificationOutbox(SQLModel, table=True):
     recipient_email: str
     content: str
     file_path: Optional[str] = None
+    delivery_channel: str = "telegram"
     status: str = "pending"
     created_at: str = ""
     delivered_at: Optional[str] = None
