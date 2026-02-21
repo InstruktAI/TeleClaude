@@ -6,12 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from teleclaude.core.next_machine.core import (
-    DeliveredEntry,
-    load_delivered,
-    save_delivered,
-    sweep_completed_groups,
-)
+from teleclaude.core.next_machine.core import DeliveredEntry, load_delivered, save_delivered, sweep_completed_groups
 
 
 def _write_state(tmpdir: str, slug: str, state: dict) -> None:
@@ -29,7 +24,7 @@ def _write_roadmap(tmpdir: str, entries: list[dict]) -> None:
 
 
 def _write_delivered(tmpdir: str, slugs: list[str]) -> None:
-    entries = [DeliveredEntry(slug=s, date="2026-02-21", title=f"Delivered {s}", outcome="DELIVERED") for s in slugs]
+    entries = [DeliveredEntry(slug=s, date="2026-02-21", title=f"Delivered {s}") for s in slugs]
     save_delivered(tmpdir, entries)
 
 
@@ -56,7 +51,6 @@ def test_sweep_delivers_group_when_all_children_delivered():
         # Group appears in delivered.yaml with children
         delivered = load_delivered(tmpdir)
         group_entry = next(e for e in delivered if e.slug == "my-group")
-        assert group_entry.outcome == "DELIVERED"
         assert group_entry.children == ["child-1", "child-2", "child-3"]
 
 

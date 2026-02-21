@@ -462,8 +462,9 @@ class TelecApp(App[str | None]):
     def on_session_started(self, message: SessionStarted) -> None:
         session = message.session
         if not session.active_agent:
-            logger.error("Session %s started with no active_agent — data integrity violation", session.session_id[:8])
-        self._session_agents[session.session_id] = session.active_agent or "claude"
+            self.notify(f"Session {session.session_id[:8]} started with no active_agent", severity="error")
+            return
+        self._session_agents[session.session_id] = session.active_agent
         # Auto-select new user-initiated sessions (not AI-delegated children)
         if not session.initiator_session_id:
             sessions_view = self.query_one("#sessions-view", SessionsView)
@@ -508,11 +509,11 @@ class TelecApp(App[str | None]):
             if isinstance(self._activity_trigger, ActivityTrigger):
                 agent = self._session_agents.get(message.session_id)
                 if not agent:
-                    logger.error(
-                        "Activity for session %s with no cached agent — data integrity violation",
-                        message.session_id[:8],
+                    self.notify(
+                        f"Activity for session {message.session_id[:8]} with no cached agent",
+                        severity="error",
                     )
-                    agent = "claude"
+                    return
                 self._activity_trigger.on_agent_activity(agent, is_big=True)
                 self._activity_trigger.on_agent_activity(agent, is_big=False)
 
@@ -520,11 +521,14 @@ class TelecApp(App[str | None]):
 
     @work(exclusive=True, group="session-action")
     async def on_create_session_request(self, message: CreateSessionRequest) -> None:
+        if not message.agent:
+            self.notify("CreateSessionRequest has no agent", severity="error")
+            return
         try:
             await self.api.create_session(
                 computer=message.computer,
                 project_path=message.project_path,
-                agent=message.agent or "claude",  # UI default — modal should always set this
+                agent=message.agent,
                 thinking_mode=message.thinking_mode or "slow",
                 title=message.title,
                 message=message.message,

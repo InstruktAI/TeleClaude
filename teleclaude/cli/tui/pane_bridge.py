@@ -41,8 +41,13 @@ class PaneWriter:
        latest is processed.  Intermediate states are skipped.
     """
 
-    def __init__(self, pane_manager: TmuxPaneManager) -> None:
+    def __init__(
+        self,
+        pane_manager: TmuxPaneManager,
+        on_error: Callable[[str], None] | None = None,
+    ) -> None:
         self._pm = pane_manager
+        self._on_error = on_error
         self._queue: queue.Queue[Callable[[], None] | object] = queue.Queue()
         self._thread = threading.Thread(target=self._run, daemon=True, name="pane-writer")
         self._thread.start()

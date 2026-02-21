@@ -114,7 +114,6 @@ subcommands:
         flags:
           --commit: 'Commit hash.'
           --title: 'Delivery title.'
-          --outcome: 'Outcome label (default: DELIVERED).'
           --project-root: 'Project root (default: cwd).'
   config:
     description: 'Interactive configuration (or get/patch/validate subcommands).'

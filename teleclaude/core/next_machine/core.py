@@ -973,7 +973,6 @@ class DeliveredEntry:
     slug: str
     date: str
     title: str | None = None
-    outcome: str = "DELIVERED"
     commit: str | None = None
     description: str | None = None
     children: list[str] | None = None
@@ -983,7 +982,6 @@ class DeliveredDict(TypedDict, total=False):
     slug: str
     date: str
     title: str
-    outcome: str
     commit: str
     description: str
     children: list[str]
@@ -1020,7 +1018,6 @@ def load_delivered(cwd: str) -> list[DeliveredEntry]:
                 slug=item["slug"],
                 date=str(item.get("date", "")),
                 title=item.get("title"),
-                outcome=item.get("outcome", "DELIVERED"),
                 commit=item.get("commit"),
                 description=item.get("description"),
                 children=children,
@@ -1039,8 +1036,6 @@ def save_delivered(cwd: str, entries: list[DeliveredEntry]) -> None:
         item: DeliveredDict = {"slug": entry.slug, "date": entry.date}
         if entry.title:
             item["title"] = entry.title
-        if entry.outcome:
-            item["outcome"] = entry.outcome
         if entry.commit:
             item["commit"] = entry.commit
         if entry.description:
@@ -1060,7 +1055,6 @@ def deliver_to_delivered(
     *,
     commit: str | None = None,
     title: str | None = None,
-    outcome: str = "DELIVERED",
 ) -> bool:
     """Move a slug from roadmap to delivered (prepended). Returns False if not in roadmap."""
     entries = load_roadmap(cwd)
@@ -1081,7 +1075,6 @@ def deliver_to_delivered(
             slug=slug,
             date=date.today().isoformat(),
             title=title or entry.description,
-            outcome=outcome,
             commit=commit,
             description=entry.description,
         ),
@@ -1145,7 +1138,6 @@ def sweep_completed_groups(cwd: str) -> list[str]:
             cwd,
             group_slug,
             title=group_title,
-            outcome="DELIVERED",
         )
 
         if delivered:
@@ -1165,7 +1157,6 @@ def sweep_completed_groups(cwd: str) -> list[str]:
                     slug=group_slug,
                     date=date.today().isoformat(),
                     title=group_title,
-                    outcome="DELIVERED",
                     children=list(children),
                 ),
             )

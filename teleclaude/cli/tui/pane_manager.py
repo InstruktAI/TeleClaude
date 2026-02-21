@@ -1011,15 +1011,8 @@ class TmuxPaneManager:
             is_tree_selected: Use lighter haze when the tree focus selected row matches.
         """
         if not agent:
-            logger.error(
-                "_set_pane_background: empty agent for pane %s (tmux=%s) — clearing style",
-                pane_id,
-                tmux_session_name,
-            )
-            self._run_tmux("set", "-pu", "-t", pane_id, "window-style")
-            self._run_tmux("set", "-pu", "-t", pane_id, "window-active-style")
-            self._run_tmux("set", "-t", tmux_session_name, "status", "off")
-            return
+            msg = f"_set_pane_background: empty agent for pane {pane_id} (tmux={tmux_session_name})"
+            raise ValueError(msg)
         if theme.should_apply_paint_pane_theming():
             if is_tree_selected:
                 bg_color = theme.get_agent_pane_selected_background(agent)

@@ -213,7 +213,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     Flag("--commit", desc="Commit hash"),
                     Flag("--title", desc="Delivery title (default: entry description)"),
-                    Flag("--outcome", desc="Outcome label (default: DELIVERED)"),
                     _PROJECT_ROOT_LONG,
                 ],
             ),
@@ -1533,7 +1532,7 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
 
 
 def _handle_roadmap_deliver(args: list[str]) -> None:
-    """Handle telec roadmap deliver <slug> [--commit SHA] [--title TEXT] [--outcome TEXT] [--project-root PATH]."""
+    """Handle telec roadmap deliver <slug> [--commit SHA] [--title TEXT] [--project-root PATH]."""
     from teleclaude.core.next_machine.core import deliver_to_delivered
 
     if not args:
@@ -1544,7 +1543,6 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
     project_root = Path.cwd()
     commit: str | None = None
     title: str | None = None
-    outcome: str = "DELIVERED"
     i = 0
     while i < len(args):
         arg = args[i]
@@ -1556,9 +1554,6 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
             i += 2
         elif arg == "--title" and i + 1 < len(args):
             title = args[i + 1]
-            i += 2
-        elif arg == "--outcome" and i + 1 < len(args):
-            outcome = args[i + 1]
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
@@ -1576,7 +1571,7 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
         print(_usage("roadmap", "deliver"))
         raise SystemExit(1)
 
-    if deliver_to_delivered(str(project_root), slug, commit=commit, title=title, outcome=outcome):
+    if deliver_to_delivered(str(project_root), slug, commit=commit, title=title):
         print(f"Delivered {slug} → delivered.yaml")
     else:
         print(f"Slug not found in roadmap: {slug}")

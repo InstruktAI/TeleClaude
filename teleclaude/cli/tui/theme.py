@@ -744,34 +744,35 @@ def _peaceful_color(tier: str) -> str:
     return colors.get(tier, colors["normal"])
 
 
-def resolve_style(agent: str, tier: str = "normal") -> Style:
+def resolve_style(agent: str | None, tier: str = "normal") -> Style:
     """Resolve a session style through the active theme.
 
     Agent theme (levels 1, 3, 4): agent-specific colors.
     Peaceful theme (levels 0, 2): neutral grays.
+    None agent (shell session without active agent): always peaceful.
     """
-    if should_apply_session_theming():
+    if agent and should_apply_session_theming():
         return get_agent_style(agent, tier)
     return _peaceful_style(tier)
 
 
-def resolve_color(agent: str, tier: str = "normal") -> str:
+def resolve_color(agent: str | None, tier: str = "normal") -> str:
     """Resolve a session color string through the active theme."""
-    if should_apply_session_theming():
+    if agent and should_apply_session_theming():
         return get_agent_color(agent, tier)
     return _peaceful_color(tier)
 
 
-def resolve_selection_bg_hex(agent: str) -> str:
+def resolve_selection_bg_hex(agent: str | None) -> str:
     """Resolve selection background hex through the active theme."""
-    if should_apply_session_theming():
+    if agent and should_apply_session_theming():
         return get_agent_selection_bg_hex(agent)
     return NEUTRAL_NORMAL_COLOR
 
 
-def resolve_preview_bg_hex(agent: str) -> str:
+def resolve_preview_bg_hex(agent: str | None) -> str:
     """Resolve preview background hex through the active theme."""
-    if should_apply_session_theming():
+    if agent and should_apply_session_theming():
         return get_agent_preview_bg_hex(agent)
     return NEUTRAL_MUTED_COLOR
 

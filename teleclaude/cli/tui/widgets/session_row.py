@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from instrukt_ai_logging import get_logger
 from rich.style import Style
 from rich.text import Text
 from textual.events import Click
@@ -20,8 +19,6 @@ from teleclaude.cli.tui.theme import (
     resolve_style,
 )
 from teleclaude.cli.tui.utils.formatters import format_time, truncate_text
-
-logger = get_logger(__name__)
 
 _DETAIL_TEXT_LIMIT = 70
 
@@ -75,11 +72,8 @@ class SessionRow(TelecMixin, Widget):
         return self.session.session_id
 
     @property
-    def agent(self) -> str:
-        agent = self.session.active_agent
-        if not agent:
-            logger.error("Session %s has no active_agent — data integrity violation", self.session_id[:8])
-        return agent or "claude"
+    def agent(self) -> str | None:
+        return self.session.active_agent
 
     @property
     def mode(self) -> str:
@@ -115,15 +109,7 @@ class SessionRow(TelecMixin, Widget):
         return _shift.get(tier, tier)
 
     def _get_row_style(self, *, selected: bool = False, previewed: bool = False) -> Style:
-        """Determine the style for the title line based on selection state.
-
-        Matches old TUI behavior:
-        - Selected: inverted — dark text on agent normal-color background, bold
-        - Previewed: inverted — dark text on agent muted-color background, bold
-        - Activity highlight (input/output): agent highlight color, bold
-        - Normal: agent-colored text on default background
-        - Headless: agent muted text on default background
-        """
+        """Determine the style for the title line based on selection state."""
         if selected:
             return Style(
                 color=get_selection_fg_hex(),
@@ -164,8 +150,9 @@ class SessionRow(TelecMixin, Widget):
         collapse_char = "▶" if self.collapsed else "▼"
         line.append(f"{collapse_char} ", style=style)
 
-        # Agent/mode
-        line.append(f"{self.agent}/{self.mode}", style=style)
+        # Agent/mode — show "shell" for sessions without an active agent
+        agent_label = self.agent or "shell"
+        line.append(f"{agent_label}/{self.mode}", style=style)
 
         # Subdir (slug only) — always highlighted regardless of activity state
         subdir = getattr(self.session, "subdir", None)
