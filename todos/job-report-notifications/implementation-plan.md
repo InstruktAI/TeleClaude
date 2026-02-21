@@ -146,18 +146,18 @@ Replace hardcoded job-to-channel notification mapping with a subscription-driven
 
 ### Task 6.1: Full verification
 
-- [ ] Run `pytest tests/ -v --tb=short` — all PASS
-- [ ] Run `make lint` — PASS
-- [ ] Verify no unchecked implementation tasks remain
-- [ ] Confirm requirements are reflected in code changes
+- [x] Run `pytest tests/ -v --tb=short` — 1815 PASS (44 pre-existing TUI failures unrelated to this branch)
+- [x] Run `make lint` — PASS (0 pyright errors)
+- [x] Verify no unchecked implementation tasks remain
+- [x] Confirm requirements are reflected in code changes
 
 ---
 
 ## Phase 7: Review Readiness
 
-- [ ] Confirm all success criteria from requirements.md are satisfied
-- [ ] Confirm all implementation tasks marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm all success criteria from requirements.md are satisfied
+- [x] Confirm all implementation tasks marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)
 
 ---
 
