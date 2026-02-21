@@ -702,7 +702,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             agent=agent_str,
             project_path=project_path or "",
         )
-        return await db.create_headless_session(
+        session = await db.create_headless_session(
             session_id=session_id,
             computer_name=config.computer.name,
             last_input_origin=InputOrigin.HOOK.value,
@@ -713,6 +713,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             project_path=project_path,
             subdir=subdir,
         )
+
+        event_bus.emit(
+            TeleClaudeEvents.SESSION_STARTED,
+            SessionLifecycleContext(session_id=session_id),
+        )
+
+        return session
 
     def _is_codex_headless_bootstrap_event(
         self,

@@ -461,10 +461,8 @@ class TelecApp(App[str | None]):
 
     def on_session_started(self, message: SessionStarted) -> None:
         session = message.session
-        if not session.active_agent:
-            self.notify(f"Session {session.session_id[:8]} started with no active_agent", severity="error")
-            return
-        self._session_agents[session.session_id] = session.active_agent
+        if session.active_agent:
+            self._session_agents[session.session_id] = session.active_agent
         # Auto-select new user-initiated sessions (not AI-delegated children)
         if not session.initiator_session_id:
             sessions_view = self.query_one("#sessions-view", SessionsView)
@@ -474,8 +472,11 @@ class TelecApp(App[str | None]):
         self._save_state()
 
     def on_session_updated(self, message: SessionUpdated) -> None:
+        session = message.session
+        if session.active_agent:
+            self._session_agents[session.session_id] = session.active_agent
         sessions_view = self.query_one("#sessions-view", SessionsView)
-        sessions_view.update_session(message.session)
+        sessions_view.update_session(session)
         # Session may now have a tmux pane — try pending auto-select
         sessions_view._apply_pending_selection()
 

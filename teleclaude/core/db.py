@@ -312,8 +312,14 @@ class Db:
         human_email: Optional[str] = None,
         human_role: Optional[str] = None,
         lifecycle_status: str = "active",
+        active_agent: Optional[str] = None,
+        thinking_mode: Optional[str] = None,
     ) -> Session:
         """Create a new session.
+
+        All known fields must be provided at creation time so the row is
+        complete before any event is emitted.  The caller (command_handlers)
+        is responsible for emitting SESSION_STARTED after this returns.
 
         Args:
             computer_name: Name of the computer
@@ -330,6 +336,8 @@ class Db:
             initiator_session_id: Session ID of the AI that created this session (for AI-to-AI nesting)
             human_email: Optional email of the human user
             human_role: Optional role of the human user
+            active_agent: Agent name (claude, gemini, codex)
+            thinking_mode: Thinking mode (fast, med, slow)
 
         Returns:
             Created Session object
@@ -355,6 +363,8 @@ class Db:
             human_email=human_email,
             human_role=human_role,
             lifecycle_status=lifecycle_status,
+            active_agent=active_agent,
+            thinking_mode=thinking_mode,
         )
 
         db_row = db_models.Session(
@@ -375,15 +385,12 @@ class Db:
             human_email=session.human_email,
             human_role=session.human_role,
             lifecycle_status=session.lifecycle_status,
+            active_agent=session.active_agent,
+            thinking_mode=session.thinking_mode,
         )
         async with self._session() as db_session:
             db_session.add(db_row)
             await db_session.commit()
-
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_STARTED,
-            SessionLifecycleContext(session_id=session_id),
-        )
 
         return session
 
@@ -446,11 +453,6 @@ class Db:
         async with self._session() as db_session:
             db_session.add(db_row)
             await db_session.commit()
-
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_STARTED,
-            SessionLifecycleContext(session_id=session_id),
-        )
 
         return session
 
