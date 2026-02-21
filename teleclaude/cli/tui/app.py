@@ -545,6 +545,8 @@ class TelecApp(App[str | None]):
     def on_session_updated(self, message: SessionUpdated) -> None:
         sessions_view = self.query_one("#sessions-view", SessionsView)
         sessions_view.update_session(message.session)
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge.upsert_session(message.session)
         # Session may now have a tmux pane — try pending auto-select
         sessions_view._apply_pending_selection()
 

@@ -70,11 +70,6 @@ class ProjectHeader(TelecMixin, Widget):
         connector_style = Style(color=CONNECTOR_COLOR)
         content_width = max(self.size.width, 40)
         if self.show_connector:
-            col = self.CONNECTOR_COL
-            line.append("\u2500" * col, style=connector_style)
-            line.append("\u252c", style=connector_style)
-            line.append("\u2500" * max(content_width - col - 1, 0), style=connector_style)
-        else:
             line.append("\u2500" * content_width, style=connector_style)
         return line
 

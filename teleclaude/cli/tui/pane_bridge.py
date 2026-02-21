@@ -155,6 +155,30 @@ class PaneManagerBridge(TelecMixin, Widget):
 
         self._writer.schedule(_do_layout)
 
+    def upsert_session(self, session: "SessionInfo") -> None:
+        """Update one session in the cached catalog and refresh pane colors if needed."""
+        if not session.session_id:
+            return
+
+        current_agent = session.active_agent
+        needs_recompute = True
+
+        for i, existing in enumerate(self._sessions):
+            if existing.session_id != session.session_id:
+                continue
+            needs_recompute = (
+                existing.active_agent != current_agent
+                or existing.tmux_session_name != session.tmux_session_name
+                or existing.computer != session.computer
+            )
+            self._sessions[i] = session
+            break
+        else:
+            self._sessions.append(session)
+
+        if needs_recompute:
+            self._apply(focus=False)
+
     def on_data_refreshed(self, message: DataRefreshed) -> None:
         """Update cached data from API refresh."""
         self._computers = {c.name: c for c in message.computers}
