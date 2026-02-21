@@ -30,8 +30,8 @@ The approach is additive-then-subtractive: first add reconciliation, then simpli
 
 **File(s):** `teleclaude/cli/tui/pane_bridge.py`, `teleclaude/cli/tui/app.py`
 
-- [ ] `PaneManagerBridge.__init__` accepts `is_reload: bool` and passes to `TmuxPaneManager(is_reload=is_reload)`
-- [ ] `TelecApp` passes `self._is_reload` when constructing PaneManagerBridge (in compose)
+- [x] `PaneManagerBridge.__init__` accepts `is_reload: bool` and passes to `TmuxPaneManager(is_reload=is_reload)`
+- [x] `TelecApp` passes `self._is_reload` when constructing PaneManagerBridge (in compose)
 - [ ] Remove `TELEC_RELOAD` env var from `telec.py` — pass reload state through the widget tree instead
 
 ---

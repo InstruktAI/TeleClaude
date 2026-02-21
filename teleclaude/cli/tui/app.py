@@ -257,7 +257,7 @@ class TelecApp(App[str | None]):
         with Vertical(id="footer"):
             yield ActionBar(id="action-bar")
             yield StatusBar(id="status-bar")
-        yield PaneManagerBridge(id="pane-bridge")
+        yield PaneManagerBridge(is_reload=self._is_reload, id="pane-bridge")
         logger.trace("[PERF] compose END t=%.3f", _t.monotonic())
 
     async def on_mount(self) -> None:

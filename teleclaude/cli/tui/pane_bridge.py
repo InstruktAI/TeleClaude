@@ -106,9 +106,9 @@ class PaneManagerBridge(TelecMixin, Widget):
     }
     """
 
-    def __init__(self, **kwargs: object) -> None:
+    def __init__(self, *, is_reload: bool = False, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self.pane_manager = TmuxPaneManager()
+        self.pane_manager = TmuxPaneManager(is_reload=is_reload)
         self._writer = PaneWriter(self.pane_manager)
         self._computers: dict[str, APIComputerInfo] = {}
         self._sessions: list[SessionInfo] = []
