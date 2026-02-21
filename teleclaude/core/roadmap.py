@@ -7,7 +7,6 @@ into a single list of rich TodoInfo objects. Used by CLI, API, and TUI.
 import json
 import re
 from pathlib import Path
-from typing import Optional
 
 from instrukt_ai_logging import get_logger
 
@@ -85,7 +84,7 @@ def assemble_roadmap(
 
     def read_todo_metadata(
         todo_dir: Path,
-    ) -> tuple[bool, bool, Optional[str], Optional[str], Optional[int], Optional[str], int, Optional[str], list[str]]:
+    ) -> tuple[bool, bool, str | None, str | None, int | None, str | None, int, str, list[str]]:
         has_requirements = (todo_dir / "requirements.md").exists()
         has_impl_plan = (todo_dir / "implementation-plan.md").exists()
         build_status = None
@@ -245,6 +244,9 @@ def assemble_roadmap(
 
     # 3. Inject container→child relationships from breakdown.todos in state.json.
     # This makes container todos appear as tree parents of their sub-items.
+    # The reordering loop below is safe because it rebuilds slug_to_idx after each mutation,
+    # ensuring that hierarchical containers (no circular deps) are correctly repositioned
+    # before their children regardless of discovery order.
     slug_to_idx = {t.slug: i for i, t in enumerate(todos)}
     for todo in list(todos):
         state_path = todos_root / todo.slug / "state.json"
