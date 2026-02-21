@@ -290,3 +290,77 @@ def test_run_due_jobs_dispatches_mapped_jobs(monkeypatch) -> None:
         "ignored_job": True,
     }
     assert set(notified) == {("idea_miner", True), ("maintenance", True)}
+
+
+@pytest.mark.asyncio
+async def test_enqueue_job_notifications_creates_rows_with_delivery_channel(tmp_path: Path) -> None:
+    """enqueue_job_notifications should create outbox rows with correct delivery_channel and recipient."""
+    from teleclaude.config.schema import CredsConfig, SubscriptionNotification, TelegramCreds
+
+    db = AsyncMock()
+    db.enqueue_notification = AsyncMock(side_effect=[10, 11])
+
+    router = NotificationRouter(db=db, root=tmp_path)
+
+    recipients = [
+        (
+            CredsConfig(telegram=TelegramCreds(user_name="alice", user_id=1, chat_id="111")),
+            SubscriptionNotification(preferred_channel="telegram"),
+        ),
+        (
+            CredsConfig(telegram=TelegramCreds(user_name="bob", user_id=2, chat_id="222")),
+            SubscriptionNotification(preferred_channel="telegram"),
+        ),
+    ]
+
+    row_ids = await router.enqueue_job_notifications(
+        job_name="idea-miner",
+        content="New report ready",
+        file_path="/reports/2026-02-20.md",
+        recipients=recipients,
+    )
+
+    assert row_ids == [10, 11]
+    assert db.enqueue_notification.await_count == 2
+
+    calls = db.enqueue_notification.await_args_list
+    assert calls[0].kwargs == {
+        "channel": "idea-miner",
+        "recipient_email": "111",
+        "content": "New report ready",
+        "file_path": "/reports/2026-02-20.md",
+        "delivery_channel": "telegram",
+    }
+    assert calls[1].kwargs == {
+        "channel": "idea-miner",
+        "recipient_email": "222",
+        "content": "New report ready",
+        "file_path": "/reports/2026-02-20.md",
+        "delivery_channel": "telegram",
+    }
+
+
+@pytest.mark.asyncio
+async def test_enqueue_job_notifications_skips_recipient_without_address(tmp_path: Path) -> None:
+    """Recipients with no resolvable address should be skipped."""
+    from teleclaude.config.schema import CredsConfig, SubscriptionNotification
+
+    db = AsyncMock()
+    db.enqueue_notification = AsyncMock()
+
+    router = NotificationRouter(db=db, root=tmp_path)
+
+    # No telegram creds, no email — no address
+    recipients = [
+        (CredsConfig(), SubscriptionNotification()),
+    ]
+
+    row_ids = await router.enqueue_job_notifications(
+        job_name="idea-miner",
+        content="Report",
+        file_path=None,
+        recipients=recipients,
+    )
+
+    assert row_ids == []
+    db.enqueue_notification.assert_not_awaited()

@@ -80,10 +80,10 @@ Replace hardcoded job-to-channel notification mapping with a subscription-driven
 
 **File(s):** `teleclaude/notifications/router.py`, `tests/unit/test_notifications.py`
 
-- [ ] Add `enqueue_job_notifications(job_name, content, file_path, recipients) -> list[int]` to `NotificationRouter`
-- [ ] For each recipient: resolve delivery address from creds + preferred_channel, enqueue outbox row with `delivery_channel`
-- [ ] Write test: enqueue creates rows with correct delivery_channel and recipient
-- [ ] Run `pytest tests/unit/test_notifications.py -v` — PASS (old + new tests)
+- [x] Add `enqueue_job_notifications(job_name, content, file_path, recipients) -> list[int]` to `NotificationRouter`
+- [x] For each recipient: resolve delivery address from creds + preferred_channel, enqueue outbox row with `delivery_channel`
+- [x] Write test: enqueue creates rows with correct delivery_channel and recipient
+- [x] Run `pytest tests/unit/test_notifications.py -v` — PASS (old + new tests)
 
 ### Task 3.2: Notification worker — route by `delivery_channel`
 
