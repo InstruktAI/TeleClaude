@@ -32,7 +32,7 @@ The approach is additive-then-subtractive: first add reconciliation, then simpli
 
 - [x] `PaneManagerBridge.__init__` accepts `is_reload: bool` and passes to `TmuxPaneManager(is_reload=is_reload)`
 - [x] `TelecApp` passes `self._is_reload` when constructing PaneManagerBridge (in compose)
-- [ ] Remove `TELEC_RELOAD` env var from `telec.py` — pass reload state through the widget tree instead
+- [x] Keep `TELEC_RELOAD` env var — `os.execvp` requires env-based signaling; simplified to only pass through to PaneManager init (see Task 3.3)
 
 ---
 
@@ -80,27 +80,26 @@ The approach is additive-then-subtractive: first add reconciliation, then simpli
 
 **File(s):** `teleclaude/cli/tui/pane_bridge.py`, `teleclaude/cli/tui/app.py`
 
-- [ ] Delete `PaneManagerBridge.seed_layout_for_reload()` method
-- [ ] Delete the `elif self._is_reload:` branch in `TelecApp.on_data_refreshed()`
-- [ ] Delete `_is_reload` field from `TelecApp.__init__`
-- [ ] Remove `_make_spec` static method from PaneManagerBridge (only used by seed_layout_for_reload)
+- [x] Delete `PaneManagerBridge.seed_layout_for_reload()` method
+- [x] Delete the `elif self._is_reload:` branch in `TelecApp.on_data_refreshed()`
+- [x] `_is_reload` kept as local-only in TelecApp.**init** (needed for compose → PaneManagerBridge); no longer used in on_data_refreshed
+- [x] Remove `_make_spec` static method from PaneManagerBridge (only used by seed_layout_for_reload)
+- [x] Add `seed_for_reload()` on TmuxPaneManager — centralizes reload pane mapping
 
 ### Task 3.2: Clean up reload env var
 
 **File(s):** `teleclaude/cli/telec.py`, `teleclaude/cli/tui/app.py`
 
-- [ ] Remove `os.environ["TELEC_RELOAD"] = "1"` from `telec.py:_run_tui`
-- [ ] Remove `os.environ.pop("TELEC_RELOAD", "")` from `TelecApp.__init__`
-- [ ] The reload signal is now: app exits with RELOAD_EXIT, telec.py re-execs, compose passes `is_reload=True` to PaneManagerBridge based on whether the prior run returned RELOAD_EXIT
+- [x] Keep `TELEC_RELOAD` env var — needed for `os.execvp` reload (see 3.3)
+- [x] Now used only for PaneManager init, not for seed_layout machinery
 
 ### Task 3.3: Simplify reload state propagation
 
 **File(s):** `teleclaude/cli/telec.py`, `teleclaude/cli/tui/app.py`
 
-- [ ] `_run_tui()` accepts `is_reload: bool = False` parameter
-- [ ] On RELOAD_EXIT, recursive call: `_run_tui(is_reload=True)` instead of `os.execvp`
-- [ ] Wait — `os.execvp` is needed to reload Python modules from disk. Keep `os.execvp` but pass reload flag via env var (simpler than the current approach, but keep it as `_TELEC_INTERNAL_RELOAD` to signal it's not user-facing)
-- [ ] OR: keep `os.execvp` + env var but only use it for the PaneManager init, not for the elaborate seed_layout machinery
+- [x] Keep `os.execvp` + env var, use only for PaneManager init (not for elaborate seed_layout machinery)
+- [x] Reload pane mapping centralized in `TmuxPaneManager.seed_for_reload()`, called from bridge's `on_data_refreshed()`
+- [x] Bridge syncs preview/sticky state from sessions view on every data refresh (enables reload mapping without app-level branch)
 
 ---
 

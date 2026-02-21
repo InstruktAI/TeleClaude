@@ -184,7 +184,7 @@ class TmuxPaneManager:
         On SIGUSR2 reload, panes from the previous process survive in tmux.
         This method discovers them and extracts which tmux session each pane
         is attached to (from pane_start_command).  The resulting mapping is
-        stored in _reload_session_panes for seed_layout_for_reload to use.
+        stored in _reload_session_panes for seed_for_reload() to use.
         """
         output = self._run_tmux("list-panes", "-F", "#{pane_id}\t#{pane_start_command}")
         for line in output.split("\n"):
@@ -240,6 +240,63 @@ class TmuxPaneManager:
     def update_session_catalog(self, sessions: list["SessionInfo"]) -> None:
         """Update the session catalog used for layout lookup."""
         self._session_catalog = {session.session_id: session for session in sessions}
+
+    def seed_for_reload(
+        self,
+        *,
+        active_session_id: str | None,
+        sticky_session_ids: list[str],
+        get_computer_info: Callable[[str], ComputerInfo | None],
+    ) -> None:
+        """Map discovered reload panes to session state and set layout signature.
+
+        Called once after the first data refresh on SIGUSR2 reload.  Maps the
+        tmux_session_name → pane_id entries from _adopt_for_reload() to
+        session_to_pane via the session catalog, builds active/sticky specs,
+        and pre-sets the layout signature so the first user-driven
+        apply_layout() takes the lightweight _update_active_pane path.
+        """
+        if not self._reload_session_panes:
+            return
+
+        reload_map = self._reload_session_panes
+
+        sticky_specs = []
+        for session_id in sticky_session_ids:
+            session = self._session_catalog.get(session_id)
+            if not session or not session.tmux_session_name:
+                continue
+            sticky_specs.append(
+                SessionPaneSpec(
+                    session_id=session.session_id,
+                    tmux_session_name=session.tmux_session_name,
+                    computer_info=get_computer_info(session.computer or "local"),
+                    is_sticky=True,
+                    active_agent=session.active_agent,
+                )
+            )
+            pane_id = reload_map.get(session.tmux_session_name)
+            if pane_id:
+                self.state.session_to_pane[session_id] = pane_id
+        self._sticky_specs = sticky_specs
+
+        if active_session_id:
+            session = self._session_catalog.get(active_session_id)
+            if session and session.tmux_session_name:
+                self._active_spec = SessionPaneSpec(
+                    session_id=session.session_id,
+                    tmux_session_name=session.tmux_session_name,
+                    computer_info=get_computer_info(session.computer or "local"),
+                    is_sticky=False,
+                    active_agent=session.active_agent,
+                )
+                self.state.active_session_id = session.session_id
+                pane_id = reload_map.get(session.tmux_session_name)
+                if pane_id:
+                    self.state.session_to_pane[session.session_id] = pane_id
+
+        self._layout_signature = self._compute_layout_signature()
+        self._reload_session_panes.clear()
 
     def apply_layout(
         self,
