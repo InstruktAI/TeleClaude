@@ -1,0 +1,395 @@
+# Delivered work items. Newest first.
+
+- slug: pane-state-reconciliation
+  date: '2026-02-21'
+  title: 'Reconciliation-first TUI pane state: 2-field PaneState, tmux reconcile before
+    layout, clean SIGUSR2 reload'
+  outcome: DELIVERED
+  commit: 02802843
+- slug: job-report-notifications
+  date: '2026-02-21'
+  title: Subscription-driven job execution and notification delivery. Subscription
+    jobs only run when someone subscribes. System jobs deliver to all admins. Mailbox
+    flag scan, per-recipient outbox, enabled toggle.
+  outcome: DELIVERED
+  commit: 7a276ec8
+- slug: release-pipeline-simulation
+  date: '2026-02-21'
+  title: 'Deterministic CI pipeline for release.yaml verification: mock AI lanes,
+    arbiter decision testing, release notes generation, and version bump validation
+    without live LLMs.'
+  outcome: DELIVERED
+  commit: 87f06fbc
+- slug: tui-todo-dependencies
+  date: '2026-02-21'
+  title: Display todo dependency relationships (after) and group labels (group) in
+    the TUI Preparation view, matching the information already shown by telec roadmap.
+  outcome: DELIVERED
+  commit: 8b4991be
+- slug: session-relay
+  date: '2026-02-19'
+  title: 'Output relay between agent sessions: monitor via capture_pane, deliver delta
+    to peers with attribution. Enables natural 1:1 conversations after send_message(direct=true)
+    handshake.'
+  outcome: DELIVERED
+  commit: ca99c3ec
+- slug: web-interface-4
+  date: '2026-02-18'
+  title: Session Management & Role-Based Access
+  outcome: DELIVERED
+  commit: 51a89d54
+- slug: web-api-proxy-completion
+  date: '2026-02-18'
+  title: WebSocket bridge, REST proxy expansion, auth enforcement, frontend state
+    integration
+  outcome: DELIVERED
+  commit: a020262c
+- slug: doc-access-control
+  date: '2026-02-18'
+  title: 'Role-based access control for doc snippets: role frontmatter, get_context
+    filtering, CLI gating'
+  outcome: DELIVERED
+  commit: ba22fc83
+- slug: widget-sdk
+  date: '2026-02-17'
+  title: Widget expression format, MCP tool, section renderers, AskUserQuestionUI,
+    and AI authoring guide
+  outcome: DELIVERED
+  commit: bc7698b8
+- slug: web-interface-3
+  date: '2026-02-16'
+  title: Chat Interface & Part Rendering
+  outcome: DELIVERED
+  commit: de610451
+- slug: web-interface-2
+  date: '2026-02-16'
+  title: Next.js Scaffold & Auth
+  outcome: DELIVERED
+  commit: 6f641ba0
+- slug: web-interface-1
+  date: '2026-02-16'
+  title: Daemon SSE Plumbing
+  outcome: DELIVERED
+  commit: 1b4ea3ef
+- slug: session-messages-api
+  date: '2026-02-16'
+  title: Structured messages endpoint from native session files
+  outcome: DELIVERED
+  commit: 609f4ce3
+- slug: help-desk-control-room
+  date: '2026-02-16'
+  title: Discord threaded output for all sessions
+  outcome: DELIVERED
+  commit: f59ae28b
+- slug: output-origin-routing
+  date: '2026-02-16'
+  title: Output Origin Routing
+  outcome: DELIVERED
+  commit: f03c25db
+- slug: help-desk-discord
+  date: '2026-02-16'
+  title: 'Fix Discord routing layer: inbound channel gating, role normalization, config-driven
+    project paths, escalation notifications, relay context, Telegram relay awareness,
+    channel worker dispatch, idle compaction, template jobs, and identity key coverage.'
+  outcome: DELIVERED
+  commit: 619c71d3
+- slug: help-desk-platform
+  date: '2026-02-15'
+  title: 'Two-plane help desk: customer ingress, operator workspace, identity-scoped
+    memory, escalation, relay, pub/sub channels'
+  outcome: DELIVERED
+  commit: 7156e94a
+- slug: release-pipeline-simulation
+  date: '2026-02-15'
+  title: Deterministic CI simulation for release arbiter logic verification without
+    live tokens.
+  outcome: DELIVERED
+  commit: 87f06fbc
+- slug: tui-config-experience
+  date: '2026-02-15'
+  title: TUI Config Experience & Animation Art
+  outcome: DELIVERED
+  commit: f8d3044b
+- slug: release-arbiter
+  date: '2026-02-14'
+  title: AI consensus arbiter for automated release authorization based on lane reports.
+  outcome: DELIVERED
+  commit: 02d8c212
+- slug: release-lane-gemini
+  date: '2026-02-14'
+  title: Gemini release inspector lane using @google/gemini-cli in GitHub Actions.
+  outcome: DELIVERED
+  commit: 47b12c04
+- slug: release-lane-codex
+  date: '2026-02-14'
+  title: Codex CLI release inspector lane using openai/codex-action.
+  outcome: DELIVERED
+  commit: 726a1a16
+- slug: release-lane-claude
+  date: '2026-02-14'
+  title: Claude Code release inspector lane using anthropics/claude-code-action.
+  outcome: DELIVERED
+  commit: 43153b37
+- slug: release-workflow-foundation
+  date: '2026-02-14'
+  title: Baseline GitHub Actions for lint/test and skeleton release workflow.
+  outcome: DELIVERED
+  commit: d7eee9c0
+- slug: release-manifests
+  date: '2026-02-14'
+  title: Public surface contract manifests and runtime alignment tests
+  outcome: DELIVERED
+  commit: fba68258
+- slug: help-desk-discord
+  date: '2026-02-14'
+  title: Discord adapter for Help Desk forum-thread routing and customer identity
+    mapping
+  outcome: DELIVERED
+  commit: 52cd5bd9c0a8203d1391a0b917fbecb838390a7f
+- slug: webhook-service
+  date: '2026-02-14'
+  title: Webhook Service
+  outcome: DELIVERED
+  commit: 54b70773
+- slug: role-based-notifications
+  date: '2026-02-14'
+  title: Platform-agnostic notification routing subsystem with outbox persistence,
+    PlatformSender protocol, and delivery worker.
+  outcome: DELIVERED
+  commit: 27c4fbfd
+- slug: telec-config-interactive
+  date: '2026-02-14'
+  title: Interactive Configuration System
+  outcome: DELIVERED
+  commit: 68ed3bab
+- slug: telegram-adapter-hardening
+  date: '2026-02-13'
+  title: Telegram routing hardening with Law of Demeter metadata boundaries and fail-fast
+    contracts
+  outcome: DELIVERED
+  commit: 26798a9f
+- slug: auto-architecture-diagrams
+  date: '2026-02-13'
+  title: Code-generated architecture diagrams via make diagrams (6 Mermaid outputs)
+  outcome: DELIVERED
+  commit: 5c0540ac
+- slug: help-desk
+  date: '2026-02-12'
+  title: Help Desk Platform
+  outcome: DELIVERED
+  commit: 20f3602f
+- slug: tts-fallback-saturation
+  date: '2026-02-12'
+  title: Fix TTS fallback logic to respect voice saturation
+  outcome: DELIVERED
+  commit: fd8d5cd2
+- slug: agent-activity-events-phase-3-7
+  date: '2026-02-11'
+  title: 'Complete agent-activity-events pipeline: DB column rename, event vocabulary
+    rename, comprehensive tests, docs'
+  outcome: DELIVERED
+  commit: 5cd7f2d8
+- slug: daemon-independent-jobs
+  date: '2026-02-11'
+  title: Daemon-independent agent job execution with subprocess spawning, full tool/MCP
+    access
+  outcome: DELIVERED
+  commit: 93fb9b97
+- slug: agent-activity-events
+  date: '2026-02-11'
+  title: Direct agent activity event pipeline (Phase 1-2, foundation without DB-mediated
+    reasons)
+  outcome: DELIVERED
+  commit: 61fe04e3
+- slug: runtime-settings-tts-toggle
+  date: '2026-02-11'
+  title: RuntimeSettings layer, TTS toggle in TUI footer, debounced YAML persistence,
+    SummarizerConfig cleanup
+  outcome: DELIVERED
+  commit: c7102753
+- slug: agent-output-monitor
+  date: '2026-02-11'
+  title: Context-aware checkpoint messages at agent stop boundaries
+  outcome: DELIVERED
+  commit: 4173c150
+- slug: telec-config-cli
+  date: '2026-02-10'
+  title: Add telec config get/patch/validate workflow for AI-safe config mutation
+  outcome: DELIVERED
+  commit: de0c0d2f
+- slug: telec-todo-scaffold
+  date: '2026-02-10'
+  title: Add telec todo create scaffolding and AI-safe Telec CLI tool spec
+  outcome: DELIVERED
+  commit: 29937f18
+- slug: db-raw-sql-cleanup
+  date: '2026-02-10'
+  title: Eliminate raw SQL from DB helpers and enforce raw-sql markers in hooks/check
+    script
+  outcome: DELIVERED
+  commit: ae55a25
+- slug: config-schema-validation
+  date: '2026-02-10'
+  title: Pydantic-based schema validation for teleclaude.yml with level enforcement
+  outcome: DELIVERED
+  commit: bc999a3
+- slug: job-contract-refinements
+  date: '2026-02-09'
+  title: Enforced agent job contract (job), sync-time job validation, interests parsing
+    fix
+  outcome: DELIVERED
+- slug: next-prepare-maintenance
+  date: '2026-02-09'
+  title: Next Prepare maintenance runner docs + scheduled agent job wiring
+  outcome: DELIVERED
+- slug: refactor-again
+  date: '2026-02-09'
+  title: Hook/Core Ownership Refactor Follow-up
+  outcome: DELIVERED
+- slug: codebase-audit
+  date: '2026-02-09'
+  title: TeleClaude Comprehensive Codebase Audit
+  outcome: DELIVERED
+- slug: threaded-output-experiment
+  date: '2026-02-06'
+  title: Threaded Incremental Output Experiment
+  outcome: DELIVERED
+  commit: 8db1bd5
+- slug: role-tools-injection
+  date: '2026-02-06'
+  title: MCP Role-Based Tool Filtering
+  outcome: DELIVERED
+- slug: banner-animations
+  date: '2026-01-23'
+  title: Banner Animation System
+  outcome: DELIVERED
+  commit: fb7e5e8
+- slug: deferral-automation
+  date: '2026-01-17'
+  title: Deferral Automation
+  outcome: DELIVERED
+  commit: c679224709663bb710290a00de6c25ae615fba45
+- slug: cache-unification
+  date: '2026-01-15'
+  title: Cache Unification for Session UI Updates
+  outcome: DELIVERED
+  commit: 8b397f4
+- slug: test-cleanup
+  date: '2026-01-14'
+  title: Test Cleanup
+  outcome: DELIVERED
+  commit: '1987535'
+- slug: cache-startup-warmup
+  date: '2026-01-14'
+  title: Warmup remote projects on daemon startup and add digest-based invalidation
+    to heartbeats.
+  outcome: DELIVERED
+  commit: f47779e
+- slug: model-boundary-consolidation
+  date: '2026-01-14'
+  title: Model Boundary Consolidation
+  outcome: DELIVERED
+  commit: 44fbd26
+- slug: delivery-verification-gates
+  date: '2026-01-13'
+  title: Delivery Verification Gates
+  outcome: DELIVERED
+  commit: 5b5d668
+- slug: startup-cache-hook-fixes
+  date: '2026-01-12'
+  title: Startup Cache Hook Fixes
+  outcome: DELIVERED
+  commit: 4462b44
+- slug: worktree-preparation
+  date: '2026-01-12'
+  title: Worktree Preparation
+  outcome: DELIVERED
+  commit: e88f795
+- slug: todo-breakdown-assessment
+  date: '2026-01-12'
+  title: Todo Breakdown Assessment
+  outcome: DELIVERED
+  commit: 04b209a
+- slug: cache-deferreds
+  date: '2026-01-12'
+  title: Cache Population - Deferred Work Completion
+  outcome: DELIVERED
+  commit: fb5a79d
+- slug: performance-hardening
+  date: '2026-01-12'
+  title: 'Performance Hardening: Async Resilience & Data Efficiency (Phase 1)'
+  outcome: DELIVERED
+  commit: 2a1cbcf
+- slug: tui-snapshot-tests
+  date: '2026-01-11'
+  title: TUI View Architecture Refactor & Tests
+  outcome: DELIVERED
+  commit: 9210bbe
+- slug: e2e-smoke-tests
+  date: '2026-01-11'
+  title: End-to-End Smoke Tests
+  outcome: DELIVERED
+  commit: 3966dc5
+- slug: data-caching-pushing
+  date: '2026-01-11'
+  title: Data Caching & Push Architecture (Phases 0-7)
+  outcome: DELIVERED
+  commit: f12331d
+- slug: terminal-adapter-refactor
+  date: '2026-01-10'
+  title: Rename TerminalAdapter to RESTAdapter
+  outcome: DELIVERED
+  commit: 5a1991d
+- slug: telec-enhancements
+  date: '2026-01-09'
+  title: 'telec: TUI Client for TeleClaude'
+  outcome: DELIVERED
+  commit: ceb9e4f
+- slug: db-refactor
+  date: '2026-01-09'
+  title: Eliminate ux_state JSON Blob
+  outcome: DELIVERED
+  commit: f9e45fb
+- slug: state-machine-refinement
+  date: '2026-01-03'
+  title: State Machine Refinement
+  outcome: DELIVERED
+  commit: '3631176'
+- slug: reduce-loose-dict-typings
+  date: '2026-01-02'
+  title: Reduce loose dict typings to zero guardrails warnings
+  outcome: DELIVERED
+  commit: 2e4b655
+- slug: next-prepare-hitl
+  date: '2025-12-31'
+  title: HITL Support for next_prepare MCP Tool
+  outcome: DELIVERED
+  commit: 75ced1f
+- slug: next-machine
+  date: '2025-12-30'
+  title: Deterministic Workflow State Machine
+  outcome: DELIVERED
+  commit: 89ec189
+- slug: title-update
+  date: '2025-12-30'
+  title: Title Update fix
+  outcome: DELIVERED
+  commit: 34da4d2
+- slug: universal-hooks
+  date: '2025-12-15'
+  title: Universal File-Watcher Hook System
+  outcome: DELIVERED
+- slug: run-agent-command
+  date: '2025-12-16'
+  title: Run Agent Command MCP Tool
+  outcome: DELIVERED
+- slug: mode-selector
+  date: '2025-12-17'
+  title: Mode Selector for Agent Model Variants
+  outcome: DELIVERED
+  commit: d1f28ba
+- slug: send-result
+  date: '2025-12-23'
+  title: Send Result Tool - Formatted Output Messages
+  outcome: DELIVERED
+  commit: 4ef5d82

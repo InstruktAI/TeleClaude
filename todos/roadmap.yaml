@@ -52,16 +52,7 @@
   - gathering-rhythm-subprocedures
   description: 'Gathering ceremony orchestrator: turn-managed relay, talking piece,
     heartbeats, phase management, harvester, HITL'
-- slug: rolling-session-titles
-  description: Re-summarize session titles based on the last 3 user inputs instead
-    of only the first. Use a dedicated rolling prompt that captures session direction.
-    Reset the output message on any title change so the telegram title feedback floats
-    to the top in Telegram.
 - slug: project-aware-bug-routing
-- slug: test-suite-ownership-reset
-  description: Freeze non-emergency feature changes and reset test ownership to a
-    deterministic one-to-one model (source file to owning unit test) with path-based
-    test gating. Introduce prefix-based bug routing with an atomic per-bug loop.
 - slug: tui-markdown-editor
   description: Inline markdown editing and one-key todo creation in TUI
 - slug: multi-user-db-abstraction
@@ -103,3 +94,8 @@
   - multi-user-service
   description: 'Phase 6: SQLite to PostgreSQL data migration, single-user to system-wide
     tooling'
+- slug: rolling-session-titles
+  description: Re-summarize session titles based on the last 3 user inputs instead
+    of only the first. Use a dedicated rolling prompt that captures session direction.
+    Reset the output message on any title change so the telegram title feedback floats
+    to the top in Telegram.

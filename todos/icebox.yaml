@@ -1,0 +1,25 @@
+# Parked work items. Promote back to roadmap.yaml when priority changes.
+
+- slug: test-suite-ownership-reset
+  description: Freeze non-emergency feature changes and reset test ownership to a
+    deterministic one-to-one model (source file to owning unit test) with path-based
+    test gating. Introduce prefix-based bug routing with an atomic per-bug loop.
+- slug: agent-file-locking-heartbeat
+  description: Agent-level file locking to prevent same-file collisions on main with
+    deterministic contention behavior. Heartbeat on contention, retry after 3 minutes,
+    then halt with precise blocker report if still locked.
+- slug: code-context-annotations
+  description: Code annotation extraction and doc snippet integration work. Parked
+    behind core identity/streaming/web delivery.
+- slug: code-context-auditor
+  description: Drift-auditing layer for context annotations. Depends on code-context-annotations.
+- slug: bidirectional-agent-links
+  description: Agent-to-agent chat/link system. Nice-to-have, not on the near-term
+    product path.
+- slug: github-maintenance-runner
+  description: Periodic GitHub bug triage and automated bugfix PR flow in a dedicated
+    maintenance worktree.
+- slug: tdd-enforcement
+  description: Strict TDD enforcement initiative (upfront approved test contract +
+    builder/fixer test immutability). Revisit when bandwidth is available for process
+    hardening.

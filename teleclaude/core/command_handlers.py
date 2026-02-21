@@ -513,7 +513,14 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
         return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
     def parse_icebox_slugs() -> set[str]:
-        """Collect todo slugs currently parked in icebox.md (table or heading formats)."""
+        """Collect todo slugs currently parked in icebox.yaml (or legacy icebox.md)."""
+        icebox_yaml = todos_root / "icebox.yaml"
+        if icebox_yaml.exists():
+            from teleclaude.core.next_machine.core import load_icebox_slugs
+
+            return set(load_icebox_slugs(str(todos_root.parent)))
+
+        # Legacy fallback: parse icebox.md
         icebox_slugs: set[str] = set()
         if not icebox_path.exists():
             return icebox_slugs

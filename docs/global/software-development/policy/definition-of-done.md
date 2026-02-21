@@ -73,6 +73,7 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] Breaking changes noted
 - [ ] No commented-out code
 - [ ] README and docs updated to reflect current behavior
+- [ ] CLI help text updated for new/changed subcommands (feeds agent system prompt)
 
 ### 7. Commit Hygiene
 
@@ -107,7 +108,7 @@ Before considering ANY work complete, verify ALL criteria are met:
 
 - [ ] Changes merged/delivered
 - [ ] State updated
-- [ ] Delivery logged in todos/delivered.md
+- [ ] Delivery logged in todos/delivered.yaml
 - [ ] Clean working directory
 
 Work is NOT done if ANY of these are true:
