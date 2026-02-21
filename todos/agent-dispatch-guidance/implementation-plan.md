@@ -39,29 +39,29 @@ This approach is appropriate because domain inference (frontend vs backend vs ov
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Implement `compose_agent_guidance(agents, db)` that builds guidance text from enabled agents + DB availability
-- [ ] Handle disabled agents (excluded), degraded agents (noted with status), no agents (error)
-- [ ] Include thinking mode guidance (slow/med/fast heuristics)
-- [ ] Write tests in `tests/unit/test_agent_guidance.py`
+- [x] Implement `compose_agent_guidance(agents, db)` that builds guidance text from enabled agents + DB availability
+- [x] Handle disabled agents (excluded), degraded agents (noted with status), no agents (error)
+- [x] Include thinking mode guidance (slow/med/fast heuristics)
+- [x] Write tests in `tests/unit/test_agent_guidance.py`
 
 ### Task 2.2: Modify format_tool_call to use guidance
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Replace `agent` and `thinking_mode` params with `guidance: str`
-- [ ] Use placeholders `agent="<your selection>"`, `thinking_mode="<your selection>"`
-- [ ] Embed guidance block in STEP 1
-- [ ] Write tests
+- [x] Replace `agent` and `thinking_mode` params with `guidance: str`
+- [x] Use placeholders `agent="<your selection>"`, `thinking_mode="<your selection>"`
+- [x] Embed guidance block in STEP 1
+- [x] Write tests
 
 ### Task 2.3: Update all call sites — delete matrices and wire guidance
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Delete `PREPARE_FALLBACK`, `WORK_FALLBACK`, `NO_SELECTABLE_AGENTS_PATTERN`
-- [ ] Delete `get_available_agent()`, `_extract_no_selectable_task_type()`, `format_agent_selection_error()`
-- [ ] Delete inner `_pick_agent()` in `next_work()`
-- [ ] Replace all call sites in `next_work()` (5 sites) and `next_prepare()` (6 sites) with `compose_agent_guidance` + updated `format_tool_call`
-- [ ] Wire config access: `from teleclaude.config import config as app_config` (same pattern as `teleclaude/mcp/handlers.py:24`), build agents dict from `app_config.agents`
+- [x] Delete `PREPARE_FALLBACK`, `WORK_FALLBACK`, `NO_SELECTABLE_AGENTS_PATTERN`
+- [x] Delete `get_available_agent()`, `_extract_no_selectable_task_type()`, `format_agent_selection_error()`
+- [x] Delete inner `_pick_agent()` in `next_work()`
+- [x] Replace all call sites in `next_work()` (5 sites) and `next_prepare()` (6 sites) with `compose_agent_guidance` + updated `format_tool_call`
+- [x] Wire config access: `from teleclaude.config import config as app_config` (same pattern as `teleclaude/mcp/handlers.py:24`), build agents dict from `app_config.agents`
 
 ---
 
