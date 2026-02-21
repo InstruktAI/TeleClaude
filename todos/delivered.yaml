@@ -1,5 +1,32 @@
 # Delivered work items. Newest first.
 
+- slug: web-interface
+  date: '2026-02-21'
+  title: Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon
+    produces AI SDK UIMessage Stream (SSE) from session transcripts and live output.
+    Frontend uses useChat with DefaultChatTransport. Auth via NextAuth email OTP.
+    Session-to-person metadata binding with visibility routing.
+  outcome: DELIVERED
+  description: Next.js 15 web application bridged to TeleClaude via Vercel AI SDK
+    v5. Daemon produces AI SDK UIMessage Stream (SSE) from session transcripts and
+    live output. Frontend uses useChat with DefaultChatTransport. Auth via NextAuth
+    email OTP. Session-to-person metadata binding with visibility routing.
+  children:
+  - web-interface-1
+  - web-interface-2
+  - web-interface-3
+  - web-interface-4
+- slug: release-automation
+  date: '2026-02-21'
+  title: 'Group: release-automation (6 children delivered)'
+  outcome: DELIVERED
+  children:
+  - release-manifests
+  - release-workflow-foundation
+  - release-lane-claude
+  - release-lane-codex
+  - release-lane-gemini
+  - release-arbiter
 - slug: pane-state-reconciliation
   date: '2026-02-21'
   title: 'Reconciliation-first TUI pane state: 2-field PaneState, tmux reconcile before

@@ -972,6 +972,7 @@ class DeliveredEntry:
     outcome: str = "DELIVERED"
     commit: str | None = None
     description: str | None = None
+    children: list[str] | None = None
 
 
 class DeliveredDict(TypedDict, total=False):
@@ -981,10 +982,16 @@ class DeliveredDict(TypedDict, total=False):
     outcome: str
     commit: str
     description: str
+    children: list[str]
 
 
 def _delivered_path(cwd: str) -> Path:
     return Path(cwd) / "todos" / "delivered.yaml"
+
+
+def load_delivered_slugs(cwd: str) -> set[str]:
+    """Return set of delivered slugs for fast lookup."""
+    return {e.slug for e in load_delivered(cwd)}
 
 
 def load_delivered(cwd: str) -> list[DeliveredEntry]:
@@ -1002,6 +1009,8 @@ def load_delivered(cwd: str) -> list[DeliveredEntry]:
     for item in raw:
         if not isinstance(item, dict) or "slug" not in item:
             continue
+        children_raw = item.get("children")
+        children = list(children_raw) if isinstance(children_raw, list) else None
         entries.append(
             DeliveredEntry(
                 slug=item["slug"],
@@ -1010,6 +1019,7 @@ def load_delivered(cwd: str) -> list[DeliveredEntry]:
                 outcome=item.get("outcome", "DELIVERED"),
                 commit=item.get("commit"),
                 description=item.get("description"),
+                children=children,
             )
         )
     return entries
@@ -1031,6 +1041,8 @@ def save_delivered(cwd: str, entries: list[DeliveredEntry]) -> None:
             item["commit"] = entry.commit
         if entry.description:
             item["description"] = entry.description
+        if entry.children:
+            item["children"] = entry.children
         data.append(item)
 
     header = "# Delivered work items. Newest first.\n\n"
@@ -1072,6 +1084,95 @@ def deliver_to_delivered(
     )
     save_delivered(cwd, delivered)
     return True
+
+
+def sweep_completed_groups(cwd: str) -> list[str]:
+    """Auto-deliver group parents whose children are all delivered.
+
+    A group parent is any todo with a non-empty breakdown.todos list.
+    When every child slug appears in delivered.yaml, the parent is
+    delivered and its todo directory removed.
+
+    Returns list of swept group slugs.
+    """
+    todos_dir = Path(cwd) / "todos"
+    if not todos_dir.is_dir():
+        return []
+
+    delivered_slugs = load_delivered_slugs(cwd)
+    swept: list[str] = []
+
+    for entry in sorted(todos_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        state_path = entry / "state.json"
+        if not state_path.exists():
+            continue
+
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        breakdown = state.get("breakdown")
+        if not isinstance(breakdown, dict):
+            continue
+        children = breakdown.get("todos")
+        if not isinstance(children, list) or not children:
+            continue
+
+        # Check if ALL children have been delivered
+        if not all(child in delivered_slugs for child in children):
+            continue
+
+        group_slug = entry.name
+        description = None
+
+        # Try deliver_to_delivered (handles roadmap removal + delivered.yaml append)
+        # Load description from roadmap before removal
+        for rm_entry in load_roadmap(cwd):
+            if rm_entry.slug == group_slug:
+                description = rm_entry.description
+                break
+
+        group_title = description or f"Group: {group_slug} ({len(children)} children delivered)"
+
+        delivered = deliver_to_delivered(
+            cwd,
+            group_slug,
+            title=group_title,
+            outcome="DELIVERED",
+        )
+
+        if delivered:
+            # deliver_to_delivered added entry without children — patch it in
+            entries = load_delivered(cwd)
+            for d_entry in entries:
+                if d_entry.slug == group_slug and d_entry.children is None:
+                    d_entry.children = list(children)
+                    break
+            save_delivered(cwd, entries)
+        else:
+            # Not in roadmap — add directly to delivered.yaml with children
+            entries = load_delivered(cwd)
+            entries.insert(
+                0,
+                DeliveredEntry(
+                    slug=group_slug,
+                    date=date.today().isoformat(),
+                    title=group_title,
+                    outcome="DELIVERED",
+                    children=list(children),
+                ),
+            )
+            save_delivered(cwd, entries)
+
+        # Remove the group todo directory
+        shutil.rmtree(entry)
+        swept.append(group_slug)
+        logger.info("Group sweep: delivered %s (all %d children complete)", group_slug, len(children))
+
+    return swept
 
 
 # =============================================================================
@@ -1902,6 +2003,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         Plain text instructions for the orchestrator to execute
     """
     retry_call = f'teleclaude__next_work(slug="{slug}")' if slug else "teleclaude__next_work()"
+
+    # Sweep completed group parents before resolving next slug
+    await asyncio.to_thread(sweep_completed_groups, cwd)
 
     # Release finalize lock ONLY if the locked item's finalize is confirmed complete.
     # Finalize removes the slug from roadmap, so "not in roadmap" is the completion signal.

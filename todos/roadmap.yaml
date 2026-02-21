@@ -1,14 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.json.
 
-- slug: web-interface
-  group: Web Interface
-  after:
-  - person-identity-auth
-  - agent-activity-events
-  description: Next.js 15 web application bridged to TeleClaude via Vercel AI SDK
-    v5. Daemon produces AI SDK UIMessage Stream (SSE) from session transcripts and
-    live output. Frontend uses useChat with DefaultChatTransport. Auth via NextAuth
-    email OTP. Session-to-person metadata binding with visibility routing.
 - slug: mcp-migration-tc-cli
   group: mcp-to-tool-specs
   description: 'Phase 1: Extend telec with tool subcommands and daemon JSON-RPC endpoint'
