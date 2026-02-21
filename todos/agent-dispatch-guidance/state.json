@@ -7,10 +7,16 @@
     "assessed": false,
     "todos": []
   },
-  "review_round": 1,
+  "review_round": 2,
   "max_review_rounds": 3,
-  "review_baseline_commit": "",
-  "unresolved_findings": ["R1-F1", "R1-F2"],
+  "review_baseline_commit": "1917be41580a89ace422ec00b5885c4ec8e9daa4",
+  "unresolved_findings": [
+    "R1-F1",
+    "R1-F2",
+    "R1-F3",
+    "R1-F4",
+    "R1-F5"
+  ],
   "resolved_findings": [],
   "dor": {
     "last_assessed_at": "2026-02-21T17:15:00Z",

@@ -98,3 +98,12 @@ The agent availability API endpoint now returns `status="unavailable"` with `rea
 **Blocking:** R1-F1 (empty guidance when all agents runtime-unavailable) and R1-F2 (unchecked implementation plan items).
 
 R1-F1 is a behavioral regression from the old code. R1-F2 is a clerical issue that must be fixed for the quality checklist to be accurate.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix                                                                                                         | Commit     |
+| ----- | ----------------------------------------------------------------------------------------------------------- | ---------- |
+| R1-F1 | Raise `RuntimeError` in `compose_agent_guidance` when no agents are listed (due to runtime unavailability). | `837e4c78` |
+| R1-F2 | Mark implementation plan Task 3.1 checkboxes as completed.                                                  | `b5e17e87` |
