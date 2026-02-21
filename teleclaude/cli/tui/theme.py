@@ -146,11 +146,10 @@ _AGENT_HIGHLIGHT_LIGHT = {"claude": 16, "gemini": 16, "codex": 16}
 
 
 def _safe_agent(agent: str) -> str:
-    """Normalize agent name and fall back to claude for unknown values."""
-    normalized = (agent or "").strip().lower()
-    if normalized in _KNOWN_AGENTS:
-        return normalized
-    return "claude"
+    """Validate agent name. Unknown agents crash — they indicate a contract violation."""
+    if agent not in _KNOWN_AGENTS:
+        raise ValueError(f"Unknown agent '{agent}' — expected one of {sorted(_KNOWN_AGENTS)}")
+    return agent
 
 
 def get_agent_normal_color(agent: str) -> int:
