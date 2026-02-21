@@ -46,11 +46,13 @@ stateDiagram-v2
 - `todos/{slug}/implementation-plan.md` - Technical design
 - `todos/{slug}/state.json` - Phase tracking (build, review)
 - `todos/{slug}/deferrals.md` - Identified technical debt
+- `config.yml` (via `app_config.agents`) - Agent availability and strengths
 
 **Outputs:**
 
-- Explicit tool calls to execute (start_session, run_agent_command)
+- Explicit tool calls to execute (start_session, run_agent_command) with placeholders for agent/mode
 - Human-in-the-loop guidance for preparation phase
+- Agent selection guidance block derived from machine config and runtime availability
 - Phase completion marks via mark_phase tool
 - Dependency resolution via set_dependencies tool
 
@@ -153,7 +155,7 @@ sequenceDiagram
 - **Missing Roadmap**: Cannot discover work items. Returns error instructing user to create roadmap.
 - **Malformed State JSON**: Cannot read phase status. Treats as pending and restarts build phase.
 - **Dependency Cycle**: Circular dependencies detected. Logs error, refuses to dispatch.
-- **No Selectable Agents**: Fallback candidates are degraded/unavailable. Next Machine returns orchestrator guidance to call `teleclaude__mark_agent_status(...)` and retry.
+- **No Selectable Agents**: All agents are disabled in `config.yml` or marked unavailable in DB. Next Machine returns a hard error. If some agents are available but degraded, it notes this in the guidance and lets the orchestrator choose whether to proceed.
 - **Git Not Available**: Worktree commands fail. Machine returns error; manual git setup required.
 - **Stale Artifacts**: Requirements updated but plan not regenerated. Reviewer catches mismatch; fix manually.
 - **Worker Crash**: Dispatched AI never completes. Orchestrator must timeout and retry or escalate.

@@ -90,8 +90,8 @@ This approach is appropriate because domain inference (frontend vs backend vs ov
 
 **File(s):** `docs/project/spec/teleclaude-config.md`, `docs/project/design/architecture/next-machine.md`
 
-- [ ] Document agents config section
-- [ ] Update next-machine design for guidance-based dispatch
+- [x] Document agents config section
+- [x] Update next-machine design for guidance-based dispatch
 
 ---
 

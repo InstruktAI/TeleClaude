@@ -20,9 +20,18 @@ config_keys:
     role: string
     timezone: string
   agents:
-    claude: object
-    gemini: object
-    codex: object
+    claude:
+      enabled: boolean
+      strengths: string
+      avoid: string
+    gemini:
+      enabled: boolean
+      strengths: string
+      avoid: string
+    codex:
+      enabled: boolean
+      strengths: string
+      avoid: string
   redis:
     enabled: boolean
     host: string
