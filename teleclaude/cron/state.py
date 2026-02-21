@@ -16,6 +16,7 @@ class JobStateDict(TypedDict, total=False):
     last_run: str | None
     last_status: str
     last_error: str | None
+    last_notified: str | None
 
 
 class CronStateDict(TypedDict):
@@ -31,12 +32,14 @@ class JobState:
     last_run: datetime | None = None
     last_status: str = "never"  # "success", "failed", "never"
     last_error: str | None = None
+    last_notified: datetime | None = None
 
     def to_dict(self) -> JobStateDict:
         return {
             "last_run": self.last_run.isoformat() if self.last_run else None,
             "last_status": self.last_status,
             "last_error": self.last_error,
+            "last_notified": self.last_notified.isoformat() if self.last_notified else None,
         }
 
     @classmethod
@@ -48,10 +51,18 @@ class JobState:
                 last_run = datetime.fromisoformat(last_run_str)
             except (ValueError, TypeError):
                 pass
+        last_notified = None
+        last_notified_str = data.get("last_notified")
+        if last_notified_str:
+            try:
+                last_notified = datetime.fromisoformat(last_notified_str)
+            except (ValueError, TypeError):
+                pass
         return cls(
             last_run=last_run,
             last_status=data.get("last_status", "never"),
             last_error=data.get("last_error"),
+            last_notified=last_notified,
         )
 
 
@@ -103,4 +114,10 @@ class CronState:
         job.last_run = datetime.now(timezone.utc)
         job.last_status = "failed"
         job.last_error = error
+        self.save()
+
+    def mark_notified(self, name: str, timestamp: datetime) -> None:
+        """Record that notifications were sent for a job up to the given timestamp."""
+        job = self.get_job(name)
+        job.last_notified = timestamp
         self.save()

@@ -71,7 +71,6 @@ class PersonInfo:
     username: str | None = None
     telegram: str | None = None
     telegram_id: int | None = None
-    notifications_telegram: bool = False
     interests: list[str] = field(default_factory=list)
 
 
@@ -136,7 +135,6 @@ def _people_list(use_json: bool) -> None:
                 pc = get_person_config(p.name)
                 info.telegram = pc.creds.telegram.user_name if pc.creds.telegram else None
                 info.telegram_id = pc.creds.telegram.user_id if pc.creds.telegram else None
-                info.notifications_telegram = pc.notifications.telegram
                 info.interests = list(pc.interests)
             except (ValueError, Exception):
                 pass
@@ -249,15 +247,8 @@ def _people_edit(args: list[str], use_json: bool) -> None:
         _set_telegram_creds(name, opts.get("telegram_user"), opts.get("telegram_id"))
         changed = True
 
-    # Edit notifications
-    if "notifications_telegram" in opts:
-        pc = get_person_config(name)
-        pc.notifications.telegram = opts["notifications_telegram"].lower() in ("true", "on", "1", "yes")
-        save_person_config(name, pc)
-        changed = True
-
     if not changed:
-        msg = "No changes specified. Use --role, --email, --username, --telegram-user, --telegram-id, --notifications-telegram"
+        msg = "No changes specified. Use --role, --email, --username, --telegram-user, --telegram-id"
         if use_json:
             print(json.dumps({"error": msg}))
         else:
@@ -402,40 +393,12 @@ def _write_env_var(env_file: Path, name: str, value: str) -> None:
 def _handle_notify(args: list[str]) -> None:
     _check_customer_guard()
     use_json = "--json" in args
-    args = [a for a in args if a != "--json"]
-
-    if len(args) < 1:
-        print("Usage: telec config notify NAME --telegram on|off")
-        raise SystemExit(1)
-
-    name = args[0]
-    opts = _parse_kv_args(args[1:])
-
-    try:
-        pc = get_person_config(name)
-    except (ValueError, Exception) as e:
-        if use_json:
-            print(json.dumps({"error": str(e)}))
-        else:
-            print(f"Error: {e}")
-        raise SystemExit(1)
-
-    changed = {}
-    if "telegram" in opts:
-        pc.notifications.telegram = opts["telegram"].lower() in ("on", "true", "1", "yes")
-        changed["telegram"] = pc.notifications.telegram
-
-    if not changed:
-        print("Error: specify --telegram on|off")
-        raise SystemExit(1)
-
-    save_person_config(name, pc)
-
+    msg = "Notification toggling has been replaced by per-subscription settings. Edit subscriptions in person config instead."
     if use_json:
-        print(json.dumps({"ok": True, "name": name, "notifications": changed}))
+        print(json.dumps({"error": msg}))
     else:
-        for k, v in changed.items():
-            print(f"  {name}: {k} notifications {'enabled' if v else 'disabled'}.")
+        print(msg)
+    raise SystemExit(1)
 
 
 # --- Validate ---

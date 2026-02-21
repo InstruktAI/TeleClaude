@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -65,6 +65,7 @@ class JobWhenConfig(BaseModel):
 
 class JobScheduleConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
+    category: Literal["subscription", "system"] = "subscription"
     # Preferred scheduling contract.
     when: Optional[JobWhenConfig] = None
     # Legacy schedule fields remain supported as a fallback.
@@ -105,6 +106,7 @@ class TelegramCreds(BaseModel):
     model_config = ConfigDict(extra="allow")
     user_name: str
     user_id: int
+    chat_id: str | None = None
 
 
 class DiscordCreds(BaseModel):
@@ -118,16 +120,34 @@ class CredsConfig(BaseModel):
     discord: Optional[DiscordCreds] = None
 
 
-class NotificationsConfig(BaseModel):
+class SubscriptionNotification(BaseModel):
     model_config = ConfigDict(extra="allow")
-    telegram_chat_id: str | None = None
-    telegram: bool = False
-    channels: list[str] = []
+    preferred_channel: Literal["telegram", "discord", "email"] = "telegram"
+    email: str | None = None
 
 
-class SubscriptionsConfig(BaseModel):
+class Subscription(BaseModel):
     model_config = ConfigDict(extra="allow")
-    youtube: Optional[str] = None
+    enabled: bool = True
+    notification: SubscriptionNotification = SubscriptionNotification()
+
+
+class JobSubscription(Subscription):
+    type: Literal["job"] = "job"
+    job: str
+    when: Optional[JobWhenConfig] = None
+
+
+class YoutubeSubscription(Subscription):
+    type: Literal["youtube"] = "youtube"
+    source: str
+    tags: List[str] = []
+
+
+SubscriptionEntry = Annotated[
+    Union[JobSubscription, YoutubeSubscription],
+    Field(discriminator="type"),
+]
 
 
 class InboundSourceConfig(BaseModel):
@@ -197,7 +217,7 @@ class ProjectConfig(BaseModel):
 
 class GlobalConfig(ProjectConfig):
     people: List[PersonEntry] = []
-    subscriptions: SubscriptionsConfig = SubscriptionsConfig()
+    subscriptions: List[SubscriptionEntry] = []
     interests: List[str] = []
 
     @field_validator("interests", mode="before")
@@ -223,8 +243,7 @@ class GlobalConfig(ProjectConfig):
 class PersonConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     creds: CredsConfig = CredsConfig()
-    notifications: NotificationsConfig = NotificationsConfig()
-    subscriptions: SubscriptionsConfig = SubscriptionsConfig()
+    subscriptions: List[SubscriptionEntry] = []
     interests: List[str] = []
 
     @field_validator("interests", mode="before")

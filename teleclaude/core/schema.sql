@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS notification_outbox (
     recipient_email TEXT NOT NULL,
     content TEXT NOT NULL,
     file_path TEXT,
+    delivery_channel TEXT NOT NULL DEFAULT 'telegram',
     status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT NOT NULL,
     delivered_at TEXT,
