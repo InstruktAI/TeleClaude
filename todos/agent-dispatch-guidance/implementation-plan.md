@@ -12,24 +12,24 @@ This approach is appropriate because domain inference (frontend vs backend vs ov
 
 **File(s):** `teleclaude/config/schema.py`
 
-- [ ] Add `AgentDispatchConfig` Pydantic model with `enabled: bool = True`, `strengths: str = ""`, `avoid: str = ""`
-- [ ] Write tests in `tests/unit/test_agent_dispatch_config.py`
+- [x] Add `AgentDispatchConfig` Pydantic model with `enabled: bool = True`, `strengths: str = ""`, `avoid: str = ""`
+- [x] Write tests in `tests/unit/test_agent_dispatch_config.py`
 
 ### Task 1.2: Add `enabled`/`strengths`/`avoid` to AgentConfig and wire config.yml loading
 
 **File(s):** `teleclaude/config/__init__.py`
 
-- [ ] Add `enabled`, `strengths`, `avoid` fields to `AgentConfig` dataclass
-- [ ] Remove `agents` from `_validate_disallowed_runtime_keys`
-- [ ] Overlay config.yml agents section in `_build_config`
-- [ ] Write tests
+- [x] Add `enabled`, `strengths`, `avoid` fields to `AgentConfig` dataclass
+- [x] Remove `agents` from `_validate_disallowed_runtime_keys`
+- [x] Overlay config.yml agents section in `_build_config`
+- [x] Write tests
 
 ### Task 1.3: Add agents section to config.yml
 
 **File(s):** `config.yml`, `tests/integration/config.yml`
 
-- [ ] Add `agents:` section with claude/gemini/codex entries
-- [ ] Verify existing tests pass (backwards compatible)
+- [x] Add `agents:` section with claude/gemini/codex entries
+- [x] Verify existing tests pass (backwards compatible)
 
 ---
 

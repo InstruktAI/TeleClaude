@@ -67,6 +67,21 @@ ui:
   #   - off: pure native terminal rendering with muted/normal bg only
   pane_theming_mode: full
 
+# Agent dispatch guidance (optional machine-level guidance for the orchestrator AI)
+agents:
+  claude:
+    enabled: true
+    strengths: "Superior reasoning, complex architecture, and deep technical investigation. Best for ambiguous tasks requiring high autonomy."
+    avoid: "Extremely large file reads that exceed context limits; repetitive mechanical edits without prior planning."
+  gemini:
+    enabled: true
+    strengths: "Large-scale codebase analysis, multimodal context, and rapid information synthesis across many files. Best for massive context windows."
+    avoid: "Surgical precision edits in highly fragile files where reasoning must be strictly constrained."
+  codex:
+    enabled: true
+    strengths: "High-speed code generation, refactoring, and following established patterns. Best for well-defined implementation tasks."
+    avoid: "Broad architectural planning or high-level strategic decisions."
+
 # Speech-to-Text Configuration
 stt:
   enabled: true
