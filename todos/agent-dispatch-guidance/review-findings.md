@@ -76,28 +76,65 @@ The agent availability API endpoint now returns `status="unavailable"` with `rea
 | `format_tool_call` output includes guidance block with placeholders  | **Implemented** — `guidance` param replaces `agent`/`thinking_mode`, output has `<your selection>`                                                                        |
 | Disabled agents do not appear in guidance                            | **Implemented** — `compose_agent_guidance` skips `not cfg.enabled`                                                                                                        |
 | Degraded agents noted with status                                    | **Implemented** — `[DEGRADED: reason]` annotation                                                                                                                         |
-| All existing tests pass after migration                              | **Implemented** — mocks updated, old test removed (but plan checkboxes unchecked: R1-F2)                                                                                  |
-| New unit tests cover `compose_agent_guidance` and `format_tool_call` | **Implemented** — `test_agent_guidance.py` (5 tests), `test_agent_config_loading.py` (2 tests), `test_agent_dispatch_config.py` (3 tests), `test_agent_cli.py` (+2 tests) |
+| All existing tests pass after migration                              | **Implemented** — mocks updated, old test removed, all 93 migrated tests pass                                                                                             |
+| New unit tests cover `compose_agent_guidance` and `format_tool_call` | **Implemented** — `test_agent_guidance.py` (6 tests), `test_agent_config_loading.py` (2 tests), `test_agent_dispatch_config.py` (3 tests), `test_agent_cli.py` (+2 tests) |
 | `agent_cli._pick_agent` respects `config.agents.enabled`             | **Implemented** — config check added with tests                                                                                                                           |
 | Backwards compatible (missing agents section defaults)               | **Implemented** — `AgentConfig` defaults: `enabled=True`, `strengths=""`, `avoid=""`                                                                                      |
 
 ## Test Coverage Assessment
 
-- **New coverage is solid:** `compose_agent_guidance` has tests for all-available, degraded, unavailable, and no-agents-enabled scenarios.
-- **Missing edge case:** No test for all agents config-enabled but all runtime-unavailable (R1-F1).
+- **New coverage is solid:** `compose_agent_guidance` has tests for all-available, degraded, unavailable, no-agents-enabled, and all-runtime-unavailable scenarios.
 - **Config loading coverage:** `_build_config` tested for defaults and overrides — good.
 - **agent_cli coverage:** Config-disabled agent selection properly tested with both auto-pick and preferred-agent paths.
 - **Migrated tests:** Mocks correctly updated from `get_available_agent` (returning tuple) to `compose_agent_guidance` (returning string).
+- **All 18 new tests pass. All 93 migrated tests pass.**
+
+---
+
+## R2 Review
+
+**Review round:** 2
+**Date:** 2026-02-21
+
+### R1 Finding Resolution
+
+| Finding | Severity   | Resolution                                                                                                                                     |
+| ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1-F1   | Important  | **RESOLVED.** `listed_count` now increments after the unavailable check (line 1229). RuntimeError raised when `listed_count == 0`. Test added. |
+| R1-F2   | Important  | **RESOLVED.** All Task 3.1 checkboxes marked `[x]` in implementation-plan.md.                                                                  |
+| R1-F3   | Suggestion | **Acknowledged.** Not addressed — acceptable for this scope.                                                                                   |
+| R1-F4   | Suggestion | **Acknowledged.** Not addressed — current structure is correct.                                                                                |
+| R1-F5   | Suggestion | **Acknowledged.** Not addressed — bonus change is sensible.                                                                                    |
+
+### New Findings (R2)
+
+## Critical
+
+_None._
+
+## Important
+
+_None._
+
+## Suggestions
+
+### R2-F1: Stale comment in `test_compose_guidance_all_runtime_unavailable`
+
+**File:** `tests/unit/test_agent_guidance.py:134-135`
+
+Lines 134-135 say "CURRENTLY this will FAIL to raise RuntimeError (it will return empty guidance) / We want it to raise RuntimeError". This was the pre-fix description written before the R1-F1 fix was applied. The test now passes — the comment is misleading and should be removed.
+
+Not blocking.
 
 ---
 
 ## Verdict
 
-- [x] REQUEST CHANGES
+- [x] APPROVE
 
-**Blocking:** R1-F1 (empty guidance when all agents runtime-unavailable) and R1-F2 (unchecked implementation plan items).
+All R1 blocking findings (R1-F1, R1-F2) are resolved. The R1-F1 fix is clean: `listed_count` correctly tracks agents that survive both config and runtime filters, and `RuntimeError` is raised when none remain. The new test `test_compose_guidance_all_runtime_unavailable` confirms the behavior. All 111 relevant tests pass. Lint is clean in the worktree.
 
-R1-F1 is a behavioral regression from the old code. R1-F2 is a clerical issue that must be fixed for the quality checklist to be accurate.
+R1 suggestions (F3, F4, F5) and R2-F1 are non-blocking and can be addressed in future work.
 
 ---
 
