@@ -190,6 +190,8 @@ class TodoDTO(BaseModel):  # type: ignore[explicit-any]
     deferrals_status: str | None = None
     findings_count: int = 0
     files: list[str] = Field(default_factory=list)
+    after: list[str] = Field(default_factory=list)
+    group: str | None = None
 
 
 class ProjectWithTodosDTO(ProjectDTO):  # type: ignore[explicit-any]

@@ -28,8 +28,8 @@ The data already exists in `RoadmapEntry` (core/next_machine/core.py:701) but is
 
 **File(s):** `teleclaude/api_models.py`
 
-- [ ] Add `after: list[str] = Field(default_factory=list)` after `files` (line 192)
-- [ ] Add `group: str | None = None` after `after`
+- [x] Add `after: list[str] = Field(default_factory=list)` after `files` (line 192)
+- [x] Add `group: str | None = None` after `after`
 
 ### Task 1.4: Pass fields in API serialization
 
