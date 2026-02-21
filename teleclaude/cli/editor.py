@@ -4,18 +4,25 @@ Launched by the TUI via PaneManagerBridge as a subprocess in the right
 tmux pane. Supports view mode (--view, read-only) and edit mode (default,
 auto-saves on exit and on focus loss).
 
-Usage: python -m teleclaude.cli.editor [-v|--view] <filepath>
+Usage: python -m teleclaude.cli.editor [-v|--view] [--theme NAME] <filepath>
 """
 
 from __future__ import annotations
 
-import sys
+import argparse
 from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.events import AppBlur
 from textual.widgets import Label, TextArea
+
+from teleclaude.cli.tui.theme import (
+    _TELECLAUDE_DARK_AGENT_THEME,
+    _TELECLAUDE_DARK_THEME,
+    _TELECLAUDE_LIGHT_AGENT_THEME,
+    _TELECLAUDE_LIGHT_THEME,
+)
 
 
 class EditorApp(App[None]):
@@ -43,8 +50,21 @@ class EditorApp(App[None]):
     }
     """
 
-    def __init__(self, file_path: Path, *, view_mode: bool = False, **kwargs: object) -> None:
+    def __init__(
+        self,
+        file_path: Path,
+        *,
+        view_mode: bool = False,
+        theme_name: str = "teleclaude-dark",
+        **kwargs: object,
+    ) -> None:
         super().__init__(**kwargs)
+        self.register_theme(_TELECLAUDE_DARK_THEME)
+        self.register_theme(_TELECLAUDE_LIGHT_THEME)
+        self.register_theme(_TELECLAUDE_DARK_AGENT_THEME)
+        self.register_theme(_TELECLAUDE_LIGHT_AGENT_THEME)
+        self.theme = theme_name
+
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -101,16 +121,14 @@ class EditorApp(App[None]):
 
 
 def main() -> None:
-    args = sys.argv[1:]
-    view_mode = False
-    if args and args[0] in ("-v", "--view"):
-        view_mode = True
-        args = args[1:]
-    if not args:
-        print("Usage: python -m teleclaude.cli.editor [-v|--view] <filepath>", file=sys.stderr)
-        sys.exit(1)
-    file_path = Path(args[0])
-    app = EditorApp(file_path=file_path, view_mode=view_mode)
+    parser = argparse.ArgumentParser(description="Standalone Textual markdown editor")
+    parser.add_argument("filepath", type=Path, help="Path to markdown file")
+    parser.add_argument("-v", "--view", action="store_true", help="View mode (read-only)")
+    parser.add_argument("--theme", default="teleclaude-dark", help="Textual theme name")
+
+    args = parser.parse_args()
+
+    app = EditorApp(file_path=args.filepath, view_mode=args.view, theme_name=args.theme)
     app.run()
 
 

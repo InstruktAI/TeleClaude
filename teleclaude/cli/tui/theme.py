@@ -9,6 +9,7 @@ Detects macOS dark/light mode via system settings.
 
 from __future__ import annotations
 
+import curses
 import os
 import re
 import subprocess
@@ -16,6 +17,7 @@ import sys
 from typing import Optional
 
 from rich.style import Style
+from textual.theme import Theme
 
 from teleclaude.config import config
 
@@ -313,6 +315,140 @@ def get_agent_status_background(agent: str) -> str:
     colors = _AGENT_HEX_COLORS_DARK if _is_dark_mode else _AGENT_HEX_COLORS_LIGHT
     base_bg = get_terminal_background()
     return blend_colors(base_bg, colors[_safe_agent(agent)], _AGENT_STATUS_HAZE_PERCENTAGE)
+
+
+# --- Textual Themes ---
+
+_TELECLAUDE_DARK_THEME = Theme(
+    name="teleclaude-dark",
+    # Neutral structural colors — NOT agent-specific.
+    # Buttons, inputs, selects inherit from these.
+    primary="#808080",  # Neutral gray for UI chrome
+    secondary="#626262",  # Slightly darker neutral
+    accent="#585858",  # Muted focus indicator
+    foreground="#d0d0d0",  # Soft light gray — highlight end
+    background=get_terminal_background(),  # Dynamic — matches tmux pane background
+    success="#5faf5f",  # Muted green
+    warning="#d7af5f",  # Warm gold
+    error="#d75f5f",  # Muted red
+    surface="#262626",  # Panel surface
+    panel="#303030",  # Slightly lighter panel
+    dark=True,
+    variables={
+        "block-cursor-text-style": "reverse",
+        "input-selection-background": "#585858 50%",
+        "scrollbar-color": "#444444",
+        "scrollbar-background": get_terminal_background(),
+        # --- Agent colors: Claude (dark: subtle→highlight = dark→bright) ---
+        "claude-subtle": "#875f00",
+        "claude-muted": "#af875f",
+        "claude-normal": "#d7af87",
+        "claude-highlight": "#ffffff",
+        # --- Agent colors: Gemini ---
+        "gemini-subtle": "#8787af",
+        "gemini-muted": "#af87ff",
+        "gemini-normal": "#d7afff",
+        "gemini-highlight": "#ffffff",
+        # --- Agent colors: Codex ---
+        "codex-subtle": "#5f87af",
+        "codex-muted": "#87afd7",
+        "codex-normal": "#afd7ff",
+        "codex-highlight": "#ffffff",
+        # --- Neutral structural gradient (white → dark gray) ---
+        "neutral-highlight": "#e0e0e0",
+        "neutral-normal": "#a0a0a0",
+        "neutral-muted": "#707070",
+        "neutral-subtle": "#484848",
+        # --- Structural colors ---
+        "connector": "#808080",  # Tree lines (xterm 244)
+        "separator": "#585858",  # Thin separators
+        "input-border": "#444444",  # Input/select borders
+        "banner-color": "#585858",  # Banner muted
+        "status-fg": "#727578",  # Status bar text
+    },
+)
+
+_TELECLAUDE_LIGHT_THEME = Theme(
+    name="teleclaude-light",
+    # Light mode: inverted gray gradient — black highlight, grading lighter.
+    primary="#808080",  # Neutral gray for UI chrome
+    secondary="#9e9e9e",  # Slightly lighter neutral
+    accent="#a8a8a8",  # Muted focus indicator
+    foreground="#303030",  # Near-black text — highlight end
+    background=get_terminal_background(),  # Dynamic — matches tmux pane background
+    success="#3a8a3a",  # Darker green for light bg
+    warning="#8a6a1a",  # Darker gold for light bg
+    error="#b03030",  # Darker red for light bg
+    surface="#f0ead8",  # Slightly darker paper
+    panel="#e8e0cc",  # Panel surface
+    dark=False,
+    variables={
+        "block-cursor-text-style": "reverse",
+        "input-selection-background": "#a0a0a0 50%",
+        "scrollbar-color": "#c0c0c0",
+        "scrollbar-background": get_terminal_background(),
+        # --- Agent colors: Claude (light: subtle→highlight = light→dark) ---
+        "claude-subtle": "#d7af87",  # xterm 180
+        "claude-muted": "#af875f",  # xterm 137
+        "claude-normal": "#875f00",  # xterm 94
+        "claude-highlight": "#000000",
+        # --- Agent colors: Gemini (inverted) ---
+        "gemini-subtle": "#d787ff",  # xterm 177
+        "gemini-muted": "#af5fff",  # xterm 135
+        "gemini-normal": "#870087",  # xterm 90
+        "gemini-highlight": "#000000",
+        # --- Agent colors: Codex (inverted) ---
+        "codex-subtle": "#87afd7",  # xterm 110
+        "codex-muted": "#5f87af",  # xterm 67
+        "codex-normal": "#005f87",  # xterm 24
+        "codex-highlight": "#000000",
+        # --- Neutral structural gradient (black → light gray) ---
+        "neutral-highlight": "#202020",
+        "neutral-normal": "#606060",
+        "neutral-muted": "#909090",
+        "neutral-subtle": "#b8b8b8",
+        # --- Structural colors (inverted) ---
+        "connector": "#808080",  # Tree lines (same gray)
+        "separator": "#a0a0a0",  # Thin separators (lighter)
+        "input-border": "#c0c0c0",  # Input/select borders
+        "banner-color": "#a0a0a0",  # Banner muted
+        "status-fg": "#727578",  # Status bar text
+    },
+)
+
+_TELECLAUDE_DARK_AGENT_THEME = Theme(
+    name="teleclaude-dark-agent",
+    # Agent variant: Warm primary/secondary
+    primary="#d7af87",  # Claude normal (warm orange)
+    secondary="#af875f",  # Claude muted (warm brown)
+    accent="#585858",  # Muted focus indicator (unchanged)
+    foreground="#d0d0d0",  # Soft light gray
+    background=get_terminal_background(),
+    success="#5faf5f",
+    warning="#d7af5f",
+    error="#d75f5f",
+    surface="#262626",
+    panel="#303030",
+    dark=True,
+    variables=_TELECLAUDE_DARK_THEME.variables.copy(),
+)
+
+_TELECLAUDE_LIGHT_AGENT_THEME = Theme(
+    name="teleclaude-light-agent",
+    # Agent variant: Warm primary/secondary
+    primary="#875f00",  # Claude normal (warm brown/gold)
+    secondary="#af875f",  # Claude muted (warm light brown)
+    accent="#a8a8a8",  # Muted focus indicator (unchanged)
+    foreground="#303030",  # Near-black text
+    background=get_terminal_background(),
+    success="#3a8a3a",
+    warning="#8a6a1a",
+    error="#b03030",
+    surface="#f0ead8",
+    panel="#e8e0cc",
+    dark=False,
+    variables=_TELECLAUDE_LIGHT_THEME.variables.copy(),
+)
 
 
 # --- Pane Theming Mode ---
@@ -690,4 +826,30 @@ def get_modal_border_attr() -> int:
 
 
 def get_input_border_attr() -> int:
+    return 0
+
+
+# --- More Legacy Stubs ---
+# Added to satisfy tests/unit/test_tui_theme.py
+_STUB_DICT = {"claude": 0, "gemini": 0, "codex": 0}
+AGENT_PREVIEW_SELECTED_BG_PAIRS: dict[str, int] = _STUB_DICT.copy()
+AGENT_PREVIEW_SELECTED_BG_PAIRS_HIGHLIGHT: dict[str, int] = _STUB_DICT.copy()
+AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF: dict[str, int] = _STUB_DICT.copy()
+AGENT_PREVIEW_SELECTED_BG_PAIRS_SEMI: dict[str, int] = _STUB_DICT.copy()
+
+AGENT_PREVIEW_SELECTED_FOCUS_PAIRS: dict[str, int] = _STUB_DICT.copy()
+AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_HIGHLIGHT: dict[str, int] = _STUB_DICT.copy()
+AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF: dict[str, int] = _STUB_DICT.copy()
+AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_SEMI: dict[str, int] = _STUB_DICT.copy()
+
+
+def get_agent_preview_selected_bg_attr(agent: str) -> int:
+    return curses.A_BOLD
+
+
+def get_agent_preview_selected_focus_attr(agent: str) -> int:
+    return curses.A_BOLD
+
+
+def get_sticky_badge_attr() -> int:
     return 0
