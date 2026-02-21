@@ -14,16 +14,16 @@ Replace hardcoded job-to-channel notification mapping with a subscription-driven
 
 **File(s):** `teleclaude/config/schema.py`, `tests/unit/test_config_schema.py`
 
-- [ ] Add `category: Literal["subscription", "system"] = "subscription"` to `JobScheduleConfig`
-- [ ] Add `chat_id: str | None = None` to `TelegramCreds`
-- [ ] Add `SubscriptionNotification` model (`preferred_channel`, `email`)
-- [ ] Add `Subscription` base model with `type: str`, `enabled: bool = True`, `notification: SubscriptionNotification`
-- [ ] Add `JobSubscription(Subscription)` with `job: str`, `when: JobWhenConfig | None`
-- [ ] Add `YoutubeSubscription(Subscription)` with `source: str`, `tags: list[str]`
-- [ ] Add `SubscriptionEntry = Annotated[JobSubscription | YoutubeSubscription, Field(discriminator="type")]`
-- [ ] Update `PersonConfig.subscriptions` to accept `list[SubscriptionEntry]` (keep old format via validator for migration)
-- [ ] Write tests: category defaults, chat_id optional, subscription roundtrips, enabled toggle, person config with new subscriptions
-- [ ] Run `pytest tests/unit/test_config_schema.py -v` — PASS
+- [x] Add `category: Literal["subscription", "system"] = "subscription"` to `JobScheduleConfig`
+- [x] Add `chat_id: str | None = None` to `TelegramCreds`
+- [x] Add `SubscriptionNotification` model (`preferred_channel`, `email`)
+- [x] Add `Subscription` base model with `type: str`, `enabled: bool = True`, `notification: SubscriptionNotification`
+- [x] Add `JobSubscription(Subscription)` with `job: str`, `when: JobWhenConfig | None`
+- [x] Add `YoutubeSubscription(Subscription)` with `source: str`, `tags: list[str]`
+- [x] Add `SubscriptionEntry = Annotated[JobSubscription | YoutubeSubscription, Field(discriminator="type")]`
+- [x] Update `PersonConfig.subscriptions` to accept `list[SubscriptionEntry]` (keep old format via validator for migration)
+- [x] Write tests: category defaults, chat_id optional, subscription roundtrips, enabled toggle, person config with new subscriptions
+- [x] Run `pytest tests/unit/test_config_schema.py -v` — PASS
 
 ### Task 1.2: CronState — `last_notified` field
 

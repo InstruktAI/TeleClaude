@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from teleclaude.config.loader import load_global_config, load_person_config
+from teleclaude.config.schema import SubscriptionsConfig
 
 
 @dataclass
@@ -61,7 +62,8 @@ def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
             person_cfg_path = person_dir / "teleclaude.yml"
             if person_cfg_path.exists():
                 person_cfg = load_person_config(person_cfg_path)
-                if person_cfg.subscriptions.youtube:
+                subs = person_cfg.subscriptions
+                if isinstance(subs, SubscriptionsConfig) and subs.youtube:
                     subscribers.append(
                         Subscriber(
                             scope="person",
