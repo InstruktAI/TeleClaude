@@ -1,4 +1,9 @@
 # Delivered work items. Newest first.
+- slug: tui-markdown-editor
+  date: '2026-02-21'
+  title: Inline markdown editing and one-key todo creation in TUI
+  outcome: DELIVERED
+  commit: 66bb82ca0b207064e404db2e3a9b5276571673ae
 
 - slug: web-interface
   date: '2026-02-21'

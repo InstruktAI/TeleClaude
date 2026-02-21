@@ -44,8 +44,6 @@
   description: 'Gathering ceremony orchestrator: turn-managed relay, talking piece,
     heartbeats, phase management, harvester, HITL'
 - slug: project-aware-bug-routing
-- slug: tui-markdown-editor
-  description: Inline markdown editing and one-key todo creation in TUI
 - slug: multi-user-db-abstraction
   group: multi-user-system-install
   description: 'Phase 0: Configurable database engine (SQLite default, PostgreSQL
@@ -91,8 +89,6 @@
     Reset the output message on any title change so the telegram title feedback floats
     to the top in Telegram.
 - slug: state-yaml-migration
-  after:
-  - tui-markdown-editor
   description: Migrate todo state.json to state.yaml for human-readable state files
 - slug: unified-roadmap-assembly
   after:
