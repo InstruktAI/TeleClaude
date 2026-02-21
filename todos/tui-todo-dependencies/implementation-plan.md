@@ -35,8 +35,8 @@ The data already exists in `RoadmapEntry` (core/next_machine/core.py:701) but is
 
 **File(s):** `teleclaude/api_server.py`
 
-- [ ] Add `after=t.after, group=t.group` to `TodoDTO` construction at line 1129 (no-cache fallback)
-- [ ] Add `after=todo.after, group=todo.group` to `TodoDTO` construction at line 1160 (cache path)
+- [x] Add `after=t.after, group=t.group` to `TodoDTO` construction at line 1129 (no-cache fallback)
+- [x] Add `after=todo.after, group=todo.group` to `TodoDTO` construction at line 1160 (cache path)
 
 ## Phase 2: TUI Display
 
