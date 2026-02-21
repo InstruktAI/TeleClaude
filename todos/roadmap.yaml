@@ -121,6 +121,3 @@
   description: Subscription-driven job execution and notification delivery. Subscription
     jobs only run when someone subscribes. System jobs deliver to all admins. Mailbox
     flag scan, per-recipient outbox, enabled toggle.
-- slug: pane-state-reconciliation
-  description: 'Reconciliation-first TUI pane state: 2-field PaneState, tmux reconcile
-    before layout, clean SIGUSR2 reload'
