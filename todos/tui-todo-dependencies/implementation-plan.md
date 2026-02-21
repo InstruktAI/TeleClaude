@@ -44,8 +44,8 @@ The data already exists in `RoadmapEntry` (core/next_machine/core.py:701) but is
 
 **File(s):** `teleclaude/cli/tui/todos.py`
 
-- [ ] Add `after: list[str] = field(default_factory=list)` after `files` (line 22)
-- [ ] Add `group: str | None = None` after `after`
+- [x] Add `after: list[str] = field(default_factory=list)` after `files` (line 22)
+- [x] Add `group: str | None = None` after `after`
 
 ### Task 2.2: Pass fields in PreparationView and add group headers
 
