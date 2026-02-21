@@ -99,19 +99,19 @@ This approach is appropriate because domain inference (frontend vs backend vs ov
 
 ### Task 5.1: Tests
 
-- [ ] All new unit tests pass
-- [ ] All migrated tests pass
-- [ ] Run `make test`
+- [x] All new unit tests pass
+- [x] All migrated tests pass
+- [x] Run `make test`
 
 ### Task 5.2: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 6: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)

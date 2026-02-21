@@ -952,6 +952,16 @@ class APIServer:
             result: dict[str, AgentAvailabilityDTO] = {}
 
             for agent in agents:
+                cfg = config.agents.get(agent)
+                if cfg and not cfg.enabled:
+                    result[agent] = AgentAvailabilityDTO(
+                        agent=agent,
+                        available=False,
+                        status="unavailable",
+                        reason="Disabled in config.yml",
+                    )
+                    continue
+
                 try:
                     info = await db.get_agent_availability(agent)
                 except Exception as e:

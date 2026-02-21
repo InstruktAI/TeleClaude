@@ -471,8 +471,7 @@ def test_format_tool_call_codex_uses_normalized_command():
         command="next-build",
         args="test-slug",
         project="/tmp/project",
-        agent="codex",
-        thinking_mode="med",
+        guidance="Mock guidance",
         subfolder="trees/test-slug",
         next_call="teleclaude__next_work",
     )
@@ -487,8 +486,7 @@ def test_format_tool_call_claude_no_prefix():
         command="next-build",
         args="test-slug",
         project="/tmp/project",
-        agent="claude",
-        thinking_mode="med",
+        guidance="Mock guidance",
         subfolder="trees/test-slug",
         next_call="teleclaude__next_work",
     )
@@ -503,8 +501,7 @@ def test_format_tool_call_gemini_no_prefix():
         command="next-review",
         args="test-slug",
         project="/tmp/project",
-        agent="gemini",
-        thinking_mode="slow",
+        guidance="Mock guidance",
         subfolder="trees/test-slug",
         next_call="teleclaude__next_work",
     )
@@ -518,8 +515,7 @@ def test_format_tool_call_next_call_with_args():
         command="next-build",
         args="test-slug",
         project="/tmp/project",
-        agent="claude",
-        thinking_mode="med",
+        guidance="Mock guidance",
         subfolder="trees/test-slug",
         next_call='teleclaude__next_work(slug="test-slug")',
     )

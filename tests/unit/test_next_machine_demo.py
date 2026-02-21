@@ -50,8 +50,7 @@ def test_format_tool_call_demo_produces_valid_dispatch():
         command="next-demo",
         args="test-slug",
         project="/tmp/project",
-        agent="claude",
-        thinking_mode="fast",
+        guidance="Mock guidance",
         subfolder="",
         next_call="",
     )
