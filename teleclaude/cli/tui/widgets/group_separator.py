@@ -41,7 +41,7 @@ class GroupSeparator(TelecMixin, Static):
             line.append("\u2502", style=sep_style)
             line.append("  \u2500\u2500 ", style=sep_style)
             line.append(self._label, style=Style(dim=True))
-            remaining = max(width - col - 5 - len(self._label), 1)
+            remaining = max(width - col - 7 - len(self._label), 1)
             line.append(" " + "\u2500" * remaining, style=sep_style)
         else:
             line.append("\u2500" * col, style=sep_style)
