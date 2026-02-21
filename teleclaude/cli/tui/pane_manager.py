@@ -121,6 +121,8 @@ class TmuxPaneManager:
         self._session_catalog: dict[str, "SessionInfo"] = {}
         # tmux_session_name → pane_id mapping discovered during reload
         self._reload_session_panes: dict[str, str] = {}
+        # Non-session panes (doc preview commands) discovered during reload
+        self._reload_command_panes: list[str] = []
         # Store our own pane ID for reference
         self._tui_pane_id: str | None = None
         if self._in_tmux:
@@ -202,10 +204,16 @@ class TmuxPaneManager:
                 if match:
                     tmux_name = match.group(1).rstrip("'\"")
                     self._reload_session_panes[tmux_name] = pane_id
+                else:
+                    # Non-session pane (doc preview / editor command)
+                    self._reload_command_panes.append(pane_id)
+            else:
+                self._reload_command_panes.append(pane_id)
 
         logger.debug(
-            "Reload: mapped %d session panes: %s",
+            "Reload: mapped %d session panes, %d command panes: %s",
             len(self._reload_session_panes),
+            len(self._reload_command_panes),
             dict(self._reload_session_panes),
         )
 
@@ -256,6 +264,17 @@ class TmuxPaneManager:
         and pre-sets the layout signature so the first user-driven
         apply_layout() takes the lightweight _update_active_pane path.
         """
+        if not self._reload_session_panes and not self._reload_command_panes:
+            return
+
+        # Kill orphaned command panes (doc previews) — their state isn't
+        # persisted, so there's nothing to map them back to.
+        for pane_id in self._reload_command_panes:
+            if self._get_pane_exists(pane_id):
+                self._run_tmux("kill-pane", "-t", pane_id)
+                logger.debug("seed_for_reload: killed orphan command pane %s", pane_id)
+        self._reload_command_panes.clear()
+
         if not self._reload_session_panes:
             return
 
@@ -272,7 +291,7 @@ class TmuxPaneManager:
                     tmux_session_name=session.tmux_session_name,
                     computer_info=get_computer_info(session.computer or "local"),
                     is_sticky=True,
-                    active_agent=session.active_agent,
+                    active_agent=session.active_agent or "",
                 )
             )
             pane_id = reload_map.get(session.tmux_session_name)
@@ -288,12 +307,20 @@ class TmuxPaneManager:
                     tmux_session_name=session.tmux_session_name,
                     computer_info=get_computer_info(session.computer or "local"),
                     is_sticky=False,
-                    active_agent=session.active_agent,
+                    active_agent=session.active_agent or "",
                 )
                 self.state.active_session_id = session.session_id
                 pane_id = reload_map.get(session.tmux_session_name)
                 if pane_id:
                     self.state.session_to_pane[session.session_id] = pane_id
+
+        # Kill any reload panes that couldn't be mapped to live sessions.
+        # This prevents orphan panes when session data changed between reloads.
+        mapped_panes = set(self.state.session_to_pane.values())
+        for tmux_name, pane_id in reload_map.items():
+            if pane_id not in mapped_panes and self._get_pane_exists(pane_id):
+                self._run_tmux("kill-pane", "-t", pane_id)
+                logger.debug("seed_for_reload: killed unmapped session pane %s (tmux=%s)", pane_id, tmux_name)
 
         self._layout_signature = self._compute_layout_signature()
         self._reload_session_panes.clear()
@@ -342,7 +369,7 @@ class TmuxPaneManager:
                     tmux_session_name=tmux_session,
                     computer_info=get_computer_info(session.computer or "local"),
                     is_sticky=True,
-                    active_agent=session.active_agent,
+                    active_agent=session.active_agent or "",
                 )
             )
         active_spec: SessionPaneSpec | None = None
@@ -354,7 +381,7 @@ class TmuxPaneManager:
                     tmux_session_name=session.tmux_session_name,
                     computer_info=get_computer_info(session.computer or "local"),
                     is_sticky=False,
-                    active_agent=session.active_agent,
+                    active_agent=session.active_agent or "",
                 )
         elif active_doc_preview:
             active_spec = SessionPaneSpec(
@@ -367,6 +394,7 @@ class TmuxPaneManager:
             )
 
         self._sticky_specs = sticky_specs
+        prev_command = self._active_spec.command if self._active_spec else None
         self._active_spec = active_spec
 
         if self._layout_is_unchanged():
@@ -377,6 +405,14 @@ class TmuxPaneManager:
                 self._active_pane_id,
             )
             if active_spec and self.state.active_session_id != active_spec.session_id:
+                self._update_active_pane(active_spec)
+            elif (
+                active_spec
+                and active_spec.command
+                and self.state.active_session_id == active_spec.session_id
+                and active_spec.command != prev_command
+            ):
+                # Same doc_id but command changed (e.g. view → edit mode)
                 self._update_active_pane(active_spec)
             if focus and active_spec:
                 self.focus_pane_for_session(active_spec.session_id)
@@ -422,7 +458,15 @@ class TmuxPaneManager:
             return ""
 
     def _get_current_pane_id(self) -> str | None:
-        """Get the current pane ID."""
+        """Get the pane ID where this TUI process is running.
+
+        Prefers TMUX_PANE (set per-pane by tmux, stable across os.execvp
+        reloads) over display-message (which returns the currently FOCUSED
+        pane — wrong if the user clicked a session pane before reload).
+        """
+        pane_id = os.environ.get("TMUX_PANE")
+        if pane_id:
+            return pane_id
         output = self._run_tmux("display-message", "-p", "#{pane_id}")
         return output if output else None
 
@@ -744,6 +788,8 @@ class TmuxPaneManager:
             if not session or not session.tmux_session_name:
                 continue
 
+            if not session.active_agent:
+                continue
             self._set_pane_background(
                 pane_id,
                 session.tmux_session_name,
@@ -1084,7 +1130,7 @@ class TmuxPaneManager:
                 self._set_doc_pane_background(pane_id)
                 continue
             session = self._session_catalog.get(session_id)
-            if session and session.tmux_session_name:
+            if session and session.tmux_session_name and session.active_agent:
                 self._set_pane_background(
                     pane_id,
                     session.tmux_session_name,

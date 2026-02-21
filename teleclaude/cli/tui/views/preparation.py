@@ -332,24 +332,15 @@ class PreparationView(Widget, can_focus=True):
         item = self._current_item()
         return item if isinstance(item, TodoFileRow) else None
 
-    def _glow_command(self, slug: str, filename: str) -> str:
-        """Build a glow command with absolute path for tmux pane.
-
-        Uses -p flag to force pager mode so glow stays interactive.
-        """
-        project_path = self._slug_to_project_path.get(slug, "")
-        if project_path:
-            return f"glow -p {project_path}/todos/{slug}/{filename}"
-        return f"glow -p todos/{slug}/{filename}"
-
-    def _editor_command(self, slug: str, filename: str) -> str:
+    def _editor_command(self, slug: str, filename: str, *, view: bool = False) -> str:
         """Build an editor command with absolute path for tmux pane."""
         project_path = self._slug_to_project_path.get(slug, "")
         if project_path:
             filepath = f"{project_path}/todos/{slug}/{filename}"
         else:
             filepath = f"todos/{slug}/{filename}"
-        return f"uv run python -m teleclaude.cli.editor {filepath}"
+        flag = " --view" if view else ""
+        return f"uv run python -m teleclaude.cli.editor{flag} {filepath}"
 
     def _find_parent_todo(self, file_row: TodoFileRow) -> TodoRow | None:
         """Find the TodoRow that owns a file row."""
@@ -420,7 +411,7 @@ class PreparationView(Widget, can_focus=True):
                 self._update_cursor_highlight()
 
     def action_activate(self) -> None:
-        """Enter: toggle expand/collapse on todo, preview on file."""
+        """Enter: toggle expand/collapse on todo, open editor on file."""
         row = self._current_todo_row()
         if row:
             if self._is_expanded(row.slug):
@@ -449,13 +440,13 @@ class PreparationView(Widget, can_focus=True):
                 self._collapse_todo(widget)
 
     def action_preview_file(self) -> None:
-        """Space: quick-preview the current file row."""
+        """Space: preview the current file in view mode (no focus)."""
         file_row = self._current_file_row()
         if file_row:
             self.post_message(
                 DocPreviewRequest(
                     doc_id=f"todo:{file_row.slug}:{file_row.filename}",
-                    command=self._glow_command(file_row.slug, file_row.filename),
+                    command=self._editor_command(file_row.slug, file_row.filename, view=True),
                     title=f"{file_row.slug}/{file_row.filename}",
                 )
             )

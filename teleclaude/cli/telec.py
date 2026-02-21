@@ -1284,8 +1284,10 @@ def _handle_roadmap_add(args: list[str]) -> None:
         print(_usage("roadmap", "add"))
         raise SystemExit(1)
 
-    add_to_roadmap(str(project_root), slug, group=group, after=after, description=description, before=before)
-    print(f"Added {slug} to roadmap.")
+    if add_to_roadmap(str(project_root), slug, group=group, after=after, description=description, before=before):
+        print(f"Added {slug} to roadmap.")
+    else:
+        print(f"Slug already exists in roadmap: {slug}")
 
 
 def _handle_roadmap_remove(args: list[str]) -> None:

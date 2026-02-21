@@ -33,6 +33,7 @@ from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
     CursorContextChanged,
     DataRefreshed,
+    DocEditRequest,
     DocPreviewRequest,
     FocusPaneRequest,
     KillSessionRequest,
@@ -458,6 +459,10 @@ class TelecApp(App[str | None]):
     def on_doc_preview_request(self, message: DocPreviewRequest) -> None:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_doc_preview_request(message)
+
+    def on_doc_edit_request(self, message: DocEditRequest) -> None:
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge.on_doc_edit_request(message)
 
     def on_cursor_context_changed(self, message: CursorContextChanged) -> None:
         action_bar = self.query_one("#action-bar", ActionBar)

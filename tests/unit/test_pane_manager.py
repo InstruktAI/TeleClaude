@@ -23,7 +23,7 @@ def test_toggle_session_returns_false_when_not_in_tmux():
 
 def test_show_session_tracks_active_pane():
     """Test that show_session sets pane and session state when pane is created."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -43,7 +43,7 @@ def test_show_session_tracks_active_pane():
 
 def test_toggle_session_hides_when_already_showing():
     """Test that toggle_session hides panes when toggling the current session."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -61,7 +61,7 @@ def test_toggle_session_hides_when_already_showing():
 
 def test_hide_sessions_kills_existing_panes_and_clears_state():
     """Test that hide_sessions cleans up panes and resets state."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -80,7 +80,7 @@ def test_hide_sessions_kills_existing_panes_and_clears_state():
 
 def test_set_pane_background_overrides_only_at_paint_theming_level():
     """Session panes get agent fg+bg only when paint theming is active (level 3)."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -101,7 +101,7 @@ def test_set_pane_background_overrides_only_at_paint_theming_level():
 
 def test_set_pane_background_native_when_paint_theming_off():
     """Session panes use native defaults when paint theming is off."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -119,7 +119,7 @@ def test_set_pane_background_native_when_paint_theming_off():
 
 def test_set_pane_background_uses_selected_haze_for_tree_selection():
     """Selected tree sessions should use the lighter tree selection haze when paint theming is on."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -141,7 +141,7 @@ def test_set_pane_background_uses_selected_haze_for_tree_selection():
 
 def test_doc_pane_background_is_applied_for_non_session_specs():
     """Doc/preview panes should get explicit neutral styles."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -161,7 +161,7 @@ def test_doc_pane_background_is_applied_for_non_session_specs():
 
 def test_doc_pane_background_is_tinted_when_paint_theming_is_enabled():
     """Doc/preview panes should use agent colors in paint-theming mode."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -182,7 +182,7 @@ def test_doc_pane_background_is_tinted_when_paint_theming_is_enabled():
 
 def test_doc_pane_background_uses_native_foreground_for_anonymous_paints_in_theming_mode():
     """Doc/paint panes without explicit agent should keep native fg even when paint theming is on."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -203,7 +203,7 @@ def test_doc_pane_background_uses_native_foreground_for_anonymous_paints_in_them
 
 def test_reapply_agent_colors_fallback_styles_tracked_session_panes():
     """Theme refresh should style mapped panes even when active/sticky specs are empty."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -226,7 +226,7 @@ def test_reapply_agent_colors_fallback_styles_tracked_session_panes():
 
 def test_set_tui_pane_background_applies_haze_when_session_theming_on():
     """TUI pane gets haze when session theming is active (levels 1, 3, 4)."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -249,7 +249,7 @@ def test_set_tui_pane_background_applies_haze_when_session_theming_on():
 
 def test_set_tui_pane_background_native_when_session_theming_off():
     """TUI pane uses native defaults when session theming is off (levels 0, 2)."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -270,7 +270,7 @@ def test_set_tui_pane_background_native_when_session_theming_off():
 
 def test_reconcile_prunes_dead_pane_ids():
     """_reconcile() removes session_to_pane entries whose pane no longer exists in tmux."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -292,7 +292,7 @@ def test_reconcile_prunes_dead_pane_ids():
 
 def test_reconcile_clears_active_session_id_when_active_pane_is_dead():
     """_reconcile() clears active_session_id when the active pane has died."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -310,7 +310,7 @@ def test_reconcile_clears_active_session_id_when_active_pane_is_dead():
 
 def test_reconcile_preserves_active_when_pane_is_alive():
     """_reconcile() keeps active_session_id when its pane still exists."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 
@@ -327,7 +327,7 @@ def test_reconcile_preserves_active_when_pane_is_alive():
 
 def test_cold_start_kills_orphaned_panes():
     """Cold-start init kills non-TUI panes left by a crashed process."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         # list-panes returns TUI pane + 2 orphans; _get_current_pane_id is called,
         # then _init_panes(is_reload=False) calls _kill_orphaned_panes.
         call_count = 0
@@ -352,7 +352,7 @@ def test_cold_start_kills_orphaned_panes():
 
 def test_reload_init_preserves_existing_panes():
     """Reload init discovers existing panes without killing them."""
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         killed = []
 
         def side_effect(*args):
@@ -377,7 +377,7 @@ def test_reload_init_preserves_existing_panes():
 def test_render_layout_split_windows_do_not_capture_focus_with_d_flag():
     """Pane splits used for layout updates should keep focus in the TUI pane."""
 
-    with patch.dict(os.environ, {"TMUX": "1"}):
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
         with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
             manager = TmuxPaneManager()
 

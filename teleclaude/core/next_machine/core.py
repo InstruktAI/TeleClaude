@@ -786,12 +786,15 @@ def add_to_roadmap(
     after: list[str] | None = None,
     description: str | None = None,
     before: str | None = None,
-) -> None:
-    """Add entry to roadmap.yaml at specified position (default: append)."""
+) -> bool:
+    """Add entry to roadmap.yaml at specified position (default: append).
+
+    Returns True if the entry was added, False if it already existed.
+    """
     entries = load_roadmap(cwd)
     # Avoid duplicates
     if any(e.slug == slug for e in entries):
-        return
+        return False
 
     entry = RoadmapEntry(slug=slug, group=group, after=after or [], description=description)
 
@@ -800,10 +803,11 @@ def add_to_roadmap(
             if e.slug == before:
                 entries.insert(i, entry)
                 save_roadmap(cwd, entries)
-                return
+                return True
 
     entries.append(entry)
     save_roadmap(cwd, entries)
+    return True
 
 
 def remove_from_roadmap(cwd: str, slug: str) -> bool:

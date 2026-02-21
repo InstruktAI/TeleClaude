@@ -163,33 +163,35 @@ class PaneManagerBridge(TelecMixin, Widget):
 
         # On reload, map discovered panes to session state now that the
         # session catalog is available.  This replaces seed_layout_for_reload.
-        if self.pane_manager._reload_session_panes:
+        if self.pane_manager._reload_session_panes or self.pane_manager._reload_command_panes:
             self.pane_manager.seed_for_reload(
                 active_session_id=self._preview_session_id,
                 sticky_session_ids=list(self._sticky_session_ids),
                 get_computer_info=self._get_computer_info,
             )
 
+    def _set_preview(
+        self,
+        *,
+        session_id: str | None = None,
+        doc: DocPreviewState | None = None,
+        focus: bool = True,
+    ) -> None:
+        """Atomically set the single preview slot and apply layout.
+
+        Session preview and doc preview are mutually exclusive — setting one
+        always clears the other.  All preview handlers funnel through here.
+        """
+        self._preview_session_id = session_id
+        self._active_doc_preview = doc
+        self._apply(focus=focus)
+
     def on_preview_changed(self, message: PreviewChanged) -> None:
         """Handle preview session change — update active pane."""
-        logger.debug(
-            "on_preview_changed: session=%s focus=%s (was=%s)",
-            message.session_id[:8] if message.session_id else None,
-            message.request_focus,
-            self._preview_session_id[:8] if self._preview_session_id else None,
-        )
-        self._preview_session_id = message.session_id
-        if message.session_id:
-            self._active_doc_preview = None  # Session and doc preview are mutually exclusive
-        self._apply(focus=message.request_focus)
+        self._set_preview(session_id=message.session_id, focus=message.request_focus)
 
     def on_sticky_changed(self, message: StickyChanged) -> None:
         """Handle sticky sessions change — rebuild layout without stealing focus."""
-        logger.debug(
-            "on_sticky_changed: ids=%s (was=%s)",
-            [s[:8] for s in message.session_ids],
-            [s[:8] for s in self._sticky_session_ids],
-        )
         self._sticky_session_ids = message.session_ids
         self._apply(focus=False)
 
@@ -199,30 +201,18 @@ class PaneManagerBridge(TelecMixin, Widget):
         self._writer.schedule(lambda: self.pane_manager.focus_pane_for_session(session_id))
 
     def on_doc_preview_request(self, message: DocPreviewRequest) -> None:
-        """Handle doc preview request from preparation view."""
-        logger.debug(
-            "on_doc_preview_request: doc=%s (clearing preview=%s)",
-            message.doc_id,
-            self._preview_session_id[:8] if self._preview_session_id else None,
+        """Handle doc preview request — view mode without focus."""
+        self._set_preview(
+            doc=DocPreviewState(doc_id=message.doc_id, command=message.command, title=message.title),
+            focus=False,
         )
-        self._preview_session_id = None
-        self._active_doc_preview = DocPreviewState(
-            doc_id=message.doc_id,
-            command=message.command,
-            title=message.title,
-        )
-        self._apply()
 
     def on_doc_edit_request(self, message: DocEditRequest) -> None:
-        """Handle doc edit request — same as preview but with editor command."""
-        logger.debug("on_doc_edit_request: doc=%s", message.doc_id)
-        self._preview_session_id = None
-        self._active_doc_preview = DocPreviewState(
-            doc_id=message.doc_id,
-            command=message.command,
-            title=message.title,
+        """Handle doc edit request — edit mode with focus."""
+        self._set_preview(
+            doc=DocPreviewState(doc_id=message.doc_id, command=message.command, title=message.title),
+            focus=True,
         )
-        self._apply()
 
     def reapply_colors(self) -> None:
         """Re-apply agent colors after theme change (non-blocking)."""

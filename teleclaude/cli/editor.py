@@ -1,9 +1,10 @@
 """Standalone Textual markdown editor for tmux pane integration.
 
 Launched by the TUI via PaneManagerBridge as a subprocess in the right
-tmux pane, replacing Glow for editing. Auto-saves on exit.
+tmux pane. Supports view mode (--view, read-only) and edit mode (default,
+auto-saves on exit).
 
-Usage: python -m teleclaude.cli.editor <filepath>
+Usage: python -m teleclaude.cli.editor [-v|--view] <filepath>
 """
 
 from __future__ import annotations
@@ -17,7 +18,12 @@ from textual.widgets import Label, TextArea
 
 
 class EditorApp(App[None]):
-    """Minimal markdown editor with auto-save on exit."""
+    """Minimal markdown editor with auto-save on exit.
+
+    Supports two modes:
+    - Edit mode (default): full editing with auto-save on exit.
+    - View mode (--view): read-only preview, no save on exit.
+    """
 
     BINDINGS = [
         Binding("escape", "save_and_quit", "Save & Quit", priority=True),
@@ -36,15 +42,17 @@ class EditorApp(App[None]):
     }
     """
 
-    def __init__(self, file_path: Path, **kwargs: object) -> None:
+    def __init__(self, file_path: Path, *, view_mode: bool = False, **kwargs: object) -> None:
         super().__init__(**kwargs)
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
         self.file_path = file_path
+        self.view_mode = view_mode
 
     def compose(self) -> ComposeResult:
-        yield Label(f" {self.file_path.name}", id="editor-title")
+        mode_label = "VIEW" if self.view_mode else "EDIT"
+        yield Label(f" [{mode_label}] {self.file_path.name}", id="editor-title")
         content = self.file_path.read_text(encoding="utf-8")
         yield TextArea(
             content,
@@ -52,19 +60,24 @@ class EditorApp(App[None]):
             soft_wrap=True,
             show_line_numbers=True,
             tab_behavior="indent",
+            read_only=self.view_mode,
             id="editor-area",
         )
 
     def on_mount(self) -> None:
-        self.query_one("#editor-area", TextArea).focus()
+        if not self.view_mode:
+            self.query_one("#editor-area", TextArea).focus()
 
     def action_save(self) -> None:
+        if self.view_mode:
+            return
         editor = self.query_one("#editor-area", TextArea)
         self._save_content(editor.text)
 
     def action_save_and_quit(self) -> None:
-        editor = self.query_one("#editor-area", TextArea)
-        self._save_content(editor.text)
+        if not self.view_mode:
+            editor = self.query_one("#editor-area", TextArea)
+            self._save_content(editor.text)
         self.exit()
 
     def _save_content(self, content: str) -> None:
@@ -72,11 +85,16 @@ class EditorApp(App[None]):
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
-        print("Usage: python -m teleclaude.cli.editor <filepath>", file=sys.stderr)
+    args = sys.argv[1:]
+    view_mode = False
+    if args and args[0] in ("-v", "--view"):
+        view_mode = True
+        args = args[1:]
+    if not args:
+        print("Usage: python -m teleclaude.cli.editor [-v|--view] <filepath>", file=sys.stderr)
         sys.exit(1)
-    file_path = Path(sys.argv[1])
-    app = EditorApp(file_path=file_path)
+    file_path = Path(args[0])
+    app = EditorApp(file_path=file_path, view_mode=view_mode)
     app.run()
 
 
