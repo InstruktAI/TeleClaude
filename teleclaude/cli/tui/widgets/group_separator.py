@@ -1,4 +1,4 @@
-"""Shared closing separator for project groups in tree views."""
+"""Separator line widget for tree views: closing lines and group sub-headers."""
 
 from __future__ import annotations
 
