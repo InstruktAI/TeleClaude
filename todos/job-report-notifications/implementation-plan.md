@@ -89,11 +89,11 @@ Replace hardcoded job-to-channel notification mapping with a subscription-driven
 
 **File(s):** `teleclaude/notifications/worker.py`, `tests/unit/test_notifications.py`
 
-- [ ] Update `_deliver_row` to read `delivery_channel` from row
-- [ ] Telegram path: if `recipient_email` contains `@`, resolve via old lookup; else treat as `chat_id` directly
-- [ ] Discord/email paths: log + mark failed with "not implemented" message
-- [ ] Write test: worker delivers via telegram when delivery_channel is "telegram"
-- [ ] Run `pytest tests/unit/test_notifications.py -v` — PASS
+- [x] Update `_deliver_row` to read `delivery_channel` from row
+- [x] Telegram path: if `recipient_email` contains `@`, resolve via old lookup; else treat as `chat_id` directly
+- [x] Discord/email paths: log + mark failed with "not implemented" message
+- [x] Write test: worker delivers via telegram when delivery_channel is "telegram"
+- [x] Run `pytest tests/unit/test_notifications.py -v` — PASS
 
 ---
 

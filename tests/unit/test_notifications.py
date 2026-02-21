@@ -364,3 +364,77 @@ async def test_enqueue_job_notifications_skips_recipient_without_address(tmp_pat
 
     assert row_ids == []
     db.enqueue_notification.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_worker_delivers_via_telegram_with_chat_id_directly(monkeypatch, tmp_path: Path) -> None:
+    """Worker should use recipient as chat_id directly when delivery_channel is telegram and no '@' in recipient."""
+    db = AsyncMock()
+    db.fetch_notification_batch = AsyncMock(
+        return_value=[
+            {
+                "id": 42,
+                "channel": "idea-miner",
+                "recipient_email": "111",
+                "content": "report ready",
+                "file_path": None,
+                "status": "pending",
+                "attempt_count": 0,
+                "delivery_channel": "telegram",
+            },
+        ]
+    )
+    db.claim_notification = AsyncMock(return_value=True)
+    db.mark_notification_delivered = AsyncMock()
+    db.mark_notification_failed = AsyncMock()
+
+    send_mock = AsyncMock(return_value="ok")
+    monkeypatch.setattr("teleclaude.notifications.worker.send_telegram_dm", send_mock)
+
+    worker = NotificationOutboxWorker(
+        db=db,
+        shutdown_event=asyncio.Event(),
+        batch_size=10,
+        root=tmp_path,
+    )
+    await worker._process_once()
+
+    send_mock.assert_awaited_once_with(chat_id="111", content="report ready", file=None)
+    db.mark_notification_delivered.assert_awaited_once_with(42)
+
+
+@pytest.mark.asyncio
+async def test_worker_marks_unsupported_channel_as_failed(tmp_path: Path) -> None:
+    """Worker should mark rows with unsupported delivery_channel as permanently failed."""
+    db = AsyncMock()
+    db.fetch_notification_batch = AsyncMock(
+        return_value=[
+            {
+                "id": 99,
+                "channel": "idea-miner",
+                "recipient_email": "user@example.com",
+                "content": "test",
+                "file_path": None,
+                "status": "pending",
+                "attempt_count": 0,
+                "delivery_channel": "discord",
+            },
+        ]
+    )
+    db.claim_notification = AsyncMock(return_value=True)
+    db.mark_notification_delivered = AsyncMock()
+    db.mark_notification_failed = AsyncMock()
+
+    worker = NotificationOutboxWorker(
+        db=db,
+        shutdown_event=asyncio.Event(),
+        batch_size=10,
+        root=tmp_path,
+    )
+    await worker._process_once()
+
+    db.mark_notification_delivered.assert_not_awaited()
+    db.mark_notification_failed.assert_awaited_once()
+    fail_args = db.mark_notification_failed.await_args.args
+    assert fail_args[0] == 99
+    assert "not implemented" in fail_args[3]

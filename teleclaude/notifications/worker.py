@@ -112,14 +112,35 @@ class NotificationOutboxWorker:
     async def _deliver_row(self, row: "NotificationOutboxRow") -> None:
         """Deliver one outbox row with retry bookkeeping."""
         row_id = row["id"]
-        email = str(row["recipient_email"])
+        recipient = str(row["recipient_email"])
         content = str(row["content"] or "")
         file_path = row.get("file_path")
         file_path_value = str(file_path) if file_path else None
+        delivery_channel = str(row.get("delivery_channel", "telegram"))
 
-        chat_id = self._recipient_for_email(email)
+        if delivery_channel != "telegram":
+            logger.warning(
+                "delivery channel not implemented",
+                row_id=row_id,
+                delivery_channel=delivery_channel,
+            )
+            await self.db.mark_notification_failed(
+                row_id,
+                MAX_RETRIES,
+                "",
+                f"delivery channel '{delivery_channel}' not implemented",
+            )
+            return
+
+        # Resolve chat_id: if recipient contains '@', use old email->chat_id lookup;
+        # otherwise treat recipient as a chat_id directly (new subscription path).
+        if "@" in recipient:
+            chat_id = self._recipient_for_email(recipient)
+        else:
+            chat_id = recipient
+
         if not chat_id:
-            logger.warning("undeliverable notification; no chat_id configured", row_id=row_id, email=email)
+            logger.warning("undeliverable notification; no chat_id configured", row_id=row_id, recipient=recipient)
             await self.db.mark_notification_failed(
                 row_id,
                 MAX_RETRIES,
