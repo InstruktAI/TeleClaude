@@ -12,7 +12,6 @@ from instrukt_ai_logging import get_logger
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
-from textual.theme import Theme
 from textual.widgets import TabbedContent, TabPane
 
 from teleclaude.cli.models import (
@@ -48,7 +47,15 @@ from teleclaude.cli.tui.messages import (
 )
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.state_store import load_state, save_state
-from teleclaude.cli.tui.theme import get_terminal_background, get_tui_inactive_background
+from teleclaude.cli.tui.theme import (
+    _TELECLAUDE_DARK_AGENT_THEME,
+    _TELECLAUDE_DARK_THEME,
+    _TELECLAUDE_LIGHT_AGENT_THEME,
+    _TELECLAUDE_LIGHT_THEME,
+    get_pane_theming_mode_level,
+    get_system_dark_mode,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    get_tui_inactive_background,
+)
 from teleclaude.cli.tui.views.config import ConfigView
 from teleclaude.cli.tui.views.jobs import JobsView
 from teleclaude.cli.tui.views.preparation import PreparationView
@@ -68,106 +75,6 @@ logger = get_logger(__name__)
 # Remove in Phase 4 cleanup.
 class FocusContext:
     pass
-
-
-_terminal_bg = get_terminal_background()
-
-_TELECLAUDE_DARK_THEME = Theme(
-    name="teleclaude-dark",
-    # Neutral structural colors — NOT agent-specific.
-    # Buttons, inputs, selects inherit from these.
-    primary="#808080",  # Neutral gray for UI chrome
-    secondary="#626262",  # Slightly darker neutral
-    accent="#585858",  # Muted focus indicator
-    foreground="#d0d0d0",  # Soft light gray — highlight end
-    background=_terminal_bg,  # Dynamic — matches tmux pane background
-    success="#5faf5f",  # Muted green
-    warning="#d7af5f",  # Warm gold
-    error="#d75f5f",  # Muted red
-    surface="#262626",  # Panel surface
-    panel="#303030",  # Slightly lighter panel
-    dark=True,
-    variables={
-        "block-cursor-text-style": "reverse",
-        "input-selection-background": "#585858 50%",
-        "scrollbar-color": "#444444",
-        "scrollbar-background": _terminal_bg,
-        # --- Agent colors: Claude (dark: subtle→highlight = dark→bright) ---
-        "claude-subtle": "#875f00",
-        "claude-muted": "#af875f",
-        "claude-normal": "#d7af87",
-        "claude-highlight": "#ffffff",
-        # --- Agent colors: Gemini ---
-        "gemini-subtle": "#8787af",
-        "gemini-muted": "#af87ff",
-        "gemini-normal": "#d7afff",
-        "gemini-highlight": "#ffffff",
-        # --- Agent colors: Codex ---
-        "codex-subtle": "#5f87af",
-        "codex-muted": "#87afd7",
-        "codex-normal": "#afd7ff",
-        "codex-highlight": "#ffffff",
-        # --- Neutral structural gradient (white → dark gray) ---
-        "neutral-highlight": "#e0e0e0",
-        "neutral-normal": "#a0a0a0",
-        "neutral-muted": "#707070",
-        "neutral-subtle": "#484848",
-        # --- Structural colors ---
-        "connector": "#808080",  # Tree lines (xterm 244)
-        "separator": "#585858",  # Thin separators
-        "input-border": "#444444",  # Input/select borders
-        "banner-color": "#585858",  # Banner muted
-        "status-fg": "#727578",  # Status bar text
-    },
-)
-
-_TELECLAUDE_LIGHT_THEME = Theme(
-    name="teleclaude-light",
-    # Light mode: inverted gray gradient — black highlight, grading lighter.
-    primary="#808080",  # Neutral gray for UI chrome
-    secondary="#9e9e9e",  # Slightly lighter neutral
-    accent="#a8a8a8",  # Muted focus indicator
-    foreground="#303030",  # Near-black text — highlight end
-    background=_terminal_bg,  # Dynamic — matches tmux pane background
-    success="#3a8a3a",  # Darker green for light bg
-    warning="#8a6a1a",  # Darker gold for light bg
-    error="#b03030",  # Darker red for light bg
-    surface="#f0ead8",  # Slightly darker paper
-    panel="#e8e0cc",  # Panel surface
-    dark=False,
-    variables={
-        "block-cursor-text-style": "reverse",
-        "input-selection-background": "#a0a0a0 50%",
-        "scrollbar-color": "#c0c0c0",
-        "scrollbar-background": _terminal_bg,
-        # --- Agent colors: Claude (light: subtle→highlight = light→dark) ---
-        "claude-subtle": "#d7af87",  # xterm 180
-        "claude-muted": "#af875f",  # xterm 137
-        "claude-normal": "#875f00",  # xterm 94
-        "claude-highlight": "#000000",
-        # --- Agent colors: Gemini (inverted) ---
-        "gemini-subtle": "#d787ff",  # xterm 177
-        "gemini-muted": "#af5fff",  # xterm 135
-        "gemini-normal": "#870087",  # xterm 90
-        "gemini-highlight": "#000000",
-        # --- Agent colors: Codex (inverted) ---
-        "codex-subtle": "#87afd7",  # xterm 110
-        "codex-muted": "#5f87af",  # xterm 67
-        "codex-normal": "#005f87",  # xterm 24
-        "codex-highlight": "#000000",
-        # --- Neutral structural gradient (black → light gray) ---
-        "neutral-highlight": "#202020",
-        "neutral-normal": "#606060",
-        "neutral-muted": "#909090",
-        "neutral-subtle": "#b8b8b8",
-        # --- Structural colors (inverted) ---
-        "connector": "#808080",  # Tree lines (same gray)
-        "separator": "#a0a0a0",  # Thin separators (lighter)
-        "input-border": "#c0c0c0",  # Input/select borders
-        "banner-color": "#a0a0a0",  # Banner muted
-        "status-fg": "#727578",  # Status bar text
-    },
-)
 
 
 RELOAD_EXIT = "__RELOAD__"
@@ -199,9 +106,25 @@ class TelecApp(App[str | None]):
         super().__init__(**kwargs)
         self.register_theme(_TELECLAUDE_DARK_THEME)
         self.register_theme(_TELECLAUDE_LIGHT_THEME)
+        self.register_theme(_TELECLAUDE_DARK_AGENT_THEME)
+        self.register_theme(_TELECLAUDE_LIGHT_AGENT_THEME)
         from teleclaude.cli.tui.theme import is_dark_mode
 
-        self.theme = "teleclaude-dark" if is_dark_mode() else "teleclaude-light"
+        # Initial theme selection: respect persisted pane theming mode
+        # We don't have settings loaded yet (async), but we can default based on env/system
+        # However, theme.get_pane_theming_mode() reads from config (which might not be synced yet?)
+        # Actually config is a global singleton loaded at module level, so it might be available.
+        # But for robustness, we start with peaceful/dark and update on data refresh.
+        # Wait, config.ui.pane_theming_mode is available if config is loaded.
+        is_dark = is_dark_mode()
+        level = get_pane_theming_mode_level()
+        is_agent = level in (1, 3, 4)
+
+        if is_dark:
+            self.theme = "teleclaude-dark-agent" if is_agent else "teleclaude-dark"
+        else:
+            self.theme = "teleclaude-light-agent" if is_agent else "teleclaude-light"
+
         self.api = api
         self._start_view = start_view
         self._persisted = load_state()
@@ -705,6 +628,15 @@ class TelecApp(App[str | None]):
         next_level = (current_level + 1) % 5
         mode = theme.get_pane_theming_mode_from_level(next_level)
         theme.set_pane_theming_mode(mode)
+
+        # Switch app theme based on new level (Peaceful=0/2 -> Neutral, Agent=1/3/4 -> Warm)
+        is_agent = next_level in (1, 3, 4)
+        is_dark = theme.is_dark_mode()
+        if is_dark:
+            self.theme = "teleclaude-dark-agent" if is_agent else "teleclaude-dark"
+        else:
+            self.theme = "teleclaude-light-agent" if is_agent else "teleclaude-light"
+
         status_bar = self.query_one("#status-bar", StatusBar)
         status_bar.pane_theming_mode = mode
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)

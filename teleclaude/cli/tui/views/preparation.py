@@ -339,8 +339,17 @@ class PreparationView(Widget, can_focus=True):
             filepath = f"{project_path}/todos/{slug}/{filename}"
         else:
             filepath = f"todos/{slug}/{filename}"
-        flag = " --view" if view else ""
-        return f"uv run python -m teleclaude.cli.editor{flag} {filepath}"
+
+        flags = []
+        if view:
+            flags.append("--view")
+
+        # Pass current theme to editor subprocess so it matches the TUI
+        if self.app and self.app.theme:
+            flags.append(f"--theme {self.app.theme}")
+
+        flag_str = " " + " ".join(flags) if flags else ""
+        return f"uv run python -m teleclaude.cli.editor{flag_str} {filepath}"
 
     def _find_parent_todo(self, file_row: TodoFileRow) -> TodoRow | None:
         """Find the TodoRow that owns a file row."""
