@@ -206,16 +206,8 @@ async def test_notification_worker_delivers_batch_with_isolated_failures(monkeyp
 
 
 @pytest.mark.unit
-def test_notification_channel_mapping() -> None:
-    """Known job names must map to their notification channels."""
-    assert runner._notification_channel_for_job("idea-miner") == "idea-miner-reports"
-    assert runner._notification_channel_for_job("github-maintenance-runner") == "maintenance-alerts"
-    assert runner._notification_channel_for_job("unmapped-job") is None
-
-
-@pytest.mark.unit
-def test_run_due_jobs_dispatches_mapped_jobs(monkeypatch) -> None:
-    """run_due_jobs should enqueue completion notifications for mapped job names."""
+def test_run_due_jobs_executes_system_jobs(monkeypatch) -> None:
+    """run_due_jobs should execute system-category jobs without notification hooks."""
 
     class _State:
         def get_job(self, _name: str) -> SimpleNamespace:
@@ -251,9 +243,8 @@ def test_run_due_jobs_dispatches_mapped_jobs(monkeypatch) -> None:
         runner,
         "_load_job_schedules",
         lambda config_path=None: {
-            "idea_miner": JobScheduleConfig(schedule="hourly"),
-            "maintenance": JobScheduleConfig(type="agent", job="maintenance"),
-            "ignored_job": JobScheduleConfig(schedule="hourly"),
+            "idea_miner": JobScheduleConfig(schedule="hourly", category="system"),
+            "maintenance": JobScheduleConfig(type="agent", job="maintenance", category="system"),
         },
     )
     monkeypatch.setattr(
@@ -261,35 +252,18 @@ def test_run_due_jobs_dispatches_mapped_jobs(monkeypatch) -> None:
         "discover_jobs",
         lambda: [
             _PythonJob("idea_miner", "reports generated", 12),
-            _PythonJob("ignored_job", "noop", 0),
         ],
     )
     monkeypatch.setattr(runner, "_run_agent_job", lambda _name, _cfg: True)
     monkeypatch.setattr(runner, "CronState", _FakeStateHolder)
-
-    notified: list[tuple[str, bool]] = []
-
-    def fake_notify(
-        job_name: str,
-        *,
-        success: bool,
-        message: str,
-        items_processed: int = 0,
-        file_path: str | None = None,
-    ) -> None:
-        if runner._notification_channel_for_job(job_name):
-            notified.append((job_name, success))
-
-    monkeypatch.setattr(runner, "_notify_job_completion", fake_notify)
+    monkeypatch.setattr(runner, "_scan_and_notify", lambda state, schedules, root=None: None)
 
     results = runner.run_due_jobs()
 
     assert results == {
         "idea_miner": True,
         "maintenance": True,
-        "ignored_job": True,
     }
-    assert set(notified) == {("idea_miner", True), ("maintenance", True)}
 
 
 @pytest.mark.asyncio

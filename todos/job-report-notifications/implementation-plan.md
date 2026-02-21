@@ -103,12 +103,12 @@ Replace hardcoded job-to-channel notification mapping with a subscription-driven
 
 **File(s):** `teleclaude/cron/runner.py`, `tests/unit/test_cron_runner_subscriptions.py` (create)
 
-- [ ] Delete: `_notification_channel_for_job`, `_notification_message_for_job_result`, `_notify_job_completion` (and related helpers)
-- [ ] Add `_should_run_subscription_job(job_name, state, now, *, root) -> bool`: iterates person configs for enabled `JobSubscription` entries with matching job name, checks if any subscriber's `when` schedule is due
-- [ ] In `run_due_jobs`: for subscription jobs, call `_should_run_subscription_job`; skip if False
-- [ ] After job execution loop: call `_scan_and_notify(state, schedules, root)` to find undelivered reports, discover recipients, enqueue notifications, advance `last_notified`
-- [ ] Write tests: subscription job skipped without subscribers, subscription job skipped when all disabled, system job always due, notification scan integration
-- [ ] Run `pytest tests/unit/test_cron_runner_subscriptions.py -v` — PASS
+- [x] Delete: `_notification_channel_for_job`, `_notification_message_for_job_result`, `_notify_job_completion` (and related helpers)
+- [x] Add `_should_run_subscription_job(job_name, state, now, *, root) -> bool`: iterates person configs for enabled `JobSubscription` entries with matching job name, checks if any subscriber's `when` schedule is due
+- [x] In `run_due_jobs`: for subscription jobs, call `_should_run_subscription_job`; skip if False
+- [x] After job execution loop: call `_scan_and_notify(state, schedules, root)` to find undelivered reports, discover recipients, enqueue notifications, advance `last_notified`
+- [x] Write tests: subscription job skipped without subscribers, subscription job skipped when all disabled, system job always due, notification scan integration
+- [x] Run `pytest tests/unit/test_cron_runner_subscriptions.py -v` — PASS
 
 ---
 
