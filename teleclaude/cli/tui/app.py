@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from textual import work
 from textual.app import App, ComposeResult
-from textual.color import Color
 from textual.containers import Vertical
 from textual.theme import Theme
 from textual.widgets import TabbedContent, TabPane
@@ -48,6 +47,7 @@ from teleclaude.cli.tui.messages import (
 )
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.state_store import load_state, save_state
+from teleclaude.cli.tui.theme import get_terminal_background, get_tui_inactive_background
 from teleclaude.cli.tui.views.config import ConfigView
 from teleclaude.cli.tui.views.jobs import JobsView
 from teleclaude.cli.tui.views.preparation import PreparationView
@@ -69,6 +69,8 @@ class FocusContext:
     pass
 
 
+_terminal_bg = get_terminal_background()
+
 _TELECLAUDE_DARK_THEME = Theme(
     name="teleclaude-dark",
     # Neutral structural colors — NOT agent-specific.
@@ -77,7 +79,7 @@ _TELECLAUDE_DARK_THEME = Theme(
     secondary="#626262",  # Slightly darker neutral
     accent="#585858",  # Muted focus indicator
     foreground="#d0d0d0",  # Soft light gray — highlight end
-    background="#1c1c1c",  # Dark terminal background
+    background=_terminal_bg,  # Dynamic — matches tmux pane background
     success="#5faf5f",  # Muted green
     warning="#d7af5f",  # Warm gold
     error="#d75f5f",  # Muted red
@@ -88,7 +90,7 @@ _TELECLAUDE_DARK_THEME = Theme(
         "block-cursor-text-style": "reverse",
         "input-selection-background": "#585858 50%",
         "scrollbar-color": "#444444",
-        "scrollbar-background": "#1c1c1c",
+        "scrollbar-background": _terminal_bg,
         # --- Agent colors: Claude (dark: subtle→highlight = dark→bright) ---
         "claude-subtle": "#875f00",
         "claude-muted": "#af875f",
@@ -125,7 +127,7 @@ _TELECLAUDE_LIGHT_THEME = Theme(
     secondary="#9e9e9e",  # Slightly lighter neutral
     accent="#a8a8a8",  # Muted focus indicator
     foreground="#303030",  # Near-black text — highlight end
-    background="#fdf6e3",  # Warm paper background
+    background=_terminal_bg,  # Dynamic — matches tmux pane background
     success="#3a8a3a",  # Darker green for light bg
     warning="#8a6a1a",  # Darker gold for light bg
     error="#b03030",  # Darker red for light bg
@@ -136,7 +138,7 @@ _TELECLAUDE_LIGHT_THEME = Theme(
         "block-cursor-text-style": "reverse",
         "input-selection-background": "#a0a0a0 50%",
         "scrollbar-color": "#c0c0c0",
-        "scrollbar-background": "#fdf6e3",
+        "scrollbar-background": _terminal_bg,
         # --- Agent colors: Claude (light: subtle→highlight = light→dark) ---
         "claude-subtle": "#d7af87",  # xterm 180
         "claude-muted": "#af875f",  # xterm 137
@@ -208,8 +210,6 @@ class TelecApp(App[str | None]):
         # On SIGUSR2 reload, panes already exist — skip layout re-application
         self._is_reload = bool(os.environ.pop("TELEC_RELOAD", ""))
         self._initial_layout_applied = self._is_reload
-        self._pane_has_focus = True
-
         # Animation engine and triggers
         from teleclaude.cli.tui.animation_engine import AnimationEngine
 
@@ -218,8 +218,31 @@ class TelecApp(App[str | None]):
         self._activity_trigger: object | None = None
         self._animation_timer: object | None = None
 
+    def get_css_variables(self) -> dict[str, str]:
+        """Override CSS variables to inject haze background when unfocused.
+
+        Textual emits explicit ANSI backgrounds for every cell, so tmux's
+        window-style cannot apply its inactive haze. We swap $background
+        at the CSS variable level so ALL widgets pick up the haze color.
+        """
+        variables = super().get_css_variables()
+        if not self.app_focus:
+            haze = get_tui_inactive_background()
+            variables["background"] = haze
+            variables["scrollbar-background"] = haze
+        return variables
+
+    def _watch_app_focus(self, focus: bool) -> None:
+        """Trigger CSS variable recomputation on focus change.
+
+        Uses refresh_css() — the same mechanism Textual uses for theme
+        switching. This recomputes get_css_variables() and propagates
+        $background to all widgets.
+        """
+        self.refresh_css(animate=False)
+
     def compose(self) -> ComposeResult:
-        logger.info("[PERF] compose START t=%.3f", _t.monotonic())
+        logger.trace("[PERF] compose START t=%.3f", _t.monotonic())
         yield Banner()
         yield BoxTabBar(id="box-tab-bar")
         with TabbedContent(id="main-tabs"):
@@ -235,12 +258,12 @@ class TelecApp(App[str | None]):
             yield ActionBar(id="action-bar")
             yield StatusBar(id="status-bar")
         yield PaneManagerBridge(id="pane-bridge")
-        logger.info("[PERF] compose END t=%.3f", _t.monotonic())
+        logger.trace("[PERF] compose END t=%.3f", _t.monotonic())
 
     async def on_mount(self) -> None:
         """Initialize on mount: load state, connect API, start refresh."""
         _m0 = _t.monotonic()
-        logger.info("[PERF] on_mount START t=%.3f", _m0)
+        logger.trace("[PERF] on_mount START t=%.3f", _m0)
         # Restore persisted state to views
         sessions_view = self.query_one("#sessions-view", SessionsView)
         prep_view = self.query_one("#preparation-view", PreparationView)
@@ -275,9 +298,6 @@ class TelecApp(App[str | None]):
         # Focus the active view so key bindings work
         self._focus_active_view(start_tab)
 
-        # Set initial background from terminal background
-        self._apply_haze_background(active=True)
-
         # Connect API and start refresh
         try:
             await self.api.connect()
@@ -290,10 +310,11 @@ class TelecApp(App[str | None]):
             subscriptions=["sessions", "projects", "todos"],
         )
 
-        logger.info("[PERF] on_mount api+ws done dt=%.3f", _t.monotonic() - _m0)
+        logger.trace("[PERF] on_mount api+ws done dt=%.3f", _t.monotonic() - _m0)
 
         # Initial data load (computers loaded in parallel inside _refresh_data)
         self._refresh_data()
+        self.call_after_refresh(lambda: logger.trace("[PERF] on_mount FIRST_PAINT dt=%.3f", _t.monotonic() - _m0))
 
         # SIGUSR2 handler for reload.
         # signal.signal() ensures the signal is always caught (preventing
@@ -319,7 +340,7 @@ class TelecApp(App[str | None]):
         computer_updated WS events trigger _reload_computers() separately.
         """
         _r0 = _t.monotonic()
-        logger.info("[PERF] _refresh_data START t=%.3f", _r0)
+        logger.trace("[PERF] _refresh_data START t=%.3f", _r0)
         try:
             computers, projects_with_todos, sessions, availability, jobs, settings = await asyncio.gather(
                 self.api.list_computers(),
@@ -329,7 +350,7 @@ class TelecApp(App[str | None]):
                 self.api.list_jobs(),
                 self.api.get_settings(),
             )
-            logger.info("[PERF] _refresh_data gather done dt=%.3f", _t.monotonic() - _r0)
+            logger.trace("[PERF] _refresh_data gather done dt=%.3f", _t.monotonic() - _r0)
             self._computers = computers
 
             # Derive plain projects list from projects_with_todos
@@ -368,7 +389,7 @@ class TelecApp(App[str | None]):
     def on_data_refreshed(self, message: DataRefreshed) -> None:
         """Handle refreshed data — update all views."""
         _d0 = _t.monotonic()
-        logger.info("[PERF] on_data_refreshed START t=%.3f", _d0)
+        logger.trace("[PERF] on_data_refreshed START t=%.3f", _d0)
         sessions_view = self.query_one("#sessions-view", SessionsView)
         prep_view = self.query_one("#preparation-view", PreparationView)
         jobs_view = self.query_one("#jobs-view", JobsView)
@@ -386,7 +407,7 @@ class TelecApp(App[str | None]):
         status_bar.tts_enabled = message.tts_enabled
         status_bar.pane_theming_mode = message.pane_theming_mode
 
-        logger.info("[PERF] on_data_refreshed views updated dt=%.3f", _t.monotonic() - _d0)
+        logger.trace("[PERF] on_data_refreshed views updated dt=%.3f", _t.monotonic() - _d0)
 
         # Update session status cache
         self._session_status_cache = {s.session_id: s.status for s in message.sessions}
@@ -632,7 +653,8 @@ class TelecApp(App[str | None]):
     # --- Tab switching ---
 
     def action_switch_tab(self, tab_id: str) -> None:
-        logger.info("[PERF] action_switch_tab(%s) START t=%.3f", tab_id, _t.monotonic())
+        _sw0 = _t.monotonic()
+        logger.trace("[PERF] action_switch_tab(%s) START t=%.3f", tab_id, _sw0)
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.active = tab_id
         box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
@@ -640,10 +662,13 @@ class TelecApp(App[str | None]):
         action_bar = self.query_one("#action-bar", ActionBar)
         action_bar.active_view = tab_id
         self._focus_active_view(tab_id)
+        self.call_after_refresh(
+            lambda: logger.trace("[PERF] action_switch_tab(%s) PAINTED dt=%.3f", tab_id, _t.monotonic() - _sw0)
+        )
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         tab_id = event.pane.id or "sessions"
-        logger.info("[PERF] tab_activated(%s) t=%.3f", tab_id, _t.monotonic())
+        logger.trace("[PERF] tab_activated(%s) t=%.3f", tab_id, _t.monotonic())
         box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
         box_tabs.active_tab = tab_id
         action_bar = self.query_one("#action-bar", ActionBar)
@@ -670,53 +695,6 @@ class TelecApp(App[str | None]):
             except Exception:
                 pass
 
-    # --- TUI pane haze (inactive background) ---
-
-    def _apply_haze_background(self, active: bool) -> None:
-        """Set TUI background based on tmux pane focus state.
-
-        When the TUI pane is inactive (a session pane is focused),
-        apply a subtle haze. When active, use the terminal background.
-        """
-        from teleclaude.cli.tui import theme
-
-        if not theme.should_apply_session_theming():
-            return
-        if active:
-            bg = theme.get_terminal_background()
-        else:
-            bg = theme.get_tui_inactive_background()
-        try:
-            self.screen.styles.background = Color.parse(bg)
-        except Exception:
-            pass
-
-    def on_app_focus(self) -> None:
-        """TUI pane gained focus — debounce to avoid reacting to mouse-down.
-
-        tmux switches pane focus on mouse-down, but we should only apply
-        haze changes after the interaction settles (mouse-up).
-        """
-        self._pane_has_focus = True
-        self._schedule_haze_update(active=True)
-
-    def on_app_blur(self) -> None:
-        """TUI pane lost focus — debounce to avoid reacting to transient events."""
-        self._pane_has_focus = False
-        self._schedule_haze_update(active=False)
-
-    def _schedule_haze_update(self, active: bool) -> None:
-        """Debounce haze updates — wait 350ms to avoid reacting to mouse-down."""
-        timer = getattr(self, "_haze_timer", None)
-        if timer is not None:
-            timer.stop()
-        self._haze_timer = self.set_timer(0.35, lambda: self._apply_haze_if_stable(active))
-
-    def _apply_haze_if_stable(self, active: bool) -> None:
-        """Apply haze only if focus state is still what we expected."""
-        if self._pane_has_focus == active:
-            self._apply_haze_background(active=active)
-
     # --- Pane theming ---
 
     def action_cycle_pane_theming(self) -> None:
@@ -732,8 +710,6 @@ class TelecApp(App[str | None]):
         status_bar.pane_theming_mode = mode
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.reapply_colors()
-        # Re-apply haze with new theming mode
-        self._apply_haze_background(active=self._pane_has_focus)
         # Refresh theme-dependent widgets (agent vs peaceful colors)
         for widget in self.query(SessionRow):
             widget.refresh()

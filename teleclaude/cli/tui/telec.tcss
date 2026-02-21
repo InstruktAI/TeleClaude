@@ -10,7 +10,11 @@
  */
 
 TelecApp {
-    /* Background set dynamically by _apply_haze_background for tmux pane haze */
+    background: transparent;
+}
+
+Screen {
+    background: $background;
 }
 
 /* ── Global hover/focus suppression ───────────────────── */
