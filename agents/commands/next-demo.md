@@ -40,9 +40,9 @@ Capture a data snapshot from todo artifacts and git, generate a render script, p
 
 2. **Read todo artifacts** from `todos/{slug}/`: `requirements.md` (Goal section for Act 1), `implementation-plan.md` (overview for Act 2), `review-findings.md` (criticals for Act 3, if exists), `quality-checklist.md` (gate status), `state.json` (review rounds, findings data).
 
-3. **Gather git metrics** from the worktree: `git log --oneline main..HEAD` (commit count), `git diff --stat main..HEAD` (files changed, lines), `git diff --diff-filter=A --name-only main..HEAD` (files created), `git log --oneline main..HEAD -- "tests/"` (tests added).
+3. **Gather git metrics** from the merge commit: `git log --oneline main~1..main` (commit count), `git diff --stat main~1..main` (files changed, lines), `git diff --diff-filter=A --name-only main~1..main` (files created), `git log --oneline main~1..main -- "tests/"` (tests added).
 
-4. **Read delivery context.** `todos/delivered.md` for title and date (latest entry matching slug). Project version from `pyproject.toml`. Merge commit hash: `git log -1 --format=%h main`.
+4. **Read delivery context.** `todos/delivered.md` for title and date (latest entry matching slug). Project version from `pyproject.toml`. Merge commit hash: `git log -1 --format=%h main` (the merge commit itself).
 
 5. **Compose snapshot.json** per the demo-artifact spec with slug, title, sequence, version, delivered date, commit hash, metrics object, and acts object.
 
