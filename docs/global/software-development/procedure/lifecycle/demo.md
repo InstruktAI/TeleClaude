@@ -61,8 +61,13 @@ Celebrate every delivery with a visual, engaging presentation of what was built.
    When no rich renderer exists, fall back to well-formatted markdown.
    The content matters more than the medium — a plain-text feast still counts.
 
-4. **Archive.** The presentation is the demo — no separate artifact needed.
-   The delivery log in `todos/delivered.md` already records the what and when.
+4. **Archive.** Create a durable demo artifact:
+   - Determine the sequence number from existing `demos/*/` folders + 1. Zero-pad to 3 digits.
+   - Create `demos/{NNN}-{slug}/` directory.
+   - Write `snapshot.json` with captured metrics, narrative data, and the current project version from `pyproject.toml`.
+   - Generate `demo.sh` render script with semver gate: the script checks major version compatibility before executing, prints a message and exits 0 on mismatch.
+   - Commit the demo folder before cleanup removes the source data.
+   - See `project/spec/demo-artifact` for the full schema.
 
 ## Outputs
 

@@ -98,18 +98,18 @@ The demo step lives in the `"next-finalize"` completion instructions template (`
 
 **File(s):** `docs/global/software-development/procedure/lifecycle/demo.md`
 
-- [ ] Replace step 4 (Archive) with:
+- [x] Replace step 4 (Archive) with:
   - Determine sequence number, create `demos/{NNN}-{slug}/`
   - Write `snapshot.json` with captured data and current project version
   - Generate `demo.sh` render script with semver gate
   - Commit the demo folder before cleanup removes the source data
-- [ ] Add version gating to the procedure: render scripts check semver compatibility before executing
+- [x] Add version gating to the procedure: render scripts check semver compatibility before executing
 
 ### Task 4.2: Update lifecycle overview — add Demo phase
 
 **File(s):** `docs/global/software-development/procedure/lifecycle-overview.md`
 
-- [ ] Add Demo as phase 6 between Finalize and Maintenance:
+- [x] Add Demo as phase 6 between Finalize and Maintenance:
   ```
   1. Prepare
   2. Build
@@ -119,7 +119,7 @@ The demo step lives in the `"next-finalize"` completion instructions template (`
   6. Demo
   7. Maintenance
   ```
-- [ ] Add a section describing the Demo phase: output is `demos/{NNN}-{slug}/`, responsibility is Orchestrator, triggered automatically after finalize, gated by semver at render time
+- [x] Add a section describing the Demo phase: output is `demos/{NNN}-{slug}/`, responsibility is Orchestrator, triggered automatically after finalize, gated by semver at render time
 
 ### Task 4.3: Sync index after doc changes
 
