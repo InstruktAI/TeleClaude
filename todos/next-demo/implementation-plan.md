@@ -75,7 +75,7 @@ The demo system has five parts: artifact storage with numbered folders, a comman
 
 The demo step lives in the `"next-finalize"` completion instructions template (`COMPLETION_INSTRUCTIONS` dict, ~line 143). Insert the demo dispatch between "end session" and "CLEANUP":
 
-- [ ] In the `"next-finalize"` template, insert a DEMO step:
+- [x] In the `"next-finalize"` template, insert a DEMO step:
   ```
   WHEN WORKER COMPLETES:
   1. Verify merge succeeded and delivery log updated
@@ -87,8 +87,8 @@ The demo step lives in the `"next-finalize"` completion instructions template (`
      - CLEANUP (orchestrator-owned, run from main repo):
        ...
   ```
-- [ ] Add `"next-demo"` to `COMPLETION_INSTRUCTIONS` with a simple handler (demo has no post-completion orchestration — the next call is already wired from finalize's handler)
-- [ ] The demo step is non-blocking: if it fails, log a warning and proceed to cleanup
+- [x] Add `"next-demo"` to `COMPLETION_INSTRUCTIONS` with a simple handler (demo has no post-completion orchestration — the next call is already wired from finalize's handler)
+- [x] The demo step is non-blocking: if it fails, log a warning and proceed to cleanup
 
 ---
 
