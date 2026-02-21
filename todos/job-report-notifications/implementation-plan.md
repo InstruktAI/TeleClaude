@@ -55,12 +55,12 @@ Replace hardcoded job-to-channel notification mapping with a subscription-driven
 
 **File(s):** `teleclaude/cron/job_recipients.py` (create), `tests/unit/test_job_recipients.py` (create)
 
-- [ ] Create `discover_job_recipients(job_name, job_category, *, root) -> list[tuple[CredsConfig, SubscriptionNotification]]`
-- [ ] Subscription jobs: find all people with matching `JobSubscription` where `enabled=True`
-- [ ] System jobs: all admins auto-included + explicit enabled subscribers; dedup within person
-- [ ] Disabled subscriptions (`enabled=False`) skipped entirely
-- [ ] Write tests: subscription job finds subscribers, system job includes admins, admin+subscriber dedup, disabled subscription ignored, no subscribers returns empty
-- [ ] Run `pytest tests/unit/test_job_recipients.py -v` — PASS
+- [x] Create `discover_job_recipients(job_name, job_category, *, root) -> list[tuple[CredsConfig, SubscriptionNotification]]`
+- [x] Subscription jobs: find all people with matching `JobSubscription` where `enabled=True`
+- [x] System jobs: all admins auto-included + explicit enabled subscribers; dedup within person
+- [x] Disabled subscriptions (`enabled=False`) skipped entirely
+- [x] Write tests: subscription job finds subscribers, system job includes admins, admin+subscriber dedup, disabled subscription ignored, no subscribers returns empty
+- [x] Run `pytest tests/unit/test_job_recipients.py -v` — PASS
 
 ### Task 2.2: Notification scan — mailbox flag pattern
 
