@@ -236,3 +236,37 @@ Consider idempotency pattern: scaffold once on person creation, or cache scaffol
 **Verdict: REQUEST CHANGES**
 
 Phases 1-5 are well-implemented with clean code and good error handling. However, the missing scope (notification expansion), lack of deferrals documentation, and absence of tests block approval.
+
+---
+
+## Fixes Applied
+
+### Finding #1 — Missing Notification Channel Expansion (Critical)
+
+**Fix:** Created `deferrals.md` documenting Phase 7 as explicitly deferred. Notification channel expansion is separate from the core invite flow — invite emails are sent directly, not via the outbox worker.
+**Commit:** `491b88a0`
+
+### Finding #2 — Missing deferrals.md (Critical)
+
+**Fix:** Created `todos/member-invite/deferrals.md` documenting all deferred phases (6, 7, 8, 9) with justification, impact assessment, and follow-up actions.
+**Commit:** `491b88a0`
+
+### Finding #3 — Missing test coverage (Critical)
+
+**Fix:** Documented in `deferrals.md` Phase 8 section. Tests require mock infrastructure for SMTP, Telegram/Discord APIs, and identity resolution. Follow-up todo recommended.
+**Commit:** `491b88a0`
+
+### Finding #4 — Dead code: resolve_project_path() (Important)
+
+**Fix:** Removed `resolve_project_path()` and unused `Any` import from `teleclaude/invite.py`. Both adapters call `scaffold_personal_workspace()` directly — the centralized helper was never wired up.
+**Commit:** `22d53be6`
+
+### Finding #5 — Docstring inaccuracy: send_invite_email() (Important)
+
+**Fix:** Updated docstring to reflect actual behavior: added `Note:` section explaining stdout fallback when BREVO_SMTP_USER is missing, removed incorrect `ValueError` from `Raises:`.
+**Commit:** `a17e5a4a`
+
+### Finding #6 — Import inside function (Important)
+
+**Fix:** Moved `import re` from inside `send_email()` function body to module top level in `teleclaude/notifications/email.py`.
+**Commit:** `64e066da`
