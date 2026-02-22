@@ -268,7 +268,7 @@ After creating the bug scaffold, create branch, worktree, and dispatch orchestra
 
 ---
 
-### Task 9: Verification
+### Task 9: Verification ✓
 
 **Steps:**
 
