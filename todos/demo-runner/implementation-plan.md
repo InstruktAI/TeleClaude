@@ -10,13 +10,13 @@ Replace the post-finalize demo creation flow with build-phase demo artifacts and
 
 **File(s):** `docs/project/spec/demo-artifact.md`
 
-- [ ] Change folder convention from `demos/NNN-{slug}/` to `demos/{slug}/`
-- [ ] Remove sequence number references and `sequence` field from schema
-- [ ] Add `demo` field (optional string) to `snapshot.json` schema
-- [ ] Document that `demo` is a shell command executed from the demo folder directory
-- [ ] Remove `demo.sh` contract section (steps 7-8 in current spec)
-- [ ] Add backward compatibility note: runner warns when `demo` field is absent
-- [ ] Fix delivery file reference: `delivered.md` → `delivered.yaml`
+- [x] Change folder convention from `demos/NNN-{slug}/` to `demos/{slug}/`
+- [x] Remove sequence number references and `sequence` field from schema
+- [x] Add `demo` field (optional string) to `snapshot.json` schema
+- [x] Document that `demo` is a shell command executed from the demo folder directory
+- [x] Remove `demo.sh` contract section (steps 7-8 in current spec)
+- [x] Add backward compatibility note: runner warns when `demo` field is absent
+- [x] Fix delivery file reference: `delivered.md` → `delivered.yaml`
 
 ### Task 1.2: Migrate existing demo folders
 

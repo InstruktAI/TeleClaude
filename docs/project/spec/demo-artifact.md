@@ -2,20 +2,20 @@
 id: 'project/spec/demo-artifact'
 type: 'spec'
 scope: 'project'
-description: 'Demo artifact format: numbered folders with snapshot.json and demo.sh for celebrating deliveries.'
+description: 'Demo artifact format: slug-based folders with snapshot.json containing a runnable demo command.'
 ---
 
 # Demo Artifact — Spec
 
 ## What it is
 
-Each delivery produces a demo artifact in `demos/`. Artifacts are committed to git and gated by semver.
+Each delivery produces a demo artifact in `demos/`. Artifacts are committed to git and gated by semver. Demos are created during the build phase and verified by the reviewer.
 
 ## Canonical fields
 
 ### Folder convention
 
-`demos/NNN-{slug}/` where NNN is a zero-padded sequence number derived from count of existing `demos/*/` folders + 1.
+`demos/{slug}/` — slug-based naming with no sequence numbers.
 
 ### snapshot.json schema
 
@@ -23,10 +23,10 @@ Each delivery produces a demo artifact in `demos/`. Artifacts are committed to g
 {
   "slug": "string",
   "title": "string",
-  "sequence": "integer",
   "version": "string (semver from pyproject.toml)",
   "delivered": "string (YYYY-MM-DD)",
   "commit": "string (merge commit hash)",
+  "demo": "string (optional shell command executed from demo folder)",
   "metrics": {
     "commits": "integer",
     "files_changed": "integer",
@@ -47,18 +47,14 @@ Each delivery produces a demo artifact in `demos/`. Artifacts are committed to g
 }
 ```
 
-### demo.sh contract
+### Demo field
 
-A bash script that:
-
-1. Reads `snapshot.json` from its own directory (`$(dirname "$0")/snapshot.json`)
-2. Reads the current project version from `pyproject.toml`
-3. Compares major versions — if incompatible, prints a message and exits 0
-4. Renders the demo via `render_widget` (curl to daemon API) or falls back to formatted terminal output (jq + printf)
-5. Must be `chmod +x`
+The `demo` field is an optional shell command string that demonstrates the feature. The command is executed with `shell=True` from the demo folder directory as the current working directory. If absent, the runner warns and skips execution (backward compatibility).
 
 ## Known caveats
 
 - Demo artifacts survive cleanup (they live outside `todos/{slug}/`)
 - Breaking major version bumps disable stale demos automatically via the semver gate
 - No retroactive demo generation for past deliveries
+- Existing demos may use variant field names (`delivered_date` instead of `delivered`, etc.) — the CLI runner handles these with fallbacks
+- Delivery log is `todos/delivered.yaml`, not `delivered.md`
