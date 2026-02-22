@@ -172,7 +172,7 @@ feat(config): rewrite invite with token generation, email delivery, and auto-inv
 
 **File(s):** `teleclaude/adapters/telegram_adapter.py`
 
-- [ ] In `start()` method (around line 534), add a new handler BEFORE the supergroup text handler:
+- [x] In `start()` method (around line 534), add a new handler BEFORE the supergroup text handler:
   ```python
   private_start_handler = CommandHandler(
       "start",
@@ -181,7 +181,7 @@ feat(config): rewrite invite with token generation, email delivery, and auto-inv
   )
   self.app.add_handler(private_start_handler)
   ```
-- [ ] Add `async _handle_private_start(self, update, context)`:
+- [x] Add `async _handle_private_start(self, update, context)`:
   1. Extract `/start {payload}` — the payload is `context.args[0]` if present
   2. If no payload or payload doesn't start with `inv_` → respond "Send me your invite token to get started, or contact your admin for an invite link."
   3. Call `find_person_by_invite_token(payload)` (from config_handlers)
@@ -199,7 +199,7 @@ feat(config): rewrite invite with token generation, email delivery, and auto-inv
 
 **File(s):** `teleclaude/adapters/telegram_adapter.py`
 
-- [ ] Add handler for `ChatType.PRIVATE & TEXT & ~COMMAND`:
+- [x] Add handler for `ChatType.PRIVATE & TEXT & ~COMMAND`:
   ```python
   private_text_handler = MessageHandler(
       filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
@@ -207,7 +207,7 @@ feat(config): rewrite invite with token generation, email delivery, and auto-inv
   )
   self.app.add_handler(private_text_handler)
   ```
-- [ ] In `_handle_private_text(self, update, context)`:
+- [x] In `_handle_private_text(self, update, context)`:
   1. Get sender's `user_id` from `update.effective_user.id`
   2. Resolve identity via `IdentityResolver` (already resolves by `telegram_user_id`)
   3. If known person → route message to their personal workspace session (find or create)
@@ -217,7 +217,7 @@ feat(config): rewrite invite with token generation, email delivery, and auto-inv
 
 **File(s):** `teleclaude/invite.py`
 
-- [ ] Add `scaffold_personal_workspace(person_name: str) -> Path`:
+- [x] Add `scaffold_personal_workspace(person_name: str) -> Path`:
   - Target: `~/.teleclaude/people/{person_name}/workspace/`
   - `os.makedirs(exist_ok=True)`
   - If `AGENTS.master.md` exists in person's home folder, symlink or copy to workspace
