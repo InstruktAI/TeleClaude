@@ -68,6 +68,7 @@ def create_todo_skeleton(
     - todos/{slug}/requirements.md
     - todos/{slug}/implementation-plan.md
     - todos/{slug}/quality-checklist.md
+    - todos/{slug}/demo.md
     - todos/{slug}/state.yaml
 
     Optionally registers the slug in todos/roadmap.yaml when ``after`` is provided.
@@ -88,12 +89,14 @@ def create_todo_skeleton(
     plan = _read_template("implementation-plan.md").format(slug=slug)
     checklist = _read_template("quality-checklist.md").format(slug=slug)
     input_md = _read_template("input.md").format(slug=slug)
+    demo_md = _read_template("demo.md").format(slug=slug)
     state_content = yaml.dump(_DEFAULT_STATE, default_flow_style=False, sort_keys=False)
 
     _write_file(todo_dir / "requirements.md", req)
     _write_file(todo_dir / "implementation-plan.md", plan)
     _write_file(todo_dir / "quality-checklist.md", checklist)
     _write_file(todo_dir / "input.md", input_md)
+    _write_file(todo_dir / "demo.md", demo_md)
     _write_file(todo_dir / "state.yaml", state_content)
 
     if after is not None:

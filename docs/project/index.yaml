@@ -530,8 +530,7 @@ snippets:
   role: member
   source_project: TeleClaude
 - id: project/spec/demo-artifact
-  description: 'Demo artifact format: slug-based folders with snapshot.json containing
-    a runnable demo command.'
+  description: 'Demo artifact format: slug-based folders with snapshot.json and demo.md.'
   type: spec
   scope: project
   path: docs/project/spec/demo-artifact.md

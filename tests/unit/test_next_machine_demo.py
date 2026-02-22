@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from teleclaude.cli.telec import _handle_todo_demo
+from teleclaude.cli.telec import _extract_demo_blocks, _handle_todo_demo
 
 # =============================================================================
 # Demo Artifact Spec Tests
@@ -263,3 +263,161 @@ def test_cli_demo_run_semver_gate_compatible(tmp_path: Path, capsys):
             assert e.code == 0
     captured = capsys.readouterr()
     assert "Running demo: test-slug" in captured.out
+
+
+# =============================================================================
+# Code Block Extraction Tests
+# =============================================================================
+
+
+def test_extract_demo_blocks_basic():
+    """Extract simple bash code blocks from demo.md content."""
+    content = """# Demo
+
+Some text.
+
+```bash
+echo "hello"
+```
+
+More text.
+
+```bash
+echo "world"
+```
+"""
+    blocks = _extract_demo_blocks(content)
+    assert len(blocks) == 2
+    assert blocks[0][1].strip() == 'echo "hello"'
+    assert blocks[0][2] is False  # not skipped
+    assert blocks[1][1].strip() == 'echo "world"'
+
+
+def test_extract_demo_blocks_skip_validation():
+    """Skip-validation annotation marks blocks as skipped."""
+    content = """# Demo
+
+<!-- skip-validation: requires visual confirmation -->
+```bash
+open http://localhost:3000
+```
+
+```bash
+echo "this runs"
+```
+"""
+    blocks = _extract_demo_blocks(content)
+    assert len(blocks) == 2
+    assert blocks[0][2] is True  # skipped
+    assert "visual confirmation" in blocks[0][3]
+    assert blocks[1][2] is False  # not skipped
+
+
+def test_extract_demo_blocks_no_blocks():
+    """No code blocks returns empty list."""
+    content = """# Demo
+
+Just guided steps. No code blocks here.
+"""
+    blocks = _extract_demo_blocks(content)
+    assert blocks == []
+
+
+def test_extract_demo_blocks_non_bash_ignored():
+    """Non-bash fenced blocks are not extracted."""
+    content = """# Demo
+
+```python
+print("ignored")
+```
+
+```bash
+echo "extracted"
+```
+"""
+    blocks = _extract_demo_blocks(content)
+    assert len(blocks) == 1
+    assert blocks[0][1].strip() == 'echo "extracted"'
+
+
+# =============================================================================
+# demo.md CLI Runner Tests
+# =============================================================================
+
+
+def test_cli_demo_prefers_demo_md_over_snapshot(tmp_path: Path, capsys):
+    """CLI runner prefers demo.md over snapshot.json demo field."""
+    demos_dir = tmp_path / "demos" / "test-slug"
+    demos_dir.mkdir(parents=True)
+    snapshot = _make_snapshot({"version": "0.1.0", "demo": "echo 'snapshot demo'"})
+    (demos_dir / "snapshot.json").write_text(json.dumps(snapshot))
+    (demos_dir / "demo.md").write_text('# Demo\n\n```bash\necho "demo.md wins"\n```\n')
+
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "0.2.0"\n')
+
+    with patch("teleclaude.cli.telec.Path.cwd", return_value=tmp_path):
+        try:
+            _handle_todo_demo(["test-slug"])
+        except SystemExit as e:
+            assert e.code == 0
+    captured = capsys.readouterr()
+    assert "demo validation" in captured.out.lower()
+    assert "PASS" in captured.out
+
+
+def test_cli_demo_finds_demo_md_in_todos(tmp_path: Path, capsys):
+    """CLI runner finds demo.md in todos/{slug}/ during build phase."""
+    # Create demos dir with snapshot but no demo.md
+    demos_dir = tmp_path / "demos" / "test-slug"
+    demos_dir.mkdir(parents=True)
+    snapshot = _make_snapshot({"version": "0.1.0"})
+    del snapshot["demo"]
+    (demos_dir / "snapshot.json").write_text(json.dumps(snapshot))
+
+    # Create demo.md in todos
+    todos_dir = tmp_path / "todos" / "test-slug"
+    todos_dir.mkdir(parents=True)
+    (todos_dir / "demo.md").write_text('# Demo\n\n```bash\necho "from todos"\n```\n')
+
+    with patch("teleclaude.cli.telec.Path.cwd", return_value=tmp_path):
+        try:
+            _handle_todo_demo(["test-slug"])
+        except SystemExit as e:
+            assert e.code == 0
+    captured = capsys.readouterr()
+    assert "todos/test-slug/demo.md" in captured.out
+    assert "PASS" in captured.out
+
+
+def test_cli_demo_guided_only_exits_zero(tmp_path: Path, capsys):
+    """demo.md with no code blocks exits 0 with informational message."""
+    demos_dir = tmp_path / "demos" / "test-slug"
+    demos_dir.mkdir(parents=True)
+    snapshot = _make_snapshot({"version": "0.1.0"})
+    (demos_dir / "snapshot.json").write_text(json.dumps(snapshot))
+    (demos_dir / "demo.md").write_text("# Demo\n\nJust guided steps.\n")
+
+    with patch("teleclaude.cli.telec.Path.cwd", return_value=tmp_path):
+        try:
+            _handle_todo_demo(["test-slug"])
+        except SystemExit as e:
+            assert e.code == 0
+    captured = capsys.readouterr()
+    assert "guided steps only" in captured.out.lower()
+
+
+def test_cli_demo_failing_block_exits_one(tmp_path: Path, capsys):
+    """demo.md with a failing code block exits 1."""
+    demos_dir = tmp_path / "demos" / "test-slug"
+    demos_dir.mkdir(parents=True)
+    snapshot = _make_snapshot({"version": "0.1.0"})
+    (demos_dir / "snapshot.json").write_text(json.dumps(snapshot))
+    (demos_dir / "demo.md").write_text("# Demo\n\n```bash\nexit 1\n```\n")
+
+    with patch("teleclaude.cli.telec.Path.cwd", return_value=tmp_path):
+        try:
+            _handle_todo_demo(["test-slug"])
+        except SystemExit as e:
+            assert e.code == 1
+    captured = capsys.readouterr()
+    assert "FAIL" in captured.out
