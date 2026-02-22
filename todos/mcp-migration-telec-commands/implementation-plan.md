@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add 16 new REST API endpoints and 24 telec CLI subcommands. The approach:
+Add 14 new REST API endpoints and 24 telec CLI subcommands. The approach:
 
 1. New REST endpoints in a separate FastAPI router (`teleclaude/api/tool_routes.py`)
    to avoid bloating `api_server.py` further. Each endpoint is a thin wrapper around
@@ -26,7 +26,7 @@ CLI subcommand → REST endpoint.
 4. **`caller_session_id` injection** — Read from `$TMPDIR/teleclaude_session_id`,
    sent as `X-Caller-Session-Id` header on every API call.
 
-### Endpoint Design for the 16 Missing Tools
+### Endpoint Design for the 14 Missing Tools
 
 | Group    | Tool               | REST Endpoint                      | Backend Function                            |
 | -------- | ------------------ | ---------------------------------- | ------------------------------------------- |
@@ -44,8 +44,9 @@ CLI subcommand → REST endpoint.
 | delivery | send-result        | `POST /tools/delivery/result`      | `client.send_message()`                     |
 | delivery | render-widget      | `POST /tools/delivery/widget`      | `client.send_message()` + widget render     |
 | delivery | escalate           | `POST /tools/delivery/escalate`    | `DiscordAdapter.create_escalation_thread()` |
-| channels | publish            | `POST /tools/channels/publish`     | `publish()`                                 |
-| channels | channels-list      | `GET /tools/channels`              | `list_channels()`                           |
+
+Channels already have REST endpoints at `/api/channels/` (publish and list).
+CLI channels subcommands call these existing endpoints directly.
 
 New endpoints are namespaced under `/tools/` to separate them from
 existing TUI-facing endpoints.
@@ -76,8 +77,8 @@ existing TUI-facing endpoints.
 | `telec delivery file --session-id --path`            | `POST /sessions/{id}/file` (existing)    |
 | `telec delivery widget --session-id --data`          | `POST /tools/delivery/widget`            |
 | `telec delivery escalate --customer --reason`        | `POST /tools/delivery/escalate`          |
-| `telec channels publish --channel --payload`         | `POST /tools/channels/publish`           |
-| `telec channels list [--project]`                    | `GET /tools/channels`                    |
+| `telec channels publish --channel --payload`         | `POST /api/channels/{name}/publish`      |
+| `telec channels list [--project]`                    | `GET /api/channels/`                     |
 
 ---
 
@@ -87,7 +88,7 @@ existing TUI-facing endpoints.
 
 **File(s):** `teleclaude/api/tool_routes.py` (new)
 
-Create a FastAPI APIRouter with the 16 new endpoints. Each endpoint:
+Create a FastAPI APIRouter with the 14 new endpoints. Each endpoint:
 
 - Extracts typed parameters from the request body
 - Reads `X-Caller-Session-Id` header
@@ -108,7 +109,7 @@ For channels, import from `teleclaude.channels.publisher`.
 - [ ] Implement workflow group (5 endpoints)
 - [ ] Implement infra group (2 endpoints: deploy, agent-status)
 - [ ] Implement delivery group (3 endpoints: result, widget, escalate)
-- [ ] Implement channels group (2 endpoints)
+      (Channels: use existing `/api/channels/` endpoints — no new routes needed)
 
 ### Task 1.2: Mount tool router on API server
 
@@ -266,7 +267,7 @@ Test tool subcommands against a running daemon:
 
 | File                              | Action  | Purpose                                |
 | --------------------------------- | ------- | -------------------------------------- |
-| `teleclaude/api/tool_routes.py`   | **new** | 16 REST API endpoints for tools        |
+| `teleclaude/api/tool_routes.py`   | **new** | 14 REST API endpoints for tools        |
 | `teleclaude/cli/tool_client.py`   | **new** | Sync HTTP client for CLI tool calls    |
 | `teleclaude/cli/tool_commands.py` | **new** | Subcommand group handlers              |
 | `teleclaude/api_server.py`        | modify  | Mount tool router                      |
@@ -276,6 +277,6 @@ Test tool subcommands against a running daemon:
 
 This is 3 new files + 2 modifications. The new code is mechanical (wiring
 existing backend functions through REST → CLI), but there are 24 subcommands
-and 16 new endpoints — total volume is significant. If a builder runs into
+and 14 new endpoints — total volume is significant. If a builder runs into
 context pressure, the natural split point is: Phase 1-2 (API + client) as
 one session, Phase 3-4 (CLI + validation) as a second.

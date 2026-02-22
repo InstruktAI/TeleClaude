@@ -2,6 +2,9 @@
 
 - slug: demo-runner
   description: Demo runner CLI, build-phase demo artifact, conversational interface
+- slug: fix-demo-runner
+  description: Fix demo runner - missing demo field in existing snapshots + /next-demo
+    session_id bug in render_widget
 - slug: state-yaml-migration
   description: Migrate todo state.json to state.yaml for human-readable state files
 - slug: mcp-migration-telec-commands
@@ -44,3 +47,6 @@
 - slug: unified-roadmap-assembly
   after:
   - mcp-to-tool-specs
+- slug: fix-demo-runner
+  after:
+  - demo-runner

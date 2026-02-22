@@ -1,5 +1,5 @@
 {
-  "phase": "pending",
+  "phase": "ready",
   "build": "pending",
   "review": "pending",
   "deferrals_processed": false,
@@ -8,9 +8,9 @@
     "todos": []
   },
   "dor": {
-    "last_assessed_at": "2026-02-22T12:00:00Z",
-    "score": 8,
-    "status": "needs_work",
+    "last_assessed_at": "2026-02-22T14:30:00Z",
+    "score": 9,
+    "status": "pass",
     "schema_version": 1,
     "blockers": [],
     "actions_taken": {

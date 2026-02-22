@@ -13,13 +13,13 @@ needed. This creates the invocation backbone that replaces MCP tool calls.
 - Add `telec` subcommand groups: `sessions`, `workflow`, `infra`, `delivery`,
   `channels` (matching the tool taxonomy)
 - Each subcommand calls the daemon REST API via httpx over the Unix socket
-- Add missing REST API endpoints for the 16 tools that don't have them yet:
+- Add missing REST API endpoints for the 14 tools that don't have them yet:
   - `context`: get-context, help
   - `sessions`: run-agent-command, stop-notifications
   - `workflow`: next-prepare, next-work, next-maintain, mark-phase, set-dependencies
   - `infra`: deploy, mark-agent-status
   - `delivery`: send-result, render-widget, escalate
-  - `channels`: publish, channels-list
+    (Channels already have REST endpoints at `/api/channels/`)
 - `caller_session_id` injection from `$TMPDIR/teleclaude_session_id`
 - JSON output to stdout, human-readable errors to stderr
 - Graceful degradation when daemon is unavailable
@@ -35,20 +35,22 @@ needed. This creates the invocation backbone that replaces MCP tool calls.
 
 ## Existing REST API Coverage
 
-8 of 24 tools already have REST endpoints:
+10 of 24 tools already have REST endpoints:
 
-| Tool             | Existing endpoint             |
-| ---------------- | ----------------------------- |
-| list-sessions    | `GET /sessions`               |
-| start-session    | `POST /sessions`              |
-| send-message     | `POST /sessions/{id}/message` |
-| get-session-data | `GET /sessions/{id}/messages` |
-| end-session      | `DELETE /sessions/{id}`       |
-| list-computers   | `GET /computers`              |
-| list-projects    | `GET /projects`               |
-| send-file        | `POST /sessions/{id}/file`    |
+| Tool             | Existing endpoint                   |
+| ---------------- | ----------------------------------- |
+| list-sessions    | `GET /sessions`                     |
+| start-session    | `POST /sessions`                    |
+| send-message     | `POST /sessions/{id}/message`       |
+| get-session-data | `GET /sessions/{id}/messages`       |
+| end-session      | `DELETE /sessions/{id}`             |
+| list-computers   | `GET /computers`                    |
+| list-projects    | `GET /projects`                     |
+| send-file        | `POST /sessions/{id}/file`          |
+| publish          | `POST /api/channels/{name}/publish` |
+| channels-list    | `GET /api/channels/`                |
 
-The remaining 16 need new REST endpoints on the daemon API server.
+The remaining 14 need new REST endpoints on the daemon API server.
 
 ## Success Criteria
 

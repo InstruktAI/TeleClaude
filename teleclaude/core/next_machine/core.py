@@ -764,29 +764,31 @@ def remove_from_roadmap(cwd: str, slug: str) -> bool:
 def move_in_roadmap(cwd: str, slug: str, *, before: str | None = None, after: str | None = None) -> bool:
     """Reorder entry in roadmap.yaml. Returns True if moved successfully."""
     entries = load_roadmap(cwd)
-    entry = None
+    source_idx = None
     for i, e in enumerate(entries):
         if e.slug == slug:
-            entry = entries.pop(i)
+            source_idx = i
             break
-    if entry is None:
+    if source_idx is None:
+        return False
+
+    entry = entries.pop(source_idx)
+
+    target: str | None = before or after
+    target_idx = None
+    for i, e in enumerate(entries):
+        if e.slug == target:
+            target_idx = i
+            break
+
+    if target_idx is None:
+        entries.insert(source_idx, entry)
         return False
 
     if before:
-        for i, e in enumerate(entries):
-            if e.slug == before:
-                entries.insert(i, entry)
-                save_roadmap(cwd, entries)
-                return True
-    elif after:
-        for i, e in enumerate(entries):
-            if e.slug == after:
-                entries.insert(i + 1, entry)
-                save_roadmap(cwd, entries)
-                return True
-
-    # Target not found, append
-    entries.append(entry)
+        entries.insert(target_idx, entry)
+    else:
+        entries.insert(target_idx + 1, entry)
     save_roadmap(cwd, entries)
     return True
 
