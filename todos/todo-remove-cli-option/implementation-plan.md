@@ -59,19 +59,19 @@ Add todo removal capability via CLI and TUI. The approach follows established pa
 
 **File(s):** `teleclaude/cli/tui/views/preparation.py`
 
-- [ ] Add `("R", "remove_todo", "Remove")` to `BINDINGS` list (capital R, matching sessions view `R` for restart)
+- [x] Add `("R", "remove_todo", "Remove")` to `BINDINGS` list (capital R, matching sessions view `R` for restart)
 
 ### Task 3.2: Implement `action_remove_todo` method
 
 **File(s):** `teleclaude/cli/tui/views/preparation.py`
 
-- [ ] Resolve slug from current todo row or parent of current file row
-- [ ] Resolve project root from `_slug_to_project_path`
-- [ ] Show `ConfirmModal` with title "Remove Todo" and message "Remove todo '{slug}' and all its files?"
-- [ ] On confirm, call `remove_todo()` from `todo_scaffold`
-- [ ] On success, show `self.app.notify(f"Removed {slug}")` notification
-- [ ] On error (worktree exists), show `self.app.notify(str(exc), severity="error")`
-- [ ] No manual refresh needed — `TodoWatcher` handles it via filesystem events
+- [x] Resolve slug from current todo row or parent of current file row
+- [x] Resolve project root from `_slug_to_project_path`
+- [x] Show `ConfirmModal` with title "Remove Todo" and message "Remove todo '{slug}' and all its files?"
+- [x] On confirm, call `remove_todo()` from `todo_scaffold`
+- [x] On success, show `self.app.notify(f"Removed {slug}")` notification
+- [x] On error (worktree exists), show `self.app.notify(str(exc), severity="error")`
+- [x] No manual refresh needed — `TodoWatcher` handles it via filesystem events
 
 ---
 

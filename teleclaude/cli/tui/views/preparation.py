@@ -20,7 +20,7 @@ from teleclaude.cli.tui.prep_tree import build_dep_tree
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
-from teleclaude.cli.tui.widgets.modals import CreateSlugModal, StartSessionModal
+from teleclaude.cli.tui.widgets.modals import ConfirmModal, CreateSlugModal, StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
@@ -58,6 +58,7 @@ class PreparationView(Widget, can_focus=True):
         ("b", "new_bug", "New bug"),
         ("p", "prepare", "Prepare"),
         ("s", "start_work", "Start work"),
+        ("R", "remove_todo", "Remove"),
     ]
 
     cursor_index = reactive(0)
@@ -502,6 +503,45 @@ class PreparationView(Widget, can_focus=True):
                 self._create_item(slug, kind="bug")
 
         self.app.push_screen(CreateSlugModal(title="New Bug", placeholder="my-new-bug"), callback=_on_result)
+
+    def action_remove_todo(self) -> None:
+        """R: remove a todo and all its files."""
+        from pathlib import Path
+
+        from teleclaude.todo_scaffold import remove_todo
+
+        # Resolve slug from current row (todo or file)
+        row = self._current_todo_row()
+        slug = row.slug if row else None
+        if not slug:
+            file_row = self._current_file_row()
+            if file_row:
+                slug = file_row.slug
+        if not slug:
+            return
+
+        # Resolve project root
+        project_path = self._slug_to_project_path.get(slug, "")
+        if not project_path:
+            return
+        project_root = Path(project_path)
+
+        def _on_confirm(confirmed: bool | None) -> None:
+            if not confirmed:
+                return
+            try:
+                remove_todo(project_root, slug)
+                self.app.notify(f"Removed {slug}")
+            except (ValueError, RuntimeError, FileNotFoundError) as exc:
+                self.app.notify(str(exc), severity="error")
+
+        self.app.push_screen(
+            ConfirmModal(
+                title="Remove Todo",
+                message=f"Remove todo '{slug}' and all its files?\n\nThis action cannot be undone.",
+            ),
+            _on_confirm,
+        )
 
     def action_prepare(self) -> None:
         """p: directly start a prepare session with defaults."""
