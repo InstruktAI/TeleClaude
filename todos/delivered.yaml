@@ -1,4 +1,10 @@
 # Delivered work items. Newest first.
+- slug: state-yaml-migration
+  date: '2026-02-22'
+  title: Migrate todo state serialization from JSON to YAML format
+  outcome: DELIVERED
+  commit: 92dd3c7d
+
 - slug: member-invite
   date: '2026-02-22'
   title: Implement invite flow with token-based deep links for Telegram, Discord, and email

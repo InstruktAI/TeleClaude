@@ -7,8 +7,6 @@
     session_id bug in render_widget
   after:
   - demo-runner
-- slug: state-yaml-migration
-  description: Migrate todo state.json to state.yaml for human-readable state files
 - slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs
   description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,
