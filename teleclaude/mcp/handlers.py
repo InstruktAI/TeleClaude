@@ -1112,7 +1112,7 @@ class MCPHandlersMixin:
         return await next_maintain(db, cwd)
 
     async def teleclaude__mark_phase(self, slug: str, phase: str, status: str, cwd: str | None = None) -> str:
-        """Mark a work phase as complete/approved in state.json."""
+        """Mark a work phase as complete/approved in state.yaml."""
         if not cwd:
             return "ERROR: NO_CWD\nWorking directory not provided."
         if phase not in ("build", "review"):

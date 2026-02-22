@@ -153,7 +153,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=["Also registers the entry in roadmap.yaml when --after is provided."],
             ),
             "validate": CommandDef(
-                desc="Validate todo files and state.json schema",
+                desc="Validate todo files and state.yaml schema",
                 args="[slug]",
                 flags=[_PROJECT_ROOT_LONG],
                 notes=["If slug is omitted, all active todos are checked."],

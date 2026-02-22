@@ -51,24 +51,24 @@ All changes are confined to serialization plumbing. No Pydantic model changes, n
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Update `sync_slug_todo_from_worktree_to_main()` file list: `state.json` → `state.yaml`
-- [ ] Update `sync_slug_todo_from_main_to_worktree()` file list: `state.json` → `state.yaml`
+- [x] Update `sync_slug_todo_from_worktree_to_main()` file list: `state.json` → `state.yaml`
+- [x] Update `sync_slug_todo_from_main_to_worktree()` file list: `state.json` → `state.yaml`
 
 ### Task 1.6: Update todo watcher
 
 **File(s):** `teleclaude/core/todo_watcher.py`
 
-- [ ] Update docstring/comments referencing `state.json`
-- [ ] Update any file-matching patterns if the watcher filters by filename
+- [x] Update docstring/comments referencing `state.json`
+- [x] Update any file-matching patterns if the watcher filters by filename
 
 ### Task 1.7: Update MCP tool descriptions and CLI help
 
 **File(s):** `teleclaude/mcp/tool_definitions.py`, `teleclaude/mcp/handlers.py`, `teleclaude/cli/telec.py`
 
-- [ ] Update `next_work` tool description (`tool_definitions.py:721`)
-- [ ] Update `mark_phase` tool description (`tool_definitions.py:747-748`)
-- [ ] Update `mark_phase` handler docstring (`handlers.py:1115`)
-- [ ] Update CLI `todo validate` description (`telec.py:156`)
+- [x] Update `next_work` tool description (`tool_definitions.py:721`)
+- [x] Update `mark_phase` tool description (`tool_definitions.py:747-748`)
+- [x] Update `mark_phase` handler docstring (`handlers.py:1115`)
+- [x] Update CLI `todo validate` description (`telec.py:156`)
 
 ---
 
