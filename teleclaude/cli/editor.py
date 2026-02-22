@@ -14,6 +14,7 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.containers import VerticalScroll
 from textual.events import AppBlur
 from textual.widgets import Label, Markdown, TextArea
 
@@ -82,7 +83,8 @@ class EditorApp(App[None]):
         content = self.file_path.read_text(encoding="utf-8")
         self._last_saved_content = content
         if self.view_mode:
-            yield Markdown(content, id="view-area")
+            with VerticalScroll(id="view-area"):
+                yield Markdown(content)
         else:
             yield TextArea(
                 content,

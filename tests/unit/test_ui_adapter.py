@@ -91,6 +91,10 @@ class MockUiAdapter(UiAdapter):
     async def discover_peers(self):
         return []
 
+    def _build_metadata_for_thread(self) -> MessageMetadata:
+        """Use MarkdownV2 to exercise escape-aware splitting in tests."""
+        return MessageMetadata(parse_mode="MarkdownV2")
+
 
 @pytest.fixture
 async def test_db(tmp_path):
@@ -281,7 +285,7 @@ class TestSendOutputUpdate:
         await test_db.update_session(session.session_id, active_agent="codex")
         session = await test_db.get_session(session.session_id)
 
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled_for_session", return_value=False):
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=False):
             result = await adapter.send_output_update(
                 session,
                 "codex output",
@@ -334,7 +338,7 @@ class TestSendOutputUpdate:
         )
         session = await test_db.get_session(session.session_id)
 
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled_for_session", return_value=False):
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=False):
             await adapter.send_output_update(
                 session,
                 "normal output",
@@ -466,6 +470,11 @@ class TestFormatOutput:
 class TestSendThreadedOutput:
     """Test send_threaded_output smart pagination and overflow handling."""
 
+    @pytest.fixture(autouse=True)
+    def _enable_threaded_output(self):
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=True):
+            yield
+
     async def test_normal_sends_new_message(self, test_db):
         """Text fits in limit with no existing message → sends new."""
         adapter = MockUiAdapter()
@@ -539,7 +548,9 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        await test_db.update_session(session.session_id, char_offset=10)
+        # Set char_offset and output_message_id in adapter metadata (not session-level columns)
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(char_offset=10))
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         await test_db.set_output_message_id(session.session_id, "msg-existing")
         session = await test_db.get_session(session.session_id)
 
@@ -558,18 +569,20 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        await test_db.update_session(session.session_id, char_offset=1000)
+        # Set char_offset in adapter metadata
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(char_offset=1000))
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
         result = await adapter.send_threaded_output(session, "short")
 
         assert result == "msg-123"
-        # Offset should have been reset
+        # Offset should have been reset in adapter metadata
         refreshed = await test_db.get_session(session.session_id)
-        assert refreshed.char_offset == 0
+        assert refreshed.get_metadata().get_ui().get_telegram().char_offset == 0
 
-    async def test_continuity_marker_when_offset_nonzero(self, test_db):
-        """Text with nonzero char_offset → adds "..." prefix."""
+    async def test_nonzero_offset_slices_text_correctly(self, test_db):
+        """Text with nonzero char_offset → only the portion after offset is sent."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -577,16 +590,18 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
-        await test_db.update_session(session.session_id, char_offset=5)
+        # Set char_offset in adapter metadata
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(char_offset=5))
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
         result = await adapter.send_threaded_output(session, "Hello World!")
 
         assert result == "msg-123"
-        # Should contain continuity marker (escaped for Telegram MarkdownV2)
+        # Should send only the text after offset (no structural continuation prefix for plain text)
         assert len(adapter._send_calls) >= 1
         sent_text = adapter._send_calls[0][0]
-        assert "\\.\\.\\." in sent_text  # Telegram escaped ellipsis
+        assert " World!" in sent_text
 
     async def test_overflow_splits_into_multiple_messages(self, test_db):
         """Text exceeding limit → seals first chunk, sends new for remainder."""
@@ -599,6 +614,8 @@ class TestSendThreadedOutput:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Test Session",
         )
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata())
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         session = await test_db.get_session(session.session_id)
 
         # Create text that will overflow the 100-char limit (limit - 10 = 90 effective)
@@ -610,12 +627,12 @@ class TestSendThreadedOutput:
         assert len(adapter._send_calls) >= 2
         assert result is not None
 
-        # Verify char_offset was advanced in DB (session-level column)
+        # Verify char_offset was advanced in adapter metadata
         refreshed = await test_db.get_session(session.session_id)
-        assert refreshed.char_offset > 0
+        assert refreshed.get_metadata().get_ui().get_telegram().char_offset > 0
 
     async def test_overflow_preserves_markdown_escape_boundaries(self, test_db):
-        """Telegram threaded overflow should not split between backslash and escaped char."""
+        """MarkdownV2 threaded overflow should not split between backslash and escaped char."""
         adapter = MockUiAdapter()
         # Keep room tight so chunking happens at problematic boundaries.
         adapter.max_message_size = 30
@@ -663,7 +680,8 @@ class TestSendThreadedOutput:
 
         content_chunks = [chunk for chunk, _meta in adapter._send_calls if "x" in chunk]
         assert len(content_chunks) >= 2
-        assert any(chunk.startswith("\\.\\.\\. ```\n") for chunk in content_chunks[1:])
+        # Continuation chunks reopen the code fence (structural prefix from MarkdownV2 state)
+        assert any(chunk.startswith("```\n") for chunk in content_chunks[1:])
 
 
 @pytest.mark.asyncio
@@ -682,7 +700,7 @@ class TestSendOutputUpdateSuppression:
         await test_db.update_session(session.session_id, active_agent="gemini")
         session = await test_db.get_session(session.session_id)
 
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled_for_session", return_value=True):
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=True):
             result = await adapter.send_output_update(session, "output text", time.time(), time.time())
 
         assert result is None
@@ -704,7 +722,7 @@ class TestSendOutputUpdateSuppression:
         )
         session = await test_db.get_session(session.session_id)
 
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled_for_session", return_value=True):
+        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=True):
             result = await adapter.send_output_update(session, "output text", time.time(), time.time())
 
         assert result is None

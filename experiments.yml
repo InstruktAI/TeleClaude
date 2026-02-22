@@ -1,5 +1,5 @@
 experiments:
-  - name: ui_threaded_agent_stop_output
+  - name: threaded_output
     agents: [gemini]
-  - name: ui_threaded_agent_stop_output_include_tools
-    agents: [gemini]
+  - name: threaded_output
+    adapters: [discord]

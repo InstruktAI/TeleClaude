@@ -123,10 +123,11 @@ def get_current_mode() -> bool:
 
 
 def refresh_mode() -> None:
-    """Re-probe system appearance and update cached mode."""
+    """Re-probe system appearance and rebuild all mode-dependent color tables."""
     global _is_dark_mode, _terminal_bg_cache  # noqa: PLW0603
     _is_dark_mode = _detect_dark_mode()
     _terminal_bg_cache = None
+    _build_rich_colors()
 
 
 # --- Agent xterm256 Color Codes ---

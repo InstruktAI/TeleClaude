@@ -634,10 +634,7 @@ async def test_send_output_update_non_gemini_not_suppressed_when_experiment_glob
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=session)
     mock_db.get_pending_deletions = AsyncMock(return_value=[])
-    with (
-        patch("teleclaude.core.adapter_client.is_threaded_output_enabled_for_session", return_value=False),
-        patch("teleclaude.core.adapter_client.db", mock_db),
-    ):
+    with patch("teleclaude.core.adapter_client.db", mock_db):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
     assert result == "msg"
@@ -975,65 +972,3 @@ async def test_broadcast_user_input_includes_origin_attribution():
     # "api" origin should display as "TUI"
     assert "TUI" in msg
     assert "test input" in msg
-
-
-@pytest.mark.asyncio
-async def test_send_output_update_suppressed_when_threaded_active():
-    """send_output_update suppressed immediately when threaded experiment is enabled."""
-    client = AdapterClient()
-    telegram = DummyTelegramAdapter(client)
-    telegram.send_output_update = AsyncMock(return_value="should-not-be-called")  # type: ignore[assignment]
-    client.register_adapter("telegram", telegram)
-
-    session = Session(
-        session_id="session-suppressed",
-        computer_name="test",
-        tmux_session_name="tc_suppressed",
-        last_input_origin=InputOrigin.TELEGRAM.value,
-        title="Test Session",
-        active_agent="gemini",
-        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata()),
-    )
-
-    mock_db = MagicMock()
-    mock_db.get_pending_deletions = AsyncMock(return_value=[])
-    with (
-        patch("teleclaude.core.adapter_client.is_threaded_output_enabled_for_session", return_value=True),
-        patch("teleclaude.core.adapter_client.db", mock_db),
-    ):
-        result = await client.send_output_update(session, "output", 0.0, 0.0)
-
-    assert result is None
-    telegram.send_output_update.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_send_output_update_suppressed_when_threaded_active_no_output_message_id():
-    """send_output_update suppressed even without output_message_id when experiment is enabled."""
-    client = AdapterClient()
-    telegram = DummyTelegramAdapter(client)
-    telegram.send_output_update = AsyncMock(return_value="should-not-be-called")  # type: ignore[assignment]
-    client.register_adapter("telegram", telegram)
-
-    session = Session(
-        session_id="session-suppressed-no-id",
-        computer_name="test",
-        tmux_session_name="tc_suppressed_no_id",
-        last_input_origin=InputOrigin.TELEGRAM.value,
-        title="Test Session",
-        active_agent="gemini",
-        adapter_metadata=SessionAdapterMetadata(
-            telegram=TelegramAdapterMetadata()  # No output_message_id
-        ),
-    )
-
-    mock_db = MagicMock()
-    mock_db.get_pending_deletions = AsyncMock(return_value=[])
-    with (
-        patch("teleclaude.core.adapter_client.is_threaded_output_enabled_for_session", return_value=True),
-        patch("teleclaude.core.adapter_client.db", mock_db),
-    ):
-        result = await client.send_output_update(session, "output", 0.0, 0.0)
-
-    assert result is None
-    telegram.send_output_update.assert_not_awaited()

@@ -26,6 +26,7 @@ def mock_client():
     client.send_message = AsyncMock()
     client.edit_message = AsyncMock()
     client.send_threaded_output = AsyncMock()
+    client.break_threaded_turn = AsyncMock()
     return client
 
 
@@ -65,7 +66,7 @@ async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(co
         title="Test Session",
         active_agent="gemini",
         native_log_file="/path/to/transcript.jsonl",
-        adapter_metadata=SessionAdapterMetadata(),  # No telegram metadata initially
+        adapter_metadata=SessionAdapterMetadata(),
     )
 
     with (
@@ -75,15 +76,12 @@ async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(co
         patch("teleclaude.core.agent_coordinator.render_clean_agent_output") as mock_render_clean,
         patch("teleclaude.core.agent_coordinator.get_assistant_messages_since") as mock_get_messages,
         patch("teleclaude.core.agent_coordinator.count_renderable_assistant_blocks", return_value=1),
-        patch("teleclaude.core.agent_coordinator.telegramify_markdown", return_value="Message 1"),
         patch("teleclaude.core.agent_coordinator.db.update_session", new_callable=AsyncMock) as mock_update_session,
     ):
         mock_get_session.return_value = session
         mock_get_messages.return_value = [{"role": "assistant", "content": []}]
-        # mock_render.return_value = ("Message 1", "timestamp") # Not called if count=1
         mock_render_clean.return_value = ("Message 1", "timestamp")
 
-        # Mock send_message returning an ID
         mock_client.send_message.return_value = "msg_123"
 
         await coordinator.handle_tool_done(context)
@@ -110,7 +108,7 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
     )
     context = AgentEventContext(event_type=AgentHookEvents.TOOL_DONE, session_id=session_id, data=payload)
 
-    # Session with existing message ID (top-level column, not nested in adapter_metadata)
+    # Session with existing message ID in adapter metadata
     session = Session(
         session_id=session_id,
         computer_name="macbook",
@@ -118,8 +116,7 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         title="Test Session",
         active_agent="gemini",
         native_log_file="/path/to/transcript.jsonl",
-        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata()),
-        output_message_id="msg_123",
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(output_message_id="msg_123")),
     )
 
     with (
@@ -128,7 +125,6 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         patch("teleclaude.core.agent_coordinator.render_agent_output") as mock_render,
         patch("teleclaude.core.agent_coordinator.get_assistant_messages_since") as mock_get_messages,
         patch("teleclaude.core.agent_coordinator.count_renderable_assistant_blocks", return_value=2),
-        patch("teleclaude.core.agent_coordinator.telegramify_markdown", return_value="Message 1 + 2"),
         patch("teleclaude.core.agent_coordinator.db.update_session", new_callable=AsyncMock) as mock_update_session,
     ):
         mock_get_session.return_value = session
@@ -148,7 +144,7 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
 
 @pytest.mark.asyncio
 async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
-    """Verify agent_stop clears the output message ID."""
+    """Verify agent_stop delegates cleanup to break_threaded_turn."""
     session_id = "session-123"
     payload = AgentStopPayload(
         session_id="native-123",
@@ -165,23 +161,18 @@ async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
         title="Test Session",
         active_agent="gemini",
         native_log_file="/path/to/transcript.jsonl",
-        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata()),
-        output_message_id="msg_123",
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(output_message_id="msg_123")),
     )
 
     with (
         patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
-        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled_for_session", return_value=True),
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=True),
         patch("teleclaude.core.agent_coordinator.render_agent_output") as mock_render,
         patch("teleclaude.core.agent_coordinator.get_assistant_messages_since") as mock_get_messages,
         patch("teleclaude.core.agent_coordinator.count_renderable_assistant_blocks", return_value=2),
-        patch("teleclaude.core.agent_coordinator.telegramify_markdown", return_value="Final Message"),
         patch("teleclaude.core.agent_coordinator.db.update_session", new_callable=AsyncMock) as mock_update_session,
         patch("teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock) as mock_sum,
         patch("teleclaude.core.agent_coordinator.extract_last_agent_message") as mock_extract,
-        patch(
-            "teleclaude.core.agent_coordinator.db.set_output_message_id", new_callable=AsyncMock
-        ) as mock_set_output_msg,
     ):
         mock_get_session.return_value = session
         mock_get_messages.return_value = [{"role": "assistant", "content": []}]
@@ -194,23 +185,15 @@ async def test_handle_agent_stop_clears_tracking_id(coordinator, mock_client):
         # 1. Should call send_threaded_output (final update)
         mock_client.send_threaded_output.assert_called_once_with(session, "Final Message", multi_message=True)
 
-        # 2. Should clear output_message_id via dedicated column write
-        mock_set_output_msg.assert_called_once_with(session_id, None)
+        # 2. Should delegate cleanup to break_threaded_turn (clears per-adapter state)
+        mock_client.break_threaded_turn.assert_called_once_with(session)
 
-        # 3. Verify DB updates: char_offset reset (session-level) and cursor clear
-        calls = mock_update_session.call_args_list
-
-        char_offset_reset_found = False
+        # 3. Verify turn cursor is cleared
         cursor_clear_found = False
-
-        for call in calls:
+        for call in mock_update_session.call_args_list:
             _, kwargs = call
-            if "char_offset" in kwargs and kwargs["char_offset"] == 0:
-                char_offset_reset_found = True
             if "last_tool_done_at" in kwargs and kwargs["last_tool_done_at"] is None:
                 cursor_clear_found = True
-
-        assert char_offset_reset_found, "Should reset char_offset to 0 via session-level column"
         assert cursor_clear_found, "Should clear turn cursor"
 
 

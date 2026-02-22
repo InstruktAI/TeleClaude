@@ -39,11 +39,7 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     UserPromptSubmitPayload,
 )
-from teleclaude.core.feature_flags import (
-    is_threaded_output_enabled,
-    is_threaded_output_enabled_for_session,
-    is_threaded_output_include_tools_enabled,
-)
+from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import notify_input_request, notify_stop
@@ -139,6 +135,12 @@ def _is_codex_synthetic_prompt_event(raw_payload: object) -> bool:
         return False
     source = raw_payload.get("source")
     return bool(raw_payload.get("synthetic")) and isinstance(source, str) and source.startswith("codex_")
+
+
+def _has_active_output_message(session: "Session") -> bool:
+    """Check if any adapter has an active output message in metadata."""
+    meta = session.get_metadata().get_ui()
+    return bool(meta.get_telegram().output_message_id or meta.get_discord().output_message_id)
 
 
 def _is_pasted_content_placeholder(prompt: str) -> bool:
@@ -412,7 +414,7 @@ class AgentCoordinator:
         # Reset threaded output state on user input.
         # This seals the previous agent output block, ensuring the next response
         # starts a fresh message (append-only flow).
-        if is_threaded_output_enabled_for_session(session):
+        if is_threaded_output_enabled(session.active_agent):
             await self.client.break_threaded_turn(session)
 
         # Emit activity event for UI updates.
@@ -557,11 +559,8 @@ class AgentCoordinator:
         # Clear threaded output state for this turn (only for threaded sessions).
         # Non-threaded sessions rely on the poller's output_message_id for in-place edits.
         session = await db.get_session(session_id)  # Refresh to get latest metadata
-        if session and is_threaded_output_enabled_for_session(session):
-            # Clear output_message_id and char_offset via dedicated columns
-            # to prevent concurrent adapter_metadata writes from clobbering values.
-            await db.set_output_message_id(session_id, None)
-            await db.update_session(session_id, char_offset=0)
+        if session and is_threaded_output_enabled(session.active_agent):
+            await self.client.break_threaded_turn(session)
 
         # Clear turn-specific cursor at turn completion
         await db.update_session(session_id, last_tool_done_at=None)
@@ -636,8 +635,8 @@ class AgentCoordinator:
         if not agent_key:
             return False
 
-        # Check if threaded output is enabled (experiment flag or Discord origin).
-        is_enabled = is_threaded_output_enabled_for_session(session) or is_threaded_output_enabled(agent_key)
+        # Check if threaded output is enabled for this agent (any adapter).
+        is_enabled = is_threaded_output_enabled(agent_key)
         logger.debug("Evaluating incremental output", session=session_id[:8], agent=agent_key, is_enabled=is_enabled)
 
         if not is_enabled:
@@ -653,8 +652,8 @@ class AgentCoordinator:
         except ValueError:
             return False
 
-        # Check if tools should be included
-        include_tools = is_threaded_output_include_tools_enabled(agent_key)
+        # Tools are always included in threaded mode
+        include_tools = is_threaded_output_enabled(agent_key)
 
         # 1. Retrieve all assistant messages since the last cursor
         assistant_messages = get_assistant_messages_since(
@@ -664,7 +663,7 @@ class AgentCoordinator:
         # Force a turn break if a new user message is detected in the transcript.
         # This handles races where the agent starts outputting before the
         # user_prompt_submit hook has been processed.
-        if session.output_message_id and session.last_tool_done_at:
+        if _has_active_output_message(session) and session.last_tool_done_at:
             user_msg = extract_last_user_message_with_timestamp(transcript_path, agent_name)
             if user_msg:
                 _, user_ts = user_msg
@@ -745,9 +744,9 @@ class AgentCoordinator:
                 # CRITICAL: Update cursor ONLY if we are NOT tracking this message for future updates.
                 # If we are tracking (is_threaded_active), we want to re-render from the start of the turn
                 # each time (accumulating content), so we do NOT update the cursor.
-                # NOTE: We fetch fresh session/metadata to check the ID set by send_threaded_output
+                # NOTE: We fetch fresh session/metadata to check adapter output_message_id
                 fresh_session = await db.get_session(session_id)
-                is_threaded_active = fresh_session and fresh_session.output_message_id is not None
+                is_threaded_active = fresh_session is not None and _has_active_output_message(fresh_session)
                 should_update_cursor = not is_threaded_active
 
                 # Always update session to refresh last_activity (heartbeat),

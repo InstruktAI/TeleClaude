@@ -168,6 +168,27 @@ class TelegramAdapter(
         # Register simple command handlers dynamically
         self._register_simple_command_handlers()
 
+    # --- Per-adapter output message tracking ---
+    # Telegram uses adapter_metadata instead of the shared DB column
+    # to prevent cross-adapter races with Discord.
+
+    async def _get_output_message_id(self, session: "Session") -> str | None:
+        fresh = await db.get_session(session.session_id)
+        if fresh:
+            return fresh.get_metadata().get_ui().get_telegram().output_message_id
+        return session.get_metadata().get_ui().get_telegram().output_message_id
+
+    async def _store_output_message_id(self, session: "Session", message_id: str) -> None:
+        meta = session.get_metadata().get_ui().get_telegram()
+        meta.output_message_id = message_id
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        logger.debug("Stored telegram output_message_id: session=%s message_id=%s", session.session_id[:8], message_id)
+
+    async def _clear_output_message_id(self, session: "Session") -> None:
+        meta = session.get_metadata().get_ui().get_telegram()
+        meta.output_message_id = None
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+
     async def ensure_channel(self, session: Session, title: str) -> Session:
         # Telegram is admin/member only — skip customer sessions entirely.
         if session.human_role == "customer":
@@ -206,9 +227,8 @@ class TelegramAdapter(
             if current:
                 current_meta = current.get_metadata().get_ui().get_telegram()
                 current_meta.topic_id = None
+                current_meta.output_message_id = None
                 await db.update_session(current.session_id, adapter_metadata=current.adapter_metadata)
-                # Clear output_message_id via dedicated column (not adapter_metadata blob)
-                await db.set_output_message_id(current.session_id, None)
             await self.create_channel(current or session, title, metadata=ChannelMetadata())
 
         refreshed = await db.get_session(session.session_id)
@@ -250,7 +270,6 @@ class TelegramAdapter(
             adapter_metadata=recovery_session.adapter_metadata,
             last_output_digest=None,
         )
-        await db.set_output_message_id(recovery_session.session_id, None)
 
         try:
             retry_session = await self.ensure_channel(recovery_session, display_title)

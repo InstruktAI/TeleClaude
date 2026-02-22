@@ -2,86 +2,108 @@
 
 from unittest.mock import patch
 
-from teleclaude.core.feature_flags import (
-    is_threaded_output_enabled,
-    is_threaded_output_enabled_for_session,
-    is_threaded_output_include_tools_enabled,
-)
-from teleclaude.core.models import Session
+from teleclaude.config import ExperimentConfig
+from teleclaude.core.feature_flags import is_threaded_output_enabled
 
 
-def _session(*, origin: str = "telegram", agent: str | None = "gemini") -> Session:
-    return Session(
-        session_id="test-sess",
-        computer_name="local",
-        tmux_session_name="tc_test",
-        title="Test",
-        last_input_origin=origin,
-        active_agent=agent,
-    )
+def _make_experiments(*entries: ExperimentConfig) -> list[ExperimentConfig]:
+    return list(entries)
 
 
-def test_threaded_output_enabled_respects_experiment_config():
-    """Threaded output enabled check defers to experiment config, no hardcoded agent gate."""
-    with patch("teleclaude.core.feature_flags.config.is_experiment_enabled", return_value=True):
+def test_agent_only_entry_matches_agent():
+    """Entry with agents=[gemini] matches gemini on any adapter."""
+    exps = _make_experiments(ExperimentConfig(name="threaded_output", agents=["gemini"]))
+    with patch("teleclaude.core.feature_flags.config") as mock_config:
+        mock_config.is_experiment_enabled.side_effect = lambda name, agent, adapter=None: any(
+            e.name == name
+            and (not e.agents or (agent and agent in e.agents))
+            and (not e.adapters or not adapter or adapter in e.adapters)
+            for e in exps
+        )
         assert is_threaded_output_enabled("gemini") is True
-        assert is_threaded_output_enabled("Gemini") is True
-        assert is_threaded_output_enabled("claude") is True
-        assert is_threaded_output_enabled("codex") is True
-
-
-def test_threaded_output_disabled_when_experiment_off():
-    with patch("teleclaude.core.feature_flags.config.is_experiment_enabled", return_value=False):
-        assert is_threaded_output_enabled("gemini") is False
+        assert is_threaded_output_enabled("gemini", adapter="discord") is True
+        assert is_threaded_output_enabled("gemini", adapter="telegram") is True
         assert is_threaded_output_enabled("claude") is False
+        assert is_threaded_output_enabled("claude", adapter="discord") is False
 
 
-def test_session_aware_check_returns_true_for_discord_origin():
-    """Any Discord-origin session has threaded output enabled, regardless of agent."""
-    session = _session(origin="discord", agent="claude")
-    assert is_threaded_output_enabled_for_session(session) is True
+def test_adapter_only_entry_matches_any_agent_on_that_adapter():
+    """Entry with adapters=[discord] matches any agent on discord."""
+    exps = _make_experiments(ExperimentConfig(name="threaded_output", adapters=["discord"]))
+    with patch("teleclaude.core.feature_flags.config") as mock_config:
+        mock_config.is_experiment_enabled.side_effect = lambda name, agent, adapter=None: any(
+            e.name == name
+            and (not e.agents or (agent and agent in e.agents))
+            and (not e.adapters or not adapter or adapter in e.adapters)
+            for e in exps
+        )
+        assert is_threaded_output_enabled("claude", adapter="discord") is True
+        assert is_threaded_output_enabled("codex", adapter="discord") is True
+        assert is_threaded_output_enabled("claude", adapter="telegram") is False
 
-    session_no_agent = _session(origin="discord", agent=None)
-    assert is_threaded_output_enabled_for_session(session_no_agent) is True
+
+def test_optimistic_match_when_adapter_omitted():
+    """Coordinator check (no adapter) matches adapter-only entries optimistically."""
+    exps = _make_experiments(ExperimentConfig(name="threaded_output", adapters=["discord"]))
+    with patch("teleclaude.core.feature_flags.config") as mock_config:
+        mock_config.is_experiment_enabled.side_effect = lambda name, agent, adapter=None: any(
+            e.name == name
+            and (not e.agents or (agent and agent in e.agents))
+            and (not e.adapters or not adapter or adapter in e.adapters)
+            for e in exps
+        )
+        # No adapter specified → optimistic match
+        assert is_threaded_output_enabled("claude") is True
+        assert is_threaded_output_enabled("gemini") is True
 
 
-def test_session_aware_check_falls_back_to_experiment_for_non_discord():
-    """Non-Discord sessions check the experiment flag."""
-    session = _session(origin="telegram", agent="gemini")
+def test_multi_entry_or_semantics():
+    """Multiple entries for same experiment are OR'd together."""
+    exps = _make_experiments(
+        ExperimentConfig(name="threaded_output", agents=["gemini"]),
+        ExperimentConfig(name="threaded_output", adapters=["discord"]),
+    )
+    with patch("teleclaude.core.feature_flags.config") as mock_config:
+        mock_config.is_experiment_enabled.side_effect = lambda name, agent, adapter=None: any(
+            e.name == name
+            and (not e.agents or (agent and agent in e.agents))
+            and (not e.adapters or not adapter or adapter in e.adapters)
+            for e in exps
+        )
+        # Gemini on any adapter
+        assert is_threaded_output_enabled("gemini", adapter="telegram") is True
+        assert is_threaded_output_enabled("gemini", adapter="discord") is True
+        # Claude on discord (adapter entry)
+        assert is_threaded_output_enabled("claude", adapter="discord") is True
+        # Claude on telegram → no matching entry
+        assert is_threaded_output_enabled("claude", adapter="telegram") is False
+
+
+def test_claude_telegram_returns_false():
+    """Claude+Telegram has no matching entry in the target config."""
+    exps = _make_experiments(
+        ExperimentConfig(name="threaded_output", agents=["gemini"]),
+        ExperimentConfig(name="threaded_output", adapters=["discord"]),
+    )
+    with patch("teleclaude.core.feature_flags.config") as mock_config:
+        mock_config.is_experiment_enabled.side_effect = lambda name, agent, adapter=None: any(
+            e.name == name
+            and (not e.agents or (agent and agent in e.agents))
+            and (not e.adapters or not adapter or adapter in e.adapters)
+            for e in exps
+        )
+        assert is_threaded_output_enabled("claude", adapter="telegram") is False
+
+
+def test_normalizes_agent_key():
+    """Agent key is normalized (lowered, stripped)."""
     with patch("teleclaude.core.feature_flags.config.is_experiment_enabled", return_value=True):
-        assert is_threaded_output_enabled_for_session(session) is True
+        assert is_threaded_output_enabled("Gemini") is True
+        assert is_threaded_output_enabled("  CLAUDE  ") is True
 
+
+def test_none_agent_key():
+    """None or empty agent key returns False when entries require agents."""
     with patch("teleclaude.core.feature_flags.config.is_experiment_enabled", return_value=False):
-        assert is_threaded_output_enabled_for_session(session) is False
-
-
-def test_session_aware_check_standard_poller_for_telegram_non_threaded():
-    """Telegram non-threaded sessions (experiment off) use standard poller."""
-    session = _session(origin="telegram", agent="claude")
-    with patch("teleclaude.core.feature_flags.config.is_experiment_enabled", return_value=False):
-        assert is_threaded_output_enabled_for_session(session) is False
-
-
-def test_threaded_output_include_tools_requires_base_experiment():
-    def is_enabled(name: str, agent: str | None = None) -> bool:
-        _ = agent
-        if name == "ui_threaded_agent_stop_output":
-            return True
-        if name == "ui_threaded_agent_stop_output_include_tools":
-            return True
-        return False
-
-    with patch("teleclaude.core.feature_flags.config.is_experiment_enabled", side_effect=is_enabled):
-        assert is_threaded_output_include_tools_enabled("gemini") is True
-        assert is_threaded_output_include_tools_enabled("claude") is True
-
-
-def test_threaded_output_include_tools_false_when_base_off():
-    def is_enabled(name: str, agent: str | None = None) -> bool:
-        _ = agent
-        if name == "ui_threaded_agent_stop_output":
-            return False
-        return True
-
-    with patch("teleclaude.core.feature_flags.config.is_experiment_enabled", side_effect=is_enabled):
-        assert is_threaded_output_include_tools_enabled("gemini") is False
+        assert is_threaded_output_enabled(None) is False
+        assert is_threaded_output_enabled("") is False

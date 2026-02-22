@@ -266,11 +266,14 @@ class ExperimentConfig:
     Attributes:
         name: Unique identifier for the experiment
         agents: Optional list of agents this experiment applies to.
-               If None or empty, applies to all agents.
+               If None or empty, the agent dimension is unconstrained.
+        adapters: Optional list of adapters this experiment applies to.
+               If None or empty, the adapter dimension is unconstrained.
     """
 
     name: str
     agents: list[str] | None = None
+    adapters: list[str] | None = None
 
 
 @dataclass
@@ -300,24 +303,34 @@ class Config:
     stt: STTConfig | None = None
     experiments: list[ExperimentConfig] = field(default_factory=list)
 
-    def is_experiment_enabled(self, name: str, agent: str | None = None) -> bool:
-        """Check if an experiment is enabled, optionally for a specific agent.
+    def is_experiment_enabled(self, name: str, agent: str | None = None, adapter: str | None = None) -> bool:
+        """Check if an experiment is enabled for a given agent/adapter combination.
+
+        Multiple entries with the same name are OR'd together.
+        Within each entry, dimensions (agents, adapters) are AND'd.
+        When the caller omits a dimension, that dimension is not checked
+        (optimistic match — useful when the coordinator asks "does any adapter want this?").
 
         Args:
             name: Experiment name to check
             agent: Optional agent key to match against (e.g., "gemini")
+            adapter: Optional adapter key to match against (e.g., "discord")
 
         Returns:
-            True if experiment is enabled and matches the agent (if provided)
+            True if any matching experiment entry is found
         """
         for exp in self.experiments:
-            if exp.name == name:
-                # If agents list is empty or None, it applies to all agents
-                if not exp.agents:
-                    return True
-                # Otherwise, agent must be in the list
-                if agent and agent in exp.agents:
-                    return True
+            if exp.name != name:
+                continue
+            # Agent dimension: strict — entry requires agent match when constrained
+            if exp.agents:
+                if not agent or agent not in exp.agents:
+                    continue
+            # Adapter dimension: optimistic when caller omits adapter
+            # (coordinator asking "does any adapter want this?")
+            if exp.adapters and adapter and adapter not in exp.adapters:
+                continue
+            return True
         return False
 
 
@@ -640,6 +653,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
                     ExperimentConfig(
                         name=str(exp_data["name"]),
                         agents=list(exp_data["agents"]) if exp_data.get("agents") else None,
+                        adapters=list(exp_data["adapters"]) if exp_data.get("adapters") else None,
                     )
                 )
 

@@ -33,6 +33,7 @@ def mock_client():
     client = MagicMock()
     client.send_message = AsyncMock()
     client.send_threaded_output = AsyncMock(return_value="msg-123")
+    client.break_threaded_turn = AsyncMock()
     return client
 
 
@@ -76,7 +77,6 @@ async def test_handle_agent_stop_experiment_enabled(coordinator, mock_client):
     with (
         patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
         patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=True),
-        patch("teleclaude.core.agent_coordinator.is_threaded_output_include_tools_enabled", return_value=False),
         patch("teleclaude.core.agent_coordinator.render_agent_output") as mock_render,
         patch("teleclaude.core.agent_coordinator.get_assistant_messages_since") as mock_get_messages,
         patch("teleclaude.core.agent_coordinator.count_renderable_assistant_blocks") as mock_count_blocks,

@@ -13,37 +13,36 @@
 - slug: mcp-migration-context-integration
   group: mcp-to-tool-specs
   after:
-    - mcp-migration-tc-cli
-    - mcp-migration-tool-spec-docs
-  description:
-    'Phase 3: Wire tool specs into context-selection pipeline, update CLAUDE.md
+  - mcp-migration-tc-cli
+  - mcp-migration-tool-spec-docs
+  description: 'Phase 3: Wire tool specs into context-selection pipeline, update CLAUDE.md
     baseline'
 - slug: mcp-migration-agent-config
   group: mcp-to-tool-specs
   after:
-    - mcp-migration-context-integration
-  description:
-    'Phase 4: Remove MCP from agent session configs, validate all agent
+  - mcp-migration-context-integration
+  description: 'Phase 4: Remove MCP from agent session configs, validate all agent
     types'
 - slug: mcp-migration-delete-mcp
   group: mcp-to-tool-specs
   after:
-    - mcp-migration-agent-config
-  description:
-    'Phase 5: Delete all MCP server code, wrapper, handlers, definitions
+  - mcp-migration-agent-config
+  description: 'Phase 5: Delete all MCP server code, wrapper, handlers, definitions
     (~3,400 lines)'
 - slug: mcp-migration-doc-updates
   group: mcp-to-tool-specs
   after:
-    - mcp-migration-delete-mcp
+  - mcp-migration-delete-mcp
   description: 'Phase 6: Update architecture and policy docs, rewrite MCP references'
 - slug: project-aware-bug-routing
 - slug: rolling-session-titles
-  description:
-    Re-summarize session titles based on the last 3 user inputs instead
+  description: Re-summarize session titles based on the last 3 user inputs instead
     of only the first. Use a dedicated rolling prompt that captures session direction.
     Reset the output message on any title change so the telegram title feedback floats
     to the top in Telegram.
 - slug: unified-roadmap-assembly
   after:
-    - mcp-to-tool-specs
+  - mcp-to-tool-specs
+- slug: member-invite
+  description: 'Member invite flow: token generation, email delivery, private chat
+    handlers, personal assistant routing, notification channel expansion'

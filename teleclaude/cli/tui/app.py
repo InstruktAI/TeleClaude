@@ -247,6 +247,7 @@ class TelecApp(App[str | None]):
         # default termination). Inside the handler, call_soon_threadsafe()
         # safely schedules the reload on the asyncio event loop.
         self._reload_loop = asyncio.get_running_loop()
+        signal.signal(signal.SIGUSR1, self._handle_sigusr1)
         signal.signal(signal.SIGUSR2, self._handle_sigusr2)
 
     @work(exclusive=True, group="computers")
@@ -773,8 +774,39 @@ class TelecApp(App[str | None]):
 
     # --- Signal handlers ---
 
+    def _handle_sigusr1(self, _signum: int, _frame: object) -> None:
+        """Catch SIGUSR1 (appearance change) and schedule hot theme swap.
+
+        Sent by ~/Sync/dotfiles appearance.py when OS dark/light mode changes.
+        Lightweight: re-detects mode, switches Textual theme, refreshes widgets.
+        """
+        self._reload_loop.call_soon_threadsafe(self._appearance_refresh)
+
+    def _appearance_refresh(self) -> None:
+        """Hot-swap dark/light theme without restarting the process."""
+        from teleclaude.cli.tui import theme
+        from teleclaude.cli.tui.widgets.session_row import SessionRow
+        from teleclaude.cli.tui.widgets.todo_row import TodoRow
+
+        theme.refresh_mode()
+
+        level = get_pane_theming_mode_level()
+        is_agent = level in (1, 3, 4)
+        is_dark = theme.is_dark_mode()
+        if is_dark:
+            self.theme = "teleclaude-dark-agent" if is_agent else "teleclaude-dark"
+        else:
+            self.theme = "teleclaude-light-agent" if is_agent else "teleclaude-light"
+
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge.reapply_colors()
+        for widget in self.query(SessionRow):
+            widget.refresh()
+        for widget in self.query(TodoRow):
+            widget.refresh()
+
     def _handle_sigusr2(self, _signum: int, _frame: object) -> None:
-        """Catch SIGUSR2 and schedule reload on the event loop."""
+        """Catch SIGUSR2 (code change) and schedule full process restart."""
         self._reload_loop.call_soon_threadsafe(self._sigusr2_reload)
 
     def _sigusr2_reload(self) -> None:

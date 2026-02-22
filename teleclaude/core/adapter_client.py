@@ -16,7 +16,6 @@ from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.feature_flags import is_threaded_output_enabled_for_session
 from teleclaude.core.models import (
     ChannelMetadata,
     CleanupTrigger,
@@ -116,20 +115,20 @@ class AdapterClient:
         operation: str,
         task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
     ) -> list[tuple[str, object]]:
-        """Send operation to all UI adapters."""
-        ui_adapters = self._ui_adapters()
-        adapter_tasks = [
-            (adapter_type, self._run_ui_lane(session, adapter_type, adapter, task_factory))
-            for adapter_type, adapter in ui_adapters
-        ]
+        """Send operation to all UI adapters sequentially.
 
-        if not adapter_tasks:
+        Serialized (not parallel) to prevent concurrent adapter_metadata blob
+        writes from clobbering each other — each adapter reads the previous
+        adapter's writes before persisting its own changes.
+        """
+        ui_adapters = self._ui_adapters()
+        if not ui_adapters:
             logger.warning("No UI adapters available for %s (session %s)", operation, session.session_id[:8])
             return []
 
-        results = await asyncio.gather(*[task for _, task in adapter_tasks], return_exceptions=True)
         output: list[tuple[str, object]] = []
-        for (adapter_type, _), result in zip(adapter_tasks, results):
+        for adapter_type, adapter in ui_adapters:
+            result = await self._run_ui_lane(session, adapter_type, adapter, task_factory)
             output.append((adapter_type, result))
 
         return output
@@ -390,14 +389,10 @@ class AdapterClient:
     async def break_threaded_turn(self, session: "Session") -> None:
         """Force a break in the threaded output stream on all UI adapters.
 
-        Clears tracked message IDs and resets offsets so the next output
-        starts as a fresh message at the bottom of the thread.
+        Each adapter clears its own output_message_id and char_offset in its
+        metadata namespace. Broadcast is serialized to prevent blob clobbering.
         """
-        # Reset the global signal column
-        await db.set_output_message_id(session.session_id, None)
-        await db.update_session(session.session_id, char_offset=0)
 
-        # Broadcast reset to all UI adapters to clear platform-specific state (metadata)
         async def _reset_adapter_state(adapter: UiAdapter, s: "Session") -> None:
             await adapter._clear_output_message_id(s)
             await adapter._set_char_offset(s, 0)
@@ -538,17 +533,6 @@ class AdapterClient:
                 except Exception as e:
                     logger.debug("Best-effort feedback deletion failed: %s", e)
             await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
-
-        # Suppress standard poller output when threaded output experiment is enabled.
-        # The experiment config and active_agent are both known at session creation —
-        # no need to wait for output_message_id (which created a startup race condition
-        # where the first poller output leaked through the standard path).
-        if is_threaded_output_enabled_for_session(session):
-            logger.debug(
-                "[OUTPUT_ROUTE] Standard output suppressed for session %s (threaded output experiment active)",
-                session.session_id[:8],
-            )
-            return None
 
         # Route to all UI adapters. Channel provisioning (ensure_channel)
         # determines which adapters participate (e.g., Telegram skips customer sessions).
