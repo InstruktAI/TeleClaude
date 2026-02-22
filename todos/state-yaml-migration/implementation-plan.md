@@ -44,8 +44,8 @@ All changes are confined to serialization plumbing. No Pydantic model changes, n
 
 **File(s):** `teleclaude/core/roadmap.py`
 
-- [ ] Update direct `state.json` reads to `state.yaml` (with fallback)
-- [ ] Replace `json.loads` with `yaml.safe_load`
+- [x] Update direct `state.json` reads to `state.yaml` (with fallback)
+- [x] Replace `json.loads` with `yaml.safe_load`
 
 ### Task 1.5: Update worktree sync file lists
 

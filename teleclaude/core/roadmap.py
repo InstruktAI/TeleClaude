@@ -4,10 +4,10 @@ Centralizes the logic for reading roadmap.yaml, icebox, and todo directories
 into a single list of rich TodoInfo objects. Used by CLI, API, and TUI.
 """
 
-import json
 import re
 from pathlib import Path
 
+import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.models import TodoInfo
@@ -94,10 +94,16 @@ def assemble_roadmap(
         findings_count = 0
         phase_status = "pending"
 
-        state_path = todo_dir / "state.json"
+        state_path = todo_dir / "state.yaml"
+        # Backward compat: fall back to state.json
+        if not state_path.exists():
+            legacy_path = todo_dir / "state.json"
+            if legacy_path.exists():
+                state_path = legacy_path
+
         if state_path.exists():
             try:
-                state = json.loads(state_path.read_text())
+                state = yaml.safe_load(state_path.read_text())
                 # Derive status from phase field
                 raw_phase = state.get("phase")
                 if raw_phase == "ready":
@@ -132,7 +138,7 @@ def assemble_roadmap(
                 # Derive display status: pending + dor_score >= 8 shows as "ready"
                 if phase_status == "pending" and isinstance(dor_score, int) and dor_score >= 8:
                     phase_status = "ready"
-            except (json.JSONDecodeError, OSError):
+            except (yaml.YAMLError, OSError):
                 pass
 
         files: list[str] = []
@@ -246,18 +252,24 @@ def assemble_roadmap(
             group="Icebox" if is_icebox else None,
         )
 
-    # 3. Inject container→child relationships from breakdown.todos in state.json.
+    # 3. Inject container→child relationships from breakdown.todos in state.yaml.
     # This makes container todos appear as tree parents of their sub-items.
     # The reordering loop below is safe because it rebuilds slug_to_idx after each mutation,
     # ensuring that hierarchical containers (no circular deps) are correctly repositioned
     # before their children regardless of discovery order.
     slug_to_idx = {t.slug: i for i, t in enumerate(todos)}
     for todo in list(todos):
-        state_path = todos_root / todo.slug / "state.json"
+        state_path = todos_root / todo.slug / "state.yaml"
+        # Backward compat: fall back to state.json
+        if not state_path.exists():
+            legacy_path = todos_root / todo.slug / "state.json"
+            if legacy_path.exists():
+                state_path = legacy_path
+
         if not state_path.exists():
             continue
         try:
-            state = json.loads(state_path.read_text())
+            state = yaml.safe_load(state_path.read_text())
             child_slugs = state.get("breakdown", {}).get("todos", [])
             if not child_slugs:
                 continue
@@ -282,7 +294,7 @@ def assemble_roadmap(
                 todos.pop(container_idx)
                 todos.insert(first_child_idx, todo)
                 slug_to_idx = {t.slug: i for i, t in enumerate(todos)}
-        except (json.JSONDecodeError, OSError):
+        except (yaml.YAMLError, OSError):
             continue
 
     return todos
