@@ -1,0 +1,20 @@
+breakdown:
+  assessed: true
+  todos: []
+dor:
+  last_assessed_at: '2026-02-12T10:09:33Z'
+  score: 6
+  status: needs_decision
+  schema_version: 1
+  blockers:
+  - decide-policy-for-user-forced-termination-while-unhealthy
+  - finalize-destructive-operation-inventory
+  - decide-deterministic-fault-injection-strategy
+  - split-into-dependent-todos-for-atomic-build-scope
+  actions_taken:
+    gate_mode: true
+    requirements_tightened: false
+    implementation_plan_tightened: false
+    dor_report_updated: true
+    state_dor_updated: true
+phase: pending

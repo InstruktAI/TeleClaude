@@ -78,17 +78,17 @@ All changes are confined to serialization plumbing. No Pydantic model changes, n
 
 **File(s):** `teleclaude/todo_scaffold.py` (or inline script)
 
-- [ ] For each `todos/*/state.json`:
+- [x] For each `todos/*/state.json`:
   1. Read JSON content
   2. Parse with `json.loads`
   3. Write as YAML to `state.yaml` in the same directory
   4. Remove `state.json`
-- [ ] Handle edge cases: malformed JSON (skip with warning), empty files
+- [x] Handle edge cases: malformed JSON (skip with warning), empty files
 
 ### Task 2.2: Run migration
 
-- [ ] Execute migration against all existing `state.json` files
-- [ ] Verify all `state.yaml` files parse cleanly
+- [x] Execute migration against all existing `state.json` files
+- [x] Verify all `state.yaml` files parse cleanly
 
 ---
 
