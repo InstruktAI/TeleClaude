@@ -73,12 +73,12 @@ Replace the post-finalize demo creation flow with build-phase demo artifacts and
 
 **File(s):** `agents/commands/next-demo.md`
 
-- [ ] Rewrite as the ceremony host:
+- [x] Rewrite as the ceremony host:
   - **No slug**: scan `demos/*/snapshot.json`, list available demos (title, slug, version), ask which one to present
   - **With slug**: present that demo — run `telec todo demo <slug>`, then render a celebration widget using snapshot data (title, metrics table, narrative acts)
-- [ ] Remove all post-finalize narrative composition, `demo.sh` generation, and sequence numbering logic
-- [ ] The command is purely presentation — no build guidance (that belongs in the procedure doc)
-- [ ] Keep the `render_widget` celebration pattern — the widget renders snapshot data, not AI-composed narrative
+- [x] Remove all post-finalize narrative composition, `demo.sh` generation, and sequence numbering logic
+- [x] The command is purely presentation — no build guidance (that belongs in the procedure doc)
+- [x] Keep the `render_widget` celebration pattern — the widget renders snapshot data, not AI-composed narrative
 
 ### Task 3.3: Update quality checklist template
 
