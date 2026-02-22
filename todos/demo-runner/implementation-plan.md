@@ -116,15 +116,15 @@ Replace the post-finalize demo creation flow with build-phase demo artifacts and
 ### Task 4.2: Quality checks
 
 - [x] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 5: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)
 
 ---
 
