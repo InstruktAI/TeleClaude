@@ -30,17 +30,17 @@ Two independent visual bugs, both in the TUI rendering layer. Bug 1 is a Rich Te
 
 **File(s):** `teleclaude/cli/tui/app.py`, `teleclaude/cli/tui/pane_manager.py`
 
-- [ ] Trace the SIGUSR1 flow: `_handle_sigusr1()` -> `_appearance_refresh()` -> `theme.refresh_mode()` -> `pane_bridge.reapply_colors()` -> `reapply_agent_colors()` -> `_set_tui_pane_background()`.
-- [ ] Identify why `_set_tui_pane_background()` sets both `window-style` and `window-active-style` but the TUI pane's background may not visually update when the pane doesn't have focus.
-- [ ] Determine if tmux requires a focus cycle (select-pane) or explicit refresh to apply the new `window-active-style` to an inactive pane.
+- [x] Trace the SIGUSR1 flow: `_handle_sigusr1()` -> `_appearance_refresh()` -> `theme.refresh_mode()` -> `pane_bridge.reapply_colors()` -> `reapply_agent_colors()` -> `_set_tui_pane_background()`.
+- [x] Identify why `_set_tui_pane_background()` sets both `window-style` and `window-active-style` but the TUI pane's background may not visually update when the pane doesn't have focus.
+- [x] Determine if tmux requires a focus cycle (select-pane) or explicit refresh to apply the new `window-active-style` to an inactive pane.
 
 ### Task 2.2: Apply the fix
 
 **File(s):** `teleclaude/cli/tui/pane_manager.py` (and possibly `app.py`)
 
-- [ ] If tmux doesn't re-evaluate styles on style change alone, add a `select-pane` round-trip or `refresh-client` after setting new styles in `_set_tui_pane_background()`.
-- [ ] Ensure the fix works for both directions (dark->light and light->dark).
-- [ ] Ensure the fix doesn't cause visual flicker (brief focus change).
+- [x] If tmux doesn't re-evaluate styles on style change alone, add a `select-pane` round-trip or `refresh-client` after setting new styles in `_set_tui_pane_background()`.
+- [x] Ensure the fix works for both directions (dark->light and light->dark).
+- [x] Ensure the fix doesn't cause visual flicker (brief focus change).
 
 ---
 
