@@ -11,7 +11,6 @@ Called by ``telec sync`` and pre-commit hooks. Read-only — never modifies file
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import sys
@@ -1059,7 +1058,7 @@ def _iter_snippet_roots(project_root: Path) -> list[Path]:
 
 
 def validate_todo(slug: str, project_root: Path) -> list[str]:
-    """Validate a todo directory structure and state.json schema."""
+    """Validate a todo directory structure and state.yaml schema (with state.json fallback)."""
     todos_root = project_root / "todos"
     todo_dir = todos_root / slug
     if not todo_dir.is_dir():
@@ -1067,23 +1066,29 @@ def validate_todo(slug: str, project_root: Path) -> list[str]:
 
     errors = []
 
-    # 1. state.json schema validation
-    state_path = todo_dir / "state.json"
+    # 1. state.yaml schema validation (with state.json fallback)
+    state_path = todo_dir / "state.yaml"
+    # Backward compat: fall back to state.json
     if not state_path.exists():
-        errors.append(f"{slug}: missing state.json")
+        legacy_path = todo_dir / "state.json"
+        if legacy_path.exists():
+            state_path = legacy_path
+
+    if not state_path.exists():
+        errors.append(f"{slug}: missing state.yaml")
     else:
         try:
             content = state_path.read_text(encoding="utf-8")
-            data = json.loads(content)
+            data = yaml.safe_load(content)
             TodoState.model_validate(data)
         except Exception as exc:
-            errors.append(f"{slug}: state.json schema violation: {exc}")
+            errors.append(f"{slug}: state file schema violation: {exc}")
 
     # 2. Required files for Ready state
     # If phase is pending and score >= 8, requirements and implementation plan MUST exist
     if state_path.exists():
         try:
-            state = TodoState.model_validate(json.loads(state_path.read_text(encoding="utf-8")))
+            state = TodoState.model_validate(yaml.safe_load(state_path.read_text(encoding="utf-8")))
             if state.phase == "pending" and state.dor and state.dor.score >= 8:
                 if not (todo_dir / "requirements.md").exists():
                     errors.append(f"{slug}: marked as Ready (score {state.dor.score}) but missing requirements.md")

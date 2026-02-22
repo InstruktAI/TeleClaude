@@ -37,8 +37,8 @@ All changes are confined to serialization plumbing. No Pydantic model changes, n
 
 **File(s):** `teleclaude/resource_validation.py`
 
-- [ ] Update `validate_todo()` to check for `state.yaml` (with fallback to `state.json`)
-- [ ] Update error messages from `state.json` to `state.yaml`
+- [x] Update `validate_todo()` to check for `state.yaml` (with fallback to `state.json`)
+- [x] Update error messages from `state.json` to `state.yaml`
 
 ### Task 1.4: Update roadmap assembly
 
