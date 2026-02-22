@@ -139,7 +139,7 @@ Date: {date}
 
 ---
 
-### Task 4: State Machine — Bug Detection in `next_work()`
+### Task 4: State Machine — Bug Detection in `next_work()` ✓
 
 **Files:**
 
