@@ -39,21 +39,21 @@ procedure docs, spec docs, todo scaffold, and existing demos. No MCP changes.
 
 **File:** `demos/themed-primary-color/demo.md`
 
-- [ ] Executable: verify theme module loads and contains expected theme names
-- [ ] Executable: verify theme CSS classes or color values are present
-- [ ] Guided: describe the visual experience — warm orange at agent level,
+- [x] Executable: verify theme module loads and contains expected theme names
+- [x] Executable: verify theme CSS classes or color values are present
+- [x] Guided: describe the visual experience — warm orange at agent level,
       peaceful gray at level 0, how to toggle via carousel
-- [ ] Guided: tell the presenter to launch telec and navigate to show the themes
+- [x] Guided: tell the presenter to launch telec and navigate to show the themes
 
 ### Task 2.2: tui-markdown-editor demo.md
 
 **File:** `demos/tui-markdown-editor/demo.md`
 
-- [ ] Executable: verify editor module is importable and entry point exists
-- [ ] Executable: verify the editor can be invoked with --help or similar
-- [ ] Guided: describe launching the editor via 'e' key in preparation view,
+- [x] Executable: verify editor module is importable and entry point exists
+- [x] Executable: verify the editor can be invoked with --help or similar
+- [x] Guided: describe launching the editor via 'e' key in preparation view,
       markdown syntax highlighting, save/cancel behavior
-- [ ] Guided: tell the presenter to launch telec and operate the editor
+- [x] Guided: tell the presenter to launch telec and operate the editor
 
 ## Phase 3: Build gate integration
 
