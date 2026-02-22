@@ -1296,11 +1296,18 @@ def _handle_todo_demo(args: list[str]) -> None:
             print("All code blocks skipped. Demo has guided steps only.")
             raise SystemExit(0)
 
+        # Prepend project venv to PATH so demo blocks use the correct Python
+        env = os.environ.copy()
+        venv_bin = project_root / ".venv" / "bin"
+        if venv_bin.is_dir():
+            env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
+            env["VIRTUAL_ENV"] = str(project_root / ".venv")
+
         passed = 0
         for ln, block, _reason in executable:
             preview = block.strip().split("\n")[0][:60]
             print(f"  RUN   block at line {ln}: {preview}")
-            result = subprocess.run(block, shell=True, cwd=project_root)
+            result = subprocess.run(block, shell=True, cwd=project_root, env=env)
             if result.returncode != 0:
                 print(f"  FAIL  block at line {ln} exited with {result.returncode}")
                 raise SystemExit(1)
