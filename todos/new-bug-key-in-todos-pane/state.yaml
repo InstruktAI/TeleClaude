@@ -6,8 +6,8 @@ breakdown:
   assessed: false
   todos: []
 dor:
-  last_assessed_at: '2026-02-22T18:00:00Z'
-  score: 9
+  last_assessed_at: '2026-02-22T22:00:00Z'
+  score: 10
   status: pass
   schema_version: 1
   blockers: []

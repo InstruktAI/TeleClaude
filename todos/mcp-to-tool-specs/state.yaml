@@ -6,11 +6,8 @@ breakdown:
   assessed: true
   todos:
   - mcp-migration-telec-commands
-  - mcp-migration-tool-spec-docs
-  - mcp-migration-context-integration
   - mcp-migration-agent-config
   - mcp-migration-delete-mcp
-  - mcp-migration-doc-updates
 dor:
   last_assessed_at: '2026-02-18T14:30:00Z'
   score: 8

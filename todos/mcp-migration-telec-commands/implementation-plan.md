@@ -2,9 +2,10 @@
 
 ## Overview
 
-Add 14 new REST API endpoints and 24 telec CLI subcommands. Write rich `--help`
-text with behavioral guidance and examples. Update the telec-cli spec doc
-with `@exec` directives for baseline tools. The approach:
+Add 12 new REST API endpoints and 22 telec CLI subcommands. Enrich `telec docs`
+help text. Write rich `--help` for all new subcommands with behavioral guidance
+and examples. Update the telec-cli spec doc with `@exec` directives for
+baseline tools. The approach:
 
 1. New REST endpoints in a separate FastAPI router (`teleclaude/api/tool_routes.py`)
    to avoid bloating `api_server.py` further. Each endpoint is a thin wrapper around
@@ -15,7 +16,13 @@ with `@exec` directives for baseline tools. The approach:
    Each handler includes rich `--help` with behavioral guidance migrated from MCP
    tool descriptions and usage examples covering every parameter/input shape.
 4. Wire new groups into `CLI_SURFACE`, `TelecCommand` enum, and dispatch.
-5. Update the telec-cli spec doc with `<!-- @exec: telec <cmd> -h -->` for baseline tools.
+5. Enrich existing `telec docs --help` with two-phase flow guidance and examples.
+6. Update the telec-cli spec doc with `<!-- @exec: telec <cmd> -h -->` for baseline tools.
+
+**No `telec context` group.** `telec docs` already replaces `teleclaude__get_context`
+with the same two-phase flow (index without IDs, full content with IDs). The naming
+"docs" is correct — this is documentation snippets, not generic context. The
+`teleclaude__help` tool (TeleClaude capabilities summary) relocates to `telec infra help`.
 
 No new business logic. All work is wiring: REST endpoint → backend function,
 CLI subcommand → REST endpoint, help text → `@exec` in spec doc.
@@ -34,12 +41,14 @@ CLI subcommand → REST endpoint, help text → `@exec` in spec doc.
    contract from MCP tool descriptions. Examples cover every parameter and shape.
    The telec-cli spec doc inlines baseline help via `@exec` directives.
 
-### Endpoint Design for the 14 Missing Tools
+### Endpoint Design for the 12 Missing Tools
+
+`telec docs` (get_context + help) needs no REST endpoint — it calls
+`build_context_output()` directly. `teleclaude__help` relocates to
+`telec infra help` (static text, no endpoint needed).
 
 | Group    | Tool               | REST Endpoint                      | Backend Function                            |
 | -------- | ------------------ | ---------------------------------- | ------------------------------------------- |
-| context  | get-context        | `POST /tools/context/query`        | `build_context_output()`                    |
-| context  | help               | `GET /tools/context/help`          | static text                                 |
 | sessions | run-agent-command  | `POST /tools/sessions/command`     | `create_session(auto_command=...)`          |
 | sessions | stop-notifications | `POST /tools/sessions/unsubscribe` | `unregister_listener()`                     |
 | workflow | next-prepare       | `POST /tools/workflow/prepare`     | `next_prepare()`                            |
@@ -59,12 +68,13 @@ CLI channels subcommands call these existing endpoints directly.
 New endpoints are namespaced under `/tools/` to separate them from
 existing TUI-facing endpoints.
 
-### CLI Command Mapping (all 24 tools)
+### CLI Command Mapping (22 new + `telec docs` existing)
+
+`telec docs` already covers `get_context` (two-phase: index without IDs,
+full content with comma-separated IDs). No new CLI command needed for it.
 
 | `telec` subcommand                                  | REST Endpoint                            |
 | --------------------------------------------------- | ---------------------------------------- |
-| `telec context query [--areas ...] [--ids]`         | `POST /tools/context/query`              |
-| `telec context help`                                | `GET /tools/context/help`                |
 | `telec sessions list [--computer ...]`              | `GET /sessions` (existing)               |
 | `telec sessions start --computer --project --title` | `POST /sessions` (existing)              |
 | `telec sessions send --id --message`                | `POST /sessions/{id}/message` (existing) |
@@ -96,7 +106,7 @@ existing TUI-facing endpoints.
 
 **File(s):** `teleclaude/api/tool_routes.py` (new)
 
-Create a FastAPI APIRouter with the 14 new endpoints. Each endpoint:
+Create a FastAPI APIRouter with the 12 new endpoints. Each endpoint:
 
 - Extracts typed parameters from the request body
 - Reads `X-Caller-Session-Id` header
@@ -112,7 +122,6 @@ For context, import from `teleclaude.context_selection.api`.
 For channels, import from `teleclaude.channels.publisher`.
 
 - [ ] Create `teleclaude/api/tool_routes.py` with `APIRouter(prefix="/tools")`
-- [ ] Implement context group (2 endpoints)
 - [ ] Implement sessions group (2 endpoints: command, unsubscribe)
 - [ ] Implement workflow group (5 endpoints)
 - [ ] Implement infra group (2 endpoints: deploy, agent-status)
@@ -195,7 +204,8 @@ contains the rich description strings that must transfer to help text.
 - [ ] Implement `handle_infra(args)` — computers, projects, deploy, agent-status
 - [ ] Implement `handle_delivery(args)` — result, file, widget, escalate
 - [ ] Implement `handle_channels(args)` — publish, list
-- [ ] Implement `handle_context(args)` — query, help
+- [ ] Enrich `telec docs --help` with two-phase flow guidance and examples
+- [ ] Relocate `teleclaude__help` to `telec infra help` (static text)
 - [ ] Each handler has rich `--help` with examples covering all parameters
 
 ### Task 3.2: Add CLI surface definitions and dispatch
@@ -204,21 +214,22 @@ contains the rich description strings that must transfer to help text.
 
 Add new entries to `CLI_SURFACE`, `TelecCommand`, and `_handle_cli_command()`:
 
-- [ ] Add 6 new enum values to `TelecCommand`
-- [ ] Add 6 new entries to `CLI_SURFACE` with subcommands and flags
+- [ ] Add 5 new enum values to `TelecCommand` (sessions, workflow, infra, delivery, channels)
+- [ ] Add 5 new entries to `CLI_SURFACE` with subcommands and flags
 - [ ] Add dispatch cases in `_handle_cli_command()` for each group
 - [ ] Update `_handle_completion()` for new groups
 - [ ] Update `_usage_main()` output (new groups appear in help)
 
-### Task 3.3: Remove agent aliases
+### Task 3.3: Remove legacy aliases
 
 **File(s):** `teleclaude/cli/telec.py`
 
-- [ ] Remove `CLAUDE`, `GEMINI`, `CODEX` from `TelecCommand` enum
+- [ ] Remove `CLAUDE`, `GEMINI`, `CODEX`, `LIST` from `TelecCommand` enum
 - [ ] Remove their entries from `CLI_SURFACE`
 - [ ] Remove dispatch cases in `_handle_cli_command()`
 - [ ] Remove `_quick_start()` and `_quick_start_via_api()` (verify not used elsewhere)
 - [ ] Remove `_complete_agent()` completion handler
+- [ ] Remove `_handle_list()` handler (`telec sessions list` replaces it)
 
 ---
 
@@ -241,27 +252,27 @@ Add `@exec` directive sections for each baseline tool:
 
 <!-- @exec: telec docs -h -->
 
-### `telec list`
+### `telec sessions list`
 
-<!-- @exec: telec list -h -->
+<!-- @exec: telec sessions list -h -->
 
-### `telec start`
+### `telec sessions start`
 
 <!-- @exec: telec sessions start -h -->
 
-### `telec send`
+### `telec sessions send`
 
 <!-- @exec: telec sessions send -h -->
 
-### `telec command`
+### `telec sessions command`
 
 <!-- @exec: telec sessions command -h -->
 
-### `telec tail`
+### `telec sessions tail`
 
 <!-- @exec: telec sessions tail -h -->
 
-### `telec deploy`
+### `telec infra deploy`
 
 <!-- @exec: telec infra deploy -h -->
 ```
@@ -279,7 +290,9 @@ Test tool subcommands against a running daemon:
 - [ ] Test `telec workflow prepare --slug test-slug`
 - [ ] Test `telec infra computers` returns computer list
 - [ ] Test `telec channels list` returns JSON
-- [ ] Test `telec context help` returns help text
+- [ ] Test `telec docs` returns snippet index (no IDs)
+- [ ] Test `telec docs id1,id2` returns full snippet content (with IDs)
+- [ ] Test `telec infra help` returns capabilities text
 
 ### Task 4.3: Help text quality verification
 
@@ -294,27 +307,28 @@ Test tool subcommands against a running daemon:
 - [ ] Run `make lint`
 - [ ] Run `make test`
 - [ ] Verify `telec sync`, `telec init`, `telec docs`, `telec todo`, `telec config` unchanged
-- [ ] Verify `telec list` still works (human-friendly output)
-- [ ] Verify `telec --help` shows both old and new commands
+- [ ] Verify `telec list` is removed (replaced by `telec sessions list`)
+- [ ] Verify `telec sessions list` returns session data
+- [ ] Verify `telec --help` shows new subcommand groups (no legacy aliases)
 - [ ] Verify TUI still works (existing REST endpoints unaffected)
 
 ---
 
 ## File Summary
 
-| File                              | Action  | Purpose                                  |
-| --------------------------------- | ------- | ---------------------------------------- |
-| `teleclaude/api/tool_routes.py`   | **new** | 14 REST API endpoints for tools          |
-| `teleclaude/cli/tool_client.py`   | **new** | Sync HTTP client for CLI tool calls      |
-| `teleclaude/cli/tool_commands.py` | **new** | Subcommand group handlers with rich help |
-| `teleclaude/api_server.py`        | modify  | Mount tool router                        |
-| `teleclaude/cli/telec.py`         | modify  | New enum values, CLI_SURFACE, dispatch   |
-| `docs/.../telec-cli.md`           | modify  | Add @exec directives for baseline tools  |
+| File                              | Action  | Purpose                                                  |
+| --------------------------------- | ------- | -------------------------------------------------------- |
+| `teleclaude/api/tool_routes.py`   | **new** | 12 REST API endpoints for tools                          |
+| `teleclaude/cli/tool_client.py`   | **new** | Sync HTTP client for CLI tool calls                      |
+| `teleclaude/cli/tool_commands.py` | **new** | Subcommand group handlers with rich help                 |
+| `teleclaude/api_server.py`        | modify  | Mount tool router                                        |
+| `teleclaude/cli/telec.py`         | modify  | New enum values, CLI_SURFACE, dispatch, enrich docs help |
+| `docs/.../telec-cli.md`           | modify  | Add @exec directives for baseline tools                  |
 
 ## Scope Note
 
 This is 3 new files + 3 modifications. The new code is mechanical (wiring
-existing backend functions through REST → CLI), but there are 24 subcommands
-and 14 new endpoints — total volume is significant. If a builder runs into
+existing backend functions through REST → CLI), but there are 22 subcommands
+and 12 new endpoints — total volume is significant. If a builder runs into
 context pressure, the natural split point is: Phase 1-2 (API + client) as
 one session, Phase 3-4 (CLI + help + validation) as a second.
