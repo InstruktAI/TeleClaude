@@ -19,7 +19,7 @@ from teleclaude.config import config  # noqa: E402
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE  # noqa: E402
 from teleclaude.logging_config import setup_logging  # noqa: E402
 from teleclaude.project_setup import init_project  # noqa: E402
-from teleclaude.todo_scaffold import create_todo_skeleton  # noqa: E402
+from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton  # noqa: E402
 
 TMUX_ENV_KEY = "TMUX"
 TUI_ENV_KEY = "TELEC_TUI_SESSION"
@@ -40,6 +40,7 @@ class TelecCommand(str, Enum):
     DOCS = "docs"
     TODO = "todo"
     ROADMAP = "roadmap"
+    BUGS = "bugs"
     CONFIG = "config"
 
 
@@ -221,6 +222,23 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--title", desc="Delivery title (default: entry description)"),
                     _PROJECT_ROOT_LONG,
                 ],
+            ),
+        },
+    ),
+    "bugs": CommandDef(
+        desc="Bug reporting and tracking",
+        subcommands={
+            "report": CommandDef(
+                desc="Report a bug, scaffold, and dispatch fix",
+                args="<description>",
+                flags=[
+                    Flag("--slug", desc="Custom slug (default: auto-generated)"),
+                    _PROJECT_ROOT_LONG,
+                ],
+            ),
+            "list": CommandDef(
+                desc="List in-flight bug fixes with status",
+                flags=[_PROJECT_ROOT_LONG],
             ),
         },
     ),
@@ -705,6 +723,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         _handle_todo(args)
     elif cmd_enum is TelecCommand.ROADMAP:
         _handle_roadmap(args)
+    elif cmd_enum is TelecCommand.BUGS:
+        _handle_bugs(args)
     elif cmd_enum is TelecCommand.CONFIG:
         _handle_config(args)
     else:
@@ -1693,6 +1713,225 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
     else:
         print(f"Slug not found in roadmap: {slug}")
         raise SystemExit(1)
+
+
+def _handle_bugs(args: list[str]) -> None:
+    """Handle telec bugs commands."""
+    if not args:
+        print(_usage("bugs"))
+        return
+
+    subcommand = args[0]
+    if subcommand == "report":
+        _handle_bugs_report(args[1:])
+    elif subcommand == "list":
+        _handle_bugs_list(args[1:])
+    else:
+        print(f"Unknown bugs subcommand: {subcommand}")
+        print(_usage("bugs"))
+        raise SystemExit(1)
+
+
+def _handle_bugs_report(args: list[str]) -> None:
+    """Handle telec bugs report <description> [--slug <slug>] [--project-root PATH]."""
+    import re
+    import shutil
+
+    if not args:
+        print(_usage("bugs", "report"))
+        return
+
+    description: str | None = None
+    slug: str | None = None
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg == "--slug" and i + 1 < len(args):
+            slug = args[i + 1]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("bugs", "report"))
+            raise SystemExit(1)
+        else:
+            if description is not None:
+                print("Only one description is allowed.")
+                print(_usage("bugs", "report"))
+                raise SystemExit(1)
+            description = arg
+            i += 1
+
+    if not description:
+        print("Missing required description.")
+        print(_usage("bugs", "report"))
+        raise SystemExit(1)
+
+    # Auto-generate slug if not provided
+    if not slug:
+        slug_base = re.sub(r"[^a-z0-9]+", "-", description.lower()).strip("-")
+        slug_base = re.sub(r"-+", "-", slug_base)
+        if len(slug_base) > 40:
+            slug_base = slug_base[:40].rstrip("-")
+        slug = f"fix-{slug_base}"
+
+    try:
+        todo_dir = create_bug_skeleton(
+            project_root,
+            slug,
+            description,
+        )
+    except (ValueError, FileExistsError) as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1) from exc
+
+    # Create git branch from main
+    try:
+        subprocess.run(
+            ["git", "branch", slug, "main"],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=str(project_root),
+        )
+    except subprocess.CalledProcessError as exc:
+        print(f"Error creating branch: {exc.stderr}")
+        print(f"Bug scaffold created at {todo_dir}, but branch creation failed.")
+        print(f"Create branch manually: git branch {slug} main")
+        raise SystemExit(1) from exc
+
+    # Create worktree
+    worktree_path = project_root / "trees" / slug
+    try:
+        subprocess.run(
+            ["git", "worktree", "add", str(worktree_path), slug],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=str(project_root),
+        )
+    except subprocess.CalledProcessError as exc:
+        print(f"Error creating worktree: {exc.stderr}")
+        print(f"Bug scaffold created at {todo_dir}, branch created, but worktree failed.")
+        print(f"Create worktree manually: git worktree add trees/{slug} {slug}")
+        # Clean up branch
+        subprocess.run(["git", "branch", "-D", slug], check=False, cwd=str(project_root))
+        raise SystemExit(1) from exc
+
+    # Copy bug.md and state.yaml to worktree
+    worktree_todo_dir = worktree_path / "todos" / slug
+    worktree_todo_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        shutil.copy2(todo_dir / "bug.md", worktree_todo_dir / "bug.md")
+        shutil.copy2(todo_dir / "state.yaml", worktree_todo_dir / "state.yaml")
+    except Exception as exc:
+        print(f"Error copying files to worktree: {exc}")
+        print("Bug scaffold created, branch and worktree created, but file copy failed.")
+        print(f"Copy files manually to {worktree_todo_dir}")
+        raise SystemExit(1) from exc
+
+    # Dispatch orchestrator
+    api = TelecAPIClient()
+    try:
+        result = asyncio.run(
+            api.create_session(
+                computer="local",
+                project_path=str(worktree_path),
+                agent="claude",
+                thinking_mode="slow",
+                title=f"Bug fix: {slug}",
+                message=f'Run teleclaude__next_work(slug="{slug}") and follow output verbatim until done.',
+            )
+        )
+        print(f"Created bug todo: {todo_dir}")
+        print(f"Bug slug: {slug}")
+        print(f"Branch: {slug}")
+        print(f"Worktree: {worktree_path}")
+        print(f"Orchestrator session: {result.session_id}")
+    except Exception as exc:
+        print(f"Error dispatching orchestrator: {exc}")
+        print("Bug scaffold, branch, and worktree created successfully.")
+        print("Start orchestrator manually from worktree directory:")
+        print(f"  cd {worktree_path}")
+        print(f"  telec claude 'Run teleclaude__next_work(slug=\"{slug}\") and follow output verbatim until done.'")
+
+
+def _handle_bugs_list(args: list[str]) -> None:
+    """Handle telec bugs list [--project-root PATH]."""
+    import yaml
+
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("bugs", "list"))
+            raise SystemExit(1)
+        else:
+            print(f"Unexpected argument: {arg}")
+            print(_usage("bugs", "list"))
+            raise SystemExit(1)
+
+    todos_dir = project_root / "todos"
+    if not todos_dir.exists():
+        print("No bugs found")
+        return
+
+    bugs = []
+    for todo_dir in sorted(todos_dir.iterdir()):
+        if not todo_dir.is_dir() or todo_dir.name.startswith("."):
+            continue
+
+        bug_md = todo_dir / "bug.md"
+        state_yaml = todo_dir / "state.yaml"
+
+        if not bug_md.exists():
+            continue
+
+        # Read state to determine status
+        status = "unknown"
+        if state_yaml.exists():
+            try:
+                state = yaml.safe_load(state_yaml.read_text())
+                phase = state.get("phase", "unknown")
+                build = state.get("build", "unknown")
+                review = state.get("review", "unknown")
+
+                if phase == "in_progress":
+                    if review == "approved":
+                        status = "approved"
+                    elif review == "changes_requested":
+                        status = "fixing"
+                    elif build == "complete":
+                        status = "reviewing"
+                    elif build in ("started", "complete"):
+                        status = "building"
+                    else:
+                        status = "pending"
+            except (yaml.YAMLError, OSError):
+                pass
+
+        bugs.append((todo_dir.name, status))
+
+    if not bugs:
+        print("No bugs found")
+        return
+
+    print(f"Bug fixes ({len(bugs)}):\n")
+    print(f"{'Slug':<40} {'Status':<15}")
+    print("-" * 60)
+    for slug, status in bugs:
+        print(f"{slug:<40} {status:<15}")
 
 
 def _handle_config(args: list[str]) -> None:

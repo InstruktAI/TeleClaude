@@ -12,7 +12,7 @@
 
 ---
 
-### Task 1: Bug Template
+### Task 1: Bug Template ✓
 
 **Files:**
 
@@ -52,7 +52,7 @@ Date: {date}
 
 ---
 
-### Task 2: Bug Scaffold Function
+### Task 2: Bug Scaffold Function ✓
 
 **Files:**
 
@@ -109,7 +109,7 @@ Date: {date}
 
 ---
 
-### Task 3: CLI Commands — `telec bugs report` and `telec bugs list`
+### Task 3: CLI Commands — `telec bugs report` and `telec bugs list` ✓
 
 **Files:**
 
@@ -139,7 +139,7 @@ Date: {date}
 
 ---
 
-### Task 4: State Machine — Bug Detection in `next_work()`
+### Task 4: State Machine — Bug Detection in `next_work()` ✓
 
 **Files:**
 
@@ -180,7 +180,7 @@ This is the critical integration. The `next_work()` function must detect `bug.md
 
 ---
 
-### Task 5: Bug Fix Worker Command
+### Task 5: Bug Fix Worker Command ✓
 
 **Files:**
 
@@ -195,7 +195,7 @@ This is the critical integration. The `next_work()` function must detect `bug.md
 
 ---
 
-### Task 6: Review Adaptation — Teach Reviewer to Use `bug.md`
+### Task 6: Review Adaptation — Teach Reviewer to Use `bug.md` ✓
 
 **Files:**
 
@@ -209,7 +209,7 @@ This is the critical integration. The `next_work()` function must detect `bug.md
 
 ---
 
-### Task 7: Finalize Adaptation — Bug Cleanup
+### Task 7: Finalize Adaptation — Bug Cleanup ✓
 
 **Files:**
 
@@ -235,7 +235,7 @@ Two changes are needed. First, the `note` parameter on `format_tool_call()` inst
 
 ---
 
-### Task 8: Bug Dispatcher — Worktree + Orchestrator Launch
+### Task 8: Bug Dispatcher — Worktree + Orchestrator Launch ✓
 
 **Files:**
 
@@ -268,7 +268,7 @@ After creating the bug scaffold, create branch, worktree, and dispatch orchestra
 
 ---
 
-### Task 9: Verification
+### Task 9: Verification ✓
 
 **Steps:**
 

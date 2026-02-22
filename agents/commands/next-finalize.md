@@ -42,5 +42,6 @@ Merge approved work, log delivery, and clean up.
 - The Orchestrator has verified the approval state. Trust the state.yaml.
 - First, integrate main into the branch (inside the worktree): `git fetch origin main && git merge origin/main --no-edit`. Resolve conflicts here where you have code context.
 - Then merge the branch to main using `git -C "$MAIN_REPO"` commands per the finalize procedure.
-- Log delivery.
+- **If `todos/{slug}/bug.md` exists:** This is a bug fix. Skip the "append to delivered.md" step and skip the "remove from roadmap.yaml" step (bugs are not in the roadmap).
+- **Otherwise:** Log delivery to `todos/delivered.md` and remove the slug from `todos/roadmap.yaml` per the finalize procedure.
 - Do NOT delete the worktree, branch, or todo folder — the orchestrator owns cleanup.

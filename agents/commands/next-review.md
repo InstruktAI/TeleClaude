@@ -41,7 +41,11 @@ Review code changes against requirements and architecture and produce a verdict.
 
 ## Steps
 
-- The Orchestrator has verified the clerical state of this build. Trust the state.yaml and implementation plan.
-- Update only `## Review Gates (Reviewer)` in `todos/{slug}/quality-checklist.md`.
-- Review code changes in the worktree against requirements and architecture.
+- **If `todos/{slug}/bug.md` exists:** This is a bug fix. Use `bug.md` as the requirement source instead of `requirements.md`. Verify:
+  - Fix addresses the symptom described in `bug.md`
+  - Root cause analysis is sound
+  - Fix is minimal and targeted
+  - Investigation and documentation sections are complete
+- **Otherwise:** Regular todo review. The Orchestrator has verified the clerical state of this build. Trust the state.yaml and implementation plan. Review code changes in the worktree against requirements and architecture.
+- Update only `## Review Gates (Reviewer)` in `todos/{slug}/quality-checklist.md` (if it exists).
 - Write findings to `todos/{slug}/review-findings.md` with verdict: APPROVE or REQUEST CHANGES.

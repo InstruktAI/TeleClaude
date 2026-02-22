@@ -6,6 +6,10 @@ Redesign the demo system from a rigid shell-command ceremony into an AI-operated
 testable demonstration framework. The AI is the presenter and operator — it runs
 commands, presses TUI keys, drives Playwright, narrates to the user. The user watches.
 
+The demo is the ultimate functional test. If it can't be demonstrated, it's not
+delivered. Demo validation is a build gate — the builder cannot hand off without
+`telec todo demo <slug>` passing.
+
 ## Context
 
 The current demo system has a `demo` field in `snapshot.json` — a single shell command.
@@ -19,7 +23,7 @@ A freeform markdown file with steps for the AI presenter to execute. Written by 
 architect (draft) and builder (refined). Contains:
 
 - **Executable code blocks** (```bash) — extracted and run by `telec todo demo` for
-  automated validation. Testable upfront.
+  automated validation. Testable upfront. This is the demo validator.
 - **Guided steps** — instructions for the AI to operate the system (TUI keypresses,
   Playwright actions, API calls) and narrate to the user.
 - **Verification steps** — assertions the AI checks ("output should contain X",
@@ -28,18 +32,67 @@ architect (draft) and builder (refined). Contains:
 The AI reads `demo.md` verbatim and executes it. No schema, no ceremony. One AI
 writes instructions for another AI to follow.
 
+### Testability is the default
+
+Almost everything should be testable via code blocks. The AI can spin up its own
+TUI instance (no singleton constraint), run Playwright for web UI, start sessions,
+call APIs. "Not automatable" should be the rare exception — annotated with
+`<!-- skip-validation: reason -->` on the code block — not the default.
+
+Even TUI demos should have testable blocks: the AI runs its own `telec` instance,
+sends keys, verifies state. The guided presentation to the user is a separate
+concern from validation — validation proves it works, presentation shows it off.
+
+### Non-destructive by default
+
+Demos run on real data. They must never be destructive. If the demo needs to
+exercise CRUD operations, it creates its own test data, demonstrates the behavior,
+and cleans up after itself. The builder writes the demo with this awareness:
+you're running on a live system.
+
+Exception: demos may modify data they created themselves within the demo scope.
+The cleanup is part of the demo steps.
+
+## Demo as build gate
+
+`telec todo demo <slug>` extracts all fenced bash code blocks from `demo.md` and
+runs them. All must exit 0. This is the demo validator.
+
+- The builder runs `telec todo demo <slug>` before reporting build complete.
+- The quality checklist already has "Demo is runnable and verified" as a build gate.
+- This todo makes that gate enforceable: `telec todo demo` is the proof.
+- If validation fails, the build is not done. Fix forward.
+
+### Escape hatch
+
+Individual code blocks can be annotated `<!-- skip-validation: reason -->` when
+they genuinely can't be run by the CLI validator (e.g. requires human visual
+confirmation). This should be rare — most things are automatable.
+
+If an entire delivery can't produce any executable demo steps (pure refactors with
+no observable behavior change), the builder notes the exception in `demo.md` with
+reasoning, and the reviewer accepts or pushes back. The default is: you demo it or
+you explain why you can't.
+
+### Bug fixes get demos too
+
+A bug fix demo is often the simplest: reproduce the scenario that was broken, show
+it works now. "The bug is gone" is an assertion. The demo is the proof.
+
 ## Scope
 
 ### In scope
 
 - **demo.md artifact**: introduce as a todo lifecycle artifact (drafted in prepare,
   refined in build, copied to `demos/{slug}/` at delivery)
-- **CLI runner rewrite**: `telec todo demo <slug>` reads `demo.md`, extracts fenced
-  bash code blocks, executes them sequentially, reports pass/fail
+- **Demo validator**: `telec todo demo <slug>` reads `demo.md`, extracts fenced
+  bash code blocks, executes them sequentially, all must exit 0
+- **Build gate integration**: builder runs demo validator before handing off,
+  build procedure references it
 - **/next-demo command rewrite**: conversational presenter that reads `demo.md` and
   executes ALL steps (code blocks + guided + verification) as the narrator/operator
 - **Demo procedure doc update**: replace shell-command ceremony with demo.md framework,
-  describe the prepare→build→present lifecycle
+  describe the prepare→build→present lifecycle, demo as build gate
 - **Demo artifact spec update**: drop `demo` field from snapshot.json, add `demo.md`
   as the demonstration artifact
 - **Lifecycle overview update**: correct the demo phase description
@@ -51,8 +104,7 @@ writes instructions for another AI to follow.
 ### Out of scope
 
 - MCP wrapper changes (MCP is being eliminated)
-- Playwright integration (the framework supports it but specific Playwright tooling
-  is not part of this todo — agents already have Playwright available)
+- Playwright integration (agents already have Playwright available)
 - Changes to snapshot.json structure beyond dropping the `demo` field
 
 ## Success Criteria
@@ -63,7 +115,8 @@ writes instructions for another AI to follow.
 - [ ] `/next-demo themed-primary-color` reads `demo.md` and walks through all steps
       conversationally
 - [ ] New todos scaffolded with `telec todo create` include a `demo.md` template
-- [ ] Demo procedure doc describes the demo.md framework
+- [ ] Build procedure references demo validation as a pre-completion step
+- [ ] Demo procedure doc describes the demo.md framework and build gate role
 - [ ] Demo artifact spec reflects demo.md instead of demo field
 - [ ] Lifecycle overview describes demo phase accurately
 

@@ -27,6 +27,21 @@ _DEFAULT_STATE = TodoState(
 ).model_dump()
 
 
+_BUG_STATE = TodoState(
+    phase="in_progress",
+    build="pending",
+    review="pending",
+    deferrals_processed=False,
+    breakdown=BreakdownState(assessed=False, todos=[]),
+    dor=None,
+    review_round=0,
+    max_review_rounds=3,
+    review_baseline_commit="",
+    unresolved_findings=[],
+    resolved_findings=[],
+).model_dump()
+
+
 def _templates_root() -> Path:
     return Path(__file__).resolve().parent.parent / "templates" / "todos"
 
@@ -92,5 +107,51 @@ def create_todo_skeleton(
                 deduped.append(cleaned)
 
         add_to_roadmap(str(project_root), slug, after=deduped)
+
+    return todo_dir
+
+
+def create_bug_skeleton(
+    project_root: Path,
+    slug: str,
+    description: str,
+    *,
+    reporter: str = "manual",
+    session_id: str = "none",
+) -> Path:
+    """Create a bug todo skeleton folder.
+
+    Creates:
+    - todos/{slug}/bug.md
+    - todos/{slug}/state.yaml
+
+    Bug todos skip the prepare phase and start at in_progress/build phase.
+    """
+    from datetime import datetime, timezone
+
+    slug = slug.strip()
+    if not slug:
+        raise ValueError("Slug is required")
+    if not SLUG_PATTERN.match(slug):
+        raise ValueError("Invalid slug. Use lowercase letters, numbers, and hyphens only")
+
+    todos_root = project_root / "todos"
+    todo_dir = todos_root / slug
+
+    if todo_dir.exists():
+        raise FileExistsError(f"Todo already exists: {todo_dir}")
+
+    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    bug_md = _read_template("bug.md").format(
+        description=description,
+        reporter=reporter,
+        session_id=session_id,
+        date=date,
+    )
+    state_content = yaml.dump(_BUG_STATE, default_flow_style=False, sort_keys=False)
+
+    _write_file(todo_dir / "bug.md", bug_md)
+    _write_file(todo_dir / "state.yaml", state_content)
 
     return todo_dir
