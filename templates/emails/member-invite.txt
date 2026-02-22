@@ -1,0 +1,11 @@
+Hi {name},
+
+You now have a personal AI assistant. Pick any platform below to start chatting:
+
+{telegram_text}
+{discord_text}
+{whatsapp_text}
+
+Just click one — you'll land in a private conversation. Your assistant knows who you are.
+
+— {sender_name}

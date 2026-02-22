@@ -32,35 +32,35 @@
 
 **File(s):** `teleclaude/config/schema.py`
 
-- [ ] Add `invite_token: Optional[str] = None` field to `PersonConfig` (line ~252, after `creds`)
-- [ ] Add `notifications: Optional[dict] = None` is already handled by `extra="allow"` but `invite_token` should be explicit
+- [x] Add `invite_token: Optional[str] = None` field to `PersonConfig` (line ~252, after `creds`)
+- [x] Add `notifications: Optional[dict] = None` is already handled by `extra="allow"` but `invite_token` should be explicit
 
 ### Task 1.2: Add token generation and persistence helpers
 
 **File(s):** `teleclaude/cli/config_handlers.py`
 
-- [ ] Add `generate_invite_token() -> str` function: `"inv_" + secrets.token_hex(8)` (16 hex chars)
-- [ ] Add `set_invite_token(name: str) -> str` function: generates token, loads person config, sets `invite_token`, saves atomically via `save_person_config()`, returns the token
-- [ ] Add `find_person_by_invite_token(token: str) -> tuple[str, PersonConfig] | None` function: scans all `~/.teleclaude/people/*/teleclaude.yml` files, returns (person_name, config) if matching `invite_token` found
+- [x] Add `generate_invite_token() -> str` function: `"inv_" + secrets.token_hex(8)` (16 hex chars)
+- [x] Add `set_invite_token(name: str) -> str` function: generates token, loads person config, sets `invite_token`, saves atomically via `save_person_config()`, returns the token
+- [x] Add `find_person_by_invite_token(token: str) -> tuple[str, PersonConfig] | None` function: scans all `~/.teleclaude/people/*/teleclaude.yml` files, returns (person_name, config) if matching `invite_token` found
 
 ### Task 1.3: Add bot username/ID resolution helpers
 
 **File(s):** `teleclaude/cli/config_handlers.py` (or new `teleclaude/invite.py`)
 
-- [ ] Add `async resolve_telegram_bot_username(token_env="TELEGRAM_BOT_TOKEN") -> str` function: calls Telegram `getMe` API via httpx, returns `bot.username`
-- [ ] Add `async resolve_discord_bot_user_id(token_env="DISCORD_BOT_TOKEN") -> str` function: calls Discord `GET /users/@me` API via httpx, returns bot user ID
-- [ ] Both raise `ValueError` with clear message if token missing or API fails
+- [x] Add `async resolve_telegram_bot_username(token_env="TELEGRAM_BOT_TOKEN") -> str` function: calls Telegram `getMe` API via httpx, returns `bot.username`
+- [x] Add `async resolve_discord_bot_user_id(token_env="DISCORD_BOT_TOKEN") -> str` function: calls Discord `GET /users/@me` API via httpx, returns bot user ID
+- [x] Both raise `ValueError` with clear message if token missing or API fails
 
 ### Task 1.4: Add deep link generation
 
 **File(s):** `teleclaude/invite.py` (new module)
 
-- [ ] Create `teleclaude/invite.py` with invite link generation logic
-- [ ] `generate_invite_links(token: str, bot_username: str | None, discord_bot_id: str | None, whatsapp_number: str | None) -> dict[str, str | None]`:
+- [x] Create `teleclaude/invite.py` with invite link generation logic
+- [x] `generate_invite_links(token: str, bot_username: str | None, discord_bot_id: str | None, whatsapp_number: str | None) -> dict[str, str | None]`:
   - Telegram: `https://t.me/{bot_username}?start={token}` (None if no bot_username)
   - Discord: `https://discord.com/users/{discord_bot_id}` (None if no bot ID)
   - WhatsApp: `https://wa.me/{whatsapp_number}?text={token}` (None if no number)
-- [ ] Links that cannot be generated return None with a reason string
+- [x] Links that cannot be generated return None with a reason string
 
 **Step: Run tests**
 
@@ -80,36 +80,36 @@ feat(invite): add token generation, bot resolution, and deep link helpers
 
 **File(s):** `teleclaude/notifications/email.py` (new)
 
-- [ ] Create `teleclaude/notifications/email.py`
-- [ ] `async send_email(to: str, subject: str, html_body: str, text_body: str | None = None, *, smtp_host: str = "smtp-relay.brevo.com", smtp_port: int = 587) -> None`
-- [ ] Read credentials from env: `BREVO_SMTP_USER`, `BREVO_SMTP_PASS`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`
-- [ ] Use `aiosmtplib` for async SMTP or `smtplib` in a thread via `asyncio.to_thread`
-- [ ] Build MIME multipart message: HTML body + plain text alternative
-- [ ] Raise `ValueError` if credentials missing, `RuntimeError` on SMTP failure
+- [x] Create `teleclaude/notifications/email.py`
+- [x] `async send_email(to: str, subject: str, html_body: str, text_body: str | None = None, *, smtp_host: str = "smtp-relay.brevo.com", smtp_port: int = 587) -> None`
+- [x] Read credentials from env: `BREVO_SMTP_USER`, `BREVO_SMTP_PASS`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`
+- [x] Use `aiosmtplib` for async SMTP or `smtplib` in a thread via `asyncio.to_thread`
+- [x] Build MIME multipart message: HTML body + plain text alternative
+- [x] Raise `ValueError` if credentials missing, `RuntimeError` on SMTP failure
 
 ### Task 2.2: Create invite email template
 
 **File(s):** `templates/emails/member-invite.html` (new), `templates/emails/member-invite.txt` (new)
 
-- [ ] Create `templates/emails/member-invite.html` — responsive HTML email with:
+- [x] Create `templates/emails/member-invite.html` — responsive HTML email with:
   - Greeting: "Hi {name},"
   - Intro: "You now have a personal AI assistant. Pick any platform below to start chatting:"
   - Three styled button links: Telegram (blue), Discord (indigo), WhatsApp (green)
   - Buttons that have no link (None) are hidden or shown as "coming soon"
   - Footer: "Just click one — you'll land in a private conversation. Your assistant knows who you are."
   - Sign-off: "— {sender_name}"
-- [ ] Create `templates/emails/member-invite.txt` — plain text fallback with the same info
-- [ ] Template uses `{name}`, `{telegram_link}`, `{discord_link}`, `{whatsapp_link}`, `{sender_name}`, `{org_name}` placeholders (simple str.format)
+- [x] Create `templates/emails/member-invite.txt` — plain text fallback with the same info
+- [x] Template uses `{name}`, `{telegram_link}`, `{discord_link}`, `{whatsapp_link}`, `{sender_name}`, `{org_name}` placeholders (simple str.format)
 
 ### Task 2.3: Create invite email composition function
 
 **File(s):** `teleclaude/invite.py`
 
-- [ ] Add `async send_invite_email(name: str, email: str, links: dict[str, str | None], org_name: str = "InstruktAI", sender_name: str = "Your Admin") -> None`
-- [ ] Load templates from `templates/emails/member-invite.{html,txt}`
-- [ ] Substitute placeholders
-- [ ] Call `send_email()` with subject "Welcome to {org_name} — Your Personal AI Assistant"
-- [ ] If `BREVO_SMTP_USER` is missing, print links to stdout as fallback (graceful degradation)
+- [x] Add `async send_invite_email(name: str, email: str, links: dict[str, str | None], org_name: str = "InstruktAI", sender_name: str = "Your Admin") -> None`
+- [x] Load templates from `templates/emails/member-invite.{html,txt}`
+- [x] Substitute placeholders
+- [x] Call `send_email()` with subject "Welcome to {org_name} — Your Personal AI Assistant"
+- [x] If `BREVO_SMTP_USER` is missing, print links to stdout as fallback (graceful degradation)
 
 **Step: Run tests**
 
@@ -129,7 +129,7 @@ feat(notifications): add Brevo SMTP email sender and invite email template
 
 **File(s):** `teleclaude/cli/config_cli.py:450-496`
 
-- [ ] Rewrite `_handle_invite()`:
+- [x] Rewrite `_handle_invite()`:
   1. Validate person exists (keep existing check)
   2. Call `set_invite_token(name)` to generate/rotate token
   3. Call `resolve_telegram_bot_username()` (sync wrapper or asyncio.run for CLI context)
@@ -140,19 +140,19 @@ feat(notifications): add Brevo SMTP email sender and invite email template
   8. Call `send_invite_email(name, email, links)` (async, wrapped for CLI)
   9. Print confirmation: "Invite sent to {email} for {name}"
   10. `--json` output: `{"ok": true, "name": ..., "email": ..., "links": {...}}`
-- [ ] Handle errors: missing bot token → warn but continue with available links; missing email → fail with clear message
+- [x] Handle errors: missing bot token → warn but continue with available links; missing email → fail with clear message
 
 ### Task 3.2: Add auto-invite on `people add`
 
 **File(s):** `teleclaude/cli/config_cli.py:174-210`
 
-- [ ] After `add_person(entry)` succeeds, if email is present and `--no-invite` not in args:
+- [x] After `add_person(entry)` succeeds, if email is present and `--no-invite` not in args:
   1. Call `set_invite_token(name)`
   2. Resolve bot usernames
   3. Generate links
   4. Send invite email
   5. Print: "Added {name} as {role} — invite sent to {email}"
-- [ ] If `--no-invite` is passed, skip invite flow
+- [x] If `--no-invite` is passed, skip invite flow
 
 **Step: Run tests**
 
@@ -172,7 +172,7 @@ feat(config): rewrite invite with token generation, email delivery, and auto-inv
 
 **File(s):** `teleclaude/adapters/telegram_adapter.py`
 
-- [ ] In `start()` method (around line 534), add a new handler BEFORE the supergroup text handler:
+- [x] In `start()` method (around line 534), add a new handler BEFORE the supergroup text handler:
   ```python
   private_start_handler = CommandHandler(
       "start",
@@ -181,7 +181,7 @@ feat(config): rewrite invite with token generation, email delivery, and auto-inv
   )
   self.app.add_handler(private_start_handler)
   ```
-- [ ] Add `async _handle_private_start(self, update, context)`:
+- [x] Add `async _handle_private_start(self, update, context)`:
   1. Extract `/start {payload}` — the payload is `context.args[0]` if present
   2. If no payload or payload doesn't start with `inv_` → respond "Send me your invite token to get started, or contact your admin for an invite link."
   3. Call `find_person_by_invite_token(payload)` (from config_handlers)
@@ -199,7 +199,7 @@ feat(config): rewrite invite with token generation, email delivery, and auto-inv
 
 **File(s):** `teleclaude/adapters/telegram_adapter.py`
 
-- [ ] Add handler for `ChatType.PRIVATE & TEXT & ~COMMAND`:
+- [x] Add handler for `ChatType.PRIVATE & TEXT & ~COMMAND`:
   ```python
   private_text_handler = MessageHandler(
       filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
@@ -207,7 +207,7 @@ feat(config): rewrite invite with token generation, email delivery, and auto-inv
   )
   self.app.add_handler(private_text_handler)
   ```
-- [ ] In `_handle_private_text(self, update, context)`:
+- [x] In `_handle_private_text(self, update, context)`:
   1. Get sender's `user_id` from `update.effective_user.id`
   2. Resolve identity via `IdentityResolver` (already resolves by `telegram_user_id`)
   3. If known person → route message to their personal workspace session (find or create)
@@ -217,7 +217,7 @@ feat(config): rewrite invite with token generation, email delivery, and auto-inv
 
 **File(s):** `teleclaude/invite.py`
 
-- [ ] Add `scaffold_personal_workspace(person_name: str) -> Path`:
+- [x] Add `scaffold_personal_workspace(person_name: str) -> Path`:
   - Target: `~/.teleclaude/people/{person_name}/workspace/`
   - `os.makedirs(exist_ok=True)`
   - If `AGENTS.master.md` exists in person's home folder, symlink or copy to workspace
@@ -243,7 +243,7 @@ feat(telegram): add private chat /start handler with invite token binding and pe
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] In the `on_message` handler path, detect DM context:
+- [x] In the `on_message` handler path, detect DM context:
   - Check if `message.guild is None` (DMs have no guild)
   - If DM and message content matches `inv_` prefix → invite token binding flow (same logic as Telegram: find person, check binding, bind credentials, create workspace session)
   - If DM and user is already bound → route to personal workspace session
