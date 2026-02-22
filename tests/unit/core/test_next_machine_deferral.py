@@ -28,7 +28,7 @@ def test_has_pending_deferrals_exists_unprocessed():
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "deferrals.md").write_text("deferrals")
-        (item_dir / "state.json").write_text('{"deferrals_processed": false}')
+        (item_dir / "state.yaml").write_text('{"deferrals_processed": false}')
 
         result = has_pending_deferrals(tmpdir, slug)
         assert result is True
@@ -41,7 +41,7 @@ def test_has_pending_deferrals_exists_processed():
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "deferrals.md").write_text("deferrals")
-        (item_dir / "state.json").write_text('{"deferrals_processed": true}')
+        (item_dir / "state.yaml").write_text('{"deferrals_processed": true}')
 
         result = has_pending_deferrals(tmpdir, slug)
         assert result is False
@@ -54,7 +54,7 @@ def test_has_pending_deferrals_exists_no_state_key():
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "deferrals.md").write_text("deferrals")
-        (item_dir / "state.json").write_text("{}")  # Default state has False
+        (item_dir / "state.yaml").write_text("{}")  # Default state has False
 
         result = has_pending_deferrals(tmpdir, slug)
         assert result is True
@@ -82,12 +82,12 @@ async def test_next_work_dispatches_defer():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Req")
         (item_dir / "implementation-plan.md").write_text("# Plan")
-        (item_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         # Setup worktree state (Build complete, Review approved, Deferrals pending)
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.json").write_text(
+        (state_dir / "state.yaml").write_text(
             '{"build": "complete", "review": "approved", "deferrals_processed": false}'
         )
         (state_dir / "deferrals.md").write_text("deferrals")
@@ -124,12 +124,12 @@ async def test_next_work_skips_defer_if_processed():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Req")
         (item_dir / "implementation-plan.md").write_text("# Plan")
-        (item_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         # Setup worktree state (Build complete, Review approved, Deferrals PROCESSED)
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.json").write_text(
+        (state_dir / "state.yaml").write_text(
             '{"build": "complete", "review": "approved", "deferrals_processed": true}'
         )
         (state_dir / "deferrals.md").write_text("deferrals")

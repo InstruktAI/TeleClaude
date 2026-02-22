@@ -12,7 +12,7 @@ from teleclaude.core.next_machine.core import DeliveredEntry, load_delivered, sa
 def _write_state(tmpdir: str, slug: str, state: dict) -> None:
     state_dir = Path(tmpdir) / "todos" / slug
     state_dir.mkdir(parents=True, exist_ok=True)
-    (state_dir / "state.json").write_text(json.dumps(state))
+    (state_dir / "state.yaml").write_text(json.dumps(state))
 
 
 def _write_roadmap(tmpdir: str, entries: list[dict]) -> None:

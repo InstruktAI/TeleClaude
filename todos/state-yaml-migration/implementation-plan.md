@@ -122,9 +122,9 @@ All changes are confined to serialization plumbing. No Pydantic model changes, n
 
 ### Task 4.1: Tests
 
-- [ ] Update all test files that create/read `state.json` to use `state.yaml`
-- [ ] Run `make test` — all tests must pass
-- [ ] Key test files:
+- [x] Update all test files that create/read `state.json` to use `state.yaml`
+- [x] Run `make test` — all tests must pass
+- [x] Key test files:
   - `tests/unit/test_todo_scaffold.py`
   - `tests/unit/test_todo_validation.py`
   - `tests/unit/test_next_machine_hitl.py`
@@ -137,9 +137,9 @@ All changes are confined to serialization plumbing. No Pydantic model changes, n
 
 ### Task 4.2: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
-- [ ] Final grep for remaining `state.json` references — confirm only non-todo usages remain (MCP `.state.json`, `cron_state.json`, `tui_state.json`)
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
+- [x] Final grep for remaining `state.json` references — confirm only non-todo usages remain (MCP `.state.json`, `cron_state.json`, `tui_state.json`)
 
 ---
 

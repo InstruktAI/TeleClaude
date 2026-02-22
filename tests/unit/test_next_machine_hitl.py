@@ -1,10 +1,10 @@
-import json
 import os
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
@@ -178,7 +178,7 @@ async def test_next_prepare_hitl_slug_missing_from_roadmap_when_docs_exist():
 
 
 def test_read_phase_state_returns_default_when_no_file():
-    """read_phase_state returns default state when state.json doesn't exist."""
+    """read_phase_state returns default state when state.yaml doesn't exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
         state = read_phase_state(tmpdir, "test-slug")
         assert state["build"] == "pending"
@@ -193,13 +193,13 @@ def test_read_phase_state_returns_default_when_no_file():
 
 
 def test_read_phase_state_reads_existing_file():
-    """read_phase_state reads existing state.json."""
+    """read_phase_state reads existing state.yaml."""
     with tempfile.TemporaryDirectory() as tmpdir:
         slug = "test-slug"
         state_dir = Path(tmpdir) / "todos" / slug
         state_dir.mkdir(parents=True)
-        state_file = state_dir / "state.json"
-        state_file.write_text(json.dumps({"build": "complete", "review": "pending"}))
+        state_file = state_dir / "state.yaml"
+        state_file.write_text(yaml.dump({"build": "complete", "review": "pending"}))
 
         state = read_phase_state(tmpdir, slug)
         # Should merge with defaults for missing keys
@@ -215,7 +215,7 @@ def test_read_phase_state_reads_existing_file():
 
 
 def test_write_phase_state_creates_file():
-    """write_phase_state creates state.json and commits."""
+    """write_phase_state creates state.yaml and commits."""
     with tempfile.TemporaryDirectory() as tmpdir:
         slug = "test-slug"
         state = {"build": "complete", "review": "pending"}
@@ -223,9 +223,9 @@ def test_write_phase_state_creates_file():
         with patch("teleclaude.core.next_machine.core.Repo"):
             write_phase_state(tmpdir, slug, state)
 
-        state_file = Path(tmpdir) / "todos" / slug / "state.json"
+        state_file = Path(tmpdir) / "todos" / slug / "state.yaml"
         assert state_file.exists()
-        content = json.loads(state_file.read_text())
+        content = yaml.safe_load(state_file.read_text())
         assert content == state
 
 
@@ -244,8 +244,8 @@ def test_mark_phase_updates_state():
         assert result["review"] == "pending"
 
         # Verify file was written
-        state_file = Path(tmpdir) / "todos" / slug / "state.json"
-        content = json.loads(state_file.read_text())
+        state_file = Path(tmpdir) / "todos" / slug / "state.yaml"
+        content = yaml.safe_load(state_file.read_text())
         assert content["build"] == "complete"
 
 
@@ -334,13 +334,13 @@ def test_sync_slug_todo_from_main_to_worktree_copies_slug_files():
 
         (main_todo / "requirements.md").write_text("# req\n", encoding="utf-8")
         (main_todo / "implementation-plan.md").write_text("# plan\n", encoding="utf-8")
-        (main_todo / "state.json").write_text("{}", encoding="utf-8")
+        (main_todo / "state.yaml").write_text("{}", encoding="utf-8")
 
         sync_slug_todo_from_main_to_worktree(tmpdir, slug)
 
         assert (worktree_root / "todos" / slug / "requirements.md").exists()
         assert (worktree_root / "todos" / slug / "implementation-plan.md").exists()
-        assert (worktree_root / "todos" / slug / "state.json").exists()
+        assert (worktree_root / "todos" / slug / "state.yaml").exists()
 
 
 def test_sync_slug_todo_from_main_to_worktree_includes_review_findings():
@@ -385,12 +385,12 @@ def test_sync_slug_todo_from_main_to_worktree_does_not_overwrite_existing_state(
         main_todo.mkdir(parents=True, exist_ok=True)
         worktree_todo.mkdir(parents=True, exist_ok=True)
 
-        (main_todo / "state.json").write_text('{"build":"pending"}', encoding="utf-8")
-        (worktree_todo / "state.json").write_text('{"build":"complete"}', encoding="utf-8")
+        (main_todo / "state.yaml").write_text('{"build":"pending"}', encoding="utf-8")
+        (worktree_todo / "state.yaml").write_text('{"build":"complete"}', encoding="utf-8")
 
         sync_slug_todo_from_main_to_worktree(tmpdir, slug)
 
-        final_state = (worktree_todo / "state.json").read_text(encoding="utf-8")
+        final_state = (worktree_todo / "state.yaml").read_text(encoding="utf-8")
         assert '"build":"complete"' in final_state
 
 
@@ -400,8 +400,8 @@ def test_mark_phase_review_approved_clears_unresolved_findings():
         slug = "test-slug"
         state_dir = Path(tmpdir) / "todos" / slug
         state_dir.mkdir(parents=True)
-        (state_dir / "state.json").write_text(
-            json.dumps(
+        (state_dir / "state.yaml").write_text(
+            yaml.dump(
                 {
                     "build": "complete",
                     "review": "pending",
@@ -427,7 +427,7 @@ def test_is_build_complete_true():
         slug = "test-slug"
         state_dir = Path(tmpdir) / "todos" / slug
         state_dir.mkdir(parents=True)
-        (state_dir / "state.json").write_text(json.dumps({"build": "complete"}))
+        (state_dir / "state.yaml").write_text(yaml.dump({"build": "complete"}))
 
         assert is_build_complete(tmpdir, slug) is True
 
@@ -444,7 +444,7 @@ def test_is_review_approved_true():
         slug = "test-slug"
         state_dir = Path(tmpdir) / "todos" / slug
         state_dir.mkdir(parents=True)
-        (state_dir / "state.json").write_text(json.dumps({"review": "approved"}))
+        (state_dir / "state.yaml").write_text(yaml.dump({"review": "approved"}))
 
         assert is_review_approved(tmpdir, slug) is True
 
@@ -455,7 +455,7 @@ def test_is_review_changes_requested_true():
         slug = "test-slug"
         state_dir = Path(tmpdir) / "todos" / slug
         state_dir.mkdir(parents=True)
-        (state_dir / "state.json").write_text(json.dumps({"review": "changes_requested"}))
+        (state_dir / "state.yaml").write_text(yaml.dump({"review": "changes_requested"}))
 
         assert is_review_changes_requested(tmpdir, slug) is True
 

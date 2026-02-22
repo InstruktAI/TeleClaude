@@ -1,7 +1,7 @@
 """Integration tests for state machine workflow with dependency gating.
 
 Tests the complete workflow:
-- State transitions: pending → ready → in_progress → done (via state.json phase)
+- State transitions: pending → ready → in_progress → done (via state.yaml phase)
 - Dependency satisfaction blocking
 - Integration with resolve_slug() and next_work()
 """
@@ -39,11 +39,11 @@ async def test_workflow_pending_to_done_with_dependencies():
         deps = {"main-item": ["dep-item"]}
         _write_roadmap_yaml(tmpdir, ["dep-item", "main-item"], deps)
 
-        # Create state.json for items
+        # Create state.yaml for items
         for slug in ("dep-item", "main-item"):
             d = Path(tmpdir) / "todos" / slug
             d.mkdir(parents=True, exist_ok=True)
-            (d / "state.json").write_text('{"phase": "pending"}')
+            (d / "state.yaml").write_text('{"phase": "pending"}')
 
         # Step 1: Verify main-item cannot be selected (dependency unsatisfied)
         slug, is_ready, desc = resolve_slug(tmpdir, slug=None, ready_only=True)
@@ -54,7 +54,7 @@ async def test_workflow_pending_to_done_with_dependencies():
         # Write dor score to make it ready
         import json
 
-        dep_state_path = Path(tmpdir) / "todos" / "dep-item" / "state.json"
+        dep_state_path = Path(tmpdir) / "todos" / "dep-item" / "state.yaml"
         dep_state = json.loads(dep_state_path.read_text())
         dep_state["dor"] = {"score": 8}
         dep_state_path.write_text(json.dumps(dep_state))
@@ -74,7 +74,7 @@ async def test_workflow_pending_to_done_with_dependencies():
 
         # Step 6: Mark main-item as ready
         set_item_phase(tmpdir, "main-item", "pending")
-        main_state_path = Path(tmpdir) / "todos" / "main-item" / "state.json"
+        main_state_path = Path(tmpdir) / "todos" / "main-item" / "state.yaml"
         main_state = json.loads(main_state_path.read_text())
         main_state["dor"] = {"score": 8}
         main_state_path.write_text(json.dumps(main_state))
@@ -96,7 +96,7 @@ async def test_next_work_dependency_blocking():
         deps = {"blocked-feature": ["foundation"]}
         _write_roadmap_yaml(tmpdir, ["foundation", "blocked-feature", "independent-feature"], deps)
 
-        # Create state.json for items
+        # Create state.yaml for items
         states = {
             "foundation": '{"phase": "pending"}',
             "blocked-feature": '{"phase": "pending", "dor": {"score": 8}}',
@@ -105,13 +105,13 @@ async def test_next_work_dependency_blocking():
         for slug, state in states.items():
             d = Path(tmpdir) / "todos" / slug
             d.mkdir(parents=True, exist_ok=True)
-            (d / "state.json").write_text(state)
+            (d / "state.yaml").write_text(state)
 
         # Create required files for independent-feature
         item_dir = Path(tmpdir) / "todos" / "independent-feature"
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.json").write_text(
+        (item_dir / "state.yaml").write_text(
             '{"phase": "pending", "dor": {"score": 8}, "build": "pending", "review": "pending"}'
         )
 
@@ -130,14 +130,14 @@ async def test_next_work_dependency_blocking():
         assert "ERROR:" in result
         assert "DEPS_UNSATISFIED" in result
 
-        # Step 3: Complete foundation item via state.json phase
+        # Step 3: Complete foundation item via state.yaml phase
         set_item_phase(tmpdir, "foundation", "done")
 
         # Step 4: Create required files for blocked-feature
         blocked_dir = Path(tmpdir) / "todos" / "blocked-feature"
         (blocked_dir / "requirements.md").write_text("# Requirements\n")
         (blocked_dir / "implementation-plan.md").write_text("# Plan\n")
-        (blocked_dir / "state.json").write_text(
+        (blocked_dir / "state.yaml").write_text(
             '{"phase": "pending", "dor": {"score": 8}, "build": "pending", "review": "pending"}'
         )
 
@@ -168,7 +168,7 @@ async def test_removed_dependency_satisfaction():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.json").write_text(
+        (item_dir / "state.yaml").write_text(
             '{"phase": "pending", "dor": {"score": 8}, "build": "pending", "review": "pending"}'
         )
 

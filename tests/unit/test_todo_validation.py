@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
+
+import yaml
 
 from teleclaude.resource_validation import validate_todo
 
@@ -20,7 +21,7 @@ def test_validate_todo_pass(tmp_path: Path):
         "build": "pending",
         "review": "pending",
     }
-    (todo_dir / "state.json").write_text(json.dumps(state))
+    (todo_dir / "state.yaml").write_text(yaml.dump(state))
     (todo_dir / "requirements.md").touch()
     (todo_dir / "implementation-plan.md").touch()
 
@@ -36,10 +37,10 @@ def test_validate_todo_schema_violation(tmp_path: Path):
 
     # phase should be string, not int
     state = {"phase": 123}
-    (todo_dir / "state.json").write_text(json.dumps(state))
+    (todo_dir / "state.yaml").write_text(yaml.dump(state))
 
     errors = validate_todo(todo_slug, tmp_path)
-    assert any("state.json schema violation" in e for e in errors)
+    assert any("state file schema violation" in e for e in errors)
 
 
 def test_validate_todo_missing_files_for_ready(tmp_path: Path):
@@ -52,7 +53,7 @@ def test_validate_todo_missing_files_for_ready(tmp_path: Path):
         "phase": "pending",
         "dor": {"score": 8, "status": "pass"},
     }
-    (todo_dir / "state.json").write_text(json.dumps(state))
+    (todo_dir / "state.yaml").write_text(yaml.dump(state))
 
     errors = validate_todo(todo_slug, tmp_path)
     assert any("missing requirements.md" in e for e in errors)

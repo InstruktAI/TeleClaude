@@ -16,7 +16,7 @@ def test_create_todo_skeleton_creates_expected_files(tmp_path: Path) -> None:
     assert (todo_dir / "requirements.md").exists()
     assert (todo_dir / "implementation-plan.md").exists()
     assert (todo_dir / "quality-checklist.md").exists()
-    assert (todo_dir / "state.json").exists()
+    assert (todo_dir / "state.yaml").exists()
     assert (todo_dir / "input.md").exists()
 
     # Verify input.md has correct heading
