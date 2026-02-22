@@ -15,11 +15,8 @@ across all projects.
 
 ## Preconditions
 
-- The agent was spawned by the cron runner as a subprocess with full tool access.
+- The agent was spawned by the cron runner with full tool access.
 - The agent has loaded its job spec doc (the only source of task instructions).
-- Tools (bash, read, write, glob, grep, etc.) are available.
-- MCP tools (teleclaude\_\_\*) are available when the daemon is running, gracefully
-  absent when the daemon is down. Jobs must not depend on MCP for core functionality.
 
 ## Steps
 
@@ -96,10 +93,3 @@ not relational). Do not start bonus work. Go idle immediately.
 - A run report at `~/.teleclaude/jobs/{job_name}/runs/{YYMMDD-HHMMSS}.md`.
 - Whatever artifacts the job spec defines (ideas files, CSV updates, etc.).
 - Any fixes committed to the job's own scripts (within spec scope only).
-
-## Recovery
-
-- If the agent crashes mid-run, the report will be missing. The cron runner logs
-  the subprocess exit code. A non-zero exit code with a missing report indicates a crash.
-- If the subprocess exceeds its timeout, it is killed. The runner marks the job as failed.
-- The next scheduled run starts fresh — jobs are stateless between runs.

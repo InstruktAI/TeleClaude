@@ -33,17 +33,11 @@ The agent supervises the existing tagging pipeline:
    called with `refresh=True` (not used by the nightly job).
 5. The agent writes a run report and stops.
 
-If the tagging script fails, the agent diagnoses the error and fixes forward if
-the issue is within this job's scope (the files listed below). Out-of-scope issues
-are recorded in the run report.
+## Scope (fix-forward boundary)
 
-## Files
-
-| File                                 | Role                                              |
-| ------------------------------------ | ------------------------------------------------- |
-| `teleclaude/tagging/youtube.py`      | Tagging library — CSV ops, AI tagging, validation |
-| `teleclaude/cron/discovery.py`       | Finds subscribers with YouTube config             |
-| `jobs/youtube_sync_subscriptions.py` | Job wrapper — discovery + iteration               |
+- `teleclaude/tagging/youtube.py`
+- `teleclaude/cron/discovery.py`
+- `jobs/youtube_sync_subscriptions.py`
 
 ## Configuration
 
@@ -63,17 +57,3 @@ interests:
 
 `~/.teleclaude/people/{name}/subscriptions/youtube.csv` with columns:
 `channel_id`, `channel_name`, `handle`, `tags`.
-
-## Known issues
-
-- **Duplicate tagging code.** `teleclaude/tagging/youtube.py` and
-  `teleclaude/entrypoints/youtube_sync_subscriptions.py` share ~600 lines of
-  duplicated prompts, validation, and CSV logic. Consolidation: port the
-  entrypoint's unique feature (`_call_youtube_helper()` — YouTube API fetch)
-  into the tagging module, reduce entrypoint to a thin CLI wrapper.
-- **Legacy wrappers.** `cron/youtube-sync-subscriptions.py` and the standalone
-  entrypoint predate the jobs runner. To be cleaned up during consolidation.
-- **No onboarding skill.** No skill exists to orchestrate per-person setup
-  (YouTube subscription fetch, tag configuration, digest opt-in). The initial
-  subscription fetch currently requires the entrypoint CLI with
-  `--fetch-subscriptions`.

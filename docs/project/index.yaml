@@ -554,7 +554,7 @@ snippets:
   source_project: TeleClaude
 - id: project/spec/jobs/log-bug-hunter
   description: Hourly agent job that scans daemon logs for errors, fixes inline or
-    promotes to todos.
+    dispatches to bug pipeline.
   type: spec
   scope: project
   path: docs/project/spec/jobs/log-bug-hunter.md

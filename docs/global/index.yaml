@@ -205,7 +205,7 @@ snippets:
   source_project: TeleClaude
 - id: general/procedure/maintenance/log-bug-hunter
   description: Proactive log scanning procedure that discovers errors, fixes inline
-    or promotes to todos, and writes run reports.
+    or dispatches to the bug pipeline, and writes run reports.
   type: procedure
   scope: project
   path: docs/general/procedure/maintenance/log-bug-hunter.md
