@@ -44,6 +44,3 @@
 - slug: unified-roadmap-assembly
   after:
   - mcp-to-tool-specs
-- slug: member-invite
-  description: 'Member invite flow: token generation, email delivery, private chat
-    handlers, personal assistant routing, notification channel expansion'

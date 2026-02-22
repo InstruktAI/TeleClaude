@@ -44,7 +44,7 @@ class ProjectHeader(TelecMixin, Widget):
     CONNECTOR_COL = 2
 
     def render(self) -> Text:
-        line = Text()
+        line = Text(no_wrap=True)
         path = shorten_path(self.project.path)
         suffix = f"({self.session_count})" if self.session_count else ""
         is_selected = self.has_class("selected")

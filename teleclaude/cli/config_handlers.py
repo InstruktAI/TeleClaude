@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import fcntl
 import os
+import secrets
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -271,6 +272,38 @@ def remove_person(name: str, delete_directory: bool = False) -> None:
             logger.info("Removed person directory for '%s'", name)
 
     logger.info("Removed person '%s' from global config", name)
+
+
+# --- Invite Token ---
+
+
+def generate_invite_token() -> str:
+    """Generate a new invite token with format inv_{16_hex_chars}."""
+    return f"inv_{secrets.token_hex(8)}"
+
+
+def set_invite_token(name: str) -> str:
+    """Generate and persist a new invite token for the person. Returns the token."""
+    token = generate_invite_token()
+    person_config = get_person_config(name)
+    person_config.invite_token = token
+    save_person_config(name, person_config)
+    logger.info("Set invite token for '%s'", name)
+    return token
+
+
+def find_person_by_invite_token(token: str) -> tuple[str, PersonConfig] | None:
+    """Scan all person configs to find matching invite_token. Returns (person_name, config) or None."""
+    person_dirs = list_person_dirs()
+    for person_name in person_dirs:
+        try:
+            person_config = get_person_config(person_name)
+            if person_config.invite_token == token:
+                return (person_name, person_config)
+        except Exception as e:
+            logger.warning("Failed to load config for person '%s': %s", person_name, e)
+            continue
+    return None
 
 
 # --- Validation ---

@@ -1,4 +1,10 @@
 # Delivered work items. Newest first.
+- slug: member-invite
+  date: '2026-02-22'
+  title: Implement invite flow with token-based deep links for Telegram, Discord, and email
+  outcome: DELIVERED
+  commit: 3c3baa1c
+
 - slug: agent-dispatch-guidance
   date: '2026-02-21'
   title: Replace hardcoded agent selection matrices with config-driven guidance text

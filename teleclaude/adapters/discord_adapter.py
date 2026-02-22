@@ -746,6 +746,150 @@ class DiscordAdapter(UiAdapter):
 
         self._ready_event.set()
 
+    async def _handle_discord_dm(self, message: object) -> None:
+        """Handle Direct Message (no guild) — invite token binding or bound user messaging."""
+        author = getattr(message, "author", None)
+        if not author:
+            return
+
+        user_id = str(getattr(author, "id", ""))
+        text = getattr(message, "content", None)
+
+        if not isinstance(text, str) or not text.strip():
+            return
+
+        text = text.strip()
+
+        # Check if message is an invite token
+        if text.startswith("inv_"):
+            await self._handle_discord_invite_token(message, user_id, text)
+            return
+
+        # Resolve identity
+        from teleclaude.core.identity import get_identity_resolver
+
+        identity = get_identity_resolver().resolve("discord", {"user_id": user_id, "discord_user_id": user_id})
+
+        if not identity or not identity.person_name:
+            # Unknown user
+            channel = getattr(message, "channel", None)
+            if channel:
+                await channel.send(
+                    "I don't recognize your account. Send me your invite token to get started, or contact your admin."
+                )
+            return
+
+        # Find or create session for this user
+        sessions = await db.list_sessions(last_input_origin="discord", include_closed=False)
+        session = None
+        for s in sessions:
+            discord_meta = s.get_metadata().get_ui().get_discord()
+            if discord_meta.user_id == user_id:
+                session = s
+                break
+
+        if not session:
+            # Create new session in personal workspace
+            from teleclaude.invite import scaffold_personal_workspace
+
+            workspace_path = scaffold_personal_workspace(identity.person_name)
+
+            create_cmd = CreateSessionCommand(
+                project_path=str(workspace_path),
+                title=f"Discord: {identity.person_name}",
+                origin=InputOrigin.DISCORD.value,
+                channel_metadata={
+                    "user_id": user_id,
+                    "discord_user_id": user_id,
+                    "human_role": identity.person_role or "member",
+                    "platform": "discord",
+                },
+                auto_command="agent claude",
+            )
+            result = await get_command_service().create_session(create_cmd)
+            session_id = str(result.get("session_id", ""))
+            if not session_id:
+                logger.error("Discord DM session creation failed for %s", identity.person_name)
+                return
+
+            session = await db.get_session(session_id)
+            if not session:
+                logger.error("Session %s not found after creation for %s", session_id, identity.person_name)
+                return
+
+        # Process message
+        cmd = ProcessMessageCommand(
+            session_id=session.session_id,
+            text=text,
+            origin=InputOrigin.DISCORD.value,
+        )
+        await get_command_service().process_message(cmd)
+
+    async def _handle_discord_invite_token(self, message: object, user_id: str, token: str) -> None:
+        """Handle invite token binding in Discord DM."""
+        from teleclaude.cli.config_handlers import find_person_by_invite_token
+
+        result = find_person_by_invite_token(token)
+        if not result:
+            channel = getattr(message, "channel", None)
+            if channel:
+                await channel.send("I don't recognize this invite. Please contact your admin.")
+            return
+
+        person_name, person_config = result
+
+        # Check if credentials are already bound
+        existing_user_id = person_config.creds.discord.user_id if person_config.creds.discord else None
+
+        if existing_user_id:
+            if existing_user_id == user_id:
+                # Same user - proceed to session (already bound)
+                pass
+            else:
+                # Different user - reject
+                channel = getattr(message, "channel", None)
+                if channel:
+                    await channel.send("This invite is already associated with another account.")
+                return
+        else:
+            # Bind credentials
+            from teleclaude.invite import bind_discord_credentials
+
+            bind_discord_credentials(person_name, user_id)
+            logger.info("Bound Discord user %s to person %s", user_id, person_name)
+
+        # Scaffold personal workspace and create session
+        from teleclaude.invite import scaffold_personal_workspace
+
+        workspace_path = scaffold_personal_workspace(person_name)
+
+        # Create session
+        create_cmd = CreateSessionCommand(
+            project_path=str(workspace_path),
+            title=f"Discord: {person_name}",
+            origin=InputOrigin.DISCORD.value,
+            channel_metadata={
+                "user_id": user_id,
+                "discord_user_id": user_id,
+                "human_role": "member",
+                "platform": "discord",
+            },
+            auto_command="agent claude",
+        )
+        result = await get_command_service().create_session(create_cmd)
+        session_id = str(result.get("session_id", ""))
+        if not session_id:
+            logger.error("Discord DM session creation failed for %s", person_name)
+            channel = getattr(message, "channel", None)
+            if channel:
+                await channel.send("Failed to create session. Please contact your admin.")
+            return
+
+        # Send greeting
+        channel = getattr(message, "channel", None)
+        if channel:
+            await channel.send(f"Hi {person_name}, I'm your personal assistant. What would you like to work on?")
+
     async def _handle_on_message(self, message: object) -> None:
         if self._is_bot_message(message):
             return
@@ -756,6 +900,11 @@ class DiscordAdapter(UiAdapter):
             if msg_guild_id is not None and msg_guild_id != self._guild_id:
                 logger.debug("Ignoring message from guild %s (expected %s)", msg_guild_id, self._guild_id)
                 return
+
+        # Handle DMs (no guild)
+        if getattr(message, "guild", None) is None:
+            await self._handle_discord_dm(message)
+            return
 
         # Check if this message is in a relay thread (escalation forum)
         channel = getattr(message, "channel", None)
