@@ -12,18 +12,18 @@ All changes are confined to serialization plumbing. No Pydantic model changes, n
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Change `get_state_path()` to return `state.yaml` instead of `state.json`
-- [ ] Update `read_phase_state()`:
+- [x] Change `get_state_path()` to return `state.yaml` instead of `state.json`
+- [x] Update `read_phase_state()`:
   - Try `state.yaml` first
   - Fall back to `state.json` if `state.yaml` doesn't exist (backward compat)
   - Replace `json.loads()` with `yaml.safe_load()`
-- [ ] Update `write_phase_state()`:
+- [x] Update `write_phase_state()`:
   - Replace `json.dumps()` with `yaml.dump()` (use `default_flow_style=False, sort_keys=False`)
   - Write to `state.yaml`
-- [ ] Update `sweep_completed_groups()` which reads `state.json` directly via `json.loads` — change to use `read_phase_state()` or replicate the YAML fallback
-- [ ] Update the `DEFAULT_STATE` comment and `roadmap.yaml` header reference from `state.json` to `state.yaml`
-- [ ] Update `POST_COMPLETION` dict strings that mention `state.json`
-- [ ] Update all other comments/docstrings in `core.py` referencing `state.json` (~15 occurrences)
+- [x] Update `sweep_completed_groups()` which reads `state.json` directly via `json.loads` — change to use `read_phase_state()` or replicate the YAML fallback
+- [x] Update the `DEFAULT_STATE` comment and `roadmap.yaml` header reference from `state.json` to `state.yaml`
+- [x] Update `POST_COMPLETION` dict strings that mention `state.json`
+- [x] Update all other comments/docstrings in `core.py` referencing `state.json` (~15 occurrences)
 
 ### Task 1.2: Update scaffold
 
