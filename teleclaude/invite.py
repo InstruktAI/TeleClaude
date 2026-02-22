@@ -182,8 +182,10 @@ async def send_invite_email(
         org_name: Organization name for email greeting
         sender_name: Sign-off name
 
+    Note:
+        If BREVO_SMTP_USER is not set, prints invite links to stdout instead of sending email.
+
     Raises:
-        ValueError: If BREVO_SMTP_USER is missing (graceful degradation)
         RuntimeError: If email sending fails
     """
     # Check for SMTP credentials
