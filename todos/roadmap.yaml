@@ -2,10 +2,6 @@
 
 - slug: demo-runner
   description: Demo runner CLI, build-phase demo artifact, conversational interface
-- slug: fix-demo-runner
-  description: 'Redesign demo system: replace shell-command demo field with demo.md
-    (freeform steps + executable code blocks), rewrite CLI runner and /next-demo presenter,
-    update lifecycle docs and todo scaffold'
 - slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs
   description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,

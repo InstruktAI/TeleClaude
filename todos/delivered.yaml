@@ -1,4 +1,10 @@
 # Delivered work items. Newest first.
+- slug: fix-demo-runner
+  date: '2026-02-22'
+  title: 'Redesign demo system: replace shell-command demo field with demo.md'
+  outcome: DELIVERED
+  commit: 310ecbd1
+
 - slug: new-bug-key-in-todos-pane
   date: '2026-02-22'
   title: 'TUI ''b'' key for bug creation + telec bugs create CLI command'
