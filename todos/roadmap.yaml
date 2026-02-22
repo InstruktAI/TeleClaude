@@ -6,8 +6,9 @@
 - slug: demo-runner
   description: Demo runner CLI, build-phase demo artifact, conversational interface
 - slug: fix-demo-runner
-  description: Fix demo runner - missing demo field in existing snapshots + /next-demo
-    session_id bug in render_widget
+  description: 'Redesign demo system: replace shell-command demo field with demo.md
+    (freeform steps + executable code blocks), rewrite CLI runner and /next-demo presenter,
+    update lifecycle docs and todo scaffold'
 - slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs
   description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,
@@ -29,8 +30,6 @@
     of only the first. Use a dedicated rolling prompt that captures session direction.
     Reset the output message on any title change so the telegram title feedback floats
     to the top in Telegram.
-- slug: bug-delivery-service
-  description: 'Fire-and-forget bug pipeline: telec bugs report + autonomous fix/review/merge'
 - slug: discord-session-routing
   description: Per-project Discord forums, role-based routing, adapter-specific titles,
     enriched footer

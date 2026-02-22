@@ -85,6 +85,12 @@ POST_COMPLETION: dict[str, str] = {
 3. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
 4. Call {next_call}
 """,
+    "next-bugs-fix": """WHEN WORKER COMPLETES:
+1. Read worker output via get_session_data
+2. teleclaude__end_session(computer="local", session_id="<session_id>")
+3. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
+4. Call {next_call}
+""",
     "next-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data to extract verdict
 2. teleclaude__end_session(computer="local", session_id="<session_id>")
@@ -595,6 +601,11 @@ def check_file_exists(cwd: str, relative_path: str) -> bool:
 def slug_in_roadmap(cwd: str, slug: str) -> bool:
     """Check if a slug exists in todos/roadmap.yaml."""
     return slug in load_roadmap_slugs(cwd)
+
+
+def is_bug_todo(cwd: str, slug: str) -> bool:
+    """Check if a todo is a bug (has bug.md)."""
+    return check_file_exists(cwd, f"todos/{slug}/bug.md")
 
 
 # =============================================================================
@@ -1964,7 +1975,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     resolved_slug: str
     if slug:
         # Explicit slug provided - verify it's in roadmap, ready, and dependencies satisfied
-        if not await asyncio.to_thread(slug_in_roadmap, cwd, slug):
+        # Bugs bypass the roadmap check (they're not in the roadmap)
+        is_bug = await asyncio.to_thread(is_bug_todo, cwd, slug)
+        if not is_bug and not await asyncio.to_thread(slug_in_roadmap, cwd, slug):
             return format_error(
                 "NOT_PREPARED",
                 f"Item '{slug}' not found in roadmap.",
@@ -2016,6 +2029,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         return format_stash_debt(resolved_slug, len(stash_entries))
 
     # 3. Validate preconditions
+    # Bugs skip requirements.md and implementation-plan.md checks (they use bug.md instead)
     precondition_root = cwd
     worktree_path = Path(cwd) / "trees" / resolved_slug
     if (
@@ -2024,14 +2038,17 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         and (worktree_path / "todos" / resolved_slug / "implementation-plan.md").exists()
     ):
         precondition_root = str(worktree_path)
-    has_requirements = check_file_exists(precondition_root, f"todos/{resolved_slug}/requirements.md")
-    has_impl_plan = check_file_exists(precondition_root, f"todos/{resolved_slug}/implementation-plan.md")
-    if not (has_requirements and has_impl_plan):
-        return format_error(
-            "NOT_PREPARED",
-            f"todos/{resolved_slug} is missing requirements or implementation plan.",
-            next_call=f'Call teleclaude__next_prepare(slug="{resolved_slug}") to complete preparation.',
-        )
+
+    is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
+    if not is_bug:
+        has_requirements = check_file_exists(precondition_root, f"todos/{resolved_slug}/requirements.md")
+        has_impl_plan = check_file_exists(precondition_root, f"todos/{resolved_slug}/implementation-plan.md")
+        if not (has_requirements and has_impl_plan):
+            return format_error(
+                "NOT_PREPARED",
+                f"todos/{resolved_slug} is missing requirements or implementation plan.",
+                next_call=f'Call teleclaude__next_prepare(slug="{resolved_slug}") to complete preparation.',
+            )
 
     # 4. Ensure worktree exists
     try:
@@ -2072,14 +2089,28 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             guidance = await compose_agent_guidance(db)
         except RuntimeError as exc:
             return format_error("NO_AGENTS", str(exc))
-        return format_tool_call(
-            command="next-build",
-            args=resolved_slug,
-            project=cwd,
-            guidance=guidance,
-            subfolder=f"trees/{resolved_slug}",
-            next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
-        )
+
+        # Bugs use next-bugs-fix instead of next-build
+        is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
+
+        if is_bug:
+            return format_tool_call(
+                command="next-bugs-fix",
+                args=resolved_slug,
+                project=cwd,
+                guidance=guidance,
+                subfolder=f"trees/{resolved_slug}",
+                next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+            )
+        else:
+            return format_tool_call(
+                command="next-build",
+                args=resolved_slug,
+                project=cwd,
+                guidance=guidance,
+                subfolder=f"trees/{resolved_slug}",
+                next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+            )
 
     # 8. Check review status
     if not await asyncio.to_thread(is_review_approved, worktree_cwd, resolved_slug):
@@ -2152,6 +2183,11 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     except RuntimeError as exc:
         release_finalize_lock(cwd, session_id)
         return format_error("NO_AGENTS", str(exc))
+
+    # Bugs skip delivered.md entry and are removed from todos entirely
+    is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
+    note = "BUG FIX: Skip delivered.md entry. Delete todo directory after merge." if is_bug else ""
+
     return format_tool_call(
         command="next-finalize",
         args=resolved_slug,
@@ -2159,4 +2195,5 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         guidance=guidance,
         subfolder=f"trees/{resolved_slug}",
         next_call="teleclaude__next_work()",
+        note=note,
     )

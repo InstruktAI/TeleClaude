@@ -4,71 +4,47 @@
 
 **Date:** 2026-02-22
 **Assessor:** Claude (formal DOR gate)
-**Verdict:** PASS (9/10)
+**Verdict:** PASS (10/10)
 
 ### Summary
 
-This todo adds a `b` keybinding to the TUI todos pane and a `telec bugs create` CLI command. Both create a bug skeleton (`bug.md` + `state.yaml`) and the TUI variant opens `bug.md` in the editor.
-
-### Artifact Quality
-
-| Artifact                 | Status   | Notes                                                         |
-| ------------------------ | -------- | ------------------------------------------------------------- |
-| `input.md`               | Present  | Brain dump decoded into clear requirements                    |
-| `requirements.md`        | Complete | Clear goal, 8 testable success criteria, explicit constraints |
-| `implementation-plan.md` | Complete | 4 tasks, mirrors existing codebase patterns exactly           |
+Six requirements covering: dependency tree rendering fix (build from `after` graph, not list order), unscoped file viewer (filepath-based, not slug-scoped), `roadmap.yaml` as first tree entry, and bug creation (`b` key + CLI command). Implementation plan has 7 tasks with verified source references.
 
 ### DOR Gate Assessment
 
-| Gate                  | Score | Notes                                                                                                                                                     |
-| --------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Intent & Success   | PASS  | Clear problem statement. 8 explicit, testable success criteria covering TUI flow, CLI flow, error handling, and lint                                      |
-| 2. Scope & Size       | PASS  | 3 small code changes (new modal, keybinding+action, CLI subcommand) + validation. Single session easily                                                   |
-| 3. Verification       | PASS  | Manual TUI + CLI tests, edge cases, lint, existing test suite. No new unit tests required (UI-driven)                                                     |
-| 4. Approach Known     | PASS  | Direct mirror of `n` -> `action_new_todo()` -> `CreateTodoModal` -> scaffold -> `DocEditRequest` pattern. All four reference points verified in source    |
-| 5. Research           | N/A   | No third-party dependencies                                                                                                                               |
-| 6. Dependencies       | PASS  | Hard dep on `bug-delivery-service` (DOR passed, score 8, phase: ready). Provides `create_bug_skeleton()`, `bug.md` template, and `telec bugs` CLI surface |
-| 7. Integration Safety | PASS  | Purely additive: new `b` keybinding (no collision), new `CreateBugModal` class, new `create` subcommand under `bugs`. No changes to existing behavior     |
-| 8. Tooling Impact     | N/A   | No tooling or scaffolding changes                                                                                                                         |
+| Gate                  | Score | Notes                                                                                                                                                    |
+| --------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Intent & Success   | PASS  | 6 in-scope items, 14 testable success criteria. Problem and outcome explicit.                                                                            |
+| 2. Scope & Size       | PASS  | 4 files touched. Tasks 1-3 tightly coupled (same file, enabling chain). Tasks 4-6 small and independent. Fits one session. No split needed.              |
+| 3. Verification       | PASS  | Each task has manual verification. Cross-cutting validation in Task 7. Tree ordering test: reorder roadmap.yaml → structure unchanged.                   |
+| 4. Approach Known     | PASS  | DFS from `after` graph is standard. Filepath generalization is a signature change. All source references verified. `_find_parent_todo` safe for slug="". |
+| 5. Research           | N/A   | No third-party dependencies.                                                                                                                             |
+| 6. Dependencies       | PASS  | `bug-delivery-service` in roadmap.yaml. Tasks 1-3 have no deps. Tasks 4-6 explicitly marked as prerequisite-gated; builder can defer if dep not ready.   |
+| 7. Integration Safety | PASS  | Additive changes. Tree algorithm replaces old in same function. No existing behavior removed. All `_editor_command` callers updated in same task.        |
+| 8. Tooling Impact     | N/A   | No tooling changes.                                                                                                                                      |
 
-### Source Code Verification
+### Scope Splitting Decision
 
-Spot-checked the following implementation plan references against actual source:
+**No split.** Tasks 1-3 (tree fix, viewer, roadmap entry) are tightly coupled and belong together. Tasks 4-6 (bug creation) are small additions to the same files. The `bug-delivery-service` dependency is handled at roadmap level — if the dep isn't ready at build time, the builder implements tasks 1-3 and defers 4-6 as documented deferrals. This is cleaner than maintaining two separate todos that touch the same code.
 
-| Reference                        | File                  | Verified                                                    |
-| -------------------------------- | --------------------- | ----------------------------------------------------------- |
-| `BINDINGS` list pattern          | `preparation.py:47`   | Matches -- list of tuples with (key, action, label)         |
-| `action_new_todo()` flow         | `preparation.py:463`  | Matches -- modal callback -> scaffold -> DocEditRequest     |
-| `CreateTodoModal` structure      | `modals.py:338`       | Matches -- ~48 lines, slug input, SLUG_PATTERN validation   |
-| `create_todo_skeleton` signature | `todo_scaffold.py:44` | Matches -- `(project_root: Path, slug: str, *, after=None)` |
-| `DocEditRequest` signature       | `messages.py:203`     | Matches -- `(doc_id, command, title)`                       |
-| `_editor_command` helper         | `preparation.py:335`  | Available -- builds absolute path editor command            |
-| `_slug_to_project_path` dict     | `preparation.py:68`   | Available -- maps slugs to project paths                    |
+### Source Verification (gate spot-checks)
 
-### Dependency Analysis
-
-**Hard dependency on `bug-delivery-service`** (DOR score 8, phase: ready):
-
-| What this todo needs              | Where it comes from | bug-delivery-service task |
-| --------------------------------- | ------------------- | ------------------------- |
-| `create_bug_skeleton()` function  | `todo_scaffold.py`  | Task 2                    |
-| `templates/todos/bug.md` template | `templates/todos/`  | Task 1                    |
-| `telec bugs` CLI surface + router | `telec.py`          | Task 3                    |
-
-The `create_bug_skeleton()` signature will be `(project_root, slug, description, *, reporter="manual", session_id="none")` -- positional `description` parameter matches the planned call with `description=""`.
-
-The `telec bugs` router will follow the same `_handle_bugs()` dispatch pattern as `_handle_todo()` and `_handle_roadmap()` (verified in `telec.py`). Adding `create` as a subcommand is straightforward.
-
-### Assumptions (validated)
-
-1. `create_bug_skeleton()` accepts `description=""` for manual creation. **Validated** against bug-delivery-service implementation plan Task 2 signature.
-2. The `telec bugs` command surface uses a router pattern allowing new subcommands. **Validated** against existing `_handle_todo()` / `_handle_roadmap()` patterns in `telec.py`.
-3. `CreateBugModal` is a simple copy of `CreateTodoModal` with different title text. **Validated** -- `CreateTodoModal` is ~48 lines, duplication cost is minimal, and the title distinction is user-facing.
-
-### Open Questions
-
-None.
+| Reference                     | File                     | Gate Verified                                                |
+| ----------------------------- | ------------------------ | ------------------------------------------------------------ |
+| `_editor_command(slug, file)` | `preparation.py:335`     | Confirmed hardcoded `todos/{slug}/{filename}`                |
+| `TodoFileRow.__init__`        | `todo_file_row.py:35-47` | Confirmed: slug + filename, no filepath                      |
+| `action_activate` file path   | `preparation.py:435-436` | Confirmed: uses `file_row.slug` + `file_row.filename`        |
+| `_find_parent_todo` slug=""   | `preparation.py:359`     | Safe: no TodoRow has empty slug, returns None for standalone |
+| `action_collapse` None parent | `preparation.py:412`     | Safe: checks `if parent:` before collapsing                  |
 
 ### Blockers
 
-None remaining. The dependency on `bug-delivery-service` is handled by roadmap ordering (`after: [bug-delivery-service]`).
+None.
+
+### Score Rationale
+
+10/10 — Every behavioral change has automated verification specified upfront:
+
+- **Tree building:** 11 unit tests in `test_prep_tree_builder.py` covering roots, parent-child, order irrelevance, unresolvable deps, multi-level nesting, sibling ordering, multi-parent, circular deps, is_last, and tree_lines continuation.
+- **File viewer:** 5 unit tests in `test_prep_file_viewer.py` covering editor command with absolute path, view flag, theme flag, standalone file row parent isolation (slug=""), and slug-scoped parent lookup.
+- All logic extracted as pure functions for testability without TUI widgets.

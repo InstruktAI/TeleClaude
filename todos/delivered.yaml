@@ -1,4 +1,10 @@
 # Delivered work items. Newest first.
+- slug: bug-delivery-service
+  date: '2026-02-22'
+  title: 'Fire-and-forget bug pipeline: telec bugs report + autonomous fix/review/merge'
+  outcome: DELIVERED
+  commit: 4f04ac47
+
 - slug: state-yaml-migration
   date: '2026-02-22'
   title: Migrate todo state serialization from JSON to YAML format

@@ -115,6 +115,14 @@ snippets:
   path: docs/project/design/architecture/jobs-runner.md
   role: member
   source_project: TeleClaude
+- id: project/design/architecture/layer-ownership
+  description: Architectural layer boundaries, ownership rules, and the cross-cutting
+    invariant that downstream layers receive fully resolved inputs.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/layer-ownership.md
+  role: member
+  source_project: TeleClaude
 - id: project/design/architecture/mcp-layer
   description: Resilient two-layer MCP architecture for AI-to-AI communication.
   type: design

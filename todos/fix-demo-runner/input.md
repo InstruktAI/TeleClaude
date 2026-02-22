@@ -1,45 +1,45 @@
 # Fix Demo Runner
 
-The demo-runner feature was delivered but its own demo presentation failed. Two root causes.
+The demo-runner feature was delivered but demos don't work. Root cause analysis revealed
+two bugs, but the deeper issue is that the demo system's design is wrong.
 
-## Bug 1: Existing demos lack `demo` field in snapshot.json
+## Original bugs
 
-**Observed:** `telec todo demo themed-primary-color` outputs:
+1. Existing snapshots lack the `demo` field → `telec todo demo` warns and skips.
+2. `/next-demo` command passes wrong session_id to render_widget.
 
-```
-Warning: Demo 'themed-primary-color' has no 'demo' field. Skipping execution.
-```
+## Actual problem
 
-**Root cause:** The demo procedure (`software-development/procedure/lifecycle/demo`) specifies a `demo` field -- a shell command string that demonstrates the feature. Both existing demos (`themed-primary-color`, `tui-markdown-editor`) predate this schema addition. Their `snapshot.json` files were migrated (renamed folders, removed `sequence` field) during the demo-runner build, but the `demo` field was never added.
+The demo system hardcodes a single presentation path: run a shell command, render a
+celebration widget. This is backwards. A demo is whatever the delivery warrants —
+a TUI walkthrough, a CLI output, a Discord observation, a Playwright recording.
 
-**Location:** `demos/themed-primary-color/snapshot.json` and `demos/tui-markdown-editor/snapshot.json` -- both missing the `demo` field.
+The `demo` field (single shell command) is too rigid. The `/next-demo` command
+prescribes a fixed ceremony instead of being an adaptive presenter. The demo procedure
+doc codifies the widget ceremony.
 
-**Fix:** Add a `demo` field to each existing snapshot.json with a shell command that shows the feature. Examples:
+## Redesign direction (from conversation with Mo)
 
-- `themed-primary-color`: something that shows the theme configuration or color values
-- `tui-markdown-editor`: something that shows the editor launch or markdown rendering
-
-## Bug 2: `/next-demo` command passes wrong session_id to render_widget
-
-**Observed:** The `/next-demo` worker called `render_widget` with `"demo"` as the session_id instead of its actual TeleClaude session UUID, resulting in:
-
-```
-Error: Session demo not found
-```
-
-**Root cause:** The `/next-demo` command artifact (`agents/commands/next-demo.md`) instructs the worker to render a celebration widget via `teleclaude__render_widget` but does not specify how to obtain the session_id. The worker guessed "demo" as the session_id instead of reading it from the environment (`$TMPDIR/teleclaude_session_id`).
-
-**Location:** `agents/commands/next-demo.md` -- Step 3 says "Render celebration widget via `teleclaude__render_widget`" but gives no guidance on the session_id parameter.
-
-**Fix:** The command artifact should instruct the worker to read the session_id from `$TMPDIR/teleclaude_session_id` (the standard mechanism) and pass it to `render_widget`. Example addition:
-
-```
-Read session_id from environment: cat $TMPDIR/teleclaude_session_id
-Pass it as the session_id parameter to render_widget.
-```
+1. Replace the `demo` shell command field with `demo.md` — a freeform markdown file
+   with steps for the presenting AI to execute.
+2. Steps can contain executable code blocks (```bash) that `telec todo demo` extracts
+   and runs for validation. This gives upfront testability.
+3. Steps also contain guided instructions (ask user to observe, narrate what's happening).
+4. The AI is always the presenter AND operator. It presses TUI keys, runs Playwright
+   for web UI, calls CLI commands. User sits with popcorn.
+5. The demo is the ultimate functional test. If it can't be demonstrated, it's not
+   delivered. Failed demo → `telec bugs report`, fix forward.
+6. `demo.md` is drafted during prepare phase (architect defines how to prove it works),
+   refined during build phase (builder has the most context).
+7. `snapshot.json` stays as the delivery record (narrative + metrics) but drops the
+   `demo` field.
 
 ## Scope
 
-- Two snapshot.json files need a `demo` field added
-- One command artifact needs session_id guidance added
-- No Python code changes needed (the CLI runner correctly handles missing `demo` field)
+- Introduce `demo.md` artifact in todo lifecycle and demo folder
+- Rewrite `telec todo demo` CLI to extract and run code blocks from `demo.md`
+- Rewrite `/next-demo` command as a conversational presenter that reads `demo.md`
+- Update demo procedure doc, demo artifact spec, lifecycle overview
+- Write `demo.md` for existing demos (themed-primary-color, tui-markdown-editor)
+- Add `demo.md` to todo scaffold
+- Update prepare-draft procedure to include demo-steps drafting

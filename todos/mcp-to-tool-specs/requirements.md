@@ -11,6 +11,10 @@ This removes ~3,400 lines of MCP infrastructure (server, wrapper, handlers,
 definitions, connection management) and replaces them with CLI subcommands
 backed by the existing daemon REST API.
 
+Note: `telec docs` already exists and replaces `teleclaude__get_context` —
+it calls `build_context_output()` directly with the same two-phase flow
+(index without IDs, full content with IDs). No new "context" group needed.
+
 ## Context
 
 The MCP server has been a chronic source of problems:
@@ -33,8 +37,8 @@ surface. No separate doc layer.
 
 ### In scope
 
-- Extend `telec` CLI with subcommands for all 24 tools, calling the existing REST API
-- Extend the REST API with new endpoints where needed (14 of 24 tools lack endpoints)
+- Extend `telec` CLI with subcommands for the remaining 22 tools (2 already covered by `telec docs`)
+- Extend the REST API with new endpoints where needed (12 of 22 tools lack endpoints)
 - Write rich `--help` text for each subcommand preserving the behavioral guidance
   from MCP tool descriptions (timer patterns, reason gates, workflows)
 - Include usage examples in `--help` covering every parameter and input shape
@@ -50,12 +54,13 @@ surface. No separate doc layer.
 - Remote computer transport changes (Redis stays)
 - Telegram/Discord adapter changes
 - TUI changes (TUI uses API server, not MCP)
-- get_context implementation changes (it becomes a `telec` subcommand but
-  the context-selection pipeline stays)
+- `telec docs` changes (it already replaces `get_context` with the same
+  two-phase flow; only `--help` enrichment is needed)
 
 ## Success Criteria
 
-- [ ] All 24 tools accessible via `telec` subcommands returning JSON
+- [ ] All 22 new tool subcommands accessible via `telec` returning JSON
+- [ ] `telec docs` two-phase flow documented in `--help` (index vs get by IDs)
 - [ ] Every subcommand has rich `--help` with behavioral guidance and examples
 - [ ] Example coverage heuristic met: every parameter/input shape touched at least once
 - [ ] Baseline tools inlined in telec-cli spec doc via `@exec` directives
@@ -96,15 +101,15 @@ expand to the full help output inline. This gives agents:
 
 ### Baseline tools (always inlined in detail)
 
-| CLI Command     | Purpose                                        |
-| --------------- | ---------------------------------------------- |
-| `telec docs`    | Context/knowledge retrieval (already exists)   |
-| `telec list`    | Session discovery (already exists)             |
-| `telec start`   | Session creation with workflow guidance        |
-| `telec send`    | Message sending with timer pattern             |
-| `telec command` | Slash command dispatch with timer pattern      |
-| `telec tail`    | Transcript retrieval with supervision guidance |
-| `telec deploy`  | Remote deployment with workflow                |
+| CLI Command              | Purpose                                        |
+| ------------------------ | ---------------------------------------------- |
+| `telec docs`             | Doc snippet retrieval (already exists)         |
+| `telec sessions list`    | Session discovery (replaces `telec list`)      |
+| `telec sessions start`   | Session creation with workflow guidance        |
+| `telec sessions send`    | Message sending with timer pattern             |
+| `telec sessions command` | Slash command dispatch with timer pattern      |
+| `telec sessions tail`    | Transcript retrieval with supervision guidance |
+| `telec infra deploy`     | Remote deployment with workflow                |
 
 ### Non-baseline tools (discoverable via index)
 
@@ -135,9 +140,9 @@ This work is split into 3 sub-todos (down from the original 6):
 
 ## Risks
 
-- **get_context bootstrap chicken-and-egg**: get_context is currently an MCP tool.
-  Moving it to bash means the agent must know `telec docs` from the
-  system prompt before it can discover other tools. Mitigation: baseline in CLAUDE.md.
+- **get_context bootstrap already solved**: `telec docs` already exists and is
+  baselined in the telec-cli spec doc. No chicken-and-egg problem — agents already
+  know `telec docs` from the system prompt.
 - **Agent reliability**: Bash invocations are less structured than MCP tool calls.
   Mitigation: `telec` subcommands provide structured invocation with validation
   and JSON output. Rich examples in `--help` prevent misuse.
