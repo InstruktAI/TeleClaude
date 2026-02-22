@@ -81,18 +81,18 @@ Add todo removal capability via CLI and TUI. The approach follows established pa
 
 **File(s):** `tests/unit/test_todo_scaffold.py`
 
-- [ ] Test `remove_todo` with a normal slug: directory deleted, roadmap entry removed
-- [ ] Test `remove_todo` with an icebox slug: directory deleted, icebox entry removed
-- [ ] Test `remove_todo` when slug has dependents: `after` references cleaned up
-- [ ] Test `remove_todo` when worktree exists: raises `RuntimeError`
-- [ ] Test `remove_todo` when slug not found anywhere: raises `FileNotFoundError`
+- [x] Test `remove_todo` with a normal slug: directory deleted, roadmap entry removed
+- [x] Test `remove_todo` with an icebox slug: directory deleted, icebox entry removed
+- [x] Test `remove_todo` when slug has dependents: `after` references cleaned up
+- [x] Test `remove_todo` when worktree exists: raises `RuntimeError`
+- [x] Test `remove_todo` when slug not found anywhere: raises `FileNotFoundError`
 
 ### Task 4.2: CLI Tests
 
 **File(s):** `tests/unit/test_telec_todo_cli.py`
 
-- [ ] Test `telec todo remove <slug>` success path
-- [ ] Test `telec todo remove` without slug shows usage
+- [x] Test `telec todo remove <slug>` success path
+- [x] Test `telec todo remove` without slug shows usage
 
 ### Task 4.3: Quality Checks
 
