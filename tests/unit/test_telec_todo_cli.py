@@ -51,7 +51,7 @@ def test_handle_todo_remove_invokes_remove_todo(monkeypatch: pytest.MonkeyPatch)
         called["project_root"] = project_root
         called["slug"] = slug
 
-    monkeypatch.setattr(telec, "remove_todo", fake_remove)
+    monkeypatch.setattr("teleclaude.todo_scaffold.remove_todo", fake_remove)
 
     telec._handle_todo(["remove", "my-slug"])
 
