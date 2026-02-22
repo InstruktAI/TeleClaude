@@ -144,6 +144,7 @@ export interface TodoInfo {
 
 export interface ProjectWithTodosInfo extends ProjectInfo {
   todos: TodoInfo[];
+  has_roadmap?: boolean;
 }
 
 export interface AgentAvailabilityInfo {

@@ -37,7 +37,7 @@ class ActionBar(TelecMixin, Widget):
 
     # Context hints per view (non-sessions tabs)
     _CONTEXT_BAR: dict[str, str] = {
-        "preparation": "[Enter] Edit  [Space] Preview  [n] New Todo  [p] Prepare  [s] Start Work",
+        "preparation": "[Enter] Edit  [Space] Preview  [n] New Todo  [b] New Bug  [p] Prepare  [s] Start Work",
         "jobs": "[Enter] Run",
         "config": "[Tab] Next Field  [Enter] Edit",
     }

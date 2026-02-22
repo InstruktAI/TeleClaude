@@ -13,6 +13,7 @@ import os
 import shlex
 import tempfile
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
 
 import fastapi
@@ -1460,12 +1461,14 @@ class APIServer:
                         comp = proj.computer or ""
                         if data_type == "preparation":
                             todos = self.cache.get_todos(comp or config.computer.name, proj.path, include_stale=True)
+                            roadmap_exists = Path(f"{proj.path}/todos/roadmap.yaml").exists()
                             projects.append(
                                 ProjectWithTodosDTO(
                                     computer=comp,
                                     name=proj.name,
                                     path=proj.path,
                                     description=proj.description,
+                                    has_roadmap=roadmap_exists,
                                     todos=[
                                         TodoDTO(
                                             slug=t.slug,

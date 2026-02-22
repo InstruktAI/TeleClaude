@@ -200,6 +200,7 @@ class ProjectWithTodosDTO(ProjectDTO):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True)
 
     todos: list[TodoDTO] = Field(default_factory=list)
+    has_roadmap: bool = False
 
 
 class AgentAvailabilityDTO(BaseModel):  # type: ignore[explicit-any]

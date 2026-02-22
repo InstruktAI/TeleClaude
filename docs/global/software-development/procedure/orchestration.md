@@ -13,6 +13,22 @@ type: 'procedure'
 
 ## Goal
 
+### Dispatch Rules
+
+- **Reviewers must always be dispatched with `thinking_mode="slow"`.** Review is the last line of defense before merge. A reviewer at `med` or `fast` produces shallow analysis. This is non-negotiable.
+
+### Review Quality Gate (Orchestrator-Owned)
+
+Before accepting a review verdict, the orchestrator must verify the findings document is substantive:
+
+1. Open `review-findings.md` and check that it contains at least one substantive analysis (not just positive observations).
+2. For deliveries with 3+ tasks: if the review produces 0 Important+ findings, verify that a "Why no issues" justification section is present with specific evidence.
+3. If either check fails, reject the review and re-dispatch with `thinking_mode="slow"`.
+
+This is a document-quality check, not a code review. The orchestrator does not review code — it verifies the reviewer did.
+
+### Orchestration Loop
+
 1. Invoke the work state machine with an optional slug.
 2. Receive instruction block.
 3. Follow instructions verbatim:

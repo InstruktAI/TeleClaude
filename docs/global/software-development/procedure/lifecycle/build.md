@@ -45,14 +45,18 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 4. Demo validates: `telec todo demo {slug}`. All code blocks must exit 0.
    If `demo.md` has no executable blocks or the delivery cannot be demonstrated,
    note the exception in `demo.md` with reasoning.
-5. Working tree is clean: `git status`.
+5. Manual verification: for deliveries with user-facing changes (UI, CLI output),
+   verify the change is observable. Record what was checked and the result in
+   `quality-checklist.md` under the Build section. If verification is not possible
+   in the build environment, note the gap explicitly.
+6. Working tree is clean: `git status`.
    - If not clean, commit remaining build-phase changes following the commits policy.
    - Treat pre-existing out-of-scope drift as non-blocking.
    - Orchestrator-synced planning drift is a common non-blocking case:
      - `todos/roadmap.yaml`
    - If dirty files do not overlap this slug's build scope, continue; do not force-commit unrelated files during build unless the task explicitly requires editing them.
-6. Verify commits exist: `git log --oneline -10`.
-7. Build section in `quality-checklist.md` is fully checked.
+7. Verify commits exist: `git log --oneline -10`.
+8. Build section in `quality-checklist.md` is fully checked.
 
 ## Report format
 
