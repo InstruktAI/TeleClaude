@@ -16,6 +16,7 @@ from teleclaude.cli.tui.messages import (
     DocEditRequest,
     DocPreviewRequest,
 )
+from teleclaude.cli.tui.prep_tree import build_dep_tree
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
@@ -138,27 +139,10 @@ class PreparationView(Widget, can_focus=True):
                 )
         slug_width = max((len(t.slug) for t in all_todo_items), default=0)
         col_widths = TodoRow.compute_col_widths(all_todo_items)
-        todo_by_slug: dict[str, TodoItem] = {t.slug: t for t in all_todo_items}
 
-        # Compute dependency depth for indentation
-        depth_map: dict[str, int] = {}
-        visible_slugs = set(todo_by_slug.keys())
-
-        def _depth(slug: str) -> int:
-            if slug in depth_map:
-                return depth_map[slug]
-            item = todo_by_slug.get(slug)
-            if not item or not item.after:
-                depth_map[slug] = 0
-                return 0
-            parent_depths = [_depth(p) for p in item.after if p in visible_slugs]
-            d = (max(parent_depths) + 1) if parent_depths else 0
-            depth_map[slug] = d
-            return d
-
-        for item in all_todo_items:
-            _depth(item.slug)
-        max_depth = max(depth_map.values(), default=0)
+        # Build dependency tree from `after` graph
+        tree_nodes = build_dep_tree(all_todo_items)
+        max_depth = max((node.depth for node in tree_nodes), default=0) if tree_nodes else 0
 
         # Collect all widgets first, then batch-mount to minimize layout reflows
         widgets_to_mount: list[Widget] = []
@@ -177,70 +161,41 @@ class PreparationView(Widget, can_focus=True):
             widgets_to_mount.append(header)
             self._nav_items.append(header)
 
-            todos_list = project.todos or []
-            depths = [depth_map.get(td.slug, 0) for td in todos_list]
-            n_todos = len(todos_list)
+            # Filter tree nodes to this project's todos
+            project_slugs = {td.slug for td in (project.todos or [])}
+            project_nodes = [node for node in tree_nodes if node.slug in project_slugs]
 
-            for idx, todo_data in enumerate(todos_list):
-                todo = todo_by_slug[todo_data.slug]
-                d = depths[idx]
-
-                # Depth-0 items always use ├─ because GroupSeparator closes the tree.
-                if d == 0:
-                    is_last_sibling = False
-                else:
-                    is_last_sibling = True
-                    for j in range(idx + 1, n_todos):
-                        if depths[j] == d:
-                            is_last_sibling = False
-                            break
-                        if depths[j] < d:
-                            break
-
-                # Ancestor continuation: for each level 0..d-1, check if a future
-                # item at that level exists before a shallower item interrupts.
-                # Level 0 is always True (GroupSeparator ┴ terminates the root line).
-                tree_lines: list[bool] = []
-                for lvl in range(d):
-                    if lvl == 0:
-                        tree_lines.append(True)
-                        continue
-                    has_cont = False
-                    for j in range(idx + 1, n_todos):
-                        if depths[j] == lvl:
-                            has_cont = True
-                            break
-                        if depths[j] < lvl:
-                            break
-                    tree_lines.append(has_cont)
+            for node in project_nodes:
+                # Depth-0 items always use ├─ because GroupSeparator closes the tree
+                is_last_sibling = False if node.depth == 0 else node.is_last
 
                 row = TodoRow(
-                    todo=todo,
+                    todo=node.todo,
                     is_last=is_last_sibling,
                     slug_width=slug_width,
                     col_widths=col_widths,
-                    tree_lines=tree_lines,
+                    tree_lines=node.tree_lines,
                     max_depth=max_depth,
                 )
                 widgets_to_mount.append(row)
                 self._nav_items.append(row)
 
                 # Collect file rows for expanded todos
-                if todo.slug in self._expanded_todos and todo.files:
+                if node.slug in self._expanded_todos and node.todo.files:
                     # File tree_lines = parent's lines + parent's own branch continuation
-                    file_tree_lines = tree_lines + [not is_last_sibling]
-                    sorted_files = sorted(todo.files)
+                    file_tree_lines = node.tree_lines + [not is_last_sibling]
+                    sorted_files = sorted(node.todo.files)
                     file_widgets: list[Widget] = []
                     for fi, filename in enumerate(sorted_files):
                         f_last = fi == len(sorted_files) - 1
                         file_row = TodoFileRow(
-                            slug=todo.slug, filename=filename, is_last=f_last, tree_lines=file_tree_lines
+                            slug=node.slug, filename=filename, is_last=f_last, tree_lines=file_tree_lines
                         )
                         file_widgets.append(file_row)
                         widgets_to_mount.append(file_row)
                     expanded_file_rows.append((row, file_widgets))
 
-            if todos_list:
+            if project_nodes:
                 widgets_to_mount.append(GroupSeparator(connector_col=ProjectHeader.CONNECTOR_COL))
 
         # Single batch mount - one layout reflow instead of N

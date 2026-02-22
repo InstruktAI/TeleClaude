@@ -213,7 +213,7 @@ def test_file_row_slug_scoped_finds_parent():
 
 ---
 
-### Task 1: Build dependency tree from `after` graph in `_rebuild()`
+### Task 1: Build dependency tree from `after` graph in `_rebuild()` ✓
 
 **File(s):** `teleclaude/cli/tui/views/preparation.py` (+ new `teleclaude/cli/tui/prep_tree.py` for the pure function)
 
