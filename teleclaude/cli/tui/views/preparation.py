@@ -161,6 +161,21 @@ class PreparationView(Widget, can_focus=True):
             widgets_to_mount.append(header)
             self._nav_items.append(header)
 
+            # Add roadmap.yaml as first tree entry if it exists
+            from pathlib import Path
+
+            roadmap_path = f"{project.path}/todos/roadmap.yaml"
+            if Path(roadmap_path).exists():
+                roadmap_row = TodoFileRow(
+                    filepath=roadmap_path,
+                    filename="roadmap.yaml",
+                    slug="",
+                    is_last=False,
+                    tree_lines=[],
+                )
+                widgets_to_mount.append(roadmap_row)
+                self._nav_items.append(roadmap_row)
+
             # Filter tree nodes to this project's todos
             project_slugs = {td.slug for td in (project.todos or [])}
             project_nodes = [node for node in tree_nodes if node.slug in project_slugs]

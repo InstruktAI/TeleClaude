@@ -308,7 +308,7 @@ def test_file_row_slug_scoped_finds_parent():
 
 ---
 
-### Task 3: Add `roadmap.yaml` as first tree entry
+### Task 3: Add `roadmap.yaml` as first tree entry ✓
 
 **File(s):** `teleclaude/cli/tui/views/preparation.py`
 
