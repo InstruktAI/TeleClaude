@@ -12,7 +12,7 @@
 
 ---
 
-### Task 1: Bug Template
+### Task 1: Bug Template ✓
 
 **Files:**
 
